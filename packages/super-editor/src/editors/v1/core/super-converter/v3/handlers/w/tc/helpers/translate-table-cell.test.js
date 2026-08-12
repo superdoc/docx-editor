@@ -43,8 +43,9 @@ describe('translate-table-cell helpers', () => {
     // gridSpan
     expect(byName['w:gridSpan'].attributes['w:val']).toBe('2');
 
-    // background
-    expect(byName['w:shd'].attributes['w:fill']).toBe('#FF00FF');
+    // background - OOXML requires bare 6-char hex (no #) and w:val="clear" for solid fills
+    expect(byName['w:shd'].attributes['w:fill']).toBe('FF00FF');
+    expect(byName['w:shd'].attributes['w:val']).toBe('clear');
 
     // tcMar
     const mar = byName['w:tcMar'];
@@ -347,6 +348,21 @@ describe('translate-table-cell helpers', () => {
     expect(out.elements[0].name).toBe('w:tcPr');
     // mocked child from translateChildNodes
     expect(out.elements[1]).toMatchObject({ name: 'w:p' });
+  });
+
+  it('generateTableCellProperties strips # from background color and adds val:clear', () => {
+    const node = { attrs: { background: { color: '#A1B2C3' } } };
+    const tcPr = generateTableCellProperties(node);
+    const shd = tcPr.elements.find((e) => e.name === 'w:shd');
+    expect(shd.attributes['w:fill']).toBe('A1B2C3');
+    expect(shd.attributes['w:val']).toBe('clear');
+  });
+
+  it('generateTableCellProperties does not write w:shd for non-hex background (e.g. auto)', () => {
+    const node = { attrs: { colwidth: [100], widthUnit: 'px', background: { color: 'auto' } } };
+    const tcPr = generateTableCellProperties(node);
+    const shd = tcPr.elements.find((e) => e.name === 'w:shd');
+    expect(shd).toBeUndefined();
   });
 });
 

@@ -1,4 +1,4 @@
-import { pixelsToTwips, inchesToTwips, twipsToPixels } from '@converter/helpers';
+import { pixelsToTwips, inchesToTwips, twipsToPixels, normalizeHexColor, isValidHexColor } from '@converter/helpers';
 import { translateChildNodes } from '@converter/v2/exporter/helpers/index';
 import { translator as tcPrTranslator } from '../../tcPr';
 import {
@@ -84,8 +84,11 @@ export function generateTableCellProperties(node) {
 
   // Background
   const { background = {} } = attrs;
-  if (background?.color && tableCellProperties.shading?.fill !== background?.color) {
-    tableCellProperties['shading'] = { fill: background.color };
+  if (background?.color) {
+    const fill = normalizeHexColor(background.color);
+    if (fill && isValidHexColor(fill) && tableCellProperties.shading?.fill?.toUpperCase() !== fill) {
+      tableCellProperties['shading'] = { fill, val: 'clear' };
+    }
   } else if (!background?.color && tableCellProperties?.shading?.fill) {
     delete tableCellProperties.shading;
   }

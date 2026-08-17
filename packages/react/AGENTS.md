@@ -62,7 +62,7 @@ Pass `contained` to scroll inside a fixed-height parent. The wrapper must have a
 
 ## SSR Behavior
 
-- Container divs are always rendered (hidden with `display: none` until initialized)
+- Container divs are always rendered and remain measurable while loading
 - No `isClient` state or extra rerender — containers exist from first render
 - SuperDoc initializes in `useEffect` (client-side only) and mounts into the existing containers
 - `renderLoading()` shown alongside hidden containers until initialization completes

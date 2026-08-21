@@ -76,4 +76,24 @@ export const RENDERING_FEATURES = {
     ],
     spec: '§22.1',
   },
+
+  // ─── Charts ───────────────────────────────────────────────────
+  // @spec ECMA-376 §21.2 (DrawingML Charts)
+  'c:chart': {
+    feature: 'chart',
+    module: './chart',
+    handles: [
+      'c:barChart',
+      'c:lineChart',
+      'c:stockChart',
+      'c:areaChart',
+      'c:scatterChart',
+      'c:bubbleChart',
+      'c:radarChart',
+      'c:pieChart',
+      'c:doughnutChart',
+      'c:ofPieChart',
+    ],
+    spec: '§21.2',
+  },
 } as const;

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { PresentationInputBridge } from '../input/PresentationInputBridge.js';
 import { CONTEXT_MENU_HANDLED_FLAG } from '../../../components/context-menu/event-flags.js';
 
@@ -27,6 +27,14 @@ describe('PresentationInputBridge - Context Menu Handling', () => {
     // Create bridge instance
     bridge = new PresentationInputBridge(windowRoot, layoutSurface, getTargetDom, isEditable);
     bridge.bind();
+  });
+
+  afterEach(() => {
+    // Unbind window-fallback listeners and detach this test's DOM so bridges
+    // from one test cannot intercept events dispatched by later tests.
+    bridge.destroy();
+    layoutSurface.remove();
+    targetDom.remove();
   });
 
   describe('#forwardContextMenu', () => {
@@ -332,6 +340,63 @@ describe('PresentationInputBridge - Context Menu Handling', () => {
       expect(staleEvent.defaultPrevented).toBe(true);
     });
 
+    it('still reroutes stale body-editor input when active target is a story editor in a different owned hidden host', () => {
+      // Same-instance scenario the stale reroute exists for (SD-3249 regression
+      // guard): a story session (footnote/header/footer) is active in its own
+      // hidden host while native focus survived in the body editor's hidden
+      // host. Both hosts belong to the SAME instance, so the reroute must run
+      // even though the two ProseMirrors live in different hidden hosts.
+      const bodyWrapper = document.createElement('div');
+      bodyWrapper.className = 'presentation-editor__hidden-host-wrapper';
+      const bodyHost = document.createElement('div');
+      bodyHost.className = 'presentation-editor__hidden-host';
+      const bodyEditor = document.createElement('div');
+      bodyEditor.className = 'ProseMirror';
+      bodyEditor.setAttribute('contenteditable', 'true');
+      bodyHost.appendChild(bodyEditor);
+      bodyWrapper.appendChild(bodyHost);
+      document.body.appendChild(bodyWrapper);
+
+      const storyWrapper = document.createElement('div');
+      storyWrapper.className =
+        'presentation-editor__hidden-host-wrapper presentation-editor__story-hidden-host-wrapper';
+      const storyHost = document.createElement('div');
+      storyHost.className = 'presentation-editor__hidden-host presentation-editor__story-hidden-host';
+      const storyEditor = document.createElement('div');
+      storyEditor.className = 'ProseMirror';
+      storyEditor.setAttribute('contenteditable', 'true');
+      storyHost.appendChild(storyEditor);
+      storyWrapper.appendChild(storyHost);
+      document.body.appendChild(storyWrapper);
+
+      const storyFocusSpy = vi.spyOn(storyEditor, 'focus').mockImplementation(() => {});
+      const storyDispatchSpy = vi.spyOn(storyEditor, 'dispatchEvent');
+
+      bridge.destroy();
+      bridge = new PresentationInputBridge(windowRoot, layoutSurface, () => storyEditor, isEditable, undefined, {
+        useWindowFallback: true,
+        ownsEditorDom: (element) => bodyWrapper.contains(element) || storyWrapper.contains(element),
+      });
+      bridge.bind();
+
+      const staleEvent = new InputEvent('beforeinput', {
+        data: 'a',
+        inputType: 'insertText',
+        bubbles: true,
+        cancelable: true,
+      });
+      bodyEditor.dispatchEvent(staleEvent);
+
+      expect(storyFocusSpy).toHaveBeenCalled();
+      expect(storyDispatchSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'beforeinput', data: 'a', inputType: 'insertText' }),
+      );
+      expect(staleEvent.defaultPrevented).toBe(true);
+
+      bodyWrapper.remove();
+      storyWrapper.remove();
+    });
+
     it('does not reroute keyboard input from a registered UI surface editor', () => {
       const commentEditor = document.createElement('div');
       commentEditor.className = 'ProseMirror';
@@ -363,5 +428,160 @@ describe('PresentationInputBridge - Context Menu Handling', () => {
       expect(targetDispatchSpy).not.toHaveBeenCalled();
       expect(staleEvent.defaultPrevented).toBe(false);
     });
+  });
+});
+
+describe('PresentationInputBridge - multiple instances on one page (SD-3249)', () => {
+  type Instance = {
+    layoutSurface: HTMLElement;
+    hiddenHostWrapper: HTMLElement;
+    editorDom: HTMLElement;
+    bridge: PresentationInputBridge;
+  };
+
+  const instances: Instance[] = [];
+
+  /**
+   * Mirrors the production DOM of one PresentationEditor: a visible layout
+   * surface plus a hidden-host wrapper appended to document.body containing
+   * the hidden ProseMirror, with the bridge wired the way
+   * PresentationEditor#setupInputBridge wires it (window fallback enabled,
+   * instance-scoped editor ownership).
+   */
+  function createInstance(): Instance {
+    const layoutSurface = document.createElement('div');
+    document.body.appendChild(layoutSurface);
+
+    const hiddenHostWrapper = document.createElement('div');
+    hiddenHostWrapper.className = 'presentation-editor__hidden-host-wrapper';
+    const hiddenHost = document.createElement('div');
+    hiddenHost.className = 'presentation-editor__hidden-host';
+    const editorDom = document.createElement('div');
+    editorDom.className = 'ProseMirror';
+    editorDom.setAttribute('contenteditable', 'true');
+    hiddenHost.appendChild(editorDom);
+    hiddenHostWrapper.appendChild(hiddenHost);
+    document.body.appendChild(hiddenHostWrapper);
+
+    const bridge = new PresentationInputBridge(
+      window,
+      layoutSurface,
+      () => editorDom,
+      () => true,
+      undefined,
+      {
+        useWindowFallback: true,
+        ownsEditorDom: (element) => hiddenHostWrapper.contains(element),
+      },
+    );
+    bridge.bind();
+
+    const instance = { layoutSurface, hiddenHostWrapper, editorDom, bridge };
+    instances.push(instance);
+    return instance;
+  }
+
+  afterEach(() => {
+    while (instances.length) {
+      const instance = instances.pop()!;
+      instance.bridge.destroy();
+      instance.layoutSurface.remove();
+      instance.hiddenHostWrapper.remove();
+    }
+  });
+
+  it('does not suppress or re-dispatch another instance’s beforeinput', () => {
+    const a = createInstance();
+    const b = createInstance();
+
+    const bDispatchSpy = vi.spyOn(b.editorDom, 'dispatchEvent');
+    const bFocusSpy = vi.spyOn(b.editorDom, 'focus').mockImplementation(() => {});
+
+    // User types in instance A: the trusted event targets A's hidden editor.
+    const event = new InputEvent('beforeinput', {
+      data: 'h',
+      inputType: 'insertText',
+      bubbles: true,
+      cancelable: true,
+    });
+    a.editorDom.dispatchEvent(event);
+
+    // Instance B's window-capture listener must leave the event alone:
+    // suppressing it blocks typing in A, and re-dispatching synthetics
+    // ping-pongs between the two bridges until the stack overflows.
+    expect(event.defaultPrevented).toBe(false);
+    expect(bDispatchSpy).not.toHaveBeenCalled();
+    expect(bFocusSpy).not.toHaveBeenCalled();
+  });
+
+  it('does not steal focus on another instance’s plain-character keydown', () => {
+    const a = createInstance();
+    const b = createInstance();
+
+    const aFocusSpy = vi.spyOn(a.editorDom, 'focus').mockImplementation(() => {});
+    const bFocusSpy = vi.spyOn(b.editorDom, 'focus').mockImplementation(() => {});
+
+    const event = new KeyboardEvent('keydown', {
+      key: 'h',
+      bubbles: true,
+      cancelable: true,
+    });
+    a.editorDom.dispatchEvent(event);
+
+    expect(bFocusSpy).not.toHaveBeenCalled();
+    expect(aFocusSpy).not.toHaveBeenCalled();
+    expect(event.defaultPrevented).toBe(false);
+  });
+
+  it('does not intercept another instance’s non-text keyboard commands', () => {
+    const a = createInstance();
+    const b = createInstance();
+
+    const bDispatchSpy = vi.spyOn(b.editorDom, 'dispatchEvent');
+    const bFocusSpy = vi.spyOn(b.editorDom, 'focus').mockImplementation(() => {});
+
+    const event = new KeyboardEvent('keydown', {
+      key: 'Backspace',
+      bubbles: true,
+      cancelable: true,
+    });
+    a.editorDom.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(false);
+    expect(bDispatchSpy).not.toHaveBeenCalled();
+    expect(bFocusSpy).not.toHaveBeenCalled();
+  });
+
+  it('typing in either instance is left alone by the other bridge', () => {
+    const a = createInstance();
+    const b = createInstance();
+
+    const aDispatchSpy = vi.spyOn(a.editorDom, 'dispatchEvent');
+    const bDispatchSpy = vi.spyOn(b.editorDom, 'dispatchEvent');
+
+    const eventForA = new InputEvent('beforeinput', {
+      data: 'a',
+      inputType: 'insertText',
+      bubbles: true,
+      cancelable: true,
+    });
+    a.editorDom.dispatchEvent(eventForA);
+
+    const eventForB = new InputEvent('beforeinput', {
+      data: 'b',
+      inputType: 'insertText',
+      bubbles: true,
+      cancelable: true,
+    });
+    b.editorDom.dispatchEvent(eventForB);
+
+    expect(eventForA.defaultPrevented).toBe(false);
+    expect(eventForB.defaultPrevented).toBe(false);
+    // Each editor only sees the event the user produced in it — no bridge
+    // injected synthetic re-dispatches. (dispatchEvent may legitimately be
+    // re-entered per propagation phase by the DOM implementation, so assert
+    // on event identity rather than call counts.)
+    expect(aDispatchSpy.mock.calls.every(([dispatched]) => dispatched === eventForA)).toBe(true);
+    expect(bDispatchSpy.mock.calls.every(([dispatched]) => dispatched === eventForB)).toBe(true);
   });
 });

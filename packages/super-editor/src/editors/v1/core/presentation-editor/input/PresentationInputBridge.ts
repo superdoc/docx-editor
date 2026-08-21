@@ -23,6 +23,7 @@ export class PresentationInputBridge {
   #layoutSurfaces: Set<EventTarget>;
   #getTargetDom: () => HTMLElement | null;
   #getTargetEditor?: () => BridgeTargetEditor | null;
+  #ownsEditorDom?: (element: HTMLElement) => boolean;
   /** Callback that returns whether the editor is in an editable mode (editing/suggesting vs viewing) */
   #isEditable: () => boolean;
   #onTargetChanged?: (target: HTMLElement | null) => void;
@@ -47,6 +48,10 @@ export class PresentationInputBridge {
    *                  - useWindowFallback: Whether to attach window-level event listeners as fallback
    *                  - getTargetEditor: Returns the active editor so focus restoration can
    *                    use editor-aware focus logic instead of raw DOM focus
+   *                  - ownsEditorDom: Returns whether a hidden-editor element belongs to this
+   *                    bridge's presentation editor instance. Window-fallback stale rerouting
+   *                    only intercepts events from owned editors, so multiple SuperDoc
+   *                    instances on one page do not hijack each other's input (SD-3249).
    */
   constructor(
     windowRoot: Window,
@@ -57,12 +62,14 @@ export class PresentationInputBridge {
     options?: {
       useWindowFallback?: boolean;
       getTargetEditor?: () => BridgeTargetEditor | null;
+      ownsEditorDom?: (element: HTMLElement) => boolean;
     },
   ) {
     this.#windowRoot = windowRoot;
     this.#layoutSurfaces = new Set<EventTarget>([layoutSurface]);
     this.#getTargetDom = getTargetDom;
     this.#getTargetEditor = options?.getTargetEditor;
+    this.#ownsEditorDom = options?.ownsEditorDom;
     this.#isEditable = isEditable;
     this.#onTargetChanged = onTargetChanged;
     this.#listeners = [];
@@ -302,6 +309,16 @@ export class PresentationInputBridge {
     const staleEditorTarget = originElement?.closest?.('.ProseMirror[contenteditable="true"]') as HTMLElement | null;
 
     if (!staleEditorTarget || staleEditorTarget === activeTarget) {
+      return null;
+    }
+
+    // Multi-instance guard (SD-3249): only reroute input from editors owned by
+    // this bridge's presentation editor instance. With several SuperDoc
+    // instances on one page, every bridge's window-capture listener sees every
+    // keystroke; without this check each bridge suppresses the other
+    // instance's trusted events and re-dispatches synthetics that the other
+    // bridge intercepts in turn, recursing until the stack overflows.
+    if (this.#ownsEditorDom && !this.#ownsEditorDom(staleEditorTarget)) {
       return null;
     }
 

@@ -169,6 +169,26 @@ describe('EditorHistorySnapshotAdapter — Yjs-backed editors', () => {
   });
 });
 
+describe('EditorHistorySnapshotAdapter — late collaboration upgrade', () => {
+  it('switches to Yjs history after a local editor is upgraded in place', () => {
+    mockUndoDepth.mockReturnValue(0);
+    mockRedoDepth.mockReturnValue(0);
+    mockGetPluginState.mockReturnValue({
+      undoManager: { undoStack: [1], redoStack: [] },
+    });
+
+    const editor = buildEditor();
+    const adapter = new EditorHistorySnapshotAdapter(editor as Editor);
+
+    editor.options.collaborationProvider = {};
+    editor.options.ydoc = {};
+
+    expect(adapter.getSnapshot()).toEqual({ undoDepth: 1, redoDepth: 0 });
+    expect(mockUndoDepth).not.toHaveBeenCalled();
+    expect(mockRedoDepth).not.toHaveBeenCalled();
+  });
+});
+
 describe('EditorHistorySnapshotAdapter — command delegation', () => {
   it('undo() / redo() delegate to the shared history helpers', () => {
     mockRunEditorUndo.mockReturnValue(true);

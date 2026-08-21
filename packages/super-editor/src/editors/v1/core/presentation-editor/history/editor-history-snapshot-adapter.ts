@@ -1,10 +1,10 @@
 /**
  * Snapshot adapter that works for both PM-history-backed and Yjs-backed editors.
  *
- * The backend type is determined once per editor by whether it was created
- * with a `collaborationProvider` + `ydoc` pair. We keep one adapter class
- * instead of two because the surface difference is small — read depth from
- * the right stack, delegate undo/redo to `runEditorUndo` / `runEditorRedo`.
+ * The backend type is determined from the editor's current options whenever
+ * a snapshot is read. This allows an adapter created for a local editor to
+ * switch to Yjs history after `upgradeToCollaboration()` attaches a provider
+ * and ydoc in place.
  */
 
 import { undoDepth, redoDepth } from 'prosemirror-history';
@@ -65,16 +65,14 @@ export const readEditorHistorySnapshot = (editor: Editor): ParticipantHistorySna
  */
 export class EditorHistorySnapshotAdapter implements HistorySnapshotAdapter {
   readonly #editor: Editor;
-  readonly #collaborative: boolean;
   #pendingChangeKind: ParticipantHistoryChangeKind = 'unknown';
 
   constructor(editor: Editor) {
     this.#editor = editor;
-    this.#collaborative = isYjsBacked(editor);
   }
 
   getSnapshot(): ParticipantHistorySnapshot {
-    if (this.#collaborative) {
+    if (isYjsBacked(this.#editor)) {
       return readYjsDepths(this.#editor);
     }
     return readPmDepths(this.#editor);

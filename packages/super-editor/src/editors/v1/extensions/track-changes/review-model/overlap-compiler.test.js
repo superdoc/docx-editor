@@ -269,6 +269,101 @@ describe('overlap-compiler: same-user own-insertion refinement (SD-486-adjacent 
     expect(change.type).toBe(CanonicalChangeType.Insertion);
     expect(result.updatedChangeIds).toContain(id);
   });
+
+  it('refines own anonymous-default-user insertion when replacing inside it (SD-3352)', () => {
+    // Replace-path counterpart of the SD-3352 delete tests: an anonymous
+    // session selecting text inside its own pending insertion and typing must
+    // refine that insertion in place — one logical change with the same id —
+    // not collapse the delete half while nesting the replacement text as a
+    // different-user child insertion under the user's own suggestion.
+    const parentId = 'ins-default-user';
+    const anonDefaultUser = { name: 'Default SuperDoc user', email: '' };
+    const { state } = stateFromTrackedSpans({
+      schema,
+      spans: [
+        {
+          text: 'ABCHELLOXYZ',
+          marks: [
+            insertMark({ id: parentId, author: anonDefaultUser.name, authorEmail: '', sourceId: '', date: FIXED_DATE }),
+          ],
+        },
+      ],
+    });
+    // Replace "HELLO" at [4, 9) — wholly inside the pending insertion.
+    const intent = makeTextReplaceIntent({
+      from: 4,
+      to: 9,
+      content: sliceFromText(schema, 'Q'),
+      replacements: 'paired',
+      user: anonDefaultUser,
+      date: FIXED_DATE,
+      source: 'native',
+    });
+    const result = runCompile({ state, intent });
+    expect(result.ok).toBe(true);
+    expect(textOf(result.tr)).toBe('ABCQXYZ');
+
+    const graph = buildReviewGraph({ state: { doc: result.tr.doc } });
+    expect(graph.changes.size).toBe(1);
+    const parent = graph.changes.get(parentId);
+    expect(parent).toBeDefined();
+    expect(parent.type).toBe(CanonicalChangeType.Insertion);
+    expect(parent.insertedSegments.map((segment) => segment.text).join('')).toBe('ABCQXYZ');
+    expect(parent.insertedSegments.every((segment) => !segment.attrs.overlapParentId)).toBe(true);
+    expect(result.updatedChangeIds).toContain(parentId);
+  });
+
+  it('replacement spanning own anonymous insertion and live text pairs like an identified user (SD-3352)', () => {
+    // Partial overlap goes through getReplacementParentId rather than the
+    // fully-covering refinement path. The user's own (by the permissive
+    // anonymous gate) insertion must not be classified as a different-user
+    // overlap parent: the result is an ordinary paired replacement — the
+    // covered insertion slice collapses, the live slice gets the paired
+    // deletion — exactly what an identified user gets.
+    const parentId = 'ins-default-user';
+    const anonDefaultUser = { name: 'Default SuperDoc user', email: '' };
+    const { state } = stateFromTrackedSpans({
+      schema,
+      spans: [
+        {
+          text: 'NEW',
+          marks: [
+            insertMark({ id: parentId, author: anonDefaultUser.name, authorEmail: '', sourceId: '', date: FIXED_DATE }),
+          ],
+        },
+        { text: 'live' },
+      ],
+    });
+    // Replace "EWli" at [2, 6): spans the insertion tail and live text head.
+    const intent = makeTextReplaceIntent({
+      from: 2,
+      to: 6,
+      content: sliceFromText(schema, 'Q'),
+      replacements: 'paired',
+      user: anonDefaultUser,
+      date: FIXED_DATE,
+      source: 'native',
+    });
+    const result = runCompile({ state, intent });
+    expect(result.ok).toBe(true);
+
+    const graph = buildReviewGraph({ state: { doc: result.tr.doc } });
+    // Two logical changes: the refined parent insertion ("N") and one paired
+    // replacement ("li" -> "Q"). No change is nested under the parent.
+    expect(graph.changes.size).toBe(2);
+    const parent = graph.changes.get(parentId);
+    expect(parent).toBeDefined();
+    expect(parent.type).toBe(CanonicalChangeType.Insertion);
+    expect(parent.insertedSegments.map((segment) => segment.text).join('')).toBe('N');
+
+    const replacement = Array.from(graph.changes.values()).find((change) => change.id !== parentId);
+    expect(replacement).toBeDefined();
+    expect(replacement.type).toBe(CanonicalChangeType.Replacement);
+    expect(replacement.deletedSegments.map((segment) => segment.text).join('')).toBe('li');
+    expect(replacement.insertedSegments.map((segment) => segment.text).join('')).toBe('Q');
+    expect(replacement.insertedSegments.every((segment) => !segment.attrs.overlapParentId)).toBe(true);
+    expect(replacement.deletedSegments.every((segment) => !segment.attrs.overlapParentId)).toBe(true);
+  });
 });
 
 describe('overlap-compiler: keystroke deletion coalescing excludes structured changes (PR #3610)', () => {
@@ -642,7 +737,54 @@ describe('overlap-compiler: text-delete', () => {
     expect(result.removedChangeIds).toEqual([parentId]);
   });
 
-  it('creates a child deletion inside a live anonymous no-email insertion', () => {
+  it('refines own anonymous-default-user insertion when deleting inside it (SD-3352)', () => {
+    // Integrators that pass no `user` run as the anonymous default identity
+    // (display name only, no id/email). Deleting inside your own pending
+    // insertion in the same session must refine the insertion in place — not
+    // mint an overlapping different-user child deletion. Word overlap case
+    // 11_same_insert_delete_inside_control is the oracle: one refined w:ins.
+    const parentId = 'ins-default-user';
+    const anonDefaultUser = { name: 'Default SuperDoc user', email: '' };
+    const { state } = stateFromTrackedSpans({
+      schema,
+      spans: [
+        {
+          text: 'ABCHELLOXYZ',
+          marks: [
+            insertMark({ id: parentId, author: anonDefaultUser.name, authorEmail: '', sourceId: '', date: FIXED_DATE }),
+          ],
+        },
+      ],
+    });
+    // Delete "HELLO" at [4, 9) — wholly inside the pending insertion.
+    const intent = makeTextDeleteIntent({
+      from: 4,
+      to: 9,
+      user: anonDefaultUser,
+      date: FIXED_DATE,
+      source: 'native',
+    });
+    const result = runCompile({ state, intent });
+    expect(result.ok).toBe(true);
+    expect(textOf(result.tr)).toBe('ABCXYZ');
+
+    const graph = buildReviewGraph({ state: { doc: result.tr.doc } });
+    expect(graph.changes.size).toBe(1);
+    const parent = graph.changes.get(parentId);
+    expect(parent).toBeDefined();
+    expect(parent.type).toBe(CanonicalChangeType.Insertion);
+    expect(parent.insertedSegments.map((segment) => segment.text).join('')).toBe('ABCXYZ');
+    expect(result.updatedChangeIds).toContain(parentId);
+    expect(result.deletionMarks).toHaveLength(0);
+  });
+
+  it('collapses inside a live unattributed insertion when the current user is equally anonymous (SD-3352 gate unification)', () => {
+    // Same permissive rule as typing (matchesSameUserRefinement): a truly
+    // unattributed live insertion deleted by an equally anonymous session
+    // refines in place. Before SD-3352 this minted a different-user child
+    // deletion while typing into the very same insertion coalesced — the
+    // delete path simply used the stricter gate. Named no-email authors stay
+    // protected (see the named no-email test above).
     const parentId = 'ins-live-anonymous';
     const { state } = stateFromTrackedSpans({
       schema,
@@ -662,20 +804,15 @@ describe('overlap-compiler: text-delete', () => {
     });
     const result = runCompile({ state, intent });
     expect(result.ok).toBe(true);
-    expect(textOf(result.tr)).toBe('live-review-comment');
+    expect(textOf(result.tr)).toBe('live--comment');
 
     const graph = buildReviewGraph({ state: { doc: result.tr.doc } });
-    expect(graph.changes.size).toBe(2);
+    expect(graph.changes.size).toBe(1);
     const parent = graph.changes.get(parentId);
     expect(parent).toBeDefined();
     expect(parent.type).toBe(CanonicalChangeType.Insertion);
-    expect(parent.insertedSegments.map((segment) => segment.text).join('')).toBe('live-review-comment');
-
-    const child = Array.from(graph.changes.values()).find((change) => change.id !== parentId);
-    expect(child).toBeDefined();
-    expect(child.type).toBe(CanonicalChangeType.Deletion);
-    expect(child.deletedSegments[0].text).toBe('review');
-    expect(child.deletedSegments[0].attrs.overlapParentId).toBe(parentId);
+    expect(parent.insertedSegments.map((segment) => segment.text).join('')).toBe('live--comment');
+    expect(result.updatedChangeIds).toContain(parentId);
   });
 
   it('no-ops when deleting inside own deletion', () => {

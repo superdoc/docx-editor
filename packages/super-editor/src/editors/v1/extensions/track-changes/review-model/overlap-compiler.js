@@ -219,9 +219,11 @@ const classifySegment = (ctx, segment) => {
  * stored authorEmail matches the current user's normalized email — including
  * when both sides have no email at all (default unidentified user typing).
  *
- * Permission ownership and overlap parent decisions still require the
- * high-confidence `classifySegment` path; this helper is only for "is this
- * the same logical author for the purpose of coalescing contiguous edits".
+ * Permission ownership still requires the high-confidence `classifySegment`
+ * path; this helper answers "is this the same logical author for the purpose
+ * of refining their own pending edit" — coalescing contiguous typing,
+ * shrinking an own insertion on delete (SD-3352), and deciding that an own
+ * insertion is not a different-user overlap parent for a replacement.
  *
  * @param {*} ctx
  * @param {*} segment
@@ -791,8 +793,14 @@ const applyTrackedDelete = (
         change: getChangeAuthorIdentity(segmentAtPos?.attrs ?? insertMark.attrs),
       });
       const ownership = isSameUserHighConfidence(classification) ? 'same-user' : 'different-user';
+      // Deleting inside your own pending insertion must shrink that insertion,
+      // not stack a deletion on top of your own suggestion (SD-3352). Use the
+      // same permissive same-author gate as typing, so this also holds for
+      // users without an id/email (anonymous sessions).
+      const sameUserForRefinement =
+        ownership === 'same-user' || isSameUserForRefinement(ctx, segmentAtPos ?? { attrs: insertMark.attrs });
       const shouldCollapseOwnInsertion =
-        !ctx.intent.preserveExistingReviewState && (ownership === 'same-user' || isImportedOwnInsertion(insertMark));
+        !ctx.intent.preserveExistingReviewState && (sameUserForRefinement || isImportedOwnInsertion(insertMark));
       if (shouldCollapseOwnInsertion) {
         // Own insertion → collapse (remove proposed content).
         ops.push({ kind: 'collapse', from: segFrom, to: segTo, changeId: insertMark.attrs.id });
@@ -1231,8 +1239,14 @@ const clampToDocSize = (size, pos) => Math.max(0, Math.min(size, pos));
 
 const getSingleFullyCoveringOwnInsertedSegment = (ctx, segments, from, to) => {
   if (!segments.length) return null;
+  // Same permissive same-author gate as the delete half in applyTrackedDelete
+  // (SD-3352): replacing text wholly inside your own pending insertion must
+  // refine that insertion in place, including for anonymous sessions where the
+  // high-confidence classification cannot confirm identity. Otherwise the
+  // delete half collapses while the replacement text nests as a child
+  // insertion under the user's own suggestion.
   const inserted = segments.filter(
-    (s) => s.side === SegmentSide.Inserted && classifySegment(ctx, s) === 'same-user' && s.from <= from && s.to >= to,
+    (s) => s.side === SegmentSide.Inserted && isSameUserForRefinement(ctx, s) && s.from <= from && s.to >= to,
   );
   if (inserted.length !== segments.length) return null;
   const [first] = inserted;
@@ -1243,6 +1257,11 @@ const getSingleFullyCoveringOwnInsertedSegment = (ctx, segments, from, to) => {
 const getReplacementParentId = (ctx, segments) => {
   for (const segment of segments) {
     if (classifySegment(ctx, segment) !== 'different-user') continue;
+    // An inserted segment that matches the permissive same-author refinement
+    // gate (SD-3352, anonymous sessions) is the user's own pending content:
+    // the delete half collapses it in applyTrackedDelete, so it must not be
+    // classified as a different-user overlap parent for the inserted side.
+    if (segment.side === SegmentSide.Inserted && isSameUserForRefinement(ctx, segment)) continue;
     if (segment.attrs?.overlapParentId) return segment.attrs.overlapParentId;
     return segment.changeId || '';
   }

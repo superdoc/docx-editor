@@ -1,15 +1,8 @@
 // @ts-check
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { Schema } from 'prosemirror-model';
 import { EditorState, TextSelection } from 'prosemirror-state';
 import { setParagraphDirection, clearParagraphDirection } from './paragraphDirection.js';
-import { resolveHypotheticalParagraphProperties } from '@extensions/paragraph/resolvedPropertiesCache.js';
-
-vi.mock('@extensions/paragraph/resolvedPropertiesCache.js', () => ({
-  // Default: style cascade has no RTL, so the resolver returns the inline
-  // props unchanged. Individual tests override for style-cascade RTL cases.
-  resolveHypotheticalParagraphProperties: vi.fn((_editor, _$pos, inline) => inline),
-}));
 
 const schema = new Schema({
   nodes: {
@@ -57,33 +50,20 @@ describe('setParagraphDirection', () => {
     expect(nextState.doc.firstChild.attrs.paragraphProperties.rightToLeft).toBe(true);
   });
 
-  it('removes rightToLeft on ltr (does not write false)', () => {
-    // Writing `rightToLeft: false` exports as `<w:bidi w:val="0"/>` — direct
-    // formatting that overrides any inherited style. LTR should delete the
-    // property so the paragraph matches its style cascade default again.
+  it('sets rightToLeft=false on ltr (hard override, replacing rtl)', () => {
+    // Under dir="auto", a flag-less paragraph auto-detects direction, so LTR
+    // must write an explicit `false` to pin LTR and beat auto-detection.
+    // Exports as `<w:bidi w:val="0"/>`, matching Word's "click LTR" behaviour.
     const state = createState([{ paragraphProperties: { rightToLeft: true } }]);
     const { dispatched, nextState } = runCommand(setParagraphDirection({ direction: 'ltr' }), state);
     expect(dispatched).toBe(true);
-    expect('rightToLeft' in nextState.doc.firstChild.attrs.paragraphProperties).toBe(false);
+    expect(nextState.doc.firstChild.attrs.paragraphProperties.rightToLeft).toBe(false);
   });
 
-  it('is a no-op when ltr is applied to a paragraph that has no direction set', () => {
-    // Before the LTR-deletes-property fix, this would dispatch a transaction
-    // that wrote `rightToLeft: false` onto every vanilla paragraph — silently
-    // injecting `<w:bidi w:val="0"/>` into the round-tripped DOCX even though
-    // nothing semantically changed.
-    const state = createState([{ paragraphProperties: {} }]);
-    const { dispatched, tr } = runCommand(setParagraphDirection({ direction: 'ltr' }), state);
-    expect(dispatched).toBe(false);
-    expect(tr).toBeNull();
-  });
-
-  it('writes rightToLeft=false on ltr when the style cascade still resolves rtl', () => {
-    // Style sets rightToLeft, paragraph has no inline override. Just deleting
-    // the (non-existent) inline prop would leave the resolved direction as RTL —
-    // clicking LTR would be a silent no-op. Explicit `false` is required to
-    // override the inherited style direction.
-    resolveHypotheticalParagraphProperties.mockReturnValueOnce({ rightToLeft: true });
+  it('writes rightToLeft=false on ltr for a paragraph with no direction set', () => {
+    // A flag-less paragraph renders dir="auto" (auto-detect). Clicking LTR is a
+    // real semantic change — it pins LTR — so it must dispatch and write `false`,
+    // not be a no-op. Reverting to auto-detect is clearParagraphDirection's job.
     const state = createState([{ paragraphProperties: {} }]);
     const { dispatched, nextState } = runCommand(setParagraphDirection({ direction: 'ltr' }), state);
     expect(dispatched).toBe(true);

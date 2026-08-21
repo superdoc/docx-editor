@@ -317,7 +317,9 @@ export const renderLine = ({
     el.setAttribute('styleid', styleId);
   }
   const pAttrs = block.attrs as ParagraphAttrs | undefined;
-  const isRtl = applyRtlStyles(el, pAttrs);
+  // inheritAuto: lines inherit the paragraph wrapper's resolved auto direction
+  // instead of each line auto-detecting independently.
+  const isRtl = applyRtlStyles(el, pAttrs, true);
 
   if (lineRange.pmStart != null) {
     el.dataset.pmStart = String(lineRange.pmStart);

@@ -22,7 +22,7 @@ export const isRtlParagraph = (attrs: ParagraphAttrs | undefined): boolean =>
  * becomes 'left' (LTR) or 'right' (RTL) to align the last line correctly.
  * When no explicit alignment is set the default follows the paragraph direction.
  */
-export const resolveTextAlign = (alignment: ParagraphAttrs['alignment'], isRtl: boolean): string => {
+export const resolveTextAlign = (alignment: ParagraphAttrs['alignment'], isRtl: boolean, isAuto = false): string => {
   switch (alignment) {
     case 'center':
     case 'right':
@@ -30,6 +30,9 @@ export const resolveTextAlign = (alignment: ParagraphAttrs['alignment'], isRtl: 
       return alignment;
     case 'justify':
     default:
+      // For auto-direction paragraphs we don't know the resolved side at paint
+      // time — `start` follows the browser-resolved `dir="auto"`.
+      if (isAuto) return 'start';
       return isRtl ? 'right' : 'left';
   }
 };
@@ -38,17 +41,39 @@ export const resolveTextAlign = (alignment: ParagraphAttrs['alignment'], isRtl: 
  * Apply `dir` and `text-align` to an element based on paragraph attributes.
  * Used by both `renderLine` (line elements) and `applyParagraphBlockStyles`
  * (fragment wrappers) so the logic stays in one place.
+ *
+ * `inheritAuto` is set for per-line elements: a paragraph with no explicit
+ * direction must resolve its base direction ONCE (on the paragraph wrapper via
+ * `dir="auto"`); the individual visual lines then inherit it. Stamping
+ * `dir="auto"` on each line would make every wrapped line re-detect from its
+ * own first strong character, so an RTL paragraph whose continuation line
+ * begins with Latin text would wrongly flip to LTR.
  */
-export const applyRtlStyles = (element: HTMLElement, attrs: ParagraphAttrs | undefined): boolean => {
-  const rtl = isRtlParagraph(attrs);
-  if (rtl) {
+export const applyRtlStyles = (
+  element: HTMLElement,
+  attrs: ParagraphAttrs | undefined,
+  inheritAuto = false,
+): boolean => {
+  const dir = getParagraphInlineDirection(attrs); // 'rtl' | 'ltr' | undefined
+  const rtl = dir === 'rtl';
+  if (dir === 'rtl') {
     element.setAttribute('dir', 'rtl');
     element.style.direction = 'rtl';
-  } else {
+  } else if (dir === 'ltr') {
+    element.setAttribute('dir', 'ltr');
+    element.style.direction = 'ltr';
+  } else if (inheritAuto) {
+    // Line-level: inherit the paragraph wrapper's resolved auto direction
+    // rather than independently auto-detecting per visual line.
     element.removeAttribute('dir');
     element.style.direction = '';
+  } else {
+    // Paragraph wrapper: let the browser detect base direction from content
+    // (dir="auto"). An absent dir would inherit the container direction instead.
+    element.setAttribute('dir', 'auto');
+    element.style.direction = '';
   }
-  element.style.textAlign = resolveTextAlign(attrs?.alignment, rtl);
+  element.style.textAlign = resolveTextAlign(attrs?.alignment, rtl, dir === undefined);
   return rtl;
 };
 

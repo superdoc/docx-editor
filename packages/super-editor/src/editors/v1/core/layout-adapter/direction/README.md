@@ -55,8 +55,11 @@ The resolved `paragraphContext` carries:
 - `inlineDirection: 'ltr' | 'rtl' | undefined`
 
   Paragraph inline base direction. It is undefined when no explicit `w:bidi`
-  is set in the paragraph or its style cascade. Consumers should omit `dir`
-  when this is undefined and let the browser apply the Unicode Bidi Algorithm.
+  is set in the paragraph or its style cascade. When undefined, consumers
+  render `dir="auto"` so the browser resolves base direction from the first
+  strong character (UAX #9 P2/P3). Note: an *absent* `dir` would inherit the
+  container's direction instead — only `dir="auto"` auto-detects. Explicit
+  `rtl`/`ltr` are emitted as `dir="rtl"`/`dir="ltr"` (hard overrides).
 
 - `writingMode: 'horizontal-tb' | 'vertical-rl' | 'vertical-lr'`
 
@@ -103,9 +106,17 @@ const physicalIndent = resolveLogicalIndent(
 
 ## Out of Scope
 
-This module does not infer paragraph base direction from run content. When
-`w:bidi` is absent, UAX #9 P2/P3 derives base direction from the first strong
-character. Browsers already do this when `dir` is omitted.
+This module does not *infer* paragraph base direction from run content in the
+layout data. Instead, paragraphs with no explicit `w:bidi` (resolved
+`inlineDirection`/`rightToLeft` undefined) are rendered with `dir="auto"` — by
+both the editing node view (`ParagraphNodeView`) and the viewing painter
+(`inline-direction/rtl-styles`). The browser then resolves base direction from
+the first strong character per UAX #9 P2/P3 and places the caret accordingly.
+
+Note: an *absent* `dir` attribute inherits the container's base direction and
+does **not** auto-detect — only `dir="auto"` does. Explicit `rightToLeft`
+true/false (a user's toolbar choice or a document `w:bidi`) is a hard override
+emitted as `dir="rtl"` / `dir="ltr"`.
 
 This module also does not resolve:
 

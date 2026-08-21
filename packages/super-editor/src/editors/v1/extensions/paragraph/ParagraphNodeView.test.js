@@ -397,16 +397,16 @@ describe('ParagraphNodeView', () => {
     expect(nodeView.dom.getAttribute('dir')).toBe('rtl');
   });
 
-  it('does not set dir on LTR paragraphs', () => {
+  it('sets dir="auto" on unset paragraphs so the browser detects direction', () => {
     isList.mockReturnValue(false);
     resolveParagraphProperties.mockReturnValue({});
 
     const { nodeView } = mountNodeView();
 
-    expect(nodeView.dom.getAttribute('dir')).toBeNull();
+    expect(nodeView.dom.getAttribute('dir')).toBe('auto');
   });
 
-  it('removes dir="rtl" when paragraph changes from RTL to LTR', () => {
+  it('changes dir from "rtl" to "auto" when an explicit RTL paragraph is cleared', () => {
     isList.mockReturnValue(false);
     resolveParagraphProperties.mockReturnValueOnce({ rightToLeft: true }).mockReturnValueOnce({});
 
@@ -418,10 +418,10 @@ describe('ParagraphNodeView', () => {
     });
     expect(nodeView.dom.getAttribute('dir')).toBe('rtl');
 
-    const ltrNode = createNode({ attrs: { paragraphProperties: {}, listRendering: {} } });
-    nodeView.update(ltrNode, []);
+    const clearedNode = createNode({ attrs: { paragraphProperties: {}, listRendering: {} } });
+    nodeView.update(clearedNode, []);
 
-    expect(nodeView.dom.getAttribute('dir')).toBeNull();
+    expect(nodeView.dom.getAttribute('dir')).toBe('auto');
   });
 
   it('sets dir="rtl" for Pattern 1 paragraphs with run-level RTL only', () => {
@@ -465,7 +465,7 @@ describe('ParagraphNodeView', () => {
     expect(nodeView.dom.getAttribute('dir')).toBe('rtl');
   });
 
-  it('does not force dir when inherited resolved properties are explicit ltr', () => {
+  it('sets dir="ltr" when resolved properties are explicit ltr (hard override)', () => {
     isList.mockReturnValue(false);
     resolveParagraphPropertiesFromStyleEngine.mockReturnValue({
       rightToLeft: false,
@@ -481,6 +481,26 @@ describe('ParagraphNodeView', () => {
       },
     });
 
-    expect(nodeView.dom.getAttribute('dir')).toBeNull();
+    expect(nodeView.dom.getAttribute('dir')).toBe('ltr');
+  });
+
+  it('keeps dir="rtl" for run-inferred RTL even though paragraph direction is unset', () => {
+    isList.mockReturnValue(false);
+    resolveParagraphProperties.mockReturnValue({});
+    // Reset the style-engine resolver too: mockReturnValue persists across tests
+    // (clearAllMocks clears calls, not implementations), and a prior test leaves
+    // it returning { rightToLeft: false }, which would force the explicit-LTR branch.
+    resolveParagraphPropertiesFromStyleEngine.mockReturnValue({});
+
+    const makeRun = (rtl) => ({ type: { name: 'run' }, attrs: { runProperties: { rtl } } });
+    const runs = [makeRun(true)];
+    const fragment = { childCount: runs.length, child: (i) => runs[i] };
+
+    const { nodeView } = mountNodeView({
+      attrs: { paragraphProperties: {}, listRendering: {} },
+      content: fragment,
+    });
+
+    expect(nodeView.dom.getAttribute('dir')).toBe('rtl');
   });
 });

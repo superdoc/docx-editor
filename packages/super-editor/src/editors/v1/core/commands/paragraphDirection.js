@@ -1,5 +1,3 @@
-import { resolveHypotheticalParagraphProperties } from '@extensions/paragraph/resolvedPropertiesCache.js';
-
 /**
  * Set paragraph direction (LTR/RTL) on every paragraph in the current selection.
  * @category Command
@@ -17,23 +15,19 @@ export const setParagraphDirection = ({ direction, alignmentPolicy } = {}) => {
   // "execute by command name" pathway without a payload — a missing
   // direction must be a no-op, not a silent LTR write.
   if (direction !== 'ltr' && direction !== 'rtl') return () => false;
-  return walkParagraphs((pPr, { editor, $pos }) => {
+  return walkParagraphs((pPr) => {
     const next = { ...pPr };
     if (direction === 'rtl') {
       next.rightToLeft = true;
     } else {
-      // AIDEV-NOTE: LTR first tries to delete the inline override (so a
-      // vanilla paragraph round-trips without `<w:bidi w:val="0"/>`). But
-      // if the paragraph inherits `rightToLeft: true` from its style (or
-      // any other level of the OOXML cascade), deleting alone leaves the
-      // resolved direction as RTL — clicking LTR would be a silent no-op.
-      // Re-resolve the cascade against the would-be inline state; if RTL
-      // still wins, force an explicit `false` to override the style.
-      delete next.rightToLeft;
-      const resolved = resolveHypotheticalParagraphProperties(editor, $pos, next);
-      if (resolved?.rightToLeft === true) {
-        next.rightToLeft = false;
-      }
+      // AIDEV-NOTE: LTR is a hard override. Paragraphs with no `rightToLeft`
+      // flag render `dir="auto"` (the browser detects base direction from the
+      // first strong character), so deleting the flag would NOT pin LTR — an
+      // RTL-script paragraph would re-detect as RTL. Writing an explicit
+      // `false` emits `dir="ltr"` and beats auto-detection. It exports as
+      // `<w:bidi w:val="0"/>` (explicit "not RTL"), matching Word's behaviour
+      // when you click LTR. Reverting to auto-detect is `clearParagraphDirection`.
+      next.rightToLeft = false;
     }
     if (alignmentPolicy === 'matchDirection') {
       const j = pPr.justification;

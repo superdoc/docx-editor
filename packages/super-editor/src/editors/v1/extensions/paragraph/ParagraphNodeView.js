@@ -171,9 +171,18 @@ export class ParagraphNodeView {
       paragraphProperties.rightToLeft === true ||
       (paragraphProperties.rightToLeft !== false && inferParagraphRtlFromRuns(this.node))
     ) {
+      // Explicit RTL, or run-inferred RTL (header/footer fallback) — hard.
       this.dom.setAttribute('dir', 'rtl');
+    } else if (paragraphProperties.rightToLeft === false) {
+      // Explicit LTR (e.g. user toolbar choice) — hard override, never auto-detects.
+      this.dom.setAttribute('dir', 'ltr');
     } else {
-      this.dom.removeAttribute('dir');
+      // Unset: hand base-direction selection to the browser. `dir="auto"`
+      // resolves from the first strong character typed (Arabic → RTL, Latin →
+      // LTR) and places the caret accordingly — Google-Docs-style. An absent
+      // `dir` would instead inherit the container's direction, which is the
+      // behaviour this replaces.
+      this.dom.setAttribute('dir', 'auto');
     }
   }
 

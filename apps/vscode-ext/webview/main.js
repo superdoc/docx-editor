@@ -152,7 +152,7 @@ async function saveDocument() {
   try {
     debug('Starting document save...');
 
-    const blob = await editor.export({ format: 'docx' });
+    const blob = await editor.export({ exportType: ['docx'], triggerDownload: false });
     if (!blob) {
       debug('Failed to export - no blob returned');
       return;

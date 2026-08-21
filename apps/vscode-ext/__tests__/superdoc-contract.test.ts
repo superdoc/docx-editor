@@ -45,7 +45,7 @@ describe('SuperDoc API contract', () => {
     });
 
     it('has export() method', () => {
-      // webview/main.js: editor.export({ format: 'docx' })
+      // webview/main.js: editor.export({ exportType: ['docx'], triggerDownload: false })
       expect(superdocClassSrc).toMatch(/async\s+export\s*\(/);
     });
 

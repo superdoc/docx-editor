@@ -1,6 +1,7 @@
 import { NodeTranslator } from '../node-translator/index.js';
 import { ST_ON_OFF_ON_VALUES, ST_ON_OFF_OFF_VALUES } from '@superdoc/document-api';
 import { pushDiagnostic } from './import-diagnostics.js';
+import { sortPropertyChildElements } from './ooxml-property-order.js';
 
 /**
  * Generates a handler entity for a given node translator.
@@ -550,7 +551,10 @@ export function createNestedPropertiesTranslator(
         name: xmlName,
         type: 'element',
         attributes: decodedAttrs,
-        elements: elements,
+        // ECMA-376 models these containers as xsd:sequence; children must be
+        // emitted in canonical schema order or Word for the web rejects the
+        // package as corrupt. PM attribute insertion order is not canonical.
+        elements: sortPropertyChildElements(xmlName, elements),
       };
 
       return newNode;

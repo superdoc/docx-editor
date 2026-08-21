@@ -2,6 +2,7 @@ import { SuperConverter } from './SuperConverter.js';
 import { inchesToTwips, linesToTwips, rgbToHex } from './helpers.js';
 import { DEFAULT_DOCX_DEFS } from './exporter-docx-defs.js';
 import { translateChildNodes } from './v2/exporter/helpers/index.js';
+import { sortPropertyChildElements } from './v3/handlers/ooxml-property-order.js';
 import { translator as wBrNodeTranslator } from './v3/handlers/w/br/br-translator.js';
 import { translator as wHighlightTranslator } from './v3/handlers/w/highlight/highlight-translator.js';
 import { translator as wTabNodeTranslator } from './v3/handlers/w/tab/tab-translator.js';
@@ -508,7 +509,12 @@ export function wrapTextInRun(nodeOrNodes, marks) {
 export function generateRunProps(marks = []) {
   return {
     name: 'w:rPr',
-    elements: marks.filter((mark) => !!Object.keys(mark).length),
+    // w:rPr is an ECMA-376 xsd:sequence (CT_RPr); emit children in canonical
+    // schema order rather than mark-array order so Word for the web accepts it.
+    elements: sortPropertyChildElements(
+      'w:rPr',
+      marks.filter((mark) => !!Object.keys(mark).length),
+    ),
   };
 }
 

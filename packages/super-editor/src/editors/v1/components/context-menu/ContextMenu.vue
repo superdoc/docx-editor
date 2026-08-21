@@ -9,6 +9,7 @@ import { moveCursorToMouseEvent } from '../cursor-helpers.js';
 import { getEditorSurfaceElement } from '../../core/helpers/editorSurface.js';
 import { getItems } from './menuItems.js';
 import { getEditorContext } from './utils.js';
+import { clampMenuPositionToBounds, resolveMenuBounds } from './menu-position.js';
 import { CONTEXT_MENU_HANDLED_FLAG } from './event-flags.js';
 import { isMacOS } from '../../core/utilities/isMacOS.js';
 
@@ -35,6 +36,24 @@ const menuRef = ref(null);
 const sections = ref([]);
 const selectedId = ref(null);
 const currentContext = ref(null); // Store context for action execution
+
+const repositionMenu = () => {
+  const menuRect = menuRef.value?.getBoundingClientRect();
+  if (!menuRect || menuRect.width <= 0 || menuRect.height <= 0) return;
+
+  const bounds = resolveMenuBounds(getEditorSurfaceElement(props.editor), window);
+  menuPosition.value = clampMenuPositionToBounds(menuPosition.value, menuRect, bounds);
+};
+
+let repositionScheduled = false;
+const scheduleMenuReposition = () => {
+  if (repositionScheduled) return;
+  repositionScheduled = true;
+  nextTick(() => {
+    repositionScheduled = false;
+    repositionMenu();
+  });
+};
 
 const TABLE_SURFACE_SELECTOR = '.superdoc-table-fragment, .superdoc-table-cell';
 
@@ -201,6 +220,7 @@ const renderCustomItem = async (itemId) => {
       element.innerHTML = '';
       element.appendChild(customElement);
       element.hasCustomContent = true;
+      scheduleMenuReposition();
     }
   } catch (error) {
     console.warn(`[ContextMenu] Error rendering custom item ${itemId}:`, error);
@@ -209,6 +229,7 @@ const renderCustomItem = async (itemId) => {
     element.innerHTML = '';
     element.appendChild(fallbackElement);
     element.hasCustomContent = true;
+    scheduleMenuReposition();
   }
 };
 
@@ -583,6 +604,9 @@ onMounted(() => {
     searchQuery.value = '';
     selectedId.value = flattenedItems.value[0]?.id || null;
     isOpen.value = true;
+
+    await nextTick();
+    repositionMenu();
   };
   props.editor.on('contextMenu:open', contextMenuOpenHandler);
 

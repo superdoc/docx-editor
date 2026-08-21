@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { shouldBypassContextMenu, shouldAllowNativeContextMenu } from '../../../utils/contextmenu-helpers.js';
+import {
+  shouldBypassContextMenu,
+  shouldAllowNativeContextMenu,
+  isWithinResizeOverlay,
+} from '../../../utils/contextmenu-helpers.js';
 
 describe('context menu helpers', () => {
   it('returns false for standard right click', () => {
@@ -45,5 +49,37 @@ describe('context menu helpers', () => {
 
     expect(shouldBypassContextMenu(event)).toBe(true);
     expect(shouldAllowNativeContextMenu(event)).toBe(true);
+  });
+});
+
+describe('isWithinResizeOverlay', () => {
+  it('returns true for a target inside the table resize overlay', () => {
+    const overlay = document.createElement('div');
+    overlay.className = 'superdoc-table-resize-overlay';
+    const handle = document.createElement('div');
+    handle.className = 'resize-handle';
+    overlay.appendChild(handle);
+
+    expect(isWithinResizeOverlay(handle)).toBe(true);
+    expect(isWithinResizeOverlay(overlay)).toBe(true);
+  });
+
+  it('returns true for a target inside the image resize overlay', () => {
+    const overlay = document.createElement('div');
+    overlay.className = 'superdoc-image-resize-overlay';
+    const handle = document.createElement('div');
+    overlay.appendChild(handle);
+
+    expect(isWithinResizeOverlay(handle)).toBe(true);
+  });
+
+  it('returns false for editor content and non-element targets', () => {
+    const paragraph = document.createElement('p');
+    paragraph.textContent = 'hello';
+
+    expect(isWithinResizeOverlay(paragraph)).toBe(false);
+    expect(isWithinResizeOverlay(document.createTextNode('hello'))).toBe(false);
+    expect(isWithinResizeOverlay(null)).toBe(false);
+    expect(isWithinResizeOverlay(undefined)).toBe(false);
   });
 });

@@ -4,7 +4,7 @@ import { Selection } from 'prosemirror-state';
 import { isCellSelection } from '@extensions/table/tableHelpers/isCellSelection.js';
 import { ContextMenuPluginKey } from '../../extensions/context-menu/context-menu.js';
 import { getPropsByItemId, resolveContextMenuCommandEditor } from './utils.js';
-import { shouldBypassContextMenu } from '../../utils/contextmenu-helpers.js';
+import { shouldBypassContextMenu, isWithinResizeOverlay } from '../../utils/contextmenu-helpers.js';
 import { moveCursorToMouseEvent } from '../cursor-helpers.js';
 import { getEditorSurfaceElement } from '../../core/helpers/editorSurface.js';
 import { getItems } from './menuItems.js';
@@ -365,6 +365,13 @@ const isEventWithinContextMenuTargets = (event) => {
   const target = event?.target;
   if (!(target instanceof Node)) {
     return false;
+  }
+
+  // The table/image resize overlays render as siblings of the editor surface, not inside it.
+  // Right-clicks landing on their handles must still open the editor context menu instead of
+  // falling through to the browser's native menu.
+  if (isWithinResizeOverlay(target)) {
+    return true;
   }
 
   return getContextMenuTargets().some(

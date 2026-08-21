@@ -36,3 +36,18 @@ export { shouldAllowNativeContextMenu };
 export const shouldBypassContextMenu = shouldAllowNativeContextMenu;
 
 export const shouldUseNativeContextMenu = shouldAllowNativeContextMenu;
+
+/**
+ * The table and image resize overlays render as siblings of the editor surface rather than
+ * inside it. A right-click that lands on one of their handles therefore falls outside the
+ * normal context-menu target surfaces, which would let the browser's native menu appear.
+ * This identifies those overlay targets so the editor can still own the context menu.
+ * @param {EventTarget | null | undefined} target
+ * @returns {boolean}
+ */
+export const isWithinResizeOverlay = (target) => {
+  return (
+    typeof target?.closest === 'function' &&
+    Boolean(target.closest('.superdoc-table-resize-overlay, .superdoc-image-resize-overlay'))
+  );
+};

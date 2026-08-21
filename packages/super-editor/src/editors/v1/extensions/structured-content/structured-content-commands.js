@@ -338,7 +338,7 @@ export const StructuredContentCommands = Extension.create({
           const structuredContentTags = getStructuredContentTagsById(id, state);
 
           if (!structuredContentTags.length) {
-            return true;
+            return false;
           }
 
           const { schema } = editor;

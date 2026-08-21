@@ -185,6 +185,17 @@ describe('updateStructuredContentById', () => {
     }).toThrow('Invalid structured content id - must be an integer, got: abc-123');
   });
 
+  it('returns false when no structured content matches the requested ID', () => {
+    const originalDoc = editor.state.doc.toJSON();
+
+    const didUpdate = editor.commands.updateStructuredContentById('missing-structured-content-id', {
+      text: 'New Content',
+    });
+
+    expect(didUpdate).toBe(false);
+    expect(editor.state.doc.toJSON()).toEqual(originalDoc);
+  });
+
   describe('keepTextNodeStyles option', () => {
     it('preserves marks from the first text node when keepTextNodeStyles is true', () => {
       const didUpdate = editor.commands.updateStructuredContentById(INLINE_ID, {

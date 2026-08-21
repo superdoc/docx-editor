@@ -127,6 +127,55 @@ describe('SDT metadata integration', () => {
     });
   });
 
+  it('preserves nested block structuredContent content and metadata', () => {
+    const nestedBlockDoc = {
+      type: 'doc',
+      content: [
+        {
+          type: 'structuredContentBlock',
+          attrs: {
+            id: 'outer-block-sdt',
+            tag: 'outer_block',
+            alias: 'Outer Block',
+          },
+          content: [
+            {
+              type: 'paragraph',
+              content: [{ type: 'text', text: 'Outer paragraph' }],
+            },
+            {
+              type: 'structuredContentBlock',
+              attrs: {
+                id: 'inner-block-sdt',
+                tag: 'inner_block',
+                alias: 'Inner Block',
+              },
+              content: [
+                {
+                  type: 'paragraph',
+                  content: [{ type: 'text', text: 'Inner paragraph' }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const { blocks: nestedBlocks } = toFlowBlocks(nestedBlockDoc);
+    const innerParagraph = nestedBlocks.find(
+      (block) => block.kind === 'paragraph' && block.runs?.some((run) => run.text === 'Inner paragraph'),
+    );
+
+    expect(innerParagraph).toBeDefined();
+    expect(innerParagraph?.attrs?.sdt).toMatchObject({
+      type: 'structuredContent',
+      scope: 'block',
+      id: 'inner-block-sdt',
+      tag: 'inner_block',
+      alias: 'Inner Block',
+    });
+  });
+
   it('handles nested structuredContent (inline within inline)', () => {
     const nestedBlock = summary.find((b) => b.blockId === '2-paragraph');
     const outerRun = nestedBlock?.runMetadata.find((r) => r.metadata?.id === 'nested-outer');

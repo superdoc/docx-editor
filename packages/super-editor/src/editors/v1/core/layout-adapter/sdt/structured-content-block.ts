@@ -267,6 +267,10 @@ export function handleStructuredContentBlockNode(node: PMNode, context: NodeHand
     // inside this content control is likewise transparent here; render its entry
     // paragraphs without advancing currentParagraphIndex, since
     // findParagraphsWithSectPr does not recurse structuredContentBlock.
+    if (child.type === 'structuredContentBlock') {
+      handleStructuredContentBlockNode(child, context);
+      return;
+    }
     if (
       Array.isArray(child.content) &&
       (child.type === 'documentPartObject' ||

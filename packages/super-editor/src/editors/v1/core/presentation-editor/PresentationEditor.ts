@@ -3601,6 +3601,19 @@ export class PresentationEditor extends EventEmitter {
     this.#scheduleRerender();
   }
 
+  /**
+   * Re-render after a linked style's definition was redefined in place
+   * (e.g. "Update Heading 1 to match"). The document did not change, so the
+   * FlowBlockCache — keyed on node identity — would otherwise return stale
+   * blocks resolved against the old style. Clear it and re-layout, mirroring
+   * other non-edit render changes (see {@link setShowBookmarks}).
+   */
+  refreshLinkedStyles(): void {
+    this.#flowBlockCache?.clear();
+    this.#pendingDocChange = true;
+    this.#scheduleRerender();
+  }
+
   setShowFormattingMarks(showFormattingMarks: boolean): void {
     const next = !!showFormattingMarks;
     if (this.#layoutOptions.showFormattingMarks === next) return;

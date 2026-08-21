@@ -1015,10 +1015,25 @@ export const makeDefaultItems = ({
             selectedLinkedStyle.value = style.id;
           };
 
+          // "Update <style> to match selection": redefine the named style's look
+          // from the current selection (Google-Docs behaviour). Goes straight to
+          // the editor command + helper rather than the toolbar's single-argument
+          // emitCommand path, since this takes (styleId, formatting).
+          const handleUpdate = (style) => {
+            closeDropdown(linkedStyles);
+            const editor = superToolbar.activeEditor;
+            if (!editor || !style?.id) return;
+            const formatting = editor.helpers?.linkedStyles?.getEffectiveFormattingAtSelection?.();
+            if (!formatting) return;
+            editor.commands?.updateLinkedStyle?.(style.id, formatting);
+            editor.view?.focus?.();
+          };
+
           return h('div', {}, [
             h(LinkedStyle, {
               editor: superToolbar.activeEditor,
               onSelect: handleSelect,
+              onUpdate: handleUpdate,
               selectedOption: selectedLinkedStyle.value,
             }),
           ]);

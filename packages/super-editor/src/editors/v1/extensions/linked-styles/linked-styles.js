@@ -4,6 +4,8 @@ import { applyLinkedStyleToTransaction, generateLinkedStyleString } from './help
 import { createLinkedStylesPlugin, LinkedStylesPluginKey } from './plugin.js';
 import { findParentNodeClosestToPos } from '@core/helpers';
 import { getResolvedParagraphProperties } from '@extensions/paragraph/resolvedPropertiesCache.js';
+import { updateLinkedStyleDefinition, readEffectiveRunFormatting } from './update-linked-style.js';
+import { definitionStylesToFormatting } from './style-formatting.js';
 
 /**
  * Style definition from Word document
@@ -104,6 +106,17 @@ export const LinkedStyles = Extension.create({
 
         return applyLinkedStyleToTransaction(tr, this.editor, style);
       },
+
+      /**
+       * Redefine a named paragraph style's look (Google-Docs "Update to match").
+       * @category Command
+       * @param {string} styleId - The style ID to redefine (e.g., 'Heading1')
+       * @param {Object} formatting - CapturedFormatting (bold, italic, underline, fontSizePt, fontFamily, colorHex)
+       * @example
+       * editor.commands.updateLinkedStyle('Heading1', { bold: true, fontSizePt: 28, colorHex: '1F3864' });
+       * @note Updates every paragraph using the style; never throws.
+       */
+      updateLinkedStyle: (styleId, formatting) => () => updateLinkedStyleDefinition(this.editor, styleId, formatting),
     };
   },
 
@@ -151,6 +164,30 @@ export const LinkedStyles = Extension.create({
         if (!style) return '';
         return generateLinkedStyleString(style);
       },
+
+      /**
+       * Read a named style's current run formatting as CapturedFormatting.
+       * @category Helper
+       * @param {string} styleId - The style ID to read
+       * @returns {Object|null} CapturedFormatting, or null when the style is unknown
+       * @example
+       * const fmt = editor.helpers.linkedStyles.getLinkedStyleFormatting('Heading1');
+       */
+      getLinkedStyleFormatting: (styleId) => {
+        const style = this.editor.helpers[this.name].getStyleById(styleId);
+        if (!style?.definition?.styles) return null;
+        return definitionStylesToFormatting(style.definition.styles);
+      },
+
+      /**
+       * Read the run formatting at the current selection as CapturedFormatting.
+       * @category Helper
+       * @returns {Object} CapturedFormatting describing the current selection
+       * @example
+       * const fmt = editor.helpers.linkedStyles.getEffectiveFormattingAtSelection();
+       * editor.commands.updateLinkedStyle('Heading1', fmt);
+       */
+      getEffectiveFormattingAtSelection: () => readEffectiveRunFormatting(this.editor),
     };
   },
 });

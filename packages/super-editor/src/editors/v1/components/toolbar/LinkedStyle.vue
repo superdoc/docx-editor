@@ -3,7 +3,7 @@ import { computed, ref, onMounted } from 'vue';
 import { toolbarIcons } from './toolbarIcons.js';
 import { generateLinkedStyleString, getQuickFormatList } from '@extensions/linked-styles/index.js';
 
-const emit = defineEmits(['select']);
+const emit = defineEmits(['select', 'update']);
 const styleRefs = ref([]);
 const props = defineProps({
   editor: {
@@ -17,6 +17,10 @@ const props = defineProps({
 
 const select = (style) => {
   emit('select', style);
+};
+
+const update = (style) => {
+  emit('update', style);
 };
 
 const moveToNextStyle = (index) => {
@@ -78,19 +82,64 @@ onMounted(() => {
       >
         {{ style.definition.attrs.name }}
       </div>
+      <button
+        type="button"
+        class="style-update"
+        :title="`Update ${style.definition.attrs.name} to match selection`"
+        :aria-label="`Update ${style.definition.attrs.name} to match selection`"
+        data-item="btn-linkedStyles-update"
+        @click.stop="update(style)"
+      >
+        ✎
+      </button>
     </div>
   </div>
 </template>
 
 <style scoped>
+.style-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
 .style-name {
+  flex: 1;
+  min-width: 0;
   padding: 16px 10px;
   color: var(--sd-ui-dropdown-text, #47484a);
+}
+
+.style-item:hover {
+  background-color: var(--sd-ui-dropdown-hover-bg, #d8dee5);
 }
 
 .style-name:hover {
   background-color: var(--sd-ui-dropdown-hover-bg, #d8dee5);
   color: var(--sd-ui-dropdown-hover-text, #47484a);
+}
+
+.style-update {
+  flex-shrink: 0;
+  margin-right: 8px;
+  padding: 4px 8px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--sd-ui-dropdown-text, #47484a);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  visibility: hidden;
+}
+
+.style-item:hover .style-update,
+.style-update:focus {
+  visibility: visible;
+}
+
+.style-update:hover {
+  background-color: var(--sd-ui-active-bg, #c3cdd8);
 }
 
 .linked-style-buttons {

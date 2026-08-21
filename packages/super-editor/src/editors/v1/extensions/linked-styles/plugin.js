@@ -66,6 +66,15 @@ export const createLinkedStylesPlugin = (editor) => {
         if (editor.presentationEditor || editor.options?.isHeadless) {
           return { ...prev, decorations: DecorationSet.empty };
         }
+
+        // Redefinition signal: a style's definition was mutated in place (no doc
+        // change). Regenerate decorations from the current styles so the
+        // redefinition becomes visible without faking a document edit.
+        if (tr.getMeta(LinkedStylesPluginKey)?.stylesChanged) {
+          const styles = editor.converter?.linkedStyles || [];
+          return { ...prev, styles, decorations: generateDecorations(newEditorState, styles) };
+        }
+
         let decorations = prev.decorations || DecorationSet.empty;
 
         // Only regenerate decorations when styles are affected

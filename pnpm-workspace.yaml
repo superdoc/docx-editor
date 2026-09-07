@@ -177,6 +177,7 @@ overrides:
   xml-js: '1.6.11'
   y-websocket: '^3.0.0'
   yjs: '^13.6.19'
+  '@superdoc/cli>yjs': '13.6.31'
   vitest: 'catalog:'
 # Vite+ ships its Vite fork as vite-plus-core 0.2.x under the `vite` alias, so
 # no plugin's `^7 || ^8` peer range can match it. Pin the exact versions we
@@ -186,11 +187,3 @@ peerDependencyRules:
   allowedVersions:
     vite: 0.2.7
     vitest: 4.1.10
-minimumReleaseAgeExclude:
-  - '@superdoc/docx-engine@0.9.1-next.1 || 0.10.0-next.1 || 0.10.0-next.2 || 0.10.0-next.3 || 0.10.0-next.4 || 0.10.0-next.5 || 0.10.0-next.6 || 0.10.0-next.7 || 0.10.0-next.8 || 0.10.0-next.9 || 0.10.0-next.10 || 0.10.0-next.11 || 0.10.0-next.12 || 0.10.0-next.13 || 0.10.1-next.1 || 0.10.1-next.2 || 0.10.1-next.3 || 0.10.1-next.4 || 0.10.1-next.5 || 0.11.0-next.1 || 0.11.0-next.2 || 0.11.0-next.3 || 0.11.0-next.4 || 0.11.0-next.5 || 0.11.0-next.6 || 0.11.0-next.7 || 0.11.0-next.9 || 0.11.0-next.10 || 0.11.0 || 0.11.1-next.1 || 0.11.1-next.2 || 0.11.1-next.3 || 0.12.0-next.1 || 0.12.0-next.2 || 0.12.0-next.3 || 0.12.0-next.4 || 0.12.0-next.5 || 0.12.0-next.6 || 0.12.0-next.7 || 0.12.0-next.8 || 0.12.0-next.9 || 0.12.0-next.10'
-  - '@superdoc/sdk-darwin-arm64@2.7.0 || 2.8.0 || 2.9.0-next.1 || 2.9.0-next.4 || 2.9.0-next.5 || 2.9.0-next.6 || 2.9.0 || 2.9.1-next.1 || 2.9.1-next.2 || 2.10.0-next.1 || 2.10.0-next.2 || 2.10.0-next.3 || 2.10.0-next.4 || 2.10.0-next.5 || 2.10.0-next.6 || 2.10.0-next.7 || 2.10.0-next.8 || 2.10.0-next.9 || 2.10.0-next.10 || 2.10.0-next.11 || 2.10.0-next.12'
-  - '@superdoc/sdk-darwin-x64@2.7.0 || 2.8.0 || 2.9.0-next.1 || 2.9.0-next.4 || 2.9.0-next.5 || 2.9.0-next.6 || 2.9.0 || 2.9.1-next.1 || 2.9.1-next.2 || 2.10.0-next.1 || 2.10.0-next.2 || 2.10.0-next.3 || 2.10.0-next.4 || 2.10.0-next.5 || 2.10.0-next.6 || 2.10.0-next.7 || 2.10.0-next.8 || 2.10.0-next.9 || 2.10.0-next.10 || 2.10.0-next.11 || 2.10.0-next.12'
-  - '@superdoc/sdk-linux-arm64@2.7.0 || 2.8.0 || 2.9.0-next.1 || 2.9.0-next.4 || 2.9.0-next.5 || 2.9.0-next.6 || 2.9.0 || 2.9.1-next.1 || 2.9.1-next.2 || 2.10.0-next.1 || 2.10.0-next.2 || 2.10.0-next.3 || 2.10.0-next.4 || 2.10.0-next.5 || 2.10.0-next.6 || 2.10.0-next.7 || 2.10.0-next.8 || 2.10.0-next.9 || 2.10.0-next.10 || 2.10.0-next.11 || 2.10.0-next.12'
-  - '@superdoc/sdk-linux-x64@2.7.0 || 2.8.0 || 2.9.0-next.1 || 2.9.0-next.4 || 2.9.0-next.5 || 2.9.0-next.6 || 2.9.0 || 2.9.1-next.1 || 2.9.1-next.2 || 2.10.0-next.1 || 2.10.0-next.2 || 2.10.0-next.3 || 2.10.0-next.4 || 2.10.0-next.5 || 2.10.0-next.6 || 2.10.0-next.7 || 2.10.0-next.8 || 2.10.0-next.9 || 2.10.0-next.10 || 2.10.0-next.11 || 2.10.0-next.12'
-  - '@superdoc/sdk-windows-x64@2.7.0 || 2.8.0 || 2.9.0-next.1 || 2.9.0-next.4 || 2.9.0-next.5 || 2.9.0-next.6 || 2.9.0 || 2.9.1-next.1 || 2.9.1-next.2 || 2.10.0-next.1 || 2.10.0-next.2 || 2.10.0-next.3 || 2.10.0-next.4 || 2.10.0-next.5 || 2.10.0-next.6 || 2.10.0-next.7 || 2.10.0-next.8 || 2.10.0-next.9 || 2.10.0-next.10 || 2.10.0-next.11 || 2.10.0-next.12'
-  - '@superdoc/sdk@2.7.0 || 2.8.0 || 2.9.0-next.1 || 2.9.0-next.4 || 2.9.0-next.5 || 2.9.0-next.6 || 2.9.0 || 2.9.1-next.1 || 2.9.1-next.2 || 2.10.0-next.1 || 2.10.0-next.2 || 2.10.0-next.3 || 2.10.0-next.4 || 2.10.0-next.5 || 2.10.0-next.6 || 2.10.0-next.7 || 2.10.0-next.8 || 2.10.0-next.9 || 2.10.0-next.10 || 2.10.0-next.11 || 2.10.0-next.12'

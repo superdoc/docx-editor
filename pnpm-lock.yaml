@@ -225,6 +225,7 @@ overrides:
   xml-js: 1.6.11
   y-websocket: ^3.0.0
   yjs: ^13.6.19
+  '@superdoc/cli>yjs': 13.6.31
   vitest: 4.1.10
 
 importers:
@@ -597,6 +598,22 @@ importers:
       vitest:
         specifier: 4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.19.15)(@vitest/browser-preview@4.1.10)(@vitest/coverage-v8@4.1.10)(happy-dom@20.4.0)(jsdom@27.3.0(canvas@3.2.3))(vite@7.3.1(@types/node@22.19.15)(jiti@2.7.0)(less@4.4.2)(lightningcss@1.33.0)(sass@1.97.3)(terser@5.46.1)(tsx@4.21.0)(yaml@2.9.0))
+
+  examples/sdk-batch:
+    dependencies:
+      '@superdoc/sdk':
+        specifier: 2.10.0-next.12
+        version: 2.10.0-next.12
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.15
+      tsx:
+        specifier: ^4.21.0
+        version: 4.21.0
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.3
 
   examples/search:
     dependencies:

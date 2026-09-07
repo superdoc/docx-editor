@@ -280,6 +280,7 @@ test('engine input identity invalidates on every public producer helper without 
     const helperPaths = [
       'superdoc/public/scripts/audit-publish-artifact.mjs',
       'superdoc/public/scripts/engine-prepared-input.mjs',
+      'superdoc/public/scripts/engine-native-runtime.mjs',
       'superdoc/public/scripts/superdoc-artifact-store.mjs',
       'superdoc/public/scripts/superdoc-build-timing.mjs',
     ];

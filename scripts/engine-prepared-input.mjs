@@ -32,6 +32,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import path from 'node:path';
+import { isEngineRuntimeOutputDestination } from './engine-native-runtime.mjs';
 
 export const ENGINE_PACKAGE_NAME = '@superdoc/docx-engine';
 export const ENGINE_PRODUCER_RECEIPT_SCHEMA = 'superdoc-engine-producer-receipt.v1';
@@ -73,6 +74,7 @@ const ENGINE_INPUT_PATHS = Object.freeze([
   'superdoc/public/pnpm-workspace.yaml',
   'superdoc/public/scripts/audit-publish-artifact.mjs',
   'superdoc/public/scripts/engine-prepared-input.mjs',
+  'superdoc/public/scripts/engine-native-runtime.mjs',
   'superdoc/public/scripts/superdoc-artifact-store.mjs',
   'superdoc/public/scripts/superdoc-build-timing.mjs',
   'superdoc/public/packages/document-api',
@@ -108,6 +110,7 @@ const CONTENT_IDENTITY_EXCLUDED_DIRECTORIES = new Set([
   'coverage',
   'dist',
   'dist-cdn',
+  'dist-native',
   'node_modules',
   'tmp',
 ]);
@@ -653,7 +656,7 @@ export function readEngineProducerSelection(v2Root) {
 function resolveEngineRuntimeOutputRoot(v2Root, id, destination) {
   if (
     typeof id !== 'string' ||
-    !/^leaf-[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(id) ||
+    !isEngineRuntimeOutputDestination(id, destination) ||
     typeof destination !== 'string' ||
     destination.length === 0 ||
     destination.includes('\\') ||

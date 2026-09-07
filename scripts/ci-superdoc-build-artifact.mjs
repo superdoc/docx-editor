@@ -36,6 +36,11 @@ import {
   verifyPublicOutputReceipt,
 } from '../packages/superdoc/scripts/public-output-receipt.mjs';
 import { verifyEngineConsumerArtifact } from './ci-docx-engine-artifact.mjs';
+import {
+  ENGINE_NATIVE_RUNTIME_ID,
+  ENGINE_NATIVE_RUNTIME_DESTINATION,
+  isEngineRuntimeOutputDestination,
+} from './engine-native-runtime.mjs';
 
 export const CI_SUPERDOC_BUILD_ARTIFACT_SCHEMA = 'superdoc-ci-build-artifact.v2';
 export const CI_SUPERDOC_BUILD_ARCHIVE_SCHEMA = 'superdoc-ci-build-archive.v2';
@@ -65,6 +70,7 @@ const baseComponentSpecs = Object.freeze([
 ]);
 
 export const CI_SUPERDOC_CLI_RUNTIME_OUTPUT_DESTINATIONS = Object.freeze({
+  [ENGINE_NATIVE_RUNTIME_ID]: ENGINE_NATIVE_RUNTIME_DESTINATION,
   'leaf-document-compare': 'document-compare/dist',
   'leaf-editor-core': 'editor-core/dist',
   'leaf-collaboration-v2': 'collaboration-v2/dist',
@@ -246,14 +252,13 @@ function runtimeOutputEntries(receipt) {
   const entries = Object.entries(runtimeOutputs).sort(([left], [right]) => compareUtf8(left, right));
   if (entries.length === 0) throw new Error('Engine producer receipt has no sealed runtime output set.');
   for (const [id, output] of entries) {
-    if (!/^leaf-[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(id) || !output || typeof output !== 'object' || Array.isArray(output)) {
+    if (!output || typeof output !== 'object' || Array.isArray(output)) {
       throw new Error(`Engine producer receipt has an invalid runtime output ${id}.`);
     }
     assertExactKeys(output, ['digest', 'fileCount', 'sizeBytes', 'destination'], `engine runtime output ${id}`);
     const destination = assertPortablePath(output.destination, `engine runtime output ${id}.destination`);
     if (
-      !destination.endsWith('/dist') ||
-      id !== `leaf-${destination.slice(0, -'/dist'.length).replaceAll('/', '-')}` ||
+      !isEngineRuntimeOutputDestination(id, destination) ||
       !digestPattern.test(output.digest ?? '') ||
       !Number.isSafeInteger(output.fileCount) ||
       output.fileCount < 1 ||
@@ -280,8 +285,7 @@ function componentSpecsForEngineReceipt(receipt) {
 }
 
 function resolveRuntimeOutputRoot(v2Root, id, output) {
-  const expectedId = `leaf-${output.destination.slice(0, -'/dist'.length).replaceAll('/', '-')}`;
-  if (id !== expectedId) throw new Error(`Engine runtime output ${id} does not match its destination.`);
+  if (!isEngineRuntimeOutputDestination(id, output.destination)) throw new Error(`Engine runtime output ${id} does not match its destination.`);
   const root = path.resolve(v2Root, ...output.destination.split('/'));
   const relative = path.relative(v2Root, root);
   if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {

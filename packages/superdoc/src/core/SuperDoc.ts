@@ -938,9 +938,6 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
   /** Count of editors that have signaled `editorCreate`. */
   readyEditors = 0;
 
-  /** Outstanding async saves waiting for collaboration ack. */
-  pendingCollaborationSaves = 0;
-
   // ─── Runtime fields populated by `#init` ──────────────────────────────
   // Declared with `declare` so TS knows the field shape without emitting a
   // runtime own-property initializer. Each is assigned during `#init`
@@ -4187,50 +4184,23 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
   }
 
   /**
-   * Request an immediate save from all collaboration documents
-   * @returns Resolves when all documents have saved
-   */
-  async #triggerCollaborationSaves() {
-    this.#log('🦋 [superdoc] Triggering collaboration saves');
-    const store = this.#requireSuperdocStore('save');
-    return new Promise<void>((resolve) => {
-      store.documents.forEach((doc: RuntimeDocument, index: number) => {
-        this.#log(`Before reset - Doc ${index}: pending = ${this.pendingCollaborationSaves}`);
-        this.pendingCollaborationSaves = 0;
-        if (doc.ydoc) {
-          this.pendingCollaborationSaves++;
-          this.#log(`After increment - Doc ${index}: pending = ${this.pendingCollaborationSaves}`);
-          const metaMap = doc.ydoc.getMap('meta');
-          metaMap.observe((event: Y.YMapEvent<unknown>) => {
-            if (event.changes.keys.has('immediate-save-finished')) {
-              this.pendingCollaborationSaves--;
-              if (this.pendingCollaborationSaves <= 0) {
-                resolve();
-              }
-            }
-          });
-          metaMap.set('immediate-save', true);
-        }
-      });
-      this.#log(
-        `FINAL pending = ${this.pendingCollaborationSaves}, but we have ${store.documents.filter((d: RuntimeDocument) => d.ydoc).length} docs!`,
-      );
-    });
-  }
-
-  /**
-   * Save the superdoc if in collaboration mode. Resolves when all
-   * collaboration documents have flushed their pending writes.
+   * Run each DOCX editor's save, including its V2 collaboration barrier.
+   * Resolves after serialization; rejects if an editor cannot save.
+   * Backend storage persistence is controlled by the collaboration server
+   * and is not acknowledged by this method. Use export() to obtain DOCX bytes.
    */
   async save(): Promise<void> {
-    const savePromises = [
-      this.#triggerCollaborationSaves(),
-      // this.exportEditorsToDOCX(),
-    ];
-
-    this.#log('🦋 [superdoc] Saving superdoc');
-    await Promise.all(savePromises);
-    this.#log('🦋 [superdoc] Save complete');
+    const documents = this.#requireSuperdocStore('save').documents;
+    await Promise.all(
+      documents.map(async (doc: RuntimeDocument) => {
+        if (doc.type !== DOCX) return;
+        const editor = doc.getEditor?.();
+        if (!isV2ActiveEditorFacade(editor) || typeof editor.save !== 'function') {
+          throw new Error(`SuperDoc: save is unavailable for document "${doc.id}"`);
+        }
+        await editor.save();
+      }),
+    );
   }
 
   /**

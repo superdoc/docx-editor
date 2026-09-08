@@ -4,7 +4,8 @@ navTitle: Control access
 description: Check credentials and document permissions before an editor joins a shared room.
 ---
 
-Your shared document now survives a restart. Next, decide who may open it. A room ID identifies the document; it does not grant access. A cursor's display name is not proof of identity.
+Decide who may open a shared document. A room ID identifies it; it does not grant access. A cursor's display name is not
+proof of identity. This walkthrough adds authorization to the local example; it does not require persistent storage.
 
 Edit Alex's document, then connect Sam to see the same edits. Connect Taylor: the server rejects the request because Taylor has no permission for this room.
 
@@ -28,6 +29,9 @@ COLLABORATION_DEMO_AUTH=1 VITE_COLLABORATION_DEMO_AUTH=1 pnpm dev
 
 The first flag enables server checks. The second lets the browser select a test credential for each example user.
 
+To keep the storage from the previous guide too, add `COLLABORATION_STORAGE_DIR=.collaboration-data` to the same
+command. If `example-room` is already saved, open both Alex and Sam with their join addresses below, not `mode=create`.
+
 <Callout title='Public test credentials only'>
   This example simulates signed-in users with fixed, public credentials. Anyone can select Alex's credential. It teaches
   the connection checks, not a production login system. Use only the sample document.
@@ -35,7 +39,8 @@ The first flag enables server checks. The second lets the browser select a test 
 
 ## 2. Allow Alex and Sam
 
-Open `http://localhost:5173/?mode=create&user=Alex`. Wait for `Connected.`, then open `http://localhost:5173/?user=Sam`.
+For a new room, open `http://localhost:5173/?mode=create&user=Alex`. If `example-room` is already saved,
+open `http://localhost:5173/?user=Alex` instead. Wait for `Connected.`, then open `http://localhost:5173/?user=Sam`.
 
 Type in Alex's editor and confirm that Sam receives the edit. The server allows both credentials to access `example-room`.
 

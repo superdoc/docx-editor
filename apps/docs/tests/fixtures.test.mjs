@@ -192,6 +192,21 @@ test('the service-agreement template keeps its field map and matches the runnabl
   assert.match(app, /<Manager><\/Manager>/);
 });
 
+test('the authoring draft stays untagged and matches the runnable example', async () => {
+  const { bytes, document } = await openFixture('service-agreement-draft.docx');
+  const example = await readFile(
+    new URL('../../../examples/content-controls/public/service-agreement-draft.docx', import.meta.url),
+  );
+  assert.deepEqual(bytes, example);
+  assert.doesNotMatch(document, /<(?:w:sdt|w:ins|w:del|w:commentReference)\b/);
+  assert.match(document, /Acme Products, Inc\./);
+  const paragraphs = [...document.matchAll(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g)].map(([xml]) => xml);
+  const heading = paragraphs.findIndex((xml) => xml.includes('4. Confidentiality'));
+  assert.ok(heading >= 0, 'the block-field instruction needs its Confidentiality heading');
+  assert.ok(paragraphs[heading + 1], 'the heading must be followed by an empty insertion paragraph');
+  assert.doesNotMatch(paragraphs[heading + 1], /<w:t\b|<w:drawing\b/);
+});
+
 test('the clause-library fixture keeps one block-level replacement slot', async () => {
   const { document, core, app } = await openFixture('clause-library-sample.docx');
   const compact = document.replaceAll(/>\s+</g, '><');

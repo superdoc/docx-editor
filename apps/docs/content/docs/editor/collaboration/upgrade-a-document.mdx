@@ -10,6 +10,10 @@ Use `upgradeToCollaboration()` when a single local DOCX is already open and the 
 
 Wait until the local Editor is ready, then pass a supported collaboration target in create mode. This snippet uses the [preview configuration API](/editor/collaboration/connect-two-editors#configure-your-application):
 
+Here, `superdoc` is your existing Editor and `session.collaborationToken` comes from your application's authenticated
+session. Replace the example server address with your configured provider. The token must be authorized to create
+`contract-123`; this snippet does not provide a server or sign-in flow.
+
 ```ts
 await superdoc.upgradeToCollaboration({
   collaboration: {

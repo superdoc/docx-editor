@@ -4,6 +4,22 @@ All fixtures are synthetic and contain no customer data. The repository's
 DOCX privacy gate rejects unapproved metadata, and `tests/fixtures.test.mjs`
 adds the guarantees below.
 
+## Choose a teaching fixture
+
+Start with the reader's action, not a generic document. Keep only enough content
+to perform that action and recognize the result. Use multiple pages when moving
+between pages is part of the lesson, not to make the sample look complete.
+
+Keep task controls, zoom, and expansion in the shared preview components. Choose
+zoom for the document and available width; the two-editor collaboration sample
+does not need the same percentage as a single-editor preview. Verify readability
+and selection in a browser before calling the fixture finished.
+
+When a guide and runnable example teach the same workflow, use identical fixture
+bytes and test that they stay aligned. Test the document features the instructions
+depend on: a comment anchor, revision, tag, checkbox, or empty insertion paragraph.
+XML checks establish those inputs, not the rendered page count or Word behavior.
+
 Sanitization covers human-identifying metadata: author and last-modified-by
 fields are emptied, the company and manager fields are cleared, and the
 generating application is replaced with `SuperDoc`. It does not strip Word's
@@ -184,3 +200,19 @@ name occurrences and one checkbox.
 The synthetic document contains no comments, tracked changes, or identifying
 metadata. The docs and `examples/content-controls` runnable example use
 identical bytes, enforced by `tests/fixtures.test.mjs`.
+
+## `service-agreement-draft.docx`
+
+The Add fields guide's untagged agreement. Select the client name to create an
+inline field, then use the empty paragraph under Confidentiality for a block
+field. The docs and runnable content-controls example use identical bytes.
+Fixture tests preserve those starting conditions.
+
+## `collaboration-sample.docx`
+
+Three short paragraphs on a 4-by-3-inch page give the two-editor demo room for
+both views. Change Monday to Friday and watch the other editor update. Presence
+and access demonstrations reuse it; it contains no comments or revisions.
+
+Its OOXML source is under `scripts/fixtures/collaboration-sample/`. The fixture
+test checks its text, page geometry, and absence of metadata and comments.

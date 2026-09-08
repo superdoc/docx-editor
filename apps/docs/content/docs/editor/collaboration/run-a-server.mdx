@@ -1,16 +1,20 @@
 ---
 title: Run a collaboration server
 navTitle: Run a server
-description: Start the local Hocuspocus server used by the SuperDoc collaboration example.
+description: Choose a provider and connect room access, storage, and recovery before deployment.
 ---
 
-Run a local Hocuspocus server when you need to test a complete collaboration room before connecting production authentication and persistence.
+The [two-editor example](/editor/collaboration/connect-two-editors) already runs a Hocuspocus server. Keep it for local
+development. Before deployment, choose who operates the provider and how rooms are authorized, saved, and recovered.
 
 ## 1. Use the example server
 
-Download or clone the [collaboration example](https://go.superdoc.dev/examples/collaboration) and follow its [installation steps](/editor/collaboration/connect-two-editors#1-start-the-example). It pins Hocuspocus 2.15.3 and includes the server and optional storage hooks.
+The [collaboration example](https://go.superdoc.dev/examples/collaboration) pins Hocuspocus 2.15.3. Its `pnpm dev` command
+starts both the browser app and server. You do not need a second server process.
 
 ## 2. Start it
+
+To run only the server, stop `pnpm dev`, then run this from the example directory:
 
 ```bash
 pnpm exec tsx server.ts
@@ -22,7 +26,7 @@ The example listens on port `1234` and keeps rooms in memory. Restarting the pro
 
 Configure the first browser with a Hocuspocus target and `roomMode: 'create'`. After the room exists, open a second browser with the same `documentId` and `roomMode: 'join'`. [Connect two editors](/editor/collaboration/connect-two-editors) walks through the browser setup.
 
-The complete two-browser project is available at [go.superdoc.dev/examples/collaboration](https://go.superdoc.dev/examples/collaboration).
+Start the browser app separately with `pnpm exec vite`, or return to `pnpm dev` after stopping the standalone server.
 
 <Callout variant='success' title='Verification target'>
   Edit the first browser. The second browser should show the change and export a DOCX containing the synchronized text.

@@ -3452,6 +3452,31 @@ test('the Content Controls curation covers every operation exactly once', async 
   assert.deepEqual([...curatedIds].sort(), [...operationIds].sort());
 });
 
+test('the proofing starter checks repeated words with segment-local UTF-16 offsets', async () => {
+  const { proofing } = await import('../snippets/editor/proofing-provider.ts');
+  const segments = [{ id: 'paragraph', text: '😀 teh teh other', metadata: { surface: 'body' } }];
+  const result = await proofing.provider.check({ segments });
+  assert.deepEqual(result.issues.map(({ start, end, segmentId }) => ({ start, end, segmentId })), [
+    { start: 3, end: 6, segmentId: 'paragraph' },
+    { start: 7, end: 10, segmentId: 'paragraph' },
+  ]);
+  assert.equal((await proofing.provider.check({ segments: [] })).issues.length, 0);
+  const controller = new AbortController();
+  controller.abort();
+  await assert.rejects(proofing.provider.check({ segments, signal: controller.signal }), { name: 'AbortError' });
+});
+
+test('the proofing starter leaves words with Unicode letters, marks, or numbers intact', async () => {
+  const { proofing } = await import('../snippets/editor/proofing-provider.ts');
+  const segments = [{ id: 'paragraph', text: 'caféteh teh猫 e\u0301teh teh\u0301 ١teh teh١ _teh teh_', metadata: { surface: 'body' } }];
+  assert.deepEqual((await proofing.provider.check({ segments })).issues, []);
+  const punctuation = [{ id: 'paragraph', text: '(teh), teh!', metadata: { surface: 'body' } }];
+  assert.deepEqual((await proofing.provider.check({ segments: punctuation })).issues.map(({ start, end }) => ({ start, end })), [
+    { start: 1, end: 4 },
+    { start: 7, end: 10 },
+  ]);
+});
+
 test('the generated proofing reference mirrors the exported fields', async () => {
   const generatedProofingConfig = JSON.parse(await readFile(generatedProofingConfigUrl, 'utf8'));
   const superdocTypes = await readFile(superdocCoreTypesUrl, 'utf8');

@@ -525,6 +525,11 @@ test('exports the proofing guide with an interactive editor', async () => {
 
   assert.match(article, /Try proofing/);
   assert.match(article, /data-preset="proofing"/);
+  assert.match(markdown, /src\/proofing-provider\.ts/);
+  assert.match(markdown, /proofing=\{proofing\}/);
+  assert.match(markdown, /satisfies NonNullable<Config\['proofing'\]>/);
+  assert.match(markdown, /onProofingError/);
+  assert.match(markdown, /## Save corrected text/);
   assert.match(article, /data-expanded="false"/);
   assert.match(article, /Proofing helps people catch spelling and grammar mistakes while they write/);
   assert.match(article, /id="proofing-config"/);

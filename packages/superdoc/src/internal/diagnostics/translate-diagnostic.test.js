@@ -3,6 +3,8 @@ import {
   translateUnzipDiagnostic,
   translateRenderReadinessDiagnostic,
   translateBootFailureReason,
+  translateExportDiagnostic,
+  translateSsigParseDiagnostic,
 } from './translate-diagnostic.js';
 
 describe('translateUnzipDiagnostic', () => {
@@ -329,9 +331,21 @@ describe('translateBootFailureReason', () => {
 
   it('excludes collaboration and other unrelated boot reasons', () => {
     expect(translateBootFailureReason('collaboration-room-corrupt', 'room corrupt')).toBeNull();
-    expect(translateBootFailureReason('input-too-large-for-inline-review', 'too large')).toBeNull();
     expect(translateBootFailureReason('v2-integration-unavailable', 'stub')).toBeNull();
     expect(translateBootFailureReason('dispose-failed', 'disposed')).toBeNull();
+  });
+
+  it('maps input-too-large-for-inline-review to PERFORMANCE_ERROR/unzip', () => {
+    // This is a hard blocked-open condition (the document never opens), not
+    // a non-fatal degradation -- severity stays 'error', matching
+    // open-failed/source-load-failed.
+    const result = translateBootFailureReason('input-too-large-for-inline-review', 'bytes=123');
+    expect(result).toMatchObject({
+      diagnosticCode: 'PERFORMANCE_ERROR',
+      diagnosticStage: 'unzip',
+      severity: 'error',
+      internalCode: 'input-too-large-for-inline-review',
+    });
   });
 
   it('classifies by bootErrorName, taking precedence over reason', () => {
@@ -384,6 +398,109 @@ describe('translateBootFailureReason', () => {
       documentId: 'doc-1',
       editor,
     });
+    expect(result.documentId).toBe('doc-1');
+    expect(result.editor).toBe(editor);
+  });
+});
+
+describe('translateExportDiagnostic', () => {
+  it('maps a plain export Error to RENDER_ERROR/export', () => {
+    const error = new Error('DOCX generation failed');
+    const result = translateExportDiagnostic(error);
+    expect(result).toMatchObject({
+      error,
+      diagnosticCode: 'RENDER_ERROR',
+      diagnosticStage: 'export',
+      severity: 'error',
+      internalCode: 'Error',
+      message: 'DOCX generation failed',
+    });
+  });
+
+  it('falls back to a generic internalCode/message for a null/undefined error', () => {
+    expect(translateExportDiagnostic(null)).toMatchObject({
+      internalCode: 'export-failed',
+      message: 'DOCX export failed',
+    });
+    expect(translateExportDiagnostic(undefined)).toMatchObject({
+      internalCode: 'export-failed',
+      message: 'DOCX export failed',
+    });
+  });
+
+  it('falls back to a generic message for a non-Error thrown value', () => {
+    const result = translateExportDiagnostic('some string error');
+    expect(result).toMatchObject({
+      internalCode: 'export-failed',
+      message: 'DOCX export failed',
+    });
+  });
+
+  it('carries documentId/editor from context', () => {
+    const editor = {};
+    const result = translateExportDiagnostic(new Error('boom'), { documentId: 'doc-1', editor });
+    expect(result.documentId).toBe('doc-1');
+    expect(result.editor).toBe(editor);
+  });
+});
+
+describe('translateSsigParseDiagnostic', () => {
+  it.each([
+    'SSIG-SECT-parse-error',
+    'SSIG-PAGE-parse-error',
+    'SSIG-SETTINGS-parse-error',
+    'SSIG-USAGE-body-parse-error',
+    'SSIG-USAGE-numbering-parse-error',
+  ])('maps %s to PARSE_ERROR/parse', (code) => {
+    const result = translateSsigParseDiagnostic({ code, severity: 'error', message: 'boom' });
+    expect(result).toMatchObject({
+      diagnosticCode: 'PARSE_ERROR',
+      diagnosticStage: 'parse',
+      severity: 'error',
+      internalCode: code,
+      message: 'boom',
+    });
+  });
+
+  it('returns null for warn severity -- every SSIG-*-parse-error code also warns on soft/summary conditions that are not a genuine parse failure', () => {
+    // SSIG-SETTINGS-parse-error warns on a missing-but-optional settings
+    // part; SSIG-SECT-parse-error warns as a chunk-scan summary flag;
+    // SSIG-USAGE-body/numbering-parse-error are warn-only in every producer
+    // site. None represent a real parse failure, so unlike
+    // translateUnzipDiagnostic's main-document-fallback there is no warn
+    // case to allow-list here.
+    expect(
+      translateSsigParseDiagnostic({ code: 'SSIG-SECT-parse-error', severity: 'warn', message: 'boom' }),
+    ).toBeNull();
+    expect(
+      translateSsigParseDiagnostic({ code: 'SSIG-SETTINGS-parse-error', severity: 'warn', message: 'boom' }),
+    ).toBeNull();
+    expect(
+      translateSsigParseDiagnostic({ code: 'SSIG-USAGE-body-parse-error', severity: 'warn', message: 'boom' }),
+    ).toBeNull();
+  });
+
+  it('returns null for an unrelated SSIG-* code', () => {
+    expect(
+      translateSsigParseDiagnostic({ code: 'SSIG-SECT-unknown-child', severity: 'error', message: 'x' }),
+    ).toBeNull();
+  });
+
+  it('returns null for info severity', () => {
+    expect(translateSsigParseDiagnostic({ code: 'SSIG-SECT-parse-error', severity: 'info', message: 'x' })).toBeNull();
+  });
+
+  it('returns null for a malformed record', () => {
+    expect(translateSsigParseDiagnostic(null)).toBeNull();
+    expect(translateSsigParseDiagnostic({ severity: 'error' })).toBeNull();
+  });
+
+  it('carries documentId/editor from context', () => {
+    const editor = {};
+    const result = translateSsigParseDiagnostic(
+      { code: 'SSIG-SECT-parse-error', severity: 'error', message: 'boom' },
+      { documentId: 'doc-1', editor },
+    );
     expect(result.documentId).toBe('doc-1');
     expect(result.editor).toBe(editor);
   });

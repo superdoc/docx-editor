@@ -58,7 +58,20 @@ describe('SuperDoc.export', () => {
       await expect(instance.export({ triggerDownload: false, commentsType })).rejects.toBe(error);
 
       expect(editor.exportDocx).toHaveBeenCalledOnce();
-      expect(onException).toHaveBeenCalledExactlyOnceWith({ error, document: doc });
+      expect(onException).toHaveBeenCalledTimes(2);
+      expect(onException).toHaveBeenNthCalledWith(1, { error, document: doc });
+      expect(onException).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+          error,
+          diagnosticCode: 'RENDER_ERROR',
+          diagnosticStage: 'export',
+          severity: 'error',
+          internalCode: 'Error',
+          documentId: 'edited-docx',
+          message: 'DOCX generation failed',
+        }),
+      );
       expect(click).not.toHaveBeenCalled();
     },
   );
@@ -81,6 +94,8 @@ describe('SuperDoc.export', () => {
 
     await expect(instance.export({ triggerDownload: false })).rejects.toBe(error);
 
+    // Bridged errors must not also emit the translated diagnostic payload --
+    // the editor's own internal emission already covers this incident.
     expect(onException).toHaveBeenCalledExactlyOnceWith({ error, editor });
   });
 

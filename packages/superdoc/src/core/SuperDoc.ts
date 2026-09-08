@@ -37,6 +37,7 @@ import { normalizeCommentsUiConfig } from '../helpers/comment-small-screen.js';
 import { EditorRuntimeRegistry } from './editor-runtime/editor-runtime-registry.js';
 import type { EditorRuntimeFocusOptions } from './editor-runtime/types.js';
 import { createBuiltInToolbar } from '../internal/toolbar/index.js';
+import { translateExportDiagnostic } from '../internal/diagnostics/translate-diagnostic.js';
 import { createSuperDocUI } from '../public/ui/create-super-doc-ui.js';
 import type { BorrowedSuperDocUI, SelectionSlice, SuperDocUI } from '../public/ui/types.js';
 import { loadDefaultV2IntegrationOrFallback } from './v2-integration/v2-integration.js';
@@ -4164,6 +4165,7 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
           } catch (error) {
             if (!error || typeof error !== 'object' || !bridgedExportErrors.has(error)) {
               this.emit('exception', { error, document: doc });
+              this.emit('exception', translateExportDiagnostic(error, { documentId: doc.id, editor: null }));
             }
             if (isV2Editor) {
               throw error;

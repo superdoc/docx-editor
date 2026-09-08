@@ -75,6 +75,7 @@ import {
   translateUnzipDiagnostic,
   translateRenderReadinessDiagnostic,
   translateBootFailureReason,
+  translateSsigParseDiagnostic,
 } from './internal/diagnostics/translate-diagnostic.js';
 import {
   getV2DiagnosticGeneration,
@@ -1877,6 +1878,16 @@ const onV2HostEvent = (document, event) => {
     return;
   }
   if (event.type === 'source:signals-complete') {
+    // SuperDoc Diagnostics: the first stage-'parse' diagnostics ever
+    // emitted. Additive -- the existing bare broadcastSourceSignalsComplete()
+    // call below is unchanged.
+    const generation = getV2DiagnosticGeneration(event);
+    for (const record of event.diagnostics ?? []) {
+      const diagnostic = translateSsigParseDiagnostic(record, { documentId, editor: null });
+      if (!diagnostic) continue;
+      if (!v2DiagnosticDedupe.shouldEmit(documentId, generation, diagnostic.internalCode)) continue;
+      proxy.$superdoc.emit('exception', diagnostic);
+    }
     proxy.$superdoc.broadcastSourceSignalsComplete();
     return;
   }

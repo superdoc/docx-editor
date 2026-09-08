@@ -3425,11 +3425,11 @@ export interface SuperDocExceptionHyperlinkPayload {
 export type SuperDocDiagnosticCode = 'PARSE_ERROR' | 'RENDER_ERROR' | 'UNSUPPORTED_FEATURE' | 'PERFORMANCE_ERROR';
 
 /**
- * Document-processing pipeline stage a diagnostic was raised from. `parse`
- * and `layout` are reserved for future use; only `unzip` and `render` are
+ * Document-processing pipeline stage a diagnostic was raised from. `layout`
+ * is reserved for future use; `unzip`, `parse`, `render`, and `export` are
  * emitted today.
  */
-export type SuperDocDiagnosticStage = 'unzip' | 'parse' | 'layout' | 'render';
+export type SuperDocDiagnosticStage = 'unzip' | 'parse' | 'layout' | 'render' | 'export';
 
 /**
  * Exception payload carrying a structured diagnostic translated from an
@@ -4475,8 +4475,8 @@ export interface Config {
    * diagnostic for each `(documentId, generation, internalCode)` tuple. It
    * also suppresses a generic boot diagnostic when a more specific package
    * diagnostic describes the same failure. A single incident can therefore
-   * raise 0..N structured diagnostics. Only the `unzip` and `render` stages
-   * are populated today; `parse` and `layout` are reserved for future
+   * raise 0..N structured diagnostics. The `unzip`, `parse`, `render`, and
+   * `export` stages are populated today; `layout` is reserved for future
    * coverage.
    */
   onException?: (params: SuperDocExceptionPayload) => void;

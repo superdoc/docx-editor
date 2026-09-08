@@ -1,62 +1,85 @@
 ---
 title: Control DOCX export
 navTitle: Export options
-description: Download a DOCX, return its bytes, remove comments, or package related files.
+description: Download an edited DOCX, return its bytes, or package related files.
 ---
 
-Use `SuperDoc.export()` after the Editor is ready. It downloads a DOCX by default; set options when the application needs a backend upload, a comment-free copy, or a package of related files.
+Export the document you have edited, then choose what your application does with the file. The browser Editor
+exports DOCX; it does not convert the document to PDF or HTML through this method.
 
-## Choose the output behavior
+Use the running Editor from the [Quickstart](/editor/quickstart). The examples below belong in your export button's
+handler, after `onReady`. Keep the button disabled while export is running and show any rejected promise as an error.
 
-| Option                 | Default      | Use it for                                                            |
-| ---------------------- | ------------ | --------------------------------------------------------------------- |
-| `exportType`           | `['docx']`   | Select the DOCX output for the browser Editor workflow                |
-| `exportedName`         | Editor title | Set the downloaded filename without its extension                     |
-| `triggerDownload`      | `true`       | Start a browser download; set it to `false` to return a `Blob` or ZIP |
-| `commentsType`         | `'external'` | Keep external comments or use `'clean'` to remove comments            |
-| `isFinalDoc`           | `false`      | Reserved in the export options; the v2 Editor does not apply it       |
-| `additionalFiles`      | `[]`         | Add related `Blob` objects and return or download a ZIP               |
-| `fieldsHighlightColor` | `null`       | Set a field highlight color in the exported DOCX                      |
-
-## Export without comments
-
-This example removes comments and returns bytes for application-owned storage:
+In Vanilla, `superdoc` is the instance you created. In React, obtain it inside the handler before using any example:
 
 ```ts
-const result = await superdoc.export({
-  exportType: ['docx'],
-  commentsType: 'clean',
-  exportedName: 'contract-without-comments',
-  triggerDownload: false,
-});
-
-if (!(result instanceof Blob)) {
-  throw new Error('SuperDoc did not return a DOCX blob.');
-}
-
-await saveDocument(result);
+const superdoc = editorRef.current?.getInstance();
+if (!superdoc) return;
 ```
 
-The v2 Editor does not apply `isFinalDoc` during export. `commentsType: 'clean'` removes comments, but it does not accept or reject tracked changes. Resolve tracked changes through the [Editor review workflow](/editor/track-changes) before exporting when the destination requires final text.
-
-## Package related files
-
-Pair each additional `Blob` with a filename. When export produces more than one file, SuperDoc returns or downloads a ZIP:
+## Download the edited document
 
 ```ts
+await superdoc.export({ exportedName: 'sample-edited' });
+```
+
+This starts a download named `sample-edited.docx`. Open it and confirm that your edit is present. The filename does
+not need an extension, and DOCX is already the default format.
+
+For a runnable save, edit, restore, and export flow, use the
+[version-history example](https://go.superdoc.dev/examples/version-history). Its **Export current DOCX** button downloads
+the document currently open in the Editor.
+
+## Return bytes without downloading
+
+Set `triggerDownload: false` when your application needs the file instead of a browser download:
+
+```ts
+const docx = await superdoc.export({ triggerDownload: false });
+```
+
+For one document without additional files, the result is a DOCX `Blob`. Export does not upload it or confirm a save.
+Use the [Load and save guide](/editor/load-and-save-documents) to send those bytes to your backend and report success
+only after storage confirms the write.
+
+## Check comments and tracked changes
+
+Export preserves comments by default. The Quickstart's default v2 worker runtime does not support
+`commentsType: 'clean'`: export rejects instead of returning a copy without comments.
+
+If you need final text, finish the
+[review workflow](/editor/track-changes) before exporting. The v2 Editor does not apply `isFinalDoc`
+during export; do not use that option as a review decision.
+
+## Include related files
+
+To deliver the DOCX alongside another file, supply a `Blob` and its filename. This example creates its own small
+metadata file; it does not require an audit service:
+
+```ts
+const metadata = new Blob([JSON.stringify({ document: 'sample-edited' })], { type: 'application/json' });
+
 const bundle = await superdoc.export({
-  exportType: ['docx'],
-  additionalFiles: [auditLog],
-  additionalFileNames: ['audit.json'],
-  exportedName: 'contract-package',
+  exportedName: 'sample-edited',
+  additionalFiles: [metadata],
+  additionalFileNames: ['metadata.json'],
   triggerDownload: false,
 });
 ```
 
-Keep the arrays in the same order. SuperDoc creates the package; your application still owns access control, retention, and persistence.
+The result is a ZIP `Blob` containing `sample-edited.docx` and `metadata.json`. Keep the two additional-file arrays
+in the same order, with one filename for each file. Omit `triggerDownload: false` to download `sample-edited.zip`.
 
-<Callout variant='success' title='Verification target'>
-  Reopen the exported DOCX. Confirm that the expected text is present and comments follow the selected policy.
-</Callout>
+## Choose options for the next export
 
-For the basic download and backend upload paths, see [Load and save documents](/editor/load-and-save-documents).
+| Option                                    | Default      | Effect                                                                                |
+| ----------------------------------------- | ------------ | ------------------------------------------------------------------------------------- |
+| `exportedName`                            | Editor title | Name the DOCX or ZIP without its extension.                                           |
+| `triggerDownload`                         | `true`       | Download the result; set it to `false` to return a `Blob` or ZIP without downloading. |
+| `commentsType`                            | `'external'` | Preserve comments. The default v2 worker runtime rejects `'clean'`.                   |
+| `additionalFiles` / `additionalFileNames` | Empty arrays | Include related files in a ZIP.                                                       |
+
+`exportType` defaults to `['docx']`, the browser Editor's supported export format.
+The v2 Editor does not apply `fieldsHighlightColor` during export.
+
+Use [Version history](/editor/version-history) when your application needs to retain each exported DOCX as a saved version.

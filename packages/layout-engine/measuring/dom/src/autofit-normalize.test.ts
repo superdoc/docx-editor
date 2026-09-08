@@ -84,6 +84,34 @@ describe('buildAutoFitWorkingGridInput', () => {
     expect(result.preserveAuthoredGrid).toBe(true);
   });
 
+  it('ignores positive tblW auto placeholders for fixed-layout grids', () => {
+    const normalize = (value: number) =>
+      buildAutoFitWorkingGridInput(
+        createTableBlock({
+          attrs: {
+            tableLayout: 'fixed',
+            tableWidth: { value, type: 'auto' },
+          },
+          columnWidths: [333.6, 407.73333333333335],
+          rows: [
+            {
+              id: 'row-1',
+              cells: [{ id: 'cell-1' }, { id: 'cell-2' }],
+            },
+          ],
+        }),
+        { maxWidth: 800 },
+      );
+
+    expect(normalize(0)).toMatchObject({
+      preferredTableWidth: undefined,
+      preferredColumnWidths: [333.6, 407.73333333333335],
+      gridColumnCount: 2,
+    });
+    expect(normalize(100)).toEqual(normalize(0));
+    expect(normalize(7200)).toEqual(normalize(0));
+  });
+
   it('marks complete fixed grids that are slightly under tblW as authoritative', () => {
     const block = createTableBlock({
       attrs: {

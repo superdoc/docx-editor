@@ -13052,6 +13052,62 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
     expect(resolveHeaderFooterEditTarget).toHaveBeenCalledWith({ pageIndex: 3, kind: 'header' });
   });
 
+  it('preserves the active first-page header slot section when image size is implicit', async () => {
+    const image = vi.fn(() => ({ success: true }));
+    const story = { kind: 'story', storyType: 'headerFooterPart', refId: 'rId-header' } as const;
+    const resolveHeaderFooterEditTarget = vi.fn(({ kind }: { kind: 'header' | 'footer' }) =>
+      kind === 'header'
+        ? {
+            status: 'ready',
+            pageIndex: 3,
+            sectionIndex: 1,
+            sectionId: 'section-1',
+            renderedVariant: 'first',
+            slotVariant: 'first',
+            refId: 'rId-header',
+            renderEpoch: 1,
+          }
+        : { status: 'unavailable', reason: 'not-rendered' },
+    );
+    const superdoc = makeBlockSuperdoc(
+      { create: { image } },
+      {
+        selectionInfo: {
+          empty: true,
+          target: { kind: 'text', story, segments: [{ blockId: 'HF1', range: { start: 4, end: 4 } }] },
+          selectionTarget: null,
+          activeMarks: [] as string[],
+          activeCommentIds: [] as string[],
+          activeChangeIds: [] as string[],
+          text: '',
+        },
+        editorExtra: {
+          pageLayout: { getActiveRulerContext: () => ({ pageIndex: 3 }) },
+          host: { resolveHeaderFooterEditTarget },
+        },
+      },
+    );
+    const ui = createSuperDocUI({ superdoc });
+
+    expect(await ui.toolbar.execute('image', { src: 'data:image/png;base64,AAAA' })).toMatchObject({ success: true });
+    expect(image).toHaveBeenCalledWith({
+      src: 'data:image/png;base64,AAAA',
+      in: {
+        kind: 'story',
+        storyType: 'headerFooterSlot',
+        section: { kind: 'section', sectionId: 'section-1' },
+        headerFooterKind: 'header',
+        variant: 'first',
+      },
+      at: {
+        kind: 'inParagraph',
+        target: { kind: 'block', nodeType: 'paragraph', nodeId: 'HF1', story },
+        offset: 4,
+      },
+    });
+    expect(resolveHeaderFooterEditTarget).toHaveBeenCalledWith({ pageIndex: 3, kind: 'header' });
+  });
+
   it('preserves the physical story for image insertion without a collapsed caret', async () => {
     const image = vi.fn(() => ({ success: true }));
     const story = { kind: 'story', storyType: 'headerFooterPart', refId: 'rId-header' } as const;

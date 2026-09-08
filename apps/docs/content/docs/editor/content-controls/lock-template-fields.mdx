@@ -16,6 +16,11 @@ control itself can be removed.
 
 ## Set the lock mode
 
+Continue with the [filled template](/editor/content-controls/fill-a-docx-template). After `onReady`, pass
+`superdoc.activeEditor.doc`, the tag `client.address`, and a mode below to this helper. That tag identifies the single
+address control used in the demo. The helper requires exactly one match; `client.legalName` has three occurrences.
+It uses the types shipped with `superdoc`; no separate Document API package is needed.
+
 Find the field by tag and apply the matching DOCX lock:
 
 <include>../../../../snippets/editor/set-template-field-lock.ts</include>
@@ -29,6 +34,9 @@ Find the field by tag and apply the matching DOCX lock:
 
 Set a content lock after filling the field. `contentLocked` and `sdtContentLocked` reject text changes inside the
 control.
+
+Export with your existing [load and save flow](/editor/load-and-save-documents), then reopen the file and try the same
+edit or deletion. Check the lock on the saved control, not just the state of your application's checkbox.
 
 ## Keep authorization separate
 

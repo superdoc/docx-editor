@@ -36,7 +36,7 @@ const routes = [
   ['editor/built-in-ui/content-controls/index.html', 'Show content-control chrome'],
   ['editor/built-in-ui/ruler/index.html', 'Show the ruler'],
   ['editor/built-in-ui/responsive-layout/index.html', 'Build a responsive Editor layout'],
-  ['editor/content-controls/index.html', 'Content controls'],
+  ['editor/content-controls/index.html', 'Templates and fields'],
   ['editor/content-controls/add-fields-to-a-docx-template/index.html', 'Add fields to a DOCX template'],
   ['editor/content-controls/fill-a-docx-template/index.html', 'Fill a DOCX template'],
   ['editor/content-controls/replace-clauses-from-your-application/index.html', 'Replace clauses from your application'],
@@ -372,7 +372,8 @@ test('exports the Content controls feature and its pattern map for agents', asyn
   const article = await readFile(new URL('../out/editor/content-controls/index.html', import.meta.url), 'utf8');
   const markdown = await readFile(new URL('../out/md/editor/content-controls.md', import.meta.url), 'utf8');
 
-  assert.match(article, /Content controls/u);
+  assert.match(article, /Templates and fields/u);
+  assert.match(markdown, /^# Templates and fields/mu);
   assert.match(article, /sd-content-control-patterns/u);
   assert.match(markdown, /Content-control shapes/u);
   assert.match(markdown, /Repeating section/u);

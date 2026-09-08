@@ -4052,6 +4052,11 @@ test('MDX components and demo presets use the supported authoring vocabulary', a
 
 test('the Content controls feature maps control shapes to focused workflows', async () => {
   const page = await readFile(new URL('../content/docs/editor/content-controls/index.mdx', import.meta.url), 'utf8');
+  const meta = JSON.parse(
+    await readFile(new URL('../content/docs/editor/content-controls/meta.json', import.meta.url), 'utf8'),
+  );
+  assert.equal(meta.title, 'Templates and fields');
+  assert.match(page, /^title: Templates and fields$/m);
   const { contentControlPatterns, renderContentControlPatternsMarkdown } = await import(
     '../lib/content-control-patterns.ts',
   );
@@ -4073,6 +4078,10 @@ test('the Content controls feature maps control shapes to focused workflows', as
 });
 
 test('the Content controls template guides stay focused and agent-readable', async () => {
+  const meta = JSON.parse(await readFile(new URL('../content/docs/editor/content-controls/meta.json', import.meta.url), 'utf8'));
+  assert.ok(meta.pages.indexOf('fill-a-docx-template') < meta.pages.indexOf('add-fields-to-a-docx-template'));
+  const lockSnippet = await readFile(new URL('../snippets/editor/set-template-field-lock.ts', import.meta.url), 'utf8');
+  assert.doesNotMatch(lockSnippet, /from ['"]@superdoc\/document-api['"]/u);
   const authoring = await readFile(
     new URL('../content/docs/editor/content-controls/add-fields-to-a-docx-template.mdx', import.meta.url),
     'utf8',

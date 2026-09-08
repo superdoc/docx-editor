@@ -15,6 +15,10 @@ Choose a clause below. The Editor replaces the paragraph inside the control tagg
 
 ## Replace the clause
 
+Continue with an Editor that has finished loading, and use `superdoc.activeEditor.doc` as `doc`. The
+[clause sample](/fixtures/clause-library-sample.docx) already contains the required slot; the Quickstart sample does not.
+Create `src/replace-clause.ts` with this helper and call it from your clause picker:
+
 Find the slot by tag, require one block-level control, then replace its content:
 
 <include>../../../../snippets/editor/replace-clause.ts</include>
@@ -24,6 +28,9 @@ mutation receipt before updating your application UI.
 
 In the current Editor, replacement content is rebuilt as text. Keep each replaceable clause to one paragraph. Your
 application can store approval state, versions, and clause metadata outside the DOCX.
+
+Export through your existing [load and save flow](/editor/load-and-save-documents). Reopen the saved DOCX and confirm
+that the chosen paragraph and its `agreement.confidentiality` tag remain.
 
 Continue with [Lock template fields](/editor/content-controls/lock-template-fields) to keep a clause slot or its contents
 from being removed. Use the [Document API reference](/document-api/reference/content-controls/) for every

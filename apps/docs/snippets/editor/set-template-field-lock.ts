@@ -1,7 +1,10 @@
-import type { LockMode } from '@superdoc/document-api';
-import type { BrowserDocumentApi } from 'superdoc/ui';
+import type { BrowserDocumentApi, ContentControlInfo } from 'superdoc/ui';
 
-export async function setTemplateFieldLock(doc: BrowserDocumentApi, tag: string, lockMode: LockMode) {
+export async function setTemplateFieldLock(
+  doc: BrowserDocumentApi,
+  tag: string,
+  lockMode: ContentControlInfo['lockMode'],
+) {
   const { items } = await doc.contentControls.selectByTag({ tag });
 
   if (items.length !== 1) {

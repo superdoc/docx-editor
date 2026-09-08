@@ -1,26 +1,31 @@
 ---
-title: Content controls
+title: Templates and fields
 navTitle: Overview
-description: Use structured DOCX regions for fields, clauses, repeating content, and application-owned workflows.
+description: Connect application data to named regions in a DOCX, from a client name to a reusable clause.
 ---
 
-Content controls are structured regions stored as `w:sdt` elements in a DOCX. They let your application find and change
-document content by metadata instead of matching the visible text.
+Suppose a client name appears three times in an agreement. Your application needs to update all three without searching
+for the old name or changing unrelated text.
 
-<ContentControlPatterns />
+A **content control** marks a region of the document and gives it metadata your application can find. In these guides,
+a template field is a content control used for a value or clause. It stays part of the DOCX, whether you use built-in
+controls or a custom UI.
+
+Start with [Fill a DOCX template](/editor/content-controls/fill-a-docx-template). Its prepared agreement lets you change
+one client name and see all three occurrences update. You do not need to create fields or build a custom toolbar first.
 
 ## Choose a workflow
 
 <Cards>
   <Card
+    title='Fill a DOCX template'
+    description='Update prepared fields from application data and export the result.'
+    href='/editor/content-controls/fill-a-docx-template'
+  />
+  <Card
     title='Add fields to a DOCX template'
     description='Turn selected content into tagged inline and block-level fields.'
     href='/editor/content-controls/add-fields-to-a-docx-template'
-  />
-  <Card
-    title='Fill a DOCX template'
-    description='Connect application data to repeated values and typed controls.'
-    href='/editor/content-controls/fill-a-docx-template'
   />
   <Card
     title='Replace clauses from your application'
@@ -34,7 +39,11 @@ document content by metadata instead of matching the visible text.
   />
 </Cards>
 
-Beyond these workflows, content controls support:
+## Choose what the region holds
+
+<ContentControlPatterns />
+
+Start with text fields. Add other controls when the document needs them:
 
 - **Typed inputs:** Use text, checkbox, date, and choice controls for values with known input behavior.
 - **Repeating records:** Add, clone, and remove repeating-section items for lists such as line items or questionnaire
@@ -58,3 +67,5 @@ inside the document.
 
 A shared tag groups controls for lookup. It does not synchronize their content. Your application decides how values flow
 between its data and each document occurrence.
+
+Content controls are stored as `w:sdt` elements in the DOCX. You do not need to edit that XML to use the Document API.

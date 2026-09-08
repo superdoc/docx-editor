@@ -4,13 +4,12 @@ import type { DocumentSlice } from 'superdoc/ui';
 import 'superdoc/style.css';
 
 const zoomOut = document.querySelector<HTMLButtonElement>('#zoom-out');
-const fitWidth = document.querySelector<HTMLButtonElement>('#fit-width');
 const zoomIn = document.querySelector<HTMLButtonElement>('#zoom-in');
 const exportButton = document.querySelector<HTMLButtonElement>('#export');
 const status = document.querySelector<HTMLOutputElement>('#document-status');
 const errorMessage = document.querySelector<HTMLParagraphElement>('#document-error');
 
-if (!zoomOut || !fitWidth || !zoomIn || !exportButton || !status || !errorMessage) {
+if (!zoomOut || !zoomIn || !exportButton || !status || !errorMessage) {
   throw new Error('The document controls are incomplete.');
 }
 
@@ -51,8 +50,6 @@ const superdoc = new SuperDoc({
       const currentDocument = ui.document.getSnapshot();
       zoomOut.disabled = zoom.value <= zoom.min;
       zoomIn.disabled = zoom.value >= zoom.max;
-      fitWidth.disabled = false;
-      fitWidth.setAttribute('aria-pressed', String(zoom.mode === 'fit-width'));
       exportButton.disabled = !currentDocument.ready || exportInFlight;
       status.value = currentDocument.ready
         ? `${modeLabel(currentDocument.mode)} · ${zoom.value}%${actionMessage ? ` · ${actionMessage}` : ''}`
@@ -65,7 +62,6 @@ const superdoc = new SuperDoc({
     };
     const zoomOutHandler = () => changeZoom(-10);
     const zoomInHandler = () => changeZoom(10);
-    const fitWidthHandler = () => ui.zoom.setMode('fit-width');
     const exportHandler = async () => {
       if (exportInFlight) return;
 
@@ -91,13 +87,11 @@ const superdoc = new SuperDoc({
     stopObservers = [ui.zoom.observe(render), ui.document.observe(render)];
     zoomOut.addEventListener('click', zoomOutHandler);
     zoomIn.addEventListener('click', zoomInHandler);
-    fitWidth.addEventListener('click', fitWidthHandler);
     exportButton.addEventListener('click', exportHandler);
 
     removeHandlers = () => {
       zoomOut.removeEventListener('click', zoomOutHandler);
       zoomIn.removeEventListener('click', zoomInHandler);
-      fitWidth.removeEventListener('click', fitWidthHandler);
       exportButton.removeEventListener('click', exportHandler);
     };
   },

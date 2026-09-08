@@ -114,7 +114,10 @@ const superdoc = new SuperDoc({
 
     const render = (changes: TrackChangesSlice) => {
       lastChanges = changes;
-      changeCount.textContent = changes.status === 'pending' ? 'Loading changes...' : `${changes.total} open changes`;
+      changeCount.textContent =
+        changes.status === 'pending'
+          ? 'Loading changes...'
+          : `${changes.total} open ${changes.total === 1 ? 'change' : 'changes'}`;
       changeList.replaceChildren();
       previousChange.disabled = changes.status === 'pending' || changes.total === 0 || pendingDecision !== null;
       nextChange.disabled = previousChange.disabled;

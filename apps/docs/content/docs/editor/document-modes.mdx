@@ -25,20 +25,23 @@ document.
 
 ## Apply the mode to your project
 
-Set `documentMode` when the Editor starts. These examples start in `suggesting`, configure the later viewing state, and
-show how your application can switch to `viewing`.
+Keep the Quickstart page, styles, and `/sample.docx`. Replace `src/main.ts` in Vanilla or `src/App.tsx` in React with the
+matching example below. It keeps the author and export button, and adds **Switch to viewing** after the document opens.
 
 <FrameworkExampleTabs>
   <FrameworkExample filename='src/main.ts' framework='Vanilla'>
     <include>../../../snippets/editor/editor-document-mode.ts</include>
   </FrameworkExample>
-  <FrameworkExample filename='src/Editor.tsx' framework='React'>
+  <FrameworkExample filename='src/App.tsx' framework='React'>
     <include>../../../snippets/editor/react-document-mode.tsx</include>
   </FrameworkExample>
 </FrameworkExampleTabs>
 
 Vanilla calls `setDocumentMode()` on the ready Editor. React updates the `documentMode` prop. Neither change remounts the
 Editor.
+
+Change the effective date while suggesting, then select **Switch to viewing**. The proposal should remain visible,
+but typing should no longer change the document. **Export DOCX** should still download the document with the proposal.
 
 ## Choose how tracked changes appear
 

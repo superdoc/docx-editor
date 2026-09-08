@@ -577,7 +577,7 @@ const RUNTIME_TRAPS: MigrationEntry[] = [
     symptom: 'A null-property error on `view`, or `undefined` under optional chaining.',
     notes:
       'Setting the selection programmatically is supported. Pass a `SelectionTarget` to `selection.apply()` rather than dispatching a transaction. Read it from `selection.current().selectionTarget` or a query result; there is no ProseMirror position to hand it.',
-    docsPath: '/editor/custom-ui/selection-and-viewport',
+    docsPath: '/editor/custom-ui/selection-reference',
   },
   // AIDEV-NOTE: `coordsAtPos` and `posAtCoords` are inverse operations and get
   // separate rows. Collapsing them sends doc-position-to-geometry callers to a
@@ -593,7 +593,7 @@ const RUNTIME_TRAPS: MigrationEntry[] = [
     symptom: 'A null-property error on `view`, or `undefined` under optional chaining.',
     notes:
       'Partial. `viewport.entityAt({ x, y })` resolves the public entities painted under a point (tracked changes, comments, content controls, and citations), innermost first, and returns `[]` over plain text. That covers hit-testing, which is what most `posAtCoords` callers wanted, but v2 ships no general point-to-document-position resolver, so a caller that needs an arbitrary position under the cursor has no equivalent. The legacy positional form `entityAt(x, y)` fails closed and returns `null`.',
-    docsPath: '/editor/custom-ui/selection-and-viewport',
+    docsPath: '/editor/custom-ui/selection-reference',
   },
   {
     id: 'runtime.view.coordsAtPos',
@@ -774,7 +774,7 @@ const SEMANTIC_BREAKS: MigrationEntry[] = [
     symptom: 'The subscription is accepted and the handler never fires.',
     notes:
       "v2 emits no generic field-annotation click event, and the replacement depends on what the annotation became. For citations, register a listener on `superdoc.ui.viewport.getHost()`, call `viewport.entityAt({ x, y })`, and select the `{ type: \"citation\", id }` hit; that `id` matches a `doc.citations.list().items` row. For anchored metadata, read the record id from the content-control hit's `tag` and compare the hit control's `selectionTarget` with `doc.metadata.resolve({ id: tag }).target`. That comparison narrows the risk but does not confirm the hit: content-control hits carry no story, both lookups resolve against the body, and painted ids are unique only within the main document part, so a header, footer, note, or textbox control reusing a body anchor's id and tag passes every check. Treat a match as unverified for externally authored files. Remove the listener when the custom UI unmounts. Decide the document model before choosing the interaction path.",
-    docsPath: '/editor/custom-ui/selection-and-viewport',
+    docsPath: '/editor/custom-ui/selection-reference',
   },
   {
     id: 'runtime.state.selection',

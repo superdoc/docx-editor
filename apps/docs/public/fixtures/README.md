@@ -72,6 +72,9 @@ byte-stable OOXML package as `formatting-sample.docx`.
 
 ## `comments-sample.docx`
 
+The comment paragraph has a `w14:paraId` so the pinned runtime can add replies.
+Without it, 2.12.0 rejects a reply with `INVALID_CONTEXT` / `unsupported-context`.
+
 The built-in Comments guide's review note. One short comment is anchored to a
 delivery date so the reader can reply, resolve, reopen, and create another
 thread without searching through a full contract.

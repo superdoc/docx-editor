@@ -99,8 +99,7 @@ const addNoteIcon = [
 
 function getPinnedToolbarBaseOptions(container: HTMLDivElement): ToolbarUiConfig {
   // The docs app runs the exact stable release pinned in editor-demo-runtime.json.
-  // Keep its older field names inside these adapters; published examples
-  // and agent Markdown teach the current ToolbarConfig.
+  // Keep the layout adapter separate from the public customItems configuration.
   return { container, responsiveToContainer: true };
 }
 
@@ -121,15 +120,15 @@ function getPinnedToolbarOptions(strategy: ToolbarDemoStrategy, container: HTMLD
   if (strategy === 'customItems') {
     return {
       ...getPinnedFocusedToolbarOptions(container, pinnedToolbarItems),
-      customButtons: [
+      customItems: [
         {
           type: 'button',
-          name: 'addReviewNote',
-          group: 'center',
+          id: 'addReviewNote',
+          region: 'center',
           label: 'Add note',
           tooltip: 'Insert a review note',
           icon: addNoteIcon,
-          command: ({ insertText }) => insertText('Review note: '),
+          onSelect: ({ insertText }) => insertText('Review note: '),
         },
       ],
     };

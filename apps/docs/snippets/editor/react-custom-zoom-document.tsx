@@ -77,14 +77,6 @@ function DocumentControls({ errorMessage }: { errorMessage: string }) {
         <button disabled={!ui || zoom.value <= zoom.min} onClick={() => changeZoom(-10)} type='button'>
           Zoom out
         </button>
-        <button
-          aria-pressed={zoom.mode === 'fit-width'}
-          disabled={!ui}
-          onClick={() => ui?.zoom.setMode('fit-width')}
-          type='button'
-        >
-          Fit width
-        </button>
         <button disabled={!ui || zoom.value >= zoom.max} onClick={() => changeZoom(10)} type='button'>
           Zoom in
         </button>

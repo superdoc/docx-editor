@@ -1,0 +1,73 @@
+---
+title: Selection and position reference
+description: Choose document targets, resolve their geometry, and identify supported entities under a pointer.
+---
+
+Use this reference when your custom interface needs explicit selections or pointer hit-testing. For a complete
+selection-anchored interaction, start with [Build an AI prompt menu](/editor/custom-ui/selection-and-viewport).
+
+## Choose the target source
+
+Use the method that matches where your interface's target comes from:
+
+| Need                                                 | Method                                                |
+| ---------------------------------------------------- | ----------------------------------------------------- |
+| Preserve selected context after focus moves          | `selection.capture()` and `selection.restore()`       |
+| Read the live caret or selection                     | `selection.current()` or `selection.observe()`        |
+| Select an explicit `SelectionTarget`                 | `selection.apply(selectionTarget)`                    |
+| Position UI from the live selection                  | `selection.getAnchorRect()` or `selection.getRects()` |
+| Position UI from a capture or query result           | `viewport.getRect({ target })`                        |
+| Identify supported document entities under a pointer | `viewport.entityAt({ x, y })`                         |
+
+`entityAt()` identifies comments, tracked changes, content controls, and citations. It does not return an arbitrary text
+position. Use [Context menu](/editor/custom-ui/context-menus) for a complete pointer and keyboard interaction.
+
+`selection.apply()` takes a `SelectionTarget` — the explicit start/end form. `selection.current()` carries both shapes:
+`selectionTarget` is that form, and `target` is a `TextTarget` for geometry. Either works for `viewport.getRect()`, which
+allows the geometry fallback `selectionTarget ?? target`, but only `selectionTarget` is accepted by
+`apply()`. Read it directly and handle `null` rather than reusing that geometry fallback.
+
+## Resolve entities under a point
+
+`ui.viewport.entityAt()` answers the opposite question: which document entities are painted under a screen point. Coordinates are `MouseEvent` `clientX` and `clientY` space, so a pointer handler can pass its own event through:
+
+```ts
+editorShell.addEventListener('pointerdown', (event) => {
+  const hits = ui.viewport.entityAt({ x: event.clientX, y: event.clientY });
+  const control = hits.find((hit) => hit.type === 'contentControl');
+  if (control) console.info('content control under pointer', control.id);
+});
+```
+
+It returns a `ViewportEntityHit[]` ordered innermost first. Every hit carries a `type` and an `id`. Content-control hits can also carry their `tag` and `scope`.
+
+The hits are tracked changes, comments, content controls, and citations. A point over ordinary text carries none of those, so an empty array is the normal answer, not an error. Branch on what you find; do not treat `[]` as a failed lookup.
+
+For citation cards, attach the listener to the public host and match the hit against the citation list. The hit id is the same id as the matching list item. Treat it as opaque and compare it only for equality. Your application supplies `openCitationCard()`:
+
+```ts
+const host = ui.viewport.getHost();
+
+const onClick = async (event: MouseEvent) => {
+  const hit = ui.viewport.entityAt({ x: event.clientX, y: event.clientY }).find((entity) => entity.type === 'citation');
+  if (!hit) return;
+
+  const citations = await Promise.resolve(superdoc.activeEditor?.doc.citations.list());
+  const citation = citations?.items.find((item) => item.id === hit.id);
+  if (citation) openCitationCard(citation);
+};
+
+host?.addEventListener('click', onClick);
+// When this custom UI unmounts:
+host?.removeEventListener('click', onClick);
+```
+
+Do not recover citation identity with `event.target.closest(...)`; the painter DOM is not a public API.
+
+Anchored metadata uses a hidden content control rather than its own hit type, so its record ID arrives as the content-control hit's `tag`. A record with that ID existing does not prove the pointer hit its anchor: an ordinary control can carry a colliding tag. Compare the hit control's `selectionTarget` with `doc.metadata.resolve({ id: hit.tag })` before treating the hit as application metadata.
+
+That comparison narrows the risk without settling it. Content-control hits carry no story, both lookups resolve against the main document part, and painted ids are unique only within that part, so a control in a header, footer, note, or textbox that reuses a body anchor's id and tag passes every check. For documents your own application produced the collision is unlikely; for externally authored files, treat a match as unverified and confirm through your own records. See [Store application data in DOCX](/document-api/application-data).
+
+`story` is not a general field on a hit. Only tracked-change hits carry it, and only when the change is painted outside the body, in a footnote, endnote, header, footer, or textbox. It exists because one tracked-change id can repeat across stories, so `story` names the occurrence actually under the point. Comment and content-control hits are returned normally in those stories but carry no `story`, so do not write story-sensitive handling for them. Use `ui.trackChanges.getAt()` when you need the full tracked-change row rather than the hit.
+
+Pass the object form. The legacy positional form `entityAt(x, y)` fails closed and returns `null`, because the addresses it produced are not resolvable by `getRect()`.

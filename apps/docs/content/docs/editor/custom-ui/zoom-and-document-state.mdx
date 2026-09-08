@@ -17,15 +17,18 @@ observe the Editor state that keeps them current, and leave the rest of the buil
 The application owns these document-wide controls. SuperDoc still renders the Editor and the remaining toolbar without
 its Zoom control.
 
-## Build the same controls
+## Build zoom and download controls
 
 Start from [Custom UI setup](/editor/custom-ui/controller-setup) with `/sample.docx` in your application's `public`
 directory.
 
+The examples below use manual zoom. In `superdoc@2.12.0`, automatic Fit width can shrink the document to 10% after
+resizing. The demo above includes a docs-only fitting helper; the copied examples do not depend on it.
+
 ### Add the controls
 
 Vanilla adds mounts for the remaining built-in toolbar and the application controls. React creates the built-in toolbar
-mount and renders the controls in the component below. If you use Vanilla, replace `index.html` with:
+mount and renders the controls in the component below. For Vanilla, replace the contents of `<body>` in `index.html` with:
 
 <include>../../../../snippets/editor/custom-zoom-document.html</include>
 
@@ -46,8 +49,8 @@ Replace the setup guide's Editor code:
 sets `toolbar.container` because the application owns that mount. React creates one when `container` is omitted. Use
 `toolbar: false` only when your application will render the complete toolbar.
 
-`ui.zoom` reports the current percentage and supported range. `set()` switches to manual zoom. `setMode('fit-width')`
-keeps the document fitted when the Editor container changes width. Zoom changes the view, not the DOCX.
+`ui.zoom` reports the current percentage and supported range. `set()` switches to manual zoom. Zoom changes the view,
+not the DOCX.
 
 The document snapshot's `ready` field tells you when document actions can run, and its `mode` field reports whether
 the Editor is in editing, suggesting, or viewing mode. Read them from `ui.document.getSnapshot()` or receive them from
@@ -66,5 +69,5 @@ application status should follow the current percentage and document mode.
 Use [Load and save documents](/editor/load-and-save-documents) to send exported bytes to your storage layer. Use
 [Document modes](/editor/document-modes) to control editing, suggesting, and viewing.
 
-This completes the core Custom UI path. Return to the [Custom UI overview](/editor/custom-ui/overview) and choose the
+Return to the [Custom UI overview](/editor/custom-ui/overview) and choose the
 workflow your product needs.

@@ -1,7 +1,16 @@
 <div id="editor-shell">
   <div id="toolbar"></div>
-  <button id="fullscreen" type="button">Fullscreen</button>
+  <button id="fullscreen" type="button" disabled>Fullscreen</button>
+  <p id="layout-status" role="status">Opening document…</p>
   <div id="editor"></div>
 </div>
+
+<style>
+  #editor-shell { display: flex; flex-direction: column; height: 80vh; min-width: 0; }
+  #editor-shell:fullscreen { height: 100vh; background: white; }
+  #toolbar, #fullscreen, #layout-status { flex: none; }
+  #fullscreen { align-self: flex-start; }
+  #editor { flex: 1; min-height: 0; min-width: 0; }
+</style>
 
 <script type="module" src="/src/main.ts"></script>

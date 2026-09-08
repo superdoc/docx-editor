@@ -4,21 +4,26 @@ navTitle: Responsive layout
 description: Fit the document to its container, adapt built-in chrome, and refit after fullscreen changes.
 ---
 
-Responsive Editor layouts have three independent concerns: the document scale, the available toolbar width, and whether the document scrolls inside a fixed-height host. Configure each explicitly.
+Fit the document to the available width while keeping the toolbar and fullscreen button in view.
 
 ## Build the shell
 
-Request fullscreen on an element that contains the toolbar, the fullscreen button, and the Editor:
+This standalone Vanilla example uses `public/sample.docx` from the [Quickstart](/editor/quickstart).
+Replace the body of `index.html` with this fixed-height shell. The Editor scrolls inside it; the controls stay above it:
 
 <include>../../../../snippets/editor/responsive-built-in.html</include>
 
 ## Fit to the container
 
-Configure fit-to-width and container-aware chrome, then refit after the browser enters or exits fullscreen:
+Replace `src/main.ts` to fit the document to its container and refit after fullscreen changes:
 
 <include>../../../../snippets/editor/responsive-built-in.ts</include>
 
 `zoom.mode: 'fit-width'` continuously follows the available document width. The `min`, `max`, and `padding` values constrain that policy. Calling `setZoom()` switches to manual mode; call `setZoomMode('fit-width')` to resume automatic fitting.
+
+In `superdoc@2.12.0`, automatic fitting can shrink a DOCX to the minimum zoom instead of filling its container.
+If you encounter this, use manual zoom (`zoom: { mode: 'manual' }`) and let readers adjust it.
+Remove the `setZoomMode('fit-width')` call from `refit()` too. Manual zoom does not refit when the container changes size.
 
 `responsiveTo: 'container'` measures the toolbar mount instead of the browser window. Lower-priority controls move into
 the overflow menu when space becomes tight. `comments.layout: 'auto'` lets the review UI move between the sidebar and
@@ -48,17 +53,20 @@ const config = {
 Fit-to-width preserves print pages and scales them. To remove visible page boundaries and rewrap DOCX content when the Editor container changes width, select web layout instead:
 
 ```ts
-const superdoc = new SuperDoc({
-  selector: '#editor',
-  document: '/contract.docx',
-  viewOptions: { layout: 'web' },
-});
+const viewOptions = { layout: 'web' } as const;
 ```
 
-Web layout selects a retained semantic document surface; no layout-engine option is required. The browser owns normal-flow wrapping, so the document follows the Editor host's inner width without a page-layout pass.
+Define this before the constructor and add `viewOptions` to its configuration, then narrow the window. Text wraps to the host width instead of shrinking the
+printed page. No layout-engine option is required.
 
-The browser Editor's web layout does not show headers, footers, the ruler, or page-count updates. It updates changed semantic blocks in place rather than rendering page windows. Use print layout when page-specific presentation or page virtualization is required.
+Web layout does not show headers, footers, the ruler, or page-count updates. Keep print layout when those matter.
 
 Set `contained: true` only when the host has a deliberate fixed height and should own an internal scroll region. Leave it off when the document should expand with the page. Avoid nesting the Editor inside another horizontal scroller.
 
-The Fullscreen API is browser-owned, so the application must provide the button and handle rejected fullscreen requests where required by its product. The explicit `fullscreenchange` refit prevents the document from keeping dimensions calculated for the previous viewport.
+## Check the layout
+
+Narrow the window: print pages should shrink, toolbar controls should move into overflow, and the fullscreen button
+should stay visible as you scroll. Enter and exit fullscreen to check that the document fits again. If the browser
+rejects the request, the status explains the failure without blocking editing.
+
+Continue with [Loading UI](/editor/built-in-ui/loading) to choose what people see while a document opens.

@@ -67,6 +67,40 @@ function darkerColor(color: string) {
     .join('')}`;
 }
 
+function HexColorInput({
+  disabled,
+  label,
+  value,
+  onChange,
+}: {
+  disabled: boolean;
+  label: string;
+  value: string;
+  onChange(value: string): void;
+}) {
+  const [text, setText] = useState(value);
+  useEffect(() => setText(value), [value]);
+  const valid = /^#[\da-f]{6}$/iu.test(text);
+  return (
+    <input
+      aria-label={`${label} hex color`}
+      aria-invalid={!valid}
+      disabled={disabled}
+      maxLength={7}
+      spellCheck={false}
+      title='Use a six-digit hex color, such as #1355ff.'
+      type='text'
+      value={text}
+      onChange={(event) => {
+        const next = event.currentTarget.value;
+        setText(next);
+        if (/^#[\da-f]{6}$/iu.test(next)) onChange(next.toLowerCase());
+      }}
+      onBlur={() => setText(value)}
+    />
+  );
+}
+
 function toThemeConfig(draft: ThemeDraft): ThemeConfig {
   return {
     name: THEME_NAME,
@@ -93,7 +127,9 @@ function renderThemeCode(draft: ThemeDraft) {
     ? `\n  vars: { '--sd-layout-page-bg': '#ffffff', '--sd-ui-toolbar-bg': '${draft.toolbarBackground}' },`
     : `\n  vars: { '--sd-layout-page-bg': '#ffffff' },`;
 
-  return `import { createTheme, type ThemeConfig } from 'superdoc';
+  return `import { createTheme } from 'superdoc';
+
+type ThemeConfig = Parameters<typeof createTheme>[0];
 
 const productTheme = {
   name: 'product',
@@ -471,7 +507,7 @@ export function ThemePlayground() {
 
           <div className='sd-theme-playground-tokens'>
             {colorControls.map(({ key, label }) => (
-              <label key={key}>
+              <div className='sd-theme-playground-token' role='group' aria-label={label} key={key}>
                 <span>{label}</span>
                 <input
                   aria-label={`${label} color`}
@@ -480,8 +516,13 @@ export function ThemePlayground() {
                   type='color'
                   value={draft[key]}
                 />
-                <code>{draft[key]}</code>
-              </label>
+                <HexColorInput
+                  disabled={!controlsReady}
+                  label={label}
+                  value={draft[key]}
+                  onChange={(value) => updateDraft(key, value)}
+                />
+              </div>
             ))}
             <label>
               <span>Radius</span>

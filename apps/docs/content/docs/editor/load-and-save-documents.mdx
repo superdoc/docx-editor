@@ -4,7 +4,8 @@ navTitle: Load and save
 description: Load a DOCX from your application and save the edited file back to your backend.
 ---
 
-Continue with `/sample.docx` from the [Quickstart](/editor/quickstart). Replace the local file with a backend round trip:
+The [Quickstart](/editor/quickstart) downloads your edits. To keep them when someone returns, load and save the DOCX
+through your application API:
 
 1. Fetch the DOCX from your API as a `Blob`.
 2. Open and edit the `Blob` in SuperDoc.
@@ -21,19 +22,21 @@ The examples use `/api/documents/sample`. This is an application route, not a Su
 | `GET`   | Return the current DOCX bytes                                               |
 | `PUT`   | Store the request body and return a success status after the write finishes |
 
-The Quickstart Vite project does not create this endpoint. Connect the example to your application API, or add a local
-endpoint with this contract.
+The Quickstart does not create this endpoint. Add it to your backend with the sample DOCX as its initial document.
+Proxy `/api/documents/sample` from Vite to your backend, or change `endpoint` below to your API URL. For a different
+origin, allow GET and PUT through CORS. Keep storage credentials and access checks in the backend.
 
-The endpoint can read from a database or an object store such as Amazon S3. The browser code stays the same. Keep
-storage credentials and access checks in your backend.
+Restart Vite after adding the proxy. Check that the GET response contains DOCX bytes, not your application's HTML
+page: a fallback page can return `200` and still fail to open as a document.
 
 ## 2. Add a save action
 
-For Vanilla, replace the Quickstart controls with a save action and status:
+For Vanilla, replace the export button and Editor container in `index.html` with the following markup. Keep the
+`<script type="module" src="/src/main.ts"></script>` tag:
 
 ```html
 <button id="save-docx" type="button" disabled>Save DOCX</button>
-<output id="document-status">Opening…</output>
+<output id="document-status" aria-live="polite">Opening…</output>
 <div id="editor"></div>
 ```
 
@@ -41,8 +44,9 @@ The React example below renders its own controls.
 
 ## 3. Load and save the document
 
-The examples show the complete storage flow. Add any user, mode, or viewing options you chose on the previous pages to
-the Editor configuration.
+Replace `src/main.ts` in Vanilla or `src/App.tsx` in React. Keep the Quickstart styles and React entry point. Copy any
+user, mode, or viewing options you chose on the previous pages into this Editor configuration; the examples otherwise
+use the default editing mode.
 
 <FrameworkExampleTabs>
   <FrameworkExample filename='src/main.ts' framework='Vanilla'>
@@ -60,6 +64,9 @@ Both examples:
 - call `export({ triggerDownload: false })` to receive the edited `Blob`;
 - show **Saved** only after the `PUT` succeeds. Edits made during that request remain unsaved.
 
+The revision counter tracks local edits only. This is manual saving, not autosave or protection against another user
+overwriting the file.
+
 ## Use another source or destination
 
 | Task                           | Use                                                        |
@@ -69,18 +76,20 @@ Both examples:
 | Switch the mounted Editor      | `await superdoc.replaceFile(nextDocx)`                     |
 | Download instead of saving     | `await superdoc.export({ exportedName: 'sample-edited' })` |
 
-A URL from another origin must allow the browser request through CORS. Fetch the file yourself and pass a `Blob` when
-the request needs custom headers.
+Fetch the file yourself and pass a `Blob` when the request needs custom headers.
 
 ## Verify the round trip
 
 Change the effective date from `September 1, 2026` to `October 1, 2026`. Select **Save DOCX**, then reload the page. The
-new date should still be present. If the `PUT` fails, the status should show **Save failed** and the stored file should
-remain unchanged.
+new date should still be present.
 
-## Continue from here
+Then make your endpoint reject a save before writing. Confirm **Save failed** appears and your edits remain available
+to retry. A network failure can happen after the server stores the file, so an error alone does not prove nothing was
+saved.
 
-- [Version history](/editor/version-history) keeps earlier saves so users can restore them.
-- [Export options](/editor/export-options) changes the filename, comment policy, or related files.
-- If your content starts as HTML or Markdown, see [rich content](/document-api/rich-content) and
-  [output projections](/document-api/output-projections). These APIs do not open either format as a DOCX file.
+## Choose your interface
+
+[Choose your interface](/editor/who-renders-the-ui) to keep SuperDoc's built-in controls or replace the ones your
+application needs to own. Loading and saving stay the same.
+
+For more storage options, see [Version history](/editor/version-history) and [Export options](/editor/export-options).

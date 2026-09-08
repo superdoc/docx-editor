@@ -12,7 +12,7 @@ a command, and handles the result. Keep that loop. Add font-family and font-size
 
 ## Try the loop at toolbar scale
 
-Select the first sentence below. Apply Bold, then choose a font and size. Reselect that sentence to see all three
+Select the first sentence below. Apply Bold, then choose **Courier New** and **18**. Reselect that sentence to see all three
 controls recover its formatting. Extend that formatted selection into the next plain sentence and the pickers show
 **Mixed**.
 
@@ -34,8 +34,8 @@ time, set `toolbar: false` to remove the remaining built-in toolbar.
 
 ## Add the toolbar surface
 
-For Vanilla, replace `index.html` with the toolbar and Editor mounts below. React renders the controls in `App.tsx` and
-keeps the quickstart HTML.
+For Vanilla, replace the contents of `<body>` in `index.html` with the toolbar and Editor mounts below.
+React renders the controls in `App.tsx` and keeps the quickstart HTML.
 
 <include>../../../../snippets/editor/custom-toolbar.html</include>
 
@@ -76,6 +76,6 @@ Run the project. Select text in `/sample.docx` and change all three controls. Mo
 formatted text again. Bold, font, and size should recover the values you applied. Extend the selection into neighboring
 text that kept its original formatting. Both pickers should show **Mixed**.
 
-Next, [build application document controls](/editor/custom-ui/zoom-and-document-state) to apply the same loop to
-actions that target the document instead of the current selection. Use
+For an alternative recipe, [build application document controls](/editor/custom-ui/zoom-and-document-state) for zoom
+and download. It replaces this example and keeps the built-in formatting toolbar. Use
 [Custom commands](/editor/custom-ui/custom-commands) later for application actions that SuperDoc does not provide.

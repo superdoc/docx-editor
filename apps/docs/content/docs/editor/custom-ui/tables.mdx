@@ -11,18 +11,25 @@ selection context and `ui.commands` to run actions against it.
 If your application already has an explicit table target, use the
 [Document API tables reference](/document-api/reference/tables/) instead.
 
-Start from [Build your first custom control](/editor/custom-ui/controller-setup). This example expects `/contract.docx`
-to contain a table.
+This standalone Vanilla recipe uses the project from [Build your first custom control](/editor/custom-ui/controller-setup).
+Save this document as `public/contract.docx`:
+
+<FileDownload
+  href='/fixtures/getting-started.docx'
+  label='Download the table sample'
+  description='Statement of work with a milestone table'
+  fileType='DOCX'
+/>
 
 ## Add the controls
 
-Create two table actions, context output, status output, and an Editor container:
+Replace the contents of `<body>` in `index.html` with the table actions, download button, and Editor container:
 
 <include>../../../../snippets/editor/custom-table-controls.html</include>
 
 ## Bind actions to table context
 
-Read the Editor's controller, `superdoc.ui`, after the Editor is ready:
+Replace `src/main.ts`. The example reads `superdoc.ui` after the Editor is ready:
 
 <include>../../../../snippets/editor/custom-table-controls.ts</include>
 
@@ -49,7 +56,7 @@ identity from painted DOM attributes.
 
 ## Verify the controls
 
-Place the caret in a table, add a row, delete a row, and export the DOCX. Outside the table, both buttons should disable
+Place the caret in the milestone table, add a row, delete a row, and choose **Download DOCX**. Outside the table, both row buttons should disable
 with a contextual reason.
 
 Use the [Document API tables reference](/document-api/reference/tables/) for explicit targets or operations that are not

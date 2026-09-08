@@ -56,6 +56,7 @@ const superdoc = new SuperDoc({
     // Rerender from the last observed snapshot so pending state changes are
     // reflected without an extra catalog read.
     let lastControls: ContentControlsSlice | null = null;
+    let mutationInFlight = false;
 
     const failMutation = (message: string) => {
       pendingMutation = null;
@@ -63,7 +64,33 @@ const superdoc = new SuperDoc({
       if (lastControls) render(lastControls);
     };
 
+    let catalogRequest = 0;
+    const readFields = async (
+      snapshot: ContentControlsSlice,
+      failureMessage = 'The field list could not be refreshed.',
+    ) => {
+      const request = ++catalogRequest;
+      try {
+        const catalog = await documentApi.contentControls.list();
+        if (request !== catalogRequest) return;
+        render({ ...snapshot, status: 'ready', items: catalog.items, total: catalog.total });
+      } catch {
+        if (request !== catalogRequest) return;
+        if (!mutationInFlight) failMutation(failureMessage);
+      }
+    };
+
+    const refreshFields = async () => {
+      await readFields(
+        ui.contentControls.getSnapshot(),
+        'The document changed, but the field list could not be refreshed.',
+      );
+    };
+
     const updateTextField = async (control: ContentControlInfo, value: string) => {
+      if (pendingMutation) return;
+      mutationInFlight = true;
+      catalogRequest += 1;
       const name = fieldName(control);
       // Keep the submitted value as the draft so a failed update does not
       // reset the input to the document's old text.
@@ -74,13 +101,19 @@ const superdoc = new SuperDoc({
 
       try {
         const receipt = await documentApi.contentControls.text.setValue({ target: control.target, value });
+        mutationInFlight = false;
         if (!receipt.success) failMutation(receipt.failure.message);
+        else await refreshFields();
       } catch (error) {
+        mutationInFlight = false;
         failMutation(error instanceof Error ? error.message : `${name} could not be updated.`);
       }
     };
 
     const updateCheckbox = async (control: ContentControlInfo, checked: boolean) => {
+      if (pendingMutation) return;
+      mutationInFlight = true;
+      catalogRequest += 1;
       const name = fieldName(control);
       pendingMutation = { checked, controlId: control.id, controlName: name, kind: 'checkbox' };
       fieldsStatus.textContent = `Updating ${name}…`;
@@ -88,8 +121,11 @@ const superdoc = new SuperDoc({
 
       try {
         const receipt = await documentApi.contentControls.checkbox.setState({ target: control.target, checked });
+        mutationInFlight = false;
         if (!receipt.success) failMutation(receipt.failure.message);
+        else await refreshFields();
       } catch (error) {
+        mutationInFlight = false;
         failMutation(error instanceof Error ? error.message : `${name} could not be updated.`);
       }
     };
@@ -99,7 +135,7 @@ const superdoc = new SuperDoc({
       const currentMutation = pendingMutation;
       const observedMutation =
         currentMutation && controls.items.find((control) => mutationIsObserved(control, currentMutation));
-      if (currentMutation && observedMutation) {
+      if (currentMutation && observedMutation && !mutationInFlight) {
         const completedMutation = currentMutation;
         pendingMutation = null;
         if (completedMutation.kind === 'text') drafts.delete(completedMutation.controlId);
@@ -135,7 +171,10 @@ const superdoc = new SuperDoc({
           input.value = drafts.get(control.id) ?? currentValue;
           input.disabled = locked || pendingMutation !== null;
           input.setAttribute('aria-label', `Value for ${name}`);
-          input.addEventListener('input', () => drafts.set(control.id, input.value));
+          input.addEventListener('input', () => {
+            drafts.set(control.id, input.value);
+            update.disabled = locked || pendingMutation !== null || input.value === currentValue;
+          });
           update.type = 'button';
           update.textContent = pendingMutation?.controlId === control.id ? 'Updating…' : 'Update';
           update.disabled = locked || pendingMutation !== null || input.value === currentValue;
@@ -162,7 +201,13 @@ const superdoc = new SuperDoc({
       }
     };
 
-    stopContentControls = ui.contentControls.observe(render);
+    const stop = ui.contentControls.observe((snapshot) => {
+      void readFields(snapshot);
+    });
+    stopContentControls = () => {
+      catalogRequest += 1;
+      stop();
+    };
   },
   onContentError: ({ error }) => {
     fieldsStatus.textContent = 'The document could not be opened.';

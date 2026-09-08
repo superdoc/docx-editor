@@ -131,7 +131,7 @@ function ReviewPanel({ loadError }: { loadError: string | null }) {
           ? 'Document unavailable'
           : changes.status === 'pending'
             ? 'Loading changes...'
-            : `${changes.total} open changes`}
+            : `${changes.total} open ${changes.total === 1 ? 'change' : 'changes'}`}
       </p>
 
       <nav aria-label='Tracked change navigation'>

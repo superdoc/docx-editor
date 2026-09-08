@@ -54,6 +54,7 @@ const routes = [
   ['editor/custom-ui/search/index.html', 'Build custom find and replace controls'],
   ['editor/custom-ui/zoom-and-document-state/index.html', 'Build application document controls'],
   ['editor/custom-ui/selection-and-viewport/index.html', 'Build an AI prompt menu for selected text'],
+  ['editor/custom-ui/selection-reference/index.html', 'Selection and position reference'],
   ['editor/custom-ui/review-highlights/index.html', 'Turn AI findings into tracked suggestions'],
   ['editor/dialogs-and-surfaces/index.html', 'Open dialogs and floating surfaces'],
   ['editor/theming/index.html', 'Theme the Editor UI'],
@@ -451,6 +452,8 @@ test('the editor quickstart offers the clean sample and no review markup', async
   assert.match(article, /Download the sample document/);
   assert.match(article, /href="\/fixtures\/getting-started\.docx"/);
   assert.match(quickstartMarkdown, /Change the effective date from `September 1, 2026` to `October 1, 2026`/);
+  const reactStyles = await readFile(new URL('../../../examples/react/src/index.css', import.meta.url), 'utf8');
+  assert.ok(quickstartMarkdown.includes(reactStyles.trim()), 'include the stylesheet imported by the React entry point');
   assert.doesNotMatch(quickstartMarkdown, /complete the Word round trip/i);
   assert.match(configurationMarkdown, /Continue with the `\/sample\.docx` project/);
   assert.match(configurationMarkdown, /documentMode: 'suggesting'/);
@@ -584,7 +587,7 @@ test('exports the focused built-in toolbar example as clean Markdown', async () 
   assert.match(article, /responsiveTo/);
   assert.match(article, /Document mode/);
   assert.match(article, /data-preset="toolbar"/);
-  assert.match(article, /formatting-sample\.docx/);
+  assert.match(article, /getting-started\.docx/);
   assert.match(article, /id="toolbar-config"/);
   assert.match(article, /data-config-explorer="true"/);
   assert.match(
@@ -696,12 +699,13 @@ test('exports the custom content-control workflow as clean Markdown', async () =
 
   assert.match(markdown, /Live example: edit document fields from an application-owned panel/);
   assert.match(markdown, /custom-content-controls-workflow\.docx/);
-  assert.match(markdown, /ui\.contentControls\.observe\(render\)/);
+  assert.match(markdown, /ui\.contentControls\.observe\(\(snapshot\)/);
   assert.match(markdown, /await ui\.contentControls\.focus/);
   assert.match(markdown, /await documentApi\.contentControls\.text\.setValue/);
   assert.match(markdown, /await documentApi\.contentControls\.checkbox\.setState/);
-  assert.match(markdown, /useSuperDocContentControls\(\)/);
-  assert.match(markdown, /observer returns the updated value/);
+  assert.match(markdown, /contentControls\.observe\(/);
+  assert.match(markdown, /superdoc@2\.12\.0/);
+  assert.match(markdown, /Confirm the updated field value/);
   assert.doesNotMatch(markdown, /<include>/);
   assert.doesNotMatch(markdown, /<CustomContentControlsDemo\b/);
 });
@@ -768,7 +772,9 @@ test('exports custom document controls as clean Markdown', async () => {
   assert.match(markdown, /\*\*Vanilla — `src\/main\.ts`\*\*/);
   assert.match(markdown, /\*\*React — `src\/App\.tsx`\*\*/);
   assert.match(markdown, /excludeItems: \['zoom'\]/);
-  assert.match(markdown, /ui\.zoom\.setMode\('fit-width'\)/);
+  assert.match(markdown, /superdoc@2\.12\.0/);
+  assert.match(markdown, /docs-only fitting helper/);
+  assert.doesNotMatch(markdown, /ui\.zoom\.setMode\('fit-width'\)/);
   assert.match(markdown, /ui\.document\.observe\(render\)/);
   assert.match(markdown, /useSuperDocZoom\(\)/);
   assert.match(markdown, /useSuperDocDocument\(\)/);
@@ -808,6 +814,10 @@ test('exports the theming experience as clean Markdown', async () => {
   assert.match(markdown, /document\.documentElement\.classList\.add\(themeClass\)/u);
   assert.match(markdown, /--sd-ui-toolbar-bg/u);
   assert.match(markdown, /buildTheme\(\)/u);
+  assert.match(markdown, /Choose a token/u);
+  assert.match(markdown, /`actionText`/u);
+  assert.match(markdown, /`textDisabled`/u);
+  assert.match(markdown, /`vars` accepts arbitrary string keys/u);
   assert.doesNotMatch(markdown, /<ThemePlayground\b/u);
   assert.doesNotMatch(markdown, /<include>/u);
 });
@@ -887,6 +897,16 @@ test('exports the custom selection and viewport workflow as clean Markdown', asy
   assert.match(markdown, /demo response is local: no text is sent to a model/i);
   assert.doesNotMatch(markdown, /<include>/);
   assert.doesNotMatch(markdown, /<CustomSelectionDemo\b/);
+});
+
+test('exports the selection reference separately from the prompt tutorial', async () => {
+  const tutorial = await readFile(new URL('../out/md/editor/custom-ui/selection-and-viewport.md', import.meta.url), 'utf8');
+  const reference = await readFile(new URL('../out/md/editor/custom-ui/selection-reference.md', import.meta.url), 'utf8');
+  assert.match(tutorial, /\/editor\/custom-ui\/selection-reference/);
+  assert.doesNotMatch(tutorial, /## Resolve entities under a point/);
+  assert.match(reference, /ui\.viewport\.entityAt\(\{ x: event\.clientX, y: event\.clientY \}\)/);
+  assert.match(reference, /removeEventListener/);
+  assert.match(reference, /Only tracked-change hits carry it/);
 });
 
 test('exports built-in and custom search without duplicating Document API queries', async () => {
@@ -991,8 +1011,8 @@ test('exports the remaining built-in UI workflows as clean Markdown', async () =
   assert.match(contentControls, /\*\*React — `src\/App\.tsx`\*\*/);
   assert.doesNotMatch(contentControls, /\b(?:modules\.contentControls|chrome: 'default'|handleImageUpload)\b/);
   assert.match(responsive, /mode: 'fit-width'/);
-  assert.match(responsive, /viewOptions: \{ layout: 'web' \}/);
-  assert.match(responsive, /retained semantic document surface/);
+  assert.match(responsive, /const viewOptions = \{ layout: 'web' \}/);
+  assert.match(responsive, /Text wraps to the host width/);
   assert.match(responsive, /fullscreenchange/);
   assert.match(responsive, /Avoid nesting the Editor inside another horizontal scroller/);
   assert.match(loading, /Built-in overlay — `ui\.loading`/);
@@ -1006,7 +1026,7 @@ test('exports the remaining built-in UI workflows as clean Markdown', async () =
   assert.match(loading, /await superdoc\.replaceFile\(file\)/);
   assert.match(loading, /state === 'editing-ready'/);
   assert.match(loading, /onException/);
-  assert.match(loading, /Could not open the document\. Try again\./);
+  assert.match(loading, /Could not open the document\. Reload the page to retry\./);
   assert.doesNotMatch(`${hyperlinks}\n${contextMenu}\n${contentControls}\n${responsive}\n${loading}`, /<include>/);
 });
 
@@ -1071,11 +1091,11 @@ test('exports storage, version, and configuration guidance for the v2 Editor', a
   ]);
 
   assert.match(loadAndSave, /const endpoint = '\/api\/documents\/sample'/);
-  assert.match(loadAndSave, /The Quickstart Vite project does not create this endpoint/u);
+  assert.match(loadAndSave, /The Quickstart does not create this endpoint/u);
   assert.match(loadAndSave, /return a success status after the write finishes/u);
   assert.match(loadAndSave, /triggerDownload: false[\s\S]*method: 'PUT'/);
   assert.match(loadAndSave, /show \*\*Saved\*\* only after the `PUT` succeeds/u);
-  assert.match(loadAndSave, /do not open either format as a DOCX file/u);
+  assert.match(loadAndSave, /\[Choose your interface\]\(\/editor\/who-renders-the-ui\)/u);
   assert.match(versionHistory, /each save creates a new snapshot instead of overwriting the previous file/u);
   assert.match(versionHistory, /x-base-version-id/u);
   assert.match(versionHistory, /Return `409 Conflict` if another tab or user saved first/u);
@@ -1267,7 +1287,7 @@ test('exports the machine-readable documentation files', async () => {
   assert.match(fullCorpus, /^# Open and edit your first DOCX/m);
   assert.match(editorMarkdown, /^# Open and edit your first DOCX/m);
   assert.match(editorMarkdown, /\[Download the sample document\]\(\/fixtures\/getting-started\.docx\)/);
-  assert.match(editorMarkdown, /`onReady` marked the first safe moment to enable document actions/);
+  assert.match(editorMarkdown, /`onReady` enables \*\*Export DOCX\*\*/);
   assert.match(surfacesMarkdown, /^# How SuperDoc works/m);
   assert.match(surfacesMarkdown, /> \*\*Diagram:\*\* People, services, CI, and agents use different SuperDoc surfaces/);
   assert.match(
@@ -1279,7 +1299,7 @@ test('exports the machine-readable documentation files', async () => {
   assert.match(modesMarkdown, /Modes change Editor behavior in the browser/);
   assert.doesNotMatch(modesMarkdown, /<Callout\b/);
   assert.match(interfaceMarkdown, /^# Choose your interface/m);
-  assert.match(interfaceMarkdown, /SuperDoc always renders the DOCX canvas/);
+  assert.match(interfaceMarkdown, /SuperDoc renders the DOCX canvas in every approach/);
   assert.match(interfaceMarkdown, /Interactive comparison: who renders the interface/);
   assert.match(interfaceMarkdown, /your application renders comments through `superdoc\.ui\.comments`/);
   assert.match(interfaceMarkdown, /A partial `ui` object changes only the surfaces it names/);

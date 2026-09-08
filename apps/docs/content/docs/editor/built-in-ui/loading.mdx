@@ -19,7 +19,8 @@ replacement is ready.
 No configuration is required. The overlay follows real document progress and stays visible until the Editor is ready.
 It also appears when `replaceFile()` opens another DOCX.
 
-In React, omit `renderLoading` so the built-in overlay remains visible:
+In React, omit `renderLoading` so the built-in overlay remains visible. This minimal example uses
+`public/sample.docx` from the [Quickstart](/editor/quickstart):
 
 <include>../../../../snippets/editor/react-built-in-loading.tsx</include>
 
@@ -27,21 +28,31 @@ Wait for `onReady` before enabling actions that depend on the document.
 
 ## Show application loading UI
 
-In React, pass `renderLoading` to replace the initial loading experience. The wrapper hides the Editor until `onReady`:
+The following are standalone alternatives in the Quickstart project, using the same `public/sample.docx`.
+
+In React, replace `src/App.tsx` below. `renderLoading` replaces the initial loading experience; the wrapper hides the
+Editor until `onReady`:
 
 <include>../../../../snippets/editor/react-custom-loading.tsx</include>
 
 This fallback also appears when changing the `document` prop. It does not run for an imperative `replaceFile()` call;
 the built-in overlay still covers that operation.
 
-For Vanilla, set `ui.loading: false` only when your application covers both the initial open and every file replacement:
+For Vanilla, set `ui.loading: false` only when your application covers both the initial open and every file replacement.
+Replace the body content in `index.html` below, keeping the script that loads `/src/main.ts`:
 
 <include>../../../../snippets/editor/custom-loading.html</include>
+
+Replace `src/main.ts`:
 
 <include>../../../../snippets/editor/custom-loading.ts</include>
 
 Keep the application state visible until `onReady`. Around `replaceFile()`, keep it visible until the call returns a
 ready state. If opening fails, replace the loading message with an error instead of revealing an incomplete Editor.
+
+Reload to see the initial loading message. In Vanilla, choose another DOCX with the file picker and confirm the message
+returns while it opens. If a replacement fails, choose another DOCX to retry. If the initial document fails to open,
+reload the page. Unrelated runtime exceptions are logged without hiding a ready Editor.
 
 ## Configure the overlay
 

@@ -29,7 +29,7 @@ Start from [Build your first custom control](/editor/custom-ui/controller-setup)
 [two-page field fixture](/fixtures/custom-content-controls-workflow.docx) to your app's `public` directory as
 `contract.docx`.
 
-Vanilla adds the panel beside its existing Editor container. Replace `index.html` with:
+For Vanilla, replace the contents of `<body>` in `index.html` with the Editor and panel below:
 
 <include>../../../../snippets/editor/custom-content-controls.html</include>
 
@@ -56,8 +56,11 @@ Each catalog item carries its `controlType`, `lockMode`, properties, current val
 instead of inspecting the rendered document DOM.
 
 Keep every action disabled while a mutation is pending. A successful receipt confirms that the Document API accepted
-the mutation. Keep the panel pending until the observer returns the updated value, then clear any local draft and report
-success. If the receipt fails or the operation throws, clear the pending state and show the failure.
+the mutation. Confirm the updated field value before clearing the draft and reporting success.
+
+In `superdoc@2.12.0`, the observed catalog can remain stale after a programmatic update. These examples read
+`contentControls.list()` after mutations and observer notifications, ignoring older responses. A failed refresh reports
+that the document changed but the panel could not refresh; it does not report the mutation as failed.
 
 ## Render the field type you support
 

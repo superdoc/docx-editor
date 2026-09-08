@@ -9,11 +9,12 @@ comments UI adapts to the Editor width.
 
 ## Try the comment workflow
 
-Expand the Editor and find the existing comment anchored to `September 30, 2026`. Use the controls above the document to
-compare both configuration axes:
+Expand the Editor and click `September 30, 2026` to open its comment. Add a reply, then use the controls above the document:
 
 1. Change **Layout** between Auto, Sidebar, and Inline to compare how the comment surface uses the Editor width.
-2. Change **Actions** between Read, Write, and Resolve to compare the maximum comment action the Editor allows.
+2. Change **Actions** to Read. Your reply remains, but you cannot add another. Restore Write or Resolve to reply again.
+3. With **Actions → Resolve**, choose the checkmark on the thread. Click `September 30, 2026` again to see its
+   **Resolved** status, then choose **Reopen comment**.
 
 <EditorDemo fixture='/fixtures/comments-sample.docx' preset='comments' title='Try comments' />
 
@@ -23,7 +24,8 @@ changes by exporting the DOCX through the same flow you built in [Load and save]
 
 ## Add the built-in comments UI
 
-Continue with `/sample.docx` from the [Quickstart](/editor/quickstart). Add the current user and set the comments layout:
+These standalone examples use `public/sample.docx` from the [Quickstart](/editor/quickstart). Replace `src/main.ts`
+or `src/App.tsx` to try the current user and comments layout:
 
 <FrameworkExampleTabs>
   <FrameworkExample filename='src/main.ts' framework='Vanilla'>
@@ -34,7 +36,7 @@ Continue with `/sample.docx` from the [Quickstart](/editor/quickstart). Add the 
   </FrameworkExample>
 </FrameworkExampleTabs>
 
-Vanilla also needs separate toolbar and Editor mounts:
+For Vanilla, replace the contents of `<body>` in `index.html` with the toolbar and Editor mounts below:
 
 <include>../../../../snippets/editor/built-in-comments.html</include>
 
@@ -61,7 +63,8 @@ permissions in a trusted backend.
 
 1. Create a comment and reply to it.
 2. Resolve or reopen the thread.
-3. Export the DOCX and open it again.
+3. Use the export and reopen flow from [Load and save](/editor/load-and-save-documents); the standalone examples above
+   only configure comments.
 
 The thread, replies, author, and status should remain in the file.
 

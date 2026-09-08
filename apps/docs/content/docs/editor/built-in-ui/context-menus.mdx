@@ -12,7 +12,7 @@ actions, change the slash trigger, or open the menu from your interface.
 Expand the Editor, then select “Select this sentence, then right-click it to open the document menu.”
 
 1. With **Add action** selected, right-click the selection and choose **Send selection to workflow**.
-2. Confirm that the line below the Editor reports the selection.
+2. Confirm that the status above the document reports the selected text.
 3. Choose **Default** and right-click the selection again. SuperDoc's actions remain, but the application action is gone.
 
 <EditorDemo fixture='/fixtures/context-menu-sample.docx' preset='context-menu' title='Try the context menu' />
@@ -22,8 +22,8 @@ open menu reset.
 
 ## Add an application action
 
-Continue with `/sample.docx` from the [Quickstart](/editor/quickstart). Append an action that appears only when the user
-right-clicks selected text:
+These standalone examples use `public/sample.docx` from the [Quickstart](/editor/quickstart). Replace `src/main.ts`
+or `src/App.tsx` to add an action that appears only when the user right-clicks selected text:
 
 <FrameworkExampleTabs>
   <FrameworkExample filename='src/main.ts' framework='Vanilla'>
@@ -34,9 +34,12 @@ right-clicks selected text:
   </FrameworkExample>
 </FrameworkExampleTabs>
 
-Vanilla also needs an Editor mount:
+For Vanilla, replace the contents of `<body>` in `index.html` with:
 
 <include>../../../../snippets/editor/built-in-context-menu.html</include>
+
+Select text, right-click, and choose **Send selection to workflow**. These examples log `Workflow selection:` and the
+selected text in the browser console. Replace that log with your application's workflow.
 
 `showWhen()` receives the document context captured when the menu opens. The example requires a right-click and an
 expanded selection, so the action stays hidden after `/`, a programmatic `open()`, or a collapsed caret.
@@ -58,7 +61,8 @@ resolved section list.
 ## Open the menu from your application
 
 Set `openOnSlash: false` when your application owns the keyboard shortcut. Right-click still works. A button, shortcut,
-or other control can call `superdoc.ui.contextMenu.open()` at the current selection or caret:
+or other control can call `superdoc.ui.contextMenu.open()` at the current selection or caret. This is an alternative
+example: replace the same entry file, rather than appending a second Editor:
 
 <FrameworkExampleTabs>
   <FrameworkExample filename='src/main.ts' framework='Vanilla'>
@@ -69,7 +73,7 @@ or other control can call `superdoc.ui.contextMenu.open()` at the current select
   </FrameworkExample>
 </FrameworkExampleTabs>
 
-Vanilla also needs the button and Editor mount:
+For this Vanilla variant, replace the contents of `<body>` in `index.html` with the button and Editor mount below:
 
 <include>../../../../snippets/editor/context-menu-runtime.html</include>
 

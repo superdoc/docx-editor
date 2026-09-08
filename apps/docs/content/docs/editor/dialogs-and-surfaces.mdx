@@ -30,10 +30,16 @@ selection and viewport APIs for a selection toolbar, AI prompt, or other text-an
 
 ## Open a dialog
 
-Start from the [quickstart](/editor/quickstart) with `/sample.docx` in your application's `public` directory. This
-example mounts plain DOM in the surface, but `render()` can mount your framework instead.
+This standalone Vanilla recipe uses `public/sample.docx` from the [Quickstart](/editor/quickstart).
+Replace the body of `index.html` with:
+
+<include>../../../snippets/editor/external-surface.html</include>
+
+Replace `src/main.ts` below. This example mounts plain DOM in the surface, but `render()` can mount your framework instead.
 
 <include>../../../snippets/editor/external-surface.ts</include>
+
+Choose **Open confirmation**, then **Continue** or **Cancel**. The status reports your choice; it does not change the DOCX.
 
 SuperDoc owns the dialog shell, position, and focus behavior. Your `render()` callback owns the content. It receives an
 empty `container` plus `resolve()` and `close()`. Return `{ destroy() {} }` to remove listeners or unmount a framework

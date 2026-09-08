@@ -508,7 +508,12 @@ test('the custom UI setup demo shows one control changing ownership', async () =
 
 test('the built-in toolbar examples use canonical public item ids', async () => {
   const examples = await Promise.all(
-    [focusedToolbarExampleUrl, focusedReactToolbarExampleUrl].map((url) => readFile(url, 'utf8')),
+    [
+      focusedToolbarExampleUrl,
+      focusedReactToolbarExampleUrl,
+      new URL('../snippets/editor/basic-built-in-toolbar.ts', import.meta.url),
+      new URL('../snippets/editor/react-basic-built-in-toolbar.tsx', import.meta.url),
+    ].map((url) => readFile(url, 'utf8')),
   );
   const publicTypes = await readFile(superdocCoreTypesUrl, 'utf8');
   const demoData = await readFile(builtInEditorDemoDataUrl, 'utf8');
@@ -537,6 +542,17 @@ test('the built-in toolbar examples use canonical public item ids', async () => 
   assert.deepEqual(unknownDemoItems, []);
   assert.ok(!demoItems.has('overflow'), 'The toolbar demo data should not expose overflow chrome.');
   assert.match(demoData, /toolbarDemoExcludedItems = \['bold', 'italic'\] as const/u);
+});
+
+test('the hyperlink recipes provide a document with a link to activate', async () => {
+  const page = await readFile(new URL('../content/docs/editor/built-in-ui/hyperlinks.mdx', import.meta.url), 'utf8');
+  assert.match(page, /href='\/fixtures\/hyperlinks-sample\.docx'/u);
+  assert.match(page, /public\/hyperlinks-sample\.docx/u);
+  assert.match(page, /Click \*\*SuperDoc documentation\*\*/u);
+  for (const name of ['built-in-hyperlinks.ts', 'react-built-in-hyperlinks.tsx']) {
+    const snippet = await readFile(new URL(`../snippets/editor/${name}`, import.meta.url), 'utf8');
+    assert.match(snippet, /document[:=]\s*'\/hyperlinks-sample\.docx'/u);
+  }
 });
 
 test('the toolbar guide preserves the built-in image upload workflow', async () => {
@@ -580,6 +596,15 @@ test('the toolbar guide preserves the built-in image upload workflow', async () 
     ]);
     assert.throws(() => withImageMimeType({ name: 'notes.txt', size: 4, type: '' }), /PNG or JPEG/u);
     assert.throws(() => withImageMimeType({ name: 'notes.png', size: 4, type: 'text/plain' }), /PNG or JPEG/u);
+
+    const bytes = new Uint8Array([0, 127, 128, 255]);
+    for (const [name, type] of [['scan.PNG', 'image/png'], ['photo.JpEg', 'image/jpeg']]) {
+      const file = new File([bytes], name);
+      const normalized = withImageMimeType(file);
+      assert.equal(normalized.type, type);
+      assert.equal(normalized.size, file.size);
+      assert.deepEqual(new Uint8Array(await normalized.arrayBuffer()), bytes);
+    }
   }
 
   assert.match(page, /handleImageUpload/u);
@@ -730,8 +755,8 @@ test('the custom UI overview separates the core path from optional workflows', a
     'zoom-and-document-state',
   ]);
 
-  assert.match(toolbar, /Next, \[[^\]]+\]\(\/editor\/custom-ui\/zoom-and-document-state\)/u);
-  assert.match(documentControls, /This completes the core Custom UI path/u);
+  assert.match(toolbar, /alternative recipe, \[[^\]]+\]\(\/editor\/custom-ui\/zoom-and-document-state\)/u);
+  assert.match(documentControls, /Return to the \[Custom UI overview\]/u);
   assert.doesNotMatch(documentControls, /\/editor\/custom-ui\/comments/u);
 
   for (const page of pages.slice(1)) {
@@ -744,7 +769,7 @@ test('the custom UI overview separates the core path from optional workflows', a
 
 /** Slugs linked from the numbered list under a heading, in the order they are listed. */
 function orderedCorePathSlugs(overview) {
-  const section = overview.split('## Follow the core path')[1]?.split('\n## ')[0] ?? '';
+  const section = overview.split('## Start with one control')[1]?.split('\n## ')[0] ?? '';
   return [...section.matchAll(/^\d+\.\s.*?\/editor\/custom-ui\/([a-z0-9-]+)\)/gmu)].map(([, slug]) => slug);
 }
 
@@ -758,10 +783,7 @@ test('the overview core-path list matches navigation order and excludes optional
   const { pages } = JSON.parse(await readFile(customUiMetaUrl, 'utf8'));
   const overview = await readFile(customUiOverviewPageUrl, 'utf8');
 
-  // The reader-facing contract is the numbered list, not just that each page is linked
-  // somewhere: a meta.json reorder or a swapped core guide must fail here rather than leave
-  // the list walking readers through a different sequence than the sidebar.
-  assert.deepEqual(orderedCorePathSlugs(overview), pages.slice(1, 5));
+  assert.deepEqual(orderedCorePathSlugs(overview), ['controller-setup', 'commands-and-state']);
 
   const optional = workflowTableSlugs(overview);
   assert.ok(optional.length > 0);
@@ -775,12 +797,8 @@ test('the core path promises only what its guides deliver', async () => {
     [customUiOverviewPageUrl, customToolbarPageUrl, customDocumentControlsPageUrl].map((url) => readFile(url, 'utf8')),
   );
 
-  // Steps 2-4 each restart from the setup guide, and step 4 restores the built-in toolbar that
-  // step 3 replaces, so the overview must not describe the path as cumulative.
-  assert.match(overview, /Only the first guide is a prerequisite/u);
-  // Step 2 is conceptual, so the replacement claim must not cover it.
-  assert.match(overview, /Step 2 explains how command state stays in sync and asks you to change nothing/u);
-  assert.match(overview, /alternatives rather than a sequence/u);
+  assert.match(overview, /alternative recipes/u);
+  assert.match(overview, /Each replaces the first control's Editor code; neither requires the other/u);
   assert.match(toolbar, /Continue with the `\/sample\.docx` project from \[[^\]]+\]\(\/editor\/custom-ui\/controller-setup\)/u);
   assert.match(documentControls, /Start from \[[^\]]+\]\(\/editor\/custom-ui\/controller-setup\)/u);
 });
@@ -812,6 +830,57 @@ test('the React comments example keeps restart-sensitive config identities stabl
   assert.doesNotMatch(example, /\b(?:user|ui)=\{\{/u);
 });
 
+test('the review findings app wires a complete standalone workflow', async () => {
+  const app = await readFile(new URL('../snippets/editor/review-findings-app.ts', import.meta.url), 'utf8');
+  const html = await readFile(new URL('../snippets/editor/review-findings-app.html', import.meta.url), 'utf8');
+  for (const action of ['bindSelection', 'save', 'suggest', 'refresh']) assert.ok(app.includes(`review.${action}`));
+  assert.match(app, /if \(pending \|\| !ready\) return/u);
+  assert.match(app, /extensions: \[review.extension\]/u);
+  assert.match(app, /isSupersededRefresh/u);
+  assert.match(app, /triggerDownload: true/u);
+  assert.match(html, /Simulated response/u);
+  assert.match(html, /src="\/src\/main.ts"/u);
+});
+
+test('the review app serializes actions and recovers after a failure', async () => {
+  const source = await readFile(new URL('../snippets/editor/review-findings-app.ts', import.meta.url), 'utf8');
+  const parsed = ts.createSourceFile('review-findings-app.ts', source, ts.ScriptTarget.Latest, true);
+  const actionRunner = parsed.statements.find((node) => ts.isFunctionDeclaration(node) && node.name?.text === 'run');
+  assert.ok(actionRunner);
+  const compiled = ts.transpileModule(actionRunner.getText(parsed), {
+    compilerOptions: { target: ts.ScriptTarget.ES2022 },
+  }).outputText;
+  const errors = [];
+  const app = new Function('renderControls', 'renderFindings', 'showError', `
+    let pending = false;
+    let ready = false;
+    const rows = [];
+    ${compiled}
+    return { run, setReady: () => { ready = true; }, isPending: () => pending };
+  `)(() => {}, () => {}, (error) => errors.push(error));
+
+  let calls = 0;
+  await app.run(async () => { calls += 1; });
+  assert.equal(calls, 0, 'actions wait for readiness');
+  app.setReady();
+  let release;
+  const deferred = new Promise((resolve) => { release = resolve; });
+  const first = app.run(async () => { calls += 1; await deferred; });
+  assert.equal(app.isPending(), true);
+  await app.run(async () => { calls += 1; });
+  assert.equal(calls, 1, 'a second click cannot dispatch another action');
+  release();
+  await first;
+  assert.equal(app.isPending(), false);
+
+  const failure = new Error('Save failed');
+  await app.run(async () => { throw failure; });
+  assert.deepEqual(errors, [failure]);
+  assert.equal(app.isPending(), false, 'failures release the action lock');
+  await app.run(async () => { calls += 1; });
+  assert.equal(calls, 2, 'the reader can retry');
+});
+
 test('the custom comments examples replace one surface with a focused workflow', async () => {
   const [page, demo, html, vanilla, react] = await Promise.all(
     [
@@ -828,6 +897,7 @@ test('the custom comments examples replace one surface with a focused workflow',
   assert.match(page, /Document API comments/u);
   assert.doesNotMatch(page, /<CommentsConfigReference\b/u);
   assert.match(html, /id="toolbar"/u);
+  assert.match(html, /id="editor" style="height: 70vh; overflow: auto"/u);
 
   for (const example of [vanilla, react]) {
     assert.match(example, /document(?:=|:)\s*['"]\/sample\.docx['"]/u);
@@ -896,6 +966,7 @@ test('the custom tracked-change examples build one application-owned review pane
   assert.match(page, /\/editor\/custom-ui\/overview/u);
   assert.match(html, /id="toolbar"/u);
   assert.match(html, /id="previous-change"/u);
+  assert.match(html, /id="editor" style="height: 70vh; overflow: auto"/u);
   assert.match(html, /id="next-change"/u);
 
   for (const example of [vanilla, react]) {
@@ -974,7 +1045,8 @@ test('the custom content-control examples build one application-owned field pane
 
   assert.match(page, /<CustomContentControlsDemo \/>/u);
   assert.match(page, /custom-content-controls-workflow\.docx/u);
-  assert.match(page, /observer returns the updated value/u);
+  assert.match(page, /Confirm the updated field value/u);
+  assert.match(page, /superdoc@2\.12\.0/u);
   assert.match(page, /\/editor\/custom-ui\/overview/u);
 
   assert.match(demo, /value: 80/u);
@@ -998,18 +1070,21 @@ test('the custom content-control examples build one application-owned field pane
     assert.match(example, /controlType === 'text'/u);
     assert.match(example, /controlType === 'checkbox'/u);
     assert.match(example, /contentLocked/u);
-    assert.doesNotMatch(example, /querySelector.*\[data-|contentControls\.list\(\)/u);
+    assert.doesNotMatch(example, /querySelector.*\[data-/u);
+    assert.match(example, /await refreshFields\(\)/u);
   }
 
-  assert.match(vanilla, /contentControls\.observe\(render\)/u);
+  assert.match(vanilla, /contentControls\.observe\(\(snapshot\)/u);
   // A failed update keeps the submitted draft instead of resetting the input.
   assert.match(vanilla, /drafts\.set\(control\.id, value\);\s+pendingMutation = \{ controlId/u);
   assert.match(vanilla, /lastControls = controls;/u);
-  assert.doesNotMatch(vanilla, /contentControls\.getSnapshot\(\)/u);
+  assert.match(vanilla, /request !== catalogRequest/u);
+  assert.match(vanilla, /update\.disabled = locked \|\| pendingMutation !== null \|\| input\.value === currentValue/u);
   // A successful update clears the draft so later document changes show through.
   assert.match(vanilla, /drafts\.delete\(completedMutation\.controlId\)/u);
   assert.match(react, /delete next\[pendingMutation\.controlId\]/u);
-  assert.match(react, /useSuperDocContentControls\(\)/u);
+  assert.match(react, /contentControls\.observe\(/u);
+  assert.match(react, /request !== catalogRequest\.current/u);
   assert.match(react, /useSuperDocHost\(\)/u);
   // The demo reports a refresh failure separately from the mutation receipt.
   assert.match(demo, /refreshPinnedRuntimeCatalog\(instance, mutation\)/u);
@@ -1185,7 +1260,7 @@ test('the custom document controls replace only built-in zoom', async () => {
     assert.match(example, /excludeItems: \['zoom'\]/u);
     assert.match(example, /ui(?::\s*editorUi|=\{editorUi\})/u);
     assert.match(example, /zoom\.set\(/u);
-    assert.match(example, /zoom\.setMode\('fit-width'\)/u);
+    assert.doesNotMatch(example, /zoom\.setMode\('fit-width'\)/u);
     assert.match(example, /document\.export\(\{ exportType: \['docx'\], triggerDownload: true \}\)/u);
     assert.match(example, /documentState\.mode|currentDocument\.mode/u);
     assert.match(example, /The document could not be read or updated\./u);
@@ -1255,8 +1330,13 @@ test('the dialogs and surfaces guide demonstrates both lifecycle slots', async (
   assert.match(demo, /document\.documentElement\.requestFullscreen\(\)/u);
   assert.match(demo, /return \{\s+destroy\(\)/u);
 
-  assert.match(example, /document: '\/sample\.docx'/u);
   assert.match(example, /SurfaceOutcome<ConfirmationResult>/u);
+  assert.match(example, /await confirmInEditor\(/u);
+  assert.match(page, /external-surface\.html/u);
+  assert.match(example, /document: '\/sample\.docx'/u);
+  assert.match(example, /onContentError: reportDocumentError/u);
+  assert.match(example, /onException: reportDocumentError/u);
+  assert.match(example, /Could not open the document\. Reload to try again\./u);
   // A modal owns focus: the dialog's trap is bound to its own backdrop and the host stands
   // down from floating Escape while a dialog exists, so a floating surface must not be
   // openable on top of one.
@@ -1341,9 +1421,15 @@ test('the theming guide moves from semantic tokens to one component override', a
   assert.match(example, /'--sd-layout-page-bg': '#ffffff'/u);
   assert.match(demo, /'--sd-layout-page-bg': '#ffffff'/u);
   assert.match(page, /'--sd-layout-page-bg': '#ffffff'/u);
-  assert.doesNotMatch(page, /document font|fonts\.map|onFontsChanged|uiDisplayFallbackFont/iu);
+  assert.doesNotMatch(page, /fonts\.map|onFontsChanged/iu);
+  assert.match(page, /`vars` accepts arbitrary string keys/u);
+  assert.match(page, /Choose a token/u);
+  assert.match(page, /It does not choose the fonts stored in the DOCX/u);
 
   assert.match(demo, /data-theme-playground/u);
+  assert.match(demo, /aria-label=\{`\$\{label\} hex color`\}/u);
+  assert.match(demo, /aria-invalid=\{!valid\}/u);
+  assert.match(demo, /onBlur=\{\(\) => setText\(value\)\}/u);
   assert.match(demo, /EditorDemoViewControls/u);
   assert.match(demo, /value: 80/u);
   assert.match(demo, /runtime\.createTheme\(themeConfig\)/u);
@@ -1381,10 +1467,16 @@ test('the theming guide moves from semantic tokens to one component override', a
 
   assert.match(example, /satisfies ThemeConfig/u);
   assert.match(example, /document\.documentElement\.classList\.add\(themeClass\)/u);
-  assert.match(example, /document: '\/sample\.docx'/u);
+  assert.doesNotMatch(example, /new SuperDoc\(/u);
+  assert.match(page, /import '\.\/theme'/u);
   assert.doesNotMatch(example, /fonts|uiDisplayFallbackFont/iu);
 
   assert.match(styles, /\.sd-theme-playground\[data-fullscreen='true'\]/u);
+});
+
+test('docs dark tokens outrank runtime root aliases loaded by embeds', async () => {
+  const css = await readFile(new URL('../app/global.css', import.meta.url), 'utf8');
+  assert.match(css, /:root\.dark\s*\{[^}]*--sd-text-secondary:\s*#aeb4c0;/u);
 });
 
 test('the custom commands guide shares one application action across two controls', async () => {
@@ -1677,18 +1769,16 @@ test('the surfaces guide qualifies the dialog focus trap', async () => {
   assert.match(dialog, /if \(focusable\.length === 0\) return;/u);
 });
 
-test('the selection guide separates SelectionTarget from the geometry fallback', async () => {
+test('the selection reference separates SelectionTarget from the geometry fallback', async () => {
   // apply() takes SelectionTarget; SelectionSlice.target is a TextTarget that only getRect()
   // accepts, so the `selectionTarget ?? target` fallback must not be copied into apply().
-  const page = await readFile(customSelectionPageUrl, 'utf8');
+  const page = await readFile(new URL('../content/docs/editor/custom-ui/selection-reference.mdx', import.meta.url), 'utf8');
   assert.match(page, /`selection\.apply\(\)` takes a `SelectionTarget`/u);
   assert.match(page, /only `selectionTarget` is accepted by\n`apply\(\)`/u);
   assert.doesNotMatch(page, /`selection\.apply\(target\)`/u);
 });
 
-test('the selection guide still answers the entityAt migration paths that link to it', async () => {
-  // The v1 catalog sends both posAtCoords and fieldAnnotationClicked here for
-  // superdoc.ui.viewport.entityAt, so this page has to carry the runnable guidance.
+test('entityAt migrations reach the detailed selection reference', async () => {
   const catalog = JSON.parse(await readFile(new URL('../public/migration/v1-to-v2.json', import.meta.url), 'utf8'));
   const entries = [];
   const walk = (node) => {
@@ -1700,11 +1790,14 @@ test('the selection guide still answers the entityAt migration paths that link t
   walk(catalog);
   assert.ok(entries.length >= 2, 'the catalog still routes entityAt migrations');
 
-  const page = await readFile(customSelectionPageUrl, 'utf8');
+  const guide = await readFile(customSelectionPageUrl, 'utf8');
+  assert.match(guide, /\/editor\/custom-ui\/selection-reference/u);
+  assert.doesNotMatch(guide, /## Resolve entities under a point/u);
+  const page = await readFile(new URL('../content/docs/editor/custom-ui/selection-reference.mdx', import.meta.url), 'utf8');
   for (const entry of entries) {
     assert.equal(
       entry.docsPath,
-      '/editor/custom-ui/selection-and-viewport',
+      '/editor/custom-ui/selection-reference',
       `${entry.id} must point at the page that documents entityAt`,
     );
   }
@@ -1800,7 +1893,7 @@ test('the custom selection demo keeps the real editor and AI prompt in one frame
   assert.match(page, /POST \/api\/selection-prompt/u);
   assert.match(page, /captured `quotedText`/u);
   assert.match(page, /keeps the quickstart `index\.html`/u);
-  assert.match(page, /If you use Vanilla, replace `index\.html` with:/u);
+  assert.match(page, /For Vanilla, replace the contents of `<body>` in\s+`index\.html` with:/u);
   assert.doesNotMatch(page, /\b(?:posAtCoords|coordsAtPos|editor\.view)\b/u);
   assert.match(demo, /data-custom-selection-demo/u);
   assert.match(demo, /custom-selection-workflow\.docx/u);
@@ -1824,6 +1917,12 @@ test('the custom selection demo keeps the real editor and AI prompt in one frame
   assert.match(demo, />\s*Simulated response\s*</u);
   assert.match(demo, /disabled=\{!prompt\.trim\(\)\}/u);
   assert.match(demo, /<CollapsibleEditorPreview[\s\S]*sd-custom-selection-demo-document/u);
+});
+
+test('the review findings layout responds to its workspace width', async () => {
+  const css = await readFile(new URL('../components/docs-components.css', import.meta.url), 'utf8');
+  assert.match(css, /\.sd-custom-review-findings-demo\s*\{[^}]*container-type: inline-size;[^}]*container-name: sd-review-findings;/u);
+  assert.match(css, /@container sd-review-findings \(max-width: 52rem\)\s*\{\s*\.sd-custom-review-findings-workspace\s*\{\s*grid-template-columns: 1fr;/u);
 });
 
 test('the review findings guide turns an AI finding into a tracked suggestion', async () => {
@@ -3129,6 +3228,9 @@ test('saving a demo finding rejects edits made while the metadata preflight is p
 test('the built-in Editor demos keep focused controls and restart-safe configuration changes', async () => {
   const demo = await readFile(editorDemoUrl, 'utf8');
 
+  assert.match(demo, /customItems:\s*\[\s*\{\s*type: 'button',\s*id: 'addReviewNote',\s*region: 'center'/u);
+  assert.match(demo, /onSelect: \(\{ insertText \}\) => insertText\('Review note: '\)/u);
+  assert.doesNotMatch(demo, /customButtons:/u);
   assert.match(demo, /getPinnedFocusedToolbarOptions\(builtInToolbar!, \{ left: \['search'\] \}\)/u);
   assert.match(
     demo,

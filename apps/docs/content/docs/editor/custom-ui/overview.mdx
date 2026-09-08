@@ -39,22 +39,19 @@ executes the action through the same controller as SuperDoc's built-in toolbar.
 The control follows one reusable pattern: observe state, render it, execute the action, and inspect the result. The
 [custom UI example](https://go.superdoc.dev/examples/custom-ui) contains the complete runnable project.
 
-## Follow the core path
+## Start with one control
 
 If this is your first custom UI, read these guides in this order:
 
 1. [Build your first custom control](/editor/custom-ui/controller-setup) and move Bold into your application.
 2. [Keep commands and controls in sync](/editor/custom-ui/commands-and-state) as the selection changes.
-3. [Build a custom toolbar](/editor/custom-ui/formatting-controls) with a toggle and value pickers.
-4. [Add document controls](/editor/custom-ui/zoom-and-document-state) for zoom and DOCX download.
 
-Only the first guide is a prerequisite. It establishes the controller setup the rest build on, so you can stop after
-any step. Step 2 explains how command state stays in sync and asks you to change nothing; steps 3 and 4 each replace
-that setup's Editor code rather than the guide before it.
+Then choose the controls your application needs:
 
-Steps 3 and 4 take the toolbar in different directions and are alternatives rather than a sequence: the custom toolbar
-owns the toolbar markup outright, while document controls keep SuperDoc's toolbar and remove only Zoom. Read both before
-combining them.
+- [Build a custom toolbar](/editor/custom-ui/formatting-controls) to own formatting controls and their layout.
+- [Add document controls](/editor/custom-ui/zoom-and-document-state) to own zoom and download while keeping the built-in toolbar.
+
+These are alternative recipes. Each replaces the first control's Editor code; neither requires the other.
 
 ## Choose a workflow
 

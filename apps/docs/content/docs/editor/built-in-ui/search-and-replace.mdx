@@ -13,7 +13,7 @@ Expand the Editor and open Search from the toolbar. The sample has three short p
 1. Search for `Client` and confirm that there are eight matches.
 2. Move through the results with Previous and Next, and watch the Editor scroll between pages.
 3. Turn on Match case and confirm that the count changes to seven.
-4. Turn Match case off, then replace one result with `Customer`.
+4. Turn Match case off. Expand the replacement row with the arrow beside Find, enter `Customer`, then choose **Replace**.
 5. Search for `Legacy` with **Tracked deletions** set to **Exclude** and confirm that there are no matches.
 6. Set **Tracked deletions** to **Include**, reopen Search, and search for `Legacy` again. The pending deletion is the
    only match.
@@ -29,7 +29,8 @@ disappear because Viewing cannot change the document.
 
 ## Enable built-in search
 
-Continue with `/sample.docx` from the [Quickstart](/editor/quickstart), then enable the search surface:
+These standalone examples use `public/sample.docx` from the [Quickstart](/editor/quickstart). Replace `src/main.ts`
+or `src/App.tsx` to enable the search surface:
 
 <FrameworkExampleTabs>
   <FrameworkExample filename='src/main.ts' framework='Vanilla'>
@@ -40,7 +41,7 @@ Continue with `/sample.docx` from the [Quickstart](/editor/quickstart), then ena
   </FrameworkExample>
 </FrameworkExampleTabs>
 
-Vanilla also needs separate toolbar and Editor mounts:
+For Vanilla, replace the contents of `<body>` in `index.html` with the toolbar and Editor mounts below:
 
 <include>../../../../snippets/editor/built-in-find-replace.html</include>
 

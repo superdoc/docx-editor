@@ -9,7 +9,8 @@ Editor starts.
 
 ## Set the startup configuration
 
-Add `documentMode` and `user` to the Editor setup from Quickstart:
+Add the matching import and `startupOptions` object at the top of your Quickstart file: `src/main.ts` in Vanilla or
+`src/App.tsx` in React, outside the component. These options name the author and start the Editor in suggesting mode:
 
 <FrameworkExampleTabs>
   <FrameworkExample filename='Startup options' framework='Vanilla'>
@@ -21,7 +22,7 @@ Add `documentMode` and `user` to the Editor setup from Quickstart:
 </FrameworkExampleTabs>
 
 In Vanilla, spread `startupOptions` into the object passed to `new SuperDoc()`. In React, spread it onto
-`SuperDocEditor`. Keep the callbacks and export code from Quickstart.
+`SuperDocEditor` as `{...startupOptions}`. Keep the callbacks and export code from Quickstart.
 
 Reload the application and change `September 1, 2026` to `October 1, 2026`. The edit should appear as a tracked change
 instead of replacing the date directly.
@@ -50,6 +51,9 @@ Changing the object passed to `new SuperDoc()` does not update a running Vanilla
 updates as a prop. Access other runtime methods through `editorRef.current?.getInstance()`. If a Vanilla setting has no
 runtime method, call `destroy()` on the current instance before creating its replacement. In React, remount
 `SuperDocEditor` by changing its `key`; the wrapper destroys the old instance.
+
+Keep React configuration objects such as `user` and `ui` outside the component or memoize them. Changing their object
+identity recreates the Editor; changing `documentMode` does not.
 
 ## Continue to document modes
 

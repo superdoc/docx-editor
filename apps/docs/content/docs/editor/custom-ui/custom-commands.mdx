@@ -31,14 +31,14 @@ state and result.
 
 ## Build the same command
 
-Complete [Build your first custom control](/editor/custom-ui/controller-setup) first. Continue with its `/sample.docx`
-and built-in toolbar.
+This standalone Vanilla recipe uses the project from [Build your first custom control](/editor/custom-ui/controller-setup).
+Keep its `public/sample.docx`; the example retains the built-in toolbar.
 
-Add the application action beside the Editor:
+Replace the contents of `<body>` in `index.html` to add the application action beside the Editor:
 
 <include>../../../../snippets/editor/custom-command.html</include>
 
-Register the command, then connect both triggers to its typed handle:
+Replace `src/main.ts` to register the command and connect both triggers to its typed handle:
 
 <include>../../../../snippets/editor/custom-command.ts</include>
 

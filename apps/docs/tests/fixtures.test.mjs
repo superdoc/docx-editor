@@ -264,6 +264,8 @@ test('the comments fixture keeps one focused review thread', async () => {
   assert.match(document, /September 30, 2026/);
   assert.match(comments, /<w:comment w:id="0"/);
   assert.match(comments, /Does this match the signed schedule\?/);
+  assert.match(comments, /xmlns:w14="http:\/\/schemas\.microsoft\.com\/office\/word\/2010\/wordml"/);
+  assert.match(comments, /<w:p w14:paraId="[0-9A-F]{8}">/);
   assert.match(comments, /w:author="SuperDoc Test User" w:initials="ST"/);
   assert.match(
     contentTypes,

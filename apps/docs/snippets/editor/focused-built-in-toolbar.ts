@@ -35,3 +35,5 @@ const superdoc = new SuperDoc({
   handleImageUpload,
   ui: { toolbar },
 });
+
+window.addEventListener('beforeunload', () => superdoc.destroy());

@@ -70,7 +70,7 @@ saveButton.addEventListener('click', async () => {
     status.value = editRevision === savedRevision ? 'Saved' : 'Unsaved changes';
   } catch (error) {
     status.value = 'Save failed. Try again.';
-    console.error('The document was not saved.', error);
+    console.error('Could not confirm the document was saved.', error);
   } finally {
     saveButton.disabled = false;
   }

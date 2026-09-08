@@ -533,6 +533,7 @@
     "/editor/custom-ui/review-highlights/",
     "/editor/custom-ui/search/",
     "/editor/custom-ui/selection-and-viewport/",
+    "/editor/custom-ui/selection-reference/",
     "/editor/custom-ui/tables/",
     "/editor/custom-ui/tracked-changes/",
     "/editor/custom-ui/zoom-and-document-state/",

@@ -1,5 +1,7 @@
-import { SuperDoc, createTheme, type ThemeConfig } from 'superdoc';
+import { createTheme } from 'superdoc';
 import 'superdoc/style.css';
+
+type ThemeConfig = Parameters<typeof createTheme>[0];
 
 const productTheme = {
   name: 'product',
@@ -18,10 +20,3 @@ const productTheme = {
 
 const themeClass = createTheme(productTheme);
 document.documentElement.classList.add(themeClass);
-
-const superdoc = new SuperDoc({
-  selector: '#editor',
-  document: '/sample.docx',
-});
-
-window.addEventListener('beforeunload', () => superdoc.destroy());

@@ -6,8 +6,9 @@ const tablePosition = document.querySelector<HTMLParagraphElement>('#table-posit
 const addRowButton = document.querySelector<HTMLButtonElement>('#add-row');
 const deleteRowButton = document.querySelector<HTMLButtonElement>('#delete-row');
 const tableStatus = document.querySelector<HTMLParagraphElement>('#table-status');
+const downloadButton = document.querySelector<HTMLButtonElement>('#download');
 
-if (!tablePosition || !addRowButton || !deleteRowButton || !tableStatus) {
+if (!tablePosition || !addRowButton || !deleteRowButton || !tableStatus || !downloadButton) {
   throw new Error('The table controls are incomplete.');
 }
 
@@ -19,6 +20,7 @@ const superdoc = new SuperDoc({
   selector: '#editor',
   document: '/contract.docx',
   onReady: ({ superdoc: readySuperDoc }) => {
+    downloadButton.disabled = false;
     const ui = readySuperDoc.ui;
     const addRow = ui.commands.get('table-add-row-after');
     const deleteRow = ui.commands.get('table-delete-row');
@@ -61,6 +63,19 @@ const superdoc = new SuperDoc({
       deleteRowButton.removeEventListener('click', removeRow);
     };
   },
+});
+
+downloadButton.addEventListener('click', async () => {
+  downloadButton.disabled = true;
+  try {
+    const file = await superdoc.export({ triggerDownload: true });
+    tableStatus.textContent = file ? 'DOCX downloaded.' : 'The document could not be exported.';
+  } catch (error) {
+    console.error('Could not export the document.', error);
+    tableStatus.textContent = 'Could not export the document. Try again.';
+  } finally {
+    downloadButton.disabled = false;
+  }
 });
 
 window.addEventListener('beforeunload', () => {

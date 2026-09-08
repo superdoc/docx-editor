@@ -1,0 +1,17 @@
+<div id="toolbar"></div>
+<div id="editor" style="height: 65vh; overflow: auto"></div>
+<aside aria-label="AI review">
+  <button id="ask" type="button" disabled>Ask AI about selection</button>
+  <form id="prompt" hidden>
+    <blockquote id="quote"></blockquote>
+    <label>Question <input id="question" value="What should I review?" required /></label>
+    <p>Simulated response: consider whether this wording needs a clearer limit.</p>
+    <label>Suggested wording <textarea id="suggested" required></textarea></label>
+    <button type="submit">Save as finding</button>
+    <button id="cancel" type="button">Cancel</button>
+  </form>
+  <ul id="findings"></ul>
+  <button id="download" type="button" disabled>Download DOCX</button>
+  <p id="status" role="status">Opening document…</p>
+</aside>
+<script type="module" src="/src/main.ts"></script>

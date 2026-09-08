@@ -34,10 +34,10 @@ Use tracked changes for edits because SuperDoc already renders and exports them 
 The [Track changes](/editor/custom-ui/tracked-changes) page owns navigation and accept/reject controls. Use
 [comments](/editor/custom-ui/comments) instead when people need a Word comment thread.
 
-## Build the same flow
+## Run the complete example
 
-Complete [Selection and position](/editor/custom-ui/selection-and-viewport) first. This step reuses its captured
-selection and sample document:
+Use the Vanilla project from [Custom UI setup](/editor/custom-ui/controller-setup). Save this sample as
+`public/contract.docx`:
 
 <FileDownload
   href='/fixtures/custom-selection-workflow.docx'
@@ -46,14 +46,34 @@ selection and sample document:
   fileType='DOCX'
 />
 
-Save this as `review-highlights.ts`. The controller uses `defineSuperDocExtension()` to validate stored data, refresh the
-visual layer, re-resolve anchors after edits, and reject actions bound to text that has since changed:
+Copy the two files under [Controller implementation](#controller-implementation) into `src/`.
+Replace the contents of `<body>` in `index.html` with:
 
-<include>../../../../snippets/editor/review-highlights.ts</include>
+<include>../../../../snippets/editor/review-findings-app.html</include>
 
-Create `review-highlights.css` beside it for the finding's visual mark:
+Replace `src/main.ts` with:
 
-<include>../../../../snippets/editor/review-highlights.css</include>
+<include>../../../../snippets/editor/review-findings-app.ts</include>
+
+Select a short phrase, choose **Ask AI about selection**, and save the simulated response as a finding. Then choose
+**Suggest edit** and **Download DOCX**. The example uses no model service. Edit the suggested wording before saving;
+the supplied response only demonstrates the workflow, not legal advice.
+
+This standalone example opens one document. It disables review actions and download while an action is pending.
+Keep the replacement guards below if you add file switching.
+
+## Extend an existing selection workflow
+
+This advanced recipe builds on [Selection and position](/editor/custom-ui/selection-and-viewport). It reuses the captured
+selection and sample document. Your application supplies the model response and finding panel; the controller below
+owns saving findings, resolving their anchors, and creating tracked suggestions.
+
+Keep the implementation to three actions: save a finding, show its text, and suggest an edit. Add more controls only when
+your workflow needs them.
+
+Create `src/review-highlights.ts` and `src/review-highlights.css` from the [controller implementation](#controller-implementation)
+at the end of this guide. The integration fragments below belong in your existing selection workflow; they are not a
+second standalone Editor.
 
 Create one controller for each Editor. Pass its extension through `extensions`, not the removed `editorExtensions`
 option. Set `user` to the identity that should author tracked suggestions from this Editor:
@@ -188,3 +208,16 @@ replaces the mark with a tracked revision. The finding card should remain availa
 If the same application action will appear in more than one control, use
 [Custom commands](/editor/custom-ui/custom-commands) to share its behavior and state. Otherwise, return to the
 [Custom UI overview](/editor/custom-ui/overview).
+
+## Controller implementation
+
+The controller uses `defineSuperDocExtension()` to register its visual layer and document lifecycle handlers. It validates
+stored data, re-resolves anchors after edits, and rejects stale selections. Keep these checks when adapting it.
+
+Save as `src/review-highlights.ts`:
+
+<include>../../../../snippets/editor/review-highlights.ts</include>
+
+Save as `src/review-highlights.css`:
+
+<include>../../../../snippets/editor/review-highlights.css</include>

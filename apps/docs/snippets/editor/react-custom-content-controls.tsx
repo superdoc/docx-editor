@@ -1,13 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { SuperDocEditor } from '@superdoc/react';
-import type { ContentControlInfo } from 'superdoc/ui';
-import {
-  SuperDocUIProvider,
-  useSetSuperDoc,
-  useSuperDocContentControls,
-  useSuperDocHost,
-  useSuperDocUI,
-} from 'superdoc/ui/react';
+import type { ContentControlInfo, ContentControlsSlice } from 'superdoc/ui';
+import { SuperDocUIProvider, useSetSuperDoc, useSuperDocHost, useSuperDocUI } from 'superdoc/ui/react';
 import '@superdoc/react/style.css';
 
 type PendingMutation =
@@ -55,13 +49,59 @@ function Editor() {
 function FieldPanel() {
   const host = useSuperDocHost();
   const ui = useSuperDocUI();
-  const fields = useSuperDocContentControls();
+  const [fields, setFields] = useState<ContentControlsSlice>({
+    status: 'pending',
+    items: [],
+    total: 0,
+    activeId: null,
+    activeIds: [],
+  });
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [pendingMutation, setPendingMutation] = useState<PendingMutation | null>(null);
   const [status, setStatus] = useState('Choose a field to edit it.');
+  const catalogRequest = useRef(0);
+  const mutationInFlight = useRef(false);
+
+  async function readFields(snapshot: ContentControlsSlice, failureMessage = 'The field list could not be refreshed.') {
+    const request = ++catalogRequest.current;
+    try {
+      const catalog = await host?.activeEditor?.doc?.contentControls?.list?.();
+      if (!catalog) throw new Error('Field catalog unavailable.');
+      if (request !== catalogRequest.current) return;
+      setFields({ ...snapshot, status: 'ready', items: catalog.items, total: catalog.total });
+    } catch {
+      if (request !== catalogRequest.current) return;
+      if (mutationInFlight.current) return;
+      setPendingMutation(null);
+      setStatus(failureMessage);
+    }
+  }
 
   useEffect(() => {
-    if (!pendingMutation) return;
+    if (!ui) return;
+    const stop = ui.contentControls.observe((snapshot) => {
+      void readFields(snapshot);
+    });
+    return () => {
+      catalogRequest.current += 1;
+      stop();
+    };
+  }, [ui, host]);
+
+  async function refreshFields() {
+    if (!ui) {
+      setPendingMutation(null);
+      setStatus('Editor unavailable.');
+      return;
+    }
+    await readFields(
+      ui.contentControls.getSnapshot(),
+      'The document changed, but the field list could not be refreshed.',
+    );
+  }
+
+  useEffect(() => {
+    if (!pendingMutation || mutationInFlight.current) return;
     const updatedField = fields.items.find((field) => mutationIsObserved(field, pendingMutation));
     if (!updatedField) return;
 
@@ -88,6 +128,7 @@ function FieldPanel() {
   }
 
   async function updateTextField(control: ContentControlInfo, value: string) {
+    if (pendingMutation || mutationInFlight.current) return;
     const documentApi = host?.activeEditor?.doc;
     if (!documentApi?.contentControls?.text?.setValue) {
       setStatus('Text field editing is unavailable.');
@@ -95,21 +136,27 @@ function FieldPanel() {
     }
 
     const name = fieldName(control);
-    setPendingMutation({ controlId: control.id, controlName: name, kind: 'text', value });
+    const mutation: PendingMutation = { controlId: control.id, controlName: name, kind: 'text', value };
+    mutationInFlight.current = true;
+    catalogRequest.current += 1;
+    setPendingMutation(mutation);
     setStatus(`Updating ${name}…`);
     try {
       const receipt = await documentApi.contentControls.text.setValue({ target: control.target, value });
+      mutationInFlight.current = false;
       if (!receipt.success) {
         setPendingMutation(null);
         setStatus(receipt.failure.message);
-      }
+      } else await refreshFields();
     } catch (error) {
+      mutationInFlight.current = false;
       setPendingMutation(null);
       setStatus(error instanceof Error ? error.message : `${name} could not be updated.`);
     }
   }
 
   async function updateCheckbox(control: ContentControlInfo, checked: boolean) {
+    if (pendingMutation || mutationInFlight.current) return;
     const documentApi = host?.activeEditor?.doc;
     if (!documentApi?.contentControls?.checkbox?.setState) {
       setStatus('Checkbox editing is unavailable.');
@@ -117,15 +164,20 @@ function FieldPanel() {
     }
 
     const name = fieldName(control);
-    setPendingMutation({ checked, controlId: control.id, controlName: name, kind: 'checkbox' });
+    const mutation: PendingMutation = { checked, controlId: control.id, controlName: name, kind: 'checkbox' };
+    mutationInFlight.current = true;
+    catalogRequest.current += 1;
+    setPendingMutation(mutation);
     setStatus(`Updating ${name}…`);
     try {
       const receipt = await documentApi.contentControls.checkbox.setState({ target: control.target, checked });
+      mutationInFlight.current = false;
       if (!receipt.success) {
         setPendingMutation(null);
         setStatus(receipt.failure.message);
-      }
+      } else await refreshFields();
     } catch (error) {
+      mutationInFlight.current = false;
       setPendingMutation(null);
       setStatus(error instanceof Error ? error.message : `${name} could not be updated.`);
     }

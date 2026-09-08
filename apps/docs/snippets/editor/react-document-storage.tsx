@@ -33,7 +33,7 @@ export default function App() {
     return () => controller.abort();
   }, []);
 
-  function showOpenError(error: unknown) {
+  function showOpenError({ error }: { error: unknown }) {
     console.error('Could not open the document.', error);
     setReady(false);
     setLoadError(true);
@@ -65,7 +65,7 @@ export default function App() {
       setSaveStatus(editRevisionRef.current === savedRevision ? 'Saved' : 'Unsaved changes');
     } catch (error) {
       setSaveStatus('Save failed. Try again.');
-      console.error('The document was not saved.', error);
+      console.error('Could not confirm the document was saved.', error);
     } finally {
       savingRef.current = false;
       setSaving(false);
@@ -83,12 +83,12 @@ export default function App() {
       <output aria-live='polite'>{saveStatus}</output>
       <SuperDocEditor
         document={document}
-        onContentError={({ error }) => showOpenError(error)}
+        onContentError={showOpenError}
         onEditorUpdate={() => {
           editRevisionRef.current += 1;
           setSaveStatus('Unsaved changes');
         }}
-        onException={({ error }) => showOpenError(error)}
+        onException={showOpenError}
         onReady={() => setReady(true)}
         ref={editorRef}
       />

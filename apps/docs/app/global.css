@@ -79,7 +79,7 @@
   --color-fd-secondary-foreground: var(--sd-text-primary);
 }
 
-.dark {
+:root.dark {
   --sd-gradient-from: #60a5fa;
   --sd-gradient-to: #c084fc;
   --sd-background: #0b0c10;

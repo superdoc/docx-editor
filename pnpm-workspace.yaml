@@ -154,7 +154,7 @@ overrides:
   protobufjs@8: '8.6.4'
   superdoc: 'workspace:*'
   '@superdoc/react': 'workspace:*'
-  '@superdoc/sdk': '2.10.0'
+  '@superdoc/sdk': '2.10.1-next.1'
   '@superdoc/common': 'workspace:*'
   '@superdoc/contracts': 'workspace:*'
   '@superdoc/dom-contract': 'workspace:*'
@@ -188,10 +188,10 @@ peerDependencyRules:
     vite: 0.2.7
     vitest: 4.1.10
 minimumReleaseAgeExclude:
-  - '@superdoc/docx-engine@0.12.0'
-  - '@superdoc/sdk-darwin-arm64@2.10.0'
-  - '@superdoc/sdk-darwin-x64@2.10.0'
-  - '@superdoc/sdk-linux-arm64@2.10.0'
-  - '@superdoc/sdk-linux-x64@2.10.0'
-  - '@superdoc/sdk-windows-x64@2.10.0'
-  - '@superdoc/sdk@2.10.0'
+  - '@superdoc/docx-engine@0.12.0 || 0.12.1-next.1'
+  - '@superdoc/sdk-darwin-arm64@2.10.0 || 2.10.1-next.1'
+  - '@superdoc/sdk-darwin-x64@2.10.0 || 2.10.1-next.1'
+  - '@superdoc/sdk-linux-arm64@2.10.0 || 2.10.1-next.1'
+  - '@superdoc/sdk-linux-x64@2.10.0 || 2.10.1-next.1'
+  - '@superdoc/sdk-windows-x64@2.10.0 || 2.10.1-next.1'
+  - '@superdoc/sdk@2.10.0 || 2.10.1-next.1'

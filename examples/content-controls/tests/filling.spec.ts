@@ -28,9 +28,11 @@ async function activeContentControlId(page: Page) {
 }
 
 async function clientControlIds(page: Page) {
-  return page.locator('[data-sdt-tag="client.legalName"][data-sdt-id]').evaluateAll((elements) => [
-    ...new Set(elements.map((element) => (element as HTMLElement).dataset.sdtId).filter(Boolean)),
-  ]);
+  return page
+    .locator('[data-sdt-tag="client.legalName"][data-sdt-id]')
+    .evaluateAll((elements) => [
+      ...new Set(elements.map((element) => (element as HTMLElement).dataset.sdtId).filter(Boolean)),
+    ]);
 }
 
 async function makeSecondClientNameOccurrenceIncompatible() {
@@ -145,6 +147,60 @@ test('populates, exports, and reopens the service agreement', async ({ page }) =
   expect(errors).toEqual([]);
 });
 
+test('locks the filled address and keeps its value and lock after reopening', async ({ page }) => {
+  test.setTimeout(180_000);
+  async function exportControls() {
+    const download = page.waitForEvent('download');
+    await page.getByRole('button', { name: 'Export DOCX' }).click();
+    const path = await (await download).path();
+    if (!path) throw new Error('Missing exported DOCX.');
+    const bytes = await readFile(path);
+    const zip = await JSZip.loadAsync(bytes);
+    const xml = await zip.file('word/document.xml')!.async('string');
+    const controls = await page.evaluate((xml) => {
+      const document = new DOMParser().parseFromString(xml, 'application/xml');
+      const namespace = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+      return [...document.getElementsByTagNameNS(namespace, 'sdt')].map((control) => ({
+        tag: control.getElementsByTagNameNS(namespace, 'tag')[0]?.getAttributeNS(namespace, 'val'),
+        lock: control.getElementsByTagNameNS(namespace, 'lock')[0]?.getAttributeNS(namespace, 'val') ?? null,
+        text: control.getElementsByTagNameNS(namespace, 'sdtContent')[0]?.textContent,
+      }));
+    }, xml);
+    return { bytes, controls };
+  }
+
+  await page.goto('/?workflow=fill');
+  const address = page.getByRole('textbox', { name: 'Client address' });
+  await expect(address).toBeEnabled({ timeout: 120_000 });
+  await address.fill('42 Review Lane');
+  await page.getByLabel('Lock address after filling').check();
+  await expect(page.locator('#filling-status')).toHaveText('Client address locked.', { timeout: 120_000 });
+  await expect(address).toBeDisabled();
+  const { bytes, controls } = await exportControls();
+  expect(controls.filter((control) => control.tag === 'client.address')).toEqual([
+    { tag: 'client.address', lock: 'contentLocked', text: '42 Review Lane' },
+  ]);
+  expect(controls.filter((control) => control.lock && control.lock !== 'unlocked').map((control) => control.tag)).toEqual([
+    'client.address',
+  ]);
+  await page.route('**/service-agreement-template.docx', (route) =>
+    route.fulfill({
+      body: bytes,
+      contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    }),
+  );
+  await page.reload();
+  await expect(page.getByLabel('Lock address after filling')).toBeChecked({ timeout: 120_000 });
+  await expect(address).toBeDisabled();
+  await page.getByLabel('Lock address after filling').uncheck();
+  await expect(address).toBeEnabled();
+  const unlocked = await exportControls();
+  const unlockedAddresses = unlocked.controls.filter((control) => control.tag === 'client.address');
+  expect(unlockedAddresses).toHaveLength(1);
+  expect(unlockedAddresses[0].text).toBe('42 Review Lane');
+  expect([null, 'unlocked']).toContain(unlockedAddresses[0].lock);
+});
+
 test('exports the latest form values without waiting for debounced updates', async ({ page }) => {
   test.setTimeout(300_000);
   await page.goto('/?workflow=fill');
@@ -182,7 +238,9 @@ test('reports a failed filled-document export', async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
-test('serializes rapid client-name focus requests', async ({ page }) => {
+test('waits for navigation readiness and serializes rapid client-name focus requests', async ({ page }) => {
+  const session = await page.context().newCDPSession(page);
+  await session.send('Emulation.setCPUThrottlingRate', { rate: 4 });
   test.setTimeout(300_000);
   await page.goto('/?workflow=fill');
   await expect(page.getByRole('textbox', { name: 'Client legal name' })).toBeEnabled({ timeout: 120_000 });
@@ -213,9 +271,7 @@ test('shows partial success when one matching control has an incompatible type',
 
   await nameInput.fill(clientName);
   await expect(page.locator('#filling-status')).toHaveText('Updated 2 of 3 locations.', { timeout: 120_000 });
-  await expect
-    .poll(async () => (await page.locator('#editor').textContent())?.split(clientName).length ?? 0)
-    .toBe(3);
+  await expect.poll(async () => (await page.locator('#editor').textContent())?.split(clientName).length ?? 0).toBe(3);
 
   let downloaded = false;
   page.on('download', () => {

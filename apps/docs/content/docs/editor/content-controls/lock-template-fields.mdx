@@ -16,6 +16,10 @@ control itself can be removed.
 
 ## Set the lock mode
 
+In the [runnable Fill example](https://go.superdoc.dev/examples/content-controls?workflow=fill), update the address,
+then select **Lock address after filling**. Export the DOCX to keep both the value and its lock. Clear the checkbox to
+allow edits again.
+
 Continue with the [filled template](/editor/content-controls/fill-a-docx-template). After `onReady`, pass
 `superdoc.activeEditor.doc`, the tag `client.address`, and a mode below to this helper. That tag identifies the single
 address control used in the demo. The helper requires exactly one match; `client.legalName` has three occurrences.

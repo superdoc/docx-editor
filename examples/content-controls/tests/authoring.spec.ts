@@ -5,6 +5,7 @@ import JSZip from 'jszip';
 const clientName = 'Acme Products, Inc.';
 const confidentialityClause =
   'Each party will protect confidential information with reasonable care and use it only to perform this agreement.';
+const mutualClause = 'Both parties will protect confidential information for three years after this agreement ends.';
 
 async function textBoundary(line: Locator, text: string, offset: number): Promise<{ x: number; y: number }> {
   const point = await line.evaluate(
@@ -141,6 +142,18 @@ test('authors, exports, and reopens inline and block fields', async ({ page }) =
   await expect(page.locator('#detected-controls')).toContainText('block · richText');
   await expect(page.locator('#editor')).toContainText(confidentialityClause);
   await expect(page.getByRole('button', { name: 'Add block field' })).toBeDisabled();
+  await page.getByRole('button', { name: 'Use mutual confidentiality clause' }).click();
+  await expect(page.locator('#authoring-status')).toHaveText('Replaced the confidentiality clause.', {
+    timeout: 120_000,
+  });
+  await expect(page.locator('#editor')).toContainText(mutualClause);
+  await page.getByRole('button', { name: 'Use mutual confidentiality clause' }).click();
+  await expect(page.locator('#authoring-status')).toHaveText(
+    /^(Replaced the confidentiality clause\.|The mutual confidentiality clause is already in use\.)$/,
+  );
+  await expect(page.getByRole('button', { name: 'Use mutual confidentiality clause' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Export template' })).toBeEnabled();
+  await expect(page.locator('#editor')).not.toContainText(confidentialityClause);
   await expect(page.locator('#detected-controls code', { hasText: 'agreement.confidentiality' })).toHaveCount(1);
 
   await page.evaluate(() => {
@@ -165,6 +178,19 @@ test('authors, exports, and reopens inline and block fields', async ({ page }) =
   const documentXml = await zip.file('word/document.xml')?.async('string');
   expect(documentXml).toContain('<w:tag w:val="client.legalName"');
   expect(documentXml).toContain('<w:tag w:val="agreement.confidentiality"');
+  const clauseContents = await page.evaluate((xml) => {
+    const document = new DOMParser().parseFromString(xml!, 'application/xml');
+    const namespace = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+    return [...document.getElementsByTagNameNS(namespace, 'sdt')]
+      .filter((control) =>
+        [...control.getElementsByTagNameNS(namespace, 'tag')].some(
+          (tag) => tag.getAttributeNS(namespace, 'val') === 'agreement.confidentiality',
+        ),
+      )
+      .map((control) => control.getElementsByTagNameNS(namespace, 'sdtContent')[0]?.textContent);
+  }, documentXml);
+  expect(clauseContents).toEqual([mutualClause]);
+  expect(documentXml).not.toContain(confidentialityClause);
   expect(documentXml).toMatch(/<w:p[^>]*>[\s\S]*<w:sdt>[\s\S]*client\.legalName[\s\S]*<\/w:sdt>[\s\S]*<\/w:p>/);
   expect(documentXml).toMatch(/<w:body[^>]*>[\s\S]*<w:sdt>[\s\S]*agreement\.confidentiality[\s\S]*<w:sdtContent><w:p/);
 
@@ -177,5 +203,10 @@ test('authors, exports, and reopens inline and block fields', async ({ page }) =
   await page.reload();
   await expect(page.locator('#detected-controls')).toContainText('client.legalName', { timeout: 120_000 });
   await expect(page.locator('#detected-controls')).toContainText('agreement.confidentiality');
+  const reopenedClause = page.locator('#detected-controls li').filter({ hasText: 'agreement.confidentiality' });
+  await expect(reopenedClause).toHaveCount(1);
+  await expect(reopenedClause).toContainText('block · richText');
+  await expect(page.locator('#editor')).toContainText(mutualClause);
+  await expect(page.locator('#editor')).not.toContainText(confidentialityClause);
   expect(errors).toEqual([]);
 });

@@ -63,6 +63,16 @@ point. A synthetic NDA derived from the same source with one tracked insertion
 the headless quickstart can query the word `termination` and accept a tracked
 change.
 
+## `basic-review.docx`
+
+The basic Editor review guide and Document modes review example share this
+compact fixture: one tracked insertion, then payment and support sentences for
+new proposals. It uses 12 pt body text on a 6-by-5-inch page. The original NDA
+above remains available to headless examples.
+
+Rebuild and validation provenance are under `scripts/fixtures/basic-review/`.
+Fixture tests enforce one proposal, short text, and identical example bytes.
+
 ## `formatting-sample.docx`
 
 The custom UI overview's live Bold control. Three short paragraphs, no headings,

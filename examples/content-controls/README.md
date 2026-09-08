@@ -14,6 +14,10 @@ pnpm dev
 Choose **Add fields** to create inline and block fields from document selections. Choose **Fill fields** to update
 repeated text fields and a checkbox in a prepared template. Each workflow loads its own service-agreement fixture.
 
+After filling, select **Lock address after filling** to protect that value, or clear it to allow edits again.
+After adding the block field, choose **Use mutual confidentiality clause** to replace its paragraph without removing
+the field. Export and reopen to check that the lock or replacement remains.
+
 ## Verify it
 
 ```bash

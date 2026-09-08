@@ -16,15 +16,19 @@ Use the same toolbar and Editor containers from [Configure the built-in toolbar]
 
 <include>../../../snippets/editor/built-in-tracked-review.ts</include>
 
-Copy the [tracked-changes fixture](/fixtures/tracked-changes.docx) to your app's public directory as `contract.docx`, or update the document URL.
+Copy the [review fixture](/fixtures/basic-review.docx) to your app's public directory as `contract.docx`, or update the document URL.
 
 The built-in toolbar reads the active selection and exposes accept or reject actions when a tracked change can be decided. Anything you type in suggesting mode becomes a new proposal rather than a direct edit.
 
 ## Try the review flow
 
-The sample opens automatically with one tracked change. Select the change, then accept or reject it.
+Expand the Editor. The sample opens with one active proposal: choose **Accept** or **Reject**.
 
-<EditorDemo fixture='/fixtures/tracked-changes.docx' preset='tracked-review' title='Review a tracked change' />
+<EditorDemo fixture='/fixtures/basic-review.docx' preset='tracked-review' title='Review a tracked change' />
+
+For the complete project, open the [review example](https://go.superdoc.dev/examples/document-modes?workflow=review).
+Accept the existing proposal, make two more edits, reject one, and export with the other undecided. Reopen the DOCX to
+check which text and proposals remain.
 
 Accepting a change keeps the proposed result and removes the review mark. Rejecting it restores the prior content and removes the review mark. Both decisions change the open document and must be followed by your normal save or export flow.
 

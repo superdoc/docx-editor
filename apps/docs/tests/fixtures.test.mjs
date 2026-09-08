@@ -173,6 +173,19 @@ test('the tracked-changes fixture keeps its tracked change', async () => {
   assert.ok(/<w:ins\b/.test(document), 'tracked-changes.docx must retain its tracked insertion');
 });
 
+test('basic review keeps one proposal and matches the runnable example', async () => {
+  const { bytes, document, comments, core } = await openFixture('basic-review.docx');
+  assert.deepEqual(bytes, await readFile(new URL('../../../examples/document-modes/public/basic-review.docx', import.meta.url)));
+  const text = [...document.matchAll(/<w:t\b[^>]*>(.*?)<\/w:t>/g)].map((match) => match[1]).join(' ');
+  assert.ok(text.length < 250);
+  assert.equal(document.match(/<w:ins\b/g)?.length, 1);
+  assert.match(document, /installation and/);
+  assert.match(document, /Payment is due within 30 days/);
+  assert.match(document, /Support lasts for one year/);
+  assert.equal(comments, '');
+  assert.equal(core, '');
+});
+
 test('the service-agreement template keeps its field map and matches the runnable example', async () => {
   const { bytes, document, core, app } = await openFixture('service-agreement-template.docx');
   const example = await readFile(

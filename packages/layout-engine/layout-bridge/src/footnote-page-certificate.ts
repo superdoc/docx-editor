@@ -149,6 +149,39 @@ export const transferFootnotePageCertificate = (
   return certificate;
 };
 
+/** Reissues exact page-local facts after an owner-proved retained-tail index shift. */
+export const rebaseFootnotePageCertificate = (
+  source: Page,
+  target: Page,
+  pageIndexDelta: number,
+  expectedOwner: FootnoteCertificateOwner,
+): FootnotePageCertificate | null => {
+  if (!Number.isSafeInteger(pageIndexDelta) || !isIssuedOwner(expectedOwner)) return null;
+  const certificate = readFootnotePageCertificate(source, expectedOwner);
+  if (
+    !certificate ||
+    !Number.isSafeInteger(certificate.pageIndex) ||
+    certificate.pageIndex < 0 ||
+    source.number !== certificate.pageIndex + 1
+  ) {
+    return null;
+  }
+  const targetPageIndex = certificate.pageIndex + pageIndexDelta;
+  if (
+    !Number.isSafeInteger(targetPageIndex) ||
+    targetPageIndex < 0 ||
+    target.number !== source.number + pageIndexDelta ||
+    target.number !== targetPageIndex + 1
+  ) {
+    return null;
+  }
+  return issueFootnotePageCertificate(target, expectedOwner, {
+    pageIndex: targetPageIndex,
+    incomingByColumn: certificate.incomingByColumn,
+    outgoingByColumn: certificate.outgoingByColumn,
+  });
+};
+
 const rangesEqual = (left: Readonly<FootnoteRange>, right: Readonly<FootnoteRange>): boolean => {
   if (left.kind !== right.kind || left.blockId !== right.blockId || left.height !== right.height) return false;
   if ('fromLine' in left && 'fromLine' in right) {

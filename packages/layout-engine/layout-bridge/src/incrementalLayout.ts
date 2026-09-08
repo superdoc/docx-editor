@@ -122,6 +122,7 @@ import {
   createFootnoteCertificateOwner,
   issueFootnotePageCertificate,
   readFootnotePageCertificate,
+  rebaseFootnotePageCertificate,
   transferFootnotePageCertificate,
   pendingFootnoteQueuesEqual,
   type FootnoteCertificateOwner,
@@ -222,6 +223,8 @@ type CoupledFootnoteRetainedState = {
   readonly refIndexesByBlock: ReadonlyMap<string, readonly number[]>;
   readonly refIndexById: ReadonlyMap<string, number>;
   readonly blocksById: Map<string, FlowBlock>;
+  /** Current text measures; certificate geometry may predate a layout-equivalent renumber. */
+  readonly measuresById: Map<string, Measure>;
   readonly extraBlocks: FlowBlock[];
   readonly extraMeasures: Measure[];
   readonly extraIndexById: ReadonlyMap<string, number>;
@@ -245,18 +248,18 @@ function readExactCoupledNotePlane(
     !retained ||
     !issuedCoupledFootnoteStates.has(retained) ||
     retained.noteBlocksPlaneIdentity !== blocksByNoteId ||
-    !(retained.prepared.measuresById instanceof Map) ||
+    !(retained.measuresById instanceof Map) ||
     !(retained.prepared.fullHeightById instanceof Map) ||
     !(retained.prepared.firstLineHeightById instanceof Map) ||
     retained.blocksById.size === 0 ||
-    retained.blocksById.size !== retained.prepared.measuresById.size ||
+    retained.blocksById.size !== retained.measuresById.size ||
     retained.refIndexById.size !== retained.prepared.fullHeightById.size ||
     retained.refIndexById.size !== retained.prepared.firstLineHeightById.size
   )
     return null;
   return {
     blocksByBlockId: retained.blocksById,
-    measuresByBlockId: retained.prepared.measuresById,
+    measuresByBlockId: retained.measuresById,
     totalMap: retained.prepared.fullHeightById,
     firstLineMap: retained.prepared.firstLineHeightById,
   };
@@ -266,6 +269,8 @@ type PreparedCoupledFootnoteLayout = {
   footnotes: FootnotesLayoutInput;
   /** Current note geometry owns a fresh coupled pass and may not resume an older page certificate. */
   freshDocumentStart?: true;
+  /** A complete measured current note plane retained this exact immutable owner. */
+  measuredCurrentNotePlaneRetainsOwner?: true;
 };
 type CoupledFootnoteLayoutPass = {
   owner: FootnoteCertificateOwner;
@@ -348,12 +353,14 @@ function rebaseCoupledFootnoteReferences(input: {
   dirty: ReturnType<typeof computeDirtyRegions>;
   reuse: IncrementalLayoutReuseOptions;
   currentNoteBlocksById: Map<string, FlowBlock>;
+  currentNoteMeasuresById: ReadonlyMap<string, Measure>;
   restoration?: {
     source: CoupledFootnoteRetainedState;
     restoredNoteIds: ReadonlySet<string>;
   };
 }): CoupledFootnoteRetainedState | null {
-  const { retained, footnotes, blocks, dirty, reuse, currentNoteBlocksById, restoration } = input;
+  const { retained, footnotes, blocks, dirty, reuse, currentNoteBlocksById, currentNoteMeasuresById, restoration } =
+    input;
   const previousToCurrent = reuse.blockIdRewrites?.previousToCurrent ?? new Map<string, string>();
   const currentToPrevious = reuse.blockIdRewrites?.currentToPrevious ?? new Map<string, string>();
   const retainedCarrierDeleted = dirty.deletedBlockIds.some((id) => retained.refIndexesByBlock.has(id));
@@ -493,7 +500,7 @@ function rebaseCoupledFootnoteReferences(input: {
       const blocks = footnotes.blocksById.get(noteId);
       if (!blocks?.length) return null;
       for (const block of blocks) {
-        const measure = prepared.measuresById.get(block.id);
+        const measure = currentNoteMeasuresById.get(block.id);
         if (!measure) return null;
         const retainedIndex = extraIndexById.get(block.id);
         if (retainedIndex != null && extraBlocks[retainedIndex] === block && extraMeasures[retainedIndex] === measure)
@@ -509,27 +516,43 @@ function rebaseCoupledFootnoteReferences(input: {
         (extraIndexById as Map<string, number>).set(block.id, targetIndex);
       }
     }
-  } else if (currentNoteBlocksById.size < retained.blocksById.size) {
-    // The coupled owner remains the certificate authority for retained pages,
-    // but the painter lookup plane must describe only the current note
-    // inventory. Keeping an orphaned note block here is invisible until a
-    // following exact edit reuses the plane, at which point stale lookup
-    // ownership can outlive the deleted reference. Page-specific separator
-    // drawings are not note blocks and remain available for adopted pages.
-    const removedBlockIds = new Set(
-      [...retained.blocksById.keys()].filter((blockId) => !currentNoteBlocksById.has(blockId)),
-    );
-    if (removedBlockIds.size > 0) {
+  } else {
+    // The certificate owner keeps its immutable prepared geometry. The painter
+    // plane is separate: after an exactly proved removal it must contain the
+    // current surviving note objects and their current equivalent measures,
+    // while orphaned note blocks disappear. Decorative separator entries are
+    // retained unchanged.
+    const notePlaneChanged =
+      currentNoteBlocksById.size !== retained.blocksById.size ||
+      [...currentNoteBlocksById].some(
+        ([blockId, block]) =>
+          retained.blocksById.get(blockId) !== block ||
+          currentNoteMeasuresById.get(blockId) !== retained.measuresById.get(blockId),
+      );
+    if (notePlaneChanged) {
+      const retainedNoteBlockIds = new Set(retained.blocksById.keys());
+      const observedCurrentNoteBlockIds = new Set<string>();
       extraBlocks = [];
       extraMeasures = [];
       extraIndexById = new Map<string, number>();
       retained.extraBlocks.forEach((block, index) => {
-        if (removedBlockIds.has(block.id)) return;
+        const isRetainedNoteBlock = retainedNoteBlockIds.has(block.id);
+        const currentNoteBlock = currentNoteBlocksById.get(block.id);
+        if (isRetainedNoteBlock && !currentNoteBlock) return;
+        const currentMeasure = currentNoteBlock ? currentNoteMeasuresById.get(block.id) : retained.extraMeasures[index];
+        if (!currentMeasure) return;
         const targetIndex = extraBlocks.length;
-        extraBlocks.push(block);
-        extraMeasures.push(retained.extraMeasures[index]!);
+        extraBlocks.push(currentNoteBlock ?? block);
+        extraMeasures.push(currentMeasure);
         (extraIndexById as Map<string, number>).set(block.id, targetIndex);
+        if (currentNoteBlock) observedCurrentNoteBlockIds.add(block.id);
       });
+      if (
+        observedCurrentNoteBlockIds.size !== currentNoteBlocksById.size ||
+        [...currentNoteBlocksById.keys()].some((blockId) => !observedCurrentNoteBlockIds.has(blockId))
+      ) {
+        return null;
+      }
     }
   }
 
@@ -543,6 +566,7 @@ function rebaseCoupledFootnoteReferences(input: {
     refIndexesByBlock,
     refIndexById,
     blocksById: currentNoteBlocksById,
+    measuresById: new Map(currentNoteMeasuresById),
     extraBlocks,
     extraMeasures,
     extraIndexById,
@@ -739,6 +763,8 @@ export type IncrementalLayoutReuseSummary = {
   sourceConvergencePageIndex: number | null;
   pagesPaginated: number | null;
   pagesSplicedByReuse: number;
+  /** Shifted adopted pages carry exact note queues reissued by the retained coupled owner. */
+  coupledFootnoteTailCertificateRebased?: true;
   /**
    * Proof for a retained tail. Pages in this interval remain byte-for-byte
    * retained; consumers apply the position transforms only when a page enters
@@ -796,6 +822,8 @@ export type IncrementalLayoutTailAdoption = {
   /** Lazy old->current block-id rekeys for an ordinal-changing structural splice. */
   blockIdRewrites?: ReadonlyMap<string, string> | null;
 };
+
+const shiftedCoupledFootnoteTailOwners = new WeakMap<IncrementalLayoutTailAdoption, FootnoteCertificateOwner>();
 
 function roundTimingMs(value: number): number {
   return Math.round(Math.max(0, value) * 1000) / 1000;
@@ -2225,6 +2253,7 @@ function prepareFreshDocumentCoupledFootnotes(input: {
       refIndexesByBlock,
       refIndexById,
       blocksById,
+      measuresById: prepared.measuresById,
       extraBlocks,
       extraMeasures,
       extraIndexById: new Map(extraBlocks.map((block, index) => [block.id, index])),
@@ -2232,6 +2261,89 @@ function prepareFreshDocumentCoupledFootnotes(input: {
     footnotes: input.footnotes,
     freshDocumentStart: true,
   };
+}
+
+/**
+ * Proves that a fully measured current surviving-note plane can paginate with
+ * an existing owner's immutable prepared geometry. Content objects may differ
+ * after renumbering, but every frame, range, and height consumed by coupled
+ * pagination must remain exact. Removed notes are excluded by the separately
+ * proved ordered-reference rebase.
+ */
+function readMeasuredLayoutEquivalentCoupledNotePlane(input: {
+  retained: CoupledFootnoteRetainedState | null | undefined;
+  footnotes: FootnotesLayoutInput;
+  measuresByBlockId: ReadonlyMap<string, Measure>;
+  bodyHeightByNoteId: ReadonlyMap<string, number>;
+  firstLineHeightByNoteId: ReadonlyMap<string, number>;
+}): { blocksByBlockId: Map<string, FlowBlock>; measuresByBlockId: ReadonlyMap<string, Measure> } | null {
+  const { retained, footnotes, measuresByBlockId, bodyHeightByNoteId, firstLineHeightByNoteId } = input;
+  if (!retained || !issuedCoupledFootnoteStates.has(retained)) return null;
+  const noteIds = footnotes.refs.map((reference) => reference.id);
+  const uniqueNoteIds = new Set(noteIds);
+  if (
+    noteIds.length === 0 ||
+    uniqueNoteIds.size !== noteIds.length ||
+    uniqueNoteIds.size !== footnotes.blocksById.size ||
+    [...footnotes.blocksById.keys()].some((noteId) => !uniqueNoteIds.has(noteId))
+  ) {
+    return null;
+  }
+
+  const blocksByBlockId = new Map<string, FlowBlock>();
+  const rangesByNoteId = new Map<string, FootnoteRange[]>();
+  for (const noteId of noteIds) {
+    const blocks = footnotes.blocksById.get(noteId);
+    const retainedRanges = retained.prepared.rangesByFootnoteId.get(noteId);
+    if (!blocks?.length || !retainedRanges || !retained.refIndexById.has(noteId)) return null;
+    for (const block of blocks) {
+      const retainedBlock = retained.blocksById.get(block.id);
+      const retainedMeasure = retained.prepared.measuresById.get(block.id);
+      const currentMeasure = measuresByBlockId.get(block.id);
+      if (!block.id || blocksByBlockId.has(block.id) || !retainedBlock || !retainedMeasure || !currentMeasure) {
+        return null;
+      }
+      if (
+        (block !== retainedBlock || currentMeasure !== retainedMeasure) &&
+        !areChangedFootnoteBlockFramesEquivalent(retainedBlock, block, retainedMeasure, currentMeasure)
+      ) {
+        return null;
+      }
+      // Continuation cuts consume individual line heights from the immutable
+      // certificate measure, even when the paragraph's total height is equal.
+      if (
+        currentMeasure !== retainedMeasure &&
+        (retainedMeasure.kind !== 'paragraph' ||
+          currentMeasure.kind !== 'paragraph' ||
+          retainedMeasure.lines.length !== currentMeasure.lines.length ||
+          retainedMeasure.lines.some((line, index) => line.lineHeight !== currentMeasure.lines[index].lineHeight))
+      ) {
+        return null;
+      }
+      blocksByBlockId.set(block.id, block);
+    }
+    const currentRanges = buildFootnoteRanges(blocks, measuresByBlockId);
+    if (!areFootnoteRangesLayoutEquivalent(retainedRanges, currentRanges)) return null;
+    if (
+      bodyHeightByNoteId.get(noteId) !== retained.prepared.fullHeightById.get(noteId) ||
+      firstLineHeightByNoteId.get(noteId) !== retained.prepared.firstLineHeightById.get(noteId)
+    ) {
+      return null;
+    }
+    rangesByNoteId.set(noteId, currentRanges);
+  }
+  if (blocksByBlockId.size !== measuresByBlockId.size) return null;
+  if (
+    resolveSeparatorSpacingBefore(
+      rangesByNoteId,
+      measuresByBlockId,
+      footnotes.separatorSpacingBefore,
+      DEFAULT_FOOTNOTE_SEPARATOR_SPACING_BEFORE,
+    ) !== retained.prepared.separatorSpacingBefore
+  ) {
+    return null;
+  }
+  return { blocksByBlockId, measuresByBlockId };
 }
 
 export interface IncrementalLayoutExecutionControl {
@@ -3377,7 +3489,12 @@ export async function incrementalLayout(
           sectionColumnsByIndex: warmSeed.sectionColumnsByIndex,
         }
       : null;
-  const preparedWarmCoupled: PreparedCoupledFootnoteLayout | null = (() => {
+  const prepareRetainedCoupled = (
+    currentNotePlane: {
+      blocksByBlockId: Map<string, FlowBlock>;
+      measuresByBlockId: ReadonlyMap<string, Measure>;
+    } | null,
+  ): PreparedCoupledFootnoteLayout | null => {
     let retained = warmSeed?.coupled;
     const proof = layoutReuse?.dependencyProof;
     const restorationProof = layoutReuse?.provedNoteReferenceRestoration;
@@ -3408,8 +3525,7 @@ export async function incrementalLayout(
       !retained ||
       !issuedCoupledFootnoteStates.has(retained) ||
       !warmSeedUsable ||
-      warmStart?.noteMeasurePlaneRetainedExact !== true ||
-      !retainedCurrentNotePlane ||
+      !currentNotePlane ||
       !earlyFootnotesInput ||
       !layoutReuse?.currentBlockIndexById ||
       !layoutReuse.provedDirtyRegion ||
@@ -3435,7 +3551,8 @@ export async function incrementalLayout(
       blocks: nextBlocks,
       dirty,
       reuse: layoutReuse,
-      currentNoteBlocksById: retainedCurrentNotePlane.blocksByBlockId,
+      currentNoteBlocksById: currentNotePlane.blocksByBlockId,
+      currentNoteMeasuresById: currentNotePlane.measuresByBlockId,
       ...(restoration ? { restoration } : {}),
     });
     if (!rebasedRetained) return null;
@@ -3474,7 +3591,9 @@ export async function incrementalLayout(
     )
       return null;
     return { retained, footnotes: earlyFootnotesInput };
-  })();
+  };
+  const preparedWarmCoupled =
+    warmStart?.noteMeasurePlaneRetainedExact === true ? prepareRetainedCoupled(retainedCurrentNotePlane) : null;
   let preparedCoupled = preparedWarmCoupled;
   let preparedWarmNoteMeasures: ReadonlyMap<string, Measure> | null = null;
   let seededInitialLayout = false;
@@ -3490,7 +3609,7 @@ export async function incrementalLayout(
         separatorSpacingBefore: prepared.separatorSpacingBefore,
       },
     };
-    preparedWarmNoteMeasures = prepared.measuresById;
+    preparedWarmNoteMeasures = preparedCoupled.retained.measuresById;
   } else if (warmSeedUsable) {
     const earlyFootnoteWidth =
       retainedFootnoteGeometry?.measurementWidth ?? resolveFootnoteMeasurementWidth(options, nextBlocks);
@@ -3518,14 +3637,24 @@ export async function incrementalLayout(
         warmSeed.paginationPolicy === 'coupled-v1' &&
         getCoupledFootnotePaginationUnsupportedReason(nextBlocks, measures, options, earlyFootnotesInput.refs) == null
       ) {
-        preparedCoupled = prepareFreshDocumentCoupledFootnotes({
+        const layoutEquivalentPlane = readMeasuredLayoutEquivalentCoupledNotePlane({
+          retained: warmSeed.coupled,
           footnotes: earlyFootnotesInput,
           measuresByBlockId: measuresById,
           bodyHeightByNoteId: totalMap,
           firstLineHeightByNoteId: firstLineMap,
-          options,
-          headerFooterGeometryFingerprint,
         });
+        const measuredRetainedCoupled = prepareRetainedCoupled(layoutEquivalentPlane);
+        preparedCoupled = measuredRetainedCoupled
+          ? { ...measuredRetainedCoupled, measuredCurrentNotePlaneRetainsOwner: true }
+          : prepareFreshDocumentCoupledFootnotes({
+              footnotes: earlyFootnotesInput,
+              measuresByBlockId: measuresById,
+              bodyHeightByNoteId: totalMap,
+              firstLineHeightByNoteId: firstLineMap,
+              options,
+              headerFooterGeometryFingerprint,
+            });
       }
       if (preparedCoupled) {
         const prepared = preparedCoupled.retained.prepared;
@@ -4969,9 +5098,10 @@ export async function incrementalLayout(
             columns,
             indexes,
           );
-          let nextExtras = retained.extraBlocks;
-          let nextExtraMeasures = retained.extraMeasures;
-          let nextExtraIndexes = retained.extraIndexById;
+          const retainedExtraPlane = rebaseRetainedCoupledExtraPlaneForTail(retained, layoutReuseSummary);
+          let nextExtras = retainedExtraPlane.blocks;
+          let nextExtraMeasures = retainedExtraPlane.measures;
+          let nextExtraIndexes = retainedExtraPlane.indexById;
           for (let index = 0; index < injected.decorativeBlocks.length; index++) {
             const block = injected.decorativeBlocks[index];
             const measured = injected.decorativeMeasures[index];
@@ -5000,7 +5130,7 @@ export async function incrementalLayout(
           const currentNoteFirstLineHeights = exactNotePlane?.firstLineMap ?? new Map<string, number>();
           if (!exactNotePlane) {
             for (const blockId of retained.blocksById.keys()) {
-              const measure = prepared.measuresById.get(blockId);
+              const measure = retained.measuresById.get(blockId);
               if (!measure) {
                 throw new CoupledFootnotePaginationError(
                   'missing-anchor',
@@ -5025,8 +5155,40 @@ export async function incrementalLayout(
               currentNoteFirstLineHeights.set(noteId, first);
             }
           }
-          const reserves = retained.reserves.slice(0, layout.pages.length);
-          const notePages = new Set(retained.notePageIndexes.filter((index) => index < layout.pages.length));
+          const shiftedAdoption =
+            layoutReuseSummary.tailAdoption?.pageIndexDelta !== 0 ? layoutReuseSummary.tailAdoption : null;
+          const reserves = shiftedAdoption
+            ? Array.from({ length: layout.pages.length }, (_, pageIndex) =>
+                pageIndex < start ? (retained.reserves[pageIndex] ?? 0) : 0,
+              )
+            : retained.reserves.slice(0, layout.pages.length);
+          const notePages = shiftedAdoption
+            ? new Set(
+                retained.notePageIndexes.flatMap((sourcePageIndex) => {
+                  if (sourcePageIndex < start) return [sourcePageIndex];
+                  if (
+                    sourcePageIndex >= shiftedAdoption.sourcePageStartIndex &&
+                    sourcePageIndex < shiftedAdoption.sourcePageEndIndexExclusive
+                  ) {
+                    const targetPageIndex = sourcePageIndex + shiftedAdoption.pageIndexDelta;
+                    return targetPageIndex >= 0 && targetPageIndex < layout.pages.length ? [targetPageIndex] : [];
+                  }
+                  return [];
+                }),
+              )
+            : new Set(retained.notePageIndexes.filter((index) => index < layout.pages.length));
+          if (shiftedAdoption) {
+            for (
+              let sourcePageIndex = shiftedAdoption.sourcePageStartIndex;
+              sourcePageIndex < shiftedAdoption.sourcePageEndIndexExclusive;
+              sourcePageIndex += 1
+            ) {
+              const targetPageIndex = sourcePageIndex + shiftedAdoption.pageIndexDelta;
+              if (targetPageIndex >= 0 && targetPageIndex < reserves.length) {
+                reserves[targetPageIndex] = retained.reserves[sourcePageIndex] ?? 0;
+              }
+            }
+          }
           for (const index of indexes) {
             reserves[index] = layout.pages[index].footnoteReserved ?? 0;
             if (reserves[index] > 0) notePages.add(index);
@@ -5318,6 +5480,7 @@ export async function incrementalLayout(
                 refIndexesByBlock,
                 refIndexById,
                 blocksById: new Map(measuredFootnoteBlocks.map((block) => [block.id, block])),
+                measuresById: new Map(measuresById),
                 extraBlocks,
                 extraMeasures,
                 extraIndexById: new Map(extraBlocks.map((block, index) => [block.id, index])),
@@ -7064,6 +7227,21 @@ function validateSameInvocationReserveRelayoutProof(input: {
 
 const PREPARED_COUPLED_CONVERGENCE_RETRY_PAGE_HORIZON = 128;
 
+function readMeasuredCoupledInitialPageHorizon(input: {
+  requestedPageHorizon: number;
+  sourceAffectedFrontierPageIndex: number;
+  previousPageCount: number;
+}): number {
+  const remainingTailPages = Math.max(0, input.previousPageCount - 1 - input.sourceAffectedFrontierPageIndex);
+  const retainedTailQuarter = Math.floor(remainingTailPages / 4);
+  return Math.min(
+    PREPARED_COUPLED_CONVERGENCE_RETRY_PAGE_HORIZON,
+    Math.max(input.requestedPageHorizon, retainedTailQuarter),
+  );
+}
+
+export const __test_only_readMeasuredCoupledInitialPageHorizon = readMeasuredCoupledInitialPageHorizon;
+
 function shouldAttemptPreparedCoupledConvergenceRetry(input: {
   preparedCoupled: boolean;
   provedPrefixToDocumentEnd: boolean;
@@ -7959,7 +8137,16 @@ async function layoutWithOptionalReuse(input: {
     : 1;
   const initialRelaidPageHorizon = sameInvocationReserveRelayout
     ? previousPages.length
-    : Math.max(requestedRelaidPageHorizon, balanceableFencePageHorizon);
+    : input.preparedCoupled?.measuredCurrentNotePlaneRetainsOwner === true
+      ? Math.max(
+          readMeasuredCoupledInitialPageHorizon({
+            requestedPageHorizon: requestedRelaidPageHorizon,
+            sourceAffectedFrontierPageIndex,
+            previousPageCount: previousPages.length,
+          }),
+          balanceableFencePageHorizon,
+        )
+      : Math.max(requestedRelaidPageHorizon, balanceableFencePageHorizon);
   let convergenceProbePageHorizon = initialRelaidPageHorizon;
   let coupledConvergenceRetryAttempted = false;
   let terminalSuffixRelayoutAttempted = false;
@@ -8308,7 +8495,6 @@ async function layoutWithOptionalReuse(input: {
             const before = readFootnotePageCertificate(sourcePage, owner);
             const after = readFootnotePageCertificate(completedPage, owner);
             return (
-              pageIndexDelta !== 0 ||
               !before ||
               !after ||
               before.pageIndex !== sourcePageIndex ||
@@ -8446,6 +8632,25 @@ async function layoutWithOptionalReuse(input: {
         positionTransforms,
       });
       if (tableResumeCheckpoints) writeTableLayoutResumeCheckpoints(nextLayout, tableResumeCheckpoints);
+      const tailAdoption: IncrementalLayoutTailAdoption = {
+        startPageIndex: convergencePageIndex,
+        endPageIndexExclusive: pages.length,
+        sourcePageStartIndex: sourceConvergencePageIndex,
+        sourcePageEndIndexExclusive: previousPages.length,
+        pageIndexDelta,
+        sectionPageNumberTransform: convergenceSectionPageNumberTransform,
+        displayPageNumberTransform: convergenceDisplayPageNumberTransform,
+        pageReferenceLocationsStable:
+          pageIndexDelta === 0 &&
+          convergenceSectionPageNumberTransform.delta === 0 &&
+          supportsLocalizedDecimalNumbering(input.options),
+        sourceLayoutEpoch: previousLayout.layoutEpoch ?? null,
+        positionTransforms,
+        blockIdRewrites: reuse.blockIdRewrites?.previousToCurrent ?? null,
+      };
+      if (pageIndexDelta !== 0 && input.preparedCoupled) {
+        shiftedCoupledFootnoteTailOwners.set(tailAdoption, input.preparedCoupled.retained.owner);
+      }
       return {
         layout: nextLayout,
         ...(lastCoupledPass ? { coupled: lastCoupledPass } : {}),
@@ -8460,22 +8665,10 @@ async function layoutWithOptionalReuse(input: {
           sourceConvergencePageIndex,
           pagesPaginated: reuseProbePagesPaginated,
           pagesSplicedByReuse: previousPages.length - sourceConvergencePageIndex,
-          tailAdoption: {
-            startPageIndex: convergencePageIndex,
-            endPageIndexExclusive: pages.length,
-            sourcePageStartIndex: sourceConvergencePageIndex,
-            sourcePageEndIndexExclusive: previousPages.length,
-            pageIndexDelta,
-            sectionPageNumberTransform: convergenceSectionPageNumberTransform,
-            displayPageNumberTransform: convergenceDisplayPageNumberTransform,
-            pageReferenceLocationsStable:
-              pageIndexDelta === 0 &&
-              convergenceSectionPageNumberTransform.delta === 0 &&
-              supportsLocalizedDecimalNumbering(input.options),
-            sourceLayoutEpoch: previousLayout.layoutEpoch ?? null,
-            positionTransforms,
-            blockIdRewrites: reuse.blockIdRewrites?.previousToCurrent ?? null,
-          },
+          ...(pageIndexDelta !== 0 && shiftedCoupledFootnoteTailOwners.has(tailAdoption)
+            ? { coupledFootnoteTailCertificateRebased: true as const }
+            : {}),
+          tailAdoption,
         },
       };
     }
@@ -9132,6 +9325,7 @@ interface LazyPageSegment {
   sectionPageNumberDeltas: ReadonlyMap<number, number> | null;
   displayPageNumberTransforms: readonly IncrementalDisplayPageNumberTransform[] | null;
   blockIdRewrites: ReadonlyMap<string, string> | null;
+  coupledFootnoteCertificateOwner: FootnoteCertificateOwner | null;
   /** Lazily stamp the canonical empty note row on proved note-free pages. */
   ensureEmptyFootnoteMetadata: boolean;
 }
@@ -9183,6 +9377,7 @@ function appendPageSequenceSlice(
       sectionPageNumberDeltas: null,
       displayPageNumberTransforms: null,
       blockIdRewrites: null,
+      coupledFootnoteCertificateOwner: null,
       ensureEmptyFootnoteMetadata: false,
     });
     return;
@@ -9236,6 +9431,7 @@ function createLazyPageSequence(segments: readonly LazyPageSegment[]): Page[] {
           (segment.sectionPageNumberDeltas?.size ?? 0) > 0 ||
           segment.displayPageNumberTransforms != null ||
           hasBlockIdRewrites(segment.blockIdRewrites) ||
+          segment.coupledFootnoteCertificateOwner != null ||
           segment.ensureEmptyFootnoteMetadata
             ? materializeAdoptedLayoutPage(
                 sourcePage,
@@ -9245,6 +9441,7 @@ function createLazyPageSequence(segments: readonly LazyPageSegment[]): Page[] {
                 segment.sectionPageNumberDeltas,
                 segment.displayPageNumberTransforms,
                 segment.positionDelta,
+                segment.coupledFootnoteCertificateOwner,
               )
             : sourcePage;
         if (segment.ensureEmptyFootnoteMetadata) {
@@ -9457,6 +9654,7 @@ function composeDisplayPageNumberTransforms(
 function addAdoptionTransform(pages: Page[], adoption: IncrementalLayoutTailAdoption): Page[] {
   const source = lazyPageSequences.get(pages);
   if (!source) return pages;
+  const coupledFootnoteCertificateOwner = shiftedCoupledFootnoteTailOwners.get(adoption) ?? null;
   const transformed: LazyPageSegment[] = [];
   const appendRange = (segment: LazyPageSegment, start: number, end: number, adopt: boolean): void => {
     if (end <= start) return;
@@ -9479,6 +9677,10 @@ function addAdoptionTransform(pages: Page[], adoption: IncrementalLayoutTailAdop
       blockIdRewrites: adopt
         ? composeBlockIdRewrites(segment.blockIdRewrites, adoption.blockIdRewrites ?? null)
         : segment.blockIdRewrites,
+      coupledFootnoteCertificateOwner:
+        adopt && coupledFootnoteCertificateOwner
+          ? coupledFootnoteCertificateOwner
+          : segment.coupledFootnoteCertificateOwner,
     });
   };
   for (const segment of source.segments) {
@@ -9547,6 +9749,7 @@ function guardAdoptedLayoutPages(
   const materializedPages = new Map<number, Page>();
   const sectionPageNumberDeltas = composeSectionPageNumberDeltas(null, adoption.sectionPageNumberTransform);
   const displayPageNumberTransforms = composeDisplayPageNumberTransforms(null, adoption.displayPageNumberTransform);
+  const coupledFootnoteCertificateOwner = shiftedCoupledFootnoteTailOwners.get(adoption) ?? null;
   const readPageIndex = (property: string | symbol): number | null => {
     if (typeof property !== 'string' || !/^(0|[1-9]\d*)$/.test(property)) return null;
     const pageIndex = Number(property);
@@ -9565,6 +9768,8 @@ function guardAdoptedLayoutPages(
       adoption.blockIdRewrites ?? null,
       sectionPageNumberDeltas,
       displayPageNumberTransforms,
+      0,
+      coupledFootnoteCertificateOwner,
     );
     const displayInfo = numberingContext?.displayPages[pageIndex];
     if (displayInfo) {
@@ -9607,6 +9812,54 @@ function guardAdoptedLayoutPages(
   return { ...layout, pages };
 }
 
+function rebasePageScopedFootnoteSeparatorId(value: string, pageIndexDelta: number): string {
+  if (pageIndexDelta === 0) return value;
+  const match = /^(footnote-(?:continuation-)?separator-page-)(\d+)(-col-\d+)$/.exec(value);
+  if (!match) return value;
+  const pageNumber = Number(match[2]) + pageIndexDelta;
+  return Number.isSafeInteger(pageNumber) && pageNumber >= 1 ? `${match[1]}${pageNumber}${match[3]}` : value;
+}
+
+function rebaseRetainedCoupledExtraPlaneForTail(
+  retained: CoupledFootnoteRetainedState,
+  reuse: IncrementalLayoutReuseSummary,
+): { blocks: FlowBlock[]; measures: Measure[]; indexById: ReadonlyMap<string, number> } {
+  const adoption = reuse.tailAdoption;
+  if (!adoption || adoption.pageIndexDelta === 0) {
+    return {
+      blocks: retained.extraBlocks,
+      measures: retained.extraMeasures,
+      indexById: retained.extraIndexById,
+    };
+  }
+  const relaidSourceStart = reuse.checkpointPageIndex ?? adoption.sourcePageStartIndex;
+  const blocks: FlowBlock[] = [];
+  const measures: Measure[] = [];
+  const indexById = new Map<string, number>();
+  retained.extraBlocks.forEach((block, sourceIndex) => {
+    const separator = /^(?:footnote-(?:continuation-)?separator-page-)(\d+)-col-\d+$/.exec(block.id);
+    const sourcePageIndex = separator ? Number(separator[1]) - 1 : null;
+    if (
+      sourcePageIndex != null &&
+      sourcePageIndex >= relaidSourceStart &&
+      sourcePageIndex < adoption.sourcePageStartIndex
+    ) {
+      return;
+    }
+    const id =
+      sourcePageIndex != null &&
+      sourcePageIndex >= adoption.sourcePageStartIndex &&
+      sourcePageIndex < adoption.sourcePageEndIndexExclusive
+        ? rebasePageScopedFootnoteSeparatorId(block.id, adoption.pageIndexDelta)
+        : block.id;
+    const targetIndex = blocks.length;
+    blocks.push(id === block.id ? block : { ...block, id });
+    measures.push(retained.extraMeasures[sourceIndex]!);
+    indexById.set(id, targetIndex);
+  });
+  return { blocks, measures, indexById };
+}
+
 function materializeAdoptedLayoutPage(
   sourcePage: Page,
   transforms: readonly LayoutPositionTransform[] | CheckpointPositionTransformLedger | null,
@@ -9615,6 +9868,7 @@ function materializeAdoptedLayoutPage(
   sectionPageNumberDeltas: ReadonlyMap<number, number> | null = null,
   displayPageNumberTransforms: readonly IncrementalDisplayPageNumberTransform[] | null = null,
   positionDelta = 0,
+  coupledFootnoteCertificateOwner: FootnoteCertificateOwner | null = null,
 ): Page {
   const transformPosition = (value: number): number => {
     const shifted = value + positionDelta;
@@ -9633,7 +9887,10 @@ function materializeAdoptedLayoutPage(
       return transformPosition(value);
     }
     if (key === 'blockId' && typeof value === 'string') {
-      return blockIdRewrites?.get(value) ?? value;
+      return rebasePageScopedFootnoteSeparatorId(blockIdRewrites?.get(value) ?? value, pageIndexDelta);
+    }
+    if (key === 'id' && typeof value === 'string') {
+      return rebasePageScopedFootnoteSeparatorId(value, pageIndexDelta);
     }
     if (key === 'pageIndex' && typeof value === 'number') return value + pageIndexDelta;
     if (value == null || typeof value !== 'object') return value;
@@ -9658,9 +9915,13 @@ function materializeAdoptedLayoutPage(
   const page = clone(sourcePage) as Page;
   page.number += pageIndexDelta;
   // The string-key geometry clone deliberately cannot recreate private proof
-  // objects. Preserve only the issued same-index note certificate; body and
-  // source-coordinate reuse have been independently proved by the caller.
-  transferFootnotePageCertificate(sourcePage, page, pageIndexDelta);
+  // objects. Shifted note provenance requires the exact owner established by
+  // coupled-tail convergence; generic materialization remains zero-shift only.
+  if (coupledFootnoteCertificateOwner) {
+    rebaseFootnotePageCertificate(sourcePage, page, pageIndexDelta, coupledFootnoteCertificateOwner);
+  } else {
+    transferFootnotePageCertificate(sourcePage, page, pageIndexDelta);
+  }
   const sectionPageNumberDelta = sectionPageNumberDeltas?.get(page.sectionIndex ?? 0) ?? 0;
   if (sectionPageNumberDelta !== 0 && page.sectionPageNumber != null) {
     page.sectionPageNumber += sectionPageNumberDelta;

@@ -6,6 +6,7 @@ import {
   issueFootnotePageCertificate,
   pendingFootnoteQueuesEqual,
   readFootnotePageCertificate,
+  rebaseFootnotePageCertificate,
   transferFootnotePageCertificate,
   type FootnoteCertificateOwner,
   type FootnoteCertificatePreparedOptions,
@@ -369,6 +370,78 @@ describe('same-page footnote certificate transfer', () => {
 
     expect(result).toBeNull();
     expect(readFootnotePageCertificate(materializedPage)).toBeNull();
+  });
+});
+
+describe('owner-bound footnote certificate rebase', () => {
+  it('reissues exact immutable facts at a proved shifted page index', () => {
+    const sourcePage = page();
+    const owner = createFootnoteCertificateOwner(preparedOptions());
+    const sourceCertificate = issue(sourcePage, owner);
+    const targetPage = { ...page(), number: sourcePage.number - 1 };
+
+    const result = rebaseFootnotePageCertificate(sourcePage, targetPage, -1, owner);
+
+    expect(result).not.toBe(sourceCertificate);
+    expect(result?.owner).toBe(owner);
+    expect(result?.pageIndex).toBe(sourceCertificate.pageIndex - 1);
+    expect(pendingFootnoteQueuesEqual(result!.incomingByColumn, sourceCertificate.incomingByColumn)).toBe(true);
+    expect(pendingFootnoteQueuesEqual(result!.outgoingByColumn, sourceCertificate.outgoingByColumn)).toBe(true);
+    expect(readFootnotePageCertificate(targetPage, owner)).toBe(result);
+    expect(readFootnotePageCertificate(sourcePage, owner)).toBe(sourceCertificate);
+  });
+
+  it('rejects a caller that did not prove the issuing owner', () => {
+    const sourcePage = page();
+    const owner = createFootnoteCertificateOwner(preparedOptions());
+    const otherOwner = createFootnoteCertificateOwner(preparedOptions());
+    issue(sourcePage, owner);
+    const targetPage = { ...page(), number: sourcePage.number - 1 };
+
+    const result = rebaseFootnotePageCertificate(sourcePage, targetPage, -1, otherOwner);
+
+    expect(result).toBeNull();
+    expect(readFootnotePageCertificate(targetPage)).toBeNull();
+  });
+
+  it('rejects a target whose page number does not match the reported shift', () => {
+    const sourcePage = page();
+    const owner = createFootnoteCertificateOwner(preparedOptions());
+    issue(sourcePage, owner);
+    const targetPage = { ...page(), number: sourcePage.number };
+
+    const result = rebaseFootnotePageCertificate(sourcePage, targetPage, -1, owner);
+
+    expect(result).toBeNull();
+    expect(readFootnotePageCertificate(targetPage)).toBeNull();
+  });
+
+  it.each([Number.NaN, Number.POSITIVE_INFINITY, 0.5])('rejects an invalid page-index delta: %s', (delta) => {
+    const sourcePage = page();
+    const owner = createFootnoteCertificateOwner(preparedOptions());
+    issue(sourcePage, owner);
+    const targetPage = { ...page(), number: sourcePage.number };
+
+    const result = rebaseFootnotePageCertificate(sourcePage, targetPage, delta, owner);
+
+    expect(result).toBeNull();
+    expect(readFootnotePageCertificate(targetPage)).toBeNull();
+  });
+
+  it('rejects a shift before the first page', () => {
+    const sourcePage = { ...page(), number: 1 };
+    const owner = createFootnoteCertificateOwner(preparedOptions());
+    issueFootnotePageCertificate(sourcePage, owner, {
+      pageIndex: 0,
+      incomingByColumn: queue(),
+      outgoingByColumn: queue(),
+    });
+    const targetPage = { ...page(), number: 0 };
+
+    const result = rebaseFootnotePageCertificate(sourcePage, targetPage, -1, owner);
+
+    expect(result).toBeNull();
+    expect(readFootnotePageCertificate(targetPage)).toBeNull();
   });
 });
 

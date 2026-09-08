@@ -3,6 +3,7 @@ import type { FlowBlock, Layout, Measure, ParagraphBlock, ParagraphMeasure } fro
 import type { LayoutOptions } from '@superdoc/layout-engine';
 import {
   __test_only_shouldAttemptPreparedCoupledConvergenceRetry,
+  __test_only_readMeasuredCoupledInitialPageHorizon,
   clearIncrementalModuleState,
   incrementalLayout,
   type IncrementalLayoutResult,
@@ -358,13 +359,14 @@ async function warmLayout(
   before: Fixture,
   after: Fixture,
   reuse: IncrementalLayoutReuseOptions,
+  measureCurrentBlock = measureBlock,
 ): Promise<IncrementalLayoutResult> {
   return incrementalLayout(
     before.blocks,
     previous.layout,
     after.blocks,
     options(after),
-    measureBlock,
+    measureCurrentBlock,
     undefined,
     previous.measures,
     undefined,
@@ -452,9 +454,13 @@ function assertSourceCoverage(result: IncrementalLayoutResult, input: Fixture): 
   expect(result.layout.pages.at(-1)?.footnoteLedger?.continuationOut ?? []).toEqual([]);
 }
 
-async function assertFreshEquivalent(result: IncrementalLayoutResult, input: Fixture): Promise<void> {
+async function assertFreshEquivalent(
+  result: IncrementalLayoutResult,
+  input: Fixture,
+  measureCurrentBlock = measureBlock,
+): Promise<void> {
   clearIncrementalModuleState();
-  const fresh = await incrementalLayout([], null, input.blocks, options(input), measureBlock);
+  const fresh = await incrementalLayout([], null, input.blocks, options(input), measureCurrentBlock);
   assertSourceCoverage(fresh, input);
   assertSourceCoverage(result, input);
   expect(geometry(result.layout)).toEqual(geometry(fresh.layout));
@@ -462,6 +468,30 @@ async function assertFreshEquivalent(result: IncrementalLayoutResult, input: Fix
 
 describe('coupled footnote local edit conservation', () => {
   beforeEach(() => clearIncrementalModuleState());
+
+  it('widens the first measured-note probe by at most one quarter of the untouched tail', () => {
+    expect(
+      __test_only_readMeasuredCoupledInitialPageHorizon({
+        requestedPageHorizon: 3,
+        sourceAffectedFrontierPageIndex: 857,
+        previousPageCount: 1743,
+      }),
+    ).toBe(128);
+    expect(
+      __test_only_readMeasuredCoupledInitialPageHorizon({
+        requestedPageHorizon: 3,
+        sourceAffectedFrontierPageIndex: 15,
+        previousPageCount: 23,
+      }),
+    ).toBe(3);
+    expect(
+      __test_only_readMeasuredCoupledInitialPageHorizon({
+        requestedPageHorizon: 5,
+        sourceAffectedFrontierPageIndex: 90,
+        previousPageCount: 100,
+      }),
+    ).toBe(5);
+  });
 
   it('bounds one late coupled convergence retry to at most 25% of the retained suffix', () => {
     const largeSuffix = {
@@ -724,6 +754,154 @@ describe('coupled footnote local edit conservation', () => {
     const next = await warmLayout(result, after, afterKey, retainedReuse(result, after, afterKey, dirtyId));
     await assertFreshEquivalent(next, afterKey);
     expect(next.layoutReuse?.mode).not.toBe('full');
+  });
+
+  it.each([
+    { currentWidth: 20, redistributeHeight: false },
+    { currentWidth: 21, redistributeHeight: false },
+    { currentWidth: 21, redistributeHeight: true },
+  ])('keeps current note measures after reference removal: %j', async ({ currentWidth, redistributeHeight }) => {
+    const dirtyId = 'body:dirty/o15';
+    const removedId = 'body:tail/o16';
+    const base = fixture(1, 60);
+    const before: Fixture = {
+      ...base,
+      blocks: base.blocks.map((block) => (block.id === removedId ? paragraph(removedId, 'x'.repeat(8)) : block)),
+    };
+    const removedReference = before.refs.find((reference) => reference.blockId === removedId);
+    if (!removedReference) throw new Error('expected a note reference in the removed paragraph');
+    const source = await incrementalLayout([], null, before.blocks, options(before), measureBlock);
+    const survivingIds = before.refs
+      .filter((reference) => reference.id !== removedReference.id)
+      .map((reference) => reference.id);
+    const retainedNoteId = survivingIds[0];
+    if (!retainedNoteId || !source.footnoteReserveSeed) throw new Error('expected retained note geometry');
+
+    const currentNotes = new Map<string, ParagraphBlock[]>();
+    for (const [noteId, blocks] of before.notes) {
+      if (noteId === removedReference.id) continue;
+      currentNotes.set(
+        noteId,
+        noteId === retainedNoteId
+          ? blocks
+          : blocks.map((block) => ({
+              ...block,
+              runs: block.runs.map((run) => ('text' in run ? { ...run, text: run.text.replaceAll('n', 'm') } : run)),
+            })),
+      );
+    }
+    const after: Fixture = {
+      ...before,
+      blocks: before.blocks
+        .filter((block) => block.id !== removedId)
+        .map((block) => (block.id === dirtyId ? paragraph(dirtyId, 'merged') : block)),
+      refs: before.refs.filter((reference) => reference.id !== removedReference.id),
+      notes: currentNotes,
+    };
+    const measureCurrentBlock = async (block: FlowBlock): Promise<Measure> => {
+      const measure = await measureBlock(block);
+      if (measure.kind !== 'paragraph' || block.kind !== 'paragraph' || !block.id.startsWith('footnote:')) {
+        return measure;
+      }
+      const changed = block.runs.some((run) => 'text' in run && run.text.includes('m'));
+      return changed
+        ? {
+            ...measure,
+            lines: measure.lines.map((line, index) => ({
+              ...line,
+              width: currentWidth,
+              lineHeight: line.lineHeight + (redistributeHeight ? (index === 1 ? 5 : index === 2 ? -5 : 0) : 0),
+            })),
+          }
+        : measure;
+    };
+    const sourceSeed = source.footnoteReserveSeed;
+    const retainedBlocks = currentNotes.get(retainedNoteId)!;
+    const noteBlocksByBlockId = new Map<string, FlowBlock>();
+    const noteMeasuresByBlockId = new Map<string, Measure>();
+    for (const block of retainedBlocks) {
+      const retainedMeasure = sourceSeed.noteMeasuresByBlockId?.get(block.id);
+      if (!retainedMeasure) throw new Error(`missing retained measure ${block.id}`);
+      noteBlocksByBlockId.set(block.id, block);
+      noteMeasuresByBlockId.set(block.id, retainedMeasure);
+    }
+    const retainedBodyHeight = sourceSeed.noteBodyHeightById?.get(retainedNoteId);
+    const retainedFirstLineHeight = sourceSeed.noteFirstLineHeightById?.get(retainedNoteId);
+    if (retainedBodyHeight == null || retainedFirstLineHeight == null) {
+      throw new Error(`missing retained height ${retainedNoteId}`);
+    }
+    const rewrites = { previousToCurrent: new Map<string, string>(), currentToPrevious: new Map<string, string>() };
+    const reuse: IncrementalLayoutReuseOptions = {
+      ...retainedReuse(source, before, after, dirtyId, { deleted: [removedId], rewrites }),
+      requireDocumentStartCheckpoint: true,
+      dependencyProof: {
+        profile: 'document-start-local-text',
+        blockIdsUnchanged: true,
+        blockIdsUnique: true,
+        globalDependenciesAbsent: false,
+        globalDependenciesFencedByDocumentStart: true,
+        multiColumnSectionsProvedNonBalanceable: true,
+        renderInputsUnchanged: true,
+        pageReferencesAbsent: true,
+      },
+    };
+    const result = await incrementalLayout(
+      before.blocks,
+      source.layout,
+      after.blocks,
+      options(after),
+      measureCurrentBlock,
+      undefined,
+      source.measures,
+      undefined,
+      {
+        footnoteReserveSeed: {
+          ...sourceSeed,
+          footnoteAssignment: undefined,
+          noteBlocksByBlockId,
+          noteMeasuresByBlockId,
+          noteBodyHeightById: new Map([[retainedNoteId, retainedBodyHeight]]),
+          noteFirstLineHeightById: new Map([[retainedNoteId, retainedFirstLineHeight]]),
+        },
+        noteMeasurePlaneRetainedSubset: true,
+      },
+      reuse,
+    );
+
+    if (redistributeHeight) {
+      expect(result.layoutReuse?.mode).toBe('full');
+      await assertFreshEquivalent(result, after, measureCurrentBlock);
+      return;
+    }
+    await assertFreshEquivalent(result, after, measureCurrentBlock);
+    expect(source.layout.pages.length).toBeGreaterThan(result.layout.pages.length);
+    expect(result.layoutReuse?.mode).not.toBe('full');
+    expect(result.layoutReuse?.reason).toContain('m4-affected-frontier-converged-tail-adopted');
+    expect(result.bridgeTiming.counters.footnoteCoupledPages).toBeLessThan(result.layout.pages.length);
+    for (const blocks of after.notes.values()) {
+      for (const block of blocks) {
+        const currentMeasure = await measureCurrentBlock(block);
+        expect(result.footnoteReserveSeed?.noteMeasuresByBlockId?.get(block.id)).toEqual(currentMeasure);
+      }
+    }
+
+    const afterKey = replaceParagraph(after, dirtyId, 'merged!');
+    const next = await warmLayout(
+      result,
+      after,
+      afterKey,
+      retainedReuse(result, after, afterKey, dirtyId),
+      measureCurrentBlock,
+    );
+    await assertFreshEquivalent(next, afterKey, measureCurrentBlock);
+    expect(next.layoutReuse?.mode).not.toBe('full');
+    for (const blocks of after.notes.values()) {
+      for (const block of blocks) {
+        expect(next.footnoteReserveSeed?.noteMeasuresByBlockId?.get(block.id)).toEqual(
+          await measureCurrentBlock(block),
+        );
+      }
+    }
   });
 
   it('remeasures only changed note geometry before one fresh coupled finalization', async () => {
@@ -1077,7 +1255,7 @@ describe('coupled footnote local edit conservation', () => {
     },
   );
 
-  it('does not adopt a late source tail when its coupled continuation queue differs', async () => {
+  it('adopts only a later exact shifted tail after the early coupled candidates are rejected', async () => {
     const maxRelaidPages = 4;
     const before = fixture(1, 96);
     const previous = await incrementalLayout([], null, before.blocks, options(before), measureBlock);
@@ -1118,11 +1296,11 @@ describe('coupled footnote local edit conservation', () => {
       (result.layoutReuse?.sourceAffectedFrontierPageIndex ?? 0) + maxRelaidPages + 2,
     );
     expect(result.layoutReuse?.pagesPaginated).toBeGreaterThan(maxRelaidPages);
-    expect(result.layoutReuse?.tailDisposition).toBe('relaid-to-document-end');
-    expect(result.layoutReuse?.reason).toContain('coupled-continuation-boundary-mismatch');
-    expect(result.layoutReuse?.sourceConvergencePageIndex).toBeNull();
-    expect(result.layoutReuse?.convergencePageIndex).toBeNull();
-    expect(result.layoutReuse?.tailAdoption).toBeNull();
+    expect(result.layoutReuse?.tailDisposition).toBe('adopted-source-tail');
+    expect(result.layoutReuse?.sourceConvergencePageIndex).not.toBeNull();
+    expect(result.layoutReuse?.convergencePageIndex).not.toBeNull();
+    expect(result.layoutReuse?.tailAdoption?.pageIndexDelta).not.toBe(0);
+    expect(result.layoutReuse?.coupledFootnoteTailCertificateRebased).toBe(true);
     expect(result.footnoteReserveSeed?.paginationPolicy).toBe('coupled-v1');
     expect(result.footnoteReserveSeed?.coupled?.referencePlaneIdentity).toBe(after.refs);
   });
@@ -1146,6 +1324,7 @@ describe('coupled footnote local edit conservation', () => {
     observingWarmWork = false;
     await assertFreshEquivalent(result, after);
     expect(result.layoutReuse?.mode).toBe('tail-splice');
+    expect(result.layoutReuse?.coupledFootnoteTailCertificateRebased).toBeUndefined();
   });
 
   it('adopts a source tail on two consecutive body insertions with rewritten suffix coordinates', async () => {

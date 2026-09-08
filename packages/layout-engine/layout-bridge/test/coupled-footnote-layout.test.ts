@@ -141,7 +141,7 @@ const geometry = (layout: Layout) =>
 const expectPublishedExactNotePlane = (result: Awaited<ReturnType<typeof incrementalLayout>>) => {
   const coupled = result.footnoteReserveSeed?.coupled;
   expect(result.footnoteReserveSeed?.noteBlocksByBlockId).toBe(coupled?.blocksById);
-  expect(result.footnoteReserveSeed?.noteMeasuresByBlockId).toBe(coupled?.prepared.measuresById);
+  expect(result.footnoteReserveSeed?.noteMeasuresByBlockId).toBe(coupled?.measuresById);
   expect(result.footnoteReserveSeed?.noteBodyHeightById).toBe(coupled?.prepared.fullHeightById);
   expect(result.footnoteReserveSeed?.noteFirstLineHeightById).toBe(coupled?.prepared.firstLineHeightById);
 };

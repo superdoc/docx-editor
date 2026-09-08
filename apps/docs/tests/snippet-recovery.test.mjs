@@ -34,6 +34,68 @@ function deferred() {
   return { promise, resolve, reject };
 }
 
+test('version saves reject a stale base and preserve its conflict message', async () => {
+  const requests = [];
+  const { saveVersion } = await loadSnippet('editor-version-history.ts', { superdoc: { DOCX: 'application/docx' } }, {
+    fetch: async (url, options) => {
+      requests.push({ url, options });
+      return new Response(null, { status: 409 });
+    },
+  });
+  const docx = new Blob(['edited snapshot']);
+  await assert.rejects(saveVersion({ export: async () => docx }, 'version-1'), /A newer version exists/);
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].options.headers['x-base-version-id'], 'version-1');
+  assert.equal(requests[0].options.body, docx);
+});
+
+test('a rejected version restore reloads current server content', async () => {
+  const opened = [];
+  const requests = [];
+  const { restoreVersion } = await loadSnippet('editor-version-history.ts', { superdoc: { DOCX: 'application/docx' } }, {
+    fetch: async (url, options) => {
+      requests.push({ url, options });
+      if (options?.method === 'POST') return new Response(null, { status: 409 });
+      return new Response(url.endsWith('/versions/version-1') ? 'version one' : 'current server version');
+    },
+  });
+  const editor = {
+    export: async () => new Blob(['active document']),
+    replaceFile: async (blob) => {
+      opened.push(await blob.text());
+      return { state: 'editing-ready' };
+    },
+  };
+  await assert.rejects(restoreVersion(editor, 'version-1', 'version-2'), /A newer version exists/);
+  assert.deepEqual(opened, ['version one', 'current server version']);
+  assert.equal(requests[1].options.headers['x-restored-from-version-id'], 'version-1');
+  assert.equal(requests[1].options.headers['x-base-version-id'], 'version-2');
+});
+
+for (const failure of ['network', 'status', 'body']) {
+  test(`a rejected restore recovers the active document after a recovery ${failure} failure`, async () => {
+    const opened = [];
+    const { restoreVersion } = await loadSnippet('editor-version-history.ts', { superdoc: { DOCX: 'application/docx' } }, {
+      fetch: async (url, options) => {
+        if (options?.method === 'POST') return new Response(null, { status: 409 });
+        if (url.endsWith('/versions/version-1')) return new Response('version one');
+        if (failure === 'network') throw new Error('Offline');
+        if (failure === 'status') return new Response(null, { status: 500 });
+        return new Response(new ReadableStream({ start(controller) { controller.error(new Error('Broken stream')); } }));
+      },
+    });
+    const editor = {
+      export: async () => new Blob(['active document']),
+      replaceFile: async (blob) => {
+        opened.push(await blob.text());
+        return { state: 'editing-ready' };
+      },
+    };
+    await assert.rejects(restoreVersion(editor, 'version-1', 'version-2'), /A newer version exists/);
+    assert.deepEqual(opened, ['version one', 'active document']);
+  });
+}
+
 async function loadingApp(t) {
   const window = new Window();
   t.after(() => window.happyDOM.close());

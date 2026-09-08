@@ -183,7 +183,6 @@ const reviewHighlightsPageUrl = new URL(
 const commentThreadExampleUrl = new URL('../snippets/document-api/comment-thread.ts', import.meta.url);
 const documentStorageExampleUrl = new URL('../snippets/editor/document-storage.ts', import.meta.url);
 const reactDocumentStorageExampleUrl = new URL('../snippets/editor/react-document-storage.tsx', import.meta.url);
-const versionHistoryExampleUrl = new URL('../snippets/editor/editor-version-history.ts', import.meta.url);
 const vanillaQuickstartExampleUrl = new URL('../../../examples/vanilla/src/main.ts', import.meta.url);
 const reactQuickstartExampleUrl = new URL('../../../examples/react/src/App.tsx', import.meta.url);
 const pythonSdkExampleUrl = new URL('../snippets/headless/python-accept-changes.py', import.meta.url);
@@ -3927,18 +3926,6 @@ test('the document storage example preserves unsaved state and reports failures'
   assert.match(reactStorage, /<output aria-live='polite'>/u);
   assert.match(reactStorage, /onContentError/u);
   assert.match(reactStorage, /onException/u);
-});
-
-test('the version history example rolls back a failed restore', async () => {
-  const example = await readFile(versionHistoryExampleUrl, 'utf8');
-  const capture = example.indexOf('const activeDocx = await exportDocx(superdoc)');
-  const openSnapshot = example.indexOf('await openDocument(superdoc, docx)');
-
-  assert.ok(capture >= 0 && capture < openSnapshot);
-  assert.match(example, /try \{\s+await openDocument\(superdoc, docx\)/u);
-  assert.match(example, /const current = await fetch\(documentEndpoint\)\.catch\(\(\) => null\)/u);
-  assert.match(example, /current\?\.ok[\s\S]*: activeDocx/u);
-  assert.match(example, /await openDocument\(superdoc, rollbackDocx\)/u);
 });
 
 test('Quickstart examples report both document failure paths', async () => {

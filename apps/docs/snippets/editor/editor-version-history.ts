@@ -72,8 +72,9 @@ export async function restoreVersion(
     await openDocument(superdoc, docx);
     return await saveVersion(superdoc, baseVersionId, versionId);
   } catch (error) {
-    const current = await fetch(documentEndpoint).catch(() => null);
-    const rollbackDocx = current?.ok ? new Blob([await current.arrayBuffer()], { type: DOCX }) : activeDocx;
+    const rollbackDocx = await fetch(documentEndpoint)
+      .then(async (current) => (current.ok ? new Blob([await current.arrayBuffer()], { type: DOCX }) : activeDocx))
+      .catch(() => activeDocx);
     await openDocument(superdoc, rollbackDocx);
     throw error;
   }

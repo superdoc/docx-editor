@@ -145,6 +145,8 @@ test('the sample NDA is a valid DOCX package with real content', async () => {
 
 test('the getting-started fixture is clean and uses real document structure', async () => {
   const { zip, document, core, app, bytes } = await openFixture('getting-started.docx');
+  const versionHistory = await readFile(new URL('../../../examples/version-history/public/sample.docx', import.meta.url));
+  assert.deepEqual(bytes, versionHistory, 'version history continues with the Quickstart document');
 
   assert.equal(firstArchiveEntry(bytes), '[Content_Types].xml');
   assert.ok(zip.file('word/styles.xml'), 'must contain Word styles');

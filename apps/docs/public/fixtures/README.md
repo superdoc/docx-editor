@@ -30,6 +30,9 @@ of exhaustive document scrubbing.
 
 ## `getting-started.docx`
 
+The version-history example uses identical bytes at `examples/version-history/public/sample.docx`.
+Copy the regenerated fixture there too; fixture tests enforce parity.
+
 The Editor Quickstart's one-page statement of work. Its title, headings, real
 bulleted list, milestone table, and signature fields make the first edit and
 export visible in a familiar business document.

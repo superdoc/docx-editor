@@ -4,10 +4,28 @@ navTitle: Version history
 description: Keep each saved DOCX as an immutable version and restore one without deleting newer work.
 ---
 
-Continue from [Load and save](/editor/load-and-save-documents). You already export a DOCX and wait for your backend to
-store it. Version history changes one rule: each save creates a new snapshot instead of overwriting the previous file.
+Keep a saved DOCX you can return to without discarding newer work. SuperDoc exports and opens the files; your
+application decides when to create a version and where to store it.
+
+Autosave describes when saving happens. Version history describes which saved states you retain. Saving automatically
+does not create a history unless your storage keeps those versions.
+
+## Try saving and restoring
+
+Run the [version-history example](https://go.superdoc.dev/examples/version-history). It includes a document and the
+controls needed for this walkthrough:
+
+1. Choose **Save version** to keep Version 1.
+2. Edit a sentence and save Version 2.
+3. Choose **Restore version 1**. The earlier text returns as Version 3; Version 2 remains available.
+4. Export the current DOCX, or restore Version 2 to return to the newer text.
+
+This example stores real DOCX snapshots in browser memory. Reloading clears its history; it does not provide a server
+or cross-tab conflict handling. Add those next using your [load and save flow](/editor/load-and-save-documents).
 
 ## Keep every saved version
+
+For this history, each save creates a new snapshot instead of overwriting the previous file.
 
 Suppose a document has two versions:
 
@@ -37,6 +55,9 @@ Extend the document endpoint from the Load and save guide. These are application
 
 Record the creation time and author from the trusted backend. Do not accept either value from browser input.
 
+Return the current version ID with the current DOCX, for example in an `x-version-id` response header. Return the new
+`DocumentVersion` metadata from each successful save. Keep that ID as the base for the next save or restore.
+
 Send the current version ID with each save. The backend must compare it with the current pointer in the same operation
 that makes the new version current. Return `409 Conflict` if another tab or user saved first. Validate every supplied
 version ID against this document.
@@ -51,11 +72,16 @@ In Vanilla, pass the `superdoc` instance you created earlier. In React, get that
 `editorRef.current?.getInstance()`.
 
 To restore a version, the helper opens its snapshot first and then saves it as a new version. Bytes the Editor cannot
-open never become current. If the save is rejected, it reloads the backend's current document. If that request fails,
-it restores the document that was open before the attempt.
+open never become current. If the save is rejected, it tries to reload the backend's current document. If that request
+fails, it attempts to restore the document that was open before the attempt. Recovery can fail too; show the error and
+require a successful reload before allowing another version action.
 
-Refresh the version list after every save or restore. Disable version actions while a request is running. The backend
-version check handles saves from other tabs and users.
+Refresh the version list after every save or restore. Disable version actions while a request is running.
+Before calling `restoreVersion`, also prevent editing: set `inert` on a wrapper containing the Editor and its toolbar,
+and pause application-driven document mutations. Keep that lock through saving and recovery. Otherwise, recovery can
+discard edits made while the restore request was pending. Remove the lock after a successful restore; on failure,
+show the error outside the inert wrapper and require a successful reload before enabling editing and version actions.
+The helper does not manage this application UI lock. The backend version check handles saves from other tabs and users.
 
 ## Verify the history
 
@@ -63,7 +89,18 @@ Save Version 1, edit the statement of work, and save Version 2. Restore Version 
 the Editor should show the Version 1 text, and Version 2 should remain in the list. Reload the page to confirm Version 3
 is current.
 
-Open a second tab before saving Version 2. A save from that stale tab should return `409` and leave Version 3 current.
+Open a second tab before saving Version 2. After restoring Version 1 as Version 3, a save from that stale tab should
+return `409` and leave Version 3 current.
+
+## Restore shared documents separately
+
+These helpers restore a standalone Editor, not a live collaboration room. A DOCX snapshot is not the room's saved
+Yjs state. In collaboration, replacing the file can replace shared content for everyone. Do not treat a local
+Restore button as a coordinated room-recovery policy.
+
+Your application needs a server-owned recovery policy for connected editors and writes arriving during recovery.
+See [Save and restore a room](/editor/collaboration/save-and-restore-a-room) for room persistence. It demonstrates
+reopening saved state, not rolling a live room back to an earlier version.
 
 Use [Secure integration](/editor/secure-integration) to protect the version routes. Use
 [Export options](/editor/export-options) when saved versions need a specific comments or tracked-changes policy.

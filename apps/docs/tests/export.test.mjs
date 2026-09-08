@@ -1106,8 +1106,15 @@ test('exports storage, version, and configuration guidance for the v2 Editor', a
   assert.match(versionHistory, /x-base-version-id/u);
   assert.match(versionHistory, /Return `409 Conflict` if another tab or user saved first/u);
   assert.match(versionHistory, /Bytes the Editor cannot\s+open never become current/u);
-  assert.match(versionHistory, /restores the document that was open before the attempt/u);
+  assert.match(versionHistory, /attempts to restore the document that was open before the attempt/u);
   assert.match(versionHistory, /Restoring Version 1 should create Version 3/u);
+  assert.match(versionHistory, /## Try saving and restoring/u);
+  assert.match(versionHistory, /The earlier text returns as Version 3; Version 2 remains available/u);
+  assert.match(versionHistory, /x-version-id/u);
+  assert.match(versionHistory, /Keep that ID as the base for the next save or restore/u);
+  assert.match(versionHistory, /set `inert` on a wrapper containing the Editor and its toolbar/u);
+  assert.match(versionHistory, /## Restore shared documents separately/u);
+  assert.match(versionHistory, /\[Save and restore a room\]\(\/editor\/collaboration\/save-and-restore-a-room\)/u);
   assert.match(exportOptions, /set it to `false` to return a `Blob` or ZIP/);
   assert.match(exportOptions, /does not apply `isFinalDoc`/);
   assert.doesNotMatch(exportOptions, /isFinalDoc: true/);

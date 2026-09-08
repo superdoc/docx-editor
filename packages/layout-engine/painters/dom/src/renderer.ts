@@ -2392,6 +2392,12 @@ export class DomPainter {
         fragEl.style.left = `${fragment.x - marginLeft}px`;
       }
 
+      // Project the local shading state while building this story. Relational
+      // :has selectors in V2HeaderFooterOverlay invalidate the whole document
+      // style tree when a retained header/footer replaces its children.
+      if (fragEl.querySelector('.superdoc-inline-run-background')) {
+        container.classList.add('superdoc-has-inline-run-background');
+      }
       container.appendChild(fragEl);
     });
 
@@ -3000,6 +3006,7 @@ export class DomPainter {
           background.style.height = `${Math.max(0, fragment.height - syntheticHeight)}px`;
           background.style.backgroundColor = inlineBackgroundColor;
           fragmentEl.appendChild(background);
+          fragmentEl.classList.add('superdoc-has-inline-run-background');
         }
       }
 
@@ -5618,8 +5625,12 @@ export class DomPainter {
     );
     this.applyFragmentFlowClass(el, fragment);
 
-    // Footnote content is read-only: prevent cursor placement and typing (blockId prefix from FootnotesBuilder)
-    if (typeof fragment.blockId === 'string' && fragment.blockId.startsWith('footnote-')) {
+    // Reassigning native editability on connected footnotes is expensive even when the value is unchanged.
+    if (
+      typeof fragment.blockId === 'string' &&
+      fragment.blockId.startsWith('footnote-') &&
+      el.getAttribute('contenteditable') !== 'false'
+    ) {
       el.setAttribute('contenteditable', 'false');
     }
 
@@ -5639,8 +5650,11 @@ export class DomPainter {
     section?: 'body' | 'header' | 'footer',
     resolvedItem?: ResolvedFragmentItem | ResolvedTableItem | ResolvedImageItem | ResolvedDrawingItem,
   ): void {
-    // Footnote content is read-only: prevent cursor placement and typing
-    if (typeof fragment.blockId === 'string' && fragment.blockId.startsWith('footnote-')) {
+    if (
+      typeof fragment.blockId === 'string' &&
+      fragment.blockId.startsWith('footnote-') &&
+      el.getAttribute('contenteditable') !== 'false'
+    ) {
       el.setAttribute('contenteditable', 'false');
     }
 

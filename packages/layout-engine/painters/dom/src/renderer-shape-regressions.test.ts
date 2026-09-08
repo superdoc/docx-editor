@@ -254,11 +254,46 @@ describe('DomPainter shape regressions', () => {
     expect(fragment?.style.overflow).toBe('visible');
     expect(fragment?.style.width).toBe('700px');
     expect(fragment?.style.height).toBe('7px');
+    expect(fragment?.classList.contains('superdoc-has-inline-run-background')).toBe(true);
     expect(runBackground?.style.backgroundColor).toBe('#E6E6E6');
     expect(runBackground?.style.left).toBe('0px');
     expect(runBackground?.style.top).toBe('0.5px');
     expect(runBackground?.style.width).toBe('700px');
     expect(runBackground?.style.height).toBe('6px');
+  });
+
+  it.each(['header', 'footer'] as const)('refreshes the %s shading marker when retained decorations change', (kind) => {
+    const shaded: DrawingFlowBlock = {
+      kind: 'drawing',
+      id: 'shaded-line',
+      drawingKind: 'vectorShape',
+      geometry: { width: 100, height: 1, rotation: 0, flipH: false, flipV: false },
+      shapeKind: 'line',
+      strokeColor: '#7CE0D3',
+      strokeWidth: 1,
+      attrs: { inlineBackgroundColor: '#E6E6E6', sourceExtent: { width: 100, height: 0 } },
+    };
+    const plain: DrawingFlowBlock = { ...shaded, id: 'plain-line', attrs: undefined };
+    const first = createDrawingFixtures(shaded);
+    const second = createDrawingFixtures(plain);
+    let fragments = first.layout.pages[0].fragments;
+    const provider = () => ({ fragments, height: 20, offset: 0 });
+    const painter = createDomPainter({
+      blocks: [...first.blocks, ...second.blocks],
+      measures: [...first.measures, ...second.measures],
+      ...(kind === 'header' ? { headerProvider: provider } : { footerProvider: provider }),
+    });
+    const body: Layout = { ...first.layout, pages: [{ number: 1, fragments: [] }] };
+    painter.paint(body, mount);
+    const container = mount.querySelector(`[data-sd-headerfooter-kind="${kind}"]`)!;
+    expect(container.querySelector('.superdoc-inline-run-background')).not.toBeNull();
+    expect(container.classList.contains('superdoc-has-inline-run-background')).toBe(true);
+    fragments = second.layout.pages[0].fragments;
+    painter.setProviders(kind === 'header' ? provider : undefined, kind === 'footer' ? provider : undefined);
+    painter.paint(body, mount);
+    expect(mount.querySelector(`[data-sd-headerfooter-kind="${kind}"]`)).toBe(container);
+    expect(container.querySelector('.superdoc-inline-run-background')).toBeNull();
+    expect(container.classList.contains('superdoc-has-inline-run-background')).toBe(false);
   });
 
   it('does not inverse-scale shape-group text when child geometry is already pre-scaled', () => {

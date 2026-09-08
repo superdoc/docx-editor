@@ -119,7 +119,7 @@ test('synchronizes a DOCX edit between two browser pages', async ({ browser }) =
   await expect(joiner.locator('#editor')).toContainText(edit, { timeout: 120_000 });
 
   const reply = 'COLLABORATIONREPLYMARKER';
-  await joiner.locator('.superdoc-text-run').filter({ hasText: 'This Mutual Non-Disclosure Agreement' }).first().click();
+  await joiner.locator('.superdoc-text-run').filter({ hasText: 'Alex and Sam will confirm' }).first().click();
   await joiner.keyboard.type(reply);
   await expect(creator.locator('#editor')).toContainText(reply, { timeout: 120_000 });
 

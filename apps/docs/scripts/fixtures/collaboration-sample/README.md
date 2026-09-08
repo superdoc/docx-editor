@@ -8,7 +8,8 @@ Rebuild into a fresh output directory:
 ooxml-fixture build --manifest manifest.json --out /tmp/collaboration-fixture-output
 ```
 
-Copy `collaboration-sample.docx` to `apps/docs/public/fixtures/`.
+Copy `collaboration-sample.docx` to `apps/docs/public/fixtures/` and to
+`examples/collaboration/public/sample.docx`. Fixture tests require identical bytes.
 
 Validated with Open XML SDK 3.4.1, Office 2019 profile: no errors.
 Tool: ooxml-fixture 1.0.0+b12205e5bf29b194d3c9e5e1c299723e5669214d, .NET 10.0.7.

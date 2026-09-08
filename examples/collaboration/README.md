@@ -13,7 +13,14 @@ pnpm install --ignore-scripts
 pnpm dev
 ```
 
-Open `http://localhost:5173/?mode=create` once to create the room. Open `http://localhost:5173/` in another tab to join it.
+Open `http://localhost:5173/?mode=create&user=Alex` once to create the room. Wait for `Connected.`, then open
+`http://localhost:5173/?user=Sam` in another tab. Both tabs use the compact delivery agreement from the docs demo.
+Change the delivery date in Alex's editor and confirm that Sam sees it. Type a reply in Sam's editor to check both directions.
+
+To return to a room that is still live or saved with file persistence, use `?user=Alex` or `?user=Sam`.
+Do not reuse `mode=create` for an existing room. With the default in-memory server, the room is lost after
+the last editor disconnects and the server unloads it, or after a server restart. Create it again with
+`?mode=create&user=Alex`, then join as Sam. This starts from the sample document; previous edits are lost.
 
 ## Verify it
 
@@ -47,4 +54,5 @@ pnpm test:access
 
 The browser tests cover shared edits, reopening, and DOCX export. The persistence test closes all clients, restarts the server process with its saved files, and checks the restored text and exported DOCX.
 
-See [Connect two editors](https://docs.superdoc.dev/editor/collaboration/connect-two-editors) for the walkthrough and [Understand collaboration](https://docs.superdoc.dev/editor/collaboration) for room lifecycle guidance.
+See [Connect two editors](https://docs.superdoc.dev/editor/collaboration/connect-two-editors) for the walkthrough and
+[Initialize a shared document](https://docs.superdoc.dev/editor/collaboration/initialize-a-document) for create/join ownership.

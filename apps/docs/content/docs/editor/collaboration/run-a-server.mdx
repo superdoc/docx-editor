@@ -7,12 +7,10 @@ description: Choose a provider and connect room access, storage, and recovery be
 The [two-editor example](/editor/collaboration/connect-two-editors) already runs a Hocuspocus server. Keep it for local
 development. Before deployment, choose who operates the provider and how rooms are authorized, saved, and recovered.
 
-## 1. Use the example server
+## Run the server separately
 
 The [collaboration example](https://go.superdoc.dev/examples/collaboration) pins Hocuspocus 2.15.3. Its `pnpm dev` command
 starts both the browser app and server. You do not need a second server process.
-
-## 2. Start it
 
 To run only the server, stop `pnpm dev`, then run this from the example directory:
 
@@ -22,15 +20,12 @@ pnpm exec tsx server.ts
 
 The example listens on port `1234` and keeps rooms in memory. Restarting the process clears them. With no storage integration, unloading a room after its last editor disconnects also loses its state.
 
-## 3. Connect two editors
-
-Configure the first browser with a Hocuspocus target and `roomMode: 'create'`. After the room exists, open a second browser with the same `documentId` and `roomMode: 'join'`. [Connect two editors](/editor/collaboration/connect-two-editors) walks through the browser setup.
-
 Start the browser app separately with `pnpm exec vite`, or return to `pnpm dev` after stopping the standalone server.
 
-<Callout variant='success' title='Verification target'>
-  Edit the first browser. The second browser should show the change and export a DOCX containing the synchronized text.
-</Callout>
+Use the [two-editor walkthrough](/editor/collaboration/connect-two-editors#2-open-alex-and-sams-editors) to check the
+connection. For storage, pass `COLLABORATION_STORAGE_DIR` to the server command. For the access example, pass
+`COLLABORATION_DEMO_AUTH=1` to the server command and `VITE_COLLABORATION_DEMO_AUTH=1` to the Vite command.
+The default commands enable neither storage nor access checks.
 
 ## Prepare for production
 

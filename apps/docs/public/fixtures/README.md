@@ -222,7 +222,8 @@ Fixture tests preserve those starting conditions.
 
 Three short paragraphs on a 4-by-3-inch page give the two-editor demo room for
 both views. Change Monday to Friday and watch the other editor update. Presence
-and access demonstrations reuse it; it contains no comments or revisions.
+and access demonstrations reuse it; it contains no comments or revisions. The
+runnable collaboration example uses identical bytes, enforced by fixture tests.
 
 Its OOXML source is under `scripts/fixtures/collaboration-sample/`. The fixture
 test checks its text, page geometry, and absence of metadata and comments.

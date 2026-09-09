@@ -66,6 +66,7 @@ import type {
   DocumentUploadSource,
   DocumentApi,
   DocumentMode,
+  DocumentReplacementResult,
   DocumentProtectionState,
   EntityAddress,
   EditorSurface,
@@ -335,6 +336,7 @@ const _real_DocumentSource: AssertNotAny<DocumentSource> = true;
 const _real_DocumentUploadSource: AssertNotAny<DocumentUploadSource> = true;
 const _real_DocumentApi: AssertNotAny<DocumentApi> = true;
 const _real_DocumentMode: AssertNotAny<DocumentMode> = true;
+const _real_DocumentReplacementResult: AssertNotAny<DocumentReplacementResult> = true;
 const _real_DocumentProtectionState: AssertNotAny<DocumentProtectionState> = true;
 const _real_EntityAddress: AssertNotAny<EntityAddress> = true;
 const _real_EditorSurface: AssertNotAny<EditorSurface> = true;

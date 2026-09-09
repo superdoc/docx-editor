@@ -474,6 +474,105 @@ describe('superdoc.ui — sole owner', () => {
    * that never arrives and every one of those tests still passes.
    */
   describe('replaceFile signals a document replacement', () => {
+    it.each([undefined, null, true, 'ok', {}, { state: 'editing-ready' }])(
+      'keeps legacy raw results and exposes the same confirmation: %j',
+      async (raw) => {
+        const superdoc = mount();
+        stubLegacyActiveEditor(superdoc, raw);
+        const replaced = vi.fn();
+        superdoc.on('document-replaced', replaced);
+        const source = new Blob(['next']);
+        expect(await superdoc.replaceFile(source)).toBe(raw);
+        expect(await superdoc.replaceDocument(source)).toEqual({ ok: true });
+        expect(replaced).toHaveBeenCalledTimes(2);
+      },
+    );
+
+    it('preserves a legacy refusal without publishing replacement data or events', async () => {
+      const { superdoc, storedData } = mountWithStoredDocument('failed');
+      const raw = { state: 'failed', reason: 'open-failed', detail: 'Corrupt zip' };
+      Object.defineProperty(superdoc.activeEditor, 'replaceFile', { value: async () => raw });
+      const replaced = vi.fn();
+      superdoc.on('document-replaced', replaced);
+      const source = new Blob(['bad']);
+
+      expect(await superdoc.replaceFile(source)).toBe(raw);
+      expect(storedData()).toBe('ORIGINAL');
+      expect(replaced).not.toHaveBeenCalled();
+
+      expect(await superdoc.replaceDocument(source)).toEqual({
+        ok: false,
+        reason: 'open-failed',
+        detail: 'Corrupt zip',
+      });
+      expect(storedData()).toBe('ORIGINAL');
+      expect(replaced).not.toHaveBeenCalled();
+    });
+
+    it('reports failed replacement even when readiness fires for recovery', async () => {
+      const superdoc = mount();
+      const raw = { state: 'failed', reason: 'open-failed', detail: 'Invalid document', mount: {} };
+      Object.defineProperty(superdoc, 'activeEditor', {
+        value: {
+          editorVersion: 2,
+          replaceFile: async () => {
+            superdoc.emit('ready', { superdoc });
+            return raw;
+          },
+        },
+        configurable: true,
+      });
+      const ready = vi.fn();
+      const replaced = vi.fn();
+      superdoc.on('ready', ready);
+      superdoc.on('document-replaced', replaced);
+      expect(await superdoc.replaceDocument(new Blob(['bad']))).toEqual({
+        ok: false,
+        reason: 'open-failed',
+        detail: 'Invalid document',
+      });
+      expect(ready).toHaveBeenCalledOnce();
+      expect(replaced).not.toHaveBeenCalled();
+      expect(await superdoc.replaceFile(new Blob(['bad']))).toBe(raw);
+    });
+
+    it('preserves operational rejections through root and UI methods', async () => {
+      const superdoc = mount();
+      const error = new Error('Replacement in progress');
+      Object.defineProperty(superdoc, 'activeEditor', {
+        value: {
+          editorVersion: 2,
+          replaceFile: async () => {
+            throw error;
+          },
+        },
+        configurable: true,
+      });
+      const source = new Blob(['next']);
+      await expect(superdoc.replaceFile(source)).rejects.toBe(error);
+      await expect(superdoc.replaceDocument(source)).rejects.toBe(error);
+      await expect(superdoc.ui.document.replaceDocument(source)).rejects.toBe(error);
+    });
+
+    it.each(['review-ready', 'editing-ready'])('exposes confirmed %s through the UI', async (state) => {
+      const superdoc = mount();
+      stubActiveEditor(superdoc, state);
+      expect(await superdoc.ui.document.replaceDocument(new Blob(['next']))).toEqual({ ok: true });
+    });
+
+    it('does not treat a v2 missing state as confirmation', async () => {
+      const superdoc = mount();
+      stubActiveEditor(superdoc, undefined);
+      expect(await superdoc.replaceDocument(new Blob(['next']))).toEqual({ ok: false });
+    });
+
+    it.each(['editing-ready', 'failed'])('persists only confirmed replacement bytes: %s', async (state) => {
+      const { superdoc, storedData } = mountWithStoredDocument(state);
+      const source = new Blob(['next']);
+      expect(await superdoc.replaceDocument(source)).toEqual({ ok: state === 'editing-ready' });
+      expect(storedData()).toBe(state === 'editing-ready' ? source : 'ORIGINAL');
+    });
+
     /** A v2 editor facade whose replace resolves with the given state. */
     function stubActiveEditor(superdoc: SuperDocInstance, state: unknown): { calls: number } {
       const tracker = { calls: 0 };

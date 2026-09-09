@@ -103,6 +103,28 @@ test('lifecycle preview preserves clean exports, dirty exports, and retry naviga
   assert.equal(status().textContent.trim(), 'Opening…');
 });
 
+test('replacement preview checks the operation result and preserves rejections', async () => {
+  const page = await readFile(new URL('../content/docs/editor/load-and-save-documents.mdx', import.meta.url), 'utf8');
+  assert.match(page, /source-preview API, not part of the published Quickstart release yet/u);
+  const source = [...page.matchAll(/```ts\n([\s\S]*?)```/gu)].find((match) => match[1].includes('switchDocument'))?.[1];
+  assert.ok(source);
+  const javascript = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
+  const file = new Blob(['next']);
+  const failure = new Error('Busy');
+  for (const result of [{ ok: true }, { ok: false, detail: 'Bad document' }, failure]) {
+    const switchDocument = new Function('superdoc', `${javascript}\nreturn switchDocument;`)({
+      replaceDocument: async (input) => {
+        assert.equal(input, file);
+        if (result instanceof Error) throw result;
+        return result;
+      },
+    });
+    if (result instanceof Error) await assert.rejects(switchDocument(file), (error) => error === failure);
+    else if (result.ok) await switchDocument(file);
+    else await assert.rejects(switchDocument(file), /Bad document/u);
+  }
+});
+
 test('lifecycle example gates export, preserves edits, and cleans up pending work', async () => {
   const window = new Window();
   window.document.body.innerHTML = await lifecycleMarkup();

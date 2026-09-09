@@ -1,6 +1,7 @@
 import '../style.css';
 
 import { EventEmitter } from 'eventemitter3';
+import type { DocumentReplacementResult } from '../public/document-replacement.js';
 import { v4 as uuidv4 } from 'uuid';
 import { markRaw, nextTick, toRaw } from 'vue';
 import type { HocuspocusProviderWebsocket } from '@hocuspocus/provider';
@@ -3995,21 +3996,45 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
   /**
    * Replace the active document with a new file while preserving the mounted
    * editor instance when the active runtime supports it.
+   * Returns the raw runtime value. Use `replaceDocument()` for a typed outcome.
    *
    * V2 collaboration routes this through the host-owned replace-file command so
    * the room can be atomically cleared and reseeded instead of tearing down the
    * SuperDoc instance and racing an empty Y.Doc against imported DOCX bytes.
    */
   async replaceFile(source: File | Blob | ArrayBuffer | Uint8Array): Promise<unknown> {
+    return (await this.#replaceActiveDocument(source)).raw;
+  }
+
+  /**
+   * Replace mounted content and report whether the requested document opened.
+   * Operational errors reject the promise. `onReady` can also fire during recovery;
+   * use `ok` to decide whether this replacement succeeded.
+   */
+  async replaceDocument(source: File | Blob | ArrayBuffer | Uint8Array): Promise<DocumentReplacementResult> {
+    const { raw, confirmed } = await this.#replaceActiveDocument(source);
+    if (confirmed) return { ok: true };
+    const result: DocumentReplacementResult = { ok: false };
+    if (raw && typeof raw === 'object') {
+      if ('reason' in raw && typeof raw.reason === 'string') result.reason = raw.reason;
+      if ('detail' in raw && typeof raw.detail === 'string') result.detail = raw.detail;
+    }
+    return result;
+  }
+
+  async #replaceActiveDocument(
+    source: File | Blob | ArrayBuffer | Uint8Array,
+  ): Promise<{ raw: unknown; confirmed: boolean }> {
     const activeEditor = this.activeEditor as ActiveEditor | null;
     if (isV2ActiveEditorFacade(activeEditor) && typeof activeEditor.replaceFile === 'function') {
       const result = await activeEditor.replaceFile(source);
       const state = result && typeof result === 'object' ? (result as { state?: unknown }).state : null;
-      if (state === null || state === 'review-ready' || state === 'editing-ready') {
+      const confirmed = state === null || state === 'review-ready' || state === 'editing-ready';
+      if (confirmed) {
         this.#replaceActiveDocumentData(activeEditor, source);
         this.emit('document-replaced', { editor: activeEditor, host: (activeEditor as { host?: unknown })?.host });
       }
-      return result;
+      return { raw: result, confirmed };
     }
 
     const legacyReplaceFile =
@@ -4019,16 +4044,7 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
         : null;
     if (typeof legacyReplaceFile === 'function') {
       const result = await legacyReplaceFile.call(activeEditor, source);
-      // Same confirmation gate as the v2 branch, and covering the same two
-      // effects. A legacy adapter that reports a non-ready state without
-      // throwing should neither have its bytes persisted into config and the
-      // store nor trigger a UI reset — v2 has always gated both together, and
-      // gating only the emit here would ship a half-applied rule that reads as
-      // if the data write were covered too.
-      //
-      // A result carrying no `state` counts as confirmed, which is what every
-      // adapter predating that field returns, so existing legacy behaviour is
-      // unchanged for them.
+      // Unlike v2, older adapters confirm by resolving without a state field.
       const legacyState = result && typeof result === 'object' ? (result as { state?: unknown }).state : undefined;
       const legacyConfirmed =
         legacyState === undefined ||
@@ -4039,7 +4055,7 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
         this.#replaceActiveDocumentData(activeEditor, source);
         this.emit('document-replaced', { editor: activeEditor, host: (activeEditor as { host?: unknown })?.host });
       }
-      return result;
+      return { raw: result, confirmed: legacyConfirmed };
     }
 
     throw new Error('SuperDoc: replaceFile is unavailable for the active editor');

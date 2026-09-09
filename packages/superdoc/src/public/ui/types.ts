@@ -102,6 +102,8 @@ import type {
 
 import type { PartialBrowserDocumentApi } from '../browser-document-api.js';
 import type { ExportParams } from '../export-types.js';
+import type { DocumentReplacementResult } from '../document-replacement.js';
+export type { DocumentReplacementResult } from '../document-replacement.js';
 
 import type { SuperDocUIReason } from './reasons.js';
 import type { BuiltInCommandId } from './commands.js';
@@ -1288,6 +1290,8 @@ export interface DocumentHandle extends SnapshotSubscribable<DocumentSlice> {
   getText(): string | null;
   /** Replace the active document file, when supported by the host. */
   replaceFile(file: File | Blob | ArrayBuffer | Uint8Array): Promise<unknown> | undefined;
+  /** Replace mounted content. Operational errors reject; an unavailable host returns `ok: false`. */
+  replaceDocument(file: File | Blob | ArrayBuffer | Uint8Array): Promise<DocumentReplacementResult>;
 }
 
 /** Viewport handle. */
@@ -1590,6 +1594,8 @@ export interface SuperDocLike {
   setDocumentMode?(mode: string): unknown;
   /** Export the active document. */
   export?(params?: ExportParams): Promise<Blob> | Blob;
+  /** Replace mounted content with a confirmed public outcome. */
+  replaceDocument?(source: File | Blob | ArrayBuffer | Uint8Array): Promise<DocumentReplacementResult>;
   /** Set an absolute zoom value. */
   setZoom?(value: number): unknown;
   /** Set a zoom mode. */

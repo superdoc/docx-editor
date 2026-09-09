@@ -82,6 +82,7 @@ export type {
   FontsHandle,
   ZoomHandle,
   DocumentHandle,
+  DocumentReplacementResult,
   ViewportHandle,
   StylesHandle,
   ActiveParagraphStyle,

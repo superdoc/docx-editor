@@ -106,6 +106,7 @@ export type { SuperDocContentErrorPayload } from '../core/types/index.js';
 export type { SuperDocDiagnosticCode } from '../core/types/index.js';
 export type { SuperDocDiagnosticStage } from '../core/types/index.js';
 export type { SuperDocDocumentModeChangePayload } from '../core/types/index.js';
+export type { DocumentReplacementResult } from './document-replacement.js';
 export type { SuperDocEditorPayload } from '../core/types/index.js';
 export type { SuperDocExceptionDiagnosticPayload } from '../core/types/index.js';
 export type { SuperDocExceptionEditorPayload } from '../core/types/index.js';

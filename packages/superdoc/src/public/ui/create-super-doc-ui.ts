@@ -10651,6 +10651,13 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       }
       return null;
     },
+    replaceDocument: async (file) => {
+      const host = options.superdoc;
+      if (typeof host.replaceDocument !== 'function') {
+        return { ok: false, reason: SUPERDOC_UI_REASONS.operationUnavailable };
+      }
+      return host.replaceDocument(file);
+    },
     replaceFile: (file: File | Blob | ArrayBuffer | Uint8Array) => {
       const op = superdoc?.replaceFile ?? superdoc?.loadDocument ?? superdoc?.reload;
       if (typeof op === 'function') {

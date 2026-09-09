@@ -7756,6 +7756,10 @@ describe('public ui — document control parity (row 742)', () => {
     const ui = createSuperDocUI({ superdoc });
     expect(ui.document.export()).toBeUndefined();
     expect(ui.document.replaceFile(new Blob(['x']))).toBeUndefined();
+    expect(await ui.document.replaceDocument(new Blob(['x']))).toEqual({
+      ok: false,
+      reason: 'operation-unavailable',
+    });
   });
 });
 

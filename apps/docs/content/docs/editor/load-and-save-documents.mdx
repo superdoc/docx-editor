@@ -78,6 +78,30 @@ overwriting the file.
 
 Fetch the file yourself and pass a `Blob` when the request needs custom headers.
 
+### Preview: check a document replacement
+
+`replaceDocument()` is a source-preview API, not part of the published Quickstart release yet.
+It keeps the mounted Editor and reports whether the requested document opened. `replaceFile()` remains available
+with its existing raw return value.
+
+After fetching the next DOCX as a `Blob`, use the ready `superdoc` instance from your application:
+
+```ts
+async function switchDocument(nextDocx: Blob): Promise<void> {
+  const result = await superdoc.replaceDocument(nextDocx);
+  if (!result.ok) {
+    throw new Error(result.detail ?? result.reason ?? 'Could not open the next document.');
+  }
+}
+```
+
+Save or discard current edits before switching. Disable document actions while awaiting this function and handle
+rejections in your application's error UI. Update the active document name only after it succeeds.
+
+Do not use `onReady` to decide whether a replacement succeeded: recovery can make the previous document ready again.
+A failed replacement does not guarantee that the previous document survived. Custom controls can call
+`superdoc.ui.document.replaceDocument(nextDocx)` for the same typed result.
+
 ## Verify the round trip
 
 Change the effective date from `September 1, 2026` to `October 1, 2026`. Select **Save DOCX**, then reload the page. The

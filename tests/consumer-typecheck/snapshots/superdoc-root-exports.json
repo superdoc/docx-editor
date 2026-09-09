@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-04T14:00:54.747Z",
+  "generatedAt": "2026-09-08T17:10:47.590Z",
   "ticket": "SD-3212 PR A0",
   "package": "superdoc",
   "rootExport": {
@@ -59,6 +59,7 @@
         "DocumentDataSource",
         "DocumentMode",
         "DocumentProtectionState",
+        "DocumentReplacementResult",
         "DocumentSource",
         "DocumentUploadSource",
         "EditorSurface",
@@ -335,6 +336,7 @@
         "DocumentDataSource",
         "DocumentMode",
         "DocumentProtectionState",
+        "DocumentReplacementResult",
         "DocumentSource",
         "DocumentUploadSource",
         "EditorSurface",
@@ -597,11 +599,11 @@
     }
   },
   "counts": {
-    "types.import": 268,
-    "types.require": 268,
+    "types.import": 271,
+    "types.require": 271,
     "import": 10,
     "require": 10,
-    "union": 268
+    "union": 271
   },
   "divergences": {
     "typesImportVsRequire": {
@@ -657,6 +659,7 @@
         "DocumentDataSource",
         "DocumentMode",
         "DocumentProtectionState",
+        "DocumentReplacementResult",
         "DocumentSource",
         "DocumentUploadSource",
         "EditorSurface",

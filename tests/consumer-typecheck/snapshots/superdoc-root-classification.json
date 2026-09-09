@@ -1476,6 +1476,17 @@
       "inCjs": false
     },
     {
+      "name": "DocumentReplacementResult",
+      "bucket": "supported-root",
+      "rationale": "Confirmed replacement outcome shared by root and UI document methods without exposing host internals.",
+      "confidence": "high",
+      "source": "core",
+      "inDts": true,
+      "inDcts": true,
+      "inEsm": false,
+      "inCjs": false
+    },
+    {
       "name": "SuperDocDocumentModeChangePayload",
       "bucket": "supported-root",
       "rationale": "Payload emitted with document-mode-change after role restrictions are applied.",

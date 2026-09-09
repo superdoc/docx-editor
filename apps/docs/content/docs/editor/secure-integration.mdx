@@ -24,6 +24,9 @@ Treat names and emails supplied in `user` as display identity unless they came f
 
 ## Configure the browser boundary
 
+Check [Telemetry](/editor/telemetry) separately: it is enabled by default, and its destination and metadata are
+configuration decisions. The [Editor license](/editor/license) is client-visible identity, not an access credential.
+
 Use HTTPS, restrictive CORS, and a Content Security Policy that permits only the scripts, workers, connections, images, and fonts your deployment needs. Avoid unversioned third-party runtime dependencies, and decide whether Editor assets are self-hosted before production.
 
 ## Pass a nonce to runtime styles

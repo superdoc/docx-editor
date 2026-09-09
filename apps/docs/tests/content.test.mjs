@@ -4,9 +4,57 @@ import { access, readFile, readdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import ts from 'typescript';
+import { loader } from 'fumadocs-core/source';
 
 const appRoot = fileURLToPath(new URL('../', import.meta.url));
 const contentRoot = new URL('../content/docs/', import.meta.url);
+
+test('Editor navigation places setup and accessibility before feature depth', async () => {
+  const { pages } = JSON.parse(await readFile(new URL('editor/meta.json', contentRoot), 'utf8'));
+  const sectionOf = (page) => {
+    const position = pages.indexOf(page);
+    assert.notEqual(position, -1, `${page} must remain discoverable`);
+    return pages.slice(0, position).findLast((entry) => entry.startsWith('---'));
+  };
+  assert.ok(!pages.includes('---Production---'));
+  for (const page of ['lifecycle-and-events', 'load-and-save-documents', 'export-options']) {
+    assert.equal(sectionOf(page), '---Get started---');
+  }
+  assert.equal(sectionOf('accessibility'), '---Interface---');
+  assert.equal(sectionOf('version-history'), '---Features---');
+  for (const page of ['performance-and-large-documents', 'secure-integration', 'telemetry', 'license']) {
+    assert.equal(sectionOf(page), '---');
+  }
+
+  const editorRoot = new URL('editor/', contentRoot);
+  const files = [];
+  for (const path of await readdir(editorRoot, { recursive: true })) {
+    if (path.endsWith('.mdx')) {
+      files.push({ type: 'page', path, data: {} });
+    } else if (path.endsWith('meta.json')) {
+      files.push({ type: 'meta', path, data: JSON.parse(await readFile(new URL(path, editorRoot), 'utf8')) });
+    }
+  }
+  const source = loader({ baseUrl: '/editor', source: { files } });
+  const nodes = source.pageTree.children;
+  assert.deepEqual(
+    nodes.filter((node) => node.type === 'separator').map((node) => node.name),
+    ['Get started', 'Interface', 'Features', undefined],
+  );
+  const divider = nodes.findIndex((node) => node.type === 'separator' && !node.name);
+  const trailingGuides = nodes.slice(divider + 1);
+  assert.deepEqual(
+    trailingGuides.map((node) => [node.type, node.url]),
+    ['performance-and-large-documents', 'secure-integration', 'telemetry', 'license'].map((slug) => [
+      'page',
+      `/editor/${slug}`,
+    ]),
+  );
+  for (const node of trailingGuides) {
+    assert.ok(source.getPage(node.url.slice('/editor/'.length).split('/')));
+  }
+  assert.ok(!nodes.some((node) => node.type === 'page' && (node.name === '---' || node.url.endsWith('/---'))));
+});
 const snippetsRoot = fileURLToPath(new URL('../snippets/', import.meta.url));
 const snippetsRootPrefix = snippetsRoot.endsWith('/') ? snippetsRoot : `${snippetsRoot}/`;
 // Runnable examples own their typecheck and are included directly so the guide cannot drift from the app.

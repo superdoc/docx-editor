@@ -1,14 +1,16 @@
 ---
 title: Handle lifecycle and events
 navTitle: Lifecycle and events
-description: Show loading and error states, track unsaved edits, save, and clean up the Editor.
+description: Understand when the Editor is ready, what counts as an edit, and when to release it.
 ---
 
-Connect each Editor signal to one application state: loading, ready, unsaved, saved, or unmounted.
+After the [Quickstart](/editor/quickstart), connect Editor signals to your application's state. Readiness enables
+actions, edits mark the document as unsaved, and leaving the route releases the Editor. A successful export alone
+does not mean your backend saved the file.
 
 ## Follow the lifecycle
 
-Select a stage. The preview shows what your application should do and the code that drives it.
+Select a stage. This simulated preview shows the application state and the code that drives it; it does not save a document.
 
 <LifecycleJourney />
 
@@ -22,7 +24,9 @@ Replace the controls and mount point from the [Editor quickstart](/editor/quicks
 <div id="editor"></div>
 ```
 
-Then connect them to `/sample.docx`. Replace `/api/documents/42` with your save endpoint:
+Keep `/sample.docx` from Quickstart. The following example also needs a save endpoint: a `PUT` must store the DOCX
+request body and return success only after the write finishes. It uses `/api/documents/42` as a placeholder;
+replace that URL with your endpoint. [Load and save](/editor/load-and-save-documents) owns the backend integration.
 
 <include>../../../snippets/editor/editor-lifecycle.ts</include>
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { Bold, Check, Italic, RotateCcw, Underline, Undo2, X } from 'lucide-react';
+import { Bold, Italic, RotateCcw, Underline, Undo2 } from 'lucide-react';
 import { type KeyboardEvent as ReactKeyboardEvent, useEffect, useRef, useState } from 'react';
 import type {
   Config,
@@ -10,7 +10,7 @@ import type {
   SuperDocMeasurementUnit,
   ViewingTrackedChangesMode,
 } from 'superdoc';
-import type { CommandState, SuperDocUI, ZoomSlice } from 'superdoc/ui';
+import type { CommandState, SuperDocUI, TrackChangesSlice, ZoomSlice } from 'superdoc/ui';
 import {
   commentsDemoLayouts,
   commentsDemoLevels,
@@ -34,6 +34,10 @@ import { createRuntimeEditor, loadRuntime, loadUIModule, type SuperDocInstance }
 
 const zoomStep = 10;
 const initialZoom = { max: 200, min: 10, mode: 'manual', value: 100 } satisfies ZoomSlice;
+const initialTrackedChanges: Pick<TrackChangesSlice, 'status' | 'total'> = {
+  status: 'pending',
+  total: 0,
+};
 
 type EditorDemoPreset =
   | 'comments'
@@ -274,7 +278,6 @@ export function EditorDemo({
   const uiCleanupRef = useRef<(() => void) | null>(null);
   const uiRef = useRef<SuperDocUI | null>(null);
   const zoomRef = useRef<ZoomSlice>(initialZoom);
-  const [activeChangeId, setActiveChangeId] = useState<string | null>(null);
   const [commandStates, setCommandStates] = useState(initialCommandStates);
   const [commentsLayout, setCommentsLayout] = useState<CommentsDemoLayout>('auto');
   const [commentsLevel, setCommentsLevel] = useState<CommentsDemoLevel>('resolve');
@@ -291,15 +294,14 @@ export function EditorDemo({
   const [contextMenuStrategy, setContextMenuStrategy] = useState<ContextMenuDemoStrategy>('custom');
   const [hyperlinkBehavior, setHyperlinkBehavior] = useState<HyperlinkDemoBehavior>('default');
   const [includeTrackedDeletions, setIncludeTrackedDeletions] = useState(false);
-  const [modeResetBusy, setModeResetBusy] = useState(false);
+  const [sampleResetBusy, setSampleResetBusy] = useState(false);
   const [replaceControls, setReplaceControls] = useState(true);
-  const [reviewBusy, setReviewBusy] = useState(false);
   const [rulerActive, setRulerActive] = useState(false);
   const [rulerUnit, setRulerUnit] = useState<SuperDocMeasurementUnit>('in');
   const [rulerVisible, setRulerVisible] = useState(true);
   const [state, setState] = useState<DemoState>('idle');
   const [toolbarStrategy, setToolbarStrategy] = useState<ToolbarDemoStrategy>('items');
-  const [trackedChangeCount, setTrackedChangeCount] = useState(0);
+  const [trackedChanges, setTrackedChanges] = useState(initialTrackedChanges);
   const [viewingTrackedChanges, setViewingTrackedChanges] = useState<ViewingTrackedChangesMode>('original');
   const [zoom, setZoom] = useState<ZoomSlice>(initialZoom);
 
@@ -390,11 +392,7 @@ export function EditorDemo({
     cleanup.push(
       ui.trackChanges.observe((snapshot) => {
         if (!mountedRef.current) return;
-        setTrackedChangeCount(snapshot.total);
-
-        const nextActiveId = snapshot.activeId ?? snapshot.items[0]?.id ?? null;
-        if (!snapshot.activeId && nextActiveId) ui.trackChanges.setActive(nextActiveId);
-        setActiveChangeId(nextActiveId);
+        setTrackedChanges({ status: snapshot.status, total: snapshot.total });
       }),
       ui.zoom.observe((snapshot) => {
         zoomRef.current = snapshot;
@@ -500,13 +498,15 @@ export function EditorDemo({
       const [file, SuperDoc, uiModule] = await Promise.all([getFile?.(), loadRuntime(), loadUIModule()]);
       if (!mountedRef.current || !mountRef.current || loadId !== loadIdRef.current) return false;
       const builtInToolbar = toolbarRef.current;
-      if ((preset === 'hyperlinks' || preset === 'search' || preset === 'toolbar') && !builtInToolbar) {
+      if (
+        (preset === 'hyperlinks' || preset === 'search' || preset === 'toolbar' || preset === 'tracked-review') &&
+        !builtInToolbar
+      ) {
         throw new Error('The built-in toolbar mount is unavailable.');
       }
 
       destroyEditor();
       replacedEditor = true;
-      setActiveChangeId(null);
       setCommandStates(initialCommandStates());
       setCommentsLayout(initialCommentsLayout);
       setCommentsLevel(initialCommentsLevel);
@@ -519,14 +519,13 @@ export function EditorDemo({
       setLastContentControl(null);
       fitActiveRef.current = true;
       setFitActive(true);
-      setModeResetBusy(false);
+      setSampleResetBusy(false);
       setReplaceControls(initialReplaceControls);
-      setReviewBusy(false);
       setRulerActive(false);
       setRulerUnit('in');
       setRulerVisible(true);
       setToolbarStrategy(initialToolbarStrategy);
-      setTrackedChangeCount(0);
+      setTrackedChanges(initialTrackedChanges);
       setViewingTrackedChanges('original');
       zoomRef.current = initialZoom;
       setZoom(initialZoom);
@@ -578,6 +577,13 @@ export function EditorDemo({
           ...(preset === 'ruler' ? { comments: false, ruler: true } : {}),
           ...(preset === 'toolbar'
             ? { toolbar: getPinnedToolbarOptions(initialToolbarStrategy, builtInToolbar!) }
+            : {}),
+          ...(preset === 'tracked-review'
+            ? {
+                toolbar: getPinnedFocusedToolbarOptions(builtInToolbar!, {
+                  left: ['acceptTrackedChangeBySelection', 'rejectTrackedChangeOnSelection'],
+                }),
+              }
             : {}),
         },
         interaction: preset === 'comments' ? { comments: { level: initialCommentsLevel } } : undefined,
@@ -801,11 +807,11 @@ export function EditorDemo({
     setRulerUnit(unit);
   }
 
-  async function resetModesDemo() {
+  async function resetSample() {
     const instance = instanceRef.current;
-    if (!instance || !fixture || modeResetBusy) return;
+    if (!instance || !fixture || sampleResetBusy) return;
 
-    setModeResetBusy(true);
+    setSampleResetBusy(true);
     try {
       const result = await instance.replaceFile(await getFixtureFile());
       if (!documentReplacementSucceeded(result)) throw new Error('SuperDoc could not reset the sample document.');
@@ -814,7 +820,7 @@ export function EditorDemo({
     } catch {
       setState('error');
     } finally {
-      if (mountedRef.current) setModeResetBusy(false);
+      if (mountedRef.current) setSampleResetBusy(false);
     }
   }
 
@@ -848,18 +854,6 @@ export function EditorDemo({
     surface.classList.add('sd-editor-demo-surface-blocked');
   }
 
-  async function decideChange(decision: 'accept' | 'reject') {
-    const ui = uiRef.current;
-    if (!ui || !activeChangeId || reviewBusy) return;
-
-    setReviewBusy(true);
-    try {
-      await Promise.resolve(ui.trackChanges[decision](activeChangeId));
-    } finally {
-      if (mountedRef.current) setReviewBusy(false);
-    }
-  }
-
   function changeZoom(direction: -1 | 1) {
     const nextZoom = Math.min(zoom.max, Math.max(zoom.min, zoom.value + direction * zoomStep));
     fitActiveRef.current = false;
@@ -889,8 +883,11 @@ export function EditorDemo({
     }
   }
 
-  const hasActiveChange = Boolean(activeChangeId) && !reviewBusy;
-  const countLabel = `${trackedChangeCount} ${trackedChangeCount === 1 ? 'change' : 'changes'}`;
+  const countLabel =
+    trackedChanges.total === 0
+      ? 'No open proposals'
+      : `${trackedChanges.total} open ${trackedChanges.total === 1 ? 'proposal' : 'proposals'}`;
+  const reviewStatusLabel = trackedChanges.status === 'ready' ? countLabel : 'Updating proposals…';
   const activeDocumentMode = documentModes.find((mode) => mode.id === documentMode) ?? documentModes[0];
   const contentControlStatus = lastContentControl
     ? `${lastContentControl.alias ?? lastContentControl.tag ?? lastContentControl.id} · tag: ${lastContentControl.tag ?? 'none'} · type: ${lastContentControl.controlType}`
@@ -943,7 +940,9 @@ export function EditorDemo({
                                 ? 'Search for “Client”, or include tracked deletions and search for “Legacy”.'
                                 : preset === 'toolbar'
                                   ? 'Switch strategies, then try the rendered controls in the document.'
-                                  : 'Loads the sample DOCX in suggesting mode.'}
+                                  : preset === 'tracked-review'
+                                    ? 'Select a marked proposal, then choose Accept or Reject.'
+                                    : 'Loads the sample DOCX in suggesting mode.'}
           </span>
         </div>
         <div className='sd-editor-demo-actions'>
@@ -993,12 +992,13 @@ export function EditorDemo({
       preset === 'context-menu' ||
       preset === 'hyperlinks' ||
       preset === 'ruler' ||
-      preset === 'document-modes' ? (
+      preset === 'document-modes' ||
+      preset === 'tracked-review' ? (
         <div className='sd-editor-demo-config-bar' aria-label={`${title} configuration`}>
           {showConfiguration && preset === 'document-modes' ? (
-            <div className='sd-editor-demo-mode-controls'>
+            <div className='sd-editor-demo-sample-controls'>
               <DemoConfigGroup
-                disabled={state !== 'ready' || modeResetBusy}
+                disabled={state !== 'ready' || sampleResetBusy}
                 label='Mode'
                 onChange={changeDocumentMode}
                 options={documentModes}
@@ -1006,7 +1006,7 @@ export function EditorDemo({
               />
               {documentMode === 'viewing' ? (
                 <DemoConfigGroup
-                  disabled={state !== 'ready' || modeResetBusy}
+                  disabled={state !== 'ready' || sampleResetBusy}
                   label='Changes'
                   onChange={changeViewingTrackedChanges}
                   options={viewingTrackedChangesModes}
@@ -1018,8 +1018,25 @@ export function EditorDemo({
                 type='button'
                 aria-label='Reset the sample document'
                 title='Reset the sample document'
-                disabled={state !== 'ready' || modeResetBusy}
-                onClick={() => void resetModesDemo()}
+                disabled={state !== 'ready' || sampleResetBusy}
+                onClick={() => void resetSample()}
+              >
+                <RotateCcw aria-hidden='true' />
+              </button>
+            </div>
+          ) : null}
+          {preset === 'tracked-review' ? (
+            <div className='sd-editor-demo-sample-controls'>
+              <span className='sd-editor-demo-review-status' aria-live='polite'>
+                {state === 'ready' ? reviewStatusLabel : 'Opening proposal…'}
+              </span>
+              <button
+                className='sd-editor-demo-config-reset'
+                type='button'
+                aria-label='Reset the review sample'
+                title='Reset the review sample'
+                disabled={state !== 'ready' || sampleResetBusy}
+                onClick={() => void resetSample()}
               >
                 <RotateCcw aria-hidden='true' />
               </button>
@@ -1138,7 +1155,7 @@ export function EditorDemo({
             </>
           ) : null}
           <EditorDemoViewControls
-            disabled={state !== 'ready' || modeResetBusy}
+            disabled={state !== 'ready' || sampleResetBusy}
             fitActive={fitActive}
             isFullscreen={isFullscreen}
             onFit={fitToWidth}
@@ -1182,7 +1199,7 @@ export function EditorDemo({
             {configurationError}
           </p>
         ) : null}
-        {preset === 'hyperlinks' || preset === 'search' || preset === 'toolbar' ? (
+        {preset === 'hyperlinks' || preset === 'search' || preset === 'toolbar' || preset === 'tracked-review' ? (
           <div
             ref={toolbarRef}
             className='sd-editor-demo-built-in-toolbar'
@@ -1202,7 +1219,8 @@ export function EditorDemo({
             preset === 'hyperlinks' ||
             preset === 'ruler' ||
             preset === 'search' ||
-            preset === 'toolbar'
+            preset === 'toolbar' ||
+            preset === 'tracked-review'
           }
           aria-label='Editor controls'
         >
@@ -1244,30 +1262,6 @@ export function EditorDemo({
               <Underline aria-hidden='true' />
             </button>
           </div>
-          {preset === 'tracked-review' ? (
-            <div
-              className='sd-editor-demo-toolbar-group sd-editor-demo-review-controls'
-              role='group'
-              aria-label='Review'
-            >
-              <button
-                className='sd-editor-demo-accept-button'
-                type='button'
-                disabled={!hasActiveChange}
-                onClick={() => void decideChange('accept')}
-              >
-                <Check aria-hidden='true' />
-                Accept
-              </button>
-              <button type='button' disabled={!hasActiveChange} onClick={() => void decideChange('reject')}>
-                <X aria-hidden='true' />
-                Reject
-              </button>
-              <span className='sd-editor-demo-change-count' aria-live='polite'>
-                {countLabel}
-              </span>
-            </div>
-          ) : null}
           {preset !== 'document-modes' ? (
             <EditorDemoViewControls
               disabled={state !== 'ready'}

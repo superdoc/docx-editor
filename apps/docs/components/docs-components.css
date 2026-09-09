@@ -1214,7 +1214,7 @@
   background: var(--color-fd-accent);
 }
 
-.sd-editor-demo-mode-controls {
+.sd-editor-demo-sample-controls {
   display: flex;
   min-width: 0;
   flex: 1;
@@ -1222,8 +1222,14 @@
   align-items: center;
 }
 
-.sd-editor-demo-mode-controls .sd-editor-demo-config-group {
+.sd-editor-demo-sample-controls .sd-editor-demo-config-group {
   flex: 1;
+}
+
+.sd-editor-demo-review-status {
+  color: var(--sd-text-secondary);
+  font-size: 0.8125rem;
+  font-weight: 600;
 }
 
 .sd-editor-demo-config-reset {
@@ -1411,6 +1417,7 @@
 .sd-editor-demo[data-preset='hyperlinks'],
 .sd-editor-demo[data-preset='search'],
 .sd-editor-demo[data-preset='toolbar'],
+.sd-editor-demo[data-preset='tracked-review'],
 .sd-custom-bold-demo-built-in-toolbar {
   --sd-ui-text: #202124;
   --sd-ui-text-muted: #5f6368;
@@ -1489,36 +1496,6 @@
   height: 1.5rem;
   margin-inline: 0.3rem;
   background: var(--sd-border-soft);
-}
-
-.sd-editor-demo-review-controls {
-  padding-left: 0.75rem;
-  border-left: 1px solid var(--sd-border-soft);
-}
-
-.sd-editor-demo-review-controls button {
-  border-color: var(--sd-border);
-  background: var(--sd-surface);
-}
-
-.sd-editor-demo-review-controls .sd-editor-demo-accept-button:not(:disabled) {
-  border-color: var(--sd-success);
-  background: var(--sd-success);
-  color: #ffffff;
-}
-
-.sd-editor-demo-review-controls .sd-editor-demo-accept-button:hover:not(:disabled) {
-  border-color: var(--sd-success);
-  background: color-mix(in srgb, var(--sd-success) 88%, #000000);
-  color: #ffffff;
-}
-
-.sd-editor-demo-change-count {
-  margin-left: 0.25rem;
-  color: var(--sd-text-tertiary);
-  font-family: var(--font-mono);
-  font-size: 0.6875rem;
-  white-space: nowrap;
 }
 
 .sd-editor-demo-view-controls {
@@ -1878,12 +1855,12 @@
     flex: 1;
   }
 
-  .sd-editor-demo-mode-controls {
+  .sd-editor-demo-sample-controls {
     align-items: stretch;
     flex-direction: column;
   }
 
-  .sd-editor-demo-mode-controls .sd-editor-demo-config-reset {
+  .sd-editor-demo-sample-controls .sd-editor-demo-config-reset {
     align-self: flex-end;
   }
 
@@ -1897,14 +1874,8 @@
     padding: 0.4rem 0.55rem;
   }
 
-  .sd-editor-demo-edit-controls,
-  .sd-editor-demo-change-count {
+  .sd-editor-demo-edit-controls {
     display: none;
-  }
-
-  .sd-editor-demo-review-controls {
-    padding-left: 0;
-    border-left: 0;
   }
 
   .sd-editor-demo-toolbar button {

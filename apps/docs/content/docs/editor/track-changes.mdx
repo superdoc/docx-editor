@@ -9,10 +9,10 @@ who changed it. Use [comments](/editor/comments) for a discussion that does not 
 
 ## Try the review flow
 
-Expand the Editor. Its existing proposal is already active: choose **Accept** or **Reject**. Next, select a short
-phrase and type a replacement to create your own proposal.
+Select the marked change from `30 days` to `60 days`, then use the built-in toolbar to accept or reject it. Reset the
+sample to compare both decisions. Accept keeps `60 days`; Reject restores `30 days`.
 
-<EditorDemo fixture='/fixtures/basic-review.docx' preset='tracked-review' title='Review a tracked change' />
+<EditorDemo fixture='/fixtures/tracked-review.docx' preset='tracked-review' title='Decide a proposed edit' />
 
 For the complete project, open the [review example](https://go.superdoc.dev/examples/document-modes?workflow=review).
 Accept the existing proposal, make two more edits, reject one, and export with the other undecided. Reopen the DOCX to
@@ -43,6 +43,7 @@ the `SuperDocEditor` component. Keep `/sample.docx`, the ready/error handlers, a
 
 Replace the effective date in `/sample.docx`. In `suggesting` mode, the edit becomes a proposal attributed to Jordan Lee.
 Your application supplies the signed-in user's identity instead of this example user.
+You do not need to enable tracking separately. In `suggesting` mode, supported edits create tracked changes by default.
 
 Select a proposed change to reveal its review actions. You can keep the built-in UI or use
 [custom review controls](/editor/custom-ui/tracked-changes); the document workflow is the same.
@@ -94,6 +95,27 @@ configure reviewer actions, and hand off the saved document. Comment actions are
 Editor modes and client-side review controls are not an authorization boundary. Your application owns document access,
 trusted identity, and permission to save. See [Configuration](/editor/configuration) for the full startup contract,
 including replacement grouping and author colors.
+
+## Choose how replacements are reviewed
+
+Typing over selected text creates a deletion beside an insertion. By default, SuperDoc groups those parts into one
+proposal. One Accept or Reject action decides the complete replacement.
+
+Use separate replacement review when your workflow must decide the deletion and insertion independently:
+
+```ts
+import type { Config } from 'superdoc';
+
+export const reviewOptions = {
+  documentMode: 'suggesting',
+  trackChanges: {
+    replacementMode: 'separate',
+  },
+} satisfies Pick<Config, 'documentMode' | 'trackChanges'>;
+```
+
+Keep the default `'grouped'` mode when a replacement such as `30 days` to `60 days` should remain one decision. This
+setting changes the review items and decisions exposed by the Editor. It does not change the accepted text.
 
 ## Keep review decisions explicit
 

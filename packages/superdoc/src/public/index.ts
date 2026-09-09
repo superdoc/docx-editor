@@ -136,6 +136,7 @@ export type {
   CommentsConfig,
   CommentsLayout,
   CommentsResponsiveConfig,
+  TrackChangesInteractionConfig,
 } from '../core/types/index.js';
 export type { TrackChangeHighlightColors } from '../core/types/index.js';
 export type { ContentControlsConfig } from '../core/types/index.js';
@@ -207,7 +208,9 @@ export type { TextSegment } from '@superdoc/document-api';
 export type { TextTarget } from '@superdoc/document-api';
 export type { TrackChangeAuthor } from '../core/types/index.js';
 export type { TrackChangesAuthorColorsConfig } from '../core/types/index.js';
+export type { TrackChangesConfig } from '../core/types/index.js';
 export type { TrackChangesModuleConfig } from '../core/types/index.js';
+export type { TrackChangesReplacementMode } from '../core/types/index.js';
 export type { TrackChangesSemanticColorsConfig } from '../core/types/index.js';
 export type { TrackedChangeSemanticColorKey } from '../core/types/index.js';
 export type { TrackedChangeSemanticColorResolverInput } from '../core/types/index.js';

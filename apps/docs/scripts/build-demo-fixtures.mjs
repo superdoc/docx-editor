@@ -3,6 +3,7 @@
  *
  * - `public/fixtures/formatting-sample.docx`
  * - `public/fixtures/document-modes.docx`
+ * - `public/fixtures/tracked-review.docx`
  * - `public/fixtures/comments-sample.docx`
  * - `public/fixtures/custom-comments-workflow.docx`
  * - `public/fixtures/custom-track-changes-workflow.docx`
@@ -22,10 +23,11 @@
  *
  * The formatting and document-mode fixtures are deliberately plain. The
  * built-in comments fixture has one short thread because its page teaches
- * configuration. The custom comments fixture puts two threads on separate
- * pages because its page teaches application-owned navigation. The custom
- * tracked-changes fixture puts three review decisions on separate pages for the
- * same reason. The custom content-controls fixture puts a text field and a
+ * configuration. The tracked-review fixture has one replacement because its
+ * page teaches one human decision. The custom comments fixture puts two threads
+ * on separate pages because its page teaches application-owned navigation. The
+ * custom tracked-changes fixture puts three review decisions on separate pages
+ * for the same reason. The custom content-controls fixture puts a text field and a
  * checkbox on separate pages so its application panel can demonstrate field
  * navigation as well as typed mutations. The custom selection fixture puts
  * selectable text on two pages so a floating prompt can follow painted
@@ -138,6 +140,18 @@ const trackedDeletion = (
   `<w:del w:id="${id}" w:author="${escapeXml(author)}" w:date="${date}"><w:r><w:delText xml:space="preserve">${escapeXml(text)}</w:delText></w:r></w:del>`;
 
 const pageBreak = '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
+
+const TRACKED_REVIEW_DOCUMENT = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${heading(
+  'Service agreement',
+)}<w:p><w:r><w:t xml:space="preserve">Either party may end this agreement by giving </w:t></w:r>${trackedDeletion(
+  '30',
+  1,
+  'Alex Rivera',
+  '2026-08-15T12:00:00Z',
+)}${trackedInsertion(2, 'Alex Rivera', '2026-08-15T12:00:00Z', '60')}<w:r><w:t xml:space="preserve"> days’ written notice.</w:t></w:r></w:p>${paragraph(
+  'The confidentiality obligations continue after this agreement ends.',
+)}<w:sectPr><w:pgSz w:w="12240" w:h="6480"/><w:pgMar w:top="720" w:right="1080" w:bottom="720" w:left="1080" w:header="360" w:footer="360" w:gutter="0"/></w:sectPr></w:body></w:document>`;
 
 /**
  * A short page, not US Letter.
@@ -311,6 +325,16 @@ await writeDocx('comments-sample.docx', [
   ['word/_rels/document.xml.rels', COMMENT_DOCUMENT_RELS],
   ['word/styles.xml', STYLES],
   ['word/comments.xml', COMMENTS_XML],
+  ['docProps/core.xml', CORE_PROPERTIES],
+  ['docProps/app.xml', appProperties(3)],
+]);
+
+await writeDocx('tracked-review.docx', [
+  ['[Content_Types].xml', CONTENT_TYPES],
+  ['_rels/.rels', ROOT_RELS],
+  ['word/document.xml', TRACKED_REVIEW_DOCUMENT],
+  ['word/_rels/document.xml.rels', DOCUMENT_RELS],
+  ['word/styles.xml', STYLES],
   ['docProps/core.xml', CORE_PROPERTIES],
   ['docProps/app.xml', appProperties(3)],
 ]);

@@ -273,7 +273,10 @@ import type {
   TextTarget,
   TrackChangeAuthor,
   TrackChangesAuthorColorsConfig,
+  TrackChangesConfig,
+  TrackChangesInteractionConfig,
   TrackChangesModuleConfig,
+  TrackChangesReplacementMode,
   TrackChangesSemanticColorsConfig,
   TrackedChangeAddress,
   TrackedChangeSemanticColorKey,
@@ -545,7 +548,10 @@ const _real_TextSegment: AssertNotAny<TextSegment> = true;
 const _real_TextTarget: AssertNotAny<TextTarget> = true;
 const _real_TrackChangeAuthor: AssertNotAny<TrackChangeAuthor> = true;
 const _real_TrackChangesAuthorColorsConfig: AssertNotAny<TrackChangesAuthorColorsConfig> = true;
+const _real_TrackChangesConfig: AssertNotAny<TrackChangesConfig> = true;
+const _real_TrackChangesInteractionConfig: AssertNotAny<TrackChangesInteractionConfig> = true;
 const _real_TrackChangesModuleConfig: AssertNotAny<TrackChangesModuleConfig> = true;
+const _real_TrackChangesReplacementMode: AssertNotAny<TrackChangesReplacementMode> = true;
 const _real_TrackChangesSemanticColorsConfig: AssertNotAny<TrackChangesSemanticColorsConfig> = true;
 const _real_TrackedChangeAddress: AssertNotAny<TrackedChangeAddress> = true;
 const _real_TrackedChangeSemanticColorKey: AssertNotAny<TrackedChangeSemanticColorKey> = true;

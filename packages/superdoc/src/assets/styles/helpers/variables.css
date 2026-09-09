@@ -217,7 +217,7 @@
 
   /* Styles: tracked table-structure changes (whole-table / table-row
      insertion/deletion, table split). These categories are CSS-themed ONLY —
-     they are not part of modules.trackChanges.semanticColors. Override these
+     they are not part of trackChanges.semanticColors. Override these
      variables to recolor them. */
   --sd-tracked-changes-table-insertion-border: #1f6feb;
   --sd-tracked-changes-table-insertion-background: #1f6feb22;

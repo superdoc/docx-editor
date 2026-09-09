@@ -139,7 +139,7 @@
     },
     {
       "name": "interaction",
-      "type": "{\n  comments?: CommentInteractionConfig;\n  trackedChanges?: { allowDecisions?: boolean; };\n}",
+      "type": "{\n  comments?: CommentInteractionConfig;\n  trackedChanges?: TrackChangesInteractionConfig;\n}",
       "typeName": "InteractionConfig",
       "required": false,
       "description": "Client-side interaction policy. Independent of `ui`, so it still applies when the application renders its own UI. This is not an authorization boundary.",
@@ -372,6 +372,14 @@
       "type": "string",
       "required": false,
       "description": "Fallback filename for `export()` when `exportedName` is omitted.",
+      "group": "other"
+    },
+    {
+      "name": "trackChanges",
+      "type": "{\n  enabled?: boolean;\n  replacementMode?: \"grouped\" | \"separate\";\n  authorColors?: TrackChangesAuthorColorsConfig;\n  semanticColors?: TrackChangesSemanticColorsConfig;\n  visible?: boolean;\n}",
+      "typeName": "TrackChangesConfig",
+      "required": false,
+      "description": "Configure replacement review and tracked-change colors. Use `viewing.trackedChanges` to choose what a viewer sees and `interaction.trackedChanges` to allow or prevent review decisions.",
       "group": "other"
     },
     {

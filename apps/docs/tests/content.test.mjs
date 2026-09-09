@@ -124,6 +124,8 @@ const builtInToolbarPageUrl = new URL(
   '../content/docs/editor/built-in-ui/configure-the-toolbar.mdx',
   import.meta.url,
 );
+const trackedChangesPageUrl = new URL('../content/docs/editor/track-changes.mdx', import.meta.url);
+const builtInTrackedReviewExampleUrl = new URL('../snippets/editor/review-options.ts', import.meta.url);
 const redirectsConfigUrl = new URL('../config/redirects.json', import.meta.url);
 const builtInEditorDemoDataUrl = new URL('../lib/built-in-editor-demos.ts', import.meta.url);
 const customUiControllerExampleUrl = new URL('../snippets/editor/custom-ui-controller.ts', import.meta.url);
@@ -626,6 +628,31 @@ test('the hyperlink recipes provide a document with a link to activate', async (
     const snippet = await readFile(new URL(`../snippets/editor/${name}`, import.meta.url), 'utf8');
     assert.match(snippet, /document[:=]\s*'\/hyperlinks-sample\.docx'/u);
   }
+});
+
+test('the tracked-change guide uses the real built-in review controls', async () => {
+  const [page, example, demo] = await Promise.all(
+    [trackedChangesPageUrl, builtInTrackedReviewExampleUrl, editorDemoUrl].map((url) => readFile(url, 'utf8')),
+  );
+
+  assert.match(page, /fixture='\/fixtures\/tracked-review\.docx'/u);
+  assert.match(page, /Use tracked changes when an edit needs review/u);
+  assert.match(page, /You do not need to enable tracking separately/u);
+  assert.match(page, /\/editor\/review-workflow/u);
+  assert.match(page, /replacementMode: 'separate'/u);
+  assert.doesNotMatch(page, /replacements: 'independent'/u);
+  assert.doesNotMatch(page, /modules:\s*\{\s*trackChanges/u);
+  assert.doesNotMatch(page, /modules\.trackChanges\.visible/u);
+
+  assert.match(example, /satisfies Pick<Config, 'documentMode' \| 'user'>/u);
+  assert.match(example, /documentMode: 'suggesting'/u);
+  assert.match(page, /reviewOptions/u);
+
+  assert.match(demo, /preset === 'tracked-review'[\s\S]*getPinnedFocusedToolbarOptions/u);
+  assert.match(demo, /acceptTrackedChangeBySelection/u);
+  assert.match(demo, /rejectTrackedChangeOnSelection/u);
+  assert.match(demo, /Reset the review sample/u);
+  assert.doesNotMatch(demo, /sd-editor-demo-review-controls/u);
 });
 
 test('the toolbar guide preserves the built-in image upload workflow', async () => {
@@ -4008,6 +4035,10 @@ test('the Editor configuration reference starts with concise essential fields', 
   assert.equal(permissionResolver?.summary, 'Customize client-side permission decisions.');
   assert.match(permissionResolver?.description ?? '', /^Customize client-side permission decisions\./u);
   assert.doesNotMatch(permissionResolver?.description ?? '', /comment and tracked-change permission decisions/iu);
+  const trackChanges = editorConfigExplorer.fields.find((field) => field.name === 'trackChanges');
+  assert.equal(trackChanges?.summary, 'Configure replacement review and tracked-change colors.');
+  assert.equal(trackChanges?.default, "{ enabled: true, replacementMode: 'grouped' }");
+  assert.match(trackChanges?.type ?? '', /replacementMode\?: "grouped" \| "separate"/u);
   const fieldNames = new Set(editorConfigExplorer.fields.map((field) => field.name));
   for (const legacyField of [
     'comments',
@@ -4026,7 +4057,6 @@ test('the Editor configuration reference starts with concise essential fields', 
     'rulerContainer',
     'rulers',
     'suppressDefaultDocxStyles',
-    'trackChanges',
     'warnOnUnsupportedContent',
   ]) {
     assert.equal(fieldNames.has(legacyField), false, `${legacyField} should not appear in the current Config Explorer`);

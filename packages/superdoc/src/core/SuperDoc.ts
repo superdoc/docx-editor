@@ -3511,12 +3511,24 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
    */
   setTrackedChangesPreferences(preferences?: { mode?: 'review' | 'original' | 'final' | 'off'; enabled?: boolean }) {
     if (typeof preferences?.enabled === 'boolean') {
+      this.config.trackChanges = {
+        ...this.config.trackChanges,
+        enabled: preferences.enabled,
+      };
       this.config.modules.trackChanges = {
         ...this.config.modules.trackChanges,
         enabled: preferences.enabled,
       };
     }
     this.#applyTrackedChangesRenderOptions(preferences);
+  }
+
+  /** The configured tracked-change opt-out, honoring the deprecated module spelling. */
+  #trackedChangesEnabled(): boolean {
+    if (typeof this.config.trackChanges?.enabled === 'boolean') return this.config.trackChanges.enabled;
+    if (typeof this.config.modules?.trackChanges?.enabled === 'boolean')
+      return this.config.modules.trackChanges.enabled;
+    return true;
   }
 
   #applyTrackedChangesRenderOptions(options?: { mode?: 'review' | 'original' | 'final' | 'off'; enabled?: boolean }) {
@@ -3581,8 +3593,9 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
       if (firstEditor) this.setActiveEditor(firstEditor);
     }
 
-    // Enable tracked changes for editing mode
-    this.#applyTrackedChangesRenderOptions({ mode: 'review', enabled: true });
+    // Editing mode reviews tracked changes, but an integration that configured
+    // `trackChanges.enabled: false` keeps that choice across mode changes.
+    this.#applyTrackedChangesRenderOptions({ mode: 'review', enabled: this.#trackedChangesEnabled() });
 
     store.documents.forEach((doc: RuntimeDocument) => {
       doc.restoreComments?.();
@@ -3598,8 +3611,8 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
       if (firstEditor) this.setActiveEditor(firstEditor);
     }
 
-    // Enable tracked changes for suggesting mode
-    this.#applyTrackedChangesRenderOptions({ mode: 'review', enabled: true });
+    // Suggesting mode reviews tracked changes, subject to the same configured opt-out.
+    this.#applyTrackedChangesRenderOptions({ mode: 'review', enabled: this.#trackedChangesEnabled() });
 
     store.documents.forEach((doc: RuntimeDocument) => {
       doc.restoreComments?.();

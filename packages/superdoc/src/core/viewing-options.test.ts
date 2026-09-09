@@ -239,6 +239,7 @@ describe('viewing options', () => {
     instance.setViewingOptions({ trackedChanges: 'final' });
 
     expect(instance.config.modules.trackChanges?.enabled).toBe(false);
+    expect(instance.config.trackChanges?.enabled).toBe(false);
     expect(setTrackedChangesRenderOptions).toHaveBeenCalledWith({ mode: 'final', enabled: false });
   });
 

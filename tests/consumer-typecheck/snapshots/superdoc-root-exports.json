@@ -269,7 +269,10 @@
         "TrackChangeAuthor",
         "TrackChangeHighlightColors",
         "TrackChangesAuthorColorsConfig",
+        "TrackChangesConfig",
+        "TrackChangesInteractionConfig",
         "TrackChangesModuleConfig",
+        "TrackChangesReplacementMode",
         "TrackChangesSemanticColorsConfig",
         "TrackedChangeAddress",
         "TrackedChangeSemanticColorKey",
@@ -548,7 +551,10 @@
         "TrackChangeAuthor",
         "TrackChangeHighlightColors",
         "TrackChangesAuthorColorsConfig",
+        "TrackChangesConfig",
+        "TrackChangesInteractionConfig",
         "TrackChangesModuleConfig",
+        "TrackChangesReplacementMode",
         "TrackChangesSemanticColorsConfig",
         "TrackedChangeAddress",
         "TrackedChangeSemanticColorKey",
@@ -603,11 +609,11 @@
     }
   },
   "counts": {
-    "types.import": 273,
-    "types.require": 273,
+    "types.import": 276,
+    "types.require": 276,
     "import": 10,
     "require": 10,
-    "union": 273
+    "union": 276
   },
   "divergences": {
     "typesImportVsRequire": {
@@ -870,7 +876,10 @@
         "TrackChangeAuthor",
         "TrackChangeHighlightColors",
         "TrackChangesAuthorColorsConfig",
+        "TrackChangesConfig",
+        "TrackChangesInteractionConfig",
         "TrackChangesModuleConfig",
+        "TrackChangesReplacementMode",
         "TrackChangesSemanticColorsConfig",
         "TrackedChangeAddress",
         "TrackedChangeSemanticColorKey",

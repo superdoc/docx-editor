@@ -527,7 +527,7 @@ const SHARED_DEFS: Record<string, JsonSchema> = {
       side: {
         enum: ['inserted', 'deleted', 'source', 'destination'],
         description:
-          'Which revision side to anchor the comment on. Optional for paired replacements (defaults to inserted) and paired moves (defaults to destination); required for independent replacements where both sides are separately reviewable.',
+          'Which revision side to anchor the comment on. Optional for grouped replacements (defaults to inserted) and paired moves (defaults to destination); required for separate replacements where both sides are reviewed independently.',
       },
       story: ref('StoryLocator'),
     },
@@ -2391,7 +2391,7 @@ const reviewDecideRangeTargetOptions = {
   },
   side: {
     enum: ['insert', 'inserted', 'delete', 'deleted', 'source', 'destination'],
-    description: 'Optional revision side for paired replacement or move targets.',
+    description: 'Optional revision side for grouped replacement or move targets.',
   },
   story: {
     ...storyLocatorSchema,
@@ -4256,7 +4256,7 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
                 type: 'string',
                 enum: ['insert', 'delete', 'replacement', 'format'],
                 description:
-                  "Aggregate type at the entity level. In paired replacement mode, a delete+insert pair shares one entity and this surfaces as 'replacement'; per-half type lives on block.textSpans[].trackedChanges[].",
+                  "Aggregate type at the entity level. In grouped replacement mode, a delete+insert pair shares one entity and this surfaces as 'replacement'; per-half type lives on block.textSpans[].trackedChanges[].",
               },
               blockIds: {
                 type: 'array',
@@ -4274,7 +4274,7 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
               excerpt: {
                 type: 'string',
                 description:
-                  'Short text excerpt of the changed content. Omitted for paired replacements; read block.textSpans for the per-half text.',
+                  'Short text excerpt of the changed content. Omitted for grouped replacements; read block.textSpans for the per-half text.',
               },
               author: { type: 'string', description: 'Change author name.' },
               date: { type: 'string', description: 'Change date (ISO string).' },

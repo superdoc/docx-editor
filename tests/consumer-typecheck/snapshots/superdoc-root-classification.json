@@ -1,13 +1,13 @@
 {
   "generatedAt": "2026-09-02T00:00:00.000Z",
   "summary": {
-    "total": 273,
+    "total": 276,
     "byBucket": {
       "legacy-root": 3,
-      "supported-root": 270
+      "supported-root": 273
     },
     "byConfidence": {
-      "high": 225,
+      "high": 228,
       "medium": 48
     }
   },
@@ -2787,7 +2787,7 @@
     {
       "name": "TrackChangeAuthor",
       "bucket": "supported-root",
-      "rationale": "Structured author identity passed to modules.trackChanges.authorColors.resolve.",
+      "rationale": "Structured author identity passed to trackChanges.authorColors.resolve.",
       "confidence": "high",
       "source": "locked",
       "inDts": true,
@@ -2809,9 +2809,31 @@
     {
       "name": "TrackChangesAuthorColorsConfig",
       "bucket": "supported-root",
-      "rationale": "Module config for per-author tracked-change colors (modules.trackChanges.authorColors). Documented at the module-config layer.",
+      "rationale": "Per-author color overrides accepted by the canonical trackChanges.authorColors configuration.",
       "confidence": "high",
-      "source": "locked",
+      "source": "config-supported",
+      "inDts": true,
+      "inDcts": true,
+      "inEsm": false,
+      "inCjs": false
+    },
+    {
+      "name": "TrackChangesConfig",
+      "bucket": "supported-root",
+      "rationale": "Canonical configuration for grouped or separate replacement review and tracked-change color overrides.",
+      "confidence": "high",
+      "source": "config-supported",
+      "inDts": true,
+      "inDcts": true,
+      "inEsm": false,
+      "inCjs": false
+    },
+    {
+      "name": "TrackChangesInteractionConfig",
+      "bucket": "supported-root",
+      "rationale": "Named client-side tracked-change decision policy accepted by InteractionConfig.trackedChanges.",
+      "confidence": "high",
+      "source": "config-supported",
       "inDts": true,
       "inDcts": true,
       "inEsm": false,
@@ -2820,7 +2842,7 @@
     {
       "name": "TrackChangesModuleConfig",
       "bucket": "supported-root",
-      "rationale": "Module config for track-changes (modules.trackChanges). Documented at the module-config layer.",
+      "rationale": "Deprecated modules.trackChanges configuration retained for v2 compatibility; use Config.trackChanges.",
       "confidence": "high",
       "source": "locked",
       "inDts": true,
@@ -2829,11 +2851,22 @@
       "inCjs": false
     },
     {
+      "name": "TrackChangesReplacementMode",
+      "bucket": "supported-root",
+      "rationale": "Grouped or separate review behavior accepted by trackChanges.replacementMode.",
+      "confidence": "high",
+      "source": "config-supported",
+      "inDts": true,
+      "inDcts": true,
+      "inEsm": false,
+      "inCjs": false
+    },
+    {
       "name": "TrackChangesSemanticColorsConfig",
       "bucket": "supported-root",
-      "rationale": "Module config for semantic tracked-change colors (modules.trackChanges.semanticColors). Documented at the module-config layer.",
+      "rationale": "Semantic color overrides accepted by the canonical trackChanges.semanticColors configuration.",
       "confidence": "high",
-      "source": "locked",
+      "source": "config-supported",
       "inDts": true,
       "inDcts": true,
       "inEsm": false,
@@ -2853,7 +2886,7 @@
     {
       "name": "TrackedChangeSemanticColorKey",
       "bucket": "supported-root",
-      "rationale": "Semantic key union used by modules.trackChanges.semanticColors overrides and resolver input. Named so consumers can type supported tracked-change color keys.",
+      "rationale": "Semantic key union used by trackChanges.semanticColors overrides and resolver input. Named so consumers can type supported tracked-change color keys.",
       "confidence": "high",
       "source": "locked",
       "inDts": true,
@@ -2864,7 +2897,7 @@
     {
       "name": "TrackedChangeSemanticColorResolverInput",
       "bucket": "supported-root",
-      "rationale": "Resolver input passed to modules.trackChanges.semanticColors.resolve. Named so consumers can type semantic color resolver callbacks.",
+      "rationale": "Resolver input passed to trackChanges.semanticColors.resolve. Named so consumers can type semantic color resolver callbacks.",
       "confidence": "high",
       "source": "locked",
       "inDts": true,

@@ -672,15 +672,15 @@ test('exports the custom UI command-state contract without a copied command matr
   assert.match(markdown, /check the result even when `enabled` was `true`/);
 });
 
-test('exports the Editor tracked-change review workflow with the existing review demo', async () => {
+test('exports the Editor tracked-change review workflow with the built-in review demo', async () => {
   const article = await readFile(new URL('../out/editor/track-changes/index.html', import.meta.url), 'utf8');
   const markdown = await readFile(new URL('../out/md/editor/track-changes.md', import.meta.url), 'utf8');
 
-  assert.match(article, /Review a tracked change/);
+  assert.match(article, /Decide a proposed edit/);
   assert.match(article, /data-preset="tracked-review"/);
   assert.match(article, /Accept/);
   assert.match(article, /Reject/);
-  assert.match(markdown, /Tracked-change review: accept or reject the sample change/);
+  assert.match(markdown, /Tracked-change review: select a marked proposal and use the built-in toolbar/);
   assert.match(markdown, /Editor modes and client-side review controls are not an authorization boundary/);
   assert.match(markdown, /viewing\.trackedChanges/);
   assert.doesNotMatch(markdown, /modules\.trackChanges\.visible/);
@@ -1570,7 +1570,7 @@ test('exports clean Markdown across the machine-readable corpus', async () => {
 
   const productOverview = await readFile(new URL('../out/md/resources/how-superdoc-works.md', import.meta.url), 'utf8');
   assert.match(productOverview, /Interactive editor: Try SuperDoc in the browser/);
-  assert.match(productOverview, /Tracked-change review: accept or reject the sample change\./);
+  assert.match(productOverview, /Tracked-change review: select a marked proposal and use the built-in toolbar/);
 });
 
 /**

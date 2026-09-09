@@ -347,7 +347,9 @@ export function renderLLMMarkdown(markdown: string) {
         preset === 'comments' && !showConfiguration
           ? 'Comment thread: open the delivery-date comment, reply, resolve, and reopen it. The messages and status change without editing the passage. Layout and permission experiments are hidden; zoom and expansion remain available.'
           : undefined,
-        preset === 'tracked-review' ? 'Tracked-change review: accept or reject the sample change.' : undefined,
+        preset === 'tracked-review'
+          ? 'Tracked-change review: select a marked proposal and use the built-in toolbar to accept or reject it. Reset the sample to compare both decisions.'
+          : undefined,
         localFile ? 'Local DOCX selection: enabled. Files remain in the browser.' : 'Local DOCX selection: disabled.',
       ].filter((value): value is string => Boolean(value));
 

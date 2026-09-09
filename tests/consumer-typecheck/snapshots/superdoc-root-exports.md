@@ -7,11 +7,11 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 
 | Source | Path | Count |
 |---|---|---|
-| types.import | `./dist/superdoc/src/public/index.d.ts` | 273 |
-| types.require | `./dist/superdoc/src/public/index.d.cts` | 273 |
+| types.import | `./dist/superdoc/src/public/index.d.ts` | 276 |
+| types.require | `./dist/superdoc/src/public/index.d.cts` | 276 |
 | import | `./dist/superdoc.es.js` | 10 |
 | require | `./dist/superdoc.cjs` | 10 |
-| **union** |  | **273** |
+| **union** |  | **276** |
 
 ## Divergences
 
@@ -19,7 +19,7 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 - types.require only (not in types.import): 0
 - ESM only (not in CJS): 0
 - CJS only (not in ESM): 0
-- typed but no runtime export (phantom risk): 263
+- typed but no runtime export (phantom risk): 266
 - runtime export but not typed (silent shadow on root): 0
 
 ### Type-only names (no runtime)
@@ -274,7 +274,10 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 - `TrackChangeAuthor`
 - `TrackChangeHighlightColors`
 - `TrackChangesAuthorColorsConfig`
+- `TrackChangesConfig`
+- `TrackChangesInteractionConfig`
 - `TrackChangesModuleConfig`
+- `TrackChangesReplacementMode`
 - `TrackChangesSemanticColorsConfig`
 - `TrackedChangeAddress`
 - `TrackedChangeSemanticColorKey`
@@ -359,7 +362,7 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 | `FontResolutionRecord` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `FontsChangedPayload` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `FontsChangedSource` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
-| `FontsConfig` | ✓ | ✓ |   |   | 2 |   | 1 | 0 | 0 |
+| `FontsConfig` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `FontsResolvedPayload` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `HTML` | ✓ | ✓ | ✓ | ✓ | 1 |   | 51 | 0 | 0 |
 | `HyperlinkActivationContext` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
@@ -547,7 +550,10 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 | `TrackChangeAuthor` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `TrackChangeHighlightColors` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `TrackChangesAuthorColorsConfig` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
-| `TrackChangesModuleConfig` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
+| `TrackChangesConfig` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
+| `TrackChangesInteractionConfig` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
+| `TrackChangesModuleConfig` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
+| `TrackChangesReplacementMode` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `TrackChangesSemanticColorsConfig` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `TrackedChangeAddress` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `TrackedChangeSemanticColorKey` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |

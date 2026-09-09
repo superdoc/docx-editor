@@ -2745,7 +2745,10 @@ export interface Modules {
   slashMenu?: ContextMenuConfig;
   /** Surface system configuration. */
   surfaces?: SurfacesModuleConfig;
-  /** Track changes module configuration. */
+  /**
+   * Previous namespace for tracked-change behavior.
+   * @deprecated replaceWith=`Config.trackChanges` removeIn=v3.0
+   */
   trackChanges?: TrackChangesModuleConfig;
   /**
    * Whiteboard module configuration. Pass `false` to disable the module
@@ -2881,6 +2884,51 @@ export interface TrackChangesSemanticColorsConfig {
   resolve?: (input: TrackedChangeSemanticColorResolverInput) => string | undefined;
 }
 
+/** How a tracked replacement is exposed for review. */
+export type TrackChangesReplacementMode = 'grouped' | 'separate';
+
+/** Controls replacement review and tracked-change colors in this Editor. */
+export interface TrackChangesConfig {
+  /**
+   * Whether tracked-change decorations are rendered. This does not control
+   * whether `suggesting` mode records edits. Defaults to `true`.
+   */
+  enabled?: boolean;
+  /**
+   * How the deletion and insertion created by typing over selected text are
+   * exposed for review.
+   *
+   * - `'grouped'` (default) exposes one proposal and one review decision.
+   * - `'separate'` exposes two proposals that can be decided independently.
+   */
+  replacementMode?: TrackChangesReplacementMode;
+  /**
+   * Per-author tracked-change colors. When configured, insert/delete/format
+   * tracked-change highlights are tinted per author through the
+   * `--sd-tracked-changes-*` CSS variable surface, and
+   * `ui.trackChanges.getSnapshot()` exposes the resolved author colors.
+   */
+  authorColors?: TrackChangesAuthorColorsConfig;
+  /**
+   * Semantic (structural) tracked-change colors. Colors structural change
+   * subtypes: moved text, table cell insertion/deletion, cell merge, and cell
+   * split, independently of {@link authorColors}. Supported keys are active by
+   * default; set `enabled: false` to fall back to existing author/broad
+   * defaults. Separate from the deprecated
+   * `modules.comments.trackChangeHighlightColors` field.
+   */
+  semanticColors?: TrackChangesSemanticColorsConfig;
+  /**
+   * Previous tracked-change visibility switch.
+   * @deprecated replaceWith=`viewing.trackedChanges` compat-indefinitely=v2 configuration compatibility
+   */
+  visible?: boolean;
+}
+
+/**
+ * Previous tracked-change configuration under `modules.trackChanges`.
+ * @deprecated replaceWith=`Config.trackChanges` removeIn=v3.0
+ */
 export interface TrackChangesModuleConfig {
   /**
    * Whether tracked-change indicators are shown in viewing mode.
@@ -2895,34 +2943,32 @@ export interface TrackChangesModuleConfig {
    * - 'final': show the document with changes applied
    * - 'off': disable tracked-change rendering
    *
-   * @deprecated replaceWith=`viewing.trackedChanges` for viewer projection or `modules.trackChanges.enabled` to disable tracking compat-indefinitely=v2 configuration compatibility
+   * @deprecated replaceWith=`viewing.trackedChanges` for viewer projection or `trackChanges.enabled` to disable tracking compat-indefinitely=v2 configuration compatibility
    */
   mode?: 'review' | 'original' | 'final' | 'off';
-  /** Whether the layout engine treats tracked changes as active. */
+  /**
+   * Whether tracked-change decorations are rendered. This does not control
+   * whether `suggesting` mode records edits.
+   * @deprecated replaceWith=`trackChanges.enabled` removeIn=v3.0
+   */
   enabled?: boolean;
   /**
-   * How a tracked replacement (adjacent insertion + deletion created by typing
-   * over selected text) surfaces in the UI and API.
-   * - `'paired'` (default, Google Docs model): the two halves share one id
-   *   and resolve together with a single accept/reject click.
-   * - `'independent'` (Microsoft Word / ECMA-376 §17.13.5 model): each
-   *   insertion and each deletion has its own id, is addressable on its own,
-   *   and resolves independently.
+   * Previous replacement-review setting.
+   *
+   * - `'paired'` groups the insertion and deletion as one proposal.
+   * - `'independent'` exposes them as separate proposals.
+   *
+   * @deprecated replaceWith=`trackChanges.replacementMode` removeIn=v3.0
    */
   replacements?: 'paired' | 'independent';
   /**
-   * Per-author tracked-change colors. When configured, insert/delete/format
-   * tracked-change highlights are tinted per author through the
-   * `--sd-tracked-changes-*` CSS variable surface, and
-   * `ui.trackChanges.getSnapshot()` exposes the resolved author colors.
+   * Previous location for per-author tracked-change colors.
+   * @deprecated replaceWith=`trackChanges.authorColors` removeIn=v3.0
    */
   authorColors?: TrackChangesAuthorColorsConfig;
   /**
-   * Semantic (structural) tracked-change colors. Colors structural change
-   * subtypes: moved text, table cell insertion/deletion, cell merge, and cell
-   * split, independently of {@link authorColors}. Supported keys are active by
-   * default; set `enabled: false` to fall back to existing author/broad
-   * defaults. Separate from `modules.comments.trackChangeHighlightColors`.
+   * Previous location for semantic tracked-change colors.
+   * @deprecated replaceWith=`trackChanges.semanticColors` removeIn=v3.0
    */
   semanticColors?: TrackChangesSemanticColorsConfig;
 }
@@ -3244,7 +3290,7 @@ export interface SuperDocLayoutEngineOptions {
   flowMode?: 'paginated' | 'semantic';
   /**
    * Optional override for paginated track-changes rendering.
-   * @deprecated replaceWith=`viewing.trackedChanges` and `modules.trackChanges.enabled` compat-indefinitely=v2 configuration compatibility
+   * @deprecated replaceWith=`viewing.trackedChanges` and `trackChanges.enabled` compat-indefinitely=v2 configuration compatibility
    */
   trackedChanges?: object;
   /**
@@ -4148,6 +4194,15 @@ export interface CommentInteractionConfig {
   allowResolve?: boolean;
 }
 
+/** Client-side tracked-change actions allowed by this Editor. */
+export interface TrackChangesInteractionConfig {
+  /**
+   * Allow this Editor to accept or reject tracked changes (default: true).
+   * Document mode and command availability can still block these actions.
+   */
+  allowDecisions?: boolean;
+}
+
 /**
  * Controls which interactions this Editor allows, independent of what
  * SuperDoc renders.
@@ -4159,13 +4214,7 @@ export interface InteractionConfig {
   /** Comment interaction policy. */
   comments?: CommentInteractionConfig;
   /** Tracked-change interaction policy. */
-  trackedChanges?: {
-    /**
-     * Allow this Editor to accept or reject tracked changes (default: true).
-     * Document mode and command availability can still block these actions.
-     */
-    allowDecisions?: boolean;
-  };
+  trackedChanges?: TrackChangesInteractionConfig;
 }
 
 /**
@@ -4556,10 +4605,11 @@ export interface Config {
    */
   comments?: ViewingVisibilityConfig;
   /**
-   * Toggle tracked-change visibility when `documentMode` is `viewing`.
-   * @deprecated replaceWith=`viewing.trackedChanges` compat-indefinitely=v2 configuration compatibility
+   * Configure replacement review and tracked-change colors. Use
+   * `viewing.trackedChanges` to choose what a viewer sees and
+   * `interaction.trackedChanges` to allow or prevent review decisions.
    */
-  trackChanges?: ViewingVisibilityConfig;
+  trackChanges?: TrackChangesConfig;
   /**
    * Initial shared lock metadata. This value does not make the document read-only.
    * Use `documentMode` or interaction policy to restrict editing in the client.

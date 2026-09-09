@@ -174,7 +174,7 @@ const summaries = {
   conversations: 'Load conversation data.',
   comments: 'Legacy comment visibility setting.',
   hyperlinks: 'Choose what happens when a person activates a hyperlink.',
-  trackChanges: 'Legacy tracked-change visibility setting.',
+  trackChanges: 'Configure replacement review and tracked-change colors.',
   isLocked: 'Set the initial shared lock metadata.',
   handleImageUpload: 'Store images inserted into the document.',
   lockedBy: 'Identify the user who locked the Editor.',
@@ -282,8 +282,12 @@ const presentation = {
     example: { value: "'Inter, sans-serif'", code: "uiDisplayFallbackFont: 'Inter, sans-serif'" },
   },
   trackChanges: {
-    status: 'Deprecated. Use viewing.trackedChanges.',
-    guide: { label: 'Document modes', href: '/editor/document-modes' },
+    default: "{ enabled: true, replacementMode: 'grouped' }",
+    example: {
+      value: "{ replacementMode: 'separate' }",
+      code: "trackChanges: { replacementMode: 'separate' }",
+    },
+    guide: { label: 'Track changes', href: '/editor/track-changes' },
   },
   comments: {
     status: 'Deprecated. Use viewing.comments.',
@@ -313,8 +317,7 @@ const presentation = {
   },
   modules: {
     type: '{\n  trackChanges?: TrackChangesModuleConfig;\n}',
-    example: { value: '{ trackChanges: … }', code: 'modules: { trackChanges: { enabled: true } }' },
-    guide: { label: 'Track changes', href: '/editor/track-changes' },
+    status: 'The trackChanges module path is deprecated. Use the top-level trackChanges field.',
   },
   editorExtensions: {
     status: 'Ignored by superdoc@2. Use extensions.',

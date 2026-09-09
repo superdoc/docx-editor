@@ -404,7 +404,7 @@ export type TrackedChangesMode = 'review' | 'original' | 'final' | 'off';
  * Mirrors the author metadata carried on {@link TrackedChangeMeta}
  * (`author` → `name`, `authorEmail` → `email`, `authorImage` → `image`).
  * Hosts configure per-author colors through this shape (see the
- * `modules.trackChanges.authorColors` config on the `superdoc` package).
+ * `trackChanges.authorColors` config on the `superdoc` package).
  */
 export type TrackChangeAuthor = {
   name?: string;

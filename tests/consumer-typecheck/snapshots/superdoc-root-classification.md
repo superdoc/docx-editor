@@ -1,22 +1,22 @@
 # SD-3212 A1 — root classification
 
 Generated: derived from superdoc-root-classification.json (aligned with current root export inventory)
-Input: tests/consumer-typecheck/snapshots/superdoc-root-classification.json (273 names)
+Input: tests/consumer-typecheck/snapshots/superdoc-root-classification.json (276 names)
 
 ## Summary
 
 | Bucket | Count |
 |---|---|
-| supported-root | 270 |
+| supported-root | 273 |
 | legacy-root | 3 |
 | move-to-subpath | 0 |
 | internal-candidate | 0 |
 | NEEDS-REVIEW | 0 |
-| **total** | **273** |
+| **total** | **276** |
 
-Confidence: high=225, medium=48, low=0, needs-review=0.
+Confidence: high=228, medium=48, low=0, needs-review=0.
 
-## supported-root (270)
+## supported-root (273)
 
 | Name | Confidence | Source | Rationale |
 |---|---|---|---|
@@ -269,14 +269,17 @@ Confidence: high=225, medium=48, low=0, needs-review=0.
 | `ToolbarOptionalItemId` | high | toolbar-config | Exact opt-in control ids accepted by ui.toolbar.includeItems. |
 | `ToolbarRegion` | high | toolbar-config | The left, center, and right regions rendered by the built-in toolbar. |
 | `ToolbarStringId` | high | toolbar-config | Exact public keys accepted by ui.toolbar.strings. |
-| `TrackChangeAuthor` | high | locked | Structured author identity passed to modules.trackChanges.authorColors.resolve. |
+| `TrackChangeAuthor` | high | locked | Structured author identity passed to trackChanges.authorColors.resolve. |
 | `TrackChangeHighlightColors` | high | config-supported | Tracked-change highlight color shape, referenced by CommentsConfig for both the base and active states. |
-| `TrackChangesAuthorColorsConfig` | high | locked | Module config for per-author tracked-change colors (modules.trackChanges.authorColors). Documented at the module-config layer. |
-| `TrackChangesModuleConfig` | high | locked | Module config for track-changes (modules.trackChanges). Documented at the module-config layer. |
-| `TrackChangesSemanticColorsConfig` | high | locked | Module config for semantic tracked-change colors (modules.trackChanges.semanticColors). Documented at the module-config layer. |
+| `TrackChangesAuthorColorsConfig` | high | config-supported | Per-author color overrides accepted by the canonical trackChanges.authorColors configuration. |
+| `TrackChangesConfig` | high | config-supported | Canonical configuration for grouped or separate replacement review and tracked-change color overrides. |
+| `TrackChangesInteractionConfig` | high | config-supported | Named client-side tracked-change decision policy accepted by InteractionConfig.trackedChanges. |
+| `TrackChangesModuleConfig` | high | locked | Deprecated modules.trackChanges configuration retained for v2 compatibility; use Config.trackChanges. |
+| `TrackChangesReplacementMode` | high | config-supported | Grouped or separate review behavior accepted by trackChanges.replacementMode. |
+| `TrackChangesSemanticColorsConfig` | high | config-supported | Semantic color overrides accepted by the canonical trackChanges.semanticColors configuration. |
 | `TrackedChangeAddress` | high | doc-api | Document API navigation/address/selection type. Promoted into the root facade by SD-3185. |
-| `TrackedChangeSemanticColorKey` | high | locked | Semantic key union used by modules.trackChanges.semanticColors overrides and resolver input. Named so consumers can type supported tracked-change color keys. |
-| `TrackedChangeSemanticColorResolverInput` | high | locked | Resolver input passed to modules.trackChanges.semanticColors.resolve. Named so consumers can type semantic color resolver callbacks. |
+| `TrackedChangeSemanticColorKey` | high | locked | Semantic key union used by trackChanges.semanticColors overrides and resolver input. Named so consumers can type supported tracked-change color keys. |
+| `TrackedChangeSemanticColorResolverInput` | high | locked | Resolver input passed to trackChanges.semanticColors.resolve. Named so consumers can type semantic color resolver callbacks. |
 | `UIConfig` | high | config | Built-in UI configuration type for Config.ui. Customer-facing: names which built-in surfaces SuperDoc renders. |
 | `UpgradeToCollaborationOptions` | medium | core | Customer-facing core API type or runtime export. Type-reachable through documented config / callback / event / method surfaces; runtime exports are documented utilities. |
 | `User` | high | config-supported | Customer-facing user identity type used by v2 config, collaboration/awareness, shared-user management, and locking methods. |
@@ -572,7 +575,10 @@ Confidence: high=225, medium=48, low=0, needs-review=0.
 | `TrackChangeAuthor` | ✓ | ✓ |   |   |
 | `TrackChangeHighlightColors` | ✓ | ✓ |   |   |
 | `TrackChangesAuthorColorsConfig` | ✓ | ✓ |   |   |
+| `TrackChangesConfig` | ✓ | ✓ |   |   |
+| `TrackChangesInteractionConfig` | ✓ | ✓ |   |   |
 | `TrackChangesModuleConfig` | ✓ | ✓ |   |   |
+| `TrackChangesReplacementMode` | ✓ | ✓ |   |   |
 | `TrackChangesSemanticColorsConfig` | ✓ | ✓ |   |   |
 | `TrackedChangeAddress` | ✓ | ✓ |   |   |
 | `TrackedChangeSemanticColorKey` | ✓ | ✓ |   |   |

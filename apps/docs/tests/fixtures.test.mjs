@@ -190,6 +190,23 @@ test('basic review keeps one proposal and matches the runnable example', async (
   assert.equal(core, '');
 });
 
+test('the tracked-review fixture keeps one focused replacement', async () => {
+  const { bytes, document, core, app } = await openFixture('tracked-review.docx');
+  const visibleText = [...document.matchAll(/<w:(t|delText)\b[^>]*>(.*?)<\/w:\1>/g)]
+    .map((match) => match[2])
+    .join(' ');
+
+  assert.ok(visibleText.length < 200, `tracked-review.docx must stay short, got ${visibleText.length} characters`);
+  assert.ok(bytes.length < 8_000, `must stay a small package, got ${bytes.length} bytes`);
+  assert.equal(document.match(/<w:ins\b/g)?.length, 1, 'must contain one tracked insertion');
+  assert.equal(document.match(/<w:del\b/g)?.length, 1, 'must contain one tracked deletion');
+  assert.match(document, /<w:delText[^>]*>30<\/w:delText>/);
+  assert.match(document, /<w:t[^>]*>60<\/w:t>/);
+  assert.match(document, /w:author="Alex Rivera"/);
+  assert.match(core, /<dc:creator><\/dc:creator>/);
+  assert.match(app, /<Company><\/Company>/);
+});
+
 test('the service-agreement template keeps its field map and matches the runnable example', async () => {
   const { bytes, document, core, app } = await openFixture('service-agreement-template.docx');
   const example = await readFile(

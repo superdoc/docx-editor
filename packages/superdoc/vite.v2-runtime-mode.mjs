@@ -108,8 +108,9 @@ export function buildSourceModeAliases({ v2Root, layoutEngineRoot }) {
     // document-api-v2-adapter
     { find: '@superdoc/document-api-v2-adapter/browser', replacement: path.resolve(v2Root, 'document-api-v2-adapter/src/browser.ts') },
     { find: '@superdoc/document-api-v2-adapter/projection/source-provider', replacement: path.resolve(v2Root, 'document-api-v2-adapter/src/projection/source-provider.ts') },
-    { find: '@superdoc/document-api-v2-adapter/worker/node', replacement: path.resolve(v2Root, 'document-api-v2-adapter/src/worker/node-channel.ts') },
-    { find: '@superdoc/document-api-v2-adapter/worker', replacement: path.resolve(v2Root, 'document-api-v2-adapter/src/worker/index.ts') },
+    { find: /^@superdoc\/document-api-v2-adapter\/worker\/collaboration-sdk$/, replacement: path.resolve(v2Root, 'document-api-v2-adapter/src/worker/collaboration-sdk.ts') },
+    { find: /^@superdoc\/document-api-v2-adapter\/worker\/node$/, replacement: path.resolve(v2Root, 'document-api-v2-adapter/src/worker/node-channel.ts') },
+    { find: /^@superdoc\/document-api-v2-adapter\/worker$/, replacement: path.resolve(v2Root, 'document-api-v2-adapter/src/worker/index.ts') },
     { find: /^@superdoc\/document-api-v2-adapter$/, replacement: path.resolve(v2Root, 'document-api-v2-adapter/src/index.ts') },
     // compare domain
     { find: /^@superdoc\/document-compare$/, replacement: path.resolve(v2Root, 'document-compare/src/index.ts') },

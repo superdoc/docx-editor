@@ -1,28 +1,16 @@
 ---
 title: Review tracked changes
 navTitle: Track changes
-description: Let people propose, inspect, accept, and reject changes in the Editor.
+description: Propose an edit, accept or reject it, and keep undecided changes in the saved DOCX.
 ---
 
-Tracked changes let a person propose an edit without immediately changing the accepted document. The Editor displays each proposal inline in the document and provides controls for accepting or rejecting it.
-
-Use this page for the human review experience. Use [Document API tracked changes](/document-api/tracked-changes) when application code needs to create, list, inspect, or decide changes programmatically.
-
-## Open the Editor for review
-
-Start in `suggesting` mode when a reviewer should create new tracked changes while inspecting existing ones. Provide the current user so exported changes retain their author.
-
-Use the same toolbar and Editor containers from [Configure the built-in toolbar](/editor/built-in-ui/configure-the-toolbar), then initialize SuperDoc:
-
-<include>../../../snippets/editor/built-in-tracked-review.ts</include>
-
-Copy the [review fixture](/fixtures/basic-review.docx) to your app's public directory as `contract.docx`, or update the document URL.
-
-The built-in toolbar reads the active selection and exposes accept or reject actions when a tracked change can be decided. Anything you type in suggesting mode becomes a new proposal rather than a direct edit.
+Use tracked changes when an edit needs review before it becomes accepted text. Each proposal records what changed and
+who changed it. Use [comments](/editor/comments) for a discussion that does not change the passage.
 
 ## Try the review flow
 
-Expand the Editor. The sample opens with one active proposal: choose **Accept** or **Reject**.
+Expand the Editor. Its existing proposal is already active: choose **Accept** or **Reject**. Next, select a short
+phrase and type a replacement to create your own proposal.
 
 <EditorDemo fixture='/fixtures/basic-review.docx' preset='tracked-review' title='Review a tracked change' />
 
@@ -30,75 +18,93 @@ For the complete project, open the [review example](https://go.superdoc.dev/exam
 Accept the existing proposal, make two more edits, reject one, and export with the other undecided. Reopen the DOCX to
 check which text and proposals remain.
 
-Accepting a change keeps the proposed result and removes the review mark. Rejecting it restores the prior content and removes the review mark. Both decisions change the open document and must be followed by your normal save or export flow.
+| Decision        | Result                                                                                      |
+| --------------- | ------------------------------------------------------------------------------------------- |
+| Accept          | Keeps the proposed result and removes its revision mark.                                    |
+| Reject          | Removes the proposed edit and its revision mark. For a deletion, the original text returns. |
+| Leave undecided | Keeps the proposal available for another reviewer.                                          |
+
+Both decisions change the open document. The demo does not save it to a server.
+
+## Open the Editor for review
+
+Keep the project and export button from the [Quickstart](/editor/quickstart). Create `src/review-options.ts`:
+
+<include>../../../snippets/editor/review-options.ts</include>
+
+Import `reviewOptions` into `src/main.ts` in Vanilla or `src/App.tsx` in React:
+
+```ts
+import { reviewOptions } from './review-options';
+```
+
+Add `...reviewOptions` inside your existing `new SuperDoc({ ... })` configuration, or add `{...reviewOptions}` to
+the `SuperDocEditor` component. Keep `/sample.docx`, the ready/error handlers, and **Export DOCX**.
+
+Replace the effective date in `/sample.docx`. In `suggesting` mode, the edit becomes a proposal attributed to Jordan Lee.
+Your application supplies the signed-in user's identity instead of this example user.
+
+Select a proposed change to reveal its review actions. You can keep the built-in UI or use
+[custom review controls](/editor/custom-ui/tracked-changes); the document workflow is the same.
+
+## Save and reopen the review
+
+Make three separate edits. Accept one, reject another, and leave the third undecided. Use **Export DOCX** in your project,
+then open the exported file in Word or load it back into SuperDoc:
+
+1. The accepted result should remain without a revision mark.
+2. The rejected edit should be absent.
+3. The undecided proposal and its author should remain available for review.
+
+Use your normal [load and save flow](/editor/load-and-save-documents) to persist the exported bytes. Exporting does not
+accept pending changes. Choosing not to export comments does not accept or reject revisions either.
 
 ## Choose the right mode
 
-| Reviewer task                                      | Mode         | Tracked-change visibility                      |
-| -------------------------------------------------- | ------------ | ---------------------------------------------- |
-| Propose edits and decide existing changes          | `suggesting` | Review marks are shown                         |
-| Edit directly while deciding existing changes      | `editing`    | Review marks are shown                         |
-| Inspect proposals without changing the document    | `viewing`    | Set `modules.trackChanges.visible` to `true`   |
-| Read the document as if no proposals had been made | `viewing`    | Leave tracked-change visibility at its default |
+Use `suggesting` to record edits as proposals, `editing` for direct edits, and `viewing` to read without editing.
+Switching to editing does not accept proposals already in the document.
 
-Viewing mode is read-only. Showing tracked changes in that mode does not grant permission to accept, reject, or create them.
+For a read-only review, replace the contents of `src/review-options.ts` with:
+
+```ts
+import type { Config } from 'superdoc';
+
+export const reviewOptions = {
+  documentMode: 'viewing',
+  viewing: { trackedChanges: 'markup' },
+} satisfies Pick<Config, 'documentMode' | 'viewing'>;
+```
+
+The display and the review decision are separate:
+
+| `viewing.trackedChanges` | What the reader sees                                        |
+| ------------------------ | ----------------------------------------------------------- |
+| `original` (default)     | The text before the proposed edits, without revision marks. |
+| `markup`                 | Proposed insertions and deletions with revision marks.      |
+| `final`                  | The proposed result, without revision marks.                |
+
+Viewing mode stays read-only in all three cases. Use the [document modes demo](/editor/document-modes#choose-how-tracked-changes-appear)
+to compare them. A clean-looking final view is not an accepted document.
 
 ## Control review decisions
 
-Turn off accept and reject when someone may inspect or discuss proposals but should not decide them:
+Use [Control a document review workflow](/editor/review-workflow) to let contributors propose without deciding,
+configure reviewer actions, and hand off the saved document. Comment actions are configured separately.
 
-```ts
-const config = {
-  interaction: {
-    trackedChanges: {
-      allowDecisions: false,
-    },
-  },
-};
-```
-
-This does not stop someone from proposing changes. Use `documentMode: 'suggesting'` to record their edits as proposals,
-or `documentMode: 'viewing'` to prevent document edits entirely.
+Editor modes and client-side review controls are not an authorization boundary. Your application owns document access,
+trusted identity, and permission to save. See [Configuration](/editor/configuration) for the full startup contract,
+including replacement grouping and author colors.
 
 ## Keep review decisions explicit
 
-The built-in controls and `superdoc/ui` use the same tracked-change state. A control can be disabled because there is no active change, the document is read-only, or the current client interaction policy does not allow the decision.
+Use [Document API tracked changes](/document-api/tracked-changes) when code needs to list revisions, inspect a known
+change, create a tracked edit, or decide changes by ID. Do not infer revision targets from rendered DOM attributes.
 
-Do not infer the active change from document DOM attributes. Use the built-in controls or the public custom UI controller. Use the Document API when a service or application workflow decides a known change by ID.
-
-Editor modes and client-side review controls are not an authorization boundary. Your application still owns access to the DOCX, trusted user identity, persistence, and collaboration authorization.
-
-Verify the completed workflow by exporting the DOCX and reopening it. Accepted text should remain without a pending review mark. Rejected text should be restored. Unresolved changes should remain available for another reviewer.
+Use the [custom review panel](/editor/custom-ui/tracked-changes) when your application owns the queue and its controls.
+It observes `superdoc.ui.trackChanges` rather than maintaining a second list of document revisions.
 
 ## Report permission-filtered bulk decisions
 
-Accept All and Reject All can leave some changes open when the permission resolver allows the decision for only part of the document. SuperDoc does not choose how to present that outcome. Subscribe to `onTrackedChangesBulkDecision` and render a toast, banner, activity entry, or other application-owned UI.
-
-```ts
-const status = document.querySelector<HTMLOutputElement>('#review-status');
-
-const superdoc = new SuperDoc({
-  selector: '#editor',
-  document: '/contract.docx',
-  onTrackedChangesBulkDecision: (result) => {
-    if (!status || result.permissionDeniedCount === 0) return;
-
-    const action = result.decision === 'accept' ? 'Accepted' : 'Rejected';
-    status.value = `${action} ${result.successfulCount} changes. ${result.permissionDeniedCount} changes were left because you do not have permission.`;
-  },
-});
-```
-
-The same payload is available through `superdoc.on('tracked-changes:bulk-decision', listener)` when the listener belongs to a later application lifecycle.
-
-| Field                   | Meaning                                                               |
-| ----------------------- | --------------------------------------------------------------------- |
-| `documentId`            | Document that received the bulk decision                              |
-| `decision`              | Requested operation: `accept` or `reject`                             |
-| `requestedCount`        | Unique tracked changes considered                                     |
-| `successfulCount`       | Changes successfully decided                                          |
-| `permissionDeniedCount` | Changes left open because the permission resolver denied the decision |
-
-`requestedCount` equals `successfulCount + permissionDeniedCount`. A zero `permissionDeniedCount` means the permission resolver allowed every considered change; applications can ignore that outcome when they only need to report leftover changes.
-
-Continue with [Load and save documents](/editor/load-and-save-documents), or build application-owned controls with the [Custom UI overview](/editor/custom-ui/overview).
+Accept All and Reject All can leave changes undecided when `permissionResolver` allows only some decisions.
+The [review workflow guide](/editor/review-workflow#report-partial-bulk-decisions) shows how to report those results
+through `onTrackedChangesBulkDecision`, without confusing a review decision with a saved file.

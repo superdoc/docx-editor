@@ -1429,6 +1429,15 @@
   align-items: center;
 }
 
+/* The pinned runtime keeps comment cards light even when the docs theme is dark. */
+.sd-editor-demo [data-sd-part='comment-thread'] {
+  --sd-ui-text: #202124;
+  --sd-ui-comments-author-text: #202124;
+  --sd-ui-comments-body-text: #202124;
+  --sd-ui-comments-option-text: #202124;
+  color: #202124;
+}
+
 .sd-editor-demo-toolbar button,
 .sd-editor-demo-view-controls button {
   display: inline-flex;

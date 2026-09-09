@@ -318,6 +318,8 @@ export function renderLLMMarkdown(markdown: string) {
       const title = textAttribute(attributes, 'title') ?? 'Interactive editor demo';
       const fixture = textAttribute(attributes, 'fixture');
       const preset = textAttribute(attributes, 'preset');
+      const showConfiguration =
+        attributes.showConfiguration === undefined || booleanAttribute(attributes, 'showConfiguration');
       const localFile = booleanAttribute(attributes, 'allowLocalFile');
       const builtInDemo =
         preset === 'comments' ||
@@ -339,7 +341,10 @@ export function renderLLMMarkdown(markdown: string) {
         preset === 'proofing'
           ? 'Proofing: type `mispelled`, `workng`, or `teh`, then right-click the underline.'
           : undefined,
-        builtInDemo ? renderBuiltInEditorDemoMarkdown(builtInDemo) : undefined,
+        builtInDemo && showConfiguration ? renderBuiltInEditorDemoMarkdown(builtInDemo) : undefined,
+        preset === 'comments' && !showConfiguration
+          ? 'Comment thread: open the delivery-date comment, reply, resolve, and reopen it. The messages and status change without editing the passage. Layout and permission experiments are hidden; zoom and expansion remain available.'
+          : undefined,
         preset === 'tracked-review' ? 'Tracked-change review: accept or reject the sample change.' : undefined,
         localFile ? 'Local DOCX selection: enabled. Files remain in the browser.' : 'Local DOCX selection: disabled.',
       ].filter((value): value is string => Boolean(value));

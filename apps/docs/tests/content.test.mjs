@@ -381,6 +381,30 @@ const editorDemoPresets = new Set([
   'tracked-review',
 ]);
 
+test('Features exposes an interface-neutral Comments owner without moving existing recipes', async () => {
+  const meta = JSON.parse(await readFile(new URL('../content/docs/editor/meta.json', import.meta.url), 'utf8'));
+  const featureStart = meta.pages.indexOf('---Features---');
+  const featureEnd = meta.pages.indexOf('---', featureStart + 1);
+  assert.ok(featureEnd > featureStart);
+  assert.deepEqual(meta.pages.slice(featureStart + 1, featureEnd), [
+    'comments', 'track-changes', 'content-controls', 'collaboration', 'version-history', '...platform',
+  ]);
+  for (const page of ['export-options']) {
+    assert.ok(meta.pages.indexOf(page) > meta.pages.indexOf('load-and-save-documents'));
+    assert.ok(meta.pages.indexOf(page) < meta.pages.indexOf('---Interface---'));
+  }
+  assert.ok(meta.pages.indexOf('comments') > featureStart);
+  assert.ok(meta.pages.indexOf('comments') < featureEnd);
+
+  const page = await readFile(new URL('../content/docs/editor/comments.mdx', import.meta.url), 'utf8');
+  assert.match(page, /showConfiguration=\{false\}/);
+  assert.match(page, /comments-sample\.docx/);
+  for (const owner of ['built-in-ui/comments', 'custom-ui/comments', 'track-changes', 'load-and-save-documents']) {
+    assert.ok(page.includes(`/editor/${owner}`), `missing owner: ${owner}`);
+    await access(new URL(`../content/docs/editor/${owner}.mdx`, import.meta.url));
+  }
+});
+
 async function collectMdxFiles(directory) {
   const entries = await readdir(directory, { withFileTypes: true });
   const files = await Promise.all(

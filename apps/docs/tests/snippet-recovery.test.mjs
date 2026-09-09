@@ -27,6 +27,21 @@ async function loadSnippet(name, imports, globals = {}) {
   return exports;
 }
 
+test('bulk-review status reports the latest decision without retaining an earlier denial', async (t) => {
+  const window = new Window();
+  t.after(() => window.happyDOM.close());
+  window.document.body.innerHTML = '<output id="review-status" aria-live="polite"></output>';
+  const { reportReviewDecisions } = await loadSnippet('report-review-decisions.ts', {}, { document: window.document });
+  const result = { documentId: 'sample', decision: 'accept', requestedCount: 3, successfulCount: 2, permissionDeniedCount: 1 };
+  reportReviewDecisions(result);
+  const status = window.document.querySelector('output');
+  assert.equal(status.value, 'Accepted 2 changes. 1 left undecided.');
+  reportReviewDecisions({ ...result, decision: 'reject', requestedCount: 2, permissionDeniedCount: 0 });
+  assert.equal(status.value, 'Rejected 2 changes.');
+  status.remove();
+  assert.doesNotThrow(() => reportReviewDecisions(result));
+});
+
 function deferred() {
   let resolve;
   let reject;

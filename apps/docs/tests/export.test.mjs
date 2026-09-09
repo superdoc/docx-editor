@@ -58,6 +58,7 @@ const routes = [
   ['editor/custom-ui/review-highlights/index.html', 'Turn AI findings into tracked suggestions'],
   ['editor/dialogs-and-surfaces/index.html', 'Open dialogs and floating surfaces'],
   ['editor/theming/index.html', 'Theme the Editor UI'],
+  ['editor/comments/index.html', 'Discuss a document with comments'],
   ['editor/track-changes/index.html', 'Review tracked changes'],
   ['editor/collaboration/index.html', 'Understand collaboration'],
   ['editor/collaboration/connect-two-editors/index.html', 'Connect two editors'],
@@ -680,7 +681,39 @@ test('exports the Editor tracked-change review workflow with the existing review
   assert.match(article, /Reject/);
   assert.match(markdown, /Tracked-change review: accept or reject the sample change/);
   assert.match(markdown, /Editor modes and client-side review controls are not an authorization boundary/);
+  assert.match(markdown, /viewing\.trackedChanges/);
+  assert.doesNotMatch(markdown, /modules\.trackChanges\.visible/);
+  assert.match(markdown, /reviewOptions/);
+  assert.match(markdown, /\/editor\/review-workflow/);
+  assert.match(markdown, /\/sample\.docx/);
   assert.doesNotMatch(markdown, /<EditorDemo\b/);
+});
+
+test('review workflow exports its typed permissions and bulk-decision example', async () => {
+  const markdown = await readFile(new URL('../out/md/editor/review-workflow.md', import.meta.url), 'utf8');
+  assert.match(markdown, /allowDecisions: false/);
+  assert.match(markdown, /reportReviewDecisions/);
+  assert.match(markdown, /not a save confirmation/);
+  assert.match(markdown, /\/editor\/load-and-save-documents/);
+});
+
+test('the Comments owner exports the thread workflow without configuration experiments', async () => {
+  const article = await readFile(new URL('../out/editor/comments/index.html', import.meta.url), 'utf8');
+  const builtInArticle = await readFile(new URL('../out/editor/built-in-ui/comments/index.html', import.meta.url), 'utf8');
+  const markdown = await readFile(new URL('../out/md/editor/comments.md', import.meta.url), 'utf8');
+
+  assert.match(builtInArticle, /aria-label="Layout"/);
+  assert.match(builtInArticle, /aria-label="Actions"/);
+  assert.match(article, /data-preset="comments"/);
+  assert.match(article, /aria-label="Zoom out"/);
+  assert.match(article, /aria-label="Enter fullscreen"/);
+  assert.doesNotMatch(article, /aria-label="(?:Layout|Actions)"/);
+  assert.match(markdown, /Comment thread: open the delivery-date comment/);
+  assert.match(markdown, /Resolving a thread is not deleting it/);
+  assert.match(markdown, /\/editor\/built-in-ui\/comments/);
+  assert.match(markdown, /\/editor\/custom-ui\/comments/);
+  assert.match(markdown, /\/document-api\/comments/);
+  assert.doesNotMatch(markdown, /Comment configurations available|Layout —|Actions —|<EditorDemo\b/);
 });
 
 test('exports the custom tracked-change review workflow as clean Markdown', async () => {
@@ -868,7 +901,7 @@ test('exports the comments workflow through each canonical surface', async () =>
   assert.match(builtIn, /not an authorization boundary/);
   assert.match(builtIn, /comment\s+permissions in a trusted backend/);
   assert.doesNotMatch(builtIn, /\b(?:displayMode|readOnly|allowResolve)\b/);
-  assert.match(trackedChanges, /allowDecisions: false/);
+  assert.match(trackedChanges, /\/editor\/review-workflow/);
   assert.match(customUI, /ui\.comments\.createFromCapture/);
   assert.match(customUI, /Live example: replace the comments panel/);
   assert.match(customUI, /ui\.comments\.createFromSelection/);

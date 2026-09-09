@@ -1,0 +1,66 @@
+---
+title: Discuss a document with comments
+navTitle: Comments
+description: Add a thread to selected text, reply, and resolve it without changing the passage.
+---
+
+Use a comment to ask a question or discuss a passage. Use [tracked changes](/editor/track-changes) when you want to
+propose an edit to the passage itself. Both work with SuperDoc's built-in UI or your own controls.
+
+## Try a comment thread
+
+Expand the Editor and click `September 30, 2026` to open its comment. Add a reply, then choose the checkmark to resolve
+the thread. Click the date again to see its **Resolved** status and choose **Reopen comment**.
+
+<EditorDemo
+  fixture='/fixtures/comments-sample.docx'
+  preset='comments'
+  showConfiguration={false}
+  title='Discuss the delivery date'
+/>
+
+The discussion changes; the date in the document does not. To start another thread, select a different passage,
+right-click, and choose **Comment**.
+
+## Add comments to your project
+
+Start with the [Quickstart](/editor/quickstart). Comments are enabled by default, so keep its Editor, `/sample.docx`,
+and export button. Provide the current user's name and email using the
+[user configuration](/editor/configuration#set-the-startup-configuration) before creating comments.
+
+Select a passage and add a comment from the context menu. Its author should match the configured user. You do not
+need a collaboration server for one person to comment on a document and export it.
+
+## Follow the thread lifecycle
+
+The first comment starts a **thread** anchored to the selected document text. Replies belong to that thread;
+they do not need another selection.
+
+| Action              | What changes                                                         |
+| ------------------- | -------------------------------------------------------------------- |
+| Reply               | Adds a message to the same discussion.                               |
+| Resolve             | Marks the thread as finished but keeps its messages.                 |
+| Reopen              | Makes a resolved thread active again.                                |
+| Delete your comment | Removes your message; deleting your root comment removes its thread. |
+
+Resolving a thread is not deleting it. Hiding the comments panel does not remove comments from the DOCX either.
+
+## Save the discussion
+
+Comments, replies, authors, and resolved status are stored in the DOCX. Export using the Quickstart's **Export DOCX**
+button, then open the exported file in Word or load it back into SuperDoc. Confirm that the thread and its reply remain,
+including the resolved status you chose.
+
+The embedded demo only changes its in-browser document. Your application uses [Load and save](/editor/load-and-save-documents)
+to persist the exported bytes. Reloading the original sample is not reopening your saved discussion.
+
+## Choose how people interact
+
+Keep the built-in UI unless your application needs to own the thread list or composer:
+
+- [Configure built-in comments](/editor/built-in-ui/comments) for layout and available actions.
+- [Build a custom comments panel](/editor/custom-ui/comments) for application-owned markup and selection handling.
+- [Use Document API comments](/document-api/comments) to create, update, or delete comments in code.
+
+Comment settings control browser interaction, not trusted authorization. Your backend still decides who can access
+and save the document. Comment actions are separate from permission to accept or reject tracked changes.

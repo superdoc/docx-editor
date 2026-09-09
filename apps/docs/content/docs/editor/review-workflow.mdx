@@ -1,0 +1,75 @@
+---
+title: Control a document review workflow
+description: Separate proposing edits, deciding changes, and saving the reviewed document.
+---
+
+Start with the [tracked-changes example](/editor/track-changes). Once people can propose and decide edits, your
+application needs to decide which actions each person should have and when the result is saved.
+
+## Separate the three responsibilities
+
+| Task             | Editor behavior                              | Application responsibility                |
+| ---------------- | -------------------------------------------- | ----------------------------------------- |
+| Propose an edit  | `suggesting` records changes with an author. | Supply the current user's identity.       |
+| Accept or reject | Review controls decide existing proposals.   | Choose who may use those controls.        |
+| Save the result  | Export produces the current DOCX.            | Authorize and persist the exported bytes. |
+
+These tasks do not require collaboration or a custom UI. A person can export a proposal for another reviewer to open
+later. Use [collaboration](/editor/collaboration) when they should work in the same shared document.
+
+## Let a contributor propose without deciding
+
+Keep the Quickstart project and replace `src/review-options.ts` from the Track changes guide with:
+
+```ts
+import type { Config } from 'superdoc';
+
+export const reviewOptions = {
+  documentMode: 'suggesting',
+  user: { name: 'Jordan Lee', email: 'jordan@example.com' },
+  interaction: {
+    trackedChanges: { allowDecisions: false },
+  },
+} satisfies Pick<Config, 'documentMode' | 'user' | 'interaction'>;
+```
+
+Keep spreading these options into the existing Vanilla configuration or React component. Make an edit: it should
+become a proposal, but accept and reject should be unavailable. Comment actions have their own configuration.
+
+For a reviewer who may decide changes, use `allowDecisions: true` when opening the document. Keep `suggesting` if the
+reviewer's own edits should also become proposals. Switching to `editing` would make new edits direct; it does not
+accept the proposals already present.
+
+Your application chooses these settings from its verified permissions. Browser controls are not an authorization
+boundary: protect document access and saving on your backend. A disabled button can also mean no change is selected or
+the document is read-only.
+
+## Report partial bulk decisions
+
+Accept All and Reject All can leave proposals undecided when `permissionResolver` allows only some decisions. Use
+`onTrackedChangesBulkDecision` to report what happened rather than announcing that every proposal was decided.
+
+For Vanilla, add `<output id="review-status" aria-live="polite"></output>` to the page and create
+`src/report-review-decisions.ts`:
+
+<include>../../../snippets/editor/report-review-decisions.ts</include>
+
+Import `reportReviewDecisions` into `src/main.ts` and set `onTrackedChangesBulkDecision: reportReviewDecisions` in the
+existing configuration. In React, use the same callback payload to update status state.
+
+The payload contains `documentId`, `decision`, `requestedCount`, `successfulCount`, and `permissionDeniedCount`.
+`requestedCount` equals `successfulCount + permissionDeniedCount`. These counts describe permission-filtered decisions,
+not a save confirmation. The same payload is available through the `tracked-changes:bulk-decision` event.
+
+## Hand off the reviewed document
+
+Decide the intended proposals, then export through your existing [load and save flow](/editor/load-and-save-documents).
+If your workflow requires all proposals to be decided, inspect the remaining changes before calling the document final.
+Otherwise, tell the next reviewer that undecided proposals remain.
+
+Reopen the exported file and check that accepted text remains, rejected edits are gone, and any undecided proposals
+are still available. A clean-looking `final` view only hides markup; it does not finish the review. Report “Saved” only
+after your storage flow confirms the write.
+
+Use [Document API tracked changes](/document-api/tracked-changes) to inspect or decide proposals in code. Use the
+[custom review panel](/editor/custom-ui/tracked-changes) when your application needs to own the review queue and controls.

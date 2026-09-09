@@ -37,6 +37,17 @@ function contrast(foreground, background) {
   return (lighter + 0.05) / (darker + 0.05);
 }
 
+test('shared demo comment text stays readable on the pinned light cards', () => {
+  const selector = ".sd-editor-demo [data-sd-part='comment-thread']";
+  const foreground = colourFor(selector);
+  assert.ok(contrast(foreground, '#ffffff') >= 4.5);
+  assert.ok(contrast(foreground, '#f0f0f0') >= 4.5);
+  assert.match(css, /\[data-sd-part='comment-thread'\]\s*\{[^}]*--sd-ui-text:\s*#202124/);
+  for (const name of ['author', 'body', 'option']) {
+    assert.equal(customProperty(`sd-ui-comments-${name}-text`), foreground);
+  }
+});
+
 test('config explorer text clears the WCAG AA contrast floor', () => {
   const surface = customProperty('sd-code-block-surface');
   const bar = customProperty('sd-code-block-bar');

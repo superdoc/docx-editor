@@ -52,6 +52,7 @@ type EditorDemoProps = {
   allowLocalFile?: boolean;
   fixture?: string;
   preset: EditorDemoPreset;
+  showConfiguration?: boolean;
   title: string;
 };
 
@@ -251,7 +252,13 @@ function initialCommandStates() {
   } satisfies Record<string, CommandState>;
 }
 
-export function EditorDemo({ allowLocalFile = false, fixture, preset, title }: EditorDemoProps) {
+export function EditorDemo({
+  allowLocalFile = false,
+  fixture,
+  preset,
+  showConfiguration = true,
+  title,
+}: EditorDemoProps) {
   const demoRef = useRef<HTMLElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const loadIdRef = useRef(0);
@@ -919,7 +926,9 @@ export function EditorDemo({ allowLocalFile = false, fixture, preset, title }: E
                 : preset === 'proofing'
                   ? 'Type “mispelled”, “workng”, or “teh”, then right-click its underline.'
                   : preset === 'comments'
-                    ? 'Open the existing thread, then change its layout or available actions.'
+                    ? showConfiguration
+                      ? 'Open the existing thread, then change its layout or available actions.'
+                      : 'Open the delivery-date comment, reply, and resolve or reopen the thread.'
                     : preset === 'content-controls'
                       ? contentControlStatus
                       : preset === 'context-menu'
@@ -986,7 +995,7 @@ export function EditorDemo({ allowLocalFile = false, fixture, preset, title }: E
       preset === 'ruler' ||
       preset === 'document-modes' ? (
         <div className='sd-editor-demo-config-bar' aria-label={`${title} configuration`}>
-          {preset === 'document-modes' ? (
+          {showConfiguration && preset === 'document-modes' ? (
             <div className='sd-editor-demo-mode-controls'>
               <DemoConfigGroup
                 disabled={state !== 'ready' || modeResetBusy}
@@ -1016,7 +1025,7 @@ export function EditorDemo({ allowLocalFile = false, fixture, preset, title }: E
               </button>
             </div>
           ) : null}
-          {preset === 'toolbar' ? (
+          {showConfiguration && preset === 'toolbar' ? (
             <DemoConfigGroup
               disabled={state !== 'ready' || configurationBusy}
               label='Toolbar'
@@ -1025,7 +1034,7 @@ export function EditorDemo({ allowLocalFile = false, fixture, preset, title }: E
               value={toolbarStrategy}
             />
           ) : null}
-          {preset === 'search' ? (
+          {showConfiguration && preset === 'search' ? (
             <>
               <DemoConfigGroup
                 disabled={state !== 'ready' || configurationBusy}
@@ -1056,7 +1065,7 @@ export function EditorDemo({ allowLocalFile = false, fixture, preset, title }: E
               />
             </>
           ) : null}
-          {preset === 'comments' ? (
+          {showConfiguration && preset === 'comments' ? (
             <>
               <DemoConfigGroup
                 disabled={state !== 'ready' || configurationBusy}
@@ -1074,7 +1083,7 @@ export function EditorDemo({ allowLocalFile = false, fixture, preset, title }: E
               />
             </>
           ) : null}
-          {preset === 'content-controls' ? (
+          {showConfiguration && preset === 'content-controls' ? (
             <DemoConfigGroup
               disabled={state !== 'ready' || configurationBusy}
               label='Built-in chrome'
@@ -1086,7 +1095,7 @@ export function EditorDemo({ allowLocalFile = false, fixture, preset, title }: E
               value={contentControlChrome ? 'show' : 'hide'}
             />
           ) : null}
-          {preset === 'context-menu' ? (
+          {showConfiguration && preset === 'context-menu' ? (
             <DemoConfigGroup
               disabled={state !== 'ready' || configurationBusy}
               label='Menu'
@@ -1095,7 +1104,7 @@ export function EditorDemo({ allowLocalFile = false, fixture, preset, title }: E
               value={contextMenuStrategy}
             />
           ) : null}
-          {preset === 'hyperlinks' ? (
+          {showConfiguration && preset === 'hyperlinks' ? (
             <DemoConfigGroup
               disabled={state !== 'ready' || configurationBusy}
               label='Activation'
@@ -1104,7 +1113,7 @@ export function EditorDemo({ allowLocalFile = false, fixture, preset, title }: E
               value={hyperlinkBehavior}
             />
           ) : null}
-          {preset === 'ruler' ? (
+          {showConfiguration && preset === 'ruler' ? (
             <>
               <DemoConfigGroup
                 disabled={state !== 'ready'}

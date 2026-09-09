@@ -8,68 +8,61 @@ function requireElement<ElementType extends Element>(selector: string) {
 }
 
 const status = requireElement<HTMLOutputElement>('#editor-status');
-const saveButton = requireElement<HTMLButtonElement>('#save-docx');
+const exportButton = requireElement<HTMLButtonElement>('#export-docx');
 
 let isReady = false;
-let editRevision = 0;
+let hasUnsavedChanges = false;
+let isExporting = false;
+let isUnmounted = false;
 
 function showLoadError(error: unknown) {
   console.error('SuperDoc error', error);
-  if (isReady) return;
+  if (isReady || isUnmounted) return;
 
   status.value = 'Could not open the document';
-  saveButton.disabled = true;
+  exportButton.disabled = true;
 }
 
 const superdoc = new SuperDoc({
   selector: '#editor',
   document: '/sample.docx',
   onReady: () => {
+    if (isUnmounted) return;
     isReady = true;
     status.value = 'Ready';
-    saveButton.disabled = false;
+    exportButton.disabled = isExporting;
   },
   onEditorUpdate: () => {
-    editRevision += 1;
+    if (isUnmounted) return;
+    hasUnsavedChanges = true;
     status.value = 'Unsaved changes';
   },
   onContentError: ({ error }) => showLoadError(error),
   onException: ({ error }) => showLoadError(error),
 });
 
-async function saveDocument() {
-  if (!isReady) return;
+async function exportDocument(): Promise<void> {
+  if (!isReady || isExporting || isUnmounted) return;
 
-  const savedRevision = editRevision;
-  saveButton.disabled = true;
-  status.value = 'Saving…';
+  isExporting = true;
+  exportButton.disabled = true;
   try {
-    const file = await superdoc.export({
-      exportType: ['docx'],
-      triggerDownload: false,
-    });
-    if (!(file instanceof Blob)) throw new Error('Expected one DOCX file.');
-
-    const response = await fetch('/api/documents/42', {
-      method: 'PUT',
-      headers: {
-        'content-type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      },
-      body: file,
-    });
-    if (!response.ok) throw new Error(`Save failed with ${response.status}.`);
-    status.value = editRevision === savedRevision ? 'Saved' : 'Unsaved changes';
+    await superdoc.export({ exportedName: 'sample-edited' });
+    if (!isUnmounted) status.value = hasUnsavedChanges ? 'Unsaved changes' : 'Ready';
   } catch (error) {
-    status.value = 'Save failed';
-    console.error('The document was not saved.', error);
+    if (!isUnmounted) status.value = 'Export failed. Try again.';
+    console.error('Could not export the document.', error);
   } finally {
-    saveButton.disabled = false;
+    isExporting = false;
+    if (!isUnmounted) exportButton.disabled = !isReady;
   }
 }
 
-saveButton.addEventListener('click', saveDocument);
+exportButton.addEventListener('click', exportDocument);
 
-export function unmountEditor() {
-  saveButton.removeEventListener('click', saveDocument);
+export function unmountEditor(): void {
+  isUnmounted = true;
+  exportButton.disabled = true;
+  exportButton.removeEventListener('click', exportDocument);
   superdoc.destroy();
 }

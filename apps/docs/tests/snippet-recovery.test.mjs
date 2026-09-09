@@ -34,6 +34,174 @@ function deferred() {
   return { promise, resolve, reject };
 }
 
+async function lifecycleMarkup() {
+  const page = await readFile(new URL('../content/docs/editor/lifecycle-and-events.mdx', import.meta.url), 'utf8');
+  assert.match(page, /`sample-edited\.docx`/u);
+  return page.match(/```html\n([\s\S]*?)```/u)[1];
+}
+
+test('lifecycle preview preserves clean exports, dirty exports, and retry navigation', async (t) => {
+  const window = new Window();
+  const globalNames = ['window', 'document', 'navigator', 'IS_REACT_ACT_ENVIRONMENT'];
+  const originals = new Map(globalNames.map((name) => [name, Object.getOwnPropertyDescriptor(globalThis, name)]));
+  for (const name of globalNames) {
+    Object.defineProperty(globalThis, name, { configurable: true, value: name === 'IS_REACT_ACT_ENVIRONMENT' ? true : window[name] ?? window });
+  }
+  const root = createRoot(window.document.body);
+  t.after(async () => {
+    await React.act(async () => root.unmount());
+    await window.happyDOM.close();
+    for (const [name, descriptor] of originals) {
+      if (descriptor) Object.defineProperty(globalThis, name, descriptor);
+      else delete globalThis[name];
+    }
+  });
+  const { LifecycleJourney } = await loadSnippet('../../components/embeds/lifecycle-journey.tsx', {
+    react: React,
+    'react/jsx-runtime': await import('react/jsx-runtime'),
+    'lucide-react': Object.fromEntries(['Check', 'FileText', 'Play', 'RotateCcw', 'Square'].map((name) => [name, () => null])),
+    'fumadocs-ui/components/dynamic-codeblock': { DynamicCodeBlock: () => null },
+    '@/lib/lifecycle-journey': await import('../lib/lifecycle-journey.ts'),
+  });
+  await React.act(async () => root.render(React.createElement(LifecycleJourney)));
+  const app = () => window.document.querySelector('.sd-lifecycle-preview');
+  const exportButton = () => app().querySelector('button');
+  const status = () => app().querySelector('output');
+  const choose = async (label) => React.act(async () => [...window.document.querySelectorAll('.sd-lifecycle-nav button')].find((button) => button.querySelector('strong')?.textContent === label).click());
+  assert.equal(exportButton().disabled, true);
+  await choose('Ready');
+  await React.act(async () => exportButton().click());
+  assert.equal(status().textContent.trim(), 'Ready');
+  assert.equal(status().dataset.tone, 'ready');
+  assert.match(app().textContent, /DOCX copy downloaded/u);
+  await React.act(async () => exportButton().click());
+  assert.equal(status().textContent.trim(), 'Ready');
+  await choose('Edit');
+  await React.act(async () => exportButton().click());
+  assert.equal(status().textContent.trim(), 'Unsaved changes');
+  assert.equal(status().dataset.tone, 'dirty');
+  assert.match(app().textContent, /DOCX copy downloaded/u);
+  assert.doesNotMatch(app().textContent, /Saved to your backend/u);
+  await choose('Load fails');
+  await React.act(async () => [...app().querySelectorAll('button')].find((button) => button.textContent.includes('Retry')).click());
+  assert.equal(exportButton().disabled, true);
+  assert.equal(status().textContent.trim(), 'Opening…');
+});
+
+test('lifecycle example gates export, preserves edits, and cleans up pending work', async () => {
+  const window = new Window();
+  window.document.body.innerHTML = await lifecycleMarkup();
+  const button = window.document.querySelector('#export-docx');
+  const status = window.document.querySelector('#editor-status');
+  const pending = deferred();
+  let config;
+  let exports = 0;
+  let destroyed = 0;
+  const { unmountEditor } = await loadSnippet('editor-lifecycle.ts', {
+    superdoc: {
+      SuperDoc: class {
+        constructor(value) {
+          assert.ok(window.document.querySelector(value.selector));
+          config = value;
+        }
+        export(options) {
+          assert.deepEqual(options, { exportedName: 'sample-edited' });
+          exports += 1;
+          return pending.promise;
+        }
+        destroy() { destroyed += 1; }
+      },
+    },
+  }, { document: window.document });
+
+  button.dispatchEvent(new window.Event('click'));
+  assert.equal(exports, 0);
+  config.onReady();
+  assert.equal(button.disabled, false);
+  config.onEditorUpdate();
+  assert.equal(status.value, 'Unsaved changes');
+  button.dispatchEvent(new window.Event('click'));
+  button.dispatchEvent(new window.Event('click'));
+  assert.equal(exports, 1);
+  assert.equal(button.disabled, true);
+  assert.equal(status.value, 'Unsaved changes');
+
+  unmountEditor();
+  config.onReady();
+  pending.resolve();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(button.disabled, true);
+  assert.equal(destroyed, 1);
+  button.dispatchEvent(new window.Event('click'));
+  assert.equal(exports, 1);
+  window.close();
+});
+
+test('lifecycle example reports opening and export failures without claiming a save', async () => {
+  const window = new Window();
+  window.document.body.innerHTML = await lifecycleMarkup();
+  let config;
+  const errors = [];
+  const { unmountEditor } = await loadSnippet('editor-lifecycle.ts', {
+    superdoc: { SuperDoc: class {
+      constructor(value) { config = value; }
+      async export() { throw new Error('Export rejected'); }
+      destroy() {}
+    } },
+  }, { document: window.document, console: { error: (...args) => errors.push(args) } });
+  const button = window.document.querySelector('#export-docx');
+  const status = window.document.querySelector('#editor-status');
+  for (const callback of [config.onContentError, config.onException]) {
+    callback({ error: new Error('Missing document') });
+    assert.equal(status.value, 'Could not open the document');
+    assert.equal(button.disabled, true);
+  }
+  config.onReady();
+  button.click();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(status.value, 'Export failed. Try again.');
+  assert.equal(button.disabled, false);
+  assert.equal(errors.length, 3);
+  unmountEditor();
+  window.close();
+});
+
+test('lifecycle export retries restore the current document state', async () => {
+  for (const editTiming of ['never', 'before-failure', 'during-retry']) {
+    const window = new Window();
+    window.document.body.innerHTML = await lifecycleMarkup();
+    const button = window.document.querySelector('#export-docx');
+    const status = window.document.querySelector('#editor-status');
+    const pending = deferred();
+    let config;
+    let exports = 0;
+    const { unmountEditor } = await loadSnippet('editor-lifecycle.ts', {
+      superdoc: { SuperDoc: class {
+        constructor(value) { config = value; }
+        async export() {
+          if (++exports === 1) throw new Error('Export rejected');
+          return pending.promise;
+        }
+        destroy() {}
+      } },
+    }, { document: window.document, console: { error() {} } });
+    config.onReady();
+    if (editTiming === 'before-failure') config.onEditorUpdate();
+    button.click();
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(status.value, 'Export failed. Try again.');
+    button.click();
+    if (editTiming === 'during-retry') config.onEditorUpdate();
+    pending.resolve();
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(status.value, editTiming === 'never' ? 'Ready' : 'Unsaved changes', editTiming);
+    assert.equal(button.disabled, false);
+    assert.equal(exports, 2);
+    unmountEditor();
+    window.close();
+  }
+});
+
 test('export guide examples select download, bytes, and paired attachments', async () => {
   const page = await readFile(new URL('../content/docs/editor/export-options.mdx', import.meta.url), 'utf8');
   const examples = [...page.matchAll(/```ts\n([\s\S]*?)```/gu)].map((match) => match[1]);

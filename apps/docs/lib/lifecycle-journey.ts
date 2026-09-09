@@ -1,4 +1,4 @@
-export type LifecycleStageId = 'mount' | 'ready' | 'edit' | 'save' | 'unmount';
+export type LifecycleStageId = 'mount' | 'ready' | 'edit' | 'export' | 'unmount';
 
 export type LifecycleStage = {
   id: LifecycleStageId;
@@ -9,7 +9,7 @@ export type LifecycleStage = {
   code: string;
   appStatus: string;
   appTone: 'neutral' | 'ready' | 'dirty';
-  appView: 'loading' | 'document' | 'edited' | 'saved' | 'unmounted';
+  appView: 'loading' | 'document' | 'edited' | 'exported' | 'unmounted';
   actionsEnabled: boolean;
 };
 
@@ -34,9 +34,9 @@ export const lifecycleStages: readonly LifecycleStage[] = [
     label: 'Ready',
     signal: 'onReady',
     title: 'Enable document actions',
-    description: 'The document is available. Enable Save or Export and run document queries.',
+    description: 'The document is available. Enable Export and run document queries.',
     code: `onReady: () => {
-  saveButton.disabled = false;
+  exportButton.disabled = false;
   setStatus('Ready');
 },`,
     appStatus: 'Ready',
@@ -49,7 +49,7 @@ export const lifecycleStages: readonly LifecycleStage[] = [
     label: 'Edit',
     signal: 'onEditorUpdate',
     title: 'Mark the document unsaved',
-    description: 'Update your dirty state after an edit. Debounce autosave work if you start it here.',
+    description: 'Mark changes to document content as unsaved. Moving the cursor does not count as an edit.',
     code: `onEditorUpdate: () => {
   setStatus('Unsaved changes');
 },`,
@@ -59,24 +59,17 @@ export const lifecycleStages: readonly LifecycleStage[] = [
     actionsEnabled: true,
   },
   {
-    id: 'save',
-    label: 'Save',
-    signal: 'export() + fetch()',
-    title: 'Wait for storage',
-    description: 'Export produces DOCX bytes. Mark the document saved only after your backend accepts them.',
-    code: `const file = await superdoc.export({
-  triggerDownload: false,
-});
-if (!(file instanceof Blob)) throw new Error('Export failed.');
-const response = await fetch('/api/documents/42', {
-  method: 'PUT',
-  body: file,
-});
-if (!response.ok) throw new Error('Save failed.');
-setStatus('Saved');`,
-    appStatus: 'Saved',
-    appTone: 'ready',
-    appView: 'saved',
+    id: 'export',
+    label: 'Export',
+    signal: 'export()',
+    title: 'Download a copy',
+    description: 'Export downloads a DOCX. Changes remain unsaved in your application until your backend stores them.',
+    code: `await superdoc.export({
+  exportedName: 'sample-edited',
+});`,
+    appStatus: 'Unsaved changes',
+    appTone: 'dirty',
+    appView: 'exported',
     actionsEnabled: true,
   },
   {

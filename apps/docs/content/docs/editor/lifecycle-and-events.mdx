@@ -4,44 +4,62 @@ navTitle: Lifecycle and events
 description: Understand when the Editor is ready, what counts as an edit, and when to release it.
 ---
 
-After the [Quickstart](/editor/quickstart), connect Editor signals to your application's state. Readiness enables
-actions, edits mark the document as unsaved, and leaving the route releases the Editor. A successful export alone
-does not mean your backend saved the file.
+Your application needs to know when the document is usable, when it changes, and when to release the Editor.
+Add those states to the [Quickstart](/editor/quickstart) before connecting storage or custom controls.
 
 ## Follow the lifecycle
 
-Select a stage. This simulated preview shows the application state and the code that drives it; it does not save a document.
+Select a stage to see its signal and application state. This is a simulated preview, not a live Editor.
 
 <LifecycleJourney />
 
-## Wire the same states
+## Connect the signals
 
-Replace the controls and mount point from the [Editor quickstart](/editor/quickstart):
+In the Vanilla Quickstart, replace the export button and mount point with this markup. Keep the script tag:
 
 ```html
-<button id="save-docx" type="button" disabled>Save DOCX</button>
-<output id="editor-status">Opening…</output>
+<button id="export-docx" type="button" disabled>Export DOCX</button>
+<output id="editor-status" aria-live="polite">Opening…</output>
 <div id="editor"></div>
 ```
 
-Keep `/sample.docx` from Quickstart. The following example also needs a save endpoint: a `PUT` must store the DOCX
-request body and return success only after the write finishes. It uses `/api/documents/42` as a placeholder;
-replace that URL with your endpoint. [Load and save](/editor/load-and-save-documents) owns the backend integration.
+Replace `src/main.ts` with the example below. Keep the styles and `/sample.docx`; no backend is needed.
+Copy any user or mode options you chose on the previous pages into this configuration.
 
 <include>../../../snippets/editor/editor-lifecycle.ts</include>
 
-Call `unmountEditor()` from the route or component that owns the Editor. If a listener belongs to a temporary panel,
-register it with `on()` when the panel opens and remove it with `off()` when the panel closes.
+`onReady` means the document is available for queries and export. `onEditorUpdate` reports document edits, not cursor
+movement or pagination. Downloading a copy does not save changes to your application, so it does not clear the
+**Unsaved changes** status.
+
+## Release what you own
+
+Call `unmountEditor()` when the owning route or component unmounts. It removes the button listener and calls
+`destroy()`. The React Quickstart's `SuperDocEditor` component handles its own Editor cleanup.
+
+For a temporary panel, use `on()` and `off()` with the same function. This fragment assumes the ready `superdoc`
+instance from the example above:
+
+```ts
+import type { SuperDocZoomPayload } from 'superdoc';
+
+const onZoom = ({ zoom }: SuperDocZoomPayload): void => {
+  console.log('Zoom:', zoom);
+};
+
+superdoc.on('zoomChange', onZoom);
+// When the panel closes:
+superdoc.off('zoomChange', onZoom);
+```
 
 ## Check the flow
 
-With your save endpoint running, reload the page. **Save DOCX** should stay disabled until the document opens. Make an
-edit, then save. The status should change from **Unsaved changes** to **Saved** only after the request succeeds.
+Reload the page. **Export DOCX** should stay disabled until the document opens. Edit the effective date, then export.
+The browser should download `sample-edited.docx`, while the status remains **Unsaved changes**.
 
-Temporarily change `/sample.docx` to a missing URL. The page should show a load error and keep **Save DOCX** disabled.
+Temporarily change `/sample.docx` to a missing URL. The page should show a load error and keep **Export DOCX** disabled.
 
 ## Go deeper
 
 - [Load and save documents](/editor/load-and-save-documents) connects the Editor to your backend storage.
-- [Connect two editors](/editor/collaboration/connect-two-editors) adds the separate collaboration-ready boundary and connection cleanup.
-- [Tune performance for large documents](/editor/performance-and-large-documents) shows how to react to pagination without treating layout as an edit.
+- [Configure the Editor](/editor/configuration) lists all startup callbacks and their payload types.

@@ -3944,16 +3944,21 @@ test('the lifecycle journey maps the application states to public Editor signals
 
   assert.deepEqual(
     lifecycleStages.map((stage) => stage.id),
-    ['mount', 'ready', 'edit', 'save', 'unmount'],
+    ['mount', 'ready', 'edit', 'export', 'unmount'],
   );
   assert.deepEqual(
     lifecycleStages.map((stage) => stage.signal),
-    ['new SuperDoc()', 'onReady', 'onEditorUpdate', 'export() + fetch()', 'destroy()'],
+    ['new SuperDoc()', 'onReady', 'onEditorUpdate', 'export()', 'destroy()'],
   );
   assert.match(lifecycleFailure.signal, /onContentError.*onException/u);
 
+  const exportStage = lifecycleStages.find((stage) => stage.id === 'export');
+  assert.equal(exportStage.appStatus, 'Unsaved changes');
+  assert.equal(exportStage.appTone, 'dirty');
+  assert.equal(exportStage.appView, 'exported');
+
   const markdown = renderLifecycleJourneyMarkdown();
-  assert.match(markdown, /Mark the document saved only after your backend accepts them/u);
+  assert.match(markdown, /Changes remain unsaved in your application until your backend stores them/u);
   assert.match(markdown, /Show a retry path instead of an empty mount point/u);
 });
 

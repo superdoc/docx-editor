@@ -1,3 +1,8 @@
+/* Transient UI paint takes precedence over a run's saved highlight color. */
+.superdoc .sd-content-control-highlight {
+  background-color: var(--sd-content-controls-highlight-bg, #ffff00) !important;
+}
+
 .superdoc svg {
   width: 100%;
   height: 100%;

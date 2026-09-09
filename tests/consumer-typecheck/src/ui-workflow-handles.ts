@@ -17,6 +17,7 @@ import type {
   ContentControlsHandle,
   ContentControlsSlice,
   ContentControlFocusResult,
+  ContentControlHighlightResult,
   MetadataHandle,
   SelectionHandle,
   SelectionInfo,
@@ -131,6 +132,23 @@ const _ccScrollIntoView: AssertEqual<
   Promise<ScrollIntoViewOutput>
 > = true;
 const _ccFocus: AssertEqual<ReturnType<ContentControlsHandle['focus']>, Promise<ContentControlFocusResult>> = true;
+const _ccHighlight: AssertEqual<
+  ReturnType<ContentControlsHandle['highlight']>,
+  Promise<ContentControlHighlightResult>
+> = true;
+const _ccHighlightInput: AssertEqual<Parameters<ContentControlsHandle['highlight']>, [input: { id: string }]> = true;
+const _ccClearHighlight: AssertEqual<ReturnType<ContentControlsHandle['clearHighlight']>, void> = true;
+const _ccClearHighlightInput: AssertEqual<Parameters<ContentControlsHandle['clearHighlight']>, []> = true;
+void contentControls.highlight({ id: 'cc-1' });
+contentControls.clearHighlight();
+// @ts-expect-error Appearance is configured through inherited CSS variables.
+void contentControls.highlight({ id: 'cc-1', color: 'green' });
+// @ts-expect-error A control id is required.
+void contentControls.highlight({});
+void _ccHighlight;
+void _ccHighlightInput;
+void _ccClearHighlight;
+void _ccClearHighlightInput;
 void contentControls.list();
 const _ccSnapshotFromGet: ContentControlsSlice = contentControls.get();
 const _ccFromMainGet: ContentControlInfo | null = contentControls.get({ id: 'cc-1' });

@@ -62,6 +62,33 @@ In `superdoc@2.12.0`, the observed catalog can remain stale after a programmatic
 `contentControls.list()` after mutations and observer notifications, ignoring older responses. A failed refresh reports
 that the document changed but the panel could not refresh; it does not report the mutation as failed.
 
+## Highlight a field from your panel
+
+Use `highlight()` when a pointer enters a panel row, and `clearHighlight()` when it leaves:
+
+```ts
+row.addEventListener('pointerenter', () => {
+  void ui.contentControls.highlight({ id: control.id });
+});
+row.addEventListener('pointerleave', () => ui.contentControls.clearHighlight());
+```
+
+The browser Editor highlights the control's text across paragraphs and table cells without moving focus, selection,
+or scroll. One highlight is active at a time. A successful request replaces it; a failed request preserves it.
+The result is `{ success: true }` or `{ success: false, reason }`. Unknown IDs, empty controls, and unavailable Editors
+fail explicitly. Offscreen text appears highlighted when its page mounts. Clearing cancels pending requests, and
+opening another document clears the highlight. This also works in viewing mode and does not change saved document content.
+
+The default background is yellow (`#ffff00`). Set a CSS variable on your Editor wrapper to override it:
+
+```css
+.contract-editor {
+  --sd-content-controls-highlight-bg: #b9e8ff;
+}
+```
+
+No JavaScript color option is needed. Removing the variable restores the yellow default.
+
 ## Render the field type you support
 
 This panel handles text fields and checkboxes. Date, choice, rich-text, and repeating controls have their own operations.

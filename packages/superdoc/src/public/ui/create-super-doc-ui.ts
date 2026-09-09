@@ -37,6 +37,7 @@ import type {
   ContextMenuItem,
   ContentControlInfo,
   ContentControlFocusResult,
+  ContentControlHighlightResult,
   ContentControlsHandle,
   ContentControlsSlice,
   ContextMenuHandle,
@@ -10462,7 +10463,49 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
   // `onContentControlActiveChange` cannot renew catalog demand on every typing
   // revision and bypass the heavy-read idle gate.
   const contentControlsPassiveSnap = snapshotHandle(contentControlsSub);
+  let contentControlHighlightGeneration = 0;
+  let contentControlHighlightHost: LooseRecord | null = null;
+  const clearContentControlHighlight = (): void => {
+    contentControlHighlightGeneration += 1;
+    const host = contentControlHighlightHost ?? getHost();
+    contentControlHighlightHost = null;
+    safeCall(() => (host?.clearContentControlHighlight as AnyFn | undefined)?.call(host), undefined);
+  };
+  documentResetHooks.push(clearContentControlHighlight);
   const contentControls: ContentControlsHandle = {
+    clearHighlight: clearContentControlHighlight,
+    highlight: async (input): Promise<ContentControlHighlightResult> => {
+      const id = readContentControlRequestId(input);
+      if (!id) return { success: false, reason: 'invalid-id' };
+      const host = getHost();
+      const editor = getEditor();
+      const controls = getDoc()?.contentControls as LooseRecord | undefined;
+      if (
+        disposed ||
+        !host ||
+        typeof host.highlightContentControl !== 'function' ||
+        typeof controls?.list !== 'function'
+      ) {
+        return { success: false, reason: 'not-ready' };
+      }
+      const request = ++contentControlHighlightGeneration;
+      contentControlHighlightHost = host;
+      safeCall(() => (host.cancelContentControlHighlightRequest as AnyFn | undefined)?.call(host), undefined);
+      const cancelled = () => disposed || request !== contentControlHighlightGeneration || editor !== getEditor();
+      try {
+        const catalog = await (controls.list as AnyFn).call(controls);
+        if (cancelled()) return { success: false, reason: 'cancelled' };
+        const control = (catalog?.items as ContentControlInfo[] | undefined)?.find((item) => item.id === id);
+        if (!control) return { success: false, reason: 'not-found' };
+        const target = readSelectionTarget(control);
+        if (!target || control.isEmpty) return { success: false, reason: 'not-reachable' };
+        const success = await (host.highlightContentControl as AnyFn).call(host, id, target);
+        if (cancelled()) return { success: false, reason: 'cancelled' };
+        return success ? { success: true } : { success: false, reason: 'not-reachable' };
+      } catch {
+        return { success: false, reason: cancelled() ? 'cancelled' : 'not-reachable' };
+      }
+    },
     // The read helpers below are explicit consumer demand for the catalog:
     // during source loading they stay best-effort over the (pending/stale)
     // passive slice, but flag the demand so the coordinator issues the real
@@ -11976,6 +12019,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
 
   const destroy = (): void => {
     if (disposed) return;
+    clearContentControlHighlight();
     disposed = true;
     releaseSharedUiTrackedChangesCatalog(uiTrackedChangesCatalogHost, uiTrackedChangesCatalogState);
     if (foregroundAsyncRetryTimer) {

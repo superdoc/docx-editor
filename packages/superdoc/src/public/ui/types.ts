@@ -1189,6 +1189,15 @@ export interface ContentControlsHandle extends SnapshotSubscribable<ContentContr
    */
   getById(id: string): ContentControlInfo | null;
   /**
+   * Temporarily highlight this control's text without moving focus, selection,
+   * or scroll. A successful request replaces the current highlight. The default
+   * yellow background inherits `--sd-content-controls-highlight-bg` from CSS.
+   * Offscreen text paints when mounted; empty controls fail with `not-reachable`.
+   */
+  highlight(input: { id: string }): Promise<ContentControlHighlightResult>;
+  /** Clear the transient highlight and cancel pending requests. */
+  clearHighlight(): void;
+  /**
    * Resolve the control's painted geometry through its public `selectionTarget`
    * when the runtime exposes one. Unknown controls fail closed with
    * `unresolved`; loaded controls without a resolvable selection target fail
@@ -1236,6 +1245,10 @@ export interface ContentControlsHandle extends SnapshotSubscribable<ContentContr
 export type ContentControlFocusResult =
   | { success: true }
   | { success: false; reason: 'invalid-id' | 'not-ready' | 'not-found' | 'not-reachable' };
+
+export type ContentControlHighlightResult =
+  | { success: true }
+  | { success: false; reason: 'invalid-id' | 'not-ready' | 'not-found' | 'not-reachable' | 'cancelled' };
 
 /** Font picker handle. */
 export interface FontsHandle extends SnapshotSubscribable<FontsSlice> {

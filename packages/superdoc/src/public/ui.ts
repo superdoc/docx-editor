@@ -78,6 +78,7 @@ export type {
   TrackChangesHandle,
   ContentControlsHandle,
   ContentControlFocusResult,
+  ContentControlHighlightResult,
   FontsHandle,
   ZoomHandle,
   DocumentHandle,

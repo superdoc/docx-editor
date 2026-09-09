@@ -14,6 +14,7 @@ import { renderClauseLibraryMarkdown } from './clause-library';
 import { renderContentControlAuthoringMarkdown } from './content-control-authoring';
 import { renderContentControlLocksMarkdown } from './content-control-locks';
 import { renderContentControlPatternsMarkdown } from './content-control-patterns';
+import { renderFontResolutionExplorerMarkdown } from './font-resolution-explorer';
 import { renderLifecycleJourneyMarkdown } from './lifecycle-journey';
 import { commentsConfigExplorer } from './comments-config-explorer';
 import { editorConfigExplorer } from './editor-config-explorer';
@@ -55,6 +56,7 @@ export const llmPlaceholderComponents = [
   'DocumentApiReferenceLanding',
   'EditorDemo',
   'FileDownload',
+  'FontResolutionExplorer',
   'FrameworkExample',
   'FrameworkExampleTabs',
   'HyperlinksConfigReference',
@@ -362,6 +364,9 @@ export function renderLLMMarkdown(markdown: string) {
       const link = href ? `[${label}](${href})` : label;
       const details = [description, fileType].filter((value): value is string => Boolean(value));
       return `${link}${details.length > 0 ? `: ${details.join(' · ')}` : ''}\n`;
+    },
+    FontResolutionExplorer() {
+      return renderFontResolutionExplorerMarkdown();
     },
     FrameworkExample({ attributes, children }) {
       const framework = textAttribute(attributes, 'framework') ?? 'Framework';

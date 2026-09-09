@@ -22,6 +22,7 @@ import { CollaborationOverview } from '@/components/embeds/collaboration-overvie
 import { CollaborationDemo } from '@/components/embeds/collaboration-demo';
 import { DocumentPreview } from '@/components/embeds/document-preview';
 import { EditorDemo } from '@/components/embeds/editor-demo';
+import { FontResolutionExplorer } from '@/components/embeds/font-resolution-explorer';
 import { InterfaceOwnership } from '@/components/embeds/interface-ownership';
 import { SurfaceLifecycleDemo } from '@/components/embeds/surface-lifecycle-demo';
 import { ThemePlayground } from '@/components/embeds/theme-playground';
@@ -99,6 +100,7 @@ export function getMDXComponents(components?: MDXComponents): MDXComponents {
     DocsHome,
     EditorDemo,
     FileDownload,
+    FontResolutionExplorer,
     FrameworkExample,
     FrameworkExampleTabs,
     HyperlinksConfigReference,

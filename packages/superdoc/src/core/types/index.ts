@@ -825,8 +825,15 @@ export interface FontsConfig {
   bundled?: boolean | 'baseline' | 'full' | string[] | Record<string, unknown>;
   families?: FontFamilyConfig[];
   /**
+   * Logical DOCX family to registered physical family. The mapping changes
+   * measurement and rendering for this document; export preserves the logical name.
+   */
+  map?: Record<string, string>;
+  /**
    * Base URL the bundled substitute pack (and curated faces) are fetched from, e.g. `'/fonts/'`.
-   * Canonical self-hosting field. When no pack is configured, SuperDoc fetches no bundled assets.
+   * Canonical self-hosting field. When no pack is configured, SuperDoc fetches no substitute-pack
+   * assets; the built-in core-symbol face is still requested for the symbol glyphs it covers, so it
+   * does not remove the need for a font allowance in your Content Security Policy.
    */
   assetBaseUrl?: string;
   /**
@@ -4653,8 +4660,10 @@ export interface Config {
    * `@superdoc-dev/fonts` package: pass `superdocFonts` (bundler) or the `SuperDocFonts`
    * global from its `superdoc-fonts.min.js` browser build (CDN). To self-host, set
    * `fonts.assetBaseUrl` (e.g. `/fonts/` or a CDN URL) or `fonts.resolveAssetUrl` for
-   * signed/versioned hosting. SuperDoc core ships no fonts; with none configured the
-   * toolbar shows the baseline and documents render with system fonts.
+   * signed/versioned hosting. Core ships no document families, so with none configured the
+   * toolbar shows the baseline and documents render with system fonts. It does ship one
+   * built-in face: a core-symbol provider requested whenever the document contains symbol or
+   * dingbat glyphs it covers, such as the • bullet, even with no `fonts` configuration.
    */
   fonts?: FontsConfig;
   /**

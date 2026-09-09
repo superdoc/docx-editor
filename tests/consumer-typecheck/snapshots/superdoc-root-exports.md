@@ -7,11 +7,11 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 
 | Source | Path | Count |
 |---|---|---|
-| types.import | `./dist/superdoc/src/public/index.d.ts` | 271 |
-| types.require | `./dist/superdoc/src/public/index.d.cts` | 271 |
+| types.import | `./dist/superdoc/src/public/index.d.ts` | 273 |
+| types.require | `./dist/superdoc/src/public/index.d.cts` | 273 |
 | import | `./dist/superdoc.es.js` | 10 |
 | require | `./dist/superdoc.cjs` | 10 |
-| **union** |  | **271** |
+| **union** |  | **273** |
 
 ## Divergences
 
@@ -19,7 +19,7 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 - types.require only (not in types.import): 0
 - ESM only (not in CJS): 0
 - CJS only (not in ESM): 0
-- typed but no runtime export (phantom risk): 261
+- typed but no runtime export (phantom risk): 263
 - runtime export but not typed (silent shadow on root): 0
 
 ### Type-only names (no runtime)
@@ -86,8 +86,10 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 - `FlowBlock`
 - `FlowMode`
 - `FontFamilyOption`
+- `FontResolutionRecord`
 - `FontsChangedPayload`
 - `FontsChangedSource`
+- `FontsConfig`
 - `FontsResolvedPayload`
 - `HyperlinkActivationContext`
 - `HyperlinkActivationHandler`
@@ -354,8 +356,10 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 | `FlowBlock` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `FlowMode` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `FontFamilyOption` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
+| `FontResolutionRecord` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `FontsChangedPayload` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `FontsChangedSource` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
+| `FontsConfig` | ✓ | ✓ |   |   | 2 |   | 1 | 0 | 0 |
 | `FontsResolvedPayload` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `HTML` | ✓ | ✓ | ✓ | ✓ | 1 |   | 51 | 0 | 0 |
 | `HyperlinkActivationContext` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |

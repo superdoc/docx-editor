@@ -76,7 +76,13 @@ export type { FindReplaceContext } from '../core/types/index.js';
 export type { FindReplaceHandle } from '../core/types/index.js';
 export type { FindReplaceRenderContext } from '../core/types/index.js';
 export type { FindReplaceResolution } from '../core/types/index.js';
-export type { FontsChangedPayload, FontsChangedSource, FontsResolvedPayload } from '../core/types/index.js';
+export type {
+  FontResolutionRecord,
+  FontsChangedPayload,
+  FontsChangedSource,
+  FontsConfig,
+  FontsResolvedPayload,
+} from '../core/types/index.js';
 export type { IntentSurfaceRequest } from '../core/types/index.js';
 export type { Modules } from '../core/types/index.js';
 export type { NavigableAddress } from '../core/types/index.js';

@@ -450,10 +450,10 @@
     },
     {
       "name": "fonts",
-      "type": "{\n  bundled?: false | true | string[] | Record<string, unknown> | \"baseline\" | \"full\";\n  families?: FontFamilyConfig[];\n  assetBaseUrl?: string;\n  resolveAssetUrl?: (context: import(\"@superdoc/font-system\").FontAssetUrlContext) => string;\n  assetUrl?: string | (context: import(\"@superdoc/font-system\").FontAssetUrlContext) => string;\n}",
+      "type": "{\n  bundled?: false | true | string[] | Record<string, unknown> | \"baseline\" | \"full\";\n  families?: FontFamilyConfig[];\n  map?: Record<string, string>;\n  assetBaseUrl?: string;\n  resolveAssetUrl?: (context: import(\"@superdoc/font-system\").FontAssetUrlContext) => string;\n  assetUrl?: string | (context: import(\"@superdoc/font-system\").FontAssetUrlContext) => string;\n}",
       "typeName": "FontsConfig",
       "required": false,
-      "description": "Font system configuration. The reviewed fallback pack ships in the optional `@superdoc-dev/fonts` package: pass `superdocFonts` (bundler) or the `SuperDocFonts` global from its `superdoc-fonts.min.js` browser build (CDN). To self-host, set `fonts.assetBaseUrl` (e.g. `/fonts/` or a CDN URL) or `fonts.resolveAssetUrl` for signed/versioned hosting. SuperDoc core ships no fonts; with none configured the toolbar shows the baseline and documents render with system fonts.",
+      "description": "Font system configuration. The reviewed fallback pack ships in the optional `@superdoc-dev/fonts` package: pass `superdocFonts` (bundler) or the `SuperDocFonts` global from its `superdoc-fonts.min.js` browser build (CDN). To self-host, set `fonts.assetBaseUrl` (e.g. `/fonts/` or a CDN URL) or `fonts.resolveAssetUrl` for signed/versioned hosting. Core ships no document families, so with none configured the toolbar shows the baseline and documents render with system fonts. It does ship one built-in face: a core-symbol provider requested whenever the document contains symbol or dingbat glyphs it covers, such as the • bullet, even with no `fonts` configuration.",
       "group": "other"
     },
     {

@@ -541,6 +541,7 @@
     "/editor/dialogs-and-surfaces/",
     "/editor/document-modes/",
     "/editor/export-options/",
+    "/editor/fonts/",
     "/editor/frameworks/react/",
     "/editor/frameworks/sveltekit/",
     "/editor/license/",

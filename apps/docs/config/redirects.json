@@ -38,7 +38,7 @@
     {
       "source": "/editor/themes-and-fonts/",
       "destination": "/editor/theming/",
-      "reason": "Editor UI theming and document font resolution are separate tasks."
+      "reason": "Editor UI theming and document font resolution are separate tasks; theming links on to /editor/fonts/."
     },
     {
       "source": "/editor/platform/accessibility-and-keyboard/",

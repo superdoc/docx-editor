@@ -65,6 +65,7 @@ const layoutUrl = new URL('../lib/layout.tsx', import.meta.url);
 const docsHomeUrl = new URL('../components/docs-home.tsx', import.meta.url);
 const builtInUiMetaUrl = new URL('../content/docs/editor/built-in-ui/meta.json', import.meta.url);
 const builtInUiMapUrl = new URL('../components/embeds/built-in-ui-map.tsx', import.meta.url);
+const fontsPageUrl = new URL('../content/docs/editor/fonts.mdx', import.meta.url);
 const editorDemoUrl = new URL('../components/embeds/editor-demo.tsx', import.meta.url);
 const editorDemoZoomUrl = new URL('../components/embeds/editor-demo-zoom.ts', import.meta.url);
 const customBoldDemoUrl = new URL('../components/embeds/custom-bold-demo.tsx', import.meta.url);
@@ -346,6 +347,7 @@ const registeredComponents = new Set([
   'DocsHome',
   'EditorDemo',
   'FileDownload',
+  'FontResolutionExplorer',
   'FrameworkExample',
   'FrameworkExampleTabs',
   'HyperlinksConfigReference',
@@ -387,7 +389,7 @@ test('Features exposes an interface-neutral Comments owner without moving existi
   const featureEnd = meta.pages.indexOf('---', featureStart + 1);
   assert.ok(featureEnd > featureStart);
   assert.deepEqual(meta.pages.slice(featureStart + 1, featureEnd), [
-    'comments', 'track-changes', 'content-controls', 'collaboration', 'version-history', '...platform',
+    'comments', 'fonts', 'track-changes', 'content-controls', 'collaboration', 'version-history', '...platform',
   ]);
   for (const page of ['export-options']) {
     assert.ok(meta.pages.indexOf(page) > meta.pages.indexOf('load-and-save-documents'));
@@ -1492,10 +1494,13 @@ test('the theming guide moves from semantic tokens to one component override', a
   assert.match(example, /'--sd-layout-page-bg': '#ffffff'/u);
   assert.match(demo, /'--sd-layout-page-bg': '#ffffff'/u);
   assert.match(page, /'--sd-layout-page-bg': '#ffffff'/u);
+  // The page must not teach document fonts, but it must hand that reader onward:
+  // /editor/themes-and-fonts/ redirects here and used to cover both.
   assert.doesNotMatch(page, /fonts\.map|onFontsChanged/iu);
   assert.match(page, /`vars` accepts arbitrary string keys/u);
   assert.match(page, /Choose a token/u);
   assert.match(page, /It does not choose the fonts stored in the DOCX/u);
+  assert.match(page, /Continue with\s*\n?\[Fonts\]\(\/editor\/fonts\)/u);
 
   assert.match(demo, /data-theme-playground/u);
   assert.match(demo, /aria-label=\{`\$\{label\} hex color`\}/u);
@@ -1821,6 +1826,74 @@ test('the comments guide does not promise the tracked panel continues its interf
   assert.doesNotMatch(fixture, /comment/iu, 'the tracked fixture still omits the comments panel');
 });
 
+test('the fidelity checklist requires line-break-safe evidence for substitutions', async () => {
+  // A bundled substitute can report loaded + missing:false and still reflow the document, so
+  // resolution evidence alone is not a fidelity check.
+  const page = await readFile(new URL('../content/docs/editor/fonts.mdx', import.meta.url), 'utf8');
+  // Scoped to the reasons that actually carry evidence — report.ts emits it only for rendered
+  // substitutes, so telling readers to check it for "any" substitution points at undefined.
+  assert.match(page, /Rows whose `reason` is `bundled_substitute` or `category_fallback` also carry `evidence`/u);
+  assert.match(page, /verdict: 'visual_only'/u);
+  assert.match(page, /treat them as a layout change to review rather than a\n  passing fidelity check/u);
+  assert.match(page, /the `custom_mapping` this page's Inter mapping produces, leaves\n  `evidence` undefined/u);
+
+  // Pinned to the emit rule, so the scoping fails if the runtime widens or narrows it.
+  const reportSource = await readFile(
+    new URL('../../../shared/font-system/src/report.ts', import.meta.url),
+    'utf8',
+  );
+  assert.match(
+    reportSource,
+    /reason === 'bundled_substitute' \|\| reason === 'category_fallback'/u,
+    'evidence is still emitted for exactly these reasons',
+  );
+
+  // Readers can only apply that rule if the diagnostic helper surfaces the field.
+  const diagnostics = await readFile(
+    new URL('../snippets/editor/fonts-diagnostics.ts', import.meta.url),
+    'utf8',
+  );
+  assert.match(diagnostics, /evidence: font\.evidence,/u);
+
+  // Pinned to the runtime case the checklist cites, so the example cannot go stale.
+  const report = await readFile(
+    new URL('../../../shared/font-system/src/report.test.ts', import.meta.url),
+    'utf8',
+  );
+  assert.match(report, /reason: 'bundled_substitute'/u);
+  assert.match(report, /verdict: 'visual_only',\n      lineBreakSafe: false,/u);
+});
+
+test('no source claims SuperDoc fetches no font assets without a pack', async () => {
+  // installCoreSymbolFallback() runs before the pack check in v2-host/src/fonts/runtime.ts, so a
+  // bundled .woff2 is requested for covered glyphs with no `fonts` configuration. Every place
+  // that states the opposite sends integrators to a CSP that blocks it.
+  // Only public-tree sources: a public clone has no v2 sibling to read.
+  const sources = [
+    '../../../packages/superdoc/src/core/types/index.ts',
+    '../../../packages/superdoc/src/cdn-entry.js',
+    '../content/docs/editor/fonts.mdx',
+    '../generated/editor-config-reference.json',
+  ];
+  const stale = [/fetches no bundled assets/iu, /ships no fonts/iu, /nothing fetches a bundled/iu];
+  for (const source of sources) {
+    const text = await readFile(new URL(source, import.meta.url), 'utf8');
+    for (const pattern of stale) {
+      assert.doesNotMatch(text, pattern, `${source} repeats a claim the core-symbol face contradicts`);
+    }
+  }
+
+  // The public-tree anchor for those corrections: the provider registers its bundled asset with
+  // no configuration input, so nothing downstream can make the request conditional on a pack.
+  const fallback = await readFile(
+    new URL('../../../shared/font-system/src/core-symbol-fallback.ts', import.meta.url),
+    'utf8',
+  );
+  assert.match(fallback, /export function installCoreSymbolFallback\(registry: FontRegistry\): void \{/u);
+  assert.match(fallback, /registry\.register\(\{/u);
+  assert.match(fallback, /coreSymbolAssetUrl/u, 'it registers a bundled asset URL');
+});
+
 test('the surfaces guide qualifies the dialog focus trap', async () => {
   // SurfaceDialog's trapFocus() returns early when its focusable query is empty, so the
   // unconditional "dialogs trap focus" claim needs the empty-content case spelled out.
@@ -1838,6 +1911,31 @@ test('the surfaces guide qualifies the dialog focus trap', async () => {
     'utf8',
   );
   assert.match(dialog, /if \(focusable\.length === 0\) return;/u);
+});
+
+test('the fonts guide discloses the built-in core-symbol request', async () => {
+  // prepareForBlocks() requests CORE_SYMBOL_FALLBACK_FAMILY whenever covered glyphs appear, with
+  // no fonts configuration, so the no-fetch statement has to name that exception.
+  const page = await readFile(new URL('../content/docs/editor/fonts.mdx', import.meta.url), 'utf8');
+  assert.match(page, /One built-in provider is the exception/u);
+  assert.match(page, /Content Security Policy even before you add a provider/u);
+  assert.match(page, /never substitutes a document\nfamily/u);
+
+  // The claim is pinned to the runtime: U+2022 must stay inside the covered range.
+  const fallback = await readFile(
+    new URL('../../../shared/font-system/src/core-symbol-fallback.ts', import.meta.url),
+    'utf8',
+  );
+  assert.match(fallback, /U\+2022/u, 'the bullet is still covered by the core-symbol provider');
+
+  // The generated Config reference is the other place integrators read this from, so the
+  // canonical JSDoc must not keep claiming core ships no fonts at all.
+  const reference = await readFile(
+    new URL('../generated/editor-config-reference.json', import.meta.url),
+    'utf8',
+  );
+  assert.doesNotMatch(reference, /ships no fonts/u);
+  assert.match(reference, /core-symbol provider requested whenever the document contains/u);
 });
 
 test('the selection reference separates SelectionTarget from the geometry fallback', async () => {
@@ -4390,6 +4488,107 @@ test('the built-in UI map keeps its vertical tab semantics at responsive widths'
   for (const rule of tabRules.slice(1)) {
     assert.doesNotMatch(rule[1], /display:\s*grid|grid-template-columns/);
   }
+});
+
+test('the font resolution explorer keeps render providers separate from DOCX export names', async () => {
+  const page = await readFile(fontsPageUrl, 'utf8');
+  const { fontResolutionScenarios } = await import('../lib/font-resolution-explorer.ts');
+  const byId = Object.fromEntries(fontResolutionScenarios.map((scenario) => [scenario.id, scenario]));
+
+  assert.equal(byId.system.logicalFamily, 'Aptos');
+  assert.equal(byId.system.physicalFamily, 'Aptos');
+  assert.equal(byId.system.diagnostic.systemAvailability, 'available');
+  assert.equal(byId.hosted.diagnostic.reason, 'registered_face');
+  assert.equal(byId.unavailable.physicalFamily, 'Aptos');
+  assert.equal(byId.unavailable.diagnostic.systemAvailability, 'unavailable');
+  assert.equal(byId.unavailable.diagnostic.missing, true);
+  assert.ok(fontResolutionScenarios.every((scenario) => scenario.exportFamily === scenario.logicalFamily));
+
+  assert.match(page, /SuperDoc does not fetch a replacement/u);
+  assert.match(page, /Host a proprietary font/u);
+  assert.match(page, /The `Config\['fonts'\]` type/u);
+  assert.match(page, /fonts\.onReport\(\)/u);
+  // Face-level rows repeat a family, so the projection must identify which face.
+  assert.match(page, /\| `face`/u);
+  // The sample's numbering sets bullet markers in Symbol, so the report lists it.
+  assert.match(page, /bullet markers are set in `Symbol`/u);
+  // The helper is exported but inert unless the guide shows it being called and released.
+  assert.match(page, /stopFontReport = observeDocumentFonts\(superdoc\)/u);
+  // The wiring calls a helper from another file, so the guide must say where it lives and
+  // show the import, or the identifier is undefined in the reader's project.
+  assert.match(page, /Save this helper as `src\/font-report\.ts`/u);
+  assert.equal((page.match(/import \{ observeDocumentFonts \} from '\.\/font-report';/gu) ?? []).length, 2);
+  // The wiring blocks are additions, not replacements: a partial constructor silently drops
+  // the export button and error handlers the complete files set up.
+  assert.equal((page.match(/additions to the file you already have/gu) ?? []).length, 2);
+  assert.match(page, /import \{ useEffect \} from 'react';/u);
+  assert.doesNotMatch(page, /const superdoc = new SuperDoc\(\{[\s\S]*?stopFontReport/u);
+  assert.match(page, /stopFontReport\.current = observeDocumentFonts\(instance\)/u);
+  assert.match(page, /stopFontReport\?\.\(\)/u);
+
+  // The guide tells the reader to swap one declaration and leave the constructor alone, so
+  // the identifier has to agree across both snippets or the assembled project will not compile.
+  const [application, mapping, reactApplication, reactMapping] = await Promise.all(
+    ['fonts-application.ts', 'fonts-mapping.ts', 'react-fonts-application-app.tsx', 'react-fonts-mapping-app.tsx'].map(
+      (name) =>
+      readFile(new URL(`../snippets/editor/${name}`, import.meta.url), 'utf8'),
+    ),
+  );
+  const consumed = application.match(/fonts:\s*(\w+)/u)?.[1];
+  assert.ok(consumed, 'the hosted-font example must pass a named fonts config');
+  assert.match(application, new RegExp(`const ${consumed}\\b`, 'u'));
+  assert.match(mapping, new RegExp(`const ${consumed}\\b`, 'u'));
+  // The guide is framework-tabbed, so the React path must configure the same fonts.
+  assert.match(reactApplication, new RegExp(`const ${consumed}\\b`, 'u'));
+  assert.match(reactApplication, new RegExp(`fonts=\\{${consumed}\\}`, 'u'));
+  assert.match(page, /<FrameworkExample filename='src\/App\.tsx' framework='React'>/u);
+  // The Quickstart mounts src/App.tsx through src/main.tsx, so the React path has to
+  // configure that component rather than an unreferenced one.
+  assert.match(reactApplication, /export default function App\(\)/u);
+  // Every step a React reader can reach must stay on the React path; a bare Vanilla include
+  // switches them back to code their project cannot run.
+  assert.match(reactMapping, /export default function App\(\)/u);
+  assert.match(reactMapping, /map: \{/u);
+  // The Quickstart guards against overlapping exports; a replacement that drops it turns a
+  // double click into duplicate downloads.
+  for (const source of [reactApplication, reactMapping]) {
+    assert.match(source, /if \(exportingRef\.current\) return;/u);
+    assert.match(source, /disabled=\{!ready \|\| exporting\}/u);
+  }
+  // Every asset the examples request must have an instruction to place it.
+  for (const file of new Set([...mapping.matchAll(/\/fonts\/([\w.-]+)/gu)].map(([, name]) => name))) {
+    assert.match(page, new RegExp(file.replace('.', '\\.'), 'u'));
+  }
+  // Every step that builds an editor must offer both frameworks, or a React reader is handed
+  // Vanilla code partway through. `fonts-diagnostics.ts` is exempt: it takes a SuperDoc
+  // instance as a parameter, so both frameworks call the same helper.
+  const tabGroups = page.match(/<FrameworkExampleTabs>[\s\S]*?<\/FrameworkExampleTabs>/gu) ?? [];
+  assert.ok(tabGroups.length >= 2);
+  for (const group of tabGroups) {
+    assert.match(group, /framework='Vanilla'/u);
+    assert.match(group, /framework='React'/u);
+  }
+  const untabbed = (page.match(/snippets\/editor\/fonts-[\w-]+\.ts/gu) ?? []).filter(
+    (include) => !tabGroups.some((group) => group.includes(include)),
+  );
+  assert.deepEqual(untabbed, ['snippets/editor/fonts-diagnostics.ts']);
+  // The checklist tells readers to export and reopen, so every tab must keep the
+  // Quickstart's export path rather than replacing it with a bare editor.
+  for (const source of [application, mapping, reactApplication, reactMapping]) {
+    assert.match(source, /export(?:Button|Document|Type)/u);
+  }
+  // The page must name the identifier the snippets share, however it phrases the swap.
+  assert.match(page, new RegExp(`\`${consumed}\``, 'u'));
+  assert.match(page, /systemAvailability: 'unknown'/u);
+  // `missing: false` is withheld-not-proven while availability is checking/unknown, so the
+  // fidelity checklist must require positive evidence instead.
+  assert.match(page, /Both halves are needed/u);
+  assert.match(page, /`category_fallback` loads successfully and still reports `missing: true`/u);
+  // The mapping section follows the diagnostics wiring, so a whole-file replacement would delete
+  // the subscription the fidelity checklist below depends on.
+  assert.match(page, /Change only the `documentFonts` value in the file you already have/u);
+  assert.match(page, /including the `observeDocumentFonts` wiring from the previous section/u);
+  assert.doesNotMatch(page, /@superdoc\/fonts/u);
 });
 
 test('Document API calls in code examples match the generated contract', async () => {

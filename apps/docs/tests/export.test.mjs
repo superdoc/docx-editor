@@ -59,6 +59,7 @@ const routes = [
   ['editor/dialogs-and-surfaces/index.html', 'Open dialogs and floating surfaces'],
   ['editor/theming/index.html', 'Theme the Editor UI'],
   ['editor/comments/index.html', 'Discuss a document with comments'],
+  ['editor/fonts/index.html', 'Resolve document fonts'],
   ['editor/track-changes/index.html', 'Review tracked changes'],
   ['editor/collaboration/index.html', 'Understand collaboration'],
   ['editor/collaboration/connect-two-editors/index.html', 'Connect two editors'],
@@ -861,6 +862,22 @@ test('exports the theming experience as clean Markdown', async () => {
   assert.doesNotMatch(markdown, /<include>/u);
 });
 
+test('exports the font resolution journey as clean Markdown', async () => {
+  const article = await readFile(new URL('../out/editor/fonts/index.html', import.meta.url), 'utf8');
+  const markdown = await readFile(new URL('../out/md/editor/fonts.md', import.meta.url), 'utf8');
+
+  assert.match(article, /data-font-resolution-explorer="true"/u);
+  assert.match(markdown, /> \*\*Interactive model: how a document font resolves\*\*/u);
+  assert.match(markdown, /\| System font \| Aptos \| Installed Aptos \| Aptos \| Aptos \|/u);
+  assert.match(markdown, /\| Hosted font \| Aptos \| \/fonts\/aptos-regular\.woff2 \| Aptos \| Aptos \|/u);
+  assert.match(markdown, /\| Unavailable font \| Aptos \| No usable Aptos face \| Aptos \| Aptos \|/u);
+  assert.match(markdown, /satisfies NonNullable<Config\['fonts'\]>/u);
+  assert.match(markdown, /map: \{[\s\S]*Aptos: 'Inter'/u);
+  assert.match(markdown, /superdoc\.fonts\.add\(\)/u);
+  assert.doesNotMatch(markdown, /<FontResolutionExplorer\b/u);
+  assert.doesNotMatch(markdown, /<include>/u);
+});
+
 test('exports custom command registration as clean Markdown', async () => {
   const article = await readFile(new URL('../out/editor/custom-ui/custom-commands/index.html', import.meta.url), 'utf8');
   const markdown = await readFile(new URL('../out/md/editor/custom-ui/custom-commands.md', import.meta.url), 'utf8');
@@ -1097,6 +1114,7 @@ test('exports the redistributed Editor guidance as clean Markdown', async () => 
     'load-and-save-documents',
     'dialogs-and-surfaces',
     'theming',
+    'fonts',
     'platform/proofing',
     'accessibility',
     'secure-integration',
@@ -1113,6 +1131,7 @@ test('exports the redistributed Editor guidance as clean Markdown', async () => 
   assert.match(corpus, /triggerDownload: false/);
   assert.match(corpus, /await handle\.result/);
   assert.match(corpus, /document\.documentElement\.classList\.add\(themeClass\)/);
+  assert.match(corpus, /map: \{[\s\S]*Aptos: 'Inter'/);
   assert.match(corpus, /If the provider uses a network, document text leaves the browser/);
   assert.match(corpus, /Accessibility remains a shared responsibility/);
   assert.match(corpus, /client code a trusted authorization boundary/);

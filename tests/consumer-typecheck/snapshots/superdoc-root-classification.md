@@ -1,22 +1,22 @@
 # SD-3212 A1 — root classification
 
 Generated: derived from superdoc-root-classification.json (aligned with current root export inventory)
-Input: tests/consumer-typecheck/snapshots/superdoc-root-classification.json (270 names)
+Input: tests/consumer-typecheck/snapshots/superdoc-root-classification.json (273 names)
 
 ## Summary
 
 | Bucket | Count |
 |---|---|
-| supported-root | 267 |
+| supported-root | 270 |
 | legacy-root | 3 |
 | move-to-subpath | 0 |
 | internal-candidate | 0 |
 | NEEDS-REVIEW | 0 |
-| **total** | **270** |
+| **total** | **273** |
 
-Confidence: high=222, medium=48, low=0, needs-review=0.
+Confidence: high=225, medium=48, low=0, needs-review=0.
 
-## supported-root (267)
+## supported-root (270)
 
 | Name | Confidence | Source | Rationale |
 |---|---|---|---|
@@ -63,6 +63,7 @@ Confidence: high=222, medium=48, low=0, needs-review=0.
 | `DocumentDataSource` | high | config-supported | File and byte inputs accepted by Document.data and structured Config.document sources. |
 | `DocumentMode` | medium | core | Customer-facing core API type or runtime export. Type-reachable through documented config / callback / event / method surfaces; runtime exports are documented utilities. |
 | `DocumentProtectionState` | high | doc-api | Document API result type returned by activeEditor.doc.protection.get(); useful for consumers typing document-protection workflows from the root package. |
+| `DocumentReplacementResult` | high | core | Confirmed replacement outcome shared by root and UI document methods without exposing host internals. |
 | `DocumentSource` | high | config-supported | Canonical input accepted by Config.document, covering URL, file, byte, uploader, and structured sources. |
 | `DocumentUploadSource` | high | config-supported | Compatibility shape for common uploader wrappers accepted by document normalization. |
 | `EditorSurface` | medium | surface | Headless Surface API type. Public extension surface for custom UI integrations. |
@@ -80,8 +81,10 @@ Confidence: high=222, medium=48, low=0, needs-review=0.
 | `FlowBlock` | high | layout-engine | Current shared layout-engine input contract exported from @superdoc/contracts and consumed by the v2 layout adapter, v2 host, layout bridge, and layout-engine tests. Useful for consumers typing custom layout projections and layout-engine integrations. |
 | `FlowMode` | high | layout-engine | Current layout flow-mode union exported from @superdoc/contracts and used by Config.layoutEngineOptions.flowMode and the v2 layout runtime to select paginated versus semantic flow. |
 | `FontFamilyOption` | high | font-system | Typed row accepted by ui.toolbar.fontOptions and returned by superdoc.fonts.getFontFamilyOptions(). |
+| `FontResolutionRecord` | high | font-system | One typed result row returned by superdoc.fonts.getReport() and delivered through font report callbacks. |
 | `FontsChangedPayload` | high | font-system | Payload passed to Config.onFontsChanged, superdoc.fonts.onReport(), and the fonts-changed event. |
 | `FontsChangedSource` | high | font-system | Closed reason union carried by FontsChangedPayload.source so font-report handlers get autocomplete and exhaustive narrowing. |
+| `FontsConfig` | high | font-system | Canonical startup configuration type for document font providers and bundled font assets. |
 | `FontsResolvedPayload` | high | font-system | Initial font report passed to the deprecated Config.onFontsResolved callback and fonts-resolved event. |
 | `HTML` | high | locked | Content-format constant. Heavily used (85 docs, 204 demos). Customer-facing. |
 | `HyperlinkActivationContext` | high | hyperlinks | Context for the canonical top-level hyperlink activation handler. |
@@ -359,6 +362,7 @@ Confidence: high=222, medium=48, low=0, needs-review=0.
 | `DocumentDataSource` | ✓ | ✓ |   |   |
 | `DocumentMode` | ✓ | ✓ |   |   |
 | `DocumentProtectionState` | ✓ | ✓ |   |   |
+| `DocumentReplacementResult` | ✓ | ✓ |   |   |
 | `DocumentSource` | ✓ | ✓ |   |   |
 | `DocumentUploadSource` | ✓ | ✓ |   |   |
 | `EditorSurface` | ✓ | ✓ |   |   |
@@ -377,8 +381,10 @@ Confidence: high=222, medium=48, low=0, needs-review=0.
 | `FlowBlock` | ✓ | ✓ |   |   |
 | `FlowMode` | ✓ | ✓ |   |   |
 | `FontFamilyOption` | ✓ | ✓ |   |   |
+| `FontResolutionRecord` | ✓ | ✓ |   |   |
 | `FontsChangedPayload` | ✓ | ✓ |   |   |
 | `FontsChangedSource` | ✓ | ✓ |   |   |
+| `FontsConfig` | ✓ | ✓ |   |   |
 | `FontsResolvedPayload` | ✓ | ✓ |   |   |
 | `HTML` | ✓ | ✓ | ✓ | ✓ |
 | `HyperlinkActivationContext` | ✓ | ✓ |   |   |

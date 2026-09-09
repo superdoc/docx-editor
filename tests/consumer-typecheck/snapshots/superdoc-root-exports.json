@@ -78,8 +78,10 @@
         "FlowBlock",
         "FlowMode",
         "FontFamilyOption",
+        "FontResolutionRecord",
         "FontsChangedPayload",
         "FontsChangedSource",
+        "FontsConfig",
         "FontsResolvedPayload",
         "HTML",
         "HyperlinkActivationContext",
@@ -355,8 +357,10 @@
         "FlowBlock",
         "FlowMode",
         "FontFamilyOption",
+        "FontResolutionRecord",
         "FontsChangedPayload",
         "FontsChangedSource",
+        "FontsConfig",
         "FontsResolvedPayload",
         "HTML",
         "HyperlinkActivationContext",
@@ -599,11 +603,11 @@
     }
   },
   "counts": {
-    "types.import": 271,
-    "types.require": 271,
+    "types.import": 273,
+    "types.require": 273,
     "import": 10,
     "require": 10,
-    "union": 271
+    "union": 273
   },
   "divergences": {
     "typesImportVsRequire": {
@@ -678,8 +682,10 @@
         "FlowBlock",
         "FlowMode",
         "FontFamilyOption",
+        "FontResolutionRecord",
         "FontsChangedPayload",
         "FontsChangedSource",
+        "FontsConfig",
         "FontsResolvedPayload",
         "HyperlinkActivationContext",
         "HyperlinkActivationHandler",

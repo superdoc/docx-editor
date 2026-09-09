@@ -1,13 +1,13 @@
 {
   "generatedAt": "2026-09-02T00:00:00.000Z",
   "summary": {
-    "total": 270,
+    "total": 273,
     "byBucket": {
       "legacy-root": 3,
-      "supported-root": 267
+      "supported-root": 270
     },
     "byConfidence": {
-      "high": 222,
+      "high": 225,
       "medium": 48
     }
   },
@@ -706,6 +706,17 @@
       "inCjs": false
     },
     {
+      "name": "FontResolutionRecord",
+      "bucket": "supported-root",
+      "rationale": "One typed result row returned by superdoc.fonts.getReport() and delivered through font report callbacks.",
+      "confidence": "high",
+      "source": "font-system",
+      "inDts": true,
+      "inDcts": true,
+      "inEsm": false,
+      "inCjs": false
+    },
+    {
       "name": "FontsChangedPayload",
       "bucket": "supported-root",
       "rationale": "Payload passed to Config.onFontsChanged, superdoc.fonts.onReport(), and the fonts-changed event.",
@@ -720,6 +731,17 @@
       "name": "FontsChangedSource",
       "bucket": "supported-root",
       "rationale": "Closed reason union carried by FontsChangedPayload.source so font-report handlers get autocomplete and exhaustive narrowing.",
+      "confidence": "high",
+      "source": "font-system",
+      "inDts": true,
+      "inDcts": true,
+      "inEsm": false,
+      "inCjs": false
+    },
+    {
+      "name": "FontsConfig",
+      "bucket": "supported-root",
+      "rationale": "Canonical startup configuration type for document font providers and bundled font assets.",
       "confidence": "high",
       "source": "font-system",
       "inDts": true,

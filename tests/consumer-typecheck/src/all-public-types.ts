@@ -84,8 +84,10 @@ import type {
   FlowBlock,
   FlowMode,
   FontFamilyOption,
+  FontResolutionRecord,
   FontsChangedPayload,
   FontsChangedSource,
+  FontsConfig,
   FontsResolvedPayload,
   HyperlinkActivationContext,
   HyperlinkActivationHandler,
@@ -354,8 +356,10 @@ const _real_FindReplaceResolution: AssertNotAny<FindReplaceResolution> = true;
 const _real_FlowBlock: AssertNotAny<FlowBlock> = true;
 const _real_FlowMode: AssertNotAny<FlowMode> = true;
 const _real_FontFamilyOption: AssertNotAny<FontFamilyOption> = true;
+const _real_FontResolutionRecord: AssertNotAny<FontResolutionRecord> = true;
 const _real_FontsChangedPayload: AssertNotAny<FontsChangedPayload> = true;
 const _real_FontsChangedSource: AssertNotAny<FontsChangedSource> = true;
+const _real_FontsConfig: AssertNotAny<FontsConfig> = true;
 const _real_FontsResolvedPayload: AssertNotAny<FontsResolvedPayload> = true;
 const _real_HyperlinkActivationContext: AssertNotAny<HyperlinkActivationContext> = true;
 const _real_HyperlinkActivationHandler: AssertNotAny<HyperlinkActivationHandler> = true;

@@ -169,6 +169,14 @@ const BOOT_ERROR_NAME_TO_DIAGNOSTIC = {
   OpenRenderNoProgressError: 'PERFORMANCE_ERROR',
   BoundedLocalPageCapError: 'PERFORMANCE_ERROR',
   MountedEnginePassInterrupt: 'RENDER_ERROR',
+  // Render-scheduler mount termination (see scheduler.ts's
+  // `#terminateRecoveryMount`), e.g. cold-recovery giving up after a
+  // source-completion failure. `.code` on this error class is always the
+  // generic `'scheduler-disposed'`, so classification here matches by
+  // `.name`, the same as the other three entries -- the `message` (see
+  // render-surface.ts's `sourceCompletionFailureReason`) still carries the
+  // specific underlying reason for anyone reading it in Labs.
+  RenderSchedulerWaitError: 'RENDER_ERROR',
 };
 
 // Boot-failure `reason` strings promoted to the public taxonomy.

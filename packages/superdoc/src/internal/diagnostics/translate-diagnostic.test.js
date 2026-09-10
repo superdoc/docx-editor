@@ -381,6 +381,26 @@ describe('translateBootFailureReason', () => {
     });
   });
 
+  it('classifies RenderSchedulerWaitError as RENDER_ERROR', () => {
+    // A render-scheduler mount termination (e.g. cold-recovery giving up
+    // after a source-completion failure) previously fell through the
+    // generic `open-failed` catch-all and was misclassified as
+    // PARSE_ERROR/unzip -- a real production incident. `.code` on this
+    // error class is always the generic 'scheduler-disposed', so
+    // classification here matches by `.name`, same as the other entries.
+    const result = translateBootFailureReason(
+      'open-failed',
+      'render mount terminated: diagnostic closure failed: render.complete-before-first-paint-source-failed: source completion failed before first paint',
+      { bootErrorName: 'RenderSchedulerWaitError' },
+    );
+    expect(result).toMatchObject({
+      diagnosticCode: 'RENDER_ERROR',
+      diagnosticStage: 'render',
+      severity: 'error',
+      internalCode: 'RenderSchedulerWaitError',
+    });
+  });
+
   it('ignores an unrecognized bootErrorName and falls back to reason-based classification', () => {
     const result = translateBootFailureReason('open-failed', 'detail', {
       bootErrorName: 'SomeOtherError',

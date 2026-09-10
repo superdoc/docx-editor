@@ -88,6 +88,56 @@ test('canvas system dependency installer bypasses the unhealthy Azure mirror', a
   assert.match(aptCommands, /install .*build-essential/);
 });
 
+for (const scenario of [
+  { name: 'uses only configured Ubuntu sources on GitHub runners', github: 'true', sources: true, scoped: true },
+  { name: 'preserves source selection outside GitHub Actions', github: 'false', sources: true, scoped: false },
+  { name: 'preserves source selection when Ubuntu sources are unavailable', github: 'true', sources: false, scoped: false },
+]) {
+  test(`canvas dependency installer ${scenario.name}`, async (t) => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'canvas-sources-'));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const bin = path.join(root, 'bin');
+    const sourceFile = path.join(root, 'ubuntu.sources');
+    const aptLog = path.join(root, 'apt.log');
+    const source = 'Types: deb\nURIs: https://archive.ubuntu.com/ubuntu/\nSuites: noble\nComponents: main universe\nSigned-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg\n';
+    await mkdir(bin);
+    if (scenario.sources) await writeFile(sourceFile, source);
+    const commands = {
+      'dpkg-query': 'exit 1',
+      sudo: 'exec "$@"',
+      timeout: 'shift; exec "$@"',
+      'apt-get': 'printf "%s\\n" "$*" >> "$APT_TEST_LOG"',
+    };
+    await Promise.all(Object.entries(commands).map(async ([name, command]) => {
+      const file = path.join(bin, name);
+      await writeFile(file, `#!/usr/bin/env bash\n${command}\n`);
+      await chmod(file, 0o755);
+    }));
+
+    await execFileAsync('bash', [path.join(REPO_ROOT, 'scripts/install-canvas-system-dependencies.sh')], {
+      env: {
+        ...process.env,
+        PATH: `${bin}:${process.env.PATH}`,
+        GITHUB_ACTIONS: scenario.github,
+        APT_MIRROR_FILE: path.join(root, 'no-mirrors'),
+        APT_UBUNTU_SOURCES_FILE: sourceFile,
+        APT_TEST_LOG: aptLog,
+      },
+    });
+
+    const invocations = (await readFile(aptLog, 'utf8')).trim().split('\n');
+    assert.equal(invocations.length, 2, 'update and install both execute');
+    for (const invocation of invocations) {
+      assert.equal(invocation.includes(`Dir::Etc::sourcelist=${sourceFile}`), scenario.scoped);
+      assert.equal(invocation.includes('Dir::Etc::sourceparts=-'), scenario.scoped);
+      assert.doesNotMatch(invocation, /AllowUnauthenticated|AllowInsecure|Trusted=yes/i);
+    }
+    assert.match(invocations[0], /update$/);
+    assert.match(invocations[1], /install .*libcairo2-dev/);
+    if (scenario.sources) assert.equal(await readFile(sourceFile, 'utf8'), source);
+  });
+}
+
 test('workflows use the guarded canvas dependency installer instead of raw apt commands', async () => {
   const workflowCandidates = [
     { path: '.github/workflows/ci-superdoc.yml', requiresInstaller: true },

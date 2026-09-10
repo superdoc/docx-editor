@@ -1512,11 +1512,15 @@ test('exports the Cloudflare Pages configuration', async () => {
   assert.deepEqual(scriptSources, [runtimeSource, engineSource, 'https://www.googletagmanager.com']);
   assert.deepEqual(styleSources, [runtimeSource, engineSource]);
   assert.deepEqual(connectSources, [
+    'https://superdoc-docs-collaboration-staging.superdoc.workers.dev',
     engineSource,
     'https://api.github.com',
     'https://*.google-analytics.com',
     'https://*.analytics.google.com',
     'https://www.googletagmanager.com',
+  ]);
+  assert.deepEqual(directiveSources('connect-src').filter((source) => source.startsWith('wss:')), [
+    'wss://superdoc-docs-collaboration-staging.superdoc.workers.dev',
   ]);
   assert.ok(workerSources.includes("'self'"));
   assert.ok(workerSources.includes('blob:'));

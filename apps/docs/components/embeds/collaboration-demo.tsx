@@ -14,6 +14,10 @@ export function CollaborationDemo({ presence = false, access = false }: { presen
   const serverUrl = access
     ? process.env.NEXT_PUBLIC_COLLABORATION_ACCESS_DEMO_URL
     : process.env.NEXT_PUBLIC_COLLABORATION_DEMO_URL;
+  const roomServiceUrl = !access
+    ? process.env.NEXT_PUBLIC_COLLABORATION_ROOM_SERVICE_URL?.replace(/\/$/, '')
+    : undefined;
+  const configured = Boolean(serverUrl || roomServiceUrl);
   const root = useRef<HTMLDivElement>(null);
   const alex = useRef<HTMLDivElement>(null);
   const sam = useRef<HTMLDivElement>(null);
@@ -81,7 +85,7 @@ export function CollaborationDemo({ presence = false, access = false }: { presen
   }
 
   async function start() {
-    if (!serverUrl) return;
+    if (!configured) return;
     release();
     const attempt = generation.current;
     const current = () => attempt === generation.current;
@@ -103,7 +107,33 @@ export function CollaborationDemo({ presence = false, access = false }: { presen
       if (!response.ok) throw new Error('Sample unavailable');
       const data = await response.blob();
       if (!current()) return;
-      const documentId = `${access ? 'docs-access' : 'docs'}-${crypto.randomUUID()}`;
+      let documentId = `${access ? 'docs-access' : 'docs'}-${crypto.randomUUID()}`;
+      let roomToken: string | undefined;
+      let connectionUrl = serverUrl;
+      if (roomServiceUrl) {
+        const response = await fetch(`${roomServiceUrl}/rooms`, {
+          method: 'POST',
+          signal: AbortSignal.timeout(10_000),
+        });
+        if (!response.ok) throw new Error('The demo room could not be opened.');
+        const room: unknown = await response.json();
+        if (
+          !room ||
+          typeof room !== 'object' ||
+          !('documentId' in room) ||
+          typeof room.documentId !== 'string' ||
+          !('token' in room) ||
+          typeof room.token !== 'string' ||
+          !('expiresAt' in room) ||
+          typeof room.expiresAt !== 'number'
+        ) {
+          throw new Error('Invalid demo room response.');
+        }
+        if (!current()) return;
+        documentId = room.documentId;
+        roomToken = room.token;
+        connectionUrl = `${roomServiceUrl.replace(/^http/, 'ws')}/rooms`;
+      }
       const connect = async (name: 'Alex' | 'Sam' | 'Taylor', roomMode: 'create' | 'join') => {
         const guestAttempt = guestGeneration.current;
         const isActive = () => current() && (name === 'Alex' || guestAttempt === guestGeneration.current);
@@ -135,11 +165,12 @@ export function CollaborationDemo({ presence = false, access = false }: { presen
                   type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
                   data,
                   v2Collaboration: {
-                    providerType: 'hocuspocus',
+                    providerType: roomServiceUrl ? 'y-websocket' : 'hocuspocus',
                     documentId,
-                    serverUrl,
+                    serverUrl: connectionUrl,
                     roomMode,
                     ...(access ? { token: `demo-${name.toLowerCase()}`, params: { attempt: attemptId } } : {}),
+                    ...(roomToken ? { params: { token: roomToken } } : {}),
                   },
                 },
                 user: { name, email: `${name.toLowerCase()}@example.com`, color },
@@ -219,7 +250,9 @@ export function CollaborationDemo({ presence = false, access = false }: { presen
       setNotice(
         access
           ? 'Simulated identities · Real server access checks · Changes are not saved.'
-          : 'Edit either document and watch the other. Demo changes are not saved.',
+          : roomServiceUrl
+            ? 'Edit either document and watch the other. This shared demo expires after 15 minutes. Use sample text only.'
+            : 'Edit either document and watch the other. Demo changes are not saved.',
       );
     } catch {
       if (!current()) return;
@@ -282,7 +315,7 @@ export function CollaborationDemo({ presence = false, access = false }: { presen
         {(state === 'ready' || state === 'error') && (
           <button
             type='button'
-            disabled={!serverUrl}
+            disabled={!configured}
             onClick={() => {
               if (state === 'ready' && !window.confirm('Restart and discard this demo’s edits?')) return;
               void start();
@@ -334,7 +367,7 @@ export function CollaborationDemo({ presence = false, access = false }: { presen
         </div>
       )}
       <p role='status' className='sd-collaboration-demo-notice'>
-        {serverUrl
+        {configured
           ? notice || 'Connecting the two editors…'
           : 'The hosted demo is not configured. Run the local example below.'}
       </p>

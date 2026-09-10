@@ -1,7 +1,10 @@
-# Local collaboration demo
+# Collaboration demo
 
-This prototype uses the docs' pinned SuperDoc runtime and a localhost-only Hocuspocus server.
-It does not provision a hosted service. Production builds without the URL show the illustration and local walkthrough.
+The docs own a staging-only Durable Object service in [collaboration-server](./collaboration-server/README.md).
+It uses the pinned SuperDoc runtime and Yjs WebSockets. Rooms expire after 15 minutes; only use sample text.
+The local Hocuspocus tutorial and access-control demo remain separate. Builds without a server URL show the illustration and local walkthrough.
+
+## Local Hocuspocus server
 
 From `superdoc/public`, start the server:
 

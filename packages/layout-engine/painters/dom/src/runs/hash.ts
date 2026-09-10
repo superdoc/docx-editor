@@ -159,6 +159,15 @@ export const textRunMergeSignature = (run: TextRun): string =>
     color: run.color ?? null,
     underline: run.underline ?? null,
     strike: run.strike ?? false,
+    // The legacy effect flags belong in the merge signature for the same reason
+    // `strike` does: two neighbouring runs that differ only in one of them are
+    // not the same span, and merging them would paint one run's effect over the
+    // other's text.
+    doubleStrike: run.doubleStrike ?? false,
+    outline: run.outline ?? false,
+    shadow: run.shadow ?? false,
+    emboss: run.emboss ?? false,
+    imprint: run.imprint ?? false,
     highlight: run.highlight ?? null,
     textTransform: run.textTransform ?? null,
     textEffects: run.textEffects ?? null,

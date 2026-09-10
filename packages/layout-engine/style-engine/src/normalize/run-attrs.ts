@@ -67,6 +67,14 @@ export function normalizeRunAttrsFromOoxml(
     out.strike = props.strike === true || props.dstrike === true;
   }
   if (props.dstrike != null) out.doubleStrike = props.dstrike === true;
+  // The Word 97-2003 effect flags. They predate the `w14:` effect family, Word
+  // still honours them, and they are what the Font dialog's "Effects" group
+  // writes — so a document can carry them with no `w14:` counterpart at all.
+  // Passed through as authored; the painter owns how they are approximated.
+  if (props.outline != null) out.outline = props.outline === true;
+  if (props.shadow != null) out.shadow = props.shadow === true;
+  if (props.emboss != null) out.emboss = props.emboss === true;
+  if (props.imprint != null) out.imprint = props.imprint === true;
   if (props.textTransform) {
     out.textTransform = props.textTransform;
     out.allCaps = props.textTransform === 'uppercase';

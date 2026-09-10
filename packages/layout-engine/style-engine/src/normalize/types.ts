@@ -28,6 +28,10 @@ export interface TextRunStyleAttrs {
   underline?: NonNullable<TextRun['underline']>;
   strike?: boolean;
   doubleStrike?: boolean;
+  outline?: boolean;
+  shadow?: boolean;
+  emboss?: boolean;
+  imprint?: boolean;
   color?: string;
   highlight?: string;
   textTransform?: TextRun['textTransform'];

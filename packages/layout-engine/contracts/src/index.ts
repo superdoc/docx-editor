@@ -546,6 +546,16 @@ export type RunMarks = {
   } | null;
   /** Strikethrough text decoration. */
   strike?: boolean;
+  /** Word `w:dstrike`: the strikethrough is drawn as two lines instead of one. */
+  doubleStrike?: boolean;
+  /** Word `w:outline`: glyphs are drawn as an outline with no fill. */
+  outline?: boolean;
+  /** Word `w:shadow`: a drop shadow is drawn behind the glyphs. */
+  shadow?: boolean;
+  /** Word `w:emboss`: glyphs are shaded to look raised out of the page. */
+  emboss?: boolean;
+  /** Word `w:imprint`: glyphs are shaded to look pressed into the page. */
+  imprint?: boolean;
   /** Highlight (background) color as hex string. */
   highlight?: string;
   /** Text transformation (case modification). */

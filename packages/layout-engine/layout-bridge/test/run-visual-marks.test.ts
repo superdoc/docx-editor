@@ -141,4 +141,27 @@ describe('hashRunVisualMarks', () => {
       expect(a).toBe(b);
     });
   });
+  /**
+   * This hash is what dirty-run detection compares, so a paint-only mark that
+   * does not move it leaves the already-painted span on screen. For the Word
+   * 97-2003 effects that is the exact symptom they were added to fix — the file
+   * changes and the page does not — reappearing one layer up.
+   */
+  describe('Word 97-2003 effect flags', () => {
+    const base = { text: 'Styled', fontFamily: 'Arial', fontSize: 12 } as Run;
+
+    it('produces a different hash for each flag', () => {
+      for (const mark of ['doubleStrike', 'outline', 'shadow', 'emboss', 'imprint'] as const) {
+        expect(hashRunVisualMarks({ ...base, [mark]: true } as Run)).not.toBe(hashRunVisualMarks(base));
+      }
+    });
+
+    it('distinguishes the flags from one another', () => {
+      const hashes = (['doubleStrike', 'outline', 'shadow', 'emboss', 'imprint'] as const).map((mark) =>
+        hashRunVisualMarks({ ...base, [mark]: true } as Run),
+      );
+
+      expect(new Set(hashes).size).toBe(hashes.length);
+    });
+  });
 });

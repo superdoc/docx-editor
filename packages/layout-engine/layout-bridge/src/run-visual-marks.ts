@@ -10,7 +10,7 @@ import type { Run } from '@superdoc/contracts';
  * not by this run-scoped helper.
  *
  * @param run - Flow run (text, tab, image, etc.); unknown fields are ignored safely.
- * @returns Stable string encoding bold/italic/underline/strike/color/font/highlight/link.
+ * @returns Stable string encoding every visual mark listed in the body below.
  */
 export const hashRunVisualMarks = (run: Run): string => {
   const bold = 'bold' in run ? run.bold : false;
@@ -30,12 +30,25 @@ export const hashRunVisualMarks = (run: Run): string => {
   // detection picks up rtl-only changes; otherwise an edit that flips just
   // <w:rtl/> could reuse stale measure/DOM.
   const bidi = 'bidi' in run ? run.bidi : undefined;
+  // The Word 97-2003 effect flags and the double strikethrough. Paint-only, but
+  // dirty-run detection is what decides whether the painted DOM is reused: an
+  // edit that flips just `<w:emboss/>` would otherwise keep the old span.
+  const doubleStrike = 'doubleStrike' in run ? run.doubleStrike : false;
+  const outline = 'outline' in run ? run.outline : false;
+  const shadow = 'shadow' in run ? run.shadow : false;
+  const emboss = 'emboss' in run ? run.emboss : false;
+  const imprint = 'imprint' in run ? run.imprint : false;
 
   return [
     bold ? 'b' : '',
     italic ? 'i' : '',
     underline ? `u:${JSON.stringify(underline)}` : '',
     strike ? 's' : '',
+    doubleStrike ? 'ds' : '',
+    outline ? 'ol' : '',
+    shadow ? 'sh' : '',
+    emboss ? 'em' : '',
+    imprint ? 'im' : '',
     color ?? '',
     fontSize !== undefined ? `fs:${fontSize}` : '',
     fontFamily ? `ff:${fontFamily}` : '',

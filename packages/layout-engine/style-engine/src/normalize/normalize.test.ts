@@ -149,6 +149,32 @@ describe('normalizeRunAttrsFromOoxml', () => {
     });
   });
 
+  it('carries the Word 97-2003 effect flags through to the paint contract', () => {
+    expect(normalizeRunAttrsFromOoxml({ outline: true, shadow: true, emboss: true, imprint: true })).toMatchObject({
+      outline: true,
+      shadow: true,
+      emboss: true,
+      imprint: true,
+    });
+  });
+
+  it('preserves an explicitly cleared effect flag rather than dropping it', () => {
+    // `<w:shadow w:val="0"/>` is how Word turns an inherited effect off, and a
+    // dropped key would let the style layer below switch it back on.
+    const attrs = normalizeRunAttrsFromOoxml({ outline: false, shadow: false, emboss: false, imprint: false });
+
+    expect(attrs).toMatchObject({ outline: false, shadow: false, emboss: false, imprint: false });
+  });
+
+  it('leaves the effect flags absent when the run does not carry them', () => {
+    const attrs = normalizeRunAttrsFromOoxml({ bold: true });
+
+    expect(attrs.outline).toBeUndefined();
+    expect(attrs.shadow).toBeUndefined();
+    expect(attrs.emboss).toBeUndefined();
+    expect(attrs.imprint).toBeUndefined();
+  });
+
   it('normalizes decimal and percent OOXML character-width values and rejects invalid values', () => {
     expect(normalizeRunAttrsFromOoxml({ w: '90' }).horizontalScale).toBe(0.9);
     expect(normalizeRunAttrsFromOoxml({ w: '125%' }).horizontalScale).toBe(1.25);

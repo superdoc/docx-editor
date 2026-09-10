@@ -23,7 +23,7 @@ import { appendFormattingParagraphMark } from './formatting-marks.js';
 import { textRunMergeSignature } from './hash.js';
 import { inlineBoxAdvanceBeforeOffset, markInlineBoxRun, paintInlineBoxes, splitInlineBoxRuns } from './inline-box.js';
 import { isBreakRun, isFieldAnnotationRun, isImageRun, isLineBreakRun, isMathRun, renderRun } from './render-run.js';
-import { applyRunTypographyStyles } from './text-run.js';
+import { applyRunTypographyStyles, runStrikeDecoration } from './text-run.js';
 import {
   canPaintUnderlineOverlay,
   renderInlineTabRun,
@@ -1157,7 +1157,11 @@ const renderExplicitlyPositionedRuns = ({
       const elem = renderRun(segmentRun, context, runContext, trackedConfig);
       if (elem) {
         if (coveredByOverlay) {
-          elem.style.textDecorationLine = segmentRun.strike ? 'line-through' : 'none';
+          // Shared with the painter so a doubleStrike-only run keeps its line here
+          // too — see runStrikeDecoration.
+          const strike = runStrikeDecoration(segmentRun);
+          elem.style.textDecorationLine = strike.line;
+          if (strike.style) elem.style.textDecorationStyle = strike.style;
         }
         if (styleId) {
           elem.setAttribute('styleid', styleId);
@@ -1286,7 +1290,12 @@ const renderInlineRuns = ({
 
     if (elem) {
       if (suppressUnderline && run.kind !== 'tab') {
-        elem.style.textDecorationLine = 'strike' in runForRender && runForRender.strike ? 'line-through' : 'none';
+        const strike =
+          'strike' in runForRender || 'doubleStrike' in runForRender
+            ? runStrikeDecoration(runForRender as TextRun)
+            : { line: 'none' as const };
+        elem.style.textDecorationLine = strike.line;
+        if (strike.style) elem.style.textDecorationStyle = strike.style;
       }
       if (styleId) {
         elem.setAttribute('styleid', styleId);

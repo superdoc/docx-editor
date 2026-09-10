@@ -1,7 +1,7 @@
 {
   "name": "superdoc",
   "type": "module",
-  "version": "2.14.0-next.7",
+  "version": "2.14.0-next.8",
   "description": "The document engine for DOCX files. Open, edit, and render Word documents in the browser.",
   "license": "AGPL-3.0",
   "repository": {
@@ -126,7 +126,7 @@
     "test": "vp test"
   },
   "dependencies": {
-    "@superdoc/docx-engine": "0.13.0-next.4",
+    "@superdoc/docx-engine": "0.13.0-next.5",
     "@types/mdast": "catalog:",
     "@types/ws": "catalog:",
     "buffer-crc32": "catalog:",

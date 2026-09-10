@@ -330,6 +330,7 @@ import type {
   TablesSetRowOptionsInput,
   TablesInsertColumnInput,
   TablesDeleteColumnInput,
+  TablesMoveColumnInput,
   TablesSetColumnWidthInput,
   TablesDistributeColumnsInput,
   TablesInsertCellInput,
@@ -1743,6 +1744,7 @@ export interface TablesApi {
   setRowOptions(input: TablesSetRowOptionsInput, options?: MutationOptions): TableMutationResult;
   insertColumn(input: TablesInsertColumnInput, options?: MutationOptions): TableMutationResult;
   deleteColumn(input: TablesDeleteColumnInput, options?: MutationOptions): TableMutationResult;
+  moveColumn(input: TablesMoveColumnInput, options?: MutationOptions): TableMutationResult;
   setColumnWidth(input: TablesSetColumnWidthInput, options?: MutationOptions): TableMutationResult;
   distributeColumns(input: TablesDistributeColumnsInput, options?: MutationOptions): TableMutationResult;
   insertCell(input: TablesInsertCellInput, options?: MutationOptions): TableMutationResult;
@@ -1777,8 +1779,9 @@ export interface TablesApi {
   setDefaultStyle(input: TablesSetDefaultStyleInput, options?: MutationOptions): DocumentMutationResult;
   clearDefaultStyle(input?: TablesClearDefaultStyleInput, options?: MutationOptions): DocumentMutationResult;
 }
-export type TablesAdapter = Omit<TablesApi, 'moveRow'> & {
+export type TablesAdapter = Omit<TablesApi, 'moveRow' | 'moveColumn'> & {
   moveRow?: TablesApi['moveRow'];
+  moveColumn?: TablesApi['moveColumn'];
 };
 /**
  * Callable capability accessor returned by `createDocumentApi`.
@@ -2904,6 +2907,12 @@ export function createDocumentApi(adapters: DocumentApiAdapters): DocumentApi {
           input,
           options,
         );
+      },
+      moveColumn(input, options?) {
+        const moveColumnAdapter =
+          adapters.tables.moveColumn?.bind(adapters.tables) ??
+          (() => unavailableTableMutationResult('tables.moveColumn'));
+        return executeTableLocatorOp('tables.moveColumn', moveColumnAdapter, input, options);
       },
       setColumnWidth(input, options?) {
         return executeTableLocatorOp(

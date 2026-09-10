@@ -448,6 +448,7 @@ import type {
   TablesSetRowOptionsInput,
   TablesInsertColumnInput,
   TablesDeleteColumnInput,
+  TablesMoveColumnInput,
   TablesSetColumnWidthInput,
   TablesDistributeColumnsInput,
   TablesInsertCellInput,
@@ -993,6 +994,7 @@ export interface OperationRegistry extends FormatInlineAliasOperationRegistry {
   'tables.setRowOptions': { input: TablesSetRowOptionsInput; options: MutationOptions; output: TableMutationResult };
   'tables.insertColumn': { input: TablesInsertColumnInput; options: MutationOptions; output: TableMutationResult };
   'tables.deleteColumn': { input: TablesDeleteColumnInput; options: MutationOptions; output: TableMutationResult };
+  'tables.moveColumn': { input: TablesMoveColumnInput; options: MutationOptions; output: TableMutationResult };
   'tables.setColumnWidth': { input: TablesSetColumnWidthInput; options: MutationOptions; output: TableMutationResult };
   'tables.distributeColumns': {
     input: TablesDistributeColumnsInput;

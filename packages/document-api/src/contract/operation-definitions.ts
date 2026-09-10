@@ -111,6 +111,7 @@ export const V1_RUNTIME_UNAVAILABLE_OPERATION_IDS = [
   'lists.remove',
   'format.paragraph.setMarkRunProps',
   'tables.moveRow',
+  'tables.moveColumn',
 ] as const;
 
 const V2_BACKED_ONLY_DESCRIPTION_NOTE =
@@ -3364,6 +3365,32 @@ export const OPERATION_DEFINITIONS = {
     referenceGroup: 'tables',
     intentGroup: 'table',
     intentAction: 'delete_column',
+  },
+  'tables.moveColumn': {
+    memberPath: 'tables.moveColumn',
+    description: v2BackedOnlyDescription(
+      'Move a column to a new position within the same table. Direct mode only; tables with vertical merges, nested tables, or irregular column coverage are rejected, and tracked (suggesting) mode is not supported yet.',
+    ),
+    expectedResult:
+      'Returns a TableMutationResult receipt; reports NO_OP if the column is already at the requested position.',
+    requiresDocumentContext: true,
+    metadata: mutationOperation({
+      idempotency: 'conditional',
+      supportsDryRun: true,
+      supportsTrackedMode: false,
+      possibleFailureCodes: [
+        'TARGET_NOT_FOUND',
+        'INVALID_TARGET',
+        'NO_OP',
+        'CAPABILITY_UNAVAILABLE',
+        'INVALID_CONTEXT',
+      ],
+      throws: [...T_NOT_FOUND_COMMAND, 'INVALID_TARGET'],
+    }),
+    referenceDocPath: 'tables/move-column.mdx',
+    referenceGroup: 'tables',
+    intentGroup: 'table',
+    intentAction: 'move_column',
   },
   'tables.setColumnWidth': {
     memberPath: 'tables.setColumnWidth',

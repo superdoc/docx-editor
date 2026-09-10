@@ -446,6 +446,7 @@
     "/document-api/reference/tables/insert-column/",
     "/document-api/reference/tables/insert-row/",
     "/document-api/reference/tables/merge-cells/",
+    "/document-api/reference/tables/move-column/",
     "/document-api/reference/tables/move-row/",
     "/document-api/reference/tables/move/",
     "/document-api/reference/tables/set-alt-text/",

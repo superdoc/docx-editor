@@ -347,6 +347,22 @@ export interface TablesDistributeColumnsInput extends TableLocator {
   columnRange?: { start: number; end: number };
 }
 
+/**
+ * Column move destination. Unlike {@link TableRowMoveDestination}, there is
+ * no `target`/`nodeId` form — columns have no stable node-id address today
+ * (only a positional `columnIndex`), so a move destination is always
+ * expressed by index.
+ */
+export type TableColumnMoveDestination =
+  | { kind: 'first' }
+  | { kind: 'last' }
+  | { kind: 'before'; columnIndex: number }
+  | { kind: 'after'; columnIndex: number };
+
+export type TablesMoveColumnInput = TableScopedColumnLocator & {
+  destination: TableColumnMoveDestination;
+};
+
 // ---------------------------------------------------------------------------
 // Cell operations
 // ---------------------------------------------------------------------------

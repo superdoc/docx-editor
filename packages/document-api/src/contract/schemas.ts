@@ -7766,6 +7766,36 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
     success: tableMutationSuccessSchema,
     failure: tableMutationFailureSchema,
   },
+  'tables.moveColumn': {
+    input: {
+      ...objectSchema(
+        {
+          target: tableAddressSchema,
+          nodeId: { type: 'string' },
+          columnIndex: { type: 'integer', minimum: 0 },
+          destination: {
+            oneOf: [
+              objectSchema({ kind: { const: 'first' } }, ['kind']),
+              objectSchema({ kind: { const: 'last' } }, ['kind']),
+              objectSchema({ kind: { const: 'before' }, columnIndex: { type: 'integer', minimum: 0 } }, [
+                'kind',
+                'columnIndex',
+              ]),
+              objectSchema({ kind: { const: 'after' }, columnIndex: { type: 'integer', minimum: 0 } }, [
+                'kind',
+                'columnIndex',
+              ]),
+            ],
+          },
+        },
+        ['columnIndex', 'destination'],
+      ),
+      oneOf: [{ required: ['target'] }, { required: ['nodeId'] }],
+    },
+    output: tableMutationResultSchema,
+    success: tableMutationSuccessSchema,
+    failure: tableMutationFailureSchema,
+  },
   'tables.setColumnWidth': {
     input: {
       ...objectSchema(

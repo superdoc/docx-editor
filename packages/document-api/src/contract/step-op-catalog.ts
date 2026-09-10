@@ -106,6 +106,9 @@ const STEP_OP_CATALOG_UNFROZEN = [
   step('tables.deleteColumn', 'tables', 'Delete a column from the target table.', {
     referenceOperationId: 'tables.deleteColumn',
   }),
+  step('tables.moveColumn', 'tables', 'Move a column to a new position within the same table.', {
+    referenceOperationId: 'tables.moveColumn',
+  }),
   step('tables.setColumnWidth', 'tables', 'Set column width in the target table.', {
     referenceOperationId: 'tables.setColumnWidth',
   }),

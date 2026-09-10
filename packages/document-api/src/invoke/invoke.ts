@@ -233,6 +233,7 @@ export function buildDispatchTable(api: DocumentApi): TypedDispatchTable {
     'tables.setRowOptions': (input, options) => api.tables.setRowOptions(input, options),
     'tables.insertColumn': (input, options) => api.tables.insertColumn(input, options),
     'tables.deleteColumn': (input, options) => api.tables.deleteColumn(input, options),
+    'tables.moveColumn': (input, options) => api.tables.moveColumn(input, options),
     'tables.setColumnWidth': (input, options) => api.tables.setColumnWidth(input, options),
     'tables.distributeColumns': (input, options) => api.tables.distributeColumns(input, options),
     'tables.insertCell': (input, options) => api.tables.insertCell(input, options),

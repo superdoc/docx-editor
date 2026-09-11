@@ -108,12 +108,24 @@ if (parsedClipboard.success) {
     } else if (block.kind === 'horizontalRule') {
       void block.sourcePath;
     } else if (block.kind === 'paragraph') {
+      for (const run of block.runs) {
+        const commentIds: readonly string[] | undefined = run.commentIds;
+        const trackedInsertion: boolean | undefined = run.trackedInsertion;
+        void [commentIds, trackedInsertion];
+      }
       for (const inline of block.inlines ?? []) {
         if (inline.kind === 'hyperlink') void inline.target;
         if (inline.kind === 'lineBreak') void inline.sourcePath;
+        if (inline.kind === 'text') {
+          const commentIds: readonly string[] | undefined = inline.commentIds;
+          const trackedInsertion: boolean | undefined = inline.trackedInsertion;
+          void [commentIds, trackedInsertion];
+        }
       }
     }
   }
+  const comments: typeof parsedClipboard.plan.fragment.comments = parsedClipboard.plan.fragment.comments;
+  void comments;
 }
 
 for (const receipt of [

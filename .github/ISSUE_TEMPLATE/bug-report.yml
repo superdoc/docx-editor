@@ -1,7 +1,7 @@
 name: Bug Report
 description: Something isn't working as expected
 labels:
-  - "stage: triage"
+  - "status: triage"
   - "type: bug"
 body:
   - type: markdown

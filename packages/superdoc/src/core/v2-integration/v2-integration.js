@@ -14,6 +14,7 @@
 // constructed (e.g. a non-DOM context); it never selects v1.
 
 import { defineComponent, h, onMounted } from 'vue';
+import { installWebKitCollapsedCaretRectFix } from './webkit-collapsed-caret-rect.js';
 /** @type {() => Promise<unknown>} */
 let engineModuleLoader = () => import('@superdoc/docx-engine');
 /** @type {Promise<void> | null} */
@@ -39,6 +40,12 @@ export function configureDefaultV2IntegrationLoader(loader) {
 
 /** Load the engine before Vue evaluates the synchronous integration seam. */
 export async function loadDefaultV2Integration() {
+  // Every distribution mode reaches the engine through this function, so it is
+  // the one place that guarantees the workaround is installed before the engine
+  // can paint a caret. The quirk probe measures a throwaway element of its own,
+  // so no editor document has to exist yet. It never throws: a caret nicety must
+  // not be able to reject this promise and drop the editor to its stub.
+  if (typeof window !== 'undefined') installWebKitCollapsedCaretRectFix(window);
   if (!engineModulePromise) {
     const loadPromise = Promise.resolve()
       .then(() => engineModuleLoader())

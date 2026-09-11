@@ -179,6 +179,37 @@ describe('normalizeRunAttrsFromOoxml', () => {
     });
   });
 
+  it('takes bold and italic from the complex-script toggles on a w:rtl run', () => {
+    // Hebrew/Arabic Word writes w:bCs alone when the styled selection is
+    // single-script, which is what every bold Hebrew heading looks like.
+    expect(normalizeRunAttrsFromOoxml({ rtl: true, boldCs: true }).bold).toBe(true);
+    expect(normalizeRunAttrsFromOoxml({ rtl: true, iCs: true }).italic).toBe(true);
+    expect(normalizeRunAttrsFromOoxml({ rtl: true, boldCs: false, bold: true }).bold).toBe(false);
+  });
+
+  it('takes bold and italic from the complex-script toggles on a w:cs run', () => {
+    expect(normalizeRunAttrsFromOoxml({ cs: true, boldCs: true }).bold).toBe(true);
+    expect(normalizeRunAttrsFromOoxml({ cs: true, iCs: true }).italic).toBe(true);
+  });
+
+  it('keeps the Latin toggles when the run carries no complex-script signal', () => {
+    // Absence is not false: without w:rtl or w:cs the stack follows the Unicode
+    // script of the text, which this layer does not see.
+    expect(normalizeRunAttrsFromOoxml({ boldCs: true }).bold).toBeUndefined();
+    expect(normalizeRunAttrsFromOoxml({ iCs: true }).italic).toBeUndefined();
+    expect(normalizeRunAttrsFromOoxml({ bold: true, boldCs: false }).bold).toBe(true);
+  });
+
+  it('falls back to the Latin toggles on a complex-script run that has no CS variant', () => {
+    // Word decides the stack per character, so a run carrying only w:b is bold
+    // there for the Latin text it holds. Reading w:bCs strictly would turn
+    // those runs normal.
+    expect(normalizeRunAttrsFromOoxml({ rtl: true, bold: true }).bold).toBe(true);
+    expect(normalizeRunAttrsFromOoxml({ rtl: true, italic: true }).italic).toBe(true);
+    expect(normalizeRunAttrsFromOoxml({ rtl: true, bold: false }).bold).toBe(false);
+    expect(normalizeRunAttrsFromOoxml({ rtl: true }).bold).toBeUndefined();
+  });
+
   it('maps w:rPr/w:rtl to bidi.rtl regardless of which cascade layer set it (SD-3098)', () => {
     expect(normalizeRunAttrsFromOoxml({ rtl: true }).bidi).toEqual({ rtl: true });
     expect(normalizeRunAttrsFromOoxml({ rtl: false }).bidi).toBeUndefined();

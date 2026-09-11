@@ -85,6 +85,15 @@ const routes = [
   ['agents/automation/cli/index.html', 'Automate a DOCX from the CLI'],
   ['agents/workflows/review-tracked-changes/index.html', 'Review tracked changes'],
   ['agents/operate/safety/index.html', 'Safety'],
+  ['agents/operate/debugging/index.html', 'Debug an agent run'],
+  ['agents/operate/context-and-cost/index.html', 'Manage context and cost'],
+  ['agents/mcp/connect/index.html', 'Connect a coding agent over MCP'],
+  ['agents/mcp/first-document-task/index.html', 'Edit a DOCX from a coding agent'],
+  ['agents/mcp/debugging/index.html', 'Debug the MCP server'],
+  ['agents/build/actions/index.html', 'Core action reference'],
+  ['agents/build/custom-actions/index.html', 'Add a custom action'],
+  ['agents/build/providers/index.html', 'Connect a model provider'],
+  ['agents/build/skills/index.html', 'Install the custom-actions skill'],
   ['document-api/mental-model/index.html', 'Document API mental model'],
   ['document-api/application-data/index.html', 'Store application data in DOCX'],
   ['document-api/query-content/index.html', 'Query document content'],
@@ -1405,9 +1414,9 @@ test('exports the machine-readable documentation files', async () => {
   assert.match(reviewMarkdown, /The documentation site does not upload it/);
   assert.match(agentsOverviewMarkdown, /^# Overview/m);
   assert.match(agentsOverviewMarkdown, /@superdoc\/sdk/);
-  assert.doesNotMatch(agentsOverviewMarkdown, /\bMCP\b/u);
-  assert.match(agentsOverviewMarkdown, /Do not import `@superdoc\/headless`/);
-  assert.match(agentsOverviewMarkdown, /no toolbar, document canvas, viewport/);
+  assert.match(agentsOverviewMarkdown, /\/agents\/mcp\/connect/);
+  assert.match(agentsOverviewMarkdown, /Do not import the\s+browser `superdoc` package into a Node\.js API route/);
+  assert.match(agentsOverviewMarkdown, /The SuperDoc Editor runs in the browser/);
 });
 
 test('collaboration introduces shared editing before setup and persistence', async () => {

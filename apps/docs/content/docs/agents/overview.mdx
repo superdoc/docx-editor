@@ -1,74 +1,64 @@
 ---
 title: Overview
 navTitle: Overview
-description: Route to the right surface for editing DOCX files from code, a shell, or an agent.
+description: Understand how an agent uses SuperDoc to edit a DOCX, then choose a starting point.
 ---
 
-SuperDoc changes DOCX files without an editor UI. Some of that work is deterministic: a script knows the operation before it runs. Some of it is model-driven: an agent decides which operation to run from an instruction. Both use the same document engine and the same Document API contract.
+An agent can use SuperDoc to read a Word document and make changes from an instruction. For example, you can ask it to
+replace a term in a contract and save the result as a new DOCX.
 
-Headless describes how these workflows run. It does not describe what you are trying to build, so start from the goal instead.
+The model decides what to do. SuperDoc provides the tools that read and change the document. You can connect those tools
+to a coding agent you already use, or add them to an agent in your own application.
 
-## Start from your goal
+## How an agent edits a document
 
-| Goal                                        | Start here                                                         |
-| ------------------------------------------- | ------------------------------------------------------------------ |
-| Let a coding agent edit DOCX files          | [Build an agent](/agents/build/build-an-agent)                     |
-| Add document tools to your product's agent  | [Build an agent](/agents/build/build-an-agent)                     |
-| Run a known operation from application code | [Node.js SDK](/agents/automation/node-sdk)                         |
-| Run a known operation from Python           | [Python SDK](/agents/automation/python-sdk)                        |
-| Run a known operation from a shell or CI    | [CLI](/agents/automation/cli)                                      |
-| Prepare review-aware HTML/Markdown for RAG  | [Output projections](/document-api/output-projections)             |
-| Keep a person in the approval loop          | [Review tracked changes](/agents/workflows/review-tracked-changes) |
-| Understand the operation contract itself    | [Document API mental model](/document-api/mental-model)            |
+A tool is an operation the agent can request, such as opening a file or replacing text. The agent sends arguments to
+the tool and receives a result it can use to decide what to do next.
 
-## The workflow underneath
+![The agent sends an instruction and tool results to a model provider over the network. The model chooses a tool call. SuperDoc tools run in a local or server process, read and change an open document, and save a DOCX when asked.](./_media/overview/agent-document-flow.svg)
 
-Every headless workflow follows the same sequence, whether a script or a model chooses the operations:
+For the contract example:
 
-```text
-open → inspect state → mutate → check receipt → save → close
-```
+1. You ask the agent to replace a term and save a copy.
+2. The agent uses SuperDoc tools to open the file and find the text.
+3. The model chooses an edit. SuperDoc applies it and reports the result.
+4. The agent saves the edited DOCX. You open the copy and check the change.
 
-A model-driven workflow adds one step in front of it:
+A successful tool call means the operation ran. You still need to check that the edit matches your request.
 
-```text
-instruction → model selects a tool → SuperDoc runs the operation → receipt
-```
+## Choose where to start
 
-The split matters. The model decides what to do. SuperDoc runs the operation deterministically and reports a structured result. A model that picks the wrong operation produces a valid receipt for the wrong edit, so treat model mistakes and operation failures as separate problems.
+### Use a coding agent you already have
 
-## Which package to install
+Connect SuperDoc to Claude Code, Claude Desktop, Cursor, or Windsurf through MCP, a protocol that lets an agent call
+external tools. The client starts the SuperDoc MCP server on your machine and passes tool calls to it.
 
-| Surface     | Use it when                                         | Package         |
-| ----------- | --------------------------------------------------- | --------------- |
-| Node.js SDK | Node.js owns the workflow, errors, and output files | `@superdoc/sdk` |
-| Python SDK  | Python owns the workflow, errors, and output files  | `superdoc-sdk`  |
-| CLI         | A shell script or CI job runs the workflow          | `@superdoc/cli` |
+Start with [Connect a coding agent](/agents/mcp/connect), then make one edit to a sample document. You do not need to
+write an agent loop or choose a model provider in SuperDoc.
 
-The Node.js SDK also provides the agent toolkit, so a Node.js product that embeds its own agent needs only
-`@superdoc/sdk`. Do not import `@superdoc/headless` or `@superdoc/document-api-v2-adapter`. Those are implementation
-details rather than integration surfaces.
+### Build an agent into your application
 
-## What these surfaces share with the Editor
+Use `@superdoc/sdk` for Node.js or `superdoc-sdk` for Python. Your application opens the document, sends requests to
+your model provider, runs the tools it selects, and decides when to save.
 
-- Queries return explicit matches, targets, handles, and revisions.
-- Mutations return receipts or structured failures.
-- Direct and tracked changes use the same operation contract.
-- Comments, lists, tables, images, and sections are reached through Document API operations.
-- DOCX remains the input and output format.
+[Build an agent](/agents/build/build-an-agent) introduces the toolkit and a document-editing loop. This path gives you
+control over the model, instructions, and application workflow.
 
-Capability availability varies by runtime and document state. Check `doc.capabilities()` before relying on an optional operation.
+If your code already knows the edit to make, you can use the [Node.js SDK](/agents/automation/node-sdk),
+[Python SDK](/agents/automation/python-sdk), or [CLI](/agents/automation/cli) directly without a model.
 
-See [How SuperDoc works](/resources/how-superdoc-works) for the engine path and surface ownership map.
+## Where the code runs
 
-## What they do not provide
+The MCP server and these SDKs run in a local or server process. They edit the document without mounting the Editor UI.
+Your agent or application sends the model its instructions and tool results, which can contain document text.
 
-These hosts never mount the Editor UI, so they have no toolbar, document canvas, viewport, browser selection, or pointer editing. There is no visual surface for accepting or rejecting a suggestion.
+The SuperDoc Editor runs in the browser. Use it when a person needs to see or review the document. In a web application,
+keep the Node.js SDK on your server and call it through your application endpoints; use the Editor in the browser.
+Do not import the browser `superdoc` package into a Node.js API route to run these workflows.
 
-When a person must decide, write a separate DOCX and open it in the Editor or Microsoft Word. The [tracked-change review workflow](/agents/workflows/review-tracked-changes) shows that handoff end to end.
+For the complete engine and package map, see [How SuperDoc works](/resources/how-superdoc-works).
 
-## Before you ship
+## Start with one document
 
-Your application owns the file and process boundary around the engine. Validate input paths, write results to a separate output until verification succeeds, bound retries, attribute changes to an explicit identity, and close sessions on success and failure alike.
-
-[Safety](/agents/operate/safety) covers those responsibilities in full, and matters most once a model is choosing the operations.
+[Connect a coding agent over MCP](/agents/mcp/connect) to open a sample, make a tracked edit, and inspect the saved copy.
+If you are building your own agent, begin with [Build an agent](/agents/build/build-an-agent).

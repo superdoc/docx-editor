@@ -1,4 +1,4 @@
 {
   "title": "Operate",
-  "pages": ["safety"]
+  "pages": ["safety", "debugging", "context-and-cost"]
 }

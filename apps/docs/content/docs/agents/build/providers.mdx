@@ -1,0 +1,246 @@
+---
+title: Connect a model provider
+navTitle: Providers
+description: Wire the toolkit to Anthropic, OpenAI, the Vercel AI SDK, Amazon Bedrock, or Python, and cache the static prefix.
+---
+
+{/* Media decision: none. The page contrasts wire formats, which the code blocks already show side by side. */}
+
+`createAgentToolkit` returns tool definitions in the shape your provider expects. The `provider` argument changes only that shape. The actions, the system prompt content, and `dispatch` are the same for every value.
+
+| `provider`  | Tool definition shape                                               | `cache: true` reports |
+| ----------- | ------------------------------------------------------------------- | --------------------- |
+| `openai`    | `{ type: 'function', function: { name, description, parameters } }` | `automatic`           |
+| `anthropic` | `{ name, description, input_schema }`                               | `explicit`            |
+| `vercel`    | `{ name, description, inputSchema }`                                | `unsupported`         |
+| `generic`   | `{ name, description, parameters }`                                 | `unsupported`         |
+
+The message protocol does not adapt. Each provider reads tool calls and expects tool results in its own shape, so the loop around `dispatch` is provider-specific even though the toolkit is not. The code below shows the loop body for each. Every fragment assumes an open document handle named `doc` from `createSuperDocClient().open()`, and the bounded loop, receipt checks, and save guards from [Build an agent](/agents/build/build-an-agent) apply to all of them.
+
+## OpenAI
+
+[Build an agent](/agents/build/build-an-agent#the-loop) uses the Chat Completions shape. The assistant message carries `tool_calls`, and each result goes back as a `role: 'tool'` message:
+
+```ts
+import type OpenAI from 'openai';
+
+const { tools, systemPrompt, dispatch } = await createAgentToolkit({ provider: 'openai', preset: 'core' });
+
+const response = await openai.chat.completions.create({
+  model,
+  messages,
+  tools: tools as OpenAI.Chat.Completions.ChatCompletionTool[],
+});
+const reply = response.choices[0].message;
+messages.push(reply);
+
+for (const call of reply.tool_calls ?? []) {
+  const result = await dispatch(doc, call.function.name, JSON.parse(call.function.arguments));
+  messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) });
+}
+```
+
+The toolkit types `tools` as `unknown[]` because the shape depends on `provider`, so cast to the client's tool type at the call site. OpenAI caches long prompts on its own, so `cache: true` changes nothing on the wire and `meta.cacheStrategy` reports `automatic`.
+
+## Anthropic
+
+Tool calls arrive as `tool_use` content blocks. Results go back inside a `role: 'user'` message as `tool_result` blocks, all in one message. Set `is_error: true` on a result that carries a thrown error so the model knows the call did not run.
+
+Request the system prompt through `getSystemPromptForProvider` with `cache: true`. For Anthropic it returns content blocks with `cache_control` markers, and `cache: true` on the toolkit marks the tool array the same way, so the whole static prefix is cached across turns:
+
+```ts
+import Anthropic from '@anthropic-ai/sdk';
+import { createAgentToolkit, getSystemPromptForProvider } from '@superdoc/sdk';
+
+const anthropic = new Anthropic();
+const { tools, dispatch } = await createAgentToolkit({ provider: 'anthropic', preset: 'core', cache: true });
+const system = await getSystemPromptForProvider({ provider: 'anthropic', preset: 'core', cache: true });
+
+const messages: Anthropic.MessageParam[] = [{ role: 'user', content: instruction }];
+
+const response = await anthropic.messages.create({
+  model: 'claude-opus-5',
+  max_tokens: 16000,
+  system: system.content,
+  tools: tools as Anthropic.Tool[],
+  messages,
+});
+messages.push({ role: 'assistant', content: response.content });
+
+const results: Anthropic.ToolResultBlockParam[] = [];
+for (const block of response.content) {
+  if (block.type !== 'tool_use') continue;
+  try {
+    const result = await dispatch(doc, block.name, block.input as Record<string, unknown>);
+    results.push({ type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(result) });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    results.push({
+      type: 'tool_result',
+      tool_use_id: block.id,
+      content: JSON.stringify({ error: message }),
+      is_error: true,
+    });
+  }
+}
+if (results.length > 0) messages.push({ role: 'user', content: results });
+```
+
+Pass `excludeActions` to `getSystemPromptForProvider` as well when you pass it to the toolkit, or the prompt keeps documenting an action the model cannot call. Confirm caching with `usage.cache_read_input_tokens` on the second request. If it stays at zero while `cache_creation_input_tokens` is also zero, the prefix is below the model's minimum cacheable length. If creation tokens appear on every request, something in the prefix changes between turns.
+
+## Vercel AI SDK
+
+The AI SDK runs the loop itself. Convert each toolkit tool into an AI SDK tool whose `execute` calls `dispatch`, and cap the loop with `stopWhen`:
+
+```ts
+import { generateText, jsonSchema, stepCountIs, type Tool } from 'ai';
+import { createAgentToolkit } from '@superdoc/sdk';
+
+const {
+  tools: toolkitTools,
+  systemPrompt,
+  dispatch,
+} = await createAgentToolkit({ provider: 'vercel', preset: 'core' });
+
+type VercelToolDefinition = { name: string; description: string; inputSchema: Record<string, unknown> };
+
+const tools: Record<string, Tool> = {};
+for (const definition of toolkitTools as VercelToolDefinition[]) {
+  tools[definition.name] = {
+    description: definition.description,
+    inputSchema: jsonSchema<Record<string, unknown>>(definition.inputSchema),
+    execute: async (args) => {
+      try {
+        return await dispatch(doc, definition.name, args);
+      } catch (error) {
+        return { error: error instanceof Error ? error.message : String(error) };
+      }
+    },
+  };
+}
+
+const { text } = await generateText({
+  model,
+  system: systemPrompt,
+  messages: [{ role: 'user', content: instruction }],
+  tools,
+  stopWhen: stepCountIs(10),
+});
+```
+
+Because the AI SDK owns the loop, the receipt checks from [Build an agent](/agents/build/build-an-agent#read-the-receipts) move into `execute`. Record failures there and refuse to save afterwards when any were recorded. `execute` receives the parsed arguments, so the tracked-mode check belongs there too.
+
+## Amazon Bedrock
+
+Bedrock's Converse API takes tools as `toolSpec` entries. Request Anthropic-shaped tools from the toolkit and wrap them:
+
+```ts
+import {
+  BedrockRuntimeClient,
+  ConverseCommand,
+  type ContentBlock,
+  type Message,
+  type Tool,
+} from '@aws-sdk/client-bedrock-runtime';
+import type { DocumentType } from '@smithy/types';
+import { createAgentToolkit } from '@superdoc/sdk';
+
+const { tools, systemPrompt, dispatch } = await createAgentToolkit({ provider: 'anthropic', preset: 'core' });
+
+type AnthropicToolDefinition = { name: string; description: string; input_schema: Record<string, unknown> };
+
+// Bedrock types JSON payloads as DocumentType. Receipts and schemas are plain
+// JSON, so a serialize round-trip is the honest way to satisfy it.
+const toDocument = (value: unknown): DocumentType => JSON.parse(JSON.stringify(value));
+
+const toolConfig = {
+  tools: (tools as AnthropicToolDefinition[]).map<Tool>((tool) => ({
+    toolSpec: { name: tool.name, description: tool.description, inputSchema: { json: toDocument(tool.input_schema) } },
+  })),
+};
+
+const bedrock = new BedrockRuntimeClient({ region: 'us-east-1' });
+const messages: Message[] = [{ role: 'user', content: [{ text: instruction }] }];
+
+const response = await bedrock.send(
+  new ConverseCommand({ modelId, messages, system: [{ text: systemPrompt }], toolConfig }),
+);
+const output = response.output?.message;
+if (output) messages.push(output);
+
+const results: ContentBlock[] = [];
+for (const block of output?.content ?? []) {
+  const use = block.toolUse;
+  if (!use?.name || !use.toolUseId) continue;
+  const result = await dispatch(doc, use.name, (use.input ?? {}) as Record<string, unknown>);
+  results.push({ toolResult: { toolUseId: use.toolUseId, content: [{ json: toDocument(result) }] } });
+}
+if (results.length > 0) messages.push({ role: 'user', content: results });
+```
+
+`modelId` is a Bedrock identifier, usually an inference-profile id or a foundation-model id from the Bedrock console, not an Anthropic model name. Credentials come from the AWS SDK's usual chain. No SuperDoc API key is involved.
+
+## Python
+
+`superdoc-sdk` exposes the same toolkit. `create_agent_toolkit` returns a dictionary with `tools`, `system_prompt`, `meta`, and two pre-bound dispatchers, `dispatch` and `dispatch_async`:
+
+```python
+import json
+
+from openai import OpenAI
+from superdoc import SuperDocClient, create_agent_toolkit
+
+kit = create_agent_toolkit({"provider": "openai", "preset": "core"})
+llm = OpenAI()
+
+with SuperDocClient(user={"name": "Contract bot"}) as client:
+    doc = client.open({"doc": "./contract.docx"})
+    try:
+        messages = [
+            {"role": "system", "content": kit["system_prompt"]},
+            {"role": "user", "content": instruction},
+        ]
+        failures = []
+        completed = False
+        for _ in range(16):
+            response = llm.chat.completions.create(model=model, messages=messages, tools=kit["tools"])
+            reply = response.choices[0].message
+            messages.append(reply)
+            if not reply.tool_calls:
+                completed = True
+                break
+            for call in reply.tool_calls:
+                try:
+                    result = kit["dispatch"](doc, call.function.name, json.loads(call.function.arguments))
+                except Exception as error:  # noqa: BLE001 - hand the message back to the model
+                    result = {"status": "failed", "error": {"message": str(error)}}
+                # Inspect returns a snapshot without status; anything else is a receipt.
+                status = result.get("status") if isinstance(result, dict) else None
+                if status not in (None, "ok") or (isinstance(result, dict) and result.get("verificationPassed") is False):
+                    failures.append(f"{call.function.name}: {status}")
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": call.id,
+                    # Receipts can carry values json.dumps does not handle natively.
+                    "content": json.dumps(result, default=str),
+                })
+        if not completed or failures:
+            raise RuntimeError(f"Agent did not finish cleanly: {failures or 'turn limit reached'}. Nothing saved.")
+        doc.save({"out": "./contract.reviewed.docx"})
+    finally:
+        doc.close({"discard": True})
+```
+
+The save is gated the same way as the Node.js example: a run that hits the turn limit or records any failed, partial, or unverified receipt raises instead of writing a file. [Build an agent](/agents/build/build-an-agent#keep-the-loop-bounded) explains why a later success cannot clear an earlier failure.
+
+The input dictionary uses the same keys as the Node.js toolkit, so `excludeActions` and `cache` work unchanged. Use `dispatch_async` with `AsyncSuperDocClient`. Of the standalone functions, `choose_tools` takes the same input dictionary, while `get_system_prompt` and `dispatch_superdoc_tool` take `preset` and `exclude_actions` as keyword arguments. Whichever you use, every call must receive the same preset and exclusions. The PyPI package is `superdoc-sdk` and the import is `superdoc`.
+
+Python has no equivalent of `getSystemPromptForProvider`. For Anthropic caching, build the system block yourself from `get_system_prompt("core")` and add `cache_control` to it.
+
+## Choosing a model
+
+Pin an exact model id rather than an alias. Aliases move between releases and can change how a model reads tool schemas. Whatever the provider, keep the toolkit's system prompt as the first part of your system message and append product rules after it. The prompt teaches argument shapes the schema alone does not convey, and dropping it lowers edit quality across every model we have measured.
+
+## Next
+
+[Manage context and cost](/agents/operate/context-and-cost) covers what the static prefix and tool results cost per turn and how to keep them small. [Debug an agent run](/agents/operate/debugging) separates provider-side problems from operation failures.

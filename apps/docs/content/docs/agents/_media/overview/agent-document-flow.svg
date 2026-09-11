@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="410" viewBox="0 0 760 410" role="img" aria-labelledby="title desc">
+  <title id="title">How an agent edits a DOCX</title>
+  <desc id="desc">An agent exchanges instructions, tool calls, and results with a model provider over the network. It calls SuperDoc tools in a local or server process to read and edit an open document, then save a DOCX.</desc>
+  <rect width="760" height="410" rx="14" fill="#FAFAFA"/>
+  <g font-family="Inter, Arial, sans-serif" fill="#212121">
+    <rect x="40" y="22" width="260" height="82" rx="9" fill="#EEF4FF" stroke="#1355FF"/>
+    <text x="170" y="54" text-anchor="middle" font-size="18" font-weight="600">Model provider</text>
+    <text x="170" y="80" text-anchor="middle" font-size="15">Chooses the next tool call</text>
+    <path d="M130 115v122m-6-6 6 6 6-6 M170 237v-122m-6 6 6-6 6 6" fill="none" stroke="#1355FF" stroke-width="2"/>
+    <text x="220" y="139" font-size="14">Network: instructions,</text>
+    <text x="220" y="159" font-size="14">tool calls, and results</text>
+    <rect x="30" y="195" width="700" height="187" rx="9" fill="#FFFFFF" stroke="#DBDBDB"/>
+    <text x="50" y="224" font-size="14" fill="#5A5A61">YOUR MACHINE OR SERVER</text>
+    <rect x="50" y="245" width="180" height="102" rx="9" fill="#FAFAFA" stroke="#DBDBDB"/>
+    <text x="140" y="279" text-anchor="middle" font-size="17" font-weight="600">Agent</text>
+    <text x="140" y="303" text-anchor="middle" font-size="14">Coding client or</text>
+    <text x="140" y="323" text-anchor="middle" font-size="14">your application</text>
+    <path d="M245 291h32m-6-6 6 6-6 6" fill="none" stroke="#1355FF" stroke-width="2"/>
+    <rect x="292" y="245" width="180" height="102" rx="9" fill="#EEF4FF" stroke="#1355FF"/>
+    <text x="382" y="279" text-anchor="middle" font-size="17" font-weight="600">SuperDoc tools</text>
+    <text x="382" y="303" text-anchor="middle" font-size="14">Read and edit</text>
+    <text x="382" y="323" text-anchor="middle" font-size="14">the open document</text>
+    <path d="M487 291h32m-6-6 6 6-6 6" fill="none" stroke="#1355FF" stroke-width="2"/>
+    <rect x="534" y="245" width="176" height="102" rx="9" fill="#FAFAFA" stroke="#DBDBDB"/>
+    <text x="622" y="279" text-anchor="middle" font-size="17" font-weight="600">DOCX file</text>
+    <text x="622" y="303" text-anchor="middle" font-size="14">Open the source</text>
+    <text x="622" y="323" text-anchor="middle" font-size="14">Save an edited copy</text>
+  </g>
+</svg>

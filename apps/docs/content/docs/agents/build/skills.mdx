@@ -1,0 +1,46 @@
+---
+title: Install the custom-actions skill
+navTitle: Skills
+description: Give Claude Code or Codex a SuperDoc skill that authors custom actions correctly.
+---
+
+{/* Media decision: none. The page is one install command and what the skill carries. */}
+
+A skill is a Markdown instruction file a coding agent loads when a task matches it. Install `superdoc-custom-actions` when someone on the project will extend the action surface, so the agent writes an action that fits the SDK instead of inventing a shape around it.
+
+Skills and MCP solve different problems. The [MCP server](/agents/mcp/connect) lets an agent edit DOCX files directly through tools. A skill teaches an agent how to write application code against `@superdoc/sdk` or `superdoc-sdk`. A project that does both installs both.
+
+## Install
+
+The skill lives in the open-source repository rather than inside the npm package, so it is installed from there with the `skills` CLI. Run this from your application's root directory:
+
+```bash
+npx skills add superdoc/docx-editor/packages/sdk/skills/superdoc-custom-actions --copy
+```
+
+`--copy` vendors the skill into your project so it is committed alongside your code. Add `-a <agent>` to install it for one supported coding agent instead of all of them.
+
+Then ask for the operation you need:
+
+> Add a custom action that inserts a footnote after a piece of text.
+
+## What it carries
+
+The skill encodes the parts of the workflow an agent gets wrong unprompted:
+
+- Choose the tier deliberately, and stay with `steps` when the built-in actions already express the operation.
+- Namespace the action as `superdoc.<verb>` so it cannot collide with a built-in.
+- Take arguments a model can actually produce, such as anchor text or an ordinal, and resolve low-level targets inside the action.
+- Make a Python `run` action `async def` when the host drives an async client, because a synchronous body receives un-awaited coroutines.
+
+It also carries verification discipline. The agent is told to validate every operation against the contract, then run the action against a real document and confirm the change independently rather than trusting a receipt. When no document is available it must label the result a draft. That rule is why the skill is worth installing rather than describing: an agent that cannot verify will otherwise present unverified work as finished.
+
+Worked example packs ship next to the skill file, in both JavaScript and Python.
+
+## Keep it current
+
+`--copy` vendors the file, so it does not update itself. The skill describes an API surface that changes between releases, so re-run the install as part of the change that bumps the SDK. Otherwise the agent follows instructions for a version you no longer run.
+
+## Next
+
+[Custom actions](/agents/build/custom-actions) is the reference this skill teaches. For agents that should edit documents rather than write code, connect the [MCP server](/agents/mcp/connect).

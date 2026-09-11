@@ -1,0 +1,195 @@
+---
+title: Add a custom action
+navTitle: Custom actions
+description: Extend the core preset with your own named document verb, exposed to the model through superdoc_perform_action.
+---
+
+{/* Media decision: none. The page is two execution tiers and one registration call, which the code blocks show directly. */}
+
+The core preset ships a fixed set of built-in actions. A custom action adds one of your own, exposed to the model through the same `superdoc_perform_action` tool and reached by name like any built-in. Use it when your product has a document operation the built-ins do not cover, or a house-style sequence you want the model to invoke as one verb.
+
+A custom action is deterministic application code. It runs in your process, and it decides what happens to the document. The model only chooses to call it and supplies arguments.
+
+## Define an action
+
+`defineAction` builds an action spec from a name, a description the model reads, a JSON Schema for the arguments, and exactly one execution tier.
+
+Namespace the name as `superdoc.<verb>`. A name that collides with a built-in is rejected when the toolkit is built, rather than silently shadowing it.
+
+There are two tiers. A `run` action calls your own function and can reach anything the Document API exposes. A `steps` action composes built-in core actions and needs no code. Reach for `run` when the operation is beyond the built-ins, and drop to `steps` when they already cover it.
+
+### The run tier
+
+A run action calls your function with the session-bound document handle. Reach for it when the operation needs a Document API namespace the action registry does not expose, such as footnotes, headers and footers, bookmarks, or table borders.
+
+```ts
+import { defineAction } from '@superdoc/sdk';
+
+const addFootnote = defineAction({
+  name: 'superdoc.add_footnote',
+  description: 'Insert a footnote whose marker lands immediately after the given anchor text.',
+  input: {
+    type: 'object',
+    properties: {
+      anchorText: { type: 'string' },
+      content: { type: 'string' },
+    },
+    required: ['anchorText', 'content'],
+  },
+  run: async (doc, args) => {
+    const anchor = String(args.anchorText);
+    const { blocks } = await doc.blocks.list({ includeText: true });
+    for (const block of blocks) {
+      const index = (block.text ?? '').indexOf(anchor);
+      if (index < 0) continue;
+      const end = index + anchor.length;
+      const at = { kind: 'text', segments: [{ blockId: block.nodeId, range: { start: end, end } }] };
+      const inserted = await doc.footnotes.insert({ at, content: String(args.content) });
+      const after = await doc.footnotes.list({});
+      return { inserted, footnoteCount: after.total };
+    }
+    throw new Error(`anchorText ${JSON.stringify(anchor)} was not found in any block.`);
+  },
+});
+```
+
+Two rules make a run action usable by a model. Take arguments the model can produce, such as anchor text or an ordinal, and resolve low-level targets inside the action rather than asking a caller for a ref. Pass `includeText: true` when you search block text, because the default preview is truncated and an anchor late in a paragraph would never match.
+
+Throw on failure. The thrown error becomes a failed receipt whose message sits at `errors[0].message`, not at a top-level `error` field.
+
+`input` takes a plain JSON Schema object. A Zod or similar library schema is rejected with an explicit error rather than accepted with its constraints dropped, so convert it first with something like `zod-to-json-schema`.
+
+### The steps tier
+
+A steps action runs a sequence of built-in core actions instead of your own code. When the built-ins can express the operation, this is the lighter option: it inherits their target resolution, placement handling, and verified receipts, and the result is pure data that behaves the same from Node.js and Python.
+
+```ts
+import { defineAction } from '@superdoc/sdk';
+
+const stampBanner = defineAction({
+  name: 'superdoc.stamp_banner',
+  description: 'Insert a confidentiality banner at the top of the document and flag it for review.',
+  input: {
+    type: 'object',
+    properties: { label: { type: 'string', default: 'CONFIDENTIAL' } },
+  },
+  steps: [
+    { action: 'insert_paragraphs', args: { texts: ['{{label}}'], placement: { at: 'document_start' } } },
+    {
+      action: 'add_comments',
+      args: {
+        selectors: [{ kind: 'textSearch', terms: ['{{label}}'], occurrence: 1 }],
+        commentText: 'Verify distribution before sending.',
+      },
+    },
+  ],
+});
+```
+
+Templating has two forms. A step argument that is exactly `'{{label}}'` substitutes the raw argument value, so arrays and objects survive intact. A placeholder with text around it, `'Stamped: {{label}}'`, interpolates into a string. Schema defaults apply before templating, so the example above stamps `CONFIDENTIAL` when the model omits `label`.
+
+A caller's `changeMode` flows into every step that does not pin its own, so a tracked dispatch produces tracked steps without the action restating it.
+
+## Register with the toolkit
+
+Pass the specs as `customActions`. The toolkit builds the extended preset internally, so there is no preset to name, register, or thread through later dispatch calls.
+
+```ts
+import { createAgentToolkit } from '@superdoc/sdk';
+
+const { tools, systemPrompt, dispatch } = await createAgentToolkit({
+  provider: 'openai',
+  customActions: [stampBanner, addFootnote],
+});
+```
+
+The action enum, the tool description, the system prompt, and the dispatcher all move together, so a custom action cannot be advertised without being callable, or callable without being documented.
+
+Two optional inputs shape the surface:
+
+| Input            | Effect                                                                       |
+| ---------------- | ---------------------------------------------------------------------------- |
+| `base`           | Extend a preset other than `core`                                            |
+| `includeActions` | Keep only these built-ins beside your own. `[]` yields a custom-only surface |
+
+`excludeActions` still applies to the built-ins, and the two can be combined with your custom actions in one call.
+
+Dispatch arguments are flat, exactly as for a built-in:
+
+```ts
+const receipt = await dispatch(doc, 'superdoc_perform_action', {
+  action: 'superdoc.add_footnote',
+  anchorText: 'the report',
+  content: 'See appendix B.',
+});
+```
+
+Nesting them under an `args` key fails with an unknown-argument error.
+
+## Read a custom-action receipt
+
+<Callout variant='warning' title='Custom actions report a different status'>
+  A custom action reports `succeeded`, `partial`, or `failed`. The built-in core actions report `ok`. A loop that treats
+  only `ok` as success will misread every custom action as a failure.
+</Callout>
+
+A steps receipt carries a `steps` array with one row per built-in it ran, and each row holds that built-in's own `ok` status. A `partial` aggregate means some steps landed and the receipt names which one failed and why.
+
+A run receipt is synthesized around your return value, with `preRevision` and `postRevision`, plus `partialMutation` and a recovery hint when the function throws. The [action reference](/agents/build/actions#receipts) covers the built-in receipt shape those rows follow.
+
+## Python
+
+The Python SDK exposes the same two tiers through `define_action`, with `input_schema` in place of `input`:
+
+```python
+from superdoc import create_agent_toolkit, define_action
+
+stamp_banner = define_action(
+    name="superdoc.stamp_banner",
+    description="Insert a confidentiality banner at the top of the document.",
+    input_schema={
+        "type": "object",
+        "properties": {"label": {"type": "string", "default": "CONFIDENTIAL"}},
+    },
+    steps=[
+        {
+            "action": "insert_paragraphs",
+            "args": {"texts": ["{{label}}"], "placement": {"at": "document_start"}},
+        },
+    ],
+)
+
+kit = create_agent_toolkit({"provider": "openai", "customActions": [stamp_banner]})
+```
+
+<Callout variant='warning' title='Match the handle your application uses'>
+  On an `AsyncSuperDocClient`, or when the application dispatches through `dispatch_async`, a `run` action must be
+  `async def` and must await every `doc.*` call. A synchronous body on an async handle receives un-awaited coroutines
+  and fails with `'coroutine' object is not subscriptable`. Steps actions need no change.
+</Callout>
+
+## Verify before shipping
+
+Validate the contract first, without needing a document. Confirm every operation the action calls, and that your argument shapes match, through the client's own description:
+
+```ts
+console.log(await client.describeCommand({ operationId: 'footnotes.insert' }));
+```
+
+Do not confirm an argument by watching a call succeed. Some operations ignore an unknown argument and still report success, so a green result can hide a parameter that did nothing.
+
+Then run the action against a copy of a real document and require two things: a `succeeded` receipt, and independent evidence the document changed. Re-inspect for that evidence rather than trusting the receipt, by listing footnotes for a higher count or listing blocks for the new banner. When no suitable document exists, `client.open({})` starts a session on a blank one you can build the conditions into.
+
+## Generate an action with a coding agent
+
+The `superdoc-custom-actions` skill walks Claude Code or Codex through this page's workflow: choosing a tier, defining the action, wiring it into the toolkit, and testing it against a document. Install it from your application's root directory:
+
+```bash
+npx skills add superdoc/docx-editor/packages/sdk/skills/superdoc-custom-actions --copy
+```
+
+Then ask for the operation you need, such as an action that inserts a footnote after a piece of text. The skill instructs the agent to verify against a real document where one is available, and to label the action a draft when it could not.
+
+## Next
+
+[Skills](/agents/build/skills) covers both packaged skills and how each is installed. [Tools and presets](/agents/build/tools) covers the surface your actions extend.

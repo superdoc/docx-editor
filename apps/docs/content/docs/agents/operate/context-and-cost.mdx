@@ -1,0 +1,78 @@
+---
+title: Manage context and cost
+navTitle: Context and cost
+description: Keep the static prefix cached, keep inspect results small, and narrow the surface so a run fits its token budget.
+---
+
+{/* Media decision: none. The cost model is a short list of what repeats per turn, stated once in prose. */}
+
+Every model turn resends the tool definitions, the system prompt, and the whole conversation so far. The core system prompt is long by design, because it teaches document vocabulary the schema cannot, and every tool result stays in history for the rest of the run. Left alone, a document-editing loop grows its prompt on every turn and can hit per-minute token limits within a few tool calls.
+
+Three levers keep that in check. Cache what repeats, shrink what the model reads, and advertise only what the workflow needs.
+
+## Cache the static prefix
+
+Tool definitions and the system prompt do not change between requests, so build the toolkit once at startup and reuse it across conversations:
+
+```ts
+import { createAgentToolkit } from '@superdoc/sdk';
+
+let toolkit: Awaited<ReturnType<typeof createAgentToolkit>> | undefined;
+
+export async function getToolkit() {
+  toolkit ??= await createAgentToolkit({ provider: 'anthropic', preset: 'core', cache: true });
+  return toolkit;
+}
+```
+
+`cache: true` asks the preset for provider-specific cache markers, and `meta.cacheStrategy` reports what happened:
+
+| Provider    | `cacheStrategy` | What the SDK did                                                        |
+| ----------- | --------------- | ----------------------------------------------------------------------- |
+| `anthropic` | `explicit`      | Marked the tool array with `cache_control` so the tools block is cached |
+| `openai`    | `automatic`     | Nothing. The provider caches long prompts on its own                    |
+| `vercel`    | `unsupported`   | Nothing. Caching depends on the model behind the adapter                |
+| `generic`   | `unsupported`   | Nothing                                                                 |
+
+For Anthropic, the system prompt is the other half of the prefix. Fetch it with `getSystemPromptForProvider({ provider: 'anthropic', preset: 'core', cache: true })` and pass its `content` as the `system` parameter. [Connect a model provider](/agents/build/providers#anthropic) shows both together. A cache is a prefix match, so anything that varies per request, such as a timestamp or a document name, belongs after the toolkit prompt rather than inside it.
+
+## Inspect narrowly
+
+`superdoc_inspect` is where most tokens go, because the model is tempted to read the whole document. The system prompt already steers it toward small reads. Reinforce that in your appended instructions when documents are long, and know what the arguments do:
+
+- `countsOnly: true` for orientation.
+- `includeDomains` to fetch only the domains the task touches.
+- `findText` to locate a phrase server-side instead of paging windows to find it.
+- `blockOffset` and `blockLimit` for sequential reading. Ordinals are absolute, so windows line up.
+- `omitEmptyBlocks`, `dropTextPreview`, and `blockTextLimit` to trim a reading pass.
+- `includeListItemRuns: false` when list formatting does not matter, since runs are attached by default.
+
+The [action reference](/agents/build/actions#superdoc_inspect) lists every argument.
+
+## Batch with arguments, not calls
+
+Several actions take a batch argument so one call covers many targets. `replace_text` takes `edits[]`, `add_comments` takes `selectors[]`, `format_text` takes `targetTexts[]`, and `delete_blocks` takes `selectors[]`. One call means one receipt in history instead of many.
+
+## Narrow the surface
+
+`excludeActions` removes an action from the tool enum, from the system prompt, and from dispatch together. A product that never deletes tables or fills placeholders should say so once:
+
+```ts
+const toolkit = await createAgentToolkit({
+  provider: 'openai',
+  preset: 'core',
+  excludeActions: ['delete_table', 'fill_placeholders'],
+});
+```
+
+A smaller surface is cheaper on every turn and gives the model fewer wrong choices. [Tools and presets](/agents/build/tools#narrow-the-surface) covers the mechanics.
+
+## Bound the loop and the history
+
+Cap turns explicitly, as [Build an agent](/agents/build/build-an-agent#keep-the-loop-bounded) does, so a confused model produces an error rather than an exhausted budget. When a single run legitimately needs many turns, compact history by removing whole exchanges: the assistant message that made the tool calls together with every tool result that answered it, replaced by one plain assistant or user message summarizing what happened. Removing a result while its call remains, or the reverse, produces a conversation the provider rejects. Never drop the system prompt or the tool definitions.
+
+Expect rate limiting on low provider tiers, and treat a 429 as a retry with backoff rather than a failure of the run. Plan for it before the first production document rather than after.
+
+## Next
+
+[Debug an agent run](/agents/operate/debugging) covers what to do when a loop repeats itself. [Safety](/agents/operate/safety) covers the boundaries that matter once cost is under control.

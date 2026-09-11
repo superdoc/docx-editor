@@ -1,0 +1,74 @@
+---
+title: Edit a DOCX from a coding agent
+navTitle: First document task
+description: Make one tracked edit with your coding agent, save a copy, and review the result in the Editor.
+---
+
+Use your [connected coding agent](/agents/mcp/connect) to replace a term in a sample contract and save a copy.
+The edit will be a tracked change: a proposal you can accept or reject after seeing it in the document.
+
+## 1. Prepare the sample
+
+Download the synthetic NDA and save it as `contract.docx` in a folder your agent can access. It contains the term
+`termination` and one existing tracked change.
+
+<FileDownload
+  href='/fixtures/tracked-changes.docx'
+  label='Download the sample contract'
+  description='Synthetic NDA with one tracked change'
+  fileType='DOCX'
+/>
+
+Find the file's absolute path. For example, a macOS path might be `/Users/me/docs/contract.docx`.
+Use your actual path in the next step. A wrong path can open a blank document instead of the sample.
+
+## 2. Ask for an edit
+
+Give the agent this instruction, replacing both paths with yours. Choose an output filename that does not already
+exist: MCP overwrites an existing output without asking. Use a new filename when repeating the task.
+
+> Open `/Users/me/docs/contract.docx` with SuperDoc. Replace every occurrence of "termination" with "cancellation" as a tracked change. Save the result to `/Users/me/docs/contract.reviewed.docx` and close the session. Do not overwrite the original.
+
+Watch the tool calls in your client. The agent should open and inspect the document, make the replacement, save the new
+file, and close it. Opening creates a session: the working document that subsequent tool calls read or change.
+
+If a tool reports a failure or the agent cannot find the term, stop and check the path and result before retrying.
+[Debug the MCP server](/agents/mcp/debugging) explains common failures.
+
+## 3. Review your saved copy
+
+Expand the Editor below. Select **Open your DOCX** and choose `contract.reviewed.docx` from the previous step.
+This opens your saved output for review; the embedded Editor does not run the agent or connect to your model provider.
+
+<EditorDemo
+  allowLocalFile
+  fixture='/fixtures/tracked-changes.docx'
+  preset='tracked-review'
+  title='Review your agent’s edited DOCX'
+/>
+
+The initial sample is the original NDA, not an agent result. Load your saved copy to check your run.
+Find the replacements: `termination` should be marked as deleted and `cancellation` as inserted. The sample's existing
+tracked change should still be present. Your original `contract.docx` should remain unchanged.
+
+Try accepting or rejecting a replacement with the review controls. This changes the browser preview; it does not write
+back to your saved copy. To save your review decisions, open `contract.reviewed.docx` in Microsoft Word and review it there.
+
+## What happened behind the edit
+
+The model chose a replacement tool call. SuperDoc applied it to the open document and returned a **receipt**, a
+structured result describing the operation. The agent then saved the document to the requested output path.
+
+In the client, find the `superdoc_perform_action` call. Its arguments should include `action: "replace_text"` and
+`changeMode: "tracked"`. The latter records the replacement as a proposal instead of a direct edit.
+
+The result should report `status: "ok"`. If it includes `verificationPassed`, that should be `true`. These checks help
+confirm that the operation ran, but the document review is how you check that it did what you intended.
+
+For the complete result fields and failure handling, see [Read the receipts](/agents/build/build-an-agent#read-the-receipts).
+You do not need the full action reference to repeat this task with another term.
+
+## Continue to a review workflow
+
+[Review tracked changes](/agents/workflows/review-tracked-changes) explains how to keep an automated proposal separate
+from a person's final decision. Keep the original, proposed copy, and reviewed output as separate files.

@@ -132,34 +132,55 @@ const applyInlineBoxStyle = (
   element.style.boxSizing = 'border-box';
   element.style.height = `${box.height}px`;
   if (!element.style.lineHeight) element.style.lineHeight = `${contentLineHeight}px`;
-  element.style.paddingTop = `${box.style.paddingBlockStart}px`;
-  element.style.paddingBottom = `${box.style.paddingBlockEnd}px`;
-  element.style.paddingLeft = isFirstLeaf ? `${box.style.paddingInlineStart}px` : '0px';
-  element.style.paddingRight = isLastLeaf ? `${box.style.paddingInlineEnd}px` : '0px';
-  element.style.marginLeft = isFirstLeaf && box.startsRange ? `${box.style.gapBefore}px` : '0px';
-  element.style.marginRight = isLastLeaf && box.endsRange ? `${box.style.gapAfter}px` : '0px';
-  element.style.borderTop = border;
-  element.style.borderBottom = border;
-  element.style.borderLeft = isFirstLeaf ? border : '0px';
-  element.style.borderRight = isLastLeaf ? border : '0px';
+  /*
+   * Logical properties, not physical ones. `LineInlineBox.style` is already
+   * expressed on the logical axes (`paddingInlineStart`, `gapBefore`), and
+   * `isFirstLeaf`/`isLastLeaf` are logical too — they index the covered leaves in
+   * document order. Writing `padding-left` for `paddingInlineStart` silently
+   * assumes those two coincide, which holds only in LTR.
+   *
+   * The browser does the mapping: logical properties resolve against the
+   * element's own computed direction, and the leaf inherits it from the line
+   * element, which the renderer already marks (`el.dir`). So an RTL line puts
+   * the inline start on the right with no direction arithmetic here.
+   */
+  element.style.paddingBlockStart = `${box.style.paddingBlockStart}px`;
+  element.style.paddingBlockEnd = `${box.style.paddingBlockEnd}px`;
+  element.style.paddingInlineStart = isFirstLeaf ? `${box.style.paddingInlineStart}px` : '0px';
+  element.style.paddingInlineEnd = isLastLeaf ? `${box.style.paddingInlineEnd}px` : '0px';
+  element.style.marginInlineStart = isFirstLeaf && box.startsRange ? `${box.style.gapBefore}px` : '0px';
+  element.style.marginInlineEnd = isLastLeaf && box.endsRange ? `${box.style.gapAfter}px` : '0px';
+  element.style.borderBlockStart = border;
+  element.style.borderBlockEnd = border;
+  element.style.borderInlineStart = isFirstLeaf ? border : '0px';
+  element.style.borderInlineEnd = isLastLeaf ? border : '0px';
   if (box.style.backgroundColor != null) element.style.backgroundColor = box.style.backgroundColor;
   if (box.style.color != null) element.style.color = box.style.color;
-  element.style.borderTopLeftRadius = isFirstLeaf ? `${radius}px` : '0px';
-  element.style.borderBottomLeftRadius = isFirstLeaf ? `${radius}px` : '0px';
-  element.style.borderTopRightRadius = isLastLeaf ? `${radius}px` : '0px';
-  element.style.borderBottomRightRadius = isLastLeaf ? `${radius}px` : '0px';
+  element.style.borderStartStartRadius = isFirstLeaf ? `${radius}px` : '0px';
+  element.style.borderEndStartRadius = isFirstLeaf ? `${radius}px` : '0px';
+  element.style.borderStartEndRadius = isLastLeaf ? `${radius}px` : '0px';
+  element.style.borderEndEndRadius = isLastLeaf ? `${radius}px` : '0px';
 };
 
-/** Paints measured LTR inline-box slices on the canonical text leaves. */
-export const paintInlineBoxes = (
-  boxes: readonly LineInlineBox[] | undefined,
-  lineElement: HTMLElement,
-  isRtl: boolean,
-): void => {
+/**
+ * Paints measured inline-box slices on the canonical text leaves.
+ *
+ * Direction-agnostic: every edge is written on a logical axis, so the same call
+ * is correct for an LTR and an RTL line.
+ *
+ * Known limitation, not a guarantee: nothing filters out a range that straddles
+ * a direction change. Such a range maps to more than one visual segment, and
+ * `isFirstLeaf`/`isLastLeaf` can only mark one start and one end, so the box
+ * gets its edges on the wrong fragments. That predates the logical properties —
+ * the Unicode Bidi Algorithm reorders a Hebrew phrase inside a Latin paragraph
+ * whether or not anything declares `w:rtl`, and such a paragraph was never
+ * gated. Fixing it means painting per visual segment, which is a change to
+ * `Line.segments` rather than to this file.
+ */
+export const paintInlineBoxes = (boxes: readonly LineInlineBox[] | undefined, lineElement: HTMLElement): void => {
   if (!boxes?.length) return;
 
   const leafRanges = collectTextLeafRanges(lineElement);
-  if (isRtl) return;
   for (const box of boxes) {
     const coveredLeaves = leafRanges.filter(
       ({ from, to }) => Number.isFinite(from) && Number.isFinite(to) && from < box.to && to > box.from,

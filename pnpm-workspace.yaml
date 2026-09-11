@@ -156,7 +156,7 @@ overrides:
   protobufjs@8: '8.6.4'
   superdoc: 'workspace:*'
   '@superdoc/react': 'workspace:*'
-  '@superdoc/sdk': '2.11.1-next.3'
+  '@superdoc/sdk': '2.11.1-next.4'
   '@superdoc/common': 'workspace:*'
   '@superdoc/contracts': 'workspace:*'
   '@superdoc/dom-contract': 'workspace:*'
@@ -190,10 +190,10 @@ peerDependencyRules:
     vite: 0.2.7
     vitest: 4.1.10
 minimumReleaseAgeExclude:
-  - '@superdoc/docx-engine@0.13.0-next.8 || 0.13.0-next.9 || 0.13.0-next.10 || 0.13.0-next.11 || 0.13.0 || 0.13.1-next.1 || 0.13.1-next.2'
-  - '@superdoc/sdk-darwin-arm64@2.11.0-next.10 || 2.11.0-next.11 || 2.11.0-next.12 || 2.11.0-next.13 || 2.11.0 || 2.11.1-next.1 || 2.11.1-next.2 || 2.11.1-next.3'
-  - '@superdoc/sdk-darwin-x64@2.11.0-next.10 || 2.11.0-next.11 || 2.11.0-next.12 || 2.11.0-next.13 || 2.11.0 || 2.11.1-next.1 || 2.11.1-next.2 || 2.11.1-next.3'
-  - '@superdoc/sdk-linux-arm64@2.11.0-next.10 || 2.11.0-next.11 || 2.11.0-next.12 || 2.11.0-next.13 || 2.11.0 || 2.11.1-next.1 || 2.11.1-next.2 || 2.11.1-next.3'
-  - '@superdoc/sdk-linux-x64@2.11.0-next.10 || 2.11.0-next.11 || 2.11.0-next.12 || 2.11.0-next.13 || 2.11.0 || 2.11.1-next.1 || 2.11.1-next.2 || 2.11.1-next.3'
-  - '@superdoc/sdk-windows-x64@2.11.0-next.10 || 2.11.0-next.11 || 2.11.0-next.12 || 2.11.0-next.13 || 2.11.0 || 2.11.1-next.1 || 2.11.1-next.2 || 2.11.1-next.3'
-  - '@superdoc/sdk@2.11.0-next.10 || 2.11.0-next.11 || 2.11.0-next.12 || 2.11.0-next.13 || 2.11.0 || 2.11.1-next.1 || 2.11.1-next.2 || 2.11.1-next.3'
+  - '@superdoc/docx-engine@0.13.0-next.8 || 0.13.0-next.9 || 0.13.0-next.10 || 0.13.0-next.11 || 0.13.0 || 0.13.1-next.1 || 0.13.1-next.2 || 0.13.1-next.3'
+  - '@superdoc/sdk-darwin-arm64@2.11.0-next.10 || 2.11.0-next.11 || 2.11.0-next.12 || 2.11.0-next.13 || 2.11.0 || 2.11.1-next.1 || 2.11.1-next.2 || 2.11.1-next.3 || 2.11.1-next.4'
+  - '@superdoc/sdk-darwin-x64@2.11.0-next.10 || 2.11.0-next.11 || 2.11.0-next.12 || 2.11.0-next.13 || 2.11.0 || 2.11.1-next.1 || 2.11.1-next.2 || 2.11.1-next.3 || 2.11.1-next.4'
+  - '@superdoc/sdk-linux-arm64@2.11.0-next.10 || 2.11.0-next.11 || 2.11.0-next.12 || 2.11.0-next.13 || 2.11.0 || 2.11.1-next.1 || 2.11.1-next.2 || 2.11.1-next.3 || 2.11.1-next.4'
+  - '@superdoc/sdk-linux-x64@2.11.0-next.10 || 2.11.0-next.11 || 2.11.0-next.12 || 2.11.0-next.13 || 2.11.0 || 2.11.1-next.1 || 2.11.1-next.2 || 2.11.1-next.3 || 2.11.1-next.4'
+  - '@superdoc/sdk-windows-x64@2.11.0-next.10 || 2.11.0-next.11 || 2.11.0-next.12 || 2.11.0-next.13 || 2.11.0 || 2.11.1-next.1 || 2.11.1-next.2 || 2.11.1-next.3 || 2.11.1-next.4'
+  - '@superdoc/sdk@2.11.0-next.10 || 2.11.0-next.11 || 2.11.0-next.12 || 2.11.0-next.13 || 2.11.0 || 2.11.1-next.1 || 2.11.1-next.2 || 2.11.1-next.3 || 2.11.1-next.4'

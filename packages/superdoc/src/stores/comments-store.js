@@ -2104,6 +2104,74 @@ export const useCommentsStore = defineStore('comments', () => {
     return Promise.resolve({ ok: true });
   };
 
+  /**
+   * Drop comment cards retired by a document mutation (cut of a fully covered
+   * comment). Visible-window hydration does not prune, so the sidebar would
+   * otherwise keep the source bubble after the document comment is gone.
+   */
+  const dropCommentsFromMutationImpact = ({ superdoc, documentId, removedIds } = {}) => {
+    const seedIds = new Set(
+      [...(removedIds instanceof Set ? removedIds : (removedIds ?? []))]
+        .map((id) => normalizeCommentId(id))
+        .filter(Boolean),
+    );
+    if (!seedIds.size) return { ok: true, removedIds: [] };
+
+    const normalizedDocumentId = documentId != null ? String(documentId) : null;
+    const belongsToDocument = (comment) => {
+      if (normalizedDocumentId == null) return true;
+      const fid = comment?.fileId != null ? String(comment.fileId) : null;
+      if (fid == null) return true;
+      return fid === normalizedDocumentId;
+    };
+    const isDroppableCommentRow = (comment) => {
+      if (!comment || comment.trackedChange === true || isV2SyntheticTrackedChangeRow(comment)) return false;
+      return belongsToDocument(comment);
+    };
+
+    const droppedIds = new Set(seedIds);
+    let added = true;
+    while (added) {
+      added = false;
+      for (const row of commentsList.value) {
+        if (!isDroppableCommentRow(row)) continue;
+        const aliases = getCommentAliasIds(row);
+        const alreadyDropped = aliases.some((alias) => droppedIds.has(alias));
+        const parentDropped =
+          droppedIds.has(normalizeCommentId(row?.parentCommentId)) ||
+          droppedIds.has(normalizeCommentId(row?.threadingParentCommentId));
+        if (!alreadyDropped && !parentDropped) continue;
+        for (const alias of aliases) {
+          if (droppedIds.has(alias)) continue;
+          droppedIds.add(alias);
+          added = true;
+        }
+      }
+    }
+
+    const previous = [...commentsList.value];
+    commentsList.value = commentsList.value.filter((row) => {
+      if (!isDroppableCommentRow(row)) return true;
+      return !getCommentAliasIds(row).some((alias) => droppedIds.has(alias));
+    });
+    const removedComments = previous.filter((comment) => !commentsList.value.includes(comment));
+    if (removedComments.length === 0) return { ok: true, removedIds: [] };
+
+    const activeId = normalizeCommentId(activeComment.value);
+    if (activeId && droppedIds.has(activeId)) clearActiveCommentSelection();
+
+    removedComments.forEach((comment) => {
+      const payload = typeof comment.getValues === 'function' ? comment.getValues() : comment;
+      const event = {
+        type: COMMENT_EVENTS.DELETED,
+        comment: payload,
+        changes: [{ key: 'deleted', commentId: payload?.commentId, fileId: payload?.fileId }],
+      };
+      superdoc?.emit?.('comments-update', event);
+    });
+    return { ok: true, removedIds: [...droppedIds] };
+  };
+
   // TCS Phase 0 / 004: store-owned v2 comment mutation helpers for reply,
   // edit, and resolve. The store owns: adapter identity stamping, capability
   // gating, success/rejection event emission, active-row clearing semantics,
@@ -5740,6 +5808,7 @@ export const useCommentsStore = defineStore('comments', () => {
     applyReviewWindowFromV2,
     reconcileCommentsFromV2,
     announceV2CommentCreated,
+    dropCommentsFromMutationImpact,
     isV2EditorActive,
 
     // TCS Phase 0 / 004: store-owned v2 comment mutation helpers.

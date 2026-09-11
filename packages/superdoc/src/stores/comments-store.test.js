@@ -3301,6 +3301,109 @@ describe('comments-store getComment id resolution', () => {
   });
 });
 
+describe('comments-store cut comment invalidation', () => {
+  let store;
+  let superdoc;
+
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    const superdocStore = useSuperdocStore();
+    superdocStore.documents = [
+      { id: 'doc-1', type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' },
+    ];
+    store = useCommentsStore();
+    superdoc = { emit: vi.fn() };
+  });
+
+  it('drops the source comment and its replies when a cut receipt invalidates it', () => {
+    store.commentsList = [
+      useComment({ commentId: '0', fileId: 'doc-1', commentText: 'Source review comment' }),
+      useComment({
+        commentId: '1',
+        fileId: 'doc-1',
+        parentCommentId: '0',
+        commentText: 'Reply',
+      }),
+      makeTrackedChangeRow({ commentId: 'tc-1' }),
+    ];
+    store.activeComment = '0';
+
+    const result = store.dropCommentsFromMutationImpact({
+      superdoc,
+      documentId: 'doc-1',
+      removedIds: new Set(['0']),
+    });
+
+    expect(result.ok).toBe(true);
+    expect(store.commentsList.map((row) => row.commentId).sort()).toEqual(['tc-1']);
+    expect(store.activeComment).toBeNull();
+    expect(superdoc.emit).toHaveBeenCalledWith('comments-update', expect.objectContaining({ type: 'deleted' }));
+  });
+
+  it('does not drop tracked-change rows that share a numeric Word id', () => {
+    store.commentsList = [
+      useComment({ commentId: '0', fileId: 'doc-1', commentText: 'Source review comment' }),
+      makeTrackedChangeRow({ commentId: '0' }),
+    ];
+
+    store.dropCommentsFromMutationImpact({
+      superdoc,
+      documentId: 'doc-1',
+      removedIds: new Set(['0']),
+    });
+
+    expect(store.commentsList.map((row) => row.commentId)).toEqual(['0']);
+    expect(store.commentsList[0].trackedChange).toBe(true);
+  });
+
+  it('drops a sidebar row whose imported Word id was invalidated', () => {
+    store.commentsList = [
+      useComment({
+        commentId: 'uuid-comment',
+        importedId: '0',
+        fileId: 'doc-1',
+        commentText: 'Source review comment',
+      }),
+      useComment({
+        commentId: 'uuid-reply',
+        importedId: '1',
+        fileId: 'doc-1',
+        parentCommentId: 'uuid-comment',
+        commentText: 'Reply',
+      }),
+    ];
+    store.activeComment = 'uuid-comment';
+
+    const result = store.dropCommentsFromMutationImpact({
+      superdoc,
+      documentId: 'doc-1',
+      removedIds: new Set(['0']),
+    });
+
+    expect(result.ok).toBe(true);
+    expect(store.commentsList).toEqual([]);
+    expect(store.activeComment).toBeNull();
+  });
+
+  it('leaves a neighbouring comment in the sidebar when only one identity is invalidated', () => {
+    store.commentsList = [
+      useComment({ commentId: '0', fileId: 'doc-1', commentText: 'Source review comment' }),
+      useComment({ commentId: '1', fileId: 'doc-1', commentText: 'Neighbour review comment' }),
+    ];
+    store.activeComment = '0';
+
+    const result = store.dropCommentsFromMutationImpact({
+      superdoc,
+      documentId: 'doc-1',
+      removedIds: new Set(['0']),
+    });
+
+    expect(result.ok).toBe(true);
+    expect(store.commentsList.map((row) => row.commentId)).toEqual(['1']);
+    expect(store.activeComment).toBeNull();
+  });
+});
+
 describe('comments-store committed review-window apply', () => {
   let store;
   let superdoc;

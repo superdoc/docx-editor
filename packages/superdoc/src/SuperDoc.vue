@@ -40,7 +40,10 @@ import { useCompactCommentPopover } from './composables/use-compact-comment-popo
 import { getVisibleThreadAnchorClientY } from './helpers/comment-focus.js';
 import { mergeCommentsConfig } from './core/config/merge-comments-config.js';
 import { normalizeHyperlinksConfig } from './core/config/normalize-hyperlinks-config.js';
-import { getV2TrackedChangeMutationImpact } from './helpers/v2-review-mutation-impact.js';
+import {
+  applyV2CommentInvalidationFromMutation,
+  getV2TrackedChangeMutationImpact,
+} from './helpers/v2-review-mutation-impact.js';
 import { resolveV2ReviewTargetCommentId } from './helpers/v2-review-target.js';
 import {
   createV2AuthorRequiredNotificationGate,
@@ -1935,6 +1938,12 @@ const onV2HostEvent = (document, event) => {
     v2ReviewWindowController.refreshCommittedWindow('review-sidecar-committed');
   }
   const reviewImpact = getV2TrackedChangeMutationImpact(event);
+  applyV2CommentInvalidationFromMutation({
+    event,
+    commentsStore,
+    superdoc: proxy.$superdoc,
+    documentId,
+  });
   if (Array.isArray(reviewImpact?.remappedPairs) && reviewImpact.remappedPairs.length > 0) {
     // Keep the comments-list row continuous across review-group identity remaps
     // (common on the first keystroke after Enter in suggesting mode).

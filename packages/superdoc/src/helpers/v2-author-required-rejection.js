@@ -1,10 +1,4 @@
-// Recognize a v2 host `mutation:rejected` event that means "an author identity
-// is required" (plan 06). The v2 kernel fail-closes revision-overlap and
-// tracked authoring with `no-author-configured` when no current author is
-// configured; the adapter maps that to the public `PRECONDITION_FAILED`
-// receipt. A normally-mounted SuperDoc always has an author (DEFAULT_USER), so
-// this only fires for a lower-level/authorless session — the shell turns it
-// into ONE non-terminal, actionable notification rather than a silent drop.
+import { createV2MutationRejectionNotificationGate } from './v2-mutation-exception.js';
 
 const NO_AUTHOR_SIGNAL = 'no-author-configured';
 
@@ -42,25 +36,6 @@ export function isV2AuthorRequiredRejection(event) {
   return false;
 }
 
-/**
- * Deduplicate the non-terminal notification per mounted document/session.
- * A successful mutation or a reopened session clears only its own scope, so a
- * rejection in one document cannot silence another document in the same
- * SuperDoc instance.
- */
 export function createV2AuthorRequiredNotificationGate() {
-  const notifiedScopes = new Set();
-  const keyFor = (scope) => (typeof scope === 'string' && scope.length > 0 ? scope : '__default__');
-  return {
-    shouldNotify(scope, event) {
-      if (!isV2AuthorRequiredRejection(event)) return false;
-      const key = keyFor(scope);
-      if (notifiedScopes.has(key)) return false;
-      notifiedScopes.add(key);
-      return true;
-    },
-    clear(scope) {
-      notifiedScopes.delete(keyFor(scope));
-    },
-  };
+  return createV2MutationRejectionNotificationGate(isV2AuthorRequiredRejection);
 }

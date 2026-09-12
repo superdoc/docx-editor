@@ -22,6 +22,7 @@ import {
 } from './application.js';
 import { ptToPx } from '../utilities.js';
 import type { TextRun, PMMark, TrackedChangeMeta } from '../types.js';
+import type { TabRun } from '@superdoc/contracts';
 
 describe('mark application', () => {
   describe('normalizeRunMarkList', () => {
@@ -1088,6 +1089,20 @@ describe('mark application', () => {
       ]);
 
       expect(run.trackedChange?.kind).toBe('insert');
+      expect(run.trackedChange?.author).toBe('John');
+    });
+
+    it('applies tracked change marks to a tab run (SD-3376)', () => {
+      const run = { kind: 'tab', text: '\t' } as TabRun;
+      applyMarksToRun(run as unknown as TextRun, [
+        {
+          type: TRACK_INSERT_MARK,
+          attrs: { id: 'tab-insert', author: 'John' },
+        },
+      ]);
+
+      expect(run.trackedChange?.kind).toBe('insert');
+      expect(run.trackedChange?.id).toBe('tab-insert');
       expect(run.trackedChange?.author).toBe('John');
     });
 

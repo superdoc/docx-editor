@@ -16,6 +16,7 @@ export const CLASS_NAMES = {
   pageHeader: 'superdoc-page-header',
   pageFooter: 'superdoc-page-footer',
   textRun: 'superdoc-text-run',
+  positionedRun: 'superdoc-positioned-run',
 };
 
 export type PageStyles = {

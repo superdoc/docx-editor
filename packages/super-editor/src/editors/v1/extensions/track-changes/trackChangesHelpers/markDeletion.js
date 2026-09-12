@@ -4,6 +4,7 @@ import { Slice } from 'prosemirror-model';
 import { v4 as uuidv4 } from 'uuid';
 import { TrackDeleteMarkName, TrackInsertMarkName } from '../constants.js';
 import { findTrackedMarkBetween } from './findTrackedMarkBetween.js';
+import { isTextLikeInlineAtom } from './inlineAtoms.js';
 import {
   getCurrentUserIdentity,
   getChangeAuthorIdentity,
@@ -88,8 +89,8 @@ export const markDeletion = ({ tr, from, to, user, date, id: providedId }) => {
       return;
     }
 
-    // Skip inline containers (e.g. run), operate on leaf inline nodes only.
-    if (!node.isInline || !node.isLeaf) {
+    // Skip containers; include leaves and text-like non-leaf atoms (e.g. tab) (SD-3376).
+    if (!node.isInline || (!node.isLeaf && !isTextLikeInlineAtom(node))) {
       return;
     }
 

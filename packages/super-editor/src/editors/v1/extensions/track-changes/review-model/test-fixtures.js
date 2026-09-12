@@ -51,6 +51,30 @@ const NODES = {
     toDOM: () => ['td', 0],
   },
   text: { group: 'inline' },
+  // Production-shaped tab node (non-leaf atom) for excerpt tests (SD-3376).
+  tab: {
+    inline: true,
+    atom: true,
+    group: 'inline',
+    content: 'inline*',
+    parseDOM: [{ tag: 'span.sd-editor-tab' }],
+    toDOM: () => ['span', { class: 'sd-editor-tab' }, 0],
+  },
+  noBreakHyphen: {
+    inline: true,
+    atom: true,
+    group: 'inline',
+    leafText: () => '\u2011',
+    parseDOM: [{ tag: 'span.sd-no-break-hyphen' }],
+    toDOM: () => ['span', { class: 'sd-no-break-hyphen' }, '\u2011'],
+  },
+  genericLeaf: {
+    inline: true,
+    atom: true,
+    group: 'inline',
+    parseDOM: [{ tag: 'span.sd-generic-leaf' }],
+    toDOM: () => ['span', { class: 'sd-generic-leaf' }],
+  },
 };
 
 const MARK_DEFS_WITH_GRAPH_ATTRS = {

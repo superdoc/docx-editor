@@ -21,6 +21,7 @@ import {
   type InternalTrackChangeType,
 } from './tracked-change-type-utils.js';
 import { normalizeExcerpt, toNonEmptyString } from './value-utils.js';
+import { textBetweenWithTabs } from './text-with-tabs.js';
 import { resolveStoryRuntime } from '../story-runtime/resolve-story-runtime.js';
 import { buildStoryKey, BODY_STORY_KEY } from '../story-runtime/story-key.js';
 import type { TrackedChangeRuntimeRef } from './tracked-change-runtime-ref.js';
@@ -396,7 +397,8 @@ function hasChildTrackedMarkOnNode(item: RawTrackedMark, parentId: string): bool
 function getTrackedMarkText(editor: Editor, item: RawTrackedMark): string {
   const nodeText = item.node?.text;
   if (typeof nodeText === 'string') return nodeText;
-  return editor.state.doc.textBetween(item.from, item.to, ' ', '\ufffc');
+  // Tab nodes: use tab-aware extraction; PM textBetween drops them (SD-3376).
+  return textBetweenWithTabs(editor.state.doc, item.from, item.to, ' ', '\ufffc');
 }
 
 function rawMarkMatchesChange(mark: RawTrackedMark, change: GroupedTrackedChange): boolean {

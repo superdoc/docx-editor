@@ -582,14 +582,14 @@ const normalizeTrackedChangeLayerList = (layers: TrackedChangeMeta[]): TrackedCh
     .sort(compareTrackedChangeLayers);
 };
 
-const normalizeTrackedChangeLayers = (run: TextRun): TrackedChangeMeta[] => {
+const normalizeTrackedChangeLayers = (run: TextRun | TabRun): TrackedChangeMeta[] => {
   if (Array.isArray(run.trackedChanges) && run.trackedChanges.length > 0) {
     return normalizeTrackedChangeLayerList(run.trackedChanges);
   }
   return run.trackedChange ? normalizeTrackedChangeLayerList([run.trackedChange]) : [];
 };
 
-const appendTrackedChangeLayer = (run: TextRun, meta: TrackedChangeMeta): void => {
+const appendTrackedChangeLayer = (run: TextRun | TabRun, meta: TrackedChangeMeta): void => {
   const layers = normalizeTrackedChangeLayers(run);
   const key = trackedChangeLayerKey(meta);
   if (!layers.some((layer) => trackedChangeLayerKey(layer) === key)) {
@@ -969,12 +969,10 @@ export const applyMarksToRun = (
         case TRACK_INSERT_MARK:
         case TRACK_DELETE_MARK:
         case TRACK_FORMAT_MARK: {
-          // Tracked change marks only apply to TextRun
-          if (!isTabRun) {
-            const tracked = buildTrackedChangeMetaFromMark(mark, storyKey);
-            if (tracked) {
-              appendTrackedChangeLayer(run, tracked);
-            }
+          // Tracked-change marks apply to TabRun too (SD-3376).
+          const tracked = buildTrackedChangeMetaFromMark(mark, storyKey);
+          if (tracked) {
+            appendTrackedChangeLayer(run, tracked);
           }
           break;
         }

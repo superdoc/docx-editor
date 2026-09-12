@@ -6,6 +6,7 @@ import { TextSelection } from 'prosemirror-state';
 import { Slice, Fragment } from 'prosemirror-model';
 import { initTestEditor } from '@tests/helpers/helpers.js';
 import { Editor } from '@core/Editor.js';
+import { handleBackspace } from '@core/extensions/keymap.js';
 import { CustomSelectionPluginKey } from '@core/selection-state.js';
 import { getTrackChanges } from '@extensions/track-changes/trackChangesHelpers/getTrackChanges.js';
 import { TrackDeleteMarkName, TrackInsertMarkName } from '@extensions/track-changes/constants.js';
@@ -147,6 +148,19 @@ const setDocumentWithTrackedDeletion = (editor, { author = ALICE, id = FOREIGN_D
 };
 
 const firstBlockId = (editor) => editor.state.doc.firstChild?.attrs?.sdBlockId ?? TEST_PARAGRAPH_BLOCK_ID;
+
+const findFirstNode = (editor, typeName) => {
+  let found = null;
+  editor.state.doc.descendants((node, pos) => {
+    if (found) return false;
+    if (node.type.name === typeName) {
+      found = { node, pos };
+      return false;
+    }
+    return undefined;
+  });
+  return found;
+};
 const deleteText = (editor, text) => {
   const { from, to } = findTextRange(editor, text);
   editor.dispatch(editor.state.tr.delete(from, to).setMeta('inputType', 'deleteContentBackward'));
@@ -968,5 +982,86 @@ describe('Editor dispatch tracked-change meta', () => {
       0,
     );
     expect(markEntries(editor, TrackDeleteMarkName)).toHaveLength(0);
+  });
+
+  it('removes an own suggested tab on Backspace and keeps the caret ready for typing (SD-3376)', () => {
+    ({ editor } = initTestEditor({
+      mode: 'text',
+      content: '<p>Hello</p>',
+      user: { name: 'Test', email: 'test@example.com' },
+      useImmediateSetTimeout: false,
+    }));
+
+    editor.setDocumentMode('suggesting');
+
+    // Insert a tab at end of "Hello".
+    const range = findTextRange(editor, 'Hello');
+    editor.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, range.to)));
+    editor.commands.insertTabNode();
+
+    // Own tracked insertion.
+    const insertedTab = findFirstNode(editor, 'tab');
+    expect(insertedTab).not.toBeNull();
+    expect(insertedTab.node.marks.some((mark) => mark.type.name === TrackInsertMarkName)).toBe(true);
+
+    // Backspace should remove the tab (matching Word).
+    const handled = handleBackspace(editor);
+    expect(handled).toBe(true);
+    expect(findFirstNode(editor, 'tab')).toBeNull();
+    expect(editor.state.selection.empty).toBe(true);
+    expect(editor.state.doc.textBetween(0, editor.state.selection.from)).toBe('Hello');
+
+    editor.dispatch(editor.state.tr.insertText('!').setMeta('inputType', 'insertText'));
+
+    expect(editor.state.doc.textContent).toBe('Hello!');
+    expect(editor.state.selection.from).toBe(findTextRange(editor, '!').to);
+    expect(
+      markEntries(editor, TrackInsertMarkName)
+        .map(({ text }) => text)
+        .join(''),
+    ).toBe('!');
+    expect(markEntries(editor, TrackDeleteMarkName)).toHaveLength(0);
+  });
+
+  it('preserves another user suggested tab as a child deletion on Backspace (SD-3376)', () => {
+    ({ editor } = initTestEditor({
+      mode: 'text',
+      content: '<p>Hello</p>',
+      user: ALICE,
+      useImmediateSetTimeout: false,
+    }));
+    editor.setDocumentMode('suggesting');
+    const range = findTextRange(editor, 'Hello');
+    editor.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, range.to)));
+    editor.commands.insertTabNode();
+
+    const insertedTab = findFirstNode(editor, 'tab');
+    const insertion = insertedTab.node.marks.find((mark) => mark.type.name === TrackInsertMarkName);
+    expect(insertion.attrs.authorEmail).toBe(ALICE.email);
+
+    editor.setOptions({ user: BOB });
+    expect(handleBackspace(editor)).toBe(true);
+
+    const deletedTab = findFirstNode(editor, 'tab');
+    expect(deletedTab).not.toBeNull();
+    expect(deletedTab.node.marks.find((mark) => mark.type.name === TrackInsertMarkName)).toEqual(insertion);
+    const deletion = deletedTab.node.marks.find((mark) => mark.type.name === TrackDeleteMarkName);
+    expect(deletion?.attrs).toEqual(
+      expect.objectContaining({ authorEmail: BOB.email, overlapParentId: insertion.attrs.id }),
+    );
+    expect(editor.state.selection.empty).toBe(true);
+    expect(editor.state.selection.from).toBeLessThanOrEqual(deletedTab.pos);
+
+    editor.dispatch(editor.state.tr.insertText('!').setMeta('inputType', 'insertText'));
+
+    expect(editor.state.doc.textContent).toBe('Hello!');
+    expect(findTextRange(editor, '!').to).toBeLessThanOrEqual(findFirstNode(editor, 'tab').pos);
+    expect(markEntries(editor, TrackInsertMarkName)).toEqual([
+      expect.objectContaining({
+        text: '!',
+        mark: expect.objectContaining({ attrs: expect.objectContaining({ authorEmail: BOB.email }) }),
+      }),
+    ]);
+    expect(findFirstNode(editor, 'tab').node.marks).toEqual(expect.arrayContaining([insertion, deletion]));
   });
 });

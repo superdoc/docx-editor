@@ -1138,13 +1138,15 @@ const getTrackedChangeText = ({ nodes, mark, trackedChangeType, isReplacement })
   let deletionText = '';
   let trackedChangeDisplayType = null;
 
+  // Tab atoms have no `.text`; surface as '\t' (SD-3376).
+  const nodeTrackedText = (node) => (node?.type?.name === 'tab' ? '\t' : node?.text || node?.textContent || '');
+
   // Extract deletion text first
   if (trackedChangeType === TrackDeleteMarkName || isReplacement) {
     deletionText = nodes.reduce((acc, node) => {
       const hasDeleteMark = node.marks.find((nodeMark) => nodeMark.type.name === TrackDeleteMarkName);
       if (!hasDeleteMark) return acc;
-      const nodeText = node?.text || node?.textContent || '';
-      acc += nodeText;
+      acc += nodeTrackedText(node);
       return acc;
     }, '');
   }
@@ -1153,8 +1155,7 @@ const getTrackedChangeText = ({ nodes, mark, trackedChangeType, isReplacement })
     trackedChangeText = nodes.reduce((acc, node) => {
       const hasInsertMark = node.marks.find((nodeMark) => nodeMark.type.name === TrackInsertMarkName);
       if (!hasInsertMark) return acc;
-      const nodeText = node?.text || node?.textContent || '';
-      acc += nodeText;
+      acc += nodeTrackedText(node);
       return acc;
     }, '');
   }
@@ -1226,8 +1227,8 @@ const createOrUpdateTrackedChangeComment = ({
   const nodesWithMark = [];
   trackedChangesWithId.forEach(({ from, to }) => {
     newEditorState.doc.nodesBetween(from, to, (node) => {
-      // Only collect inline text nodes
-      if (node.isText) {
+      // Text and tab nodes only.
+      if (node.isText || node.type.name === 'tab') {
         // Check if this node has the mark (it should, since getTrackChanges found it)
         const hasMatchingMark = node.marks?.some((m) => TRACK_CHANGE_MARKS.includes(m.type.name) && m.attrs.id === id);
         if (hasMatchingMark) {

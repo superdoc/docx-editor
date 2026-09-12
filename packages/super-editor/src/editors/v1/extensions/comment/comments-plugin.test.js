@@ -30,6 +30,14 @@ const createCommentSchema = () => {
     doc: { content: 'block+' },
     paragraph: { content: 'inline*', group: 'block', toDOM: () => ['p', 0], parseDOM: [{ tag: 'p' }] },
     text: { group: 'inline' },
+    tab: {
+      inline: true,
+      group: 'inline',
+      atom: true,
+      selectable: false,
+      toDOM: () => ['span', { 'data-type': 'tab' }],
+      parseDOM: [{ tag: 'span[data-type="tab"]' }],
+    },
     commentRangeStart: {
       inline: true,
       group: 'inline',
@@ -1288,6 +1296,63 @@ describe('internal helper functions', () => {
       isReplacement: true,
     });
     expect(combinedResult.deletionText).toBe('Removed');
+  });
+
+  it('surfaces tracked tab nodes as a literal tab in comment text (SD-3376)', () => {
+    const schema = createCommentSchema();
+    const insertMark = schema.marks[TrackInsertMarkName].create({ id: 'insert-tab' });
+    const deleteMark = schema.marks[TrackDeleteMarkName].create({ id: 'delete-tab' });
+    // Tab is an inline atom with no `.text`/`.textContent`; the comment text
+    // builder keys off `node.type.name === 'tab'`.
+    const insertTabNode = { type: { name: 'tab' }, marks: [insertMark] };
+    const deleteTabNode = { type: { name: 'tab' }, marks: [deleteMark] };
+
+    const insertResult = getTrackedChangeText({
+      nodes: [schema.text('A', [insertMark]), insertTabNode, schema.text('B', [insertMark])],
+      mark: insertMark,
+      trackedChangeType: TrackInsertMarkName,
+      isReplacement: false,
+    });
+    expect(insertResult.trackedChangeText).toBe('A\tB');
+
+    const deleteResult = getTrackedChangeText({
+      nodes: [schema.text('A', [deleteMark]), deleteTabNode, schema.text('B', [deleteMark])],
+      mark: deleteMark,
+      trackedChangeType: TrackDeleteMarkName,
+      isReplacement: false,
+    });
+    expect(deleteResult.deletionText).toBe('A\tB');
+  });
+
+  it('creates a comment payload for a tab-only tracked change found during live-document rebuild', () => {
+    const schema = createCommentSchema();
+    const insertMark = schema.marks[TrackInsertMarkName].create({
+      id: 'tab-only-change',
+      author: 'Author',
+      authorEmail: 'author@example.com',
+      date: 'today',
+    });
+    const tabNode = schema.nodes.tab.create(null, null, [insertMark]);
+    const doc = schema.node('doc', null, [schema.node('paragraph', null, [tabNode])]);
+    const state = EditorState.create({ schema, doc });
+
+    const payload = createOrUpdateTrackedChangeComment({
+      event: 'add',
+      marks: { insertedMark: insertMark, deletionMark: null, formatMark: null },
+      deletionNodes: [],
+      nodes: [],
+      newEditorState: state,
+      documentId: 'doc-1',
+      trackedChangesForId: [{ mark: insertMark, from: 1, to: doc.content.size }],
+    });
+
+    expect(payload).toMatchObject({
+      event: comments_module_events.ADD,
+      changeId: 'tab-only-change',
+      trackedChangeType: TrackInsertMarkName,
+      trackedChangeText: '\t',
+      deletedText: null,
+    });
   });
 
   it('does not duplicate replacement text when creating tracked change comments', () => {

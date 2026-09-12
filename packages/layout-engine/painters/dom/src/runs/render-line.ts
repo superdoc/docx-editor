@@ -22,6 +22,7 @@ import { textRunMergeSignature } from './hash.js';
 import { isBreakRun, isFieldAnnotationRun, isImageRun, isLineBreakRun, isMathRun, renderRun } from './render-run.js';
 import {
   canPaintUnderlineOverlay,
+  decorateTrackedTab,
   renderInlineTabRun,
   renderPositionedTabRun,
   underlineBorderForRun,
@@ -44,6 +45,26 @@ const applyStyles = (el: HTMLElement, styles: Partial<CSSStyleDeclaration>): voi
     }
   });
 };
+
+/**
+ * Absolute x-position wrapper that leaves the run inline so tracked-change
+ * highlights use the font content area, not a full-line block box (SD-3376).
+ */
+const wrapPositionedTextRun = (runEl: HTMLElement, leftPx: number, doc: Document): HTMLElement => {
+  const wrapper = doc.createElement('span');
+  wrapper.className = CLASS_NAMES.positionedRun;
+  wrapper.style.position = 'absolute';
+  wrapper.style.left = `${leftPx}px`;
+  wrapper.appendChild(runEl);
+  return wrapper;
+};
+
+/** Only wrap visible tracked-change highlights; other runs keep the absolute run path. */
+const shouldWrapPositionedTextRun = (runEl: HTMLElement): boolean =>
+  runEl.classList.contains('highlighted') &&
+  (runEl.classList.contains('track-insert-dec') ||
+    runEl.classList.contains('track-delete-dec') ||
+    runEl.classList.contains('track-format-dec'));
 
 const countSpaces = (text: string): number => {
   let count = 0;
@@ -744,6 +765,7 @@ const renderExplicitlyPositionedRuns = ({
         !coveredByOverlay,
       );
       appendToLineGeo(tabEl, baseRun, tabStartX + indentOffset, actualTabWidth);
+      decorateTrackedTab(tabEl, baseRun, runContext.doc, trackedConfig, runContext.resolvePhysical);
       if (coveredByOverlay && underlineSpanCollector) {
         appendUnderlineOverlaySpan(
           underlineSpanCollector,
@@ -898,9 +920,14 @@ const renderExplicitlyPositionedRuns = ({
         const baseX = segment.x !== undefined ? segment.x : cumulativeX;
         const xPos = baseX + indentOffset;
 
-        elem.style.position = 'absolute';
-        elem.style.left = `${xPos}px`;
-        appendToLineGeo(elem, segmentRun, xPos, segment.width);
+        if (shouldWrapPositionedTextRun(elem)) {
+          const positioned = wrapPositionedTextRun(elem, xPos, runContext.doc);
+          appendToLineGeo(positioned, segmentRun, xPos, segment.width);
+        } else {
+          elem.style.position = 'absolute';
+          elem.style.left = `${xPos}px`;
+          appendToLineGeo(elem, segmentRun, xPos, segment.width);
+        }
 
         // Advance cumulative X by the resolved segment width. LineSegment.width is the
         // sole source of truth. The painter does not measure inline elements (SD-2957).
@@ -978,6 +1005,15 @@ const renderInlineRuns = ({
     if (elem) {
       if (suppressUnderline && run.kind !== 'tab') {
         elem.style.textDecorationLine = 'strike' in runForRender && runForRender.strike ? 'line-through' : 'none';
+      }
+      if (run.kind === 'tab') {
+        decorateTrackedTab(
+          elem,
+          runForRender as Extract<Run, { kind: 'tab' }>,
+          runContext.doc,
+          trackedConfig,
+          runContext.resolvePhysical,
+        );
       }
       if (styleId) {
         elem.setAttribute('styleid', styleId);

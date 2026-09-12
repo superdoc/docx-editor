@@ -22,6 +22,7 @@ const generateRandomBase36Id = (length: number): string => {
 import type {
   Run,
   TextRun,
+  TabRun,
   BreakRun,
   TrackedChangeMeta,
   TrackedChangeKind,
@@ -271,15 +272,16 @@ export const selectTrackedChangeMeta = (
   return existing;
 };
 
-const normalizeTrackedChangeLayers = (run: TextRun | BreakRun): TrackedChangeMeta[] => {
+const normalizeTrackedChangeLayers = (run: TextRun | BreakRun | TabRun): TrackedChangeMeta[] => {
   if (Array.isArray(run.trackedChanges) && run.trackedChanges.length > 0) {
     return run.trackedChanges;
   }
   return run.trackedChange ? [run.trackedChange] : [];
 };
 
-const isTrackedChangeRun = (run: Run): run is TextRun | BreakRun => {
-  return isTextRun(run) || run.kind === 'break';
+const isTrackedChangeRun = (run: Run): run is TextRun | BreakRun | TabRun => {
+  // Tab runs participate in visibility filtering and highlighting (SD-3376).
+  return isTextRun(run) || run.kind === 'break' || run.kind === 'tab';
 };
 
 const runHasTrackedChangeKind = (run: Run, kind: TrackedChangeKind): boolean => {
@@ -511,7 +513,7 @@ export const applyTrackedChangesModeToRuns = (
 
   const filtered: Run[] = [];
   runs.forEach((run) => {
-    if (!isTextRun(run) && run.kind !== 'break') {
+    if (!isTrackedChangeRun(run)) {
       filtered.push(run);
       return;
     }

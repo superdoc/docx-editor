@@ -472,11 +472,62 @@ const mergeAdjacentSpans = (normalized) => {
   return merged;
 };
 
+const textForInlineLeaf = (node, leafFallback) => {
+  const leafText = node.type?.spec?.leafText;
+  if (typeof leafText === 'function') return leafText(node);
+  if (typeof leafText === 'string') return leafText;
+  return leafFallback;
+};
+
+/**
+ * Tab-aware `textBetween`. The tab schema is non-leaf, so PM never emits '\t'.
+ * Duplicated from document-api `text-with-tabs.ts` (graph layer boundary).
+ *
+ * @param {*} doc
+ * @param {number} from
+ * @param {number} to
+ * @param {string} blockSeparator
+ * @param {string} leafFallback
+ * @returns {string}
+ */
+const textBetweenWithTabs = (doc, from, to, blockSeparator, leafFallback) => {
+  if (!doc || typeof doc.nodesBetween !== 'function') {
+    if (doc && typeof doc.textBetween === 'function') {
+      return doc.textBetween(from, to, blockSeparator, leafFallback);
+    }
+    return '';
+  }
+
+  let out = '';
+  doc.nodesBetween(from, to, (node, pos) => {
+    if (pos >= to || !node) return false;
+    if (node.type?.name === 'tab') {
+      out += '\t';
+      return false;
+    }
+    if (node.isText) {
+      const start = Math.max(from, pos) - pos;
+      const end = Math.min(to, pos + node.nodeSize) - pos;
+      out += (node.text ?? '').slice(start, end);
+      return false;
+    }
+    if (node.isLeaf && !node.isText) {
+      out += textForInlineLeaf(node, leafFallback);
+      return false;
+    }
+    if (node.isBlock && out && blockSeparator) {
+      out += blockSeparator;
+    }
+    return true;
+  });
+  return out;
+};
+
 const hydrateSegmentText = ({ segments, doc }) => {
   if (!doc) return;
   for (const seg of segments) {
     try {
-      seg.text = doc.textBetween(seg.from, seg.to, ' ', '￼');
+      seg.text = textBetweenWithTabs(doc, seg.from, seg.to, ' ', '￼');
     } catch {
       seg.text = '';
     }
@@ -689,7 +740,7 @@ const buildStructuralLogicalChange = ({ structural, doc, story }) => {
   };
   if (doc) {
     try {
-      segment.text = doc.textBetween(from, to, ' ', '￼');
+      segment.text = textBetweenWithTabs(doc, from, to, ' ', '￼');
     } catch {
       segment.text = '';
     }
@@ -987,7 +1038,7 @@ const extractExcerpt = (doc, segments) => {
   // fall back to first segment if there is no inserted side.
   const target = segments.find((s) => s.side === SegmentSide.Inserted) ?? segments[0];
   try {
-    const text = doc.textBetween(target.from, target.to, ' ', '￼');
+    const text = textBetweenWithTabs(doc, target.from, target.to, ' ', '￼');
     return text.length > 200 ? `${text.slice(0, 200)}…` : text;
   } catch {
     return '';

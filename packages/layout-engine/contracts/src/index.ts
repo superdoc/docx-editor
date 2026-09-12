@@ -566,6 +566,10 @@ export type TabRun = RunMarks & {
   pmEnd?: number;
   /** SDT metadata if tab is inside a structured document tag. */
   sdt?: SdtMetadata;
+  /** Tracked-change metadata from ProseMirror marks. */
+  trackedChange?: TrackedChangeMeta;
+  /** All tracked-change layers on this run, preserving overlap order. */
+  trackedChanges?: TrackedChangeMeta[];
 };
 
 export type LineBreakRun = {

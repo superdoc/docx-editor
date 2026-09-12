@@ -190,6 +190,27 @@ describe('groupTrackedChanges', () => {
     expect(grouped[0]?.wordRevisionIds).toEqual({ format: '22' });
   });
 
+  it('serializes a tracked tab node as a literal tab in the excerpt (SD-3376)', () => {
+    const insert = makeTrackMark(TrackInsertMarkName, 'tab-1', { author: 'Ada' });
+    // Tab has no `.text`; excerpt uses tab-aware extraction.
+    const tabNode = { type: { name: 'tab' }, marks: [insert.mark] };
+    vi.mocked(getTrackChanges).mockReturnValue([{ ...insert, node: tabNode, from: 2, to: 3 }] as never);
+
+    const editor = makeEditor();
+    const doc = editor.state.doc as unknown as {
+      textBetween: (from: number, to: number, sep: string, leaf: string) => string;
+      nodesBetween: (from: number, to: number, cb: (node: unknown, pos: number) => unknown) => void;
+    };
+    // PM textBetween omits non-leaf tabs.
+    doc.textBetween = vi.fn(() => '');
+    doc.nodesBetween = (_from, _to, cb) => {
+      cb({ type: { name: 'tab' }, isText: false }, 2);
+    };
+
+    const grouped = groupTrackedChanges(editor);
+    expect(grouped[0]?.excerpt).toBe('\t');
+  });
+
   it('preserves empty parent Word wrappers when the only text belongs to a child deletion', () => {
     const parent = makeTrackMark(TrackInsertMarkName, 'parent', { sourceId: '2', author: 'Missy Fox' });
     const child = makeTrackMark(TrackDeleteMarkName, 'child', {

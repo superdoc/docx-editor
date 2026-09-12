@@ -854,6 +854,56 @@ describe('tracked-changes', () => {
       expect(result).toHaveLength(1); // Only tab, insert should be hidden
     });
 
+    it('hides a tracked-inserted tab in original mode (SD-3376)', () => {
+      const insertedTab: TabRun = {
+        kind: 'tab',
+        text: '\t',
+        trackedChange: { kind: 'insert', id: 'tab-ins' },
+      } as TabRun;
+      const runs: Run[] = [{ text: 'Keep', fontFamily: 'Arial', fontSize: 12 }, insertedTab];
+      const config: TrackedChangesConfig = { enabled: true, mode: 'original' };
+      const hyperlinkConfig: HyperlinkConfig = { enableRichHyperlinks: false };
+      const applyMarksToRun = vi.fn();
+
+      const result = applyTrackedChangesModeToRuns(runs, config, hyperlinkConfig, applyMarksToRun);
+      expect(result).not.toContain(insertedTab);
+      expect(result).toHaveLength(1);
+      expect((result[0] as TextRun).text).toBe('Keep');
+    });
+
+    it('hides a tracked-deleted tab in final mode (SD-3376)', () => {
+      const deletedTab: TabRun = {
+        kind: 'tab',
+        text: '\t',
+        trackedChange: { kind: 'delete', id: 'tab-del' },
+      } as TabRun;
+      const runs: Run[] = [{ text: 'Keep', fontFamily: 'Arial', fontSize: 12 }, deletedTab];
+      const config: TrackedChangesConfig = { enabled: true, mode: 'final' };
+      const hyperlinkConfig: HyperlinkConfig = { enableRichHyperlinks: false };
+      const applyMarksToRun = vi.fn();
+
+      const result = applyTrackedChangesModeToRuns(runs, config, hyperlinkConfig, applyMarksToRun);
+      expect(result).not.toContain(deletedTab);
+      expect(result).toHaveLength(1);
+      expect((result[0] as TextRun).text).toBe('Keep');
+    });
+
+    it('keeps a tracked-inserted tab visible in original mode when it is a deletion (SD-3376)', () => {
+      const deletedTab: TabRun = {
+        kind: 'tab',
+        text: '\t',
+        trackedChange: { kind: 'delete', id: 'tab-del' },
+      } as TabRun;
+      const runs: Run[] = [deletedTab];
+      const config: TrackedChangesConfig = { enabled: true, mode: 'original' };
+      const hyperlinkConfig: HyperlinkConfig = { enableRichHyperlinks: false };
+      const applyMarksToRun = vi.fn();
+
+      const result = applyTrackedChangesModeToRuns(runs, config, hyperlinkConfig, applyMarksToRun);
+      // Deletions stay visible in original mode.
+      expect(result).toContain(deletedTab);
+    });
+
     it('should filter insertions in original mode', () => {
       const runs: Run[] = [
         { text: 'Normal', fontFamily: 'Arial', fontSize: 12 },

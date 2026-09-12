@@ -3,6 +3,7 @@ import type { Line, TabRun } from '@superdoc/contracts';
 import {
   canPaintUnderlineAsBorder,
   canPaintUnderlineOverlay,
+  decorateTrackedTab,
   renderInlineTabRun,
   renderPositionedTabRun,
   underlineBorderForRun,
@@ -77,6 +78,108 @@ describe('tab underline alignment (SD-3330)', () => {
     const { element } = renderPositionedTabRun(plainTab(), LINE, document, 0, 0, 0);
     expect(element.style.visibility).toBe('hidden');
     expect(element.style.borderBottom).toBe('');
+  });
+});
+
+const trackedTab = (kind: 'insert' | 'delete' = 'insert'): TabRun =>
+  ({
+    kind: 'tab',
+    text: '\t',
+    width: 48,
+    fontSize: 16,
+    trackedChange: {
+      id: 't1',
+      kind,
+      author: 'Ada',
+      authorEmail: 'ada@example.com',
+      date: '2026-01-01',
+      color: kind === 'insert' ? '#00853d' : '#cb0e47',
+      storyKey: 'body',
+    },
+  }) as unknown as TabRun;
+
+describe('tracked-change tab highlight (SD-3376)', () => {
+  const reviewConfig = { mode: 'review' as const, enabled: true };
+
+  it('decorates a positioned tab with an inline font-matched box matching the text wrappers', () => {
+    const { element } = renderPositionedTabRun(trackedTab('insert'), LINE, document, 0, 0, 0);
+    const highlight = decorateTrackedTab(element, trackedTab('insert'), document, reviewConfig);
+
+    expect(highlight).not.toBeNull();
+    expect(highlight!.classList.contains('track-insert-dec')).toBe(true);
+    expect(highlight!.classList.contains('highlighted')).toBe(true);
+    // Revealed so the highlight paints.
+    expect(element.style.visibility).toBe('visible');
+    expect(element.contains(highlight)).toBe(true);
+    // Inline font-matched box (not an absolute pixel box).
+    expect(element.style.top).toBe('0px');
+    expect(highlight!.style.position).not.toBe('absolute');
+    expect(highlight!.style.fontSize).toBe('16px');
+    expect(highlight!.style.paddingRight).toBe('48px');
+  });
+
+  it('keeps the tab-only tracked-change highlight hit-testable for review UI selection', () => {
+    const { element } = renderPositionedTabRun(trackedTab('insert'), LINE, document, 0, 0, 0);
+    const highlight = decorateTrackedTab(element, trackedTab('insert'), document, reviewConfig);
+
+    expect(highlight).not.toBeNull();
+    expect(element.style.pointerEvents).toBe('none');
+    expect(highlight!.style.pointerEvents).toBe('auto');
+    expect(highlight!.closest('[data-track-change-id]')).toBe(highlight);
+  });
+
+  it('sizes an inline tab highlight to the run font and tab width, top-aligned to the line box', () => {
+    const element = renderInlineTabRun(trackedTab('insert'), LINE, document, 0);
+    const highlight = decorateTrackedTab(element, trackedTab('insert'), document, reviewConfig);
+
+    expect(highlight).not.toBeNull();
+    // vertical-align: bottom would misalign; spacer is top-aligned.
+    expect(element.style.verticalAlign).toBe('top');
+    // Inline font-matched box, not absolute positioning.
+    expect(highlight!.style.position).not.toBe('absolute');
+    expect(highlight!.style.fontSize).toBe('16px');
+    expect(highlight!.style.paddingRight).toBe('48px');
+    expect(element.contains(highlight)).toBe(true);
+  });
+
+  it('resolves the highlight font family through the physical resolver (matches text metrics)', () => {
+    const run = { ...trackedTab('insert'), fontFamily: 'Calibri' } as TabRun;
+    const element = renderInlineTabRun(run, LINE, document, 0);
+    const highlight = decorateTrackedTab(element, run, document, reviewConfig, () => 'Carlito');
+
+    expect(highlight).not.toBeNull();
+    expect(highlight!.style.fontFamily).toBe('Carlito');
+  });
+
+  it('uses the delete decoration class for a tracked-deleted tab', () => {
+    const { element } = renderPositionedTabRun(trackedTab('delete'), LINE, document, 0, 0, 0);
+    const highlight = decorateTrackedTab(element, trackedTab('delete'), document, reviewConfig);
+
+    expect(highlight).not.toBeNull();
+    expect(highlight!.classList.contains('track-delete-dec')).toBe(true);
+    expect(highlight!.classList.contains('highlighted')).toBe(true);
+  });
+
+  it('does not highlight when no tracked config is supplied', () => {
+    const { element } = renderPositionedTabRun(trackedTab('insert'), LINE, document, 0, 0, 0);
+    expect(decorateTrackedTab(element, trackedTab('insert'), document, undefined)).toBeNull();
+    expect(element.style.visibility).toBe('hidden');
+  });
+
+  it('does not highlight a plain tab with no tracked layers', () => {
+    const { element } = renderPositionedTabRun(plainTab(), LINE, document, 0, 0, 0);
+    expect(decorateTrackedTab(element, plainTab(), document, reviewConfig)).toBeNull();
+    expect(element.style.visibility).toBe('hidden');
+  });
+
+  it('does not reveal the tab when the layer is hidden (original mode insert)', () => {
+    const { element } = renderPositionedTabRun(trackedTab('insert'), LINE, document, 0, 0, 0);
+    const highlight = decorateTrackedTab(element, trackedTab('insert'), document, {
+      mode: 'original',
+      enabled: true,
+    });
+    expect(highlight).toBeNull();
+    expect(element.style.visibility).toBe('hidden');
   });
 });
 

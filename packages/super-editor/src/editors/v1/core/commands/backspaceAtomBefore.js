@@ -10,8 +10,13 @@ import { Selection } from 'prosemirror-state';
  *   Generalizing atom-deletion would break that behavior. This list captures
  *   atoms whose semantics are "a glyph the user inserted" — closer to text
  *   than to a marker — so deleting them on Backspace matches Word/intuition.
+ *
+ * Kept in sync with `TEXT_LIKE_INLINE_ATOMS` in track-changes
+ * (trackChangesHelpers/inlineAtoms.js), which gates the same atoms for tracked
+ * deletion. `tab` is included so Backspace removes an inserted tab the same way
+ * it removes a typed character — including in suggesting mode (SD-3376).
  */
-const DELETABLE_INLINE_ATOMS = new Set(['noBreakHyphen']);
+const DELETABLE_INLINE_ATOMS = new Set(['noBreakHyphen', 'tab']);
 
 /**
  * Returns the deletable atom inside a single-child run, or null otherwise.

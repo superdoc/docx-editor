@@ -35,6 +35,7 @@ import {
 } from './identity.js';
 import { findMarkPosition } from '../trackChangesHelpers/documentHelpers.js';
 import { markInsertion } from '../trackChangesHelpers/markInsertion.js';
+import { isTextLikeInlineAtom } from '../trackChangesHelpers/inlineAtoms.js';
 import {
   createMarkSnapshot,
   getTypeName,
@@ -775,7 +776,8 @@ const applyTrackedDelete = (
   };
 
   ctx.tr.doc.nodesBetween(from, to, (node, pos) => {
-    if (!node.isInline || !node.isLeaf) return;
+    // Skip containers; include leaves and text-like non-leaf atoms (e.g. tab) (SD-3376).
+    if (!node.isInline || (!node.isLeaf && !isTextLikeInlineAtom(node))) return;
     if (node.type.name.includes('table')) return;
     const segFrom = Math.max(from, pos);
     const segTo = Math.min(to, pos + node.nodeSize);

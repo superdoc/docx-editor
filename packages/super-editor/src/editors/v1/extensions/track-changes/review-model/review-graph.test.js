@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { EditorState } from 'prosemirror-state';
 import { TrackDeleteMarkName, TrackFormatMarkName, TrackInsertMarkName } from '../constants.js';
 import {
   buildReviewGraph,
@@ -407,5 +408,67 @@ describe('review-graph: range and overlap queries', () => {
     const graph = buildReviewGraph({ state });
     expect(graph.segmentsInRange(0, 100).length).toBe(1);
     expect(graph.segmentsInRange(0, 1).length).toBe(0);
+  });
+});
+
+describe('review-graph: tracked inline serialization (SD-3376)', () => {
+  it('emits a literal tab in segment text and excerpt for a tracked tab', () => {
+    const mark = (attrs) => schema.marks[TrackInsertMarkName].create(markAttrs(attrs));
+    const insertAttrs = { id: 't1', author: ALICE.name, authorEmail: ALICE.email, date: '2026-01-01' };
+    const tab = schema.nodes.tab.create({}, null, [mark(insertAttrs)]);
+    const paragraph = schema.nodes.paragraph.create({}, [
+      schema.text('A', [mark(insertAttrs)]),
+      tab,
+      schema.text('B', [mark(insertAttrs)]),
+    ]);
+    const doc = schema.nodes.doc.create({}, [paragraph]);
+    const state = EditorState.create({ schema, doc });
+
+    const graph = buildReviewGraph({ state });
+    const change = graph.changes.get('t1');
+    expect(change.type).toBe(CanonicalChangeType.Insertion);
+    const text = change.insertedSegments.map((seg) => seg.text).join('');
+    expect(text).toBe('A\tB');
+    expect(change.excerpt).toBe('A\tB');
+  });
+
+  it('emits leafText in segment text and excerpt for a tracked noBreakHyphen', () => {
+    const mark = (attrs) => schema.marks[TrackInsertMarkName].create(markAttrs(attrs));
+    const insertAttrs = { id: 'h1', author: ALICE.name, authorEmail: ALICE.email, date: '2026-01-01' };
+    const noBreakHyphen = schema.nodes.noBreakHyphen.create({}, null, [mark(insertAttrs)]);
+    const paragraph = schema.nodes.paragraph.create({}, [
+      schema.text('A', [mark(insertAttrs)]),
+      noBreakHyphen,
+      schema.text('B', [mark(insertAttrs)]),
+    ]);
+    const doc = schema.nodes.doc.create({}, [paragraph]);
+    const state = EditorState.create({ schema, doc });
+
+    const graph = buildReviewGraph({ state });
+    const change = graph.changes.get('h1');
+    expect(change.type).toBe(CanonicalChangeType.Insertion);
+    const text = change.insertedSegments.map((seg) => seg.text).join('');
+    expect(text).toBe('A\u2011B');
+    expect(change.excerpt).toBe('A\u2011B');
+  });
+
+  it('keeps the fallback placeholder for tracked inline leaves without leafText', () => {
+    const mark = (attrs) => schema.marks[TrackInsertMarkName].create(markAttrs(attrs));
+    const insertAttrs = { id: 'g1', author: ALICE.name, authorEmail: ALICE.email, date: '2026-01-01' };
+    const genericLeaf = schema.nodes.genericLeaf.create({}, null, [mark(insertAttrs)]);
+    const paragraph = schema.nodes.paragraph.create({}, [
+      schema.text('A', [mark(insertAttrs)]),
+      genericLeaf,
+      schema.text('B', [mark(insertAttrs)]),
+    ]);
+    const doc = schema.nodes.doc.create({}, [paragraph]);
+    const state = EditorState.create({ schema, doc });
+
+    const graph = buildReviewGraph({ state });
+    const change = graph.changes.get('g1');
+    expect(change.type).toBe(CanonicalChangeType.Insertion);
+    const text = change.insertedSegments.map((seg) => seg.text).join('');
+    expect(text).toBe('A\uFFFcB');
+    expect(change.excerpt).toBe('A\uFFFcB');
   });
 });

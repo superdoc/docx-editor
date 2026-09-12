@@ -860,6 +860,19 @@ describe('CommentDialog.vue', () => {
     expect(trackedChange.text()).not.toContain('underline');
   });
 
+  it('renders tabs in tracked-change bubble text as visible spaces', async () => {
+    const { wrapper } = await mountDialog({
+      baseCommentOverrides: {
+        trackedChange: true,
+        trackedChangeType: 'trackInsert',
+        trackedChangeText: 'HELLO\tWORLD',
+      },
+    });
+
+    const trackedChangeText = wrapper.find('.tracked-change').text().replace(/\s+/g, ' ').trim();
+    expect(trackedChangeText).toContain('Added "HELLO WORLD"');
+  });
+
   it('renders paragraph splits as new-line changes without a format label', async () => {
     const { wrapper } = await mountDialog({
       baseCommentOverrides: {

@@ -972,7 +972,7 @@ describe('DomPainter', () => {
 
     const lineEl = mount.querySelector('.superdoc-line') as HTMLElement;
     const overlays = Array.from(lineEl.querySelectorAll('.superdoc-underline-overlay')) as HTMLElement[];
-    const textRuns = Array.from(lineEl.querySelectorAll('span')).filter((s) =>
+    const textRuns = Array.from(lineEl.querySelectorAll('.superdoc-text-run')).filter((s) =>
       /Name:|Value/.test(s.textContent || ''),
     ) as HTMLElement[];
     const borderedEls = Array.from(lineEl.querySelectorAll('span, div')).filter(
@@ -3822,6 +3822,90 @@ describe('DomPainter', () => {
     expect(value).toBeTruthy();
     expect(value?.style.left).toBe('0px');
     expect(value?.style.top).toBe('0px');
+  });
+
+  it('wraps only highlighted tracked text on the segment-positioned path', () => {
+    const block: FlowBlock = {
+      kind: 'paragraph',
+      id: 'segment-positioned-tracked-tab-highlight',
+      runs: [
+        { text: 'Name', fontFamily: 'Arial, sans-serif', fontSize: 16, pmStart: 0, pmEnd: 4 },
+        { kind: 'tab', text: '\t', width: 48, fontSize: 16, pmStart: 4, pmEnd: 5 },
+        {
+          text: 'Value',
+          fontFamily: 'Arial, sans-serif',
+          fontSize: 16,
+          pmStart: 5,
+          pmEnd: 10,
+          trackedChange: { kind: 'insert', id: 'tracked-value' },
+        },
+      ],
+      attrs: {
+        trackedChangesMode: 'review',
+        trackedChangesEnabled: true,
+      },
+    };
+
+    const measure: Measure = {
+      kind: 'paragraph',
+      lines: [
+        {
+          fromRun: 0,
+          fromChar: 0,
+          toRun: 2,
+          toChar: 5,
+          width: 120,
+          maxWidth: 300,
+          ascent: 12,
+          descent: 4,
+          lineHeight: 20,
+          segments: [
+            { runIndex: 0, fromChar: 0, toChar: 4, width: 40 },
+            { runIndex: 2, fromChar: 0, toChar: 5, width: 40, x: 80 },
+          ],
+        },
+      ],
+      totalHeight: 20,
+    };
+
+    const layout: Layout = {
+      pageSize: { w: 612, h: 792 },
+      pages: [
+        {
+          number: 1,
+          fragments: [
+            {
+              kind: 'para',
+              blockId: 'segment-positioned-tracked-tab-highlight',
+              fromLine: 0,
+              toLine: 1,
+              x: 30,
+              y: 40,
+              width: 552,
+              pmStart: 0,
+              pmEnd: 10,
+            },
+          ],
+        },
+      ],
+    };
+
+    const painter = createTestPainter({ blocks: [block], measures: [measure] });
+    painter.paint(layout, mount);
+
+    const plain = mount.querySelector('.superdoc-text-run[data-pm-start="0"]') as HTMLElement | null;
+    const tracked = mount.querySelector('.track-insert-dec.highlighted[data-pm-start="5"]') as HTMLElement | null;
+    const trackedWrapper = tracked?.closest('.superdoc-positioned-run') as HTMLElement | null;
+
+    expect(plain).toBeTruthy();
+    expect(plain?.closest('.superdoc-positioned-run')).toBeNull();
+    expect(plain?.style.position).toBe('absolute');
+    expect(plain?.style.left).toBe('0px');
+
+    expect(tracked).toBeTruthy();
+    expect(tracked?.style.position).not.toBe('absolute');
+    expect(trackedWrapper).toBeTruthy();
+    expect(trackedWrapper?.style.left).toBe('80px');
   });
 
   it('uses first run font-size for inline SDT wrapper when a field has mixed run sizes', () => {

@@ -1,5 +1,7 @@
 import type { Line, LineSegment, Run } from '@superdoc/contracts';
 import { underlineThicknessPx } from './text-run.js';
+import { applyTrackedChangeDecorations, getTrackedChangeLayers } from './tracked-changes.js';
+import type { TrackedChangesRenderConfig } from './types.js';
 
 type UnderlinePaintRun = {
   underline?: {
@@ -195,4 +197,69 @@ const applyTabUnderlineBorder = (tabEl: HTMLElement, run: Extract<Run, { kind: '
   const border = underlineBorderForRun(run);
   if (!border) return;
   tabEl.style.borderBottom = border;
+};
+
+type PhysicalFontResolver = (
+  cssFontFamily: string,
+  face: { weight: '400' | '700'; style: 'normal' | 'italic' },
+) => string;
+
+/** Apply the tab run's resolved font so the highlight inline box matches adjacent tracked text. */
+const applyHighlightFont = (
+  highlight: HTMLElement,
+  run: Extract<Run, { kind: 'tab' }>,
+  resolvePhysical?: PhysicalFontResolver,
+): void => {
+  highlight.style.fontSize = `${typeof run.fontSize === 'number' ? run.fontSize : 16}px`;
+  if (run.fontFamily) {
+    const face = {
+      weight: run.bold ? ('700' as const) : ('400' as const),
+      style: run.italic ? ('italic' as const) : ('normal' as const),
+    };
+    highlight.style.fontFamily = resolvePhysical ? resolvePhysical(run.fontFamily, face) : run.fontFamily;
+  }
+  if (run.bold) highlight.style.fontWeight = 'bold';
+  if (run.italic) highlight.style.fontStyle = 'italic';
+};
+
+/**
+ * Paints a visible tracked-change highlight on a tab (SD-3376).
+ *
+ * Tabs are geometry spacers without glyphs. The highlight is an inline box
+ * carrying the run font, with right padding for the tab width, so it matches
+ * adjacent tracked text. Inline-flow tabs are top-aligned because the spacer
+ * defaults to `vertical-align: bottom`.
+ *
+ * @returns the highlight element, or null when there are no visible layers.
+ */
+export const decorateTrackedTab = (
+  tabEl: HTMLElement,
+  run: Extract<Run, { kind: 'tab' }>,
+  doc: Document,
+  config?: TrackedChangesRenderConfig,
+  resolvePhysical?: PhysicalFontResolver,
+): HTMLElement | null => {
+  if (!config) return null;
+  // getTrackedChangeLayers is typed for TextRun; TabRun carries the same fields.
+  if (getTrackedChangeLayers(run as never).length === 0) return null;
+
+  const highlight = doc.createElement('span');
+  applyTrackedChangeDecorations(highlight, run, config);
+  // Only 'highlighted' paints a box; original/final modes must not reveal the spacer.
+  if (!highlight.classList.contains('highlighted')) return null;
+
+  highlight.style.pointerEvents = 'auto';
+
+  applyHighlightFont(highlight, run, resolvePhysical);
+  highlight.style.paddingRight = tabEl.style.width || '0px';
+
+  if (tabEl.style.position !== 'absolute') {
+    // Inline tabs default to vertical-align: bottom; align top to match text.
+    tabEl.style.verticalAlign = 'top';
+  }
+
+  // Reveal the spacer so the highlight paints.
+  tabEl.style.visibility = 'visible';
+  tabEl.appendChild(highlight);
+  return highlight;
 };

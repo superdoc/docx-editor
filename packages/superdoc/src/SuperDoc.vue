@@ -1380,6 +1380,8 @@ const onV2EditorReady = (payload) => {
 // "+" tool from the v2 selection snapshot instead.
 const v2HasRangeSelection = ref(false);
 const v2SelectionSnapshot = shallowRef(null);
+/** True after a viewing-mode range was mirrored from the browser DOM selection. */
+const v2DomMirroredRange = ref(false);
 let v2SelectionToolbarRafHandle = 0;
 let v2SelectionToolbarTimeoutHandle = 0;
 let v2DomSelectionRafHandle = 0;
@@ -1509,18 +1511,38 @@ const applyCurrentV2DomSelection = () => {
   const selection = window.getSelection?.() ?? null;
 
   if (!isV2DomRangeSelection(selection, root)) {
+    // Viewing suppresses native ::selection and paints the host overlay. Keep
+    // that overlay while a pending comment dialog owns the selection. A
+    // DOM-mirrored range that collapses (chrome click / focus loss) must clear
+    // so the blue overlay does not stick. A programmatic SelectionTarget apply
+    // never mirrored through the DOM must keep the model range so custom UI
+    // createFromSelection still sees it (SD-4470).
+    const renderedHostTarget = handles?.selection?.toSelectionTarget?.();
+    const hasHostRange = renderedHostTarget?.kind === 'ok' && renderedHostTarget.mode === 'range';
+    if (hasHostRange && pendingComment.value) {
+      v2HasRangeSelection.value = true;
+      v2SelectionSnapshot.value = handles?.selection?.getSnapshot?.() ?? null;
+      handles?.selection?.syncVisibleOverlay?.();
+      scheduleV2SelectionToolbarStateSync();
+      return;
+    }
+    if (hasHostRange && v2DomMirroredRange.value) {
+      handles?.selection?.clear?.();
+      v2DomMirroredRange.value = false;
+    }
     clearV2SelectionToolbarState();
     return;
   }
 
-  const result = handles?.editing?.selectionTargets?.applyDomSelection?.(selection);
+  const result = handles?.selection?.applyDomSelection?.(selection);
   if (!result?.ok || result.mode !== 'range') {
     clearV2SelectionToolbarState();
     return;
   }
 
+  v2DomMirroredRange.value = true;
   v2HasRangeSelection.value = true;
-  v2SelectionSnapshot.value = handles?.editing?.selection?.getSnapshot?.() ?? null;
+  v2SelectionSnapshot.value = handles?.selection?.getSnapshot?.() ?? null;
   scheduleV2SelectionToolbarStateSync();
 };
 

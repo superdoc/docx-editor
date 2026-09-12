@@ -1842,8 +1842,18 @@ export const useCommentsStore = defineStore('comments', () => {
     // ui-phase3-002: in v2 mode the pending comment is Vue-only (no fake
     // 'pending' document mark was inserted), so there is nothing to remove
     // from the document. Calling v1 `removeComment` against the v2 facade
-    // would touch a null `commands` surface.
-    if (isV2EditorActive(superdoc)) return;
+    // would touch a null `commands` surface. Still clear the retained viewing
+    // selection so the host overlay does not linger under the new decoration.
+    if (isV2EditorActive(superdoc)) {
+      if (hadPending) {
+        try {
+          superdoc?.activeEditor?.host?.getHandles?.()?.selection?.clear?.();
+        } catch {
+          /* host may already be torn down */
+        }
+      }
+      return;
+    }
     superdoc?.activeEditor?.commands?.removeComment({ commentId: 'pending' });
   };
 

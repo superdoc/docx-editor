@@ -3728,7 +3728,11 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     return !!comments && typeof comments === 'object' && (comments as LooseRecord).allowResolve === false;
   };
 
-  const commentMutationsAreReadOnly = (): boolean => readDocumentMode() === 'viewing' || commentsAreReadOnly();
+  // Document viewing keeps the body immutable. Comment writes follow
+  // `interaction.comments.readOnly` (and the legacy modules.comments flag), so
+  // a customer can keep selection-backed comments writable while the document
+  // stays in viewing mode (SD-4470).
+  const commentMutationsAreReadOnly = (): boolean => commentsAreReadOnly();
   const trackedChangeDecisionsAreDisabled = (): boolean => trackedChangeDecisionDisabledReason() != null;
 
   const normalizeSelectionInfo = (raw: unknown): SelectionInfo | null =>
@@ -9379,12 +9383,13 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
   const selectionSub = sliceHandle((s) => s.selection);
   const selectionSnap = snapshotHandle(selectionSub);
   /**
-   * Resolve the host-owned selection apply helper (`editing.selectionTargets`)
-   * with a truthful failure reason. `host.getHandles()` throws a
-   * `V2EditorHostError` with a lifecycle `reason` while the host is booting or
-   * disposed — that is a readiness condition, not a missing capability, so it
-   * maps to `not-ready` instead of being swallowed into
-   * `host-capability-unavailable`.
+   * Resolve the host-owned selection apply helper. Prefer the editable mount
+   * (`editing.selectionTargets`); fall back to review-safe `selection.apply`
+   * so viewing-mode restore / select still works for comment create (SD-4470).
+   * `host.getHandles()` throws a `V2EditorHostError` with a lifecycle `reason`
+   * while the host is booting or disposed — that is a readiness condition, not
+   * a missing capability, so it maps to `not-ready` instead of being swallowed
+   * into `host-capability-unavailable`.
    */
   const getSelectionApplyHelper = (): { helper: LooseRecord } | { reason: SuperDocUIReason } => {
     const host = getHost();
@@ -9400,11 +9405,34 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
         lifecycle === 'host-not-ready' || lifecycle === 'host-disposed' || lifecycle === 'editing-mount-required';
       return { reason: notReady ? SUPERDOC_UI_REASONS.notReady : SUPERDOC_UI_REASONS.hostCapabilityUnavailable };
     }
-    const helper = (handles?.editing as LooseRecord | undefined)?.selectionTargets as LooseRecord | undefined;
-    if (typeof helper?.apply !== 'function') {
-      return { reason: SUPERDOC_UI_REASONS.hostCapabilityUnavailable };
+    const editingHelper = (handles?.editing as LooseRecord | undefined)?.selectionTargets as LooseRecord | undefined;
+    if (typeof editingHelper?.apply === 'function') {
+      return { helper: editingHelper };
     }
-    return { helper };
+    const reviewHelper = handles?.selection as LooseRecord | undefined;
+    if (typeof reviewHelper?.apply === 'function') {
+      return { helper: reviewHelper };
+    }
+    return { reason: SUPERDOC_UI_REASONS.hostCapabilityUnavailable };
+  };
+
+  /** Live host SelectionTarget from editable or review-safe selection handles. */
+  const readHostSelectionTarget = (): SelectionTarget | null => {
+    const host = getHost();
+    if (typeof host?.getHandles !== 'function') return null;
+    let handles: LooseRecord | null = null;
+    try {
+      handles = host.getHandles();
+    } catch {
+      return null;
+    }
+    const rendered =
+      ((handles?.editing as LooseRecord | undefined)?.selection as LooseRecord | undefined)?.toSelectionTarget?.() ??
+      (handles?.selection as LooseRecord | undefined)?.toSelectionTarget?.();
+    if (!rendered || typeof rendered !== 'object') return null;
+    if ((rendered as LooseRecord).kind !== 'ok') return null;
+    const target = (rendered as LooseRecord).target;
+    return target && typeof target === 'object' ? (target as SelectionTarget) : null;
   };
   const activateContentControlChrome = (id: string): void => {
     const host = getHost();
@@ -9853,8 +9881,15 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       const op = commentsApi?.create;
       if (typeof op !== 'function') return failedReceipt('comments.create is unavailable.');
       const snapshot = selectionSub.get();
-      const target = snapshot.target ?? snapshot.selectionTarget;
+      let target = snapshot.target ?? snapshot.selectionTarget;
+      // Viewing-mode programmatic SelectionTarget applies update the host
+      // controller before the UI selection slice necessarily refreshes. Prefer
+      // the live host range so createFromSelection stays available (SD-4470).
       if (snapshot.empty || !target) {
+        const hostTarget = readHostSelectionTarget();
+        if (hostTarget) target = hostTarget;
+      }
+      if (!target) {
         return failedReceipt('A range selection is required to comment.', 'NO_SELECTION');
       }
       const fallback = failedReceipt('comments.create failed.');

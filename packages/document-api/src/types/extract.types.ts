@@ -79,6 +79,9 @@ export interface ExtractTextSpan {
  * Paragraph-like descendants of table cells are emitted individually with
  * `tableContext` attached.
  *
+ * Textbox paragraphs are nested stories. They appear immediately after the
+ * body or table-cell paragraph they are anchored to, not after the whole body.
+ *
  * Block SDTs (structured document tags / content controls) are transparent:
  * their children emit individually as if they were direct children of the
  * enclosing container. No wrapper `sdt` block is emitted. This prevents
@@ -164,7 +167,10 @@ export interface ExtractTrackedChange {
 }
 
 export interface ExtractResult {
-  /** All blocks in document order with stable IDs and full text. */
+  /**
+   * All blocks in document order with stable IDs and full text.
+   * Nested textbox paragraphs follow the paragraph they are anchored to.
+   */
   blocks: ExtractBlock[];
   /** All comments with entity IDs and anchored block references. */
   comments: ExtractComment[];

@@ -67,6 +67,7 @@ import {
   isPagePositionedParagraphFrame,
 } from '@superdoc/contracts';
 import { DATASET_KEYS, decodeLayoutStoryDataset } from '@superdoc/dom-contract';
+import { isMinimalWordLayout } from '@superdoc/common/list-marker-utils';
 import { resolvePhysicalFamily } from '@superdoc/font-system';
 import { getPresetShapeSvg } from '@superdoc/preset-geometry';
 import { DOM_CLASS_NAMES } from './constants.js';
@@ -120,6 +121,7 @@ import {
 } from './sdt/snapshot.js';
 import { computeBetweenBorderFlags, type BetweenBorderInfo } from './paragraph/borders/index.js';
 import { applyParagraphFragmentPmAttributes } from './paragraph/frame.js';
+import { renderParagraphContent } from './paragraph/renderParagraphContent.js';
 import { renderParagraphFragment as renderParagraphFragmentElement } from './paragraph/renderParagraphFragment.js';
 import { renderLine as renderRunLine } from './runs/render-line.js';
 import type { RunRenderContext } from './runs/types.js';
@@ -3508,8 +3510,50 @@ export class DomPainter {
             ...(paragraphTextboxId ? { id: paragraphTextboxId } : {}),
           },
         };
-        measure.lines.forEach((line, lineIndex) => {
-          const lineEl = this.renderLine(contentBlock, line, paragraphContext, availableWidth, lineIndex);
+        const paragraphHost = this.doc!.createElement('div');
+        paragraphHost.style.position = 'relative';
+        paragraphHost.style.flex = '0 0 auto';
+        const rendered = renderParagraphContent({
+          doc: this.doc!,
+          frameEl: paragraphHost,
+          block: contentBlock,
+          measure,
+          containerKind: 'body-fragment',
+          width: availableWidth,
+          localStartLine: 0,
+          localEndLine: measure.lines.length,
+          markerWidth: measure.marker?.markerWidth,
+          markerTextWidth: measure.marker?.markerTextWidth,
+          wordLayout: isMinimalWordLayout(contentBlock.attrs?.wordLayout) ? contentBlock.attrs.wordLayout : undefined,
+          applySdtDataset,
+          applyContainerSdtDataset,
+          resolvePhysical: this.options.resolvePhysical,
+          sourceAnchor: contentBlock.sourceAnchor,
+          renderLine: ({
+            block: paragraphBlock,
+            line,
+            lineIndex,
+            availableWidth: lineAvailableWidth,
+            skipJustify,
+            preExpandedRuns,
+            resolvedListTextStartPx,
+            indentOffsetOverride,
+            paragraphMarkLeftOffsetOverride,
+          }) =>
+            this.renderLine(
+              paragraphBlock,
+              line,
+              paragraphContext,
+              lineAvailableWidth,
+              lineIndex,
+              skipJustify,
+              preExpandedRuns,
+              resolvedListTextStartPx,
+              indentOffsetOverride,
+              paragraphMarkLeftOffsetOverride,
+            ),
+        });
+        rendered.renderedLines.forEach(({ el: lineEl }, lineIndex) => {
           if (paragraphTextboxId) {
             applyLayoutIdentityDataset(
               lineEl,
@@ -3524,8 +3568,8 @@ export class DomPainter {
             );
           }
           applySourceAnchorDataset(lineEl, contentBlock.sourceAnchor);
-          linesHost.appendChild(lineEl);
         });
+        linesHost.appendChild(paragraphHost);
         return;
       }
 

@@ -235,7 +235,7 @@ export interface QueryMatchInput {
   /** Selector for query.match. Text selectors may opt into deleted tracked text via `includeDeletedText`. */
   select: TextSelector | NodeSelector;
   within?: BlockNodeAddress;
-  /** Restrict matching to a specific story. Omit for body (backward compatible). */
+  /** Restrict matching to one story. Omit to match body and textbox stories. */
   in?: StoryLocator;
   require?: CardinalityRequirement;
   /** Match evaluation mode. `'candidates'` (default) returns best-effort matches; `'strict'` enforces exact semantics (future). */

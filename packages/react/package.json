@@ -1,6 +1,6 @@
 {
   "name": "@superdoc/react",
-  "version": "2.9.1-next.4",
+  "version": "2.10.0-next.1",
   "description": "Official React wrapper for the SuperDoc document editor",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -36,12 +36,12 @@
   ],
   "license": "AGPL-3.0",
   "dependencies": {
-    "superdoc": "workspace:2.14.1-next.6"
+    "superdoc": "workspace:2.15.0-next.1"
   },
   "peerDependencies": {
     "react": ">=16.8.0",
     "react-dom": ">=16.8.0",
-    "superdoc": "workspace:2.14.1-next.6"
+    "superdoc": "workspace:2.15.0-next.1"
   },
   "devDependencies": {
     "@testing-library/react": "catalog:",

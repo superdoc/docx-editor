@@ -75,7 +75,15 @@ export type ParagraphSemanticStyleRole =
   | { kind: 'title' }
   | { kind: 'subtitle' };
 
-/** paragraphs.setStyle — concrete catalog identity or semantic intent. */
+/**
+ * paragraphs.setStyle — concrete catalog identity or semantic intent.
+ *
+ * A `role` selector that matches more than one authored style (e.g. two
+ * styles both named "heading 1") normally fails with `PRECONDITION_FAILED`.
+ * The one exception: if the target paragraph's current style is already one
+ * of the colliding candidates, the mutation succeeds and keeps that style
+ * unchanged rather than switching it to a different candidate.
+ */
 export type ParagraphsSetStyleInput = { target: ParagraphTarget } & (
   | { styleId: string; role?: never }
   | { styleId?: never; role: ParagraphSemanticStyleRole }

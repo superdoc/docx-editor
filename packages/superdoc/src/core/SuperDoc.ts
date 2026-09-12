@@ -2285,10 +2285,12 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
         ? ({ ...configDoc.v2Collaboration, roomMode: 'join' } as RuntimeDocument['v2Collaboration'])
         : null;
     configDoc.data = nextData;
+    configDoc.fieldContext = {};
     if (nextV2Collaboration) configDoc.v2Collaboration = nextV2Collaboration;
     const storeDoc = this.superdocStore?.documents.find((d: RuntimeDocument) => d.id === configDoc.id) ?? null;
     if (storeDoc) {
       storeDoc.data = nextData;
+      storeDoc.fieldContext = {};
       if (nextV2Collaboration) this.#writeStoreDocV2Collaboration(storeDoc, nextV2Collaboration);
     }
   }

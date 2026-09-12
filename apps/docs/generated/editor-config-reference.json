@@ -170,6 +170,21 @@
       "group": "other"
     },
     {
+      "name": "fieldContext",
+      "type": "{\n  fileName?: null | string;\n  fullPath?: null | string;\n  currentUser?: null | { name?: string | null; initials?: string | null; address?: string | null; };\n}",
+      "typeName": "{ fileName?: string | null; fullPath?: string | null; currentUser?: { name?: string | null; initials?: string | null; address?: string | null; } | null; }",
+      "required": false,
+      "description": "Default V2 field values for one initial document. For multiple documents, set Document.fieldContext on each entry.",
+      "group": "other"
+    },
+    {
+      "name": "fieldUpdatePolicy",
+      "type": "\"refreshOnOpen\"",
+      "required": false,
+      "description": "Refresh supported unlocked V2 fields on local editable open. Omission preserves imported caches.",
+      "group": "other"
+    },
+    {
       "name": "uiDisplayFallbackFont",
       "type": "string",
       "required": false,
@@ -310,7 +325,7 @@
       "name": "onException",
       "type": "(params: SuperDocExceptionPayload) => void",
       "required": false,
-      "description": "Callback when SuperDoc emits an `exception` event. The payload is a union of runtime shapes (store init, restore failure, editor lifecycle, built-in toolbar, hyperlink activation, structured diagnostic). Narrow with `'stage' in params` (store init), `'code' in params` (editor), `'itemName' in params` (toolbar), `'source' in params` (hyperlink), or `'diagnosticCode' in params` (structured diagnostic) before reading shape-specific fields. A structured diagnostic (`SuperDocExceptionDiagnosticPayload`, `diagnosticCode` one of `PARSE_ERROR` | `RENDER_ERROR` | `UNSUPPORTED_FEATURE` | `PERFORMANCE_ERROR`) can accompany a legacy exception payload. SuperDoc filters unsupported internal records. For translated package and readiness records, it emits at most one structured diagnostic for each `(documentId, generation, internalCode)` tuple. It also suppresses a generic boot diagnostic when a more specific package diagnostic describes the same failure. A single incident can therefore raise 0..N structured diagnostics. Only the `unzip` and `render` stages are populated today; `parse` and `layout` are reserved for future coverage.",
+      "description": "Callback when SuperDoc emits an `exception` event. The payload is a union of runtime shapes (store init, restore failure, editor lifecycle, built-in toolbar, hyperlink activation, structured diagnostic). Narrow with `'stage' in params` (store init), `'code' in params` (editor), `'itemName' in params` (toolbar), `'source' in params` (hyperlink), or `'diagnosticCode' in params` (structured diagnostic) before reading shape-specific fields. A structured diagnostic (`SuperDocExceptionDiagnosticPayload`, `diagnosticCode` one of `PARSE_ERROR` | `RENDER_ERROR` | `UNSUPPORTED_FEATURE` | `PERFORMANCE_ERROR`) can accompany a legacy exception payload. SuperDoc filters unsupported internal records. For translated package and readiness records, it emits at most one structured diagnostic for each `(documentId, generation, internalCode)` tuple. It also suppresses a generic boot diagnostic when a more specific package diagnostic describes the same failure. A single incident can therefore raise 0..N structured diagnostics. The `unzip`, `parse`, `render`, and `export` stages are populated today; `layout` is reserved for future coverage.",
       "group": "other"
     },
     {

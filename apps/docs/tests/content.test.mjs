@@ -4000,6 +4000,13 @@ test('the Editor configuration reference starts with concise essential fields', 
   const essentials = editorConfigExplorer.fields
     .filter((field) => field.group === 'essentials')
     .map((field) => field.name);
+  const fieldContext = editorConfigExplorer.fields.find((field) => field.name === 'fieldContext');
+  const fieldUpdatePolicy = editorConfigExplorer.fields.find((field) => field.name === 'fieldUpdatePolicy');
+  assert.equal(fieldContext?.group, 'document');
+  assert.match(fieldContext?.type ?? '', /fileName\?: null \| string/u);
+  assert.match(fieldContext?.type ?? '', /currentUser\?:/u);
+  assert.equal(fieldUpdatePolicy?.group, 'behavior');
+  assert.match(fieldUpdatePolicy?.type ?? '', /refreshOnOpen/u);
   const lifecycle = editorConfigExplorer.fields
     .filter((field) => field.group === 'lifecycle')
     .map((field) => field.name);

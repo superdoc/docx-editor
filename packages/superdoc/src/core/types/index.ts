@@ -1065,6 +1065,12 @@ export type DocumentUploadSource = {
 export type DocumentDataSource = globalThis.File | globalThis.Blob | ArrayBuffer | Uint8Array | DocumentUploadSource;
 
 export interface Document {
+  /** V2 scalar-field values for this document, copied when it opens. */
+  fieldContext?: {
+    fileName?: string | null;
+    fullPath?: string | null;
+    currentUser?: { name?: string | null; initials?: string | null; address?: string | null } | null;
+  };
   /** The ID of the document. */
   id?: string;
   /** Document type as a MIME type or shorthand such as `docx`. */
@@ -4379,6 +4385,10 @@ export interface Config {
    * `modules.comments.permissionResolver` field.
    */
   permissionResolver?: PermissionResolver;
+  /** Default V2 field values for one initial document. For multiple documents, set Document.fieldContext on each entry. */
+  fieldContext?: Document['fieldContext'];
+  /** Refresh supported unlocked V2 fields on local editable open. Omission preserves imported caches. */
+  fieldUpdatePolicy?: 'refreshOnOpen';
   /**
    * Where to render the built-in toolbar. Either an `HTMLElement`, or a
    * selector string in one of the supported forms: an id selector (`#toolbar`),

@@ -815,6 +815,13 @@ const createV2ExtensionsFacet = (host) => {
   };
 };
 
+const clearDocumentFieldContext = (documentId) => {
+  const document = documents.value.find((entry) => entry.id === documentId);
+  const configDocument = proxy.$superdoc.config.documents.find((entry) => entry.id === documentId);
+  if (document) document.fieldContext = {};
+  if (configDocument) configDocument.fieldContext = {};
+};
+
 const onV2EditorReady = (payload) => {
   if (!payload) return;
   // A successful open clears any prior terminal failure for this surface.
@@ -866,7 +873,9 @@ const onV2EditorReady = (payload) => {
     if (typeof replaceFile !== 'function') {
       throw new Error('v2-editor: replaceFile unavailable');
     }
-    return replaceFile(source);
+    const result = await replaceFile(source);
+    if (result?.state === 'review-ready' || result?.state === 'editing-ready') clearDocumentFieldContext(documentId);
+    return result;
   };
   const upgradeV2ToCollaboration = async (source, collaboration) => {
     if (typeof upgradeToCollaboration !== 'function') {
@@ -1813,6 +1822,7 @@ const onV2RenderCleared = (payload) => {
 const onV2HostEvent = (document, event) => {
   if (!event) return;
   const documentId = document?.id ?? null;
+  if (event.type === 'collaboration:document-replaced') clearDocumentFieldContext(documentId);
   if (event.type === 'review-mutation:started') {
     v2ReviewWindowController.beginMutation(event.reviewMutation);
     return;
@@ -2297,6 +2307,8 @@ const editorOptions = (doc) => {
     // Passing the config callback directly here would double-deliver every v2 report.
     fontAssets: proxy.$superdoc.config.fonts,
     workerUrls: proxy.$superdoc.config.workerUrls,
+    fieldContext: doc.fieldContext,
+    fieldUpdatePolicy: proxy.$superdoc.config.fieldUpdatePolicy,
     workerStartupTimeoutMs: proxy.$superdoc.config.workerStartupTimeoutMs,
     proofing: resolvedProofingConfig.value,
     isNewFile,

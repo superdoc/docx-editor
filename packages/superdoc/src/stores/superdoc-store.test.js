@@ -63,6 +63,43 @@ describe('SuperDoc Store - Blob Support', () => {
     store = useSuperdocStore();
   });
 
+  it('uses top-level scalar context only for a single initial document', async () => {
+    const document = (id, fieldContext) => ({
+      id,
+      type: DOCX,
+      data: new File(['content'], `${id}.docx`, { type: DOCX }),
+      fieldContext,
+    });
+    await store.init(createTestConfig([document('single')], { fieldContext: { fileName: 'Initial.docx' } }));
+    expect(store.documents[0].fieldContext).toEqual({ fileName: 'Initial.docx' });
+    await store.init(createTestConfig([document('later')]));
+    expect(store.documents[0].fieldContext).toBeUndefined();
+  });
+
+  it('keeps explicit scalar contexts separate and leaves a missing multi-document context unavailable', async () => {
+    const document = (id, fieldContext) => ({
+      id,
+      type: DOCX,
+      data: new File(['content'], `${id}.docx`, { type: DOCX }),
+      fieldContext,
+    });
+    await store.init(
+      createTestConfig(
+        [
+          document('first', { fileName: 'First.docx' }),
+          document('second', { fileName: 'Second.docx' }),
+          document('missing'),
+        ],
+        { fieldContext: { fileName: 'Global.docx' } },
+      ),
+    );
+    expect(store.documents.map((doc) => doc.fieldContext)).toEqual([
+      { fileName: 'First.docx' },
+      { fileName: 'Second.docx' },
+      undefined,
+    ]);
+  });
+
   describe('_initializeDocumentData', () => {
     it('should handle File objects', async () => {
       const file = new File(['test content'], 'test.docx', {

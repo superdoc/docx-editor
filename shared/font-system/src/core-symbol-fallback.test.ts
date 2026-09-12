@@ -12,6 +12,19 @@ describe('core symbol fallback coverage', () => {
     expect(textForCoreSymbolFallback('\u{1F5F9}\u{1F5F9}')).toBe('\u{1F5F9}');
   });
 
+  it('plans visible ASCII symbols while leaving ordinary text and separators lazy', () => {
+    expect(textForCoreSymbolFallback('3. #,##0 | S: *')).toBe('#*');
+    expect(textForCoreSymbolFallback('plain 123\u0000\r\t \u007f\u00a0')).toBe('');
+  });
+
+  it('does not claim separator glyphs that the load gate leaves lazy', () => {
+    for (const codePoint of [0, 0x0d, 0x20, 0x7f, 0xa0]) {
+      expect(
+        CORE_SYMBOL_FALLBACK_COVERAGE.ranges.some((range) => range.start <= codePoint && codePoint <= range.end),
+      ).toBe(false);
+    }
+  });
+
   it('does not claim ASCII digits', () => {
     const coversCodePoint = (codePoint: number) =>
       CORE_SYMBOL_FALLBACK_COVERAGE.ranges.some((r) => r.start <= codePoint && codePoint <= r.end);

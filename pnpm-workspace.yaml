@@ -156,7 +156,7 @@ overrides:
   protobufjs@8: '8.6.4'
   superdoc: 'workspace:*'
   '@superdoc/react': 'workspace:*'
-  '@superdoc/sdk': '2.12.0-next.1'
+  '@superdoc/sdk': '2.12.0-next.2'
   '@superdoc/common': 'workspace:*'
   '@superdoc/contracts': 'workspace:*'
   '@superdoc/dom-contract': 'workspace:*'

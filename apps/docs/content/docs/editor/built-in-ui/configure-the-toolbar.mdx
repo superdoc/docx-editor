@@ -4,8 +4,8 @@ navTitle: Toolbar
 description: Show only the controls your workflow needs and keep them reachable as the Editor narrows.
 ---
 
-Compare three ways to shape the built-in toolbar, then add a focused version to the `/sample.docx` project from the
-[Quickstart](/editor/quickstart).
+Choose which built-in controls appear without building a toolbar yourself. Keep your existing document loading and
+saving code; this page changes only the toolbar configuration.
 
 ## Try the toolbar configurations
 
@@ -16,18 +16,42 @@ Expand the Editor and switch between the three configurations:
 3. **Add** keeps the focused toolbar and appends an **Add note** action with `customItems`. Place the caret in the
    document, then run it to insert `Review note: `.
 
-<EditorDemo fixture='/fixtures/formatting-sample.docx' preset='toolbar' title='Shape the built-in toolbar' />
+<EditorDemo fixture='/fixtures/getting-started.docx' preset='toolbar' title='Shape the built-in toolbar' />
 
 Switching configurations recreates the Editor from its current DOCX state because toolbar composition is a startup
 option. Edits and document mode remain; the current selection resets.
 
 ## Build the focused toolbar
 
-Vanilla needs separate toolbar and Editor mounts:
+Start with Undo, Redo, Bold, Italic, and Zoom. Add the matching configuration beside your Editor setup. In React, keep
+it outside the component so rerenders do not recreate the Editor.
+
+<FrameworkExampleTabs>
+  <FrameworkExample filename='src/main.ts' framework='Vanilla'>
+    <include>../../../../snippets/editor/basic-built-in-toolbar.ts</include>
+  </FrameworkExample>
+  <FrameworkExample filename='src/App.tsx' framework='React'>
+    <include>../../../../snippets/editor/react-basic-built-in-toolbar.tsx</include>
+  </FrameworkExample>
+</FrameworkExampleTabs>
+
+In Vanilla, add `<div id="toolbar"></div>` before your Editor mount and pass `ui: { toolbar }` to `new SuperDoc()`.
+In React, pass `ui={ui}` to `SuperDocEditor`; the wrapper creates the toolbar mount. If you already configure `ui`,
+keep its other fields and replace only `toolbar`.
+
+Reload, select text, and choose **Bold**. The five controls should be visible or reachable through the overflow menu
+at narrow widths. Your existing save or export button stays separate.
+
+## Add images and tables (optional)
+
+The following standalone example uses `/sample.docx` from the [Quickstart](/editor/quickstart). It replaces the Editor
+setup to demonstrate image uploads and table controls; it does not include your backend save flow.
+
+For Vanilla, replace the contents of `<body>` in `index.html` with the toolbar and Editor mounts below:
 
 <include>../../../../snippets/editor/focused-built-in-toolbar.html</include>
 
-React's `SuperDocEditor` creates the toolbar mount for you. Add the focused configuration to the Editor setup:
+React's `SuperDocEditor` creates the toolbar mount for you. Replace the matching file:
 
 <FrameworkExampleTabs>
   <FrameworkExample filename='src/main.ts' framework='Vanilla'>

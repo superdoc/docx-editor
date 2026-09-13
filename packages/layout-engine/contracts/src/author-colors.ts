@@ -1,7 +1,7 @@
 /**
  * Per-author tracked-change color resolution.
  *
- * Hosts configure per-author colors through `modules.trackChanges.authorColors`
+ * Hosts configure per-author colors through `trackChanges.authorColors`
  * on the `superdoc` package. SuperDoc composes those knobs into a single
  * resolver and threads it down into `toFlowBlocks` (see the pm-adapter
  * `AdapterOptions.resolveTrackedChangeColor` field). The pm-adapter calls the
@@ -29,7 +29,7 @@ export type TrackChangeAuthorColorResolver = (author: TrackChangeAuthor) => stri
 
 /**
  * Host-facing per-author tracked-change color configuration. Mirrors the
- * `modules.trackChanges.authorColors` shape on the public `superdoc` package.
+ * `trackChanges.authorColors` shape on the public `superdoc` package.
  */
 export interface AuthorColorsConfig {
   /** When `false`, per-author colors are not applied. Defaults to enabled. */

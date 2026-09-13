@@ -3,12 +3,13 @@
 /**
  * @typedef {'review' | 'original' | 'final' | 'off'} TrackChangesMode
  * @typedef {'original' | 'markup' | 'final'} ViewingTrackedChangesMode
- * @typedef {'paired' | 'independent'} TrackChangesReplacements
+ * @typedef {'grouped' | 'separate'} TrackChangesReplacementMode
+ * @typedef {'paired' | 'independent'} InternalTrackChangesReplacementMode
  * @typedef {{ enabled?: boolean, overrides?: Record<string, string>, resolve?: (author: { name?: string, email?: string, image?: string }) => (string | undefined) }} AuthorColorsConfig
  * @typedef {import('../types/index.js').TrackedChangeSemanticColorKey} TrackedChangeSemanticColorKey
  * @typedef {{ key: TrackedChangeSemanticColorKey, author?: { name?: string, email?: string, image?: string }, type?: string, subtype?: string, targetKind?: string, semanticAnchorScope?: string }} SemanticColorResolverInput
  * @typedef {{ enabled?: boolean, overrides?: Partial<Record<TrackedChangeSemanticColorKey, string>>, resolve?: (input: SemanticColorResolverInput) => (string | undefined) }} SemanticColorsConfig
- * @typedef {{ visible: boolean, mode: TrackChangesMode, enabled: boolean, replacements: TrackChangesReplacements, authorColors?: AuthorColorsConfig, semanticColors?: SemanticColorsConfig }} NormalizedTrackChangesConfig
+ * @typedef {{ visible: boolean, mode: TrackChangesMode, enabled: boolean, replacements: InternalTrackChangesReplacementMode, authorColors?: AuthorColorsConfig, semanticColors?: SemanticColorsConfig }} NormalizedTrackChangesConfig
  */
 
 /** @type {ReadonlyArray<TrackChangesMode>} */
@@ -16,8 +17,8 @@ const ALLOWED_MODES = ['review', 'original', 'final', 'off'];
 /** @type {ReadonlyArray<ViewingTrackedChangesMode>} */
 const ALLOWED_VIEWING_MODES = ['original', 'markup', 'final'];
 
-/** @type {ReadonlyArray<TrackChangesReplacements>} */
-const ALLOWED_REPLACEMENTS = ['paired', 'independent'];
+/** @type {ReadonlyArray<InternalTrackChangesReplacementMode>} */
+const INTERNAL_REPLACEMENT_MODES = ['paired', 'independent'];
 
 // Marks a config object we've already normalized so a second pass with the same
 // object (e.g. a consumer reusing the config to mount another SuperDoc) doesn't
@@ -86,13 +87,34 @@ function viewingModeToRenderMode(value) {
 
 /**
  * @param {unknown} value
- * @returns {TrackChangesReplacements | null}
+ * @returns {InternalTrackChangesReplacementMode | null}
  */
-function coerceReplacements(value) {
-  if (typeof value === 'string' && ALLOWED_REPLACEMENTS.includes(/** @type {TrackChangesReplacements} */ (value))) {
-    return /** @type {TrackChangesReplacements} */ (value);
+function coerceInternalReplacementMode(value) {
+  if (
+    typeof value === 'string' &&
+    INTERNAL_REPLACEMENT_MODES.includes(/** @type {InternalTrackChangesReplacementMode} */ (value))
+  ) {
+    return /** @type {InternalTrackChangesReplacementMode} */ (value);
   }
   return null;
+}
+
+/**
+ * @param {unknown} value
+ * @returns {InternalTrackChangesReplacementMode | null}
+ */
+function replacementModeToInternal(value) {
+  if (value === 'grouped') return 'paired';
+  if (value === 'separate') return 'independent';
+  return null;
+}
+
+/**
+ * @param {InternalTrackChangesReplacementMode} value
+ * @returns {TrackChangesReplacementMode}
+ */
+function replacementModeToPublic(value) {
+  return value === 'paired' ? 'grouped' : 'separate';
 }
 
 /**
@@ -105,9 +127,9 @@ function pickObject(value) {
 }
 
 /**
- * Resolves track-changes rendering from `config.viewing.trackedChanges` when
- * supplied, then falls back to the v2 compatibility paths. The normalized
- * result is mirrored to those paths while their internal consumers migrate.
+ * Resolves tracked-change behavior from `config.trackChanges` and viewer
+ * projection from `config.viewing.trackedChanges`. The normalized result is
+ * mirrored to the previous paths while their internal consumers migrate.
  *
  * Precedence per field: canonical > legacy > derived default.
  *
@@ -128,52 +150,51 @@ export function normalizeTrackChangesConfig(config) {
     config.modules = {};
   }
 
-  const fromCanonical = pickObject(config.modules.trackChanges);
-  const fromLegacyVisible = pickObject(config.trackChanges);
+  const fromCanonical = pickObject(config.trackChanges);
+  const fromLegacyModule = pickObject(config.modules.trackChanges);
   const fromLegacyLayout = pickObject(config.layoutEngineOptions?.trackedChanges);
 
   if (!alreadyNormalized) {
-    if (fromLegacyVisible) {
-      warnOnce('config.trackChanges', 'config.viewing.trackedChanges');
+    if (fromCanonical && Object.prototype.hasOwnProperty.call(fromCanonical, 'visible')) {
+      warnOnce('config.trackChanges.visible', 'config.viewing.trackedChanges');
+    }
+    if (fromLegacyModule) {
+      warnOnce(
+        'config.modules.trackChanges',
+        'config.trackChanges for behavior and config.viewing.trackedChanges for viewing projection',
+      );
     }
     if (fromLegacyLayout) {
       warnOnce(
         'config.layoutEngineOptions.trackedChanges',
-        'config.viewing.trackedChanges for display and config.modules.trackChanges for behavior',
+        'config.viewing.trackedChanges for display and config.trackChanges.enabled for behavior',
       );
-    }
-    if (fromCanonical && Object.prototype.hasOwnProperty.call(fromCanonical, 'visible')) {
-      warnOnce('config.modules.trackChanges.visible', 'config.viewing.trackedChanges');
-    }
-    if (fromCanonical && Object.prototype.hasOwnProperty.call(fromCanonical, 'mode')) {
-      warnOnce('config.modules.trackChanges.mode', 'config.viewing.trackedChanges');
     }
   }
 
   const visible = viewingMode
     ? viewingMode === 'markup'
-    : resolveBool(fromCanonical?.visible, fromLegacyVisible?.visible, false);
+    : resolveBool(fromCanonical?.visible, fromLegacyModule?.visible, false);
 
-  const enabled = resolveBool(fromCanonical?.enabled, fromLegacyLayout?.enabled, true);
+  const enabled = resolveBool(
+    fromCanonical?.enabled,
+    fromLegacyModule?.enabled,
+    typeof fromLegacyLayout?.enabled === 'boolean' ? fromLegacyLayout.enabled : true,
+  );
 
-  // Replacement behavior is only surfaced on the canonical path. The legacy
-  // buckets never exposed this knob, so there's no alias to resolve.
-  const replacements = coerceReplacements(fromCanonical?.replacements) ?? 'paired';
+  const internalReplacementMode =
+    replacementModeToInternal(fromCanonical?.replacementMode) ??
+    coerceInternalReplacementMode(fromLegacyModule?.replacements) ??
+    'paired';
 
-  // Per-author colors live only on the canonical path. Preserve the object by
-  // reference (it may carry a `resolve` function) rather than cloning, so the
-  // composed resolver SuperDoc builds keeps the host's callback intact.
-  const authorColors = pickObject(fromCanonical?.authorColors)
-    ? /** @type {AuthorColorsConfig} */ (/** @type {Record<string, unknown>} */ (fromCanonical).authorColors)
-    : undefined;
+  // Preserve color config by reference because either object may carry a
+  // resolver function that the composed resolver must keep intact.
+  const authorColorsSource = pickObject(fromCanonical?.authorColors) ?? pickObject(fromLegacyModule?.authorColors);
+  const authorColors = authorColorsSource ? /** @type {AuthorColorsConfig} */ (authorColorsSource) : undefined;
 
-  // Semantic (structural) colors live only on the canonical path; there is no
-  // legacy alias for this knob. Preserve the object by reference (it may carry a
-  // `resolve` function) like authorColors, so SuperDoc's composed semantic
-  // resolver keeps the host's callback intact.
-  const semanticColors = pickObject(fromCanonical?.semanticColors)
-    ? /** @type {SemanticColorsConfig} */ (/** @type {Record<string, unknown>} */ (fromCanonical).semanticColors)
-    : undefined;
+  const semanticColorsSource =
+    pickObject(fromCanonical?.semanticColors) ?? pickObject(fromLegacyModule?.semanticColors);
+  const semanticColors = semanticColorsSource ? /** @type {SemanticColorsConfig} */ (semanticColorsSource) : undefined;
 
   // Default mode derives from documentMode + visibility so a viewing-mode
   // document without an explicit mode falls back to 'original' unless the
@@ -185,10 +206,10 @@ export function normalizeTrackChangesConfig(config) {
     ? isViewingMode
       ? viewingModeToRenderMode(viewingMode)
       : 'review'
-    : resolveMode(fromCanonical?.mode, fromLegacyLayout?.mode, defaultMode);
+    : resolveMode(fromLegacyModule?.mode, fromLegacyLayout?.mode, defaultMode);
 
   /** @type {NormalizedTrackChangesConfig} */
-  const normalized = { visible, mode, enabled, replacements };
+  const normalized = { visible, mode, enabled, replacements: internalReplacementMode };
   if (authorColors) {
     normalized.authorColors = authorColors;
   }
@@ -199,7 +220,13 @@ export function normalizeTrackChangesConfig(config) {
   // Write-through to every path so all existing internal reads see the same
   // resolved values without needing to migrate each call site in this pass.
   config.modules.trackChanges = normalized;
-  config.trackChanges = { visible };
+  config.trackChanges = { visible, enabled, replacementMode: replacementModeToPublic(internalReplacementMode) };
+  if (authorColors) {
+    config.trackChanges.authorColors = authorColors;
+  }
+  if (semanticColors) {
+    config.trackChanges.semanticColors = semanticColors;
+  }
   if (!pickObject(config.layoutEngineOptions)) {
     config.layoutEngineOptions = {};
   }

@@ -40,7 +40,17 @@ activation. Create `src/hyperlink-activation.ts`:
 
 <include>../../../../snippets/editor/hyperlink-activation.ts</include>
 
-Add the handler to the `/sample.docx` project from the [Quickstart](/editor/quickstart):
+In the [Quickstart](/editor/quickstart) project, download this sample as `public/hyperlinks-sample.docx`. It contains a
+link you can activate:
+
+<FileDownload
+  href='/fixtures/hyperlinks-sample.docx'
+  label='Download the hyperlink sample'
+  description='Document with a link to SuperDoc documentation'
+  fileType='DOCX'
+/>
+
+Replace `src/main.ts` or `src/App.tsx` with this standalone example. Both variants import the handler above:
 
 <FrameworkExampleTabs>
   <FrameworkExample filename='src/main.ts' framework='Vanilla'>
@@ -51,9 +61,12 @@ Add the handler to the `/sample.docx` project from the [Quickstart](/editor/quic
   </FrameworkExample>
 </FrameworkExampleTabs>
 
-Vanilla also needs toolbar and Editor mounts:
+For Vanilla, replace the contents of `<body>` in `index.html` with the toolbar and Editor mounts below:
 
 <include>../../../../snippets/editor/built-in-hyperlinks.html</include>
+
+Click **SuperDoc documentation**. The application action should show **Open hyperlink** and **Close**. Choose **Close**
+to dismiss it without navigating away.
 
 Return one of these values:
 

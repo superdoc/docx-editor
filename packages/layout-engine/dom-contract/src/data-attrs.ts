@@ -74,6 +74,9 @@ export const DATA_ATTRS = {
 
   /** Source block reference (today: producer's `blockId`). */
   LAYOUT_BLOCK_REF: 'data-layout-block-ref',
+
+  /** Zero-based flow-column index that owns the rendered fragment. */
+  LAYOUT_COLUMN_INDEX: 'data-layout-column-index',
 } as const;
 
 /**
@@ -100,6 +103,7 @@ export const DATASET_KEYS = {
   LAYOUT_FRAGMENT_ID: 'layoutFragmentId',
   LAYOUT_STORY: 'layoutStory',
   LAYOUT_BLOCK_REF: 'layoutBlockRef',
+  LAYOUT_COLUMN_INDEX: 'layoutColumnIndex',
 } as const;
 
 /**

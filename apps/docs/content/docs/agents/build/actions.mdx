@@ -1,0 +1,192 @@
+---
+title: Core action reference
+navTitle: Action reference
+description: The arguments, selectors, placements, and receipts behind superdoc_inspect and superdoc_perform_action.
+---
+
+{/* Media decision: none. This is a lookup page; the operation lifecycle is drawn in the Document API mental model. */}
+
+The `core` preset advertises two tools. `superdoc_inspect` reads a deterministic snapshot. `superdoc_perform_action` runs one named action with flat arguments and returns a receipt. This page documents both from the action registry in `@superdoc/sdk`, and the same definitions are served over MCP under `MCP_PRESET=core`.
+
+The registry changes across SDK releases without changing the preset id. Pin the SDK version when your integration depends on a specific action set, and read the advertised schema after upgrading:
+
+```ts
+import { getToolCatalog } from '@superdoc/sdk';
+
+const catalog = await getToolCatalog('core');
+const performAction = catalog.tools.find((tool) => tool.toolName === 'superdoc_perform_action');
+console.log(performAction?.inputSchema);
+```
+
+## superdoc_inspect
+
+Every argument is optional. Prefer the narrowest call that answers the question, because the result lives in conversation history for the rest of the run.
+
+| Argument                                                        | Effect                                                                                                      |
+| --------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `countsOnly`                                                    | Return counts only. The cheapest orientation call                                                           |
+| `includeDomains`                                                | Limit the snapshot to the listed domains                                                                    |
+| `blockNodeTypes`                                                | Only blocks of these node types, for example `["heading"]`                                                  |
+| `findText`, `findLimit`                                         | Scan the whole document server-side, report matching blocks, and center the block window on the first match |
+| `blockOffset`, `blockLimit`                                     | A contiguous window of blocks. Ordinals are absolute, so windows line up across calls                       |
+| `omitEmptyBlocks`, `dropTextPreview`, `blockTextLimit`          | Trim the payload of a reading pass                                                                          |
+| `includeListItemRuns`, `listItemRunsLimit`                      | Inline formatting runs on list items. On by default; pass `false` for a pure read                           |
+| `includeBlockRuns`, `blockRunsLimit`                            | Inline formatting runs on body blocks. Off by default. Pair with a narrow block window                      |
+| `includeTableCellRuns`, `tableCellRunsLimit`                    | Inline formatting runs on table cells. Off by default                                                       |
+| `listLimit`, `tableLimit`, `commentLimit`, `trackedChangeLimit` | Cap the entries returned for each domain                                                                    |
+
+Domains: `blocks`, `lists`, `tables`, `comments`, `trackedChanges`, `sections`, `headerFooters`, `styles`, `contentControls`, `fields`, `hyperlinks`, `bookmarks`, `permissionRanges`, `images`.
+
+Every ordinal in a snapshot is 1-based, and selectors accept the same values. Use `findText` to locate a heading or phrase in a long document instead of paging through windows.
+
+## Selectors
+
+Actions that operate on a block take a `selector`. Batch actions take `selectors[]`.
+
+| Selector    | Shape                                                                                   | Use when                                                     |
+| ----------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| Node id     | `{ kind: "nodeId", nodeId }`                                                            | You have a `nodeId` from an inspect. The most precise choice |
+| Ordinal     | `{ kind: "ordinal", ordinalKind, value }`                                               | "The third paragraph" or "the second table"                  |
+| Text search | `{ kind: "textSearch", terms: [...], match?, occurrence?, caseSensitive?, nodeTypes? }` | You know the wording but not the position                    |
+| Table cell  | `{ kind: "tableCell", tableOrdinal, rowIndex, columnIndex }`                            | Cell-scoped edits                                            |
+| Relative    | `{ kind: "relative", position: "before" \| "after", target: <selector> }`               | "The paragraph after the heading called X"                   |
+
+`ordinalKind` is one of `blockOrdinal`, `paragraphOrdinal`, `bodyParagraphOrdinal`, `headingOrdinal`, `listOrdinal`, `tableOrdinal`, or `sectionOrdinal`. `match` on a text search is `all` or `any`, and `nodeTypes` narrows to `paragraph`, `heading`, or `listItem`.
+
+## Placement
+
+Actions that insert content take a `placement`:
+
+```json
+{ "at": "document_end" }
+{ "at": "document_start" }
+{ "at": "after", "selector": { "kind": "textSearch", "terms": ["Definitions"] } }
+{ "at": "before", "selector": { "kind": "nodeId", "nodeId": "p42" } }
+```
+
+## changeMode
+
+Actions that accept `changeMode` record the edit as a tracked change when it is `"tracked"` and edit directly otherwise. The tool schema advertises the argument once for the whole tool, so the table below is the only place that says which actions honor it. Passing it to an action marked **No** looks compliant and produces a direct edit. `move_range` accepts the argument and then fails without mutating, because a block-range deletion cannot be tracked.
+
+The [safety guide](/agents/operate/safety) explains why a loop that promises reviewable output must enforce this allowlist in code.
+
+## Actions
+
+Arguments marked `?` are optional. Styled text arguments (`texts`, `cellTexts`, `entries`) accept either a plain string or an object with `runs` and `marks` so new content can match its neighbors in the same call.
+
+### Text and structure
+
+| Action              | Arguments                                                         | Tracked | Notes                                                                                                              |
+| ------------------- | ----------------------------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------ |
+| `insert_paragraphs` | `texts[]` or `text`, `placement?`, `headingLevel?`                | Yes     | The way to add a paragraph or clause. The first item can become a heading                                          |
+| `insert_heading`    | `text`, `level`, `placement?`                                     | Yes     |                                                                                                                    |
+| `replace_text`      | `edits[{ find, replace }]`, `selector?`, `caseSensitive?`         | Yes     | Rewrites the matched span as plain text. Keep spans minimal. Not for appending new sentences                       |
+| `delete_text`       | `finds[]`, `selector?`, `caseSensitive?`                          | Yes     | Deletes text only and leaves the block. Scope with `selector` to delete stray whitespace safely                    |
+| `delete_blocks`     | `selectors[]` or `selector`                                       | Yes     | Removes whole paragraphs, headings, or list items, marker included                                                 |
+| `append_list`       | `items[]`, `kind?`, `headingText?`, `headingLevel?`, `placement?` | Yes     | Starts a new list. Use `add_list_items` to extend an existing one                                                  |
+| `create_table`      | `rows`, `columns`, `cellTexts?`, `placement?`                     | Yes     | In tracked mode the whole insertion is one tracked change                                                          |
+| `rewrite_block`     | `selector`, `text`                                                | Yes     | Replaces a block's text and preserves the run pattern over the unchanged prefix and suffix                         |
+| `fill_placeholders` | `values[]` and/or `fields[{ label?, value }]`                     | Yes     |                                                                                                                    |
+| `move_range`        | `fromText`, `toText?`, `afterText` or `beforeText`                | Refused | Moves a block range or a visual section identified by text. Ranges containing tables, lists, or images are refused |
+
+### Lists and numbering
+
+| Action             | Arguments                                                                                            | Tracked | Notes                                                                                  |
+| ------------------ | ---------------------------------------------------------------------------------------------------- | ------- | -------------------------------------------------------------------------------------- |
+| `convert_list`     | `kind`, then `listOrdinal?` or `anchorText?`, or `fromMarker` + `toMarker`, or `fromText` + `toText` | Yes     | Converts lists, clause ranges, or plain paragraphs to a list in place                  |
+| `attach_numbering` | `anchorText` or `nodeId`, `likeMarker`                                                               | Yes     | Numbers a block in the same scheme and level as the sibling rendering `likeMarker`     |
+| `add_list_items`   | `anchorText` or `listOrdinal`, `entries[]` or `items[]`                                              | Yes     | Adds into an existing list and reuses its numbering. `level` is relative to the anchor |
+| `split_list`       | `anchorText`, `restartNumbering?`                                                                    | No      | Splits one list into two at an item                                                    |
+
+### History
+
+| Action         | Arguments                | Tracked | Notes                                                                   |
+| -------------- | ------------------------ | ------- | ----------------------------------------------------------------------- |
+| `undo_changes` | `untilMarker?`, `steps?` | No      | Steps history back until the rendered marker reappears, or a step count |
+| `redo_changes` | `steps?`                 | No      | Only valid right after an undo, before any new edit                     |
+
+### Moving text
+
+| Action      | Arguments            | Tracked | Notes                                                                                                               |
+| ----------- | -------------------- | ------- | ------------------------------------------------------------------------------------------------------------------- |
+| `move_text` | `text`, `afterText?` | Yes     | Direct mode requires `afterText`. Tracked mode records a tracked delete at the source and insert at the destination |
+
+### Comments
+
+| Action               | Arguments                                      | Tracked | Notes                                                         |
+| -------------------- | ---------------------------------------------- | ------- | ------------------------------------------------------------- |
+| `comment_paragraphs` | `commentText`, `scope?`, `excludeBlockQuotes?` | No      | One identical comment per paragraph. For broadcast notes only |
+| `add_comments`       | `commentText`, `selector` or `selectors[]`     | No      | Batch many targets into `selectors[]` in one call             |
+| `resolve_comments`   | `anchorText?`, `reopen?`                       | No      | Omit `anchorText` to resolve every open comment               |
+| `reply_to_comment`   | `commentText`, `anchorText` or `commentId`     | No      | Adds a threaded reply rather than a new top-level comment     |
+
+### Tracked-change review
+
+| Action                   | Arguments                | Tracked | Notes                                                          |
+| ------------------------ | ------------------------ | ------- | -------------------------------------------------------------- |
+| `accept_tracked_changes` | `author?`, `changeType?` | No      | `changeType` is `insert`, `delete`, `replacement`, or `format` |
+| `reject_tracked_changes` | `author?`, `changeType?` | No      |                                                                |
+
+Exclude both when a person must make the final decision. [Safety](/agents/operate/safety#keep-a-human-in-the-loop) shows the exclusion.
+
+### Formatting
+
+| Action                     | Arguments                                                                                                                                        | Tracked | Notes                                                          |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------- | -------------------------------------------------------------- |
+| `format_text`              | `targetText`, `targetTexts[]`, or `selector`; `bold?`, `italic?`, `underline?`, `strike?`, `highlight?`, `color?`, `fontSize?`, `caseSensitive?` | Yes     | Applies to every occurrence of the target text                 |
+| `apply_style`              | `selector`, then one of `styleId`, `headingLevel`, or `likeText`                                                                                 | No      | `likeText` copies another block's style and effective look     |
+| `format_paragraph`         | `selector`, `alignment`                                                                                                                          | Yes     | Tracked mode records the former alignment as a property change |
+| `set_paragraph_spacing`    | `selector`, `lineSpacing?`, `spaceBefore?`, `spaceAfter?`                                                                                        | No      |                                                                |
+| `normalize_body_font_size` | `fontSize`                                                                                                                                       | Yes     | Whole-body font size                                           |
+| `set_font_family`          | `fontFamily`, `selector?` or `targetText`/`targetTexts[]?`, `caseSensitive?`                                                                     | Yes     | Omit every target to set the whole body typeface               |
+| `apply_letter_spacing`     | `selector`, `letterSpacing`                                                                                                                      | Yes     |                                                                |
+
+### Layout, links, and table of contents
+
+| Action              | Arguments                 | Tracked | Notes                                                                    |
+| ------------------- | ------------------------- | ------- | ------------------------------------------------------------------------ |
+| `insert_page_break` | `selector`                | No      | Sets a page break before the block instead of inserting empty paragraphs |
+| `add_hyperlink`     | `text`, `url`, `tooltip?` | No      | Turns existing text into a link                                          |
+| `insert_toc`        | `title?`, `placement?`    | Yes     |                                                                          |
+
+### Tables
+
+| Action                | Arguments                                                                   | Tracked | Notes                                                        |
+| --------------------- | --------------------------------------------------------------------------- | ------- | ------------------------------------------------------------ |
+| `style_table`         | `tableOrdinal?`, `accentColor?`                                             | No      | Accent header, bold first column, banded rows                |
+| `move_table`          | `tableOrdinal?`, `placement`                                                | No      | Moves the whole table with its content in one call           |
+| `delete_table`        | `tableOrdinal?`                                                             | Yes     |                                                              |
+| `insert_table_row`    | `tableOrdinal?`, `rowIndex?`, `position?`, `cellTexts?`, `dryRun?`          | Yes     | `dryRun: true` reports success without changing the document |
+| `insert_table_column` | `tableOrdinal?`, `columnIndex?`, `position?`, `headerText?` or `cellTexts?` | Yes     |                                                              |
+| `delete_table_row`    | `tableOrdinal?`, `rowIndex`                                                 | Yes     |                                                              |
+| `delete_table_column` | `tableOrdinal?`, `columnIndex`                                              | Yes     |                                                              |
+| `split_table`         | `tableOrdinal?`, `rowIndex`, `separatorText?`                               | Yes     |                                                              |
+
+`tableOrdinal` is 1-based. Omit it only when the document contains exactly one table; with several tables the action cannot resolve a target and fails. `rowIndex` and `columnIndex` are 0-based, unlike every ordinal, so `rowIndex: 0` is the first row. The `tableCell` selector uses the same 0-based row and column indices.
+
+## Receipts
+
+Every dispatched action returns a receipt. Reads return a snapshot instead, and argument validation throws before a receipt exists. [Build an agent](/agents/build/build-an-agent#read-the-receipts) explains how a loop should branch on the three cases.
+
+| Field                                | Meaning                                                                                                  |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------------- |
+| `status`                             | `ok`, `partial`, `failed`, or `aborted`. `partial` means some requested edits applied and some did not   |
+| `intent`                             | The action name                                                                                          |
+| `preSnapshot`, `postSnapshot`        | `revision` and `counts` before and after. Differing revisions are the evidence that the document changed |
+| `selectedTargets`                    | The selectors that resolved and what they matched                                                        |
+| `executedOperations`                 | The Document API operations the action ran                                                               |
+| `verification`, `verificationPassed` | Post-checks run against a fresh snapshot, and their roll-up                                              |
+| `errors[]`                           | `code`, a `message` written for the model, and sometimes a structured `recovery`                         |
+| `nextStep`, `revertHint`, `note`     | Prose guidance for the model, and a literal undo call when several history steps were dispatched         |
+
+Actions add their own evidence, such as `editsApplied` and `editsSkipped` on `replace_text`, `formattingMatched` on inserts that copy neighboring formatting, and `addedItems` on `add_list_items`.
+
+Verification checks include `revision-changed`, `block-count-delta`, `comment-count-delta`, `tracked-change-count-delta`, `block-text-contains`, `table-shape`, and `list-item-count`. The standard `revision-changed` check fails when a mutation turns out to be a no-op, so `verificationPassed: false` does not by itself say whether anything changed. Read the snapshots.
+
+## Add your own
+
+`createAgentToolkit` accepts `customActions`, which extend this registry with named verbs of your own that dispatch through the same tool. Their receipts report `succeeded` rather than `ok`. See [Custom actions](/agents/build/custom-actions).
+
+## Not advertised
+
+The dispatcher also routes `superdoc_execute_code`, `agent_apply`, `agent_verify`, and `agent_operation`. They are for SDK callers, they are absent from the tool list and the system prompt, and a model-facing loop should refuse them. [Build an agent](/agents/build/build-an-agent#dispatch-only-what-you-advertised) shows the check.

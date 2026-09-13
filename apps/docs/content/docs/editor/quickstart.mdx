@@ -4,11 +4,14 @@ navTitle: Quickstart
 description: Install the browser Editor, open a sample DOCX, and export your first edit.
 ---
 
-Choose Vanilla or React below. Your choice stays active for every code example on this page.
+Open a sample document, change its effective date, and download the edited DOCX. This example runs in the browser
+without a backend.
 
 ## 1. Create a project
 
-Create a Vite project, enter it, and install SuperDoc:
+With Node.js 22.12 or newer and pnpm installed, create a Vite project and install SuperDoc:
+
+Choose Vanilla or React. Use the same framework for the remaining steps.
 
 <FrameworkExampleTabs>
   <FrameworkExample filename='Terminal' framework='Vanilla'>
@@ -21,7 +24,7 @@ Create a Vite project, enter it, and install SuperDoc:
 
 ## 2. Add the sample document
 
-Download the sample and save it as `public/sample.docx`:
+Download the sample into your project's `public` directory and rename it to `sample.docx`:
 
 <FileDownload
   href='/fixtures/getting-started.docx'
@@ -32,9 +35,10 @@ Download the sample and save it as `public/sample.docx`:
 
 Vite serves `public/sample.docx` at `/sample.docx`.
 
-## 3. Add the page
+## 3. Prepare the page
 
-Add the application surface. Vanilla mounts SuperDoc into `#editor`; the React wrapper creates that container for you.
+Replace the generated files below. Vanilla mounts SuperDoc into `#editor`; the React wrapper creates that container
+for you.
 
 <FrameworkExampleTabs>
   <FrameworkExample filename='index.html' framework='Vanilla'>
@@ -45,9 +49,14 @@ Add the application surface. Vanilla mounts SuperDoc into `#editor`; the React w
   </FrameworkExample>
 </FrameworkExampleTabs>
 
+For React, also replace `src/index.css` so Vite's starter layout does not constrain the Editor:
+
+<include>../../../../../examples/react/src/index.css</include>
+
 ## 4. Open the document
 
-Add the Editor and enable export after the document opens:
+Replace `src/main.ts` in Vanilla or `src/App.tsx` in React with the matching code below. It opens the document and enables
+export when the Editor is ready:
 
 <FrameworkExampleTabs>
   <FrameworkExample filename='src/main.ts' framework='Vanilla'>
@@ -64,33 +73,27 @@ Run the project:
 pnpm dev
 ```
 
-Open the printed URL. When the statement of work appears, **Export DOCX** becomes enabled. `onReady` keeps the button
-disabled until the document is open.
+Open the local URL printed in the terminal. You should see the statement of work. `onReady` enables **Export DOCX**
+after the document opens, so the button cannot export before the Editor is ready.
+
+If the document does not appear, check that `/sample.docx` opens at the same local address. The example also logs
+document-opening errors to the browser console through `onContentError` and `onException`.
 
 ## 5. Make an edit and export
 
 Change the effective date from `September 1, 2026` to `October 1, 2026`. Then select **Export DOCX**. The browser
 downloads `sample-edited.docx`.
 
-<Callout variant='success' title='Check the exported document'>
-  Open `sample-edited.docx` in Word or SuperDoc. Confirm that the effective date is `October 1, 2026` and that the
-  title, service list, milestone table, and signatures keep their formatting.
-</Callout>
+Open `sample-edited.docx` in Word or another DOCX editor. Confirm that the effective date is `October 1, 2026` and that
+the title, service list, milestone table, and signatures keep their formatting.
 
-## What just happened
-
-- `selector` mounted the Vanilla Editor; the React wrapper owned its container.
-- `document` gave the browser a DOCX URL to open.
-- `onReady` marked the first safe moment to enable document actions.
-- `export()` created the edited DOCX and triggered the download.
-
-If the document does not appear, check the `onContentError` or `onException` message in the browser console. They
-report import and startup failures instead of leaving an unexplained empty mount point.
+`export()` downloads a new file. It does not overwrite `public/sample.docx` or save changes to a server. Reloading this
+example opens the original sample again.
 
 The complete projects are available for [Vanilla](https://go.superdoc.dev/examples/vanilla) and
 [React](https://go.superdoc.dev/examples/react).
 
 ## Continue to configuration
 
-[Configure the Editor](/editor/configuration) to add user information, choose a document mode, and handle startup
-errors while keeping the same `/sample.docx` project.
+[Configure the Editor](/editor/configuration) to add user information and choose a document mode. Keep this project,
+including its export button and `/sample.docx`, for the next guide.

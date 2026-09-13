@@ -1,17 +1,84 @@
 ---
 title: Open dialogs and floating surfaces
 navTitle: Dialogs and surfaces
-description: Render application UI in SuperDoc-managed dialog and floating layers with explicit lifecycle outcomes.
+description: Open temporary application UI over the Editor and handle every way it can finish.
 ---
 
-Surfaces place application UI above the document without coupling it to Editor internals. Use a dialog for modal decisions and a floating surface for a non-modal tool or inspector.
+Use a surface when your application needs temporary UI over the Editor. Choose a dialog when the user must respond
+before returning to the document. Choose a floating surface when the document should remain usable.
+
+## Try both surface modes
+
+1. Open **confirmation**. Continue submits it. Cancel, Escape, or the backdrop closes it.
+2. Open **inspector** and keep editing the document. Open it again to replace the first inspector.
+
+<SurfaceLifecycleDemo />
+
+The status line reports `submitted`, `closed`, or `replaced`. Destroying the Editor produces the remaining outcome,
+`destroyed`.
+
+## Choose the right positioning API
+
+| Need                          | API                                                                     |
+| ----------------------------- | ----------------------------------------------------------------------- |
+| A modal decision              | `openSurface({ mode: 'dialog' })`                                       |
+| A fixed, non-modal helper     | `openSurface({ mode: 'floating' })`                                     |
+| UI that follows selected text | [Selection and viewport APIs](/editor/custom-ui/selection-and-viewport) |
+
+A floating surface stays in one of the Editor viewport's placement slots. It does not follow a document range. Use the
+selection and viewport APIs for a selection toolbar, AI prompt, or other text-anchored UI.
+
+## Open a dialog
+
+This standalone Vanilla recipe uses `public/sample.docx` from the [Quickstart](/editor/quickstart).
+Replace the body of `index.html` with:
+
+<include>../../../snippets/editor/external-surface.html</include>
+
+Replace `src/main.ts` below. This example mounts plain DOM in the surface, but `render()` can mount your framework instead.
 
 <include>../../../snippets/editor/external-surface.ts</include>
 
-The `render()` callback receives an empty container plus `resolve()` and `close()` controls. Mount DOM, React, Vue, or another framework into that container and return cleanup for any framework root or listener that outlives the nodes themselves.
+Choose **Open confirmation**, then **Continue** or **Cancel**. The status reports your choice; it does not change the DOCX.
 
-`handle.result` resolves for normal lifecycle outcomes. Check `status` before reading data: a surface can be submitted, closed, replaced by another surface in the same slot, or destroyed with the Editor. There is one active slot per mode.
+SuperDoc owns the dialog shell, position, and focus behavior. Your `render()` callback owns the content. It receives an
+empty `container` plus `resolve()` and `close()`. Return `{ destroy() {} }` to remove listeners or unmount a framework
+root when the surface closes.
 
-Give every surface a visible `title`, `ariaLabel`, or `ariaLabelledBy`. Decide whether Escape, backdrop clicks, and outside pointer events should close it. These defaults affect interaction, not authorization or transaction safety.
+## Handle every outcome
 
-Configure `surfaces` only for shared defaults and intent resolution. Direct `openSurface()` calls do not require a resolver. The built-in find/replace surface has its own switch, `ui: { search: true }`, because it is chrome rather than infrastructure.
+`handle.result` resolves once. `resolve(data)` produces `submitted`. `close(reason)`, Escape, and backdrop clicks produce
+`closed`. Opening another surface in the same mode produces `replaced` for the previous handle. Destroying the Editor
+produces `destroyed`.
+
+Dialog and floating modes have separate active slots, so one of each can be open. Opening a second surface in either
+mode replaces only the surface in that mode.
+
+Invalid requests throw synchronously. Normal lifecycle outcomes resolve `handle.result`; they do not reject it.
+
+## Use the interaction defaults deliberately
+
+Dialogs trap focus, restore it when they close, and close on Escape or backdrop clicks by default. Floating surfaces
+default to the top-right, focus their first control, close on Escape, and stay open after outside pointer events.
+
+The dialog's trap covers keystrokes inside its own backdrop. Controls your application renders outside the Editor
+viewport are not part of it, so moving focus to one takes the reader out of the dialog and Escape stops closing it.
+While a dialog is open, make the rest of your interface unreachable — `inert` on the surrounding region is enough — and
+do not rely on the trap alone to contain focus.
+
+The trap also needs something to hold. It cycles between the first and last enabled focusable elements inside the
+backdrop, so a dialog whose `render()` adds none — text-only content, or controls that are all disabled — has no cycle
+to enforce and Tab leaves it on the first press. The shell itself takes initial focus but does not retain it. Give every
+dialog at least one enabled control, such as a confirm or close button, even when its content is only a message.
+
+Give every surface a visible `title`, `ariaLabel`, or `ariaLabelledBy`. Override the close and focus defaults only when
+the workflow needs different behavior. These options control interaction, not authorization or transaction safety.
+
+Configure `surfaces` for shared defaults or intent resolution. Direct `openSurface()` calls do not need a resolver.
+
+## Verify the lifecycle
+
+Open a confirmation and complete it each way. Open the inspector twice and confirm the first handle reports `replaced`.
+Confirm focus returns to the control that opened a dialog.
+
+Next, [apply your product theme to the Editor UI](/editor/theming).

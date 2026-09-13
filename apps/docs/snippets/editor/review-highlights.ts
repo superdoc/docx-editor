@@ -1,435 +1,608 @@
-import { defineSuperDocExtension, SuperDoc } from 'superdoc';
-import type { SuperDocVisualTarget } from 'superdoc';
-import type { SelectionTarget, TextTarget } from 'superdoc/ui';
-import 'superdoc/style.css';
+import { defineSuperDocExtension } from 'superdoc';
+import type { SuperDocExtension, SuperDocVisualHandle, SuperDocVisualTarget } from 'superdoc';
+import type { BrowserDocumentApi, SelectionCapture, SelectionTarget, TextTarget } from 'superdoc/ui';
 import './review-highlights.css';
 
-const editorHost = document.querySelector<HTMLElement>('#editor');
-const attachButton = document.querySelector<HTMLButtonElement>('#attach-finding');
-const withdrawButton = document.querySelector<HTMLButtonElement>('#withdraw-finding');
-const status = document.querySelector<HTMLParagraphElement>('#review-status');
-const findingList = document.querySelector<HTMLUListElement>('#finding-list');
+const FINDING_NAMESPACE = 'urn:example:ai-review-findings:1';
 
-if (!editorHost || !attachButton || !withdrawButton || !status || !findingList) {
-  throw new Error('The review-highlight controls are incomplete.');
+export type ReviewFindingPayload = {
+  kind: 'risk';
+  question: string;
+  quote: string;
+  summary: string;
+  suggestedText?: string;
+  suggestionStatus?: 'pending' | 'created';
+};
+
+export type ReviewFinding = {
+  anchorStatus: 'orphan' | 'resolved';
+  id: string;
+  /**
+   * The activation that listed this row. Carried on the row itself so an immutable copy
+   * (`{ ...finding }`) stays valid, while a row retained across a document swap does not —
+   * a replacement DOCX can reuse metadata IDs, so the ID alone is not proof of provenance.
+   */
+  sourceToken: string;
+  /**
+   * The document binding that listed this row. `sourceToken` proves the activation, not the
+   * document: `refresh()` can bind a different Editor's `doc` within one activation, and two
+   * copies of a DOCX share metadata IDs.
+   */
+  documentEpoch: number;
+  payload: ReviewFindingPayload;
+  /** A tracked suggestion was created from this finding. */
+  suggested: boolean;
+};
+
+export type BoundReviewSelection = {
+  capture: SelectionCapture;
+};
+
+export type ReviewFindingsOptions = {
+  /** Called with the current rows whenever an edit forces the findings to re-resolve. */
+  onFindingsChanged?: (findings: readonly ReviewFinding[]) => void;
+  /** Called when a re-resolve fails and the stale highlights have been cleared. */
+  onFindingsError?: (error: unknown) => void;
+};
+
+type FindingActionResult = { success: true; id: string } | { success: false; message: string };
+type AttachableCapture = SelectionCapture & { target: TextTarget };
+
+/**
+ * `ranges.resolve()` truncates its verification preview past this many UTF-16 units and sets
+ * `preview.truncated`, which `suggest()` treats as unverifiable. Saving a longer capture would
+ * strand a finding that can never be applied.
+ */
+const MAX_VERIFIABLE_CAPTURE_LENGTH = 200;
+
+const SUPERSEDED_REFRESH = 'ReviewFindingsRefreshSuperseded';
+
+/** A refresh another call or another document already owns. Safe for a caller to ignore. */
+function supersededRefresh(message: string): Error {
+  const error = new Error(message);
+  error.name = SUPERSEDED_REFRESH;
+  return error;
 }
 
-const NAMESPACE = 'urn:example:review-findings:1';
-const FINDING_ID = 'finding-1';
+export function isSupersededRefresh(error: unknown): boolean {
+  return error instanceof Error && error.name === SUPERSEDED_REFRESH;
+}
 
-type VisualStore = {
-  read: () => readonly SuperDocVisualTarget[];
-  replace: (targets: readonly SuperDocVisualTarget[]) => void;
-  subscribe: (listener: () => void) => () => void;
-};
+const STALE_SELECTION_MESSAGE = 'The document changed after this text was selected. Select the text again.';
+const STALE_FINDING_MESSAGE = 'The document changed after this finding was listed. Refresh the findings.';
 
-const createVisualStore = (): VisualStore => {
-  let targets: readonly SuperDocVisualTarget[] = [];
-  const listeners = new Set<() => void>();
+function isReviewFindingPayload(value: unknown): value is ReviewFindingPayload {
+  if (typeof value !== 'object' || value === null) return false;
+  const candidate = value as Partial<ReviewFindingPayload>;
+  return (
+    candidate.kind === 'risk' &&
+    typeof candidate.question === 'string' &&
+    typeof candidate.quote === 'string' &&
+    typeof candidate.summary === 'string' &&
+    (candidate.suggestedText === undefined || typeof candidate.suggestedText === 'string') &&
+    (candidate.suggestionStatus === undefined ||
+      candidate.suggestionStatus === 'pending' ||
+      candidate.suggestionStatus === 'created')
+  );
+}
+
+function toSelectionTarget(target: SelectionTarget | TextTarget): SelectionTarget | null {
+  if (target.kind === 'selection') return target.coordinateSpace === 'tracked' ? null : target;
+  if (target.coordinateSpace === 'tracked' || target.segments.length === 0) return null;
+
+  const first = target.segments[0];
+  const last = target.segments[target.segments.length - 1];
+  if (first.blockId !== last.blockId) return null;
 
   return {
-    read: () => targets,
-    replace(nextTargets) {
-      targets = nextTargets;
-      for (const listener of listeners) listener();
-    },
-    subscribe(listener) {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
-    },
+    kind: 'selection',
+    start: { kind: 'text', blockId: first.blockId, offset: first.range.start },
+    end: { kind: 'text', blockId: last.blockId, offset: last.range.end },
+    ...(target.story ? { story: target.story } : {}),
   };
-};
+}
 
-const visualStore = createVisualStore();
-let superdoc: SuperDoc | null = null;
-let stopSelection: (() => void) | null = null;
-let refreshSequence = 0;
-// Bumped whenever the extension activates against a new source. A mutation
-// captures it before its first await and re-checks before writing: the facade
-// it holds follows the host into the replacement document, so a continuation
-// that resumes after a swap would otherwise write the previous document's
-// intent into the new one.
-let sourceGeneration = 0;
-
-// Tracks whether this namespace currently owns the finding, so a pending write
-// can restore Withdraw without a refresh. `null` means the last refresh failed
-// and the document's metadata state is unknown.
-let findingOwnedHere = false;
-
-const renderRows = (rows: Array<{ id: string; anchorStatus: string }>, idTaken: boolean | null) => {
-  findingList.replaceChildren();
-  for (const row of rows) {
-    const item = document.createElement('li');
-    item.textContent = `${row.id} · ${row.anchorStatus}`;
-    findingList.append(item);
+function toVisualTargets(target: SelectionTarget | TextTarget): SuperDocVisualTarget[] {
+  if (target.kind === 'text') {
+    return target.segments.map((segment) => ({
+      kind: 'text',
+      blockId: segment.blockId,
+      range: { start: segment.range.start, end: segment.range.end },
+    }));
   }
-  // Withdraw follows the rows this namespace owns. Attach follows whether the
-  // id is taken anywhere in the document, which is the rule `attach()` applies.
-  // Both come from the listed metadata rather than from the last click, so an
-  // opened DOCX that already carries the finding starts in the correct state.
-  //
-  // A null `idTaken` means the refresh failed. Neither control can be trusted
-  // then, so both fail closed until a complete refresh succeeds: reporting "no
-  // rows, id free" would enable Attach for an id that may already exist.
-  findingAttached = idTaken !== false;
-  findingOwnedHere = idTaken === null ? false : rows.some((row) => row.id === FINDING_ID);
-  withdrawButton.disabled = mutationPending || !findingOwnedHere;
-  updateAttachButton();
-};
+  if (target.start.kind !== 'text' || target.end.kind !== 'text') return [];
+  if (target.start.blockId !== target.end.blockId) return [];
+  return [
+    {
+      kind: 'text',
+      blockId: target.start.blockId,
+      range: { start: target.start.offset, end: target.end.offset },
+    },
+  ];
+}
 
-const refreshHighlights = async () => {
-  const sequence = ++refreshSequence;
-  const doc = superdoc?.activeEditor?.doc;
-  if (!doc) {
-    visualStore.replace([]);
-    // No document, so no metadata state to report. Unknown rather than empty:
-    // attaching is impossible here anyway, and claiming the id is free would be
-    // a statement about a document that is not open.
-    renderRows([], null);
-    return;
-  }
+function canAttach(capture: SelectionCapture | null | undefined): capture is AttachableCapture {
+  const target = capture?.status === 'ready' ? capture.target : null;
+  if (!target || target.coordinateSpace === 'tracked') return false;
+  if (target.story !== undefined && target.story.storyType !== 'body') return false;
+  if (!target.segments.every((segment) => segment.range.start < segment.range.end)) return false;
+  // Save only what `suggest()` can act on. `toSelectionTarget()` rejects a target that
+  // spans paragraphs, so accepting one here would persist a finding that can never be
+  // suggested. It also rejects an empty segment list.
+  if (toSelectionTarget(target) === null) return false;
+  const length = target.segments.reduce((total, segment) => total + (segment.range.end - segment.range.start), 0);
+  return length <= MAX_VERIFIABLE_CAPTURE_LENGTH;
+}
 
-  try {
-    // Rows and highlights stay scoped to this namespace, but the id check does
-    // not: `attach()` rejects an id that exists under any namespace, so gating
-    // on the filtered list alone would leave Attach enabled for an id another
-    // namespace already holds.
-    const [listed, everything] = await Promise.all([doc.metadata.list({ namespace: NAMESPACE }), doc.metadata.list()]);
-    const rows = await Promise.all(
-      listed.items.map(async (item) => ({
-        id: item.id,
-        anchorStatus: item.anchorStatus,
-        resolved: await doc.metadata.resolve({ id: item.id }),
-      })),
-    );
-    if (sequence !== refreshSequence) return;
+export function createReviewFindings(options: ReviewFindingsOptions = {}) {
+  let highlightLayer: SuperDocVisualHandle | null = null;
+  const suggestedFindingIds = new Set<string>();
+  const visualTargetsByFindingId = new Map<string, readonly SuperDocVisualTarget[]>();
+  // A replacement document can reuse block IDs, so each action is bound to the extension activation that produced it
+  // and to the document that activation last listed.
+  // Disposal invalidates the checks before dispatch, but cannot cancel issued writes.
+  // The application must await pending review actions before replacing the document.
+  let activeSource: object | null = null;
 
-    visualStore.replace(
-      rows.flatMap((row) => {
-        if (row.resolved === null) return [];
-        // Map to the visual layer's own address shape rather than handing it a
-        // Document API target. The two are structurally similar but not
-        // interchangeable.
-        //
-        // `resolved.target` is a `SelectionTarget` for a single-paragraph
-        // anchor (this snippet never creates any other kind — see
-        // `isAttachableTarget` below — but `list({ within })`'s overlap check
-        // above can still encounter a multi-paragraph anchor created by some
-        // other caller), or a `TextTarget` for one spanning multiple
-        // paragraphs. Fan out to one visual entry per segment either way,
-        // rather than assuming a single start/end pair.
-        //
-        // `SelectionPoint` is a union, so narrow to its text variant: a
-        // node-edge endpoint carries no offset and cannot be painted.
-        const target: SelectionTarget | TextTarget = row.resolved.target;
-        if (target.kind === 'text') {
-          return target.segments.map((segment) => ({
-            kind: 'text' as const,
-            blockId: segment.blockId,
-            range: { start: segment.range.start, end: segment.range.end },
-          }));
-        }
-        const { start, end } = target;
-        if (start.kind !== 'text' || end.kind !== 'text') return [];
-        return [{ kind: 'text' as const, blockId: start.blockId, range: { start: start.offset, end: end.offset } }];
-      }),
-    );
-    renderRows(
-      rows,
-      everything.items.some((item) => item.id === FINDING_ID),
-    );
-  } catch (error) {
-    if (sequence !== refreshSequence) return;
-    visualStore.replace([]);
-    // The refresh failed, so the document's metadata state is unknown. Fail
-    // closed rather than reporting an empty document with a free id.
-    renderRows([], null);
-    status.textContent = error instanceof Error ? error.message : String(error);
-  }
-};
+  const sourceBindings = new WeakMap<object, object>();
+  // Per-activation token stamped onto every listed row. Survives immutable copies and, unlike
+  // the metadata ID, is not reused by a replacement document.
+  let activeSourceToken = '';
+  // A bound capture holds frozen block offsets. Any committed edit can move the text under
+  // them, and the document identity does not change, so record the edit count at bind time
+  // and refuse to attach across it.
+  let mutationEpoch = 0;
+  const boundMutationEpoch = new WeakMap<BoundReviewSelection, number>();
+  // Only the newest refresh may publish. Two overlapping calls both pass the source check,
+  // and the older one finishing last would otherwise restore its stale listing.
+  let refreshSequence = 0;
+  let lastRefreshedDoc: BrowserDocumentApi | null = null;
+  // Increments whenever `refresh()` binds a different document. Stamped onto every listed row
+  // and bound capture so work from an earlier binding fails its provenance check.
+  let documentEpoch = 0;
+  const boundDocumentEpoch = new WeakMap<BoundReviewSelection, number>();
 
-const reviewHighlightExtension = defineSuperDocExtension({
-  id: 'example.reviewHighlights',
-  activate(ctx) {
-    const layer = ctx.visuals.highlight('findings', {
-      className: 'review-finding-highlight',
-      scope: 'text',
-    });
-    ctx.disposables.add(layer);
+  /**
+   * One mutation refresh at a time, with at most one queued behind it. A typing burst
+   * otherwise starts a listing plus a `get` and `resolve` per finding on every keystroke;
+   * the sequence guard stops stale results publishing but cannot cancel the requests.
+   */
+  let mutationRefreshRunning = false;
+  let mutationRefreshQueued = false;
 
-    // Targets in the store were resolved against whichever document was open
-    // when they were stored. This activation may be for a different one, and a
-    // block id from the previous document can collide with a block in the new
-    // one, which would paint a finding over unrelated text.
-    //
-    // A refresh started against a previous document can still be awaiting its
-    // list or resolve calls. Bumping the sequence retires those in-flight
-    // passes: they hold the old document facade, and their results would
-    // otherwise land after this clear and repaint targets from that document.
-    //
-    // Clear the panel and controls too, not just the paint. The refresh below
-    // is asynchronous and can fail, and until it lands the rows would describe
-    // the previous document while Attach and Withdraw acted on its state.
-    //
-    // Publish the unknown state, not an empty one: at this point the document
-    // may already carry the finding, and the refresh that would tell us has not
-    // run. `false` would claim the id is free and let a selection made during
-    // that read enable Attach for an id that already exists.
-    refreshSequence += 1;
-    sourceGeneration += 1;
-    visualStore.replace([]);
-    layer.replace([]);
-    renderRows([], null);
-
-    const paint = () => layer.replace(visualStore.read());
-    const stopVisualStore = visualStore.subscribe(paint);
-
-    // Every refresh re-resolves every stored finding, so a keystroke burst
-    // would run that O(N) walk once per mutation. Coalesce to one refresh per
-    // frame, and hold the frame open until the refresh settles: clearing it
-    // when the callback fires would start a fresh list + N resolves every frame
-    // while the previous one is still in flight. `refreshSequence` discards
-    // those stale results but never cancels their requests, so they would pile
-    // up into exactly the load this coalescing exists to avoid.
-    let refreshHandle: number | null = null;
-    let refreshInFlight = false;
-    let refreshQueued = false;
-
-    const runRefresh = async () => {
-      refreshInFlight = true;
-      try {
-        await refreshHighlights();
-      } finally {
-        refreshInFlight = false;
-        if (refreshQueued) {
-          refreshQueued = false;
-          scheduleRefresh();
-        }
-      }
-    };
-
-    function scheduleRefresh() {
-      // At most one queued follow-up: mutations arriving during a refresh only
-      // need one more pass once it lands, not one per mutation.
-      if (refreshInFlight) {
-        refreshQueued = true;
-        return;
-      }
-      if (refreshHandle !== null) return;
-      refreshHandle = requestAnimationFrame(() => {
-        refreshHandle = null;
-        void runRefresh();
-      });
-    }
-
-    const cancelRefresh = () => {
-      if (refreshHandle !== null) cancelAnimationFrame(refreshHandle);
-      refreshHandle = null;
-      refreshQueued = false;
-    };
-
-    return [
-      { dispose: stopVisualStore },
-      { dispose: cancelRefresh },
-      // Resolve against this document rather than repainting the cleared store.
-      // If source completion never arrives, nothing stale is painted meanwhile.
-      ctx.onReady(() => void refreshHighlights()),
-      ctx.onSourceComplete(() => void refreshHighlights()),
-      ctx.onMutation({ affects: ['text', 'block'] }, () => {
-        layer.invalidate();
-        scheduleRefresh();
-      }),
-    ];
-  },
-});
-
-// `attach()` also accepts a multi-paragraph `TextTarget` (see the Application
-// Data guide), but this example deliberately keeps findings scoped to a
-// single paragraph — a review finding here is meant to flag one clause, not
-// an arbitrary passage, and `capture().selectionTarget` (rather than
-// `capture().target`) is exactly the collapsed single-range shape that fits
-// that scope. nodeEdge endpoints and cross-paragraph spans cannot be
-// represented by a `SelectionTarget`, and the adapter resolves the paragraph
-// against document.xml, so a header, footer, note, or textbox block id is not
-// found and the call fails with TARGET_NOT_FOUND. `capture()` still returns a
-// `selectionTarget` in every one of those cases, so enabling on its presence
-// alone offers an action that predictably fails.
-const isAttachableTarget = (target: SelectionTarget | null | undefined): target is SelectionTarget => {
-  if (!target) return false;
-  if (target.start.kind !== 'text' || target.end.kind !== 'text') return false;
-  if (target.start.blockId !== target.end.blockId) return false;
-  if (target.start.offset === target.end.offset) return false;
-  // A selection crossing deletion-side tracked text carries tracked-space
-  // offsets. `attach()` resolves those endpoints against tracked text, then
-  // the anchor rewrite searches visible `<w:t>` runs only, so the same numbers
-  // mean different positions: the call either fails with TARGET_NOT_FOUND or
-  // wraps a different visible range and stores a durable finding on the wrong
-  // text. Reject until anchoring translates coordinate spaces.
-  if (target.coordinateSpace === 'tracked') return false;
-  // Body is the default, so an omitted story is body. Any named story other
-  // than body is outside what the adapter can anchor today.
-  const story = target.story ?? target.start.story;
-  return story === undefined || story.storyType === 'body';
-};
-
-// The example manages one fixed finding id, and metadata ids are unique
-// document-wide: `attach()` throws INVALID_INPUT when the id is already
-// anchored, including when the opened DOCX already carried it. Attaching is
-// therefore only available while that id is absent.
-let findingAttached = false;
-
-// Both mutations are async against a worker-backed Document API. Without a
-// shared pending flag, a second click before the first settles launches a
-// concurrent write with the same fixed id: one succeeds, the other reports
-// INVALID_INPUT, and the status ends up claiming failure for a finding that
-// does exist. Hold both controls disabled until the write and its refresh
-// settle, then let the refreshed metadata decide their real state.
-let mutationPending = false;
-
-const setMutationPending = (pending: boolean) => {
-  mutationPending = pending;
-  updateAttachButton();
-  // Withdraw is otherwise owned by renderRows(). Restore it from the last known
-  // rows when pending clears, rather than only forcing it on: a failed write
-  // does not refresh, so leaving it disabled would strand the control while its
-  // finding row is still on screen.
-  withdrawButton.disabled = pending || !findingOwnedHere;
-};
-
-// A capture is only trustworthy once its read has settled. While a re-read is
-// in flight the slice reports `pending` or `stale` and still carries the
-// PREVIOUS range, so acting on it would anchor the finding to text the user no
-// longer has selected.
-const readReadyTarget = (): SelectionTarget | null => {
-  const capture = superdoc?.ui.selection.capture();
-  if (!capture || capture.status !== 'ready') return null;
-  return capture.selectionTarget ?? null;
-};
-
-const updateAttachButton = () => {
-  attachButton.disabled = mutationPending || findingAttached || !isAttachableTarget(readReadyTarget());
-};
-
-const attachFinding = async () => {
-  if (mutationPending) return;
-  const generation = sourceGeneration;
-  const doc = superdoc?.activeEditor?.doc;
-  // Re-read at click time, not from the state that enabled the button: the
-  // selection can have moved since, and a mid-flight read must not be used.
-  const target = readReadyTarget();
-  if (!doc || !isAttachableTarget(target)) return;
-
-  setMutationPending(true);
-  try {
-    // `attach()` also rejects a range overlapping another entry's anchor, and
-    // an anchor is invisible in the document, so a reader cannot see why a
-    // selection is unavailable. The button state cannot cover this: it depends
-    // on the selection and needs an async read. Preflight instead, and say
-    // which entry is in the way rather than surfacing a bare INVALID_TARGET.
-    const overlapping = await doc.metadata.list({ within: target });
-    // The document may have been replaced while that read was in flight. The
-    // target came from the previous source, and a block id can collide in the
-    // new one, so a resumed continuation would anchor to unrelated text.
-    //
-    // This covers the swap; `expectedRevision` below covers an edit to the
-    // same document. Neither covers a swap landing during the write's own
-    // await, because the replacement carries its own revision sequence.
-    if (generation !== sourceGeneration) return;
-    const blocking = overlapping.items.find((item) => item.id !== FINDING_ID);
-    if (blocking) {
-      status.textContent = `That range already carries metadata (${blocking.id}). Select text outside it.`;
+  function runMutationRefresh(): void {
+    const doc = lastRefreshedDoc;
+    if (!doc) return;
+    if (mutationRefreshRunning) {
+      refreshSequence += 1;
+      mutationRefreshQueued = true;
       return;
     }
-
-    // Guard the write on the revision the preflight read evaluated. Without it
-    // an edit landing between the two applies this target to a document that
-    // has moved on. The generation check above covers a document swap; this
-    // covers an edit to the same document.
-    const result = await doc.metadata.attach(
-      {
-        id: FINDING_ID,
-        namespace: NAMESPACE,
-        target,
-        payload: {
-          kind: 'verification',
-          summary: 'Check this statement against the source material.',
+    mutationRefreshRunning = true;
+    void refresh(doc)
+      .then(
+        (findings) => options.onFindingsChanged?.(findings),
+        (error) => {
+          if (isSupersededRefresh(error)) return;
+          options.onFindingsError?.(error);
         },
-      },
-      { expectedRevision: overlapping.evaluatedRevision },
+      )
+      .finally(() => {
+        mutationRefreshRunning = false;
+        if (!mutationRefreshQueued) return;
+        mutationRefreshQueued = false;
+        runMutationRefresh();
+      });
+  }
+
+  function paintFindings(layer = highlightLayer) {
+    layer?.replace(
+      [...visualTargetsByFindingId].flatMap(([id, targets]) => (suggestedFindingIds.has(id) ? [] : targets)),
     );
-    if (!result.success) {
-      status.textContent = result.failure.message;
-      return;
-    }
-
-    status.textContent = `Attached ${result.id}.`;
-    await refreshHighlights();
-    superdoc?.focus();
-  } catch (error) {
-    status.textContent = error instanceof Error ? error.message : String(error);
-  } finally {
-    setMutationPending(false);
   }
-};
 
-const withdrawFinding = async () => {
-  if (mutationPending) return;
-  const generation = sourceGeneration;
-  const doc = superdoc?.activeEditor?.doc;
-  if (!doc) return;
+  const extension: SuperDocExtension = defineSuperDocExtension({
+    id: 'example.aiReviewFindings',
+    activate(ctx) {
+      const source = {};
+      activeSource = source;
+      suggestedFindingIds.clear();
+      visualTargetsByFindingId.clear();
+      // Unique across controller instances too: two Editors showing copies of the same DOCX
+      // share metadata IDs, so a per-controller counter would collide on their first
+      // activations.
+      activeSourceToken = globalThis.crypto.randomUUID();
+      lastRefreshedDoc = null;
+      const layer = ctx.visuals.highlight('findings', {
+        className: 'review-finding-highlight',
+        scope: 'text',
+      });
+      highlightLayer = layer;
+      ctx.disposables.add(layer);
 
-  setMutationPending(true);
-  try {
-    // `remove()` identifies its target by id alone, and the id space is
-    // document-wide. If the entry this example owned was withdrawn elsewhere
-    // and the id reused under another namespace, removing by id would delete
-    // that other application's metadata and anchor. The button state comes
-    // from the last refresh and remote changes are not observed, so re-read
-    // ownership here and pass the revision that read evaluated to the write:
-    // an edit landing in between fails the guard rather than removing a record
-    // this check never saw.
-    const current = await doc.metadata.list({ namespace: NAMESPACE });
-    if (generation !== sourceGeneration) return;
-    if (!current.items.some((item) => item.id === FINDING_ID)) {
-      status.textContent = `${FINDING_ID} is no longer owned by ${NAMESPACE}. Refreshing instead of removing it.`;
-      await refreshHighlights();
-      return;
-    }
+      // Cached visual targets are numeric. An edit moves the durable metadata anchor but not
+      // the paint, so re-resolve instead of leaving a highlight over different text.
+      ctx.disposables.add(
+        ctx.onMutation({ affects: ['text', 'block'] }, () => {
+          mutationEpoch += 1;
+          if (activeSource !== source) return;
+          runMutationRefresh();
+        }),
+      );
 
-    const result = await doc.metadata.remove({ id: FINDING_ID }, { expectedRevision: current.evaluatedRevision });
-    if (!result.success) {
-      status.textContent = result.failure.message;
-      return;
-    }
+      return {
+        dispose() {
+          if (activeSource === source) activeSource = null;
+          if (highlightLayer === layer) highlightLayer = null;
+        },
+      };
+    },
+  });
 
-    status.textContent = `Withdrew ${result.id}.`;
-    await refreshHighlights();
-    superdoc?.focus();
-  } catch (error) {
-    status.textContent = error instanceof Error ? error.message : String(error);
-  } finally {
-    setMutationPending(false);
+  function bindSelection(capture: SelectionCapture): BoundReviewSelection | null {
+    const source = activeSource;
+    if (!source || !canAttach(capture)) return null;
+    const selection = { capture } satisfies BoundReviewSelection;
+    sourceBindings.set(selection, source);
+    boundMutationEpoch.set(selection, mutationEpoch);
+    boundDocumentEpoch.set(selection, documentEpoch);
+    return selection;
   }
-};
 
-superdoc = new SuperDoc({
-  selector: editorHost,
-  document: '/contract.docx',
-  extensions: [reviewHighlightExtension],
-  onReady: ({ superdoc: readySuperDoc }) => {
-    superdoc = readySuperDoc;
-    stopSelection = readySuperDoc.ui.selection.observe(updateAttachButton);
-    updateAttachButton();
-    void refreshHighlights();
-  },
-});
+  function sourceIsCurrent(value: BoundReviewSelection | ReviewFinding, doc: BrowserDocumentApi) {
+    if (activeSource === null) return false;
+    // The application supplies `doc` on every call, so an action can arrive carrying a second
+    // Editor's document. Copies of one DOCX reuse block IDs, so that target would resolve and
+    // attach this finding to unrelated content. Once a refresh has named this activation's
+    // document, refuse every other one; before that there is nothing to contradict.
+    if (lastRefreshedDoc !== null && lastRefreshedDoc !== doc) return false;
+    if ('sourceToken' in value) {
+      return value.sourceToken === activeSourceToken && value.documentEpoch === documentEpoch;
+    }
+    return sourceBindings.get(value) === activeSource && boundDocumentEpoch.get(value) === documentEpoch;
+  }
 
-attachButton.addEventListener('click', attachFinding);
-withdrawButton.addEventListener('click', withdrawFinding);
+  function captureIsCurrent(value: BoundReviewSelection, doc: BrowserDocumentApi) {
+    return sourceIsCurrent(value, doc) && boundMutationEpoch.get(value) === mutationEpoch;
+  }
 
-window.addEventListener('beforeunload', () => {
-  attachButton.removeEventListener('click', attachFinding);
-  withdrawButton.removeEventListener('click', withdrawFinding);
-  stopSelection?.();
-  superdoc?.destroy();
-});
+  async function refresh(doc: BrowserDocumentApi | null | undefined): Promise<readonly ReviewFinding[]> {
+    const sequence = (refreshSequence += 1);
+    // Rebinding is legitimate — a replacement document, or a swap racing an in-flight refresh —
+    // but rows and captures from the previous binding must not survive it. The activation token
+    // cannot see this: it is unchanged by a document swap within one activation.
+    if ((doc ?? null) !== lastRefreshedDoc) documentEpoch += 1;
+    lastRefreshedDoc = doc ?? null;
+    if (!doc) {
+      visualTargetsByFindingId.clear();
+      suggestedFindingIds.clear();
+      highlightLayer?.clear();
+      return [];
+    }
+
+    const expectedSource = activeSource;
+    const sourceToken = activeSourceToken;
+    const epoch = documentEpoch;
+    const layer = highlightLayer;
+    try {
+      const listed = await doc.metadata.list({ namespace: FINDING_NAMESPACE });
+      const rows = await Promise.all(
+        listed.items.map(async (item) => {
+          const [record, resolved] = await Promise.all([
+            doc.metadata.get({ id: item.id }),
+            doc.metadata.resolve({ id: item.id }),
+          ]);
+          if (!record || !isReviewFindingPayload(record.payload)) return null;
+          return {
+            finding: {
+              id: item.id,
+              anchorStatus: item.anchorStatus,
+              payload: record.payload,
+              suggested: record.payload.suggestionStatus === 'created' || suggestedFindingIds.has(item.id),
+              sourceToken,
+              documentEpoch: epoch,
+            } satisfies ReviewFinding,
+            visualTargets: resolved ? toVisualTargets(resolved.target) : [],
+          };
+        }),
+      );
+
+      if (expectedSource !== activeSource || layer !== highlightLayer) {
+        throw supersededRefresh('The document changed while its findings were loading. Refresh the findings again.');
+      }
+      if (sequence !== refreshSequence) {
+        throw supersededRefresh('A newer refresh replaced this one. Render the newer result instead.');
+      }
+
+      visualTargetsByFindingId.clear();
+      for (const row of rows) {
+        if (row) visualTargetsByFindingId.set(row.finding.id, row.finding.suggested ? [] : row.visualTargets);
+      }
+      paintFindings(layer);
+      return rows.flatMap((row) => {
+        if (!row) return [];
+
+        return [row.finding];
+      });
+    } catch (error) {
+      if (isSupersededRefresh(error)) throw error;
+      if (expectedSource !== activeSource || layer !== highlightLayer || sequence !== refreshSequence) {
+        throw supersededRefresh('A newer document or refresh owns these findings.');
+      }
+      visualTargetsByFindingId.clear();
+      paintFindings(layer);
+      throw error;
+    }
+  }
+
+  async function save(
+    doc: BrowserDocumentApi | null | undefined,
+    context: BoundReviewSelection | null,
+    payload: Omit<ReviewFindingPayload, 'kind' | 'suggestionStatus'>,
+  ): Promise<FindingActionResult> {
+    const capture = context?.capture;
+    if (!doc || !canAttach(capture) || !capture.target) {
+      return {
+        success: false,
+        message: 'Select up to 200 characters inside one paragraph of plain body text before saving the finding.',
+      };
+    }
+    if (!context || !captureIsCurrent(context, doc)) {
+      return { success: false, message: STALE_SELECTION_MESSAGE };
+    }
+
+    try {
+      const overlapping = await doc.metadata.list({ within: capture.target });
+      if (!captureIsCurrent(context, doc)) {
+        return { success: false, message: STALE_SELECTION_MESSAGE };
+      }
+      if (overlapping.items.length > 0) {
+        return { success: false, message: 'That text already has an attached record.' };
+      }
+
+      // The record anchors to `capture.target`, so a quote that disagrees with the captured
+      // text makes every later `suggest()` report a changed document and can never be applied.
+      // Refuse it here rather than persisting a finding that is dead on arrival.
+      if (payload.quote !== capture.quotedText) {
+        return {
+          success: false,
+          message: 'The quote does not match the selected text. Save the finding from the current selection.',
+        };
+      }
+
+      const receipt = await doc.metadata.attach(
+        {
+          namespace: FINDING_NAMESPACE,
+          target: capture.target,
+          payload: {
+            kind: 'risk',
+            question: payload.question,
+            quote: payload.quote,
+            summary: payload.summary,
+            ...(payload.suggestedText !== undefined ? { suggestedText: payload.suggestedText } : {}),
+          } satisfies ReviewFindingPayload,
+        },
+        { expectedRevision: overlapping.evaluatedRevision },
+      );
+      if (!receipt.success) return { success: false, message: receipt.failure.message };
+
+      return { success: true, id: receipt.id };
+    } catch (error) {
+      return { success: false, message: error instanceof Error ? error.message : String(error) };
+    }
+  }
+
+  async function suggest(
+    doc: BrowserDocumentApi | null | undefined,
+    finding: ReviewFinding,
+  ): Promise<FindingActionResult> {
+    if (!doc) return { success: false, message: 'The document is not ready.' };
+    // `''` is a valid suggestion: it proposes deleting the anchored text. Only an absent
+    // value means the finding carries no edit, which is how the payload type and `save()`
+    // already treat it.
+    if (finding.payload.suggestedText === undefined) {
+      return { success: false, message: 'This finding does not include a suggested edit.' };
+    }
+    // A rendered row keeps its suggestedText after the tracked change is created, so a panel
+    // that re-renders from `refresh()` would otherwise offer the action a second time.
+    if (suggestedFindingIds.has(finding.id)) {
+      return { success: false, message: 'This finding already has a tracked suggestion.' };
+    }
+    if (!sourceIsCurrent(finding, doc)) {
+      return { success: false, message: STALE_FINDING_MESSAGE };
+    }
+
+    let releaseBeforeReplace: (() => Promise<void>) | undefined;
+    try {
+      const current = await doc.metadata.list({ namespace: FINDING_NAMESPACE });
+      if (!sourceIsCurrent(finding, doc)) {
+        return { success: false, message: STALE_FINDING_MESSAGE };
+      }
+      if (!current.items.some((item) => item.id === finding.id)) {
+        return { success: false, message: 'That finding is no longer available.' };
+      }
+
+      // The panel row can predate another writer's update. `expectedRevision` accepts the
+      // newer revision, so read the stored payload back rather than replacing with the
+      // suggestion the panel happens to be holding.
+      const [record, resolved] = await Promise.all([
+        doc.metadata.get({ id: finding.id }),
+        doc.metadata.resolve({ id: finding.id }),
+      ]);
+      if (!sourceIsCurrent(finding, doc)) {
+        return { success: false, message: STALE_FINDING_MESSAGE };
+      }
+      if (!record || !isReviewFindingPayload(record.payload)) {
+        return { success: false, message: 'That finding is no longer available.' };
+      }
+      if (record.payload.suggestionStatus) {
+        return {
+          success: false,
+          message: 'A suggestion was already requested. Check the document before creating another.',
+        };
+      }
+      const suggestedText = record.payload.suggestedText;
+      if (suggestedText === undefined) {
+        return { success: false, message: 'This finding no longer includes a suggested edit.' };
+      }
+      let target = resolved ? toSelectionTarget(resolved.target) : null;
+      if (!target) {
+        return { success: false, message: 'The finding is not anchored to one editable paragraph.' };
+      }
+
+      const releaseReservation = async () => {
+        releaseBeforeReplace = undefined;
+        if (!sourceIsCurrent(finding, doc)) return;
+        const current = await doc.metadata.list({ namespace: FINDING_NAMESPACE });
+        const latest = await doc.metadata.get({ id: finding.id });
+        if (!sourceIsCurrent(finding, doc)) return;
+        if (
+          latest &&
+          isReviewFindingPayload(latest.payload) &&
+          latest.payload.suggestionStatus === 'pending' &&
+          latest.payload.suggestedText === suggestedText
+        ) {
+          const payload = { ...latest.payload };
+          delete payload.suggestionStatus;
+          const released = await doc.metadata.update(
+            { id: finding.id, payload },
+            { expectedRevision: current.evaluatedRevision },
+          );
+          if (!released.success) throw new Error(released.failure.message);
+        }
+      };
+
+      // Reserve the action durably before editing: an interrupted call must not become a retry after reopening.
+      const reserved = await doc.metadata.update(
+        { id: finding.id, payload: { ...record.payload, suggestionStatus: 'pending' } },
+        { expectedRevision: current.evaluatedRevision },
+      );
+      if (!reserved.success) return { success: false, message: reserved.failure.message };
+      releaseBeforeReplace = releaseReservation;
+      if (!sourceIsCurrent(finding, doc)) return { success: false, message: STALE_FINDING_MESSAGE };
+      const afterReservation = await doc.metadata.list({ namespace: FINDING_NAMESPACE });
+      const pending = await doc.metadata.get({ id: finding.id });
+      const currentAnchor = await doc.metadata.resolve({ id: finding.id });
+      if (!sourceIsCurrent(finding, doc)) return { success: false, message: STALE_FINDING_MESSAGE };
+      // The reservation only pins status. Another writer can still change the quote before
+      // these reads, and the verification below compares against the pre-reservation quote,
+      // so a mismatch here would apply an edit the stored finding no longer describes.
+      if (
+        !pending ||
+        !isReviewFindingPayload(pending.payload) ||
+        pending.payload.suggestionStatus !== 'pending' ||
+        pending.payload.suggestedText !== suggestedText ||
+        pending.payload.quote !== record.payload.quote
+      ) {
+        // A quote-only change leaves our reservation in place, so clear it or the finding stays
+        // durably pending and its action stays disabled. releaseReservation() no-ops when the
+        // pending row is no longer ours.
+        await releaseReservation();
+        return { success: false, message: 'The finding changed while requesting its suggestion. Check the document.' };
+      }
+      target = currentAnchor ? toSelectionTarget(currentAnchor.target) : null;
+      if (!target) {
+        await releaseReservation();
+        return { success: false, message: 'The finding is no longer anchored to editable text.' };
+      }
+      const range = await doc.ranges.resolve({
+        start: { kind: 'point', point: target.start },
+        end: { kind: 'point', point: target.end },
+        expectedRevision: afterReservation.evaluatedRevision,
+      });
+      if (!sourceIsCurrent(finding, doc)) return { success: false, message: STALE_FINDING_MESSAGE };
+      if (range.preview.truncated || range.preview.text !== record.payload.quote) {
+        await releaseReservation();
+        return {
+          success: false,
+          message: range.preview.truncated
+            ? 'The text is too long to verify. Ask AI about a shorter selection.'
+            : 'The text changed since this finding was saved. Ask AI about the current text.',
+        };
+      }
+      releaseBeforeReplace = undefined;
+      const receipt = await doc.replace(
+        { target, text: suggestedText },
+        { changeMode: 'tracked', expectedRevision: afterReservation.evaluatedRevision },
+      );
+      if (!receipt.success) {
+        await releaseReservation();
+        return { success: false, message: receipt.failure?.message ?? 'The tracked suggestion could not be added.' };
+      }
+
+      if (!sourceIsCurrent(finding, doc)) return { success: false, message: STALE_FINDING_MESSAGE };
+      const afterEdit = await doc.metadata.list({ namespace: FINDING_NAMESPACE });
+      const latest = await doc.metadata.get({ id: finding.id });
+      if (!sourceIsCurrent(finding, doc)) return { success: false, message: STALE_FINDING_MESSAGE };
+      if (!latest || !isReviewFindingPayload(latest.payload)) {
+        return { success: false, message: 'The edit was added, but its finding is no longer available.' };
+      }
+      // Promoting to `created` records which quote the tracked replacement came from, so a quote
+      // rewritten between `doc.replace()` and this read must not be marked as its source.
+      if (
+        latest.payload.suggestionStatus !== 'pending' ||
+        latest.payload.suggestedText !== suggestedText ||
+        latest.payload.quote !== record.payload.quote
+      ) {
+        return { success: false, message: 'The edit was added, but the finding changed. Check the document.' };
+      }
+      const recorded = await doc.metadata.update(
+        { id: finding.id, payload: { ...latest.payload, suggestionStatus: 'created' } },
+        { expectedRevision: afterEdit.evaluatedRevision },
+      );
+      if (!recorded.success)
+        return {
+          success: false,
+          message: 'The edit was added, but its status could not be saved. Check the document.',
+        };
+      if (!sourceIsCurrent(finding, doc)) return { success: false, message: STALE_FINDING_MESSAGE };
+      suggestedFindingIds.add(finding.id);
+      paintFindings();
+      return { success: true, id: finding.id };
+    } catch (error) {
+      try {
+        await releaseBeforeReplace?.();
+      } catch {
+        return {
+          success: false,
+          message: 'The suggestion was not sent, but its pending status could not be cleared. Check the document.',
+        };
+      }
+      return { success: false, message: error instanceof Error ? error.message : String(error) };
+    } finally {
+      if (sourceIsCurrent(finding, doc)) runMutationRefresh();
+    }
+  }
+
+  async function remove(
+    doc: BrowserDocumentApi | null | undefined,
+    finding: ReviewFinding,
+  ): Promise<FindingActionResult> {
+    if (!doc) return { success: false, message: 'The document is not ready.' };
+    if (!sourceIsCurrent(finding, doc)) {
+      return { success: false, message: STALE_FINDING_MESSAGE };
+    }
+
+    try {
+      const current = await doc.metadata.list({ namespace: FINDING_NAMESPACE });
+      if (!sourceIsCurrent(finding, doc)) {
+        return { success: false, message: STALE_FINDING_MESSAGE };
+      }
+      if (!current.items.some((item) => item.id === finding.id)) {
+        return { success: false, message: 'That finding is no longer available.' };
+      }
+
+      const receipt = await doc.metadata.remove({ id: finding.id }, { expectedRevision: current.evaluatedRevision });
+      if (!receipt.success) return { success: false, message: receipt.failure.message };
+
+      suggestedFindingIds.delete(finding.id);
+      visualTargetsByFindingId.delete(finding.id);
+      paintFindings();
+      return { success: true, id: receipt.id };
+    } catch (error) {
+      return { success: false, message: error instanceof Error ? error.message : String(error) };
+    }
+  }
+
+  return { bindSelection, extension, refresh, remove, save, suggest };
+}

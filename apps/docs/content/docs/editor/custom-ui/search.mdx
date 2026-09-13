@@ -1,63 +1,86 @@
 ---
-title: Build custom search controls
+title: Build custom find and replace controls
 navTitle: Search
-description: Drive the Editor's visual search session from application-owned controls.
+description: Render Search in your application while SuperDoc finds, highlights, and replaces document text.
 ---
 
-Use `editor.ui.search` when your application owns the find interface but still needs SuperDoc to highlight, reveal,
-navigate, and replace matches in the open Editor.
+Use [built-in Search](/editor/built-in-ui/search-and-replace) when its standard controls fit. Build custom controls when
+Search belongs in your application shell or needs different interaction design.
 
-This is an Editor search session. For programmatic content discovery and durable mutation targets, use
-[Document API queries](/document-api/query-content).
+This guide replaces only the Search surface. SuperDoc continues to find and highlight matches, move the active match
+into view, and apply replacements.
 
-## Add the controls
+## Try application-owned Search
 
-Create a query field, navigation controls, replacement actions, status output, and Editor container:
+The example starts with eight case-insensitive matches for `Client` across three pages.
+
+1. Choose **Next** and watch the active match move through the document.
+2. Turn on **Match case**. The count changes from eight to seven.
+3. Replace the active match with `Customer`. The document and count update together.
+
+<CustomSearchDemo />
+
+The controls call `ui.search` instead of reading the rendered document. The same Search session paints the highlights,
+tracks the active match, and reports whether replacement is currently available.
+
+## Build the same controls
+
+Start from [Build your first custom control](/editor/custom-ui/controller-setup). Download the sample to
+your app's `public` directory as `search-sample.docx`:
+
+<FileDownload
+  href='/fixtures/search-sample.docx'
+  label='Download the Search sample'
+  description='Three pages and one pending deletion'
+  fileType='DOCX'
+/>
+
+For Vanilla, replace the contents of `<body>` in `index.html` with the controls and Editor below:
 
 <include>../../../../snippets/editor/custom-search.html</include>
 
-Copy the [Search fixture](/fixtures/search-sample.docx) to your app's public directory as `contract.docx`, or use another
-DOCX. The sample includes one pending deletion containing `Legacy`.
+Replace the setup guide's Editor code:
 
-## Bind the search handle
+<FrameworkExampleTabs>
+  <FrameworkExample filename='src/main.ts' framework='Vanilla'>
+    <include>../../../../snippets/editor/custom-search.ts</include>
+  </FrameworkExample>
+  <FrameworkExample filename='src/App.tsx' framework='React'>
+    <include>../../../../snippets/editor/react-custom-search.tsx</include>
+  </FrameworkExample>
+</FrameworkExampleTabs>
 
-Read the Editor's controller, `superdoc.ui`, after readiness. Observe `superdoc.ui.search` as the source of match and
-availability state.
+`ui: { search: false }` hides SuperDoc's Search surface. It does not disable `superdoc.ui.search`.
+This example keeps the controls visible. If your surface opens on demand, your application also owns its keyboard
+shortcut and focus behavior.
 
-<include>../../../../snippets/editor/custom-search.ts</include>
+## Keep controls synchronized
 
-The snapshot provides the state needed by a focused search interface:
+`find()` starts a visual Search session. SuperDoc highlights the matches, and `next()` or `previous()` moves the active
+match into view. `observe()` in Vanilla and `useSuperDocSearch()` in React keep the result count and replacement controls
+synchronized as the session settles.
 
-- `total` and `activeIndex` describe the current match.
-- `available` and `reason` explain whether the host can search.
-- `canReplace` reflects document mode, host support, and whether the complete match set can be changed safely.
-- `query`, `caseSensitive`, and `regex` describe the active session.
+`canReplace` reflects the current document mode, not the match count, so it can be `true` before a query runs. Keep
+**Replace** disabled unless there is a match, `canReplace` is `true`, and no replacement is pending. Gate **Replace
+all** on `canReplaceAll` instead: it already requires a match, and a session with more matches than SuperDoc
+enumerates can still replace the active match but refuses to replace every match. Check the action result because the
+document can change after the controls render.
 
-## Observe after starting a search
+## Include pending deletions when needed
 
-`find()` returns the best-known snapshot immediately. A worker-backed search can settle later, so keep the interface
-subscribed with `observe()` instead of treating the first return value as final.
-
-Pass `caseSensitive`, `regex`, or `includeTrackedDeletions` to `find()` when the query needs them. Pending tracked
-deletions are excluded by default.
-
-Include them for a review search:
+Pending tracked deletions are excluded by default. Both examples expose the option as an **Include pending deletions**
+checkbox that passes `includeTrackedDeletions` to `find()`. For a one-off review search, call it directly:
 
 <include>../../../../snippets/editor/custom-search-tracked-deletions.ts</include>
 
-This finds the pending `Legacy` deletion in the sample. It does not restore, accept, or reject the change.
+This finds the deleted text. It does not accept, reject, or restore the tracked change.
 
-`next()` and `previous()` update the active match and reveal it in the document. Check their `ok` result before
-announcing navigation.
+## Verify the controls
 
-## Await replacements
+Run the project. Search for `Client`, then move through the eight matches across three pages. Replace one match and
+confirm that the count updates. Turn on **Include pending deletions** and search for `Legacy`; the pending deletion
+should be the only match.
 
-`replace()` and `replaceAll()` can settle asynchronously. Await them before saving the document or starting dependent work.
-
-A failed result includes a stable reason such as an unavailable search host, a read-only document, or an operation the
-current session cannot perform. Keep replace controls synchronized with `canReplace` and still inspect the returned
-result.
-
-Call `clear()` when the query becomes empty. Call `close()` when the application dismisses the search experience and should remove its highlights.
-
-For the standard interface, use [Find and replace in the built-in UI](/editor/built-in-ui/search-and-replace).
+Use [Document API queries](/document-api/query-content) when code needs document targets instead of a visual Search
+session. Build an [application-owned context menu](/editor/custom-ui/context-menus) when actions depend on the entity or
+selection under the pointer. Otherwise, return to the [Custom UI overview](/editor/custom-ui/overview).

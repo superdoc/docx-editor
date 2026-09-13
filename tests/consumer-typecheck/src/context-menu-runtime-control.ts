@@ -12,7 +12,7 @@ import type {
   Modules,
   SuperDoc,
 } from 'superdoc';
-import type { ContextMenuHandle, WorkflowActionResult } from 'superdoc/ui';
+import type { ContextMenuHandle, ViewportContext, WorkflowActionResult } from 'superdoc/ui';
 
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
 type AssertEqual<A, B> = Equal<A, B> extends true ? true : never;
@@ -108,7 +108,23 @@ declare const superdoc: SuperDoc;
 const contextMenu: ContextMenuHandle = superdoc.ui.contextMenu;
 const _openResult: AssertEqual<ReturnType<ContextMenuHandle['open']>, WorkflowActionResult> = true;
 const _closeResult: AssertEqual<ReturnType<ContextMenuHandle['close']>, void> = true;
+const _pointContext: AssertEqual<ReturnType<ContextMenuHandle['contextAt']>, ViewportContext> = true;
+const _pointParams: AssertEqual<Parameters<ContextMenuHandle['contextAt']>, [{ x: number; y: number }]> = true;
 
 void contextMenu.open();
 contextMenu.close();
-void [config, contextMenuConfig, deprecatedContextMenuConfig, _openResult, _closeResult, _slashMenuConfig];
+const contextAtPoint = contextMenu.contextAt({ x: 24, y: 48 });
+const _contextPoint: { x: number; y: number } | undefined = contextAtPoint.point;
+const _contextEntities: readonly { type: string; id: string }[] = contextAtPoint.entities;
+void [
+  config,
+  contextMenuConfig,
+  deprecatedContextMenuConfig,
+  _openResult,
+  _closeResult,
+  _pointContext,
+  _pointParams,
+  _contextPoint,
+  _contextEntities,
+  _slashMenuConfig,
+];

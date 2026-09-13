@@ -34,12 +34,14 @@ import type { SliceSource } from './slice-source.js';
 import type {
   BorrowedSuperDocUI,
   CommandExecutionResult,
+  CommandId,
   CommandState,
   CommentsSlice,
   ContentControlsSlice,
   DocumentSlice,
   FontFamilyOption,
   FontSizeOption,
+  SearchSnapshot,
   SelectionSlice,
   Subscribable,
   SuperDocLike,
@@ -308,6 +310,23 @@ export function useSuperDocSelection(): Readonly<ShallowRef<SelectionSlice>> {
   return useSuperDocSlice((ui) => ui.selection, EMPTY_SELECTION);
 }
 
+/** Subscribe to the current Search session. */
+export function useSuperDocSearch(): Readonly<ShallowRef<SearchSnapshot>> {
+  return useSuperDocSlice((ui) => ui.search, {
+    query: '',
+    total: 0,
+    activeIndex: -1,
+    open: false,
+    available: false,
+    caseSensitive: false,
+    includeTrackedDeletions: false,
+    includeDeletedText: false,
+    regex: false,
+    canReplace: false,
+    canReplaceAll: false,
+  });
+}
+
 /** Subscribe to the comments slice. */
 export function useSuperDocComments(): Readonly<ShallowRef<CommentsSlice>> {
   return useSuperDocSlice((ui) => ui.comments, {
@@ -372,7 +391,7 @@ export interface UseSuperDocCommandResult {
  * Subscribe to and execute a single command. Accepts a plain id, a ref, or a
  * getter; a reactive id re-subscribes and routes execution to the new command.
  */
-export function useSuperDocCommand(id: MaybeRefOrGetter<string>): UseSuperDocCommandResult {
+export function useSuperDocCommand(id: MaybeRefOrGetter<CommandId>): UseSuperDocCommandResult {
   const ui = useSuperDocUI();
   const state = shallowRef<CommandState>(EMPTY_COMMAND);
 

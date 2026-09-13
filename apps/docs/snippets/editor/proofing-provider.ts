@@ -1,23 +1,25 @@
-import { SuperDoc } from 'superdoc';
-import 'superdoc/style.css';
+import type { Config } from 'superdoc';
 
-const superdoc = new SuperDoc({
-  selector: '#editor',
-  document: '/contract.docx',
-  proofing: {
-    enabled: true,
-    provider: {
-      id: 'local-example',
-      check: async ({ segments }) => ({
+export const proofing = {
+  enabled: true,
+  provider: {
+    id: 'local-example',
+    check: async ({ segments, signal }) => {
+      signal?.throwIfAborted();
+      return {
         issues: segments.flatMap((segment) => {
-          const start = segment.text.indexOf('teh');
-          return start < 0
-            ? []
-            : [{ segmentId: segment.id, start, end: start + 3, kind: 'spelling', replacements: ['the'] }];
+          return Array.from(
+            segment.text.matchAll(/(?<![\p{L}\p{M}\p{N}_])teh(?![\p{L}\p{M}\p{N}_])/gu),
+            ({ index }) => ({
+              segmentId: segment.id,
+              start: index,
+              end: index + 3,
+              kind: 'spelling' as const,
+              replacements: ['the'],
+            }),
+          );
         }),
-      }),
+      };
     },
   },
-});
-
-window.addEventListener('beforeunload', () => superdoc.destroy());
+} satisfies NonNullable<Config['proofing']>;

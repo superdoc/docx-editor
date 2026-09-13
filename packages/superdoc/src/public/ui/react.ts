@@ -20,12 +20,15 @@ import type { SliceSource } from './slice-source.js';
 
 import type {
   BorrowedSuperDocUI,
+  CommandExecutionResult,
+  CommandId,
   CommandState,
   CommentsSlice,
   ContentControlsSlice,
   DocumentSlice,
   FontFamilyOption,
   FontSizeOption,
+  SearchSnapshot,
   SelectionSlice,
   Subscribable,
   SuperDocLike,
@@ -185,6 +188,23 @@ export function useSuperDocSelection(): SelectionSlice {
   return useSuperDocSlice((ui) => ui.selection, EMPTY_SELECTION);
 }
 
+/** Subscribe to the current Search session. */
+export function useSuperDocSearch(): SearchSnapshot {
+  return useSuperDocSlice((ui) => ui.search, {
+    query: '',
+    total: 0,
+    activeIndex: -1,
+    open: false,
+    available: false,
+    caseSensitive: false,
+    includeTrackedDeletions: false,
+    includeDeletedText: false,
+    regex: false,
+    canReplace: false,
+    canReplaceAll: false,
+  });
+}
+
 /** Subscribe to the comments slice. */
 export function useSuperDocComments(): CommentsSlice {
   return useSuperDocSlice((ui) => ui.comments, {
@@ -227,15 +247,56 @@ export function useSuperDocToolbar(): ToolbarSnapshotSlice {
   return useSuperDocSlice((ui) => ui.toolbar, { context: null, commands: {}, copyFormatActive: false });
 }
 
-/** Subscribe to a single command's enable/active state. */
-export function useSuperDocCommand(id: string): CommandState {
-  return useSuperDocSlice(
-    (ui) => ({
-      getSnapshot: () => ui.commands.get(id).getState(),
-      observe: (cb: (value: CommandState) => void) => ui.commands.get(id).observe(cb),
-    }),
-    { enabled: false, active: false, supported: false },
+const EMPTY_COMMAND_STATE: CommandState = { enabled: false, active: false, supported: false };
+
+/** Reactive state and execution methods for one SuperDoc command. */
+export interface UseSuperDocCommandResult extends CommandState {
+  /** Run the command against the currently bound Editor. */
+  execute(payload?: unknown): CommandExecutionResult;
+  /** Run the command and await the routed operation's settled result. */
+  executeAsync(payload?: unknown): Promise<CommandExecutionResult>;
+}
+
+/** Subscribe to and execute one SuperDoc command. */
+export function useSuperDocCommand(id: CommandId): UseSuperDocCommandResult {
+  const ui = useSuperDocUI();
+  const [observed, setObserved] = useState<{ id: CommandId; ui: BorrowedSuperDocUI | null; state: CommandState }>(
+    () => ({ id, ui, state: ui ? ui.commands.get(id).getState() : EMPTY_COMMAND_STATE }),
   );
+
+  useEffect(() => {
+    if (!ui) {
+      setObserved({ id, ui, state: EMPTY_COMMAND_STATE });
+      return;
+    }
+    const command = ui.commands.get(id);
+    const publish = (state: CommandState): void => setObserved({ id, ui, state });
+    publish(command.getState());
+    return command.observe(publish);
+  }, [id, ui]);
+
+  // The subscription only moves to a new `id` or controller in the effect, so
+  // the committed render in between would pair the previous command's state
+  // with `execute` callbacks that already target the new one. Read the current
+  // command's state synchronously for that render instead of serving the old.
+  const state =
+    observed.id === id && observed.ui === ui
+      ? observed.state
+      : ui
+        ? ui.commands.get(id).getState()
+        : EMPTY_COMMAND_STATE;
+
+  const execute = useCallback(
+    (payload?: unknown): CommandExecutionResult => (ui ? ui.commands.execute(id, payload) : false),
+    [id, ui],
+  );
+  const executeAsync = useCallback(
+    (payload?: unknown): Promise<CommandExecutionResult> =>
+      ui ? ui.commands.executeAsync(id, payload) : Promise.resolve(false),
+    [id, ui],
+  );
+
+  return { ...state, execute, executeAsync };
 }
 
 /** Subscribe to the document slice. */

@@ -12,19 +12,29 @@ let stopBold: (() => void) | null = null;
 const superdoc = new SuperDoc({
   selector: '#editor',
   document: '/sample.docx',
-  ui: false,
+  ui: { toolbar: false },
   onReady: ({ superdoc: readySuperDoc }) => {
     const bold = readySuperDoc.ui.commands.get('bold');
+    let pending = false;
     stopBold = bold.observe((state) => {
-      boldButton.disabled = !state.enabled;
+      boldButton.disabled = pending || !state.enabled;
       boldButton.setAttribute('aria-pressed', String(state.active));
     });
 
     boldButton.addEventListener('mousedown', (event) => event.preventDefault());
     boldButton.addEventListener('click', async () => {
-      const result = await bold.executeAsync();
-      const applied = typeof result === 'boolean' ? result : result.success;
-      status.textContent = applied ? 'Bold applied.' : 'Bold was not applied.';
+      if (pending) return;
+      const message = bold.getState().active ? 'Bold removed.' : 'Bold applied.';
+      pending = true;
+      boldButton.disabled = true;
+      try {
+        const result = await bold.executeAsync();
+        const applied = typeof result === 'boolean' ? result : result.success;
+        status.textContent = applied ? message : 'Bold was not changed.';
+      } finally {
+        pending = false;
+        boldButton.disabled = !bold.getState().enabled;
+      }
     });
 
     exportButton.disabled = false;

@@ -4,7 +4,7 @@ import { handleHyperlinkActivation } from './hyperlink-activation';
 
 const superdoc = new SuperDoc({
   selector: '#editor',
-  document: '/sample.docx',
+  document: '/hyperlinks-sample.docx',
   hyperlinks: {
     onActivate: handleHyperlinkActivation,
   },

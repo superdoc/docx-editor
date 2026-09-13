@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue';
+import { computed, unref } from 'vue';
 import ToolbarButton from './ToolbarButton.vue';
 import ButtonGroup from './ButtonGroup.vue';
 import ToolbarDropdown from './ToolbarDropdown.vue';
@@ -23,7 +23,9 @@ const props = defineProps({
 });
 
 const isOverflowMenuOpened = computed(() => props.toolbarItem.expand.value);
-const hasOpenDropdown = ref(false);
+const hasOpenDropdown = computed(() =>
+  props.overflowItems.some((item) => item.type === 'dropdown' && unref(item.expand)),
+);
 
 const overflowToolbarItem = computed(() => ({
   ...props.toolbarItem,
@@ -67,7 +69,6 @@ const handleCommand = ({ item, argument, option }) => {
         from-overflow
         @mousedown="preventEditorFocusTransfer"
         @command="handleCommand"
-        @dropdown-update-show="hasOpenDropdown = $event"
       />
     </template>
   </ToolbarDropdown>

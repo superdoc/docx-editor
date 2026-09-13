@@ -16,6 +16,7 @@ import {
   validateManifest,
   validateManifestConsistency,
 } from '../scripts/v1-routes.mjs';
+import { INTENDED_MERGES, collapsedRoutes } from '../scripts/verify-route-matrix.mjs';
 
 const readConfig = async (name) => JSON.parse(await readFile(new URL(`../config/${name}`, import.meta.url), 'utf8'));
 
@@ -231,6 +232,28 @@ test('refuses to overwrite a rule the V2 tooling already generated', async (t) =
   );
 });
 
+test('drops a V1 rule the V2 tooling already generated identically', async (t) => {
+  const outputDirectory = await mkdtemp(join(tmpdir(), 'superdoc-v1-redirects-'));
+  t.after(() => rm(outputDirectory, { force: true, recursive: true }));
+  const dispositionsPath = join(outputDirectory, 'dispositions.json');
+  const manifestPath = await writeManifestFixture(outputDirectory);
+
+  // A V1 route whose replacement page later moved is redirected by both tools
+  // to the same destination. The same rule twice is not a conflict.
+  await writeFile(join(outputDirectory, '_redirects'), '/docs/old /docs/new/ 301\n/docs/old/ /docs/new/ 301\n');
+  await writeFile(
+    dispositionsPath,
+    JSON.stringify({ dispositions: [{ source: '/docs/old', kind: 'v2', destination: '/docs/new/' }] }),
+  );
+
+  const result = await appendDispositionRedirects({ dispositionsPath, outputDirectory, manifestPath });
+  const written = await readFile(join(outputDirectory, '_redirects'), 'utf8');
+
+  assert.equal(result.v1RuleCount, 0);
+  assert.equal(result.totalRuleCount, 2);
+  assert.equal(written.match(/^\/docs\/old\/ /gmu).length, 1);
+});
+
 test('propagates a failed package scan instead of reporting no links', async () => {
   // git grep exits 1 for both "no matches" and "no such path", so a renamed
   // directory would otherwise read as a clean result.
@@ -412,4 +435,22 @@ test('suppresses same-path rules across the whole shipped registry', async () =>
     assert.ok(!rules.has(source), `same-path replacement must not emit a rule: ${source}`);
     assert.ok(!rules.has(`${source}/`), `same-path replacement must not emit a slash variant: ${source}/`);
   }
+});
+
+test('the deployed-route verifier accepts the intended setup-page merge and nothing wider', () => {
+  const origin = 'https://example.pages.dev';
+  const landed = (path) => `${origin}${path}/`;
+  const setup = '/editor/custom-ui/controller-setup';
+
+  assert.deepEqual(INTENDED_MERGES.get(setup), [setup, '/editor/custom-ui/react-setup']);
+
+  const merged = [
+    { source: setup, kind: 'v2', landed: landed(setup) },
+    { source: '/editor/custom-ui/react-setup', kind: 'v2', landed: landed(setup) },
+  ];
+  assert.deepEqual(collapsedRoutes(merged), []);
+
+  // A third route absorbed by the same page is still a defect.
+  const widened = [...merged, { source: '/editor/custom-ui/vue-setup', kind: 'v2', landed: landed(setup) }];
+  assert.equal(collapsedRoutes(widened).length, 1);
 });

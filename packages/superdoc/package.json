@@ -1,7 +1,7 @@
 {
   "name": "superdoc",
   "type": "module",
-  "version": "2.11.0-next.12",
+  "version": "2.15.0-next.6",
   "description": "The document engine for DOCX files. Open, edit, and render Word documents in the browser.",
   "license": "AGPL-3.0",
   "repository": {
@@ -63,6 +63,14 @@
         "require": "./dist/collaboration-upgrade-engine.cjs"
       }
     },
+    "./collaboration-worker": {
+      "types": {
+        "import": "./dist/superdoc/src/public/collaboration-worker.d.ts",
+        "require": "./dist/superdoc/src/public/collaboration-worker.d.cts"
+      },
+      "import": "./dist/public/collaboration-worker.es.js",
+      "require": "./dist/public/collaboration-worker.cjs"
+    },
     "./style.css": "./dist/style.css",
     "./style.layered.css": "./dist/style.layered.css"
   },
@@ -80,6 +88,9 @@
       ],
       "collaboration-upgrade-engine": [
         "./dist/superdoc/src/public/collaboration-upgrade-engine.d.ts"
+      ],
+      "collaboration-worker": [
+        "./dist/superdoc/src/public/collaboration-worker.d.ts"
       ]
     }
   },
@@ -115,7 +126,7 @@
     "test": "vp test"
   },
   "dependencies": {
-    "@superdoc/docx-engine": "0.10.0-next.12",
+    "@superdoc/docx-engine": "0.14.0-next.5",
     "@types/mdast": "catalog:",
     "@types/ws": "catalog:",
     "buffer-crc32": "catalog:",

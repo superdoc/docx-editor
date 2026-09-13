@@ -15,9 +15,9 @@ A preset is the tool surface a model sees: the tool definitions, the system prom
 | `superdoc_inspect`        | Read-only snapshots of current document state                      |
 | `superdoc_perform_action` | One named, statically validated edit verb from the action registry |
 
-Every edit runs through the second tool with an `action` argument naming what to do. Forty actions are available, grouped by what they touch: text and structure, lists and numbering, comments, tracked-change review, formatting, tables, and history.
+Every edit runs through the second tool with an `action` argument naming what to do. The actions are grouped by what they touch: text and structure, lists and numbering, comments, tracked-change review, formatting, tables, and history. The [action reference](/agents/build/actions) lists each one with its arguments.
 
-Two tools instead of forty keeps the advertised surface small while the action enum stays explicit. The model picks a verb by name rather than assembling an operation, and an unknown verb is rejected before anything touches the document.
+Two tools instead of one per action keeps the advertised surface small while the action enum stays explicit. The model picks a verb by name rather than assembling an operation, and an unknown verb is rejected before anything touches the document.
 
 ## Narrow the surface
 
@@ -80,4 +80,4 @@ If the direct call produces the right result, the operation is fine and the mode
 
 ## Next
 
-[Safety](/agents/operate/safety) covers the operational boundary around an agent. [Receipts and errors](/document-api/receipts-and-errors) explains the result contract a dispatched action returns. Reads and validation failures do not follow it: `superdoc_inspect` returns a snapshot with no `status`, and an invalid argument throws before any receipt exists.
+[Custom actions](/agents/build/custom-actions) adds a verb of your own to this surface. [Safety](/agents/operate/safety) covers the operational boundary around an agent. [Receipts and errors](/document-api/receipts-and-errors) explains the result contract a dispatched action returns. Reads and validation failures do not follow it: `superdoc_inspect` returns a snapshot with no `status`, and an invalid argument throws before any receipt exists.

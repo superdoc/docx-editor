@@ -35,7 +35,10 @@ vi.mock('../public/ui/create-super-doc-ui.js', () => ({
       },
     },
     contentControls: {
-      observe(observer: (snapshot: ContentControlsSlice) => void) {
+      observe() {
+        throw new Error('the active-change bridge must not take the catalog lease');
+      },
+      observeActivePath(observer: (snapshot: ContentControlsSlice) => void) {
         bridge.observeCount += 1;
         bridge.observer = observer;
         if (bridge.observeCount <= 3) {

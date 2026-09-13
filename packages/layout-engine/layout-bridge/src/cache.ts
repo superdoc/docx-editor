@@ -1,5 +1,6 @@
 import {
   getParagraphInlineDirection,
+  isNumberedNoteMarkerRun,
   trackedChangeMetaSignature,
   type DrawingBlock,
   type FlowBlock,
@@ -13,12 +14,15 @@ import {
   type TableAttrs,
   type TableCellAttrs,
   type Run,
+  type TextRun,
 } from '@superdoc/contracts';
+import type { FontMeasureCapabilities } from '@superdoc/font-system';
 import { fieldAnnotationKey } from './field-annotation-key.js';
 import { inlineBoxKey } from './inline-box-key.js';
 import { hasTrackedChange, resolveTrackedChangesEnabled } from './tracked-changes-utils.js';
 import { hashParagraphBorders, hashTableBorders, hashCellBorders } from './paragraph-hash-utils.js';
 import { hashRunVisualMarks } from './run-visual-marks.js';
+import { noteMarkerMeasureKey } from './note-marker-measure-key.js';
 
 /**
  * Comment annotation structure attached to runs.
@@ -167,8 +171,10 @@ const hashImageLikeBlock = (
  * @param block - The list block to hash
  * @returns A deterministic list hash fragment
  */
-const hashListBlock = (block: ListBlock): string => {
-  return block.items.map((item) => `${item.id}:${item.marker.text}:${hashRuns(item.paragraph)}`).join('|');
+const hashListBlock = (block: ListBlock, capabilities?: FontMeasureCapabilities): string => {
+  return block.items
+    .map((item) => `${item.id}:${item.marker.text}:${hashRuns(item.paragraph, capabilities)}`)
+    .join('|');
 };
 
 /**
@@ -177,7 +183,7 @@ const hashListBlock = (block: ListBlock): string => {
  * @param block - The drawing block to hash
  * @returns A deterministic drawing hash fragment
  */
-const hashDrawingBlock = (block: DrawingBlock): string => {
+const hashDrawingBlock = (block: DrawingBlock, capabilities?: FontMeasureCapabilities): string => {
   if (block.drawingKind === 'image') {
     return `drawing:image:${hashImageLikeBlock(block)}`;
   }
@@ -215,7 +221,7 @@ const hashDrawingBlock = (block: DrawingBlock): string => {
       block.textAlign ?? '',
       block.textVerticalAlign ?? '',
       JSON.stringify(block.textInsets ?? null),
-      block.contentBlocks.map((contentBlock) => `${contentBlock.id}:${hashRuns(contentBlock)}`).join('|'),
+      block.contentBlocks.map((contentBlock) => `${contentBlock.id}:${hashRuns(contentBlock, capabilities)}`).join('|'),
     ].join(':');
   }
 
@@ -250,9 +256,12 @@ const hashDrawingBlock = (block: DrawingBlock): string => {
  * @param block - The non-paragraph cell block
  * @returns A deterministic hash fragment for the block
  */
-const hashNonParagraphCellBlock = (block: Exclude<FlowBlock, ParagraphBlock>): string => {
+const hashNonParagraphCellBlock = (
+  block: Exclude<FlowBlock, ParagraphBlock>,
+  capabilities?: FontMeasureCapabilities,
+): string => {
   if (block.kind === 'table') {
-    return `table:${hashRuns(block)}`;
+    return `table:${hashRuns(block, capabilities)}`;
   }
 
   if (block.kind === 'image') {
@@ -260,11 +269,11 @@ const hashNonParagraphCellBlock = (block: Exclude<FlowBlock, ParagraphBlock>): s
   }
 
   if (block.kind === 'drawing') {
-    return hashDrawingBlock(block);
+    return hashDrawingBlock(block, capabilities);
   }
 
   if (block.kind === 'list') {
-    return `list:${hashListBlock(block)}`;
+    return `list:${hashListBlock(block, capabilities)}`;
   }
 
   return `${block.kind}:${block.id}`;
@@ -294,9 +303,10 @@ const hashNonParagraphCellBlock = (block: Exclude<FlowBlock, ParagraphBlock>): s
  * content component of that key, so adopting a previous measure on hash
  * equality is exactly as sound as a cache hit.
  */
-export const hashMeasureContent = (block: FlowBlock): string => hashRuns(block);
+export const hashMeasureContent = (block: FlowBlock, capabilities?: FontMeasureCapabilities): string =>
+  hashRuns(block, capabilities);
 
-const hashRuns = (block: FlowBlock): string => {
+const hashRuns = (block: FlowBlock, capabilities?: FontMeasureCapabilities): string => {
   // FIX: For table blocks and paragraphs, include content AND formatting properties in hash.
   // Formatting properties that affect measurement: fontSize, fontFamily, bold, italic, color.
   // This ensures cache invalidation when text OR formatting changes.
@@ -360,7 +370,7 @@ const hashRuns = (block: FlowBlock): string => {
 
         for (const cellBlock of cellBlocks) {
           if (cellBlock.kind !== 'paragraph') {
-            cellHashes.push(`nb:${hashNonParagraphCellBlock(cellBlock)}`);
+            cellHashes.push(`nb:${hashNonParagraphCellBlock(cellBlock, capabilities)}`);
             continue;
           }
 
@@ -390,7 +400,12 @@ const hashRuns = (block: FlowBlock): string => {
 
             // Text is used verbatim without normalization - whitespace affects measurements
             // (Fix for PR #1551: previously /\s+/g normalization caused cache collisions)
-            const text = 'text' in run && typeof run.text === 'string' ? run.text : '';
+            const text =
+              isNumberedNoteMarkerRun(run) && 'text' in run
+                ? noteMarkerMeasureKey(run as TextRun, capabilities)
+                : 'text' in run && typeof run.text === 'string'
+                  ? run.text
+                  : '';
 
             const marks = hashRunVisualMarks(run);
 
@@ -510,7 +525,7 @@ const hashRuns = (block: FlowBlock): string => {
   // part of the shared measure-cache key; keying only by id reuses the old
   // DrawingMeasure after canonical OOXML has already changed. Table-cell
   // drawings take the same hash through hashNonParagraphCellBlock above.
-  if (block.kind === 'drawing') return `${block.id}:${hashDrawingBlock(block)}`;
+  if (block.kind === 'drawing') return `${block.id}:${hashDrawingBlock(block, capabilities)}`;
 
   if (block.kind !== 'paragraph') return block.id;
   const trackedMode =
@@ -538,7 +553,12 @@ const hashRuns = (block: FlowBlock): string => {
 
       // Text is used verbatim without normalization - whitespace affects measurements
       // (Fix for PR #1551: previously /\s+/g normalization caused cache collisions)
-      const text = 'src' in run || run.kind === 'lineBreak' || run.kind === 'break' ? '' : (run.text ?? '');
+      const text =
+        'src' in run || run.kind === 'lineBreak' || run.kind === 'break'
+          ? ''
+          : isNumberedNoteMarkerRun(run)
+            ? noteMarkerMeasureKey(run as TextRun, capabilities)
+            : (run.text ?? '');
       const marks = hashRunVisualMarks(run);
 
       // Include tracked change metadata in hash
@@ -742,8 +762,14 @@ export class MeasureCache<T> {
    * @param height - The height dimension for cache key
    * @returns The cached value or undefined
    */
-  public get(block: FlowBlock | null | undefined, width: number, height: number, fontSignature = ''): T | undefined {
-    return this.getPrepared(this.prepareKey(block, width, height, fontSignature));
+  public get(
+    block: FlowBlock | null | undefined,
+    width: number,
+    height: number,
+    fontSignature = '',
+    capabilities?: FontMeasureCapabilities,
+  ): T | undefined {
+    return this.getPrepared(this.prepareKey(block, width, height, fontSignature, capabilities));
   }
 
   /**
@@ -755,9 +781,10 @@ export class MeasureCache<T> {
     width: number,
     height: number,
     fontSignature = '',
+    capabilities?: FontMeasureCapabilities,
   ): PreparedMeasureCacheKey | undefined {
     if (!block || !block.id) return undefined;
-    return this.composeKey(block, width, height, fontSignature) as PreparedMeasureCacheKey;
+    return this.composeKey(block, width, height, fontSignature, capabilities) as PreparedMeasureCacheKey;
   }
 
   public getPrepared(key: PreparedMeasureCacheKey | undefined): T | undefined {
@@ -788,8 +815,15 @@ export class MeasureCache<T> {
    * @param height - The height dimension for cache key
    * @param value - The value to cache
    */
-  public set(block: FlowBlock | null | undefined, width: number, height: number, value: T, fontSignature = ''): void {
-    this.setPrepared(this.prepareKey(block, width, height, fontSignature), block?.id, value);
+  public set(
+    block: FlowBlock | null | undefined,
+    width: number,
+    height: number,
+    value: T,
+    fontSignature = '',
+    capabilities?: FontMeasureCapabilities,
+  ): void {
+    this.setPrepared(this.prepareKey(block, width, height, fontSignature, capabilities), block?.id, value);
   }
 
   public setPrepared(key: PreparedMeasureCacheKey | undefined, blockId: string | undefined, value: T): void {
@@ -935,10 +969,16 @@ export class MeasureCache<T> {
    * @param height - Height dimension (will be clamped to [0, MAX_DIMENSION])
    * @returns Cache key string
    */
-  private composeKey(block: FlowBlock, width: number, height: number, fontSignature: string): string {
+  private composeKey(
+    block: FlowBlock,
+    width: number,
+    height: number,
+    fontSignature: string,
+    capabilities?: FontMeasureCapabilities,
+  ): string {
     const safeWidth = Number.isFinite(width) ? Math.max(0, Math.min(Math.floor(width), MAX_DIMENSION)) : 0;
     const safeHeight = Number.isFinite(height) ? Math.max(0, Math.min(Math.floor(height), MAX_DIMENSION)) : 0;
-    const hash = hashRuns(block);
+    const hash = hashRuns(block, capabilities);
     // The font signature (the document resolver's mapping identity) is part of the key so two
     // documents with identical block content but different `fonts.map` cannot reuse each other's
     // measure. Appended AFTER the block.id prefix so invalidate(blockIds) prefix-matching holds.

@@ -1,8 +1,11 @@
 blank_issues_enabled: false
 contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/superdoc/docx-editor/security/advisories/new
+    about: Report suspected vulnerabilities privately. Do not include vulnerability details in public issues.
   - name: Questions & Discussion
     url: https://discord.com/invite/b9UuaZRyaB
     about: Ask questions or chat with the community on Discord
   - name: Want to contribute?
     url: https://github.com/superdoc/docx-editor/blob/main/CONTRIBUTING.md
-    about: Check out our contributing guide to get started
+    about: Community contributions start with issues. Read why and how to help.

@@ -1,48 +1,81 @@
 ---
-title: Build formatting controls
-navTitle: Formatting
-description: Connect custom font, size, paragraph-style, and document-mode controls to the active Editor state.
+title: Build a custom toolbar
+navTitle: Toolbar
+description: Scale one working custom control into an application-owned toolbar that follows the current selection.
 ---
 
-Use the custom UI controller when your application owns the formatting toolbar. The controller provides picker options, active values, disabled reasons, and commands that follow the current selection.
+Configure the [built-in toolbar](/editor/built-in-ui/configure-the-toolbar) when you only need to choose which controls it
+shows. Continue here when your application needs to own the toolbar's markup, layout, accessibility, or feedback.
 
-If SuperDoc should render the toolbar instead, see [configure the built-in toolbar](/editor/built-in-ui/configure-the-toolbar).
+The Bold button from [Commands and state](/editor/custom-ui/commands-and-state) already observes state, renders it, runs
+a command, and handles the result. Keep that loop. Add font-family and font-size pickers to turn it into a small toolbar.
 
-Complete [Custom UI controller setup](/editor/custom-ui/controller-setup) first. This example expects `/contract.docx` to be available from your application.
+## Try the loop at toolbar scale
 
-## Add the controls
+Select the first sentence below. Apply Bold, then choose **Courier New** and **18**. Reselect that sentence to see all three
+controls recover its formatting. Extend that formatted selection into the next plain sentence and the pickers show
+**Mixed**.
 
-Create font, size, paragraph-style, and document-mode selectors with a status message:
+<CustomToolbarDemo />
 
-<include>../../../../snippets/editor/custom-formatting-controls.html</include>
+The toolbar demonstrates three reusable control shapes:
 
-## Bind options, state, and commands
+- A toggle renders `active` through `aria-pressed`.
+- A picker renders `value`, or **Mixed** when the selection has no single value.
+- Every control renders `enabled` through its disabled state and reports what `executeAsync()` returns.
 
-Read the Editor's controller, `superdoc.ui`, after the Editor is ready:
+SuperDoc owns the document behavior and publishes command state. Your application owns the toolbar element, control
+labels, focus behavior, and action feedback.
 
-<include>../../../../snippets/editor/custom-formatting-controls.ts</include>
+## Build the same toolbar
 
-Each surface owns one part of the interface:
+Continue with the `/sample.docx` project from [Build your first custom control](/editor/custom-ui/controller-setup). This
+time, set `toolbar: false` to remove the remaining built-in toolbar.
 
-- `ui.fonts` provides document-aware family options and supported size choices.
-- `ui.styles` provides the Word quick gallery and active paragraph style.
-- `ui.document` reports the current document mode.
-- `ui.commands` applies the selected value and reports whether the action can run.
+## Add the toolbar surface
 
-## Preserve document intent
+For Vanilla, replace the contents of `<body>` in `index.html` with the toolbar and Editor mounts below.
+React renders the controls in `App.tsx` and keeps the quickstart HTML.
 
-Pass the font option's `value` to `font-family`. The value is the logical family written to the DOCX. `previewFamily` is only for rendering the option in your application's picker.
+<include>../../../../snippets/editor/custom-toolbar.html</include>
 
-Pass the size option's `value` to `font-size`. The controller normalizes the public picker value before calling the formatting operation.
+## Bind the commands and options
 
-Paragraph styles use stable style IDs. Show the catalogue's human-readable `name`, but execute `linked-style` with its `id`. Do not reproduce a style by copying its current CSS properties. Applying the style ID preserves the document's style relationship.
+Replace the first-control Editor code:
 
-## Follow selection and mode changes
+<FrameworkExampleTabs>
+  <FrameworkExample filename='src/main.ts' framework='Vanilla'>
+    <include>../../../../snippets/editor/custom-toolbar.ts</include>
+  </FrameworkExample>
+  <FrameworkExample filename='src/App.tsx' framework='React'>
+    <include>../../../../snippets/editor/react-custom-formatting-toolbar.tsx</include>
+  </FrameworkExample>
+</FrameworkExampleTabs>
 
-Observe the font, style, document, and command surfaces. A mixed selection can have no single active paragraph style. A locked content control or viewing mode can disable formatting even when the option remains visible.
+Both versions scale the same control loop:
 
-Use `executeAsync()` before saving or starting dependent work. Inspect the returned result instead of assuming that a change event mutated the document.
+- Get one command handle for Bold, font family, and font size.
+- Read `ui.fonts` for the values each picker can send.
+- Render each command's current `enabled`, `active`, or `value` state.
+- Run the command and report whether it finished.
 
-Changing document mode updates the posture of the whole Editor. It is not an authorization boundary. Read [Document modes](/editor/document-modes) before exposing mode changes to users.
+The React hook exposes state and execution on the same object. Vanilla uses the equivalent command handle returned by
+`ui.commands.get(id)`.
 
-Verify the workflow by selecting text, changing its font and size, applying a paragraph style, and exporting the DOCX. Reopen it and confirm that the formatting and style ID remain intact.
+## Represent picker values
+
+Pass each option's `value` to its command. A font option's `previewFamily` is only a CSS value for previewing that choice
+in your interface.
+
+A mixed selection has no single command `value`. Show a non-selectable **Mixed** option until the selection resolves to
+one font or size. Continue to let the command state drive the control; do not inspect the rendered document DOM.
+
+## Verify the toolbar
+
+Run the project. Select text in `/sample.docx` and change all three controls. Move the selection away, then select the
+formatted text again. Bold, font, and size should recover the values you applied. Extend the selection into neighboring
+text that kept its original formatting. Both pickers should show **Mixed**.
+
+For an alternative recipe, [build application document controls](/editor/custom-ui/zoom-and-document-state) for zoom
+and download. It replaces this example and keeps the built-in formatting toolbar. Use
+[Custom commands](/editor/custom-ui/custom-commands) later for application actions that SuperDoc does not provide.

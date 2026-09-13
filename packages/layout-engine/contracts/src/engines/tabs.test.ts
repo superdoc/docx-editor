@@ -76,6 +76,37 @@ describe('engines-tabs computeTabStops', () => {
     expect(firstDefault?.source).toBe('default');
   });
 
+  it.each([
+    { label: 'positive', defaultTabInterval: 720 },
+    { label: 'zero', defaultTabInterval: 0 },
+    { label: 'negative', defaultTabInterval: -720 },
+    { label: 'NaN', defaultTabInterval: Number.NaN },
+    { label: 'infinite', defaultTabInterval: Number.POSITIVE_INFINITY },
+  ])('uses the 720-twip grid for a $label interval', ({ defaultTabInterval }) => {
+    const stops = computeTabStops({
+      explicitStops: [
+        { val: 'start', pos: 720, leader: 'none' },
+        { val: 'clear', pos: 1440, leader: 'none' },
+      ],
+      defaultTabInterval,
+      paragraphIndent: { left: 0 },
+    });
+
+    expect(stops.find((stop) => stop.pos === 720)).toEqual({
+      val: 'start',
+      pos: 720,
+      leader: 'none',
+      source: 'explicit',
+    });
+    expect(stops.find((stop) => stop.pos === 1440)).toBeUndefined();
+    expect(stops.find((stop) => stop.pos === 2160)).toEqual({
+      val: 'start',
+      pos: 2160,
+      leader: 'none',
+      source: 'default',
+    });
+  });
+
   it('adds an implicit left-margin stop when hanging indent starts before the margin', () => {
     const stops = computeTabStops({
       explicitStops: [{ val: 'start', pos: -1440, leader: 'none' }],

@@ -4,8 +4,9 @@ navTitle: Add fields
 description: Turn document selections into tagged inline and block-level content controls.
 ---
 
-Use an inline field for content inside a paragraph. Use a block field for one or more whole paragraphs, such as a clause
-slot.
+Use this workflow when your DOCX does not yet have fields your application can find. Wrap a client name in an inline
+field, then create a block field for a confidentiality clause. If your template already has fields, start with
+[Fill a DOCX template](/editor/content-controls/fill-a-docx-template).
 
 ## Add both field shapes
 
@@ -15,6 +16,9 @@ the block field.
 <ContentControlAuthoringDemo />
 
 ## Create the fields
+
+Use the [complete Vanilla TypeScript example](https://go.superdoc.dev/examples/content-controls?workflow=add) and choose
+**Add fields**. It includes the untagged agreement, selection controls, Editor setup, and export button.
 
 Pass the current selection target to `create.contentControl()`. Here, the inline call wraps a text selection. The block
 call targets an empty paragraph and replaces it with the supplied HTML content:
@@ -31,8 +35,14 @@ call targets an empty paragraph and replaces it with the supplied HTML content:
 | `alias`       | `Client legal name`  | Readable title stored in the DOCX                |
 | `id`          | Assigned on creation | One control occurrence in the document           |
 
-The [content-controls example](https://go.superdoc.dev/examples/content-controls?workflow=add) contains the complete
-Vanilla TypeScript workflow and verifies both fields after export and reopen.
+The example obtains the selection from the Editor-owned UI controller after readiness. The helper needs a current
+selection target, not the selected text alone. Check the creation receipt before treating the field as available.
+
+## Keep the fields in your template
+
+Export the DOCX from the standalone example and reopen it. Confirm that the client name is an inline text control and
+the confidentiality clause is a block rich-text control, with the tags and titles shown above. Keep this file as the
+template you fill later; reopening the original draft will not include the fields you just added.
 
 Continue with [Fill a DOCX template](/editor/content-controls/fill-a-docx-template) to update fields from application
 data. Use the [`create.contentControl()` reference](/document-api/reference/content-controls/create/) for every input

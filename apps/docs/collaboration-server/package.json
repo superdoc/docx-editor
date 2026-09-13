@@ -1,0 +1,26 @@
+{
+  "name": "@superdoc/docs-collaboration",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --port 8791",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test tests/*.test.ts"
+  },
+  "dependencies": {
+    "partyserver": "0.5.10",
+    "y-partyserver": "2.2.0",
+    "yjs": "13.6.31"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "4.20260424.1",
+    "@types/node": "catalog:",
+    "@types/ws": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:",
+    "wrangler": "4.130.0",
+    "ws": "catalog:",
+    "y-websocket": "catalog:"
+  }
+}

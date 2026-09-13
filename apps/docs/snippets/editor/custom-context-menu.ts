@@ -1,6 +1,9 @@
 import { SuperDoc } from 'superdoc';
-import type { BorrowedSuperDocUI, CommandExecutionResult, ViewportContext } from 'superdoc/ui';
+import type { UIConfig } from 'superdoc';
+import type { BorrowedSuperDocUI, CommandExecutionResult } from 'superdoc/ui';
 import 'superdoc/style.css';
+
+const editorUi = { contextMenu: false } satisfies UIConfig;
 
 const editorHost = document.querySelector<HTMLElement>('#editor');
 const menu = document.querySelector<HTMLElement>('#document-menu');
@@ -16,8 +19,12 @@ if (!editorHost || !menu || !acceptButton || !rejectButton || !copyButton || !st
 type ChangeTarget = { id: string; story?: unknown };
 
 let ui: BorrowedSuperDocUI | null = null;
-let context: ViewportContext | null = null;
 let changeTarget: ChangeTarget | null = null;
+let decisionPending = false;
+// Each open menu gets its own id, and dismissal retires it, so a decision
+// that settles late closes only the menu that started it and is still open.
+let menuId = 0;
+let stopSelectionObserver: (() => void) | null = null;
 
 const menuItems = [acceptButton, rejectButton, copyButton];
 
@@ -28,10 +35,19 @@ const describeResult = (result: CommandExecutionResult, success: string): string
 };
 
 const closeMenu = (restoreEditorFocus: boolean) => {
+  // Any dismissal retires the current menu, so an action still in flight
+  // cannot close it later or move focus away from wherever the user went.
+  menuId += 1;
   menu.hidden = true;
-  context = null;
   changeTarget = null;
+  stopSelectionObserver?.();
+  stopSelectionObserver = null;
   if (restoreEditorFocus) superdoc.focus();
+};
+
+const syncDecisionButtons = () => {
+  acceptButton.disabled = !changeTarget || decisionPending;
+  rejectButton.disabled = !changeTarget || decisionPending;
 };
 
 const positionMenu = ({ x, y }: { x: number; y: number }) => {
@@ -50,36 +66,49 @@ const positionMenu = ({ x, y }: { x: number; y: number }) => {
 const openMenu = (point: { x: number; y: number }) => {
   if (!ui) return;
 
-  context = ui.viewport.contextAt(point);
+  const context = ui.contextMenu.contextAt(point);
   const trackedChange = context.entities.find((entity) => entity.type === 'trackedChange');
   changeTarget = trackedChange
     ? { id: trackedChange.id, ...(trackedChange.story === undefined ? {} : { story: trackedChange.story }) }
     : null;
 
-  acceptButton.disabled = !changeTarget;
-  rejectButton.disabled = !changeTarget;
-  // `contextAt()` returns the best-known selection immediately. While a re-read
-  // is in flight the slice reports `pending` or `stale` and still carries the
-  // previous range, so enabling Copy on `quotedText` alone would let a quick
-  // right-click after a selection change copy the old text. Require `ready`.
-  copyButton.disabled =
-    context.selection.status !== 'ready' || context.selection.empty || context.selection.quotedText.length === 0;
+  menuId += 1;
+  syncDecisionButtons();
+  // The selection can still be settling when the menu opens. Follow it while
+  // the menu is open so Copy enables once it is ready.
+  stopSelectionObserver?.();
+  stopSelectionObserver = ui.selection.observe((selection) => {
+    copyButton.disabled = selection.status !== 'ready' || selection.empty || selection.quotedText.length === 0;
+  });
 
   positionMenu(point);
   const firstAvailable = menuItems.find((item) => !item.disabled);
   (firstAvailable ?? menu).focus();
 };
 
-const decideChange = async (command: 'acceptChange' | 'rejectChange', success: string) => {
-  if (!ui || !changeTarget) return;
-  const result = await ui.commands.executeAsync(command, changeTarget);
-  status.textContent = describeResult(result, success);
-  closeMenu(true);
+const decideChange = async (decision: 'accept' | 'reject', success: string) => {
+  if (!ui || !changeTarget || decisionPending) return;
+  const startedFrom = menuId;
+  decisionPending = true;
+  syncDecisionButtons();
+  try {
+    const result =
+      decision === 'accept'
+        ? await ui.trackChanges.acceptAsync(changeTarget)
+        : await ui.trackChanges.rejectAsync(changeTarget);
+    status.textContent = describeResult(result, success);
+  } finally {
+    decisionPending = false;
+    syncDecisionButtons();
+  }
+  if (menuId === startedFrom) closeMenu(true);
 };
 
 const copySelection = async () => {
-  const text = context?.selection.quotedText;
+  const selection = ui?.selection.getSnapshot();
+  const text = selection?.status === 'ready' && !selection.empty ? selection.quotedText : '';
   if (!text) return;
+  const startedFrom = menuId;
 
   try {
     await navigator.clipboard.writeText(text);
@@ -87,7 +116,7 @@ const copySelection = async () => {
   } catch {
     status.textContent = 'The browser did not allow clipboard access.';
   }
-  closeMenu(true);
+  if (menuId === startedFrom) closeMenu(true);
 };
 
 const handleContextMenu = (event: MouseEvent) => {
@@ -129,15 +158,15 @@ const handleViewportChange = () => {
   if (!menu.hidden) closeMenu(false);
 };
 
-const handleAccept = () => void decideChange('acceptChange', 'Change accepted.');
-const handleReject = () => void decideChange('rejectChange', 'Change rejected.');
+const handleAccept = () => void decideChange('accept', 'Change accepted.');
+const handleReject = () => void decideChange('reject', 'Change rejected.');
 const handleCopy = () => void copySelection();
 
 const superdoc = new SuperDoc({
   selector: editorHost,
   document: '/contract.docx',
   documentMode: 'suggesting',
-  ui: { contextMenu: false },
+  ui: editorUi,
   onReady: ({ superdoc: readySuperDoc }) => {
     ui = readySuperDoc.ui;
   },

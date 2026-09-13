@@ -4,35 +4,70 @@ navTitle: Fill fields
 description: Update every content-control occurrence that represents an application field, then export the DOCX.
 ---
 
-Treat your application data as the source of truth. Find controls by tag, update every returned target, and inspect each
-mutation receipt before reporting success.
+Use a prepared template when your application already knows the values to put in a document. This agreement has a
+client name in three places and an auto-renew checkbox. The fields are already present; your application fills them.
 
 ## Try the workflow
 
-Change the client name. All three occurrences update. Toggle auto-renew to change the Word checkbox stored in the DOCX.
+Expand the Editor and change the client name. All three occurrences update. Then toggle auto-renew to change the
+checkbox in the document.
 
 <TemplatePopulationDemo />
 
+## Start with the prepared example
+
+Open the [complete Vanilla TypeScript example](https://go.superdoc.dev/examples/content-controls?workflow=fill) and
+choose **Fill fields**. It includes the template, form, occurrence arrows, Editor setup, and export button. The snippets below are from
+that project; they are not a separate Editor setup.
+
+In your own integration, keep the Editor from the [Quickstart](/editor/quickstart) and load a DOCX with content controls,
+such as the [service-agreement template](/fixtures/service-agreement-template.docx). Obtain `superdoc.activeEditor.doc`
+after `onReady` before calling the field helpers. The Quickstart's original sample does not contain these fields.
+
 ## Define the field map
 
-Keep business-field keys in application code. A tag connects one field to one or more controls in the document:
+The client-name controls share the tag `client.legalName`. Their IDs differ because each ID identifies one occurrence.
+Changing a control does not automatically change others with the same tag; the example updates every match.
+
+Keep the tag and expected type together. For example, `client.legalName` expects a text control and
+`agreement.autoRenew` expects a checkbox.
+
+<details>
+<summary>View the example's field map</summary>
 
 <include>../../../../../../examples/content-controls/src/field-schema.ts</include>
 
+</details>
+
 ## Update every occurrence
 
-`selectByTag()` returns each matching control. Update them one at a time so the result can distinguish complete,
-partial, and failed updates:
+The example's `updateTextField()` and `updateCheckboxField()` helpers follow three steps:
+
+1. Find matching controls with `selectByTag()`.
+2. Check each control's type, then call `text.setValue()` or `checkbox.setState()` on its target.
+3. Count updated, unchanged, and failed occurrences from the mutation receipts.
+
+<details>
+<summary>View the typed update helpers</summary>
 
 <include>../../../../../../examples/content-controls/src/template-fields.ts</include>
+
+</details>
 
 Use the same lookup and receipt pattern for other supported field types. Check `controlType`, call the matching typed
 operation, and use the returned receipt to decide what the application reports.
 
-The [content-controls example](https://go.superdoc.dev/examples/content-controls?workflow=fill) contains the complete
-Vanilla TypeScript workflow. It also focuses repeated occurrences, exports the DOCX, and verifies the result after
-reopening it.
+No matches means the template is missing the expected field. A locked or incompatible occurrence can fail after other
+occurrences have changed: these individual updates are not one atomic transaction. The example reports partial results
+and blocks export until failed fields are corrected.
 
-Continue with [Replace clauses from your application](/editor/content-controls/replace-clauses-from-your-application)
-for block-level content. Use [custom content-control UI](/editor/custom-ui/content-controls) when your application needs
-a persistent field list or richer navigation.
+## Export and check the result
+
+In the standalone example, choose **Export DOCX** after the updates finish. Reopen the file in SuperDoc or Word and
+check all three client names and the checkbox. Field tags remain in the DOCX for later updates.
+
+The embedded demo does not save to your server. Use [Load and save](/editor/load-and-save-documents) to persist the
+exported bytes in your application.
+
+Next, [add fields to your own template](/editor/content-controls/add-fields-to-a-docx-template). For an application-owned
+field list, see [custom content-control UI](/editor/custom-ui/content-controls).

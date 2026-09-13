@@ -126,6 +126,56 @@ describe('comment writes honor readOnly on every route', () => {
 });
 
 /**
+ * Viewing mode freezes the document body, not the comment permission policy.
+ * When `interaction.comments.readOnly` is false, selection-backed create and
+ * other comment writes remain available through the public controller (SD-4470).
+ */
+describe('comment writes stay available in viewing mode when comments are writable', () => {
+  function mountViewingWritable() {
+    const create = vi.fn(async () => ({ ok: true }));
+    const reply = vi.fn(async () => ({ ok: true }));
+    const remove = vi.fn(async () => ({ ok: true }));
+    const patch = vi.fn(async () => ({ ok: true }));
+    const ui = createSuperDocUI({
+      superdoc: {
+        interactionConfig: { comments: { readOnly: false, allowResolve: true } },
+        config: { documentMode: 'viewing', modules: { comments: false } },
+        activeEditor: {
+          editorVersion: 2,
+          options: { documentMode: 'viewing' },
+          doc: { comments: { create, reply, patch, delete: remove } },
+        },
+      } as never,
+    }) as unknown as {
+      comments: CommentWrites & {
+        createFromSelection: (input: unknown) => { success: boolean; reason?: string };
+        resolve: (id: string) => { success: boolean; reason?: string };
+      };
+    };
+    return { ui, create, reply, remove, patch };
+  }
+
+  it('does not refuse comment writes as DOCUMENT_READONLY merely because mode is viewing', () => {
+    const { ui, create, reply, remove, patch } = mountViewingWritable();
+
+    const fromSelection = ui.comments.createFromSelection({ text: 'viewing comment' });
+    // Empty selection may still refuse with NO_SELECTION; viewing alone must not.
+    expect(fromSelection.reason).not.toBe('DOCUMENT_READONLY');
+
+    expect(ui.comments.createFromCapture({ target: { type: 'text' } }, { text: 'x' }).success).not.toBe(false);
+    expect(ui.comments.reply('c1', { text: 'reply' }).success).not.toBe(false);
+    expect(ui.comments.edit('c1', { text: 'edited' }).success).not.toBe(false);
+    expect(ui.comments.resolve('c1').success).not.toBe(false);
+    expect(ui.comments.delete('c1').success).not.toBe(false);
+
+    expect(create).toHaveBeenCalled();
+    expect(reply).toHaveBeenCalled();
+    expect(patch).toHaveBeenCalled();
+    expect(remove).toHaveBeenCalled();
+  });
+});
+
+/**
  * `edit` and `resolve` both reach `comments.patch`, which is exactly why they
  * must not share a policy gate.
  *

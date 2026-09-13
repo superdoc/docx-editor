@@ -1,72 +1,75 @@
 ---
-title: Custom UI controller setup
-navTitle: Setup
-description: Bind a custom control to live SuperDoc command state and execute it safely.
+title: Build your first custom control
+navTitle: First control
+description: Move Bold into your application while SuperDoc renders the document and remaining toolbar.
 ---
 
-This guide creates one application-owned Bold button over the public `superdoc/ui` controller. The button follows live selection state, executes the real Editor command, and cleans up with the Editor.
+Start from the [Editor quickstart](/editor/quickstart). Remove Bold from SuperDoc's toolbar, then render a Bold button in
+your application. This is the smallest step from configuring the built-in UI to owning part of it.
 
-Complete the [Editor quickstart](/editor/quickstart) first if you have not mounted a v2 Editor before.
+## Try the ownership handoff
 
-## Add the HTML surface
+Select text in the document. Use **Bold** under **Your application**, then use **Italic** under **SuperDoc UI**. Both
+controls should follow the same selection.
 
-Create the button and an editor container:
+<CustomBoldDemo variant='handoff' />
+
+Only the visible Bold control changed owner. SuperDoc still renders the DOCX canvas and the remaining toolbar.
+
+## Build the same handoff
+
+Choose Vanilla or React below. Your choice stays active across the examples.
+
+If you chose React in the quickstart, add `superdoc` as a direct dependency. The custom UI hooks come from its
+`superdoc/ui/react` entry point:
+
+```bash
+pnpm add superdoc
+```
+
+## 1. Move Bold into your application
+
+Vanilla needs a button next to its existing Editor container. React renders the button inside the component in the next
+step and keeps the quickstart's `index.html`. Vanilla also needs a mount for the remaining built-in toolbar. If you use
+Vanilla, replace the contents of `<body>` in `index.html` with:
 
 <include>../../../../snippets/editor/custom-ui-controller.html</include>
 
-Copy the [tracked-changes fixture](/fixtures/tracked-changes.docx) to your app's public directory as `contract.docx`, or update the example to use another DOCX URL.
+## 2. Connect Bold to the Editor
 
-## Bind the controller after readiness
+Replace the quickstart Editor code:
 
-Use this as `src/main.ts`:
+<FrameworkExampleTabs>
+  <FrameworkExample filename='src/main.ts' framework='Vanilla'>
+    <include>../../../../snippets/editor/custom-ui-controller.ts</include>
+  </FrameworkExample>
+  <FrameworkExample filename='src/App.tsx' framework='React'>
+    <include>../../../../snippets/editor/react-custom-toolbar.tsx</include>
+  </FrameworkExample>
+</FrameworkExampleTabs>
 
-<include>../../../../snippets/editor/custom-ui-controller.ts</include>
+Both versions make the same ownership change:
 
-Every SuperDoc instance owns one controller at `superdoc.ui`. Read it as many times as you like; you always get the same object, and so does the built-in toolbar if you render one. Reading it before the document is ready is safe, but the command handle only reports real state once the Editor is ready, which is why the binding happens in `onReady`.
+- `toolbar.excludeItems` removes the built-in Bold button. The Bold command remains available.
+- The application-owned button reads that command's state and runs it through `superdoc.ui`.
+- The Editor owns the controller. Your application releases only the subscription and event handlers it created.
 
-The instance owns the controller's lifecycle. `superdoc.destroy()` tears it down, and `superdoc.ui` is typed as the borrowed handle `BorrowedSuperDocUI`, which has no `destroy()` at all. Calling it is a compile error rather than a rule to remember, because doing so would freeze command state for every other part of your interface still reading it.
+The `mousedown` handler keeps the document selection active when the custom button receives a mouse click. Keyboard
+activation continues to use the button's normal focus and click behavior. [Selection and position](/editor/custom-ui/selection-and-viewport)
+explains that pattern for menus, popovers, and other application UI.
 
-<Callout title='When you need a separate controller'>
-  `createSuperDocUI()` from `superdoc/ui` builds an independent controller that you own and must destroy. It exists for
-  cases like driving a detached preview from its own state. Application UI should read `superdoc.ui` instead.
-</Callout>
+## 3. Run the control
 
-## Remove the built-in surfaces
+Run the project:
 
-This guide's Bold button replaces one toolbar control, so `ui: { toolbar: false }` is all it needs. As your interface takes over more of the document experience, each built-in surface has its own switch:
+```bash
+pnpm dev
+```
 
-- `ui: { toolbar: false }` renders no built-in toolbar.
-- `ui: { comments: false }` removes the built-in comments interface: the sidebar, floating threads, and comment dialog.
-- `ui: { contextMenu: false }` removes the built-in right-click and slash menus.
-- `hyperlinks: false` suppresses hyperlink activation.
+Select text in the DOCX. **Bold** becomes enabled and reflects whether the selection is bold. Choose it and confirm that
+the status reports whether bold was applied or removed. The remaining built-in toolbar controls should still render.
 
-Take only the switches whose surface you actually replace. They are independent, and each removes one presentation and nothing else, so turning off a surface you have not rebuilt leaves the reader with less than SuperDoc would have given them. The [custom comments UI](/editor/custom-ui/comments) shows the comments switch used the right way round: it mounts with `ui: { comments: false }` because it renders its own panel, and leaves everything else in place.
+The [runnable custom UI example](https://go.superdoc.dev/examples/custom-ui) also verifies the exported DOCX.
 
-When your application owns the entire interface, `ui: false` turns off every built-in surface at once. It does not reduce what the editor can do: editing, the Document API, `interaction`, `surfaces`, and `superdoc.ui` all stay exactly as they were.
-
-These are rendering switches, not permissions. `ui: { comments: false }` hides the built-in comments interface but does not stop your own panel from creating comments; `interaction: { comments: { level: 'read' } }` is what refuses the write.
-
-The underlying capabilities stay available through `superdoc.ui`. Comment threads in the DOCX are still parsed and readable through `superdoc.ui.comments` with the surface off, and `resolve` and `reopen` still commit. See [built-in comments](/editor/built-in-ui/comments) for the full distinction.
-
-## Follow command state
-
-`getState()` provides the initial state. `observe()` keeps the button synchronized as the selection and document change:
-
-- `enabled` controls whether the action can run.
-- `active` indicates whether the current selection is bold.
-- `reason` explains why a known command is disabled.
-
-This is more reliable than deriving state from rendered DOM nodes. The document canvas is presentation; the controller is the public UI state boundary.
-
-## Execute and inspect the result
-
-The click handler calls `executeAsync()`. A `false` result means the command did not run. A mutation receipt should be inspected before starting dependent work.
-
-For a complete toolbar, repeat this pattern with command IDs exposed by `superdoc/ui`, but keep the first implementation focused on controls the workflow actually needs.
-
-<Callout variant='success' title='Verification target'>
-  Select text in the DOCX. The Bold button should become enabled, reflect the active formatting state, and toggle bold
-  without reading or changing the document DOM directly.
-</Callout>
-
-Build the next control with the same state-and-command pattern, or return to [Choose your interface](/editor/who-renders-the-ui) before expanding the toolbar.
+Continue with [Commands and state](/editor/custom-ui/commands-and-state) to apply the same state and execution pattern to
+other controls.

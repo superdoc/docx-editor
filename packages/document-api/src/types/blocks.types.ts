@@ -35,7 +35,7 @@ export interface BlockListEntry {
   color?: string;
   /** Paragraph alignment. */
   alignment?: string;
-  /** Heading level (1-6). Only for headings. */
+  /** Heading level (1-9). Only for headings. */
   headingLevel?: number;
   /**
    * Numbering reference (`numId` + `level`) for numbered blocks, sourced from the
@@ -60,6 +60,10 @@ export interface BlockListEntry {
   ref?: string;
 }
 export interface BlocksListInput {
+  /** Filter top-level blocks by identity before pagination. Cell paragraphs do not match body blocks. */
+  nodeIds?: string[];
+  /** Literal terms matched against complete block text before pagination; occurrences are blocks. */
+  textSearch?: { terms: string[]; match?: 'all' | 'any'; caseSensitive?: boolean };
   offset?: number;
   limit?: number;
   nodeTypes?: BlockNodeType[];
@@ -81,6 +85,35 @@ export interface BlocksListResult {
   revision: string;
   /** Effective numbering review mode. Defaults to final when omitted from the request. */
   reviewMode: SDProjectionReviewMode;
+}
+
+export interface BlocksFindTextInput {
+  /** Literal, case-insensitive substring; whitespace and Unicode are not normalized. */
+  text: string;
+  /** Maximum matching blocks to return. Defaults to 8; zero returns counts only. */
+  limit?: number;
+}
+export interface BlocksFindTextMatch {
+  /** Zero-based top-level body ordinal, as in blocks.list. */
+  ordinal: number;
+  nodeId: string;
+  nodeType: BlockNodeType;
+  /** First 100 UTF-16 code units of the flattened block text. */
+  preview: string;
+}
+export interface BlocksFindTextResult {
+  /** Matching blocks, not occurrences, within the first 20,000 body blocks. */
+  total: number;
+  matches: BlocksFindTextMatch[];
+  /** Present even with limit: 0 so callers can locate a reading window. */
+  firstMatchOrdinal?: number;
+  scannedBlocks: number;
+  /** True when blocks beyond the scan cap were not searched. */
+  truncated: boolean;
+  /** A failed page read leaves preceding matches/counts intact; the scan is incomplete. */
+  scanError?: { message: string };
+  /** Last successfully read revision, or "unknown" when the first page failed. */
+  revision: string;
 }
 // ---------------------------------------------------------------------------
 // blocks.delete

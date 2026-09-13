@@ -110,7 +110,8 @@ A v1 custom toolbar is not restored by changing only its import. Bind the applic
 
 Do not create a controller for every render, tab, or document. One `SuperDoc` instance owns one stable controller. Replacing its document resets document-scoped state while existing command hooks stay subscribed. Replacing the entire instance is different: the provider must receive the new ready instance.
 
-Follow the complete [React custom UI setup](/editor/custom-ui/react-setup) for a toolbar that reports command outcomes and stays live after document replacement. Use [Commands and state](/editor/custom-ui/commands-and-state) for the framework-neutral contract.
+Follow [Build your first custom control](/editor/custom-ui/controller-setup) for a React toolbar that reports command
+outcomes. Use [Commands and state](/editor/custom-ui/commands-and-state) for the shared controller contract.
 
 ## 4. Replace direct editor internals
 
@@ -492,9 +493,11 @@ focus or selection state instead. See [Custom content controls](/editor/custom-u
 
 ### Collaboration
 
-V1 applications supplied an external Y.Doc and provider through `modules.collaboration`. V2 instead takes a supported provider target on `document.v2Collaboration` and owns the provider lifecycle. Do not port the external pair directly.
+V1 applications supplied an external Y.Doc and provider through `modules.collaboration`. V2 instead takes a supported provider target and owns the provider lifecycle. Do not port the external pair directly.
 
-[Connect to a collaboration room](/editor/collaboration) owns the provider shapes, room modes, exception codes, readiness, and cleanup contract. Use [Upgrade a document](/editor/collaboration/upgrade-a-document) when a local Editor should create a new room without remounting.
+The [preview API](/editor/collaboration/connect-two-editors#configure-your-application) names that target `document.collaboration`, typed as `DocumentCollaborationConfig`. It also accepts `collaboration` in `upgradeToCollaboration()`. The older `v2Collaboration` field and `V2CollaborationConfig` type remain supported for existing integrations; new code should use the unversioned names. When both fields are supplied, `collaboration` wins as a whole—settings are not merged. On a document, `collaboration: null` explicitly opens locally.
+
+[Connect two editors](/editor/collaboration/connect-two-editors) explains create/join, readiness, connection failures, and cleanup. [Run a server](/editor/collaboration/run-a-server) covers provider targets and server responsibilities. Use [Upgrade a document](/editor/collaboration/upgrade-a-document) when a local Editor should create a new room without remounting.
 
 #### Split-origin worker assets
 

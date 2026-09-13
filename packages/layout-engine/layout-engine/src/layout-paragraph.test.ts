@@ -95,6 +95,32 @@ const makeFloatManager = (): FloatingObjectManager => ({
   setLayoutContext: mock(),
 });
 
+describe('layoutParagraphBlock - column ownership', () => {
+  it('records the flow column on ordinary paragraph fragments', () => {
+    const state = makePageState();
+    state.columnIndex = 1;
+    const block: ParagraphBlock = {
+      kind: 'paragraph',
+      id: 'column-paragraph',
+      runs: [{ text: 'Right column', fontFamily: 'Arial', fontSize: 12 }],
+    };
+
+    layoutParagraphBlock({
+      block,
+      measure: makeMeasure([{ width: 100, lineHeight: 20, maxWidth: 200 }]),
+      columnWidth: 200,
+      ensurePage: mock(() => state),
+      advanceColumn: mock((current) => current),
+      columnX: mock(() => 250),
+      floatManager: makeFloatManager(),
+    });
+
+    expect(state.page.fragments).toEqual([
+      expect.objectContaining({ kind: 'para', blockId: block.id, columnIndex: 1 }),
+    ]);
+  });
+});
+
 describe('layoutParagraphBlock - remeasurement with list markers', () => {
   describe('standard hanging indent mode', () => {
     it('remeasures with firstLineIndent=0 when firstLineIndentMode is not set', () => {

@@ -34,8 +34,11 @@ export type {
   FontResolutionReason,
   FaceKey,
   HasFace,
+  FontMeasureCapabilities,
   FontMeasureContext,
+  FontMeasureFace,
   ResolvePhysicalFamily,
+  ResolveNaturalLineMultiplier,
 } from './resolver';
 export { FontResolver, createFontResolver, insertFontFamilyBeforeGeneric } from './resolver';
 export {
@@ -76,6 +79,9 @@ export { buildFontReport, buildFaceReport } from './report';
 
 export type { EmbeddingPolicy } from './os2';
 export { parseEmbeddingPolicy } from './os2';
+
+export type { SfntNaturalLineMetrics } from './natural-line-metrics';
+export { parseSfntNaturalLineMetrics } from './natural-line-metrics';
 
 export type { UnicodeCoverage, UnicodeRange } from './unicode-coverage';
 export { parseUnicodeCoverage, textForUnicodeCoverage, unicodeCoverageIncludes } from './unicode-coverage';

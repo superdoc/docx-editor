@@ -32,6 +32,7 @@ export { SuperDoc } from '../core/SuperDoc.js';
 // Source: ./core/theme/create-theme.ts
 export { buildTheme } from '../core/theme/create-theme.js';
 export { createTheme } from '../core/theme/create-theme.js';
+export type { ThemeColors, ThemeConfig, ThemeResult, ThemeVariableOverrides } from '../core/theme/create-theme.js';
 
 // Type source: ./core/types/index.js
 export type { AwarenessState } from '../core/types/index.js';
@@ -48,12 +49,22 @@ export type { Config } from '../core/types/index.js';
 export type { DirectSurfaceRequest } from '../core/types/index.js';
 export type { DocRange } from '../core/types/index.js';
 export type { Document } from '../core/types/index.js';
+export type { DocumentCollaborationConfig } from '../core/types/index.js';
 export type { DocumentDataSource } from '../core/types/index.js';
 export type { DocumentSource } from '../core/types/index.js';
 export type { DocumentUploadSource } from '../core/types/index.js';
 export type { StructuredDocumentSource } from '../core/types/index.js';
 export type { DocumentApi } from '@superdoc/document-api';
-export type { DiffApplyOperationReceipt, DiffApplyResult, DiffApplyReviewItem } from '@superdoc/document-api';
+export type {
+  DiffApplyEligibility,
+  DiffApplyEligibilityBlocker,
+  DiffApplyEligibilityBlockerCode,
+  DiffApplyModeEligibility,
+  DiffApplyOperationReceipt,
+  DiffApplyResult,
+  DiffApplyReviewItem,
+  DiffPayload,
+} from '@superdoc/document-api';
 export type { DocumentMode } from '../core/types/index.js';
 export type { DocumentProtectionState } from '@superdoc/document-api';
 export type { EntityAddress } from '@superdoc/document-api';
@@ -74,7 +85,13 @@ export type { FindReplaceContext } from '../core/types/index.js';
 export type { FindReplaceHandle } from '../core/types/index.js';
 export type { FindReplaceRenderContext } from '../core/types/index.js';
 export type { FindReplaceResolution } from '../core/types/index.js';
-export type { FontsChangedPayload, FontsChangedSource, FontsResolvedPayload } from '../core/types/index.js';
+export type {
+  FontResolutionRecord,
+  FontsChangedPayload,
+  FontsChangedSource,
+  FontsConfig,
+  FontsResolvedPayload,
+} from '../core/types/index.js';
 export type { IntentSurfaceRequest } from '../core/types/index.js';
 export type { Modules } from '../core/types/index.js';
 export type { NavigableAddress } from '../core/types/index.js';
@@ -104,12 +121,15 @@ export type { SuperDocContentErrorPayload } from '../core/types/index.js';
 export type { SuperDocDiagnosticCode } from '../core/types/index.js';
 export type { SuperDocDiagnosticStage } from '../core/types/index.js';
 export type { SuperDocDocumentModeChangePayload } from '../core/types/index.js';
+export type { DocumentReplacementResult } from './document-replacement.js';
 export type { SuperDocEditorPayload } from '../core/types/index.js';
 export type { SuperDocExceptionDiagnosticPayload } from '../core/types/index.js';
 export type { SuperDocExceptionEditorPayload } from '../core/types/index.js';
+export type { SuperDocWorkerFailureDetail } from '../core/types/index.js';
 export type { SuperDocExceptionHyperlinkPayload } from '../core/types/index.js';
 export type { SuperDocExceptionToolbarPayload } from '../core/types/index.js';
 export type { SuperDocExceptionPayload } from '../core/types/index.js';
+export type { SuperDocExceptionCollaborationPayload } from '../core/types/index.js';
 export type { SuperDocExceptionRestorePayload } from '../core/types/index.js';
 export type { SuperDocExceptionStorePayload } from '../core/types/index.js';
 export type { SuperDocFitWidthOptions } from '../core/types/index.js';
@@ -125,6 +145,7 @@ export type {
   CommentsConfig,
   CommentsLayout,
   CommentsResponsiveConfig,
+  TrackChangesInteractionConfig,
 } from '../core/types/index.js';
 export type { TrackChangeHighlightColors } from '../core/types/index.js';
 export type { ContentControlsConfig } from '../core/types/index.js';
@@ -196,7 +217,9 @@ export type { TextSegment } from '@superdoc/document-api';
 export type { TextTarget } from '@superdoc/document-api';
 export type { TrackChangeAuthor } from '../core/types/index.js';
 export type { TrackChangesAuthorColorsConfig } from '../core/types/index.js';
+export type { TrackChangesConfig } from '../core/types/index.js';
 export type { TrackChangesModuleConfig } from '../core/types/index.js';
+export type { TrackChangesReplacementMode } from '../core/types/index.js';
 export type { TrackChangesSemanticColorsConfig } from '../core/types/index.js';
 export type { TrackedChangeSemanticColorKey } from '../core/types/index.js';
 export type { TrackedChangeSemanticColorResolverInput } from '../core/types/index.js';

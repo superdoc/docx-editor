@@ -4,18 +4,17 @@
   "pages": [
     "overview",
     "controller-setup",
-    "react-setup",
     "commands-and-state",
-    "custom-commands",
     "formatting-controls",
+    "zoom-and-document-state",
     "comments",
     "tracked-changes",
-    "tables",
     "content-controls",
-    "context-menus",
     "search",
-    "zoom-and-document-state",
+    "context-menus",
+    "tables",
     "selection-and-viewport",
-    "review-highlights"
+    "review-highlights",
+    "custom-commands"
   ]
 }

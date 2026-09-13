@@ -431,17 +431,21 @@ export async function appendDispositionRedirects({
   // belongs to the V2 route tooling, and a source appearing in both is still a
   // real conflict.
   const existingRules = existing.split(v1SectionMarker)[0].split('\n').filter(Boolean);
-  const existingSources = new Set(existingRules.map((rule) => rule.split(' ')[0]));
+  const existingBySource = new Map(existingRules.map((rule) => [rule.split(' ')[0], rule]));
 
+  // A V1 route whose V2 replacement later moved is redirected by both tools to
+  // the same place. That rule is already in the file, so it is dropped here;
+  // only a source the two tools send somewhere different is a real conflict.
   const rendered = renderDispositionRedirects(
     dispositions,
     manifest.redirectPatterns,
     resolveTerminalPaths(manifest.redirects),
   )
     .split('\n')
-    .filter(Boolean);
+    .filter(Boolean)
+    .filter((rule) => existingBySource.get(rule.split(' ')[0]) !== rule);
 
-  const collisions = rendered.filter((rule) => existingSources.has(rule.split(' ')[0]));
+  const collisions = rendered.filter((rule) => existingBySource.has(rule.split(' ')[0]));
   if (collisions.length > 0) {
     throw new Error(
       [

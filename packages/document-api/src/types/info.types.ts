@@ -88,7 +88,7 @@ export interface DocumentSnapshotBlock {
   bold?: boolean;
   /** Paragraph alignment: left, center, right, justify. */
   alignment?: string;
-  /** Heading level (1-6). Only present for headings. */
+  /** Heading level (1-9). Only present for headings. */
   headingLevel?: number;
 }
 

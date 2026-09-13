@@ -322,7 +322,15 @@ function createMeasure(kind: string, lineHeights: number[]): { kind: string; lin
 }
 
 describe('balanceSectionOnPage', () => {
-  type TestFragment = { blockId: string; x: number; y: number; width: number; kind: string };
+  type TestFragment = {
+    blockId: string;
+    x: number;
+    y: number;
+    width: number;
+    kind: string;
+    height?: number;
+    columnIndex?: number;
+  };
 
   /** Build a fragment + section mapping for section-scoped tests. */
   function buildSectionFixture(
@@ -346,6 +354,117 @@ describe('balanceSectionOnPage', () => {
     }
     return { fragments, measureMap, blockSectionMap };
   }
+
+  it('keeps an RTL section right-to-left on the balanced page', () => {
+    // Balancing REBUILDS the geometry and then overwrites every fragment's x from it, so a dropped
+    // direction does not fail loudly: the last page of a two-column Hebrew section would simply be
+    // laid out left-to-right while every earlier page of the same section was right-to-left.
+    const top = 96;
+    const { fragments, measureMap, blockSectionMap } = buildSectionFixture(2, 6, 20, top);
+
+    const result = balanceSectionOnPage({
+      fragments,
+      sectionIndex: 2,
+      sectionColumns: { count: 2, gap: 48, width: 288, direction: 'rtl', contentWidth: 624 },
+      sectionHasExplicitColumnBreak: false,
+      blockSectionMap,
+      margins: { left: 96 },
+      topMargin: top,
+      columnWidth: 288,
+      availableHeight: 60,
+      measureMap,
+    });
+
+    expect(result).not.toBeNull();
+    // The FIRST three paragraphs land in the RIGHT column (x = left margin + 288 + 48), the last
+    // three in the left one — the mirror image of the LTR case above.
+    expect(fragments.slice(0, 3).map((f) => f.x)).toEqual([432, 432, 432]);
+    expect(fragments.slice(3).map((f) => f.x)).toEqual([96, 96, 96]);
+  });
+
+  it('reads an already-columnised RTL page in document order, not left to right', () => {
+    // Balancing re-derives document order from the fragments' current positions, because the
+    // paginator fills column 0 top-to-bottom before moving on. In an RTL section column 0 is the
+    // RIGHT one, so document order DESCENDS in x; ordering the page left-to-right would feed the
+    // balancer the trailing column first and scramble the reading order of the balanced page.
+    const top = 96;
+    const RIGHT = 432; // left margin 96 + column width 288 + gap 48
+    const LEFT = 96;
+    // Paragraphs 0-3 were laid out in the right column, 4-5 spilled into the left one.
+    const placements: Array<{ x: number; y: number }> = [
+      { x: RIGHT, y: top },
+      { x: RIGHT, y: top + 20 },
+      { x: RIGHT, y: top + 40 },
+      { x: RIGHT, y: top + 60 },
+      { x: LEFT, y: top },
+      { x: LEFT, y: top + 20 },
+    ];
+    const fragments: TestFragment[] = [];
+    const measureMap = new Map<string, { kind: string; lines: Array<{ lineHeight: number }> }>();
+    const blockSectionMap = new Map<string, number>();
+    placements.forEach((placement, i) => {
+      const id = `s2-b${i}`;
+      fragments.push({ blockId: id, x: placement.x, y: placement.y, width: 288, kind: 'para' });
+      measureMap.set(id, createMeasure('paragraph', [20]));
+      blockSectionMap.set(id, 2);
+    });
+
+    const result = balanceSectionOnPage({
+      fragments,
+      sectionIndex: 2,
+      sectionColumns: { count: 2, gap: 48, width: 288, direction: 'rtl', contentWidth: 624 },
+      sectionHasExplicitColumnBreak: false,
+      blockSectionMap,
+      margins: { left: 96 },
+      topMargin: top,
+      columnWidth: 288,
+      availableHeight: 60,
+      measureMap,
+    });
+
+    expect(result).not.toBeNull();
+    // 3+3 balance, still in document order: 0-2 in the right column, 3-5 in the left one.
+    expect(fragments.map((f) => f.x)).toEqual([RIGHT, RIGHT, RIGHT, LEFT, LEFT, LEFT]);
+    expect(fragments.map((f) => f.y)).toEqual([top, top + 20, top + 40, top, top + 20, top + 40]);
+  });
+
+  it('keeps vertically ordered RTL fragments together when their x positions differ within a column', () => {
+    const top = 96;
+    const right = 432;
+    const left = 96;
+    const placements: Array<{ x: number; y: number }> = [
+      { x: right, y: top },
+      { x: right + 68, y: top + 20 },
+      { x: left, y: top },
+      { x: left, y: top + 20 },
+    ];
+    const fragments: TestFragment[] = [];
+    const measureMap = new Map<string, { kind: string; lines: Array<{ lineHeight: number }> }>();
+    const blockSectionMap = new Map<string, number>();
+    placements.forEach((placement, i) => {
+      const id = `s2-b${i}`;
+      fragments.push({ blockId: id, x: placement.x, y: placement.y, width: 288, kind: 'para' });
+      measureMap.set(id, createMeasure('paragraph', [20]));
+      blockSectionMap.set(id, 2);
+    });
+
+    const result = balanceSectionOnPage({
+      fragments,
+      sectionIndex: 2,
+      sectionColumns: { count: 2, gap: 48, width: 288, direction: 'rtl', contentWidth: 624 },
+      sectionHasExplicitColumnBreak: false,
+      blockSectionMap,
+      margins: { left: 96 },
+      topMargin: top,
+      columnWidth: 288,
+      availableHeight: 40,
+      measureMap,
+    });
+
+    expect(result).not.toBeNull();
+    expect(fragments.map((fragment) => fragment.x)).toEqual([right, right, left, left]);
+    expect(fragments.map((fragment) => fragment.y)).toEqual([top, top + 20, top, top + 20]);
+  });
 
   it('balances the target section and returns the tallest balanced column bottom', () => {
     // 6 equal paragraphs in a 2-col section → 3+3 balanced, tallest col ends at top + 3×20 = top + 60.
@@ -374,6 +493,36 @@ describe('balanceSectionOnPage', () => {
     const col1 = fragments.filter((f) => f.x === 96 + 288 + 48).length;
     expect(col0).toBe(3);
     expect(col1).toBe(3);
+  });
+
+  it('updates recorded column ownership when balancing moves a table', () => {
+    const top = 96;
+    const fragments: TestFragment[] = [
+      { blockId: 'paragraph', x: 96, y: top, width: 288, kind: 'para', columnIndex: 0 },
+      { blockId: 'table', x: 96, y: top + 20, width: 288, height: 20, kind: 'table', columnIndex: 0 },
+    ];
+    const measureMap = new Map([['paragraph', createMeasure('paragraph', [20])]]);
+    const blockSectionMap = new Map([
+      ['paragraph', 2],
+      ['table', 2],
+    ]);
+
+    const result = balanceSectionOnPage({
+      fragments,
+      sectionIndex: 2,
+      sectionColumns: { count: 2, gap: 48, width: 288 },
+      sectionHasExplicitColumnBreak: false,
+      blockSectionMap,
+      margins: { left: 96 },
+      topMargin: top,
+      columnWidth: 288,
+      availableHeight: 40,
+      measureMap,
+    });
+
+    expect(result).not.toBeNull();
+    expect(fragments[0]).toMatchObject({ x: 96, columnIndex: 0 });
+    expect(fragments[1]).toMatchObject({ x: 432, columnIndex: 1 });
   });
 
   it('balances equal-width columns with non-uniform gaps using per-column geometry (SD-2629 F9)', () => {
@@ -621,6 +770,7 @@ describe('balanceSectionOnPage', () => {
 
     it('splits a straddling paragraph at a line boundary so columns balance', () => {
       const { fragments, measureMap, blockSectionMap } = straddleFixture();
+      fragments[2].columnIndex = 0;
 
       const result = balance(fragments, measureMap, blockSectionMap);
 
@@ -635,6 +785,8 @@ describe('balanceSectionOnPage', () => {
       // First half continues in col 0 below A+B; second half tops col 1.
       expect(c1.x).toBe(96);
       expect(c2.x).toBe(COL1_X);
+      expect(c1.columnIndex).toBe(0);
+      expect(c2.columnIndex).toBe(1);
       expect(c2.y).toBe(TOP);
       expect(c1.continuesOnNext).toBe(true);
       expect(c2.continuesFromPrev).toBe(true);

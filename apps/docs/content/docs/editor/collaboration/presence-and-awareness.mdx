@@ -1,45 +1,73 @@
 ---
-title: Show collaboration presence
-navTitle: Presence and awareness
-description: Identify collaborators, assign cursor colors, and react to awareness updates.
+title: Show who is editing
+navTitle: Presence and cursors
+description: Give collaborators names and cursor colors, then show who is connected.
 ---
 
-Presence describes who is connected to a collaboration room. Supply the current user's display identity, then use awareness updates when application UI needs its own participant list or status.
+Alex and Sam can now edit the same document. Give each person a name so they can recognize the other person's cursor. Add a participant list when your application also needs to show who is here.
 
-## Configure identity and colors
+## Watch someone leave and return
 
-Pass trusted display identity from the authenticated application session. `colors` supplies the palette SuperDoc uses when a user does not have an explicit color:
+Expand the demo and type in Sam's editor. Select **Disconnect Sam**: his name leaves the participant list and his cursor disappears from Alex's editor, but his edits remain. Select **Reconnect Sam** to bring him back into the same room.
+
+<CollaborationDemo presence />
+
+This is a temporary sample. Do not enter private information. Without the hosted demo, use the [local two-editor example](/editor/collaboration/connect-two-editors): close Sam's tab, then reopen his join address.
+
+## Identify each person
+
+The local example already supplies `user` when it creates each editor. In your application, use the display identity from the signed-in session. For example, Alex's configuration includes:
 
 ```ts
-const superdoc = new SuperDoc({
-  selector: '#editor',
-  document: sharedDocument,
-  user: {
-    id: session.user.id,
-    name: session.user.name,
-    email: session.user.email,
-  },
-  colors: ['#1355ff', '#00853d', '#9333ea'],
-  onAwarenessUpdate: ({ states, added, removed }) => {
-    renderParticipants(states);
-    console.log({ added, removed });
-  },
-});
+const user = {
+  id: 'alex',
+  name: 'Alex',
+  email: 'alex@example.com',
+};
 ```
 
-Each `states` entry represents a remote client. It can include `id`, `name`, `email`, `image`, `clientId`, and the resolved `color`. Narrow application-specific fields before using them.
+Pass this object as `user` in the editor configuration. SuperDoc displays remote cursors and names; you do not need to draw them yourself. Each person keeps their own selection and viewport.
 
-The optional `users` configuration is a directory used by shared people and mention surfaces. It does not prove that those people are connected now; awareness state owns the live participant list.
+SuperDoc assigns cursor colors from a palette. To use your application's colors, provide the same palette to each editor:
 
-## Subscribe after construction
+```ts
+const colors = ['#1355ff', '#00853d', '#9333ea'];
+```
 
-Set `onAwarenessUpdate` when the listener is known during Editor creation. Use `superdoc.on('awareness-update', listener)` and the matching `off()` when a later component owns the subscription.
+Pass the array as `colors` in the editor configuration. A palette is not a guarantee of a unique color for every person. Keep names visible so color is not the only way to identify a collaborator.
 
-Awareness is transient. Do not use it as an audit log, durable membership record, or authorization decision.
+## Show a participant list
 
-<Callout variant='success' title='Verification target'>
-  Open the same room in two browsers with different users. Each browser should show the other participant with a stable
-  color, then remove that participant after the other browser disconnects.
-</Callout>
+**Awareness** is the live presence information exchanged during the session. Use `onAwarenessUpdate` to render that information in your own UI. You do not need this callback just to display the editor's remote cursors.
 
-Continue with [version history](/editor/version-history) when collaborative edits also need durable snapshots.
+The [collaboration example](https://go.superdoc.dev/examples/collaboration) includes this element in `index.html`:
+
+```html
+<ul id="participants" aria-label="Connected participants"></ul>
+```
+
+Its `src/participants.ts` renders each update using the public payload type:
+
+<include>../../../../../../examples/collaboration/src/participants.ts</include>
+
+In `src/main.ts`, import the handler:
+
+```ts
+import { renderParticipants } from './participants';
+```
+
+Then add `onAwarenessUpdate: renderParticipants` to the existing `new SuperDoc(...)` configuration. Open Alex and Sam's tabs: each list should show both names once. Close Sam's tab and check that Alex's list returns to one name.
+
+In V2, `states` includes the current user. Render the snapshot as supplied; do not append yourself again. Read fields such as `name` and `color` directly from each entry, not from `state.user`. Use presence `clientId` values only within the current editor session, not as account IDs.
+
+If a separate UI component subscribes later with `superdoc.on('awareness-update', listener)`, remove that same listener with `superdoc.off('awareness-update', listener)` when the component unmounts. Continue to call `superdoc.destroy()` when the editor itself unmounts.
+
+## Presence is not document state
+
+Leaving removes a person's live presence, not their edits. After an abrupt network loss, presence may take time to disappear; it is not an immediate connection-health check.
+
+The `users` configuration is a directory for people and mentions, not a list of connected participants. Neither that directory nor awareness grants access to a room. Keep permissions on the server, and do not use presence as an audit log or a saved indicator.
+
+## Keep the shared document
+
+You can now show shared edits and the people making them. Next, [initialize a shared document](/editor/collaboration/initialize-a-document): choose who creates the room and how everyone reopens it.

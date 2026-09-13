@@ -101,6 +101,9 @@ import type {
 } from '@superdoc/document-api';
 
 import type { PartialBrowserDocumentApi } from '../browser-document-api.js';
+import type { ExportParams } from '../export-types.js';
+import type { DocumentReplacementResult } from '../document-replacement.js';
+export type { DocumentReplacementResult } from '../document-replacement.js';
 
 import type { SuperDocUIReason } from './reasons.js';
 import type { BuiltInCommandId } from './commands.js';
@@ -286,6 +289,12 @@ export interface CommandState {
   reason?: SuperDocUIReason;
 }
 
+/** A built-in command id, or an application id registered through `ui.commands.register()`. */
+export type CommandId = BuiltInCommandId | (string & {});
+
+/** Command id accepted by toolbar APIs. Equivalent to {@link CommandId}. */
+export type ToolbarCommandId = CommandId;
+
 /**
  * Failure code carried by a receipt that the UI controller mints itself
  * (rather than relaying from the Document API). Extends the Document API's
@@ -427,7 +436,7 @@ export type SelectionRestoreResult = { success: boolean } & WorkflowActionResult
  * Document API / SuperDoc instance; `getState` reflects the live enable/active
  * snapshot; `observe` notifies on state change.
  */
-export interface CommandHandle<Id extends string = string> {
+export interface CommandHandle<Id extends CommandId = CommandId> {
   /** The command id this handle wraps. */
   readonly id: Id;
   /** Current enable/active state. */
@@ -547,9 +556,9 @@ export interface CustomCommandContext<TPayload = unknown> {
    */
   ui: BorrowedSuperDocUI;
   /** Run a catalog command id through the shared controller. */
-  execute(id: string, payload?: unknown): CommandExecutionResult;
+  execute(id: CommandId, payload?: unknown): CommandExecutionResult;
   /** Run a catalog command id and await its settled result. */
-  executeAsync(id: string, payload?: unknown): Promise<CommandExecutionResult>;
+  executeAsync(id: CommandId, payload?: unknown): Promise<CommandExecutionResult>;
   /**
    * The host's browser Document API facade (read-only-guarded, async-capable),
    * or `null` when unavailable.
@@ -580,7 +589,7 @@ export interface CustomCommandContext<TPayload = unknown> {
 
 export interface CustomCommandRegistration<TPayload = unknown, TValue = unknown> {
   /** Unique command id. */
-  id: string;
+  id: CommandId;
   /** Implementation invoked when the command runs. */
   execute(context: CustomCommandContext<TPayload>): unknown;
   /** Optional live-state provider. */
@@ -597,7 +606,7 @@ export interface CustomCommandRegistration<TPayload = unknown, TValue = unknown>
 }
 
 export interface CustomCommandHandle<TPayload = unknown, TValue = unknown> extends Omit<
-  CommandHandle<string>,
+  CommandHandle<CommandId>,
   'execute' | 'executeAsync' | 'getState' | 'observe'
 > {
   /** Current custom-command state. */
@@ -618,15 +627,15 @@ export type CustomCommandRegistrationResult<TPayload = unknown, TValue = unknown
 /** Aggregate command surface. */
 export interface CommandsHandle {
   /** All known command ids (built-in plus registered). */
-  readonly ids: readonly string[];
+  readonly ids: readonly CommandId[];
   /** Whether a command id is known to the controller. */
-  has(id: string): boolean;
+  has(id: CommandId): boolean;
   /** Resolve a handle for a command id. */
-  get<Id extends string = string>(id: Id): CommandHandle<Id>;
+  get<Id extends CommandId = CommandId>(id: Id): CommandHandle<Id>;
   /** Execute a command by id. */
-  execute(id: string, payload?: unknown): CommandExecutionResult;
+  execute(id: CommandId, payload?: unknown): CommandExecutionResult;
   /** Execute a command by id and resolve once the routed work has settled. */
-  executeAsync(id: string, payload?: unknown): Promise<CommandExecutionResult>;
+  executeAsync(id: CommandId, payload?: unknown): Promise<CommandExecutionResult>;
   /** Register a consumer-defined command; returns an unregister function. */
   register<TPayload = unknown, TValue = unknown>(
     registration: CustomCommandRegistration<TPayload, TValue>,
@@ -786,7 +795,7 @@ export interface DocumentSlice {
   ready: boolean;
   /** Current document mode. */
   mode: 'editing' | 'suggesting' | 'viewing' | null;
-  /** The document has unsaved changes. */
+  /** The current document has local changes. */
   dirty: boolean;
 }
 
@@ -876,7 +885,10 @@ export interface StylesHandle extends SnapshotSubscribable<StylesSlice> {
 // Viewport geometry
 // ---------------------------------------------------------------------------
 
-/** A painted rectangle in viewport coordinates. */
+/**
+ * A painted document rectangle. Coordinates use browser client space by
+ * default, or the element-relative space requested through `relativeTo`.
+ */
 export interface ViewportRect {
   /** Zero-based page index the rect belongs to. */
   pageIndex: number;
@@ -905,7 +917,7 @@ export type ViewportGetRectTarget = SelectionTarget | TextAddress | TextTarget |
 export interface ViewportGetRectInput {
   /** Target to resolve to painted geometry. */
   target: ViewportGetRectTarget;
-  /** Optional element to anchor returned coordinates against. */
+  /** Return coordinates relative to this element instead of browser client space. */
   relativeTo?: HTMLElement;
 }
 
@@ -940,7 +952,7 @@ export interface SelectionHandle extends SnapshotSubscribable<SelectionSlice> {
    * Returns `null` before the first async browser read settles.
    */
   current(): SelectionInfo | null;
-  /** Freeze the current selection for later comment/format actions. */
+  /** Preserve the current non-empty selection for work that moves focus into application UI. */
   capture(): SelectionCapture | null;
   /**
    * Restore a previously captured selection, best-effort. Never throws;
@@ -966,7 +978,9 @@ export interface SelectionHandle extends SnapshotSubscribable<SelectionSlice> {
   getRects(input?: { relativeTo?: HTMLElement }): readonly ViewportRect[];
 }
 
+/** A non-empty selection snapshot preserved independently of browser focus. */
 export interface SelectionCapture extends SelectionSlice {
+  /** Unix time in milliseconds when the selection was captured. */
   capturedAt: number;
 }
 
@@ -1057,27 +1071,37 @@ export interface TrackChangesHandle extends SnapshotSubscribable<TrackChangesSli
    * already identifies one occurrence, anywhere in the document). A
    * `{ id, story }` record (e.g. a {@link getAt}/{@link setActive} hit) is
    * also accepted for convenience, so a hit can be passed straight through.
-   * Structured failure receipt or `false` if unsupported.
+   * Returns the immediate routed result. Use {@link acceptAsync} when later UI
+   * depends on the settled document operation.
    */
   accept(changeId: string | { id: string; story?: unknown }): CommandExecutionResult;
+  /** Accept a change and resolve after the document operation settles. */
+  acceptAsync(changeId: string | { id: string; story?: unknown }): Promise<CommandExecutionResult>;
   /**
    * Reject a change. The id is sufficient on its own (a tracked-change id
    * already identifies one occurrence, anywhere in the document). A
    * `{ id, story }` record (e.g. a {@link getAt}/{@link setActive} hit) is
    * also accepted for convenience, so a hit can be passed straight through.
-   * Structured failure receipt or `false` if unsupported.
+   * Returns the immediate routed result. Use {@link rejectAsync} when later UI
+   * depends on the settled document operation.
    */
   reject(changeId: string | { id: string; story?: unknown }): CommandExecutionResult;
+  /** Reject a change and resolve after the document operation settles. */
+  rejectAsync(changeId: string | { id: string; story?: unknown }): Promise<CommandExecutionResult>;
   /**
    * Accept every active tracked change. Returns the Document API receipt, or
    * `false` when bulk decisions are unavailable / disabled on the host.
    */
   acceptAll(): CommandExecutionResult;
+  /** Accept every active tracked change and resolve after the operation settles. */
+  acceptAllAsync(): Promise<CommandExecutionResult>;
   /**
    * Reject every active tracked change. Returns the Document API receipt, or
    * `false` when bulk decisions are unavailable / disabled on the host.
    */
   rejectAll(): CommandExecutionResult;
+  /** Reject every active tracked change and resolve after the operation settles. */
+  rejectAllAsync(): Promise<CommandExecutionResult>;
   /**
    * Move focus to the next tracked change in document order (relative to the
    * active change). Returns the id that became active, or `null` when there are
@@ -1130,13 +1154,29 @@ export interface TrackChangesHandle extends SnapshotSubscribable<TrackChangesSli
   /**
    * Scroll the tracked-change anchor into view through the host navigation
    * surface. Resolves with both v1/main `{ success }` and v2 `{ ok, reason? }`
-   * fields.
+   * fields. A bare id resolves its story from the loaded rows; a
+   * `{ id, story }` record pins the occurrence when the same id repeats across
+   * the body and a footnote, header, or footer.
    */
-  scrollTo(changeId: string): Promise<WorkflowScrollResult>;
+  scrollTo(input: string | { id: string; story?: unknown }): Promise<WorkflowScrollResult>;
 }
 
 /** Content-controls handle. */
 export interface ContentControlsHandle extends SnapshotSubscribable<ContentControlsSlice> {
+  /**
+   * Observe the document-wide content-control catalog and active field IDs.
+   * The catalog remains requested until the returned disposer runs.
+   */
+  observe(listener: (snapshot: ContentControlsSlice) => void): () => void;
+  /**
+   * Observe the passive content-controls slice without requesting the
+   * document-wide catalog. Meant for consumers that only need the active
+   * field path, such as the core active-change event bridge; a field panel
+   * should use {@link observe}.
+   */
+  observeActivePath(listener: (snapshot: ContentControlsSlice) => void): () => void;
+  /** Event-shaped alias of {@link observe}. */
+  subscribe(listener: (event: { snapshot: ContentControlsSlice }) => void): () => void;
   /** Read the current content-controls snapshot. */
   getSnapshot(): ContentControlsSlice;
   /** Read the current content-controls snapshot. */
@@ -1150,6 +1190,15 @@ export interface ContentControlsHandle extends SnapshotSubscribable<ContentContr
    * @deprecated replaceWith=`get({ id })` compat-indefinitely=v2 UI compatibility
    */
   getById(id: string): ContentControlInfo | null;
+  /**
+   * Temporarily highlight this control's text without moving focus, selection,
+   * or scroll. A successful request replaces the current highlight. The default
+   * yellow background inherits `--sd-content-controls-highlight-bg` from CSS.
+   * Offscreen text paints when mounted; empty controls fail with `not-reachable`.
+   */
+  highlight(input: { id: string }): Promise<ContentControlHighlightResult>;
+  /** Clear the transient highlight and cancel pending requests. */
+  clearHighlight(): void;
   /**
    * Resolve the control's painted geometry through its public `selectionTarget`
    * when the runtime exposes one. Unknown controls fail closed with
@@ -1199,6 +1248,10 @@ export type ContentControlFocusResult =
   | { success: true }
   | { success: false; reason: 'invalid-id' | 'not-ready' | 'not-found' | 'not-reachable' };
 
+export type ContentControlHighlightResult =
+  | { success: true }
+  | { success: false; reason: 'invalid-id' | 'not-ready' | 'not-found' | 'not-reachable' | 'cancelled' };
+
 /** Font picker handle. */
 export interface FontsHandle extends SnapshotSubscribable<FontsSlice> {
   /** Available font family options. */
@@ -1206,9 +1259,6 @@ export interface FontsHandle extends SnapshotSubscribable<FontsSlice> {
   /** Available font size options. */
   getSizeOptions(): readonly FontSizeOption[];
 }
-
-/** A built-in command id, or an id registered through `ui.commands.register()`. */
-export type ToolbarCommandId = BuiltInCommandId | (string & {});
 
 /** Toolbar handle. */
 export interface ToolbarHandle extends SnapshotSubscribable<ToolbarSnapshotSlice> {
@@ -1234,19 +1284,24 @@ export interface DocumentHandle extends SnapshotSubscribable<DocumentSlice> {
   getSnapshot(): DocumentSlice;
   /** Set the document mode (editing / suggesting / viewing). */
   setMode(mode: 'editing' | 'suggesting' | 'viewing'): void;
-  /** Export the document; returns the SuperDoc export promise when available. */
-  export(input?: unknown): Promise<unknown> | undefined;
+  /** Export the document and return the produced Blob, optionally downloading it. */
+  export(input?: ExportParams): Promise<Blob> | undefined;
   /** Read text through the Document API; `null` when unavailable. */
   getText(): string | null;
   /** Replace the active document file, when supported by the host. */
   replaceFile(file: File | Blob | ArrayBuffer | Uint8Array): Promise<unknown> | undefined;
+  /** Replace mounted content. Operational errors reject; an unavailable host returns `ok: false`. */
+  replaceDocument(file: File | Blob | ArrayBuffer | Uint8Array): Promise<DocumentReplacementResult>;
 }
 
 /** Viewport handle. */
 export interface ViewportHandle {
-  /** Resolve painted geometry for an entity / content-control address. */
+  /** Resolve current painted geometry for a selection, text target, or supported entity address. */
   getRect(input: ViewportGetRectInput): ViewportRectResult;
-  /** Subscribe to viewport/geometry invalidation. */
+  /**
+   * Subscribe to geometry invalidation after selection, zoom, scroll, resize,
+   * layout, or repaint changes. The callback is coalesced to one per frame.
+   */
   observe(listener: () => void): () => void;
   /** Painted editor host element, when available. */
   getHost(): HTMLElement | null;
@@ -1349,11 +1404,21 @@ export interface SearchSlice {
   /** Whether the query is a regular expression (V2 runtime only). */
   regex: boolean;
   /**
-   * Whether replace / replaceAll can mutate right now. False in viewing /
-   * read-only mode, when replace is host-unavailable, or when the match set is
-   * truncated and cannot be fully enumerated.
+   * Whether `replace()` can mutate the active match right now. False in
+   * viewing / read-only mode or when replace is host-unavailable.
    */
   canReplace: boolean;
+  /**
+   * Whether `replaceAll()` can mutate right now. Everything that disables
+   * `canReplace` disables this too. It also requires at least one match, and
+   * it is false for a truncated match set: when more matches exist than the
+   * session enumerates, replacing all of them cannot be applied, while
+   * replacing the active match still can.
+   *
+   * Optional here so existing implementations of the deprecated
+   * {@link SearchHandle} keep compiling; {@link SearchSnapshot} requires it.
+   */
+  canReplaceAll?: boolean;
   /** Stable reason when the surface (or an action) is unavailable. */
   reason?: SuperDocUIReason;
 }
@@ -1362,9 +1427,11 @@ export interface SearchSlice {
 export interface SearchSnapshot extends SearchSlice {
   /** Whether the session includes pending tracked deletions in match discovery. */
   includeTrackedDeletions: boolean;
+  /** Whether `replaceAll()` can mutate right now. See {@link SearchSlice.canReplaceAll}. */
+  canReplaceAll: boolean;
 }
 
-/** Options for `editor.ui.search.find()`. */
+/** Options for `superdoc.ui.search.find()`. */
 export interface SearchQueryOptions {
   /** Match uppercase and lowercase letters exactly (default: false). */
   caseSensitive?: boolean;
@@ -1445,12 +1512,18 @@ export interface SearchController
 // Context menu surface
 // ---------------------------------------------------------------------------
 
-/** Runtime control for the built-in context menu. */
+/** Runtime control and document context for context menus. */
 export interface ContextMenuHandle {
   /** Open the menu at the active selection or caret. */
   open(): WorkflowActionResult;
   /** Close the menu when it is open. */
   close(): void;
+  /**
+   * Resolve the public document context at a viewport point. Coordinates use
+   * `MouseEvent.clientX` and `MouseEvent.clientY`. This remains available when
+   * the built-in context menu is disabled.
+   */
+  contextAt(input: { x: number; y: number }): ViewportContext;
 }
 
 // ---------------------------------------------------------------------------
@@ -1520,7 +1593,9 @@ export interface SuperDocLike {
   /** Set the document mode across the instance. */
   setDocumentMode?(mode: string): unknown;
   /** Export the active document. */
-  export?(...args: unknown[]): Promise<unknown> | unknown;
+  export?(params?: ExportParams): Promise<Blob> | Blob;
+  /** Replace mounted content with a confirmed public outcome. */
+  replaceDocument?(source: File | Blob | ArrayBuffer | Uint8Array): Promise<DocumentReplacementResult>;
   /** Set an absolute zoom value. */
   setZoom?(value: number): unknown;
   /** Set a zoom mode. */

@@ -24,6 +24,9 @@ Treat names and emails supplied in `user` as display identity unless they came f
 
 ## Configure the browser boundary
 
+Check [Telemetry](/editor/telemetry) separately: it is enabled by default, and its destination and metadata are
+configuration decisions. The [Editor license](/editor/license) is client-visible identity, not an access credential.
+
 Use HTTPS, restrictive CORS, and a Content Security Policy that permits only the scripts, workers, connections, images, and fonts your deployment needs. Avoid unversioned third-party runtime dependencies, and decide whether Editor assets are self-hosted before production.
 
 ## Pass a nonce to runtime styles
@@ -48,6 +51,6 @@ function createEditor(file: File, responseNonce: string) {
 }
 ```
 
-`cspNonce` applies only to SuperDoc's runtime `<style>` elements. It does not configure CSP, authorize scripts or workers, or apply to styles created by your application. SuperDoc uses inline style attributes for document layout, so account for them in `style-src-attr`. For a custom theme, use [`buildTheme()`](/editor/themes-and-fonts) and inject its CSS with the same nonce.
+`cspNonce` applies only to SuperDoc's runtime `<style>` elements. It does not configure CSP, authorize scripts or workers, or apply to styles created by your application. SuperDoc uses inline style attributes for document layout, so account for them in `style-src-attr`. For a custom theme, use [`buildTheme()`](/editor/theming) and inject its CSS with the same nonce.
 
 In the deployed application, confirm that the browser reports no `style-src` violations and that SuperDoc runtime `<style>` elements carry the response nonce.

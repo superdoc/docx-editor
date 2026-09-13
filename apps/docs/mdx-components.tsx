@@ -9,11 +9,23 @@ import { ClauseLibraryDemo } from '@/components/embeds/clause-library-demo';
 import { ContentControlAuthoringDemo } from '@/components/embeds/content-control-authoring-demo';
 import { ContentControlLocksDemo } from '@/components/embeds/content-control-locks-demo';
 import { ContentControlPatterns } from '@/components/embeds/content-control-patterns';
-import { CustomBoldDemo } from '@/components/embeds/custom-bold-demo';
+import { CustomBoldDemo, CustomToolbarDemo } from '@/components/embeds/custom-bold-demo';
+import { CustomCommentsDemo } from '@/components/embeds/custom-comments-demo';
+import { CustomCommandDemo } from '@/components/embeds/custom-command-demo';
+import { CustomContentControlsDemo } from '@/components/embeds/custom-content-controls-demo';
+import { CustomDocumentControlsDemo } from '@/components/embeds/custom-document-controls-demo';
+import { CustomSearchDemo } from '@/components/embeds/custom-search-demo';
+import { CustomReviewFindingsDemo, CustomSelectionDemo } from '@/components/embeds/custom-selection-demo';
+import { CustomTrackChangesDemo } from '@/components/embeds/custom-track-changes-demo';
 import { CustomUiArchitecture } from '@/components/embeds/custom-ui-architecture';
+import { CollaborationOverview } from '@/components/embeds/collaboration-overview';
+import { CollaborationDemo } from '@/components/embeds/collaboration-demo';
 import { DocumentPreview } from '@/components/embeds/document-preview';
 import { EditorDemo } from '@/components/embeds/editor-demo';
+import { FontResolutionExplorer } from '@/components/embeds/font-resolution-explorer';
 import { InterfaceOwnership } from '@/components/embeds/interface-ownership';
+import { SurfaceLifecycleDemo } from '@/components/embeds/surface-lifecycle-demo';
+import { ThemePlayground } from '@/components/embeds/theme-playground';
 import { DocsHome } from '@/components/docs-home';
 import { Callout } from '@/components/mdx/callout';
 import { CommentsConfigReference } from '@/components/mdx/comments-config-reference';
@@ -69,7 +81,18 @@ export function getMDXComponents(components?: MDXComponents): MDXComponents {
     CommandStateDemo,
     ContentControlPatterns,
     CustomBoldDemo,
+    CustomCommentsDemo,
+    CustomCommandDemo,
+    CustomContentControlsDemo,
+    CustomDocumentControlsDemo,
+    CustomReviewFindingsDemo,
+    CustomSearchDemo,
+    CustomSelectionDemo,
+    CustomTrackChangesDemo,
+    CustomToolbarDemo,
     CustomUiArchitecture,
+    CollaborationOverview,
+    CollaborationDemo,
     DocumentPreview,
     DocumentApiNamespace,
     DocumentApiOperation,
@@ -77,6 +100,7 @@ export function getMDXComponents(components?: MDXComponents): MDXComponents {
     DocsHome,
     EditorDemo,
     FileDownload,
+    FontResolutionExplorer,
     FrameworkExample,
     FrameworkExampleTabs,
     HyperlinksConfigReference,
@@ -93,6 +117,8 @@ export function getMDXComponents(components?: MDXComponents): MDXComponents {
     RuntimeExampleTabs,
     RulerConfigReference,
     SearchConfigReference,
+    SurfaceLifecycleDemo,
+    ThemePlayground,
     ToolbarConfigReference,
     TemplatePopulationDemo,
     img: DocsImage,

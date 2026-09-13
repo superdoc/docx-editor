@@ -147,6 +147,16 @@ export function sliceLines(
 
 export type { LinePmRange };
 
+/** A marker belongs to the first measured line containing its run. */
+export const findLineIndexForRunOrdinal = (lines: readonly Line[] | undefined, runOrdinal: number): number | null => {
+  if (!lines) return null;
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+    const line = lines[lineIndex];
+    if (runOrdinal >= line.fromRun && runOrdinal <= line.toRun) return lineIndex;
+  }
+  return null;
+};
+
 export const computeFragmentPmRange = (
   block: ParagraphBlock,
   lines: ParagraphMeasure['lines'],

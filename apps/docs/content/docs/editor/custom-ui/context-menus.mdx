@@ -1,56 +1,66 @@
 ---
-title: Application-owned context menus
-navTitle: Context menus
-description: Replace the built-in menu with document-aware actions over public SuperDoc UI context.
+title: Build an application-owned context menu
+navTitle: Context menu
+description: Replace SuperDoc's menu while keeping actions connected to document entities and selections.
 ---
 
-Use an application-owned context menu when your product needs to control the entire menu surface. SuperDoc keeps rendering and editing the DOCX. Your code decides which actions make sense for the entity or selection under the pointer.
+Add application actions to the [built-in context menu](/editor/built-in-ui/context-menus) with `ui.contextMenu.sections`
+when its interaction and presentation fit your product. Continue here only when your application needs to render the
+entire menu.
 
-## Choose how much of the menu to own
+Start from [Custom UI setup](/editor/custom-ui/controller-setup). Download the sample to `public/contract.docx`:
 
-Start with the smaller integration:
+<FileDownload
+  href='/fixtures/tracked-changes.docx'
+  label='Download the tracked-changes sample'
+  description='Tracked insertions and deletions'
+  fileType='DOCX'
+/>
 
-| You need                                   | Use                                                                 |
-| ------------------------------------------ | ------------------------------------------------------------------- |
-| Add application actions to SuperDoc's menu | `ui.contextMenu.sections` in the SuperDoc configuration             |
-| Replace the complete menu surface          | `ui: { contextMenu: false }` and `superdoc.ui.viewport.contextAt()` |
+## Add the menu surface
 
-The [built-in context-menu guide](/editor/built-in-ui/context-menus) covers the first path. Continue here when the application renders the menu itself.
-
-## Build the menu
-
-This example replaces the built-in menu with tracked-change decisions and a selection-aware copy action:
+For Vanilla, replace the contents of `<body>` in `index.html` with the Editor and menu below:
 
 <include>../../../../snippets/editor/custom-context-menu.html</include>
 
-<include>../../../../snippets/editor/custom-context-menu.ts</include>
+## Connect the menu to the document
 
-The `contextmenu` handler passes `clientX` and `clientY` directly to `contextAt()`. The returned context keeps three different concerns separate:
+Replace the setup guide's Editor code:
 
-- `point` is where the application should place its floating surface.
-- `entities` lists public entities painted under that point, such as tracked changes, comments, and content controls.
-- `selection` carries the current public selection state and selected text.
+<FrameworkExampleTabs>
+  <FrameworkExample filename='src/main.ts' framework='Vanilla'>
+    <include>../../../../snippets/editor/custom-context-menu.ts</include>
+  </FrameworkExample>
+  <FrameworkExample filename='src/App.tsx' framework='React'>
+    <include>../../../../snippets/editor/react-custom-context-menu.tsx</include>
+  </FrameworkExample>
+</FrameworkExampleTabs>
 
-The example enables Accept and Reject only when `entities` contains a tracked change. It enables Copy only when the selection carries text **and** `selection.status` is `ready`. A right-click over ordinary text can therefore open the menu with unavailable actions. That is a valid context, not a failed lookup.
+`ui: { contextMenu: false }` hides SuperDoc's menu. It does not disable `superdoc.ui.contextMenu`.
 
-`contextAt()` never blocks: it returns the best-known selection immediately, and `status` reports whether that read has settled. `pending` means the first read is still in flight, `stale` means a re-read is running after a selection or document change, and both still carry the previous range. Acting on a `stale` slice is how a menu opened straight after a selection change copies the text the user selected before. Gate any action that consumes selected text on `ready`, or observe the slice until the new read settles.
+Pass the browser event's `clientX` and `clientY` to `ui.contextMenu.contextAt()`. Its `point` positions the menu,
+`entities` identifies document objects under the pointer, and `selection` carries the current selection. The example
+enables tracked-change decisions only over a tracked change and Copy only when selected text is ready.
 
-## Keep pointer and keyboard paths equivalent
+`contextAt()` returns the current snapshot immediately. Check `selection.status === 'ready'` before using selected text;
+`pending` and `stale` can carry text from an earlier selection.
 
-Pointer users open the menu with the browser's `contextmenu` event. Keyboard users use the Context Menu key or `Shift+F10`; the example places that menu at the current selection anchor from `ui.selection.getAnchorRect()`.
+## Own the complete interaction
 
-Once open, the application owns focus, arrow-key movement, Escape, outside clicks, scrolling, and resize dismissal. It also owns action feedback. Await command execution and report `false` or an unsuccessful receipt instead of announcing that the document changed.
+The browser's `contextmenu` event covers pointer input. The Context Menu key and `Shift+F10` use
+`ui.selection.getAnchorRect()` to position the same surface from the keyboard.
 
-## Do not reconstruct a document position
+Once the menu opens, your application owns focus, arrow keys, Escape, outside-click dismissal, and repositioning or
+dismissal after scroll and resize. It also owns action feedback. Await the action result before reporting success.
 
-`contextAt()` resolves entities and selection state. It does not resolve an arbitrary insertion point under plain text. `context.position` is currently `null` in v2.
+`contextAt()` resolves supported entities and selection state, not an arbitrary insertion position under plain text.
+Use [Selection and position](/editor/custom-ui/selection-and-viewport) when another custom surface needs document targets
+or painted geometry.
 
-If a v1 menu used `editor.view.posAtCoords()` only to identify comments, tracked changes, or content controls, use `contextAt().entities`. If it used a numeric position for text insertion or position arithmetic, there is no direct v2 equivalent. Rebuild the workflow around a public selection or Document API target instead of reading renderer internals.
+## Verify the menu
 
-<Callout variant='success' title='Verification target'>
-  Right-click a tracked change. Accept and Reject should be available, and either action should update the document.
-  Select text and open the menu with `Shift+F10`; Copy should be available. Right-click ordinary unselected text; the
-  menu may open, but actions without a supported target should remain disabled.
-</Callout>
+Right-click a tracked change and accept or reject it. Select text, then press `Shift+F10` and copy it. Right-click
+ordinary text without a selection and confirm that unsupported actions stay disabled.
 
-Continue with [Selection and viewport](/editor/custom-ui/selection-and-viewport) for public target geometry, or [Tracked changes](/editor/custom-ui/tracked-changes) for a complete review panel.
+Build a [tracked-change panel](/editor/custom-ui/tracked-changes) when reviewers also need a complete queue. Otherwise,
+return to the [Custom UI overview](/editor/custom-ui/overview).

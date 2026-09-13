@@ -115,9 +115,11 @@ const normalizeV2ExecutionModeParam = (raw) => {
 const requestedV2ExecutionMode = normalizeV2ExecutionModeParam(
   urlParams.get('v2exec') ?? urlParams.get('executionMode') ?? urlParams.get('workerMode'),
 );
-// Tracked-change replacement model. 'paired' groups ins+del into one change
-// (Google Docs model); 'independent' keeps each as its own revision (Word / ECMA-376).
-const trackChangesReplacements = ref(urlParams.get('replacements') === 'independent' ? 'independent' : 'paired');
+const trackChangesReplacementMode = ref(
+  urlParams.get('replacementMode') === 'separate' || urlParams.get('replacements') === 'independent'
+    ? 'separate'
+    : 'grouped',
+);
 const useCollaboration = urlParams.get('collab') === '1';
 const collabRoom = urlParams.get('room') || 'superdoc-dev-room';
 const collabUrl = resolveDevCollaborationServerUrl(urlParams.get('collabUrl'));
@@ -331,11 +333,9 @@ const captureDiffSnapshotFromFile = async (file) => {
           data: file,
           id: 'compare-target',
         },
+        trackChanges: { replacementMode: trackChangesReplacementMode.value },
+        viewing: { trackedChanges: 'markup' },
         modules: {
-          trackChanges: {
-            visible: true,
-            replacements: trackChangesReplacements.value,
-          },
           pdf: {
             pdfLib: pdfjsLib,
             setWorker: false,
@@ -656,6 +656,8 @@ const init = async () => {
     //   },
     // ],
     // cspNonce: 'testnonce123',
+    trackChanges: { replacementMode: trackChangesReplacementMode.value },
+    viewing: { trackedChanges: 'markup' },
     modules: {
       comments: {
         // comments: sampleComments,
@@ -666,10 +668,6 @@ const init = async () => {
         permissionResolver: commentPermissionResolver,
         layout: 'auto',
         // responsive: { target: '#superdoc', breakpoint: 1400 },
-      },
-      trackChanges: {
-        visible: true,
-        replacements: trackChangesReplacements.value,
       },
       toolbar: {
         selector: 'toolbar',
@@ -995,17 +993,15 @@ const toggleViewLayout = () => {
   window.location.href = url.toString();
 };
 
-// Switching replacement model requires SuperDoc to re-mount so the
-// importer and runtime both pick up the new mode. Reload with ?replacements=…
-// so the change is deep-linkable too.
-const setReplacementsMode = (mode) => {
-  if (mode !== 'paired' && mode !== 'independent') return;
-  if (mode === trackChangesReplacements.value) return;
+const setReplacementMode = (mode) => {
+  if (mode !== 'grouped' && mode !== 'separate') return;
+  if (mode === trackChangesReplacementMode.value) return;
   const url = new URL(window.location.href);
-  if (mode === 'paired') {
-    url.searchParams.delete('replacements');
+  url.searchParams.delete('replacements');
+  if (mode === 'grouped') {
+    url.searchParams.delete('replacementMode');
   } else {
-    url.searchParams.set('replacements', mode);
+    url.searchParams.set('replacementMode', mode);
   }
   window.location.href = url.toString();
 };
@@ -1180,12 +1176,12 @@ if (scrollTestMode.value) {
             <label class="dev-app__theme-control" title="Tracked replacement model (reloads on change)">
               <span>Tracked replacements</span>
               <select
-                :value="trackChangesReplacements"
+                :value="trackChangesReplacementMode"
                 class="dev-app__theme-select"
-                @change="setReplacementsMode($event.target.value)"
+                @change="setReplacementMode($event.target.value)"
               >
-                <option value="paired">Paired (Google Docs)</option>
-                <option value="independent">Independent (Word)</option>
+                <option value="grouped">Grouped</option>
+                <option value="separate">Separate</option>
               </select>
             </label>
             <div class="dev-app__dropdown" @mouseleave="closeSidebarMenu">

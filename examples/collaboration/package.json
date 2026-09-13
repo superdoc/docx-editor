@@ -8,12 +8,16 @@
     "typecheck": "tsc --noEmit",
     "build": "vite build",
     "test": "playwright test",
+    "test:persistence": "playwright test --config playwright.persistence.config.ts",
+    "test:storage": "tsx --test local-storage.test.ts",
+    "test:access": "playwright test --config playwright.access.config.ts",
     "browsers": "playwright install chromium",
     "preview": "vite preview"
   },
   "dependencies": {
-    "@hocuspocus/server": "^2.13.6",
-    "superdoc": "^2.4.0"
+    "@hocuspocus/server": "2.15.3",
+    "superdoc": "2.11.0",
+    "yjs": "13.6.31"
   },
   "devDependencies": {
     "@playwright/test": "^1.57.0",

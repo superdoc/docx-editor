@@ -20,6 +20,8 @@ export type FontInfo = {
   fontFamily: string;
   /** Logical OOXML family retained when `fontFamily` is a substituted physical face. */
   wordLineMetricFamily?: string;
+  /** Exact loaded embedded face's deterministic baseline-pitch ratio. */
+  naturalLineMultiplier?: number;
   fontSize: number;
   bold?: boolean;
   italic?: boolean;
@@ -181,7 +183,7 @@ export class FontMetricsMeasurementCache {
   ): FontMetricsResult {
     if (this.disposed) throw new DomMeasurementInfrastructureError('FontMetricsMeasurementCache has been disposed');
     const font = buildFontStringForMetrics(fontInfo, mode, fonts);
-    const key = `${fontSignature}\u0000${fontInfo.wordLineMetricFamily ?? ''}\u0000${font}`;
+    const key = `${fontSignature}\u0000${fontInfo.wordLineMetricFamily ?? ''}\u0000${fontInfo.naturalLineMultiplier ?? ''}\u0000${font}`;
     const cached = this.entries.get(key);
     if (cached) return cached;
 
@@ -200,18 +202,19 @@ export class FontMetricsMeasurementCache {
             descent: fontInfo.fontSize * 0.2,
           };
 
-    let naturalSingleLine = getCalibratedNaturalSingleLine(
+    // Canvas font bounds can change while fallback discovery settles even when the measured glyphs do not.
+    // Only a family calibration or metadata pinned to the exact loaded face may override the stable fallback.
+    const calibratedNaturalSingleLine = getCalibratedNaturalSingleLine(
       fontInfo.wordLineMetricFamily ?? fontInfo.fontFamily,
       fontInfo.fontSize,
     );
-    if (
-      naturalSingleLine == null &&
-      typeof textMetrics.fontBoundingBoxAscent === 'number' &&
-      typeof textMetrics.fontBoundingBoxDescent === 'number' &&
-      textMetrics.fontBoundingBoxAscent > 0
-    ) {
-      naturalSingleLine = textMetrics.fontBoundingBoxAscent + textMetrics.fontBoundingBoxDescent;
-    }
+    const embeddedNaturalSingleLine =
+      typeof fontInfo.naturalLineMultiplier === 'number' &&
+      Number.isFinite(fontInfo.naturalLineMultiplier) &&
+      fontInfo.naturalLineMultiplier > 0
+        ? fontInfo.naturalLineMultiplier * fontInfo.fontSize
+        : undefined;
+    const naturalSingleLine = calibratedNaturalSingleLine ?? embeddedNaturalSingleLine;
     const result: FontMetricsResult = { ...glyphMetrics, naturalSingleLine };
 
     if (this.entries.size >= MAX_CACHE_SIZE) {

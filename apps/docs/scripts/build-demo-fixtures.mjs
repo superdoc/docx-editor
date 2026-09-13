@@ -3,7 +3,12 @@
  *
  * - `public/fixtures/formatting-sample.docx`
  * - `public/fixtures/document-modes.docx`
+ * - `public/fixtures/tracked-review.docx`
  * - `public/fixtures/comments-sample.docx`
+ * - `public/fixtures/custom-comments-workflow.docx`
+ * - `public/fixtures/custom-track-changes-workflow.docx`
+ * - `public/fixtures/custom-content-controls-workflow.docx`
+ * - `public/fixtures/custom-selection-workflow.docx`
  * - `public/fixtures/search-sample.docx`
  * - `public/fixtures/hyperlinks-sample.docx`
  * - `public/fixtures/context-menu-sample.docx`
@@ -17,16 +22,25 @@
  * content remains.
  *
  * The formatting and document-mode fixtures are deliberately plain. The
- * comments fixture has one short thread because that thread is the behavior the
- * page asks the reader to inspect. The search fixture follows the same rule:
+ * built-in comments fixture has one short thread because its page teaches
+ * configuration. The tracked-review fixture has one replacement because its
+ * page teaches one human decision. The custom comments fixture puts two threads
+ * on separate pages because its page teaches application-owned navigation. The
+ * custom tracked-changes fixture puts three review decisions on separate pages
+ * for the same reason. The custom content-controls fixture puts a text field and a
+ * checkbox on separate pages so its application panel can demonstrate field
+ * navigation as well as typed mutations. The custom selection fixture puts
+ * selectable text on two pages so a floating prompt can follow painted
+ * geometry through scroll and zoom changes. The search fixture follows the
+ * same rule:
  * three large-type paragraphs across three short pages, with enough repeated
  * terms to show the real search surface moving between results and one pending
- * deletion for the tracked-deletion search option. The hyperlinks fixture
- * contains one real external hyperlink. The context-menu fixture keeps one
- * selectable instruction sentence in view. The content-controls fixture has
- * one text control and one checkbox so readers can inspect the built-in chrome
- * and the metadata reported when they click a control. The clause-library
- * fixture has one block-level control whose paragraph can be replaced.
+ * deletion for the tracked-deletion search option. The hyperlinks fixture contains one real
+ * external hyperlink. The context-menu fixture keeps one selectable instruction
+ * sentence in view. The content-controls fixture has one text control and one
+ * checkbox so readers can inspect the built-in chrome and the metadata reported
+ * when they click a control. The clause-library fixture has one block-level
+ * control whose paragraph can be replaced.
  *
  * Written as a minimal OOXML package rather than through a library so the bytes
  * are stable: no timestamps, no generated ids, no zip metadata that changes
@@ -98,15 +112,46 @@ const STYLES = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 const SEARCH_STYLES = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/><w:sz w:val="36"/><w:szCs w:val="36"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="0" w:line="288" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style></w:styles>`;
 
+const COMPACT_WORKFLOW_STYLES = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/><w:sz w:val="24"/><w:szCs w:val="24"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="120" w:line="259" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style></w:styles>`;
+
 const escapeXml = (text) =>
   text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
 
 const paragraph = (text) => `<w:p><w:r><w:t xml:space="preserve">${escapeXml(text)}</w:t></w:r></w:p>`;
 
-const trackedDeletion = (text) =>
-  `<w:del w:id="0" w:author="SuperDoc Test User" w:date="2025-01-15T00:00:00Z"><w:r><w:delText xml:space="preserve">${escapeXml(text)}</w:delText></w:r></w:del>`;
+const plainParagraph = (text) => `<w:p><w:r><w:t>${escapeXml(text)}</w:t></w:r></w:p>`;
+
+const heading = (text) =>
+  `<w:p><w:r><w:rPr><w:b/><w:sz w:val="28"/><w:szCs w:val="28"/></w:rPr><w:t>${escapeXml(text)}</w:t></w:r></w:p>`;
+
+const commentParagraph = (id, before, target, after) =>
+  `<w:p><w:r><w:t xml:space="preserve">${escapeXml(before)}</w:t></w:r><w:commentRangeStart w:id="${id}"/><w:r><w:t>${escapeXml(target)}</w:t></w:r><w:commentRangeEnd w:id="${id}"/><w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr><w:commentReference w:id="${id}"/></w:r><w:r><w:t>${escapeXml(after)}</w:t></w:r></w:p>`;
+
+const trackedInsertion = (id, author, date, text) =>
+  `<w:ins w:id="${id}" w:author="${escapeXml(author)}" w:date="${date}"><w:r><w:t xml:space="preserve">${escapeXml(text)}</w:t></w:r></w:ins>`;
+
+const trackedDeletion = (
+  text,
+  id = 0,
+  author = 'SuperDoc Test User',
+  date = '2025-01-15T00:00:00Z',
+) =>
+  `<w:del w:id="${id}" w:author="${escapeXml(author)}" w:date="${date}"><w:r><w:delText xml:space="preserve">${escapeXml(text)}</w:delText></w:r></w:del>`;
 
 const pageBreak = '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
+
+const TRACKED_REVIEW_DOCUMENT = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${heading(
+  'Service agreement',
+)}<w:p><w:r><w:t xml:space="preserve">Either party may end this agreement by giving </w:t></w:r>${trackedDeletion(
+  '30',
+  1,
+  'Alex Rivera',
+  '2026-08-15T12:00:00Z',
+)}${trackedInsertion(2, 'Alex Rivera', '2026-08-15T12:00:00Z', '60')}<w:r><w:t xml:space="preserve"> days’ written notice.</w:t></w:r></w:p>${paragraph(
+  'The confidentiality obligations continue after this agreement ends.',
+)}<w:sectPr><w:pgSz w:w="12240" w:h="6480"/><w:pgMar w:top="720" w:right="1080" w:bottom="720" w:left="1080" w:header="360" w:footer="360" w:gutter="0"/></w:sectPr></w:body></w:document>`;
 
 /**
  * A short page, not US Letter.
@@ -128,7 +173,78 @@ const COMMENTS_DOCUMENT = `<?xml version="1.0" encoding="UTF-8" standalone="yes"
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>Project schedule</w:t></w:r></w:p><w:p><w:r><w:t xml:space="preserve">The final delivery date is </w:t></w:r><w:commentRangeStart w:id="0"/><w:r><w:t>September 30, 2026</w:t></w:r><w:commentRangeEnd w:id="0"/><w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr><w:commentReference w:id="0"/></w:r><w:r><w:t>.</w:t></w:r></w:p><w:p><w:r><w:t>Select another phrase to start a new thread.</w:t></w:r></w:p><w:sectPr><w:pgSz w:w="12240" w:h="6480"/><w:pgMar w:top="720" w:right="1080" w:bottom="720" w:left="1080" w:header="360" w:footer="360" w:gutter="0"/></w:sectPr></w:body></w:document>`;
 
 const COMMENTS_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:comment w:id="0" w:author="SuperDoc Test User" w:initials="ST" w:date="2025-01-15T00:00:00Z"><w:p><w:r><w:t>Does this match the signed schedule?</w:t></w:r></w:p></w:comment></w:comments>`;
+<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"><w:comment w:id="0" w:author="SuperDoc Test User" w:initials="ST" w:date="2025-01-15T00:00:00Z"><w:p w14:paraId="00000001"><w:r><w:t>Does this match the signed schedule?</w:t></w:r></w:p></w:comment></w:comments>`;
+
+const CUSTOM_COMMENTS_DOCUMENT = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${heading(
+  'Project kickoff',
+)}${commentParagraph(0, 'Kickoff date: ', 'January 12, 2027', '.')}${paragraph(
+  'Use the comment list to return to this date.',
+)}${pageBreak}${heading('Scope review')}${paragraph(
+  'Select the approval criteria and add a comment.',
+)}${paragraph('This middle page is ready for a new thread.')}${pageBreak}${heading('Final delivery')}${commentParagraph(
+  1,
+  'Delivery date: ',
+  'September 30, 2027',
+  '.',
+)}${paragraph(
+  'Use the other thread to move between the first and final pages.',
+)}<w:sectPr><w:pgSz w:w="12240" w:h="7920"/><w:pgMar w:top="720" w:right="1080" w:bottom="720" w:left="1080" w:header="360" w:footer="360" w:gutter="0"/></w:sectPr></w:body></w:document>`;
+
+const CUSTOM_COMMENTS_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:comment w:id="0" w:author="SuperDoc Test User" w:initials="ST" w:date="2025-01-15T00:00:00Z"><w:p><w:r><w:t>Confirm the kickoff date.</w:t></w:r></w:p></w:comment><w:comment w:id="1" w:author="SuperDoc Test User" w:initials="ST" w:date="2025-01-15T00:00:00Z"><w:p><w:r><w:t>Does this match the signed schedule?</w:t></w:r></w:p></w:comment></w:comments>`;
+
+const CUSTOM_TRACK_CHANGES_DOCUMENT = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${heading(
+  'Payment terms',
+)}<w:p><w:r><w:t xml:space="preserve">Invoices are due </w:t></w:r>${trackedInsertion(
+  1001,
+  'Alex Rivera',
+  '2026-08-12T09:00:00Z',
+  'within 10 business days',
+)}<w:r><w:t xml:space="preserve"> after receipt.</w:t></w:r></w:p>${paragraph(
+  'Review the inserted payment deadline.',
+)}${pageBreak}${heading(
+  'Renewal',
+)}<w:p><w:r><w:t xml:space="preserve">The agreement </w:t></w:r>${trackedDeletion(
+  'automatically renews for one year',
+  1002,
+  'Morgan Lee',
+  '2026-08-13T14:30:00Z',
+)}<w:r><w:t xml:space="preserve"> unless either party gives notice.</w:t></w:r></w:p>${paragraph(
+  'Review the deleted renewal term.',
+)}${pageBreak}${heading(
+  'Travel expenses',
+)}<w:p><w:r><w:t xml:space="preserve">Travel expenses require </w:t></w:r>${trackedInsertion(
+  1003,
+  'Alex Rivera',
+  '2026-08-14T11:15:00Z',
+  'prior written approval',
+)}<w:r><w:t>.</w:t></w:r></w:p>${paragraph(
+  'Review the inserted approval requirement.',
+)}<w:sectPr><w:pgSz w:w="12240" w:h="7920"/><w:pgMar w:top="720" w:right="1080" w:bottom="720" w:left="1080" w:header="360" w:footer="360" w:gutter="0"/></w:sectPr></w:body></w:document>`;
+
+const CUSTOM_CONTENT_CONTROLS_DOCUMENT = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" mc:Ignorable="w14"><w:body>${heading(
+  'Agreement details',
+)}<w:p><w:r><w:t xml:space="preserve">Client name: </w:t></w:r><w:sdt><w:sdtPr><w:alias w:val="Client name"/><w:tag w:val="client-name"/><w:id w:val="3001"/><w:text/></w:sdtPr><w:sdtContent><w:r><w:t>Acme Inc.</w:t></w:r></w:sdtContent></w:sdt></w:p>${plainParagraph(
+  'Update the client name from the field panel.',
+)}${pageBreak}${heading(
+  'Review',
+)}<w:p><w:sdt><w:sdtPr><w:alias w:val="Review approved"/><w:tag w:val="review-approved"/><w:id w:val="3002"/><w14:checkbox><w14:checked w14:val="0"/><w14:checkedState w14:font="MS Gothic" w14:val="2612"/><w14:uncheckedState w14:font="MS Gothic" w14:val="2610"/></w14:checkbox></w:sdtPr><w:sdtContent><w:r><w:t>☐</w:t></w:r></w:sdtContent></w:sdt><w:r><w:t xml:space="preserve"> Approved for review</w:t></w:r></w:p>${plainParagraph(
+  'Use Show in document to move between fields.',
+)}<w:sectPr><w:pgSz w:w="12240" w:h="6480"/><w:pgMar w:top="720" w:right="1080" w:bottom="720" w:left="1080" w:header="360" w:footer="360" w:gutter="0"/></w:sectPr></w:body></w:document>`;
+
+const CUSTOM_SELECTION_DOCUMENT = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${heading(
+  'Limitation of liability',
+)}${paragraph('Neither party’s aggregate liability may exceed the fees Customer paid in the twelve months before the claim.')}${paragraph(
+  'Select the cap and choose Ask AI.',
+)}${pageBreak}${heading('Term and renewal')}${paragraph(
+  'This Agreement renews unless either party gives sixty days’ written notice.',
+)}${paragraph(
+  'Select the notice to move the prompt.',
+)}<w:sectPr><w:pgSz w:w="12240" w:h="6480"/><w:pgMar w:top="720" w:right="1080" w:bottom="720" w:left="1080" w:header="360" w:footer="360" w:gutter="0"/></w:sectPr></w:body></w:document>`;
 
 const SEARCH_PARAGRAPHS = [
   'The Client team opens the project brief and checks every Client name before review begins.',
@@ -211,6 +327,57 @@ await writeDocx('comments-sample.docx', [
   ['word/comments.xml', COMMENTS_XML],
   ['docProps/core.xml', CORE_PROPERTIES],
   ['docProps/app.xml', appProperties(3)],
+]);
+
+await writeDocx('tracked-review.docx', [
+  ['[Content_Types].xml', CONTENT_TYPES],
+  ['_rels/.rels', ROOT_RELS],
+  ['word/document.xml', TRACKED_REVIEW_DOCUMENT],
+  ['word/_rels/document.xml.rels', DOCUMENT_RELS],
+  ['word/styles.xml', STYLES],
+  ['docProps/core.xml', CORE_PROPERTIES],
+  ['docProps/app.xml', appProperties(3)],
+]);
+
+await writeDocx('custom-comments-workflow.docx', [
+  ['[Content_Types].xml', COMMENT_CONTENT_TYPES],
+  ['_rels/.rels', ROOT_RELS],
+  ['word/document.xml', CUSTOM_COMMENTS_DOCUMENT],
+  ['word/_rels/document.xml.rels', COMMENT_DOCUMENT_RELS],
+  ['word/styles.xml', COMPACT_WORKFLOW_STYLES],
+  ['word/comments.xml', CUSTOM_COMMENTS_XML],
+  ['docProps/core.xml', CORE_PROPERTIES],
+  ['docProps/app.xml', appProperties(11)],
+]);
+
+await writeDocx('custom-track-changes-workflow.docx', [
+  ['[Content_Types].xml', CONTENT_TYPES],
+  ['_rels/.rels', ROOT_RELS],
+  ['word/document.xml', CUSTOM_TRACK_CHANGES_DOCUMENT],
+  ['word/_rels/document.xml.rels', DOCUMENT_RELS],
+  ['word/styles.xml', COMPACT_WORKFLOW_STYLES],
+  ['docProps/core.xml', CORE_PROPERTIES],
+  ['docProps/app.xml', appProperties(11)],
+]);
+
+await writeDocx('custom-content-controls-workflow.docx', [
+  ['[Content_Types].xml', CONTENT_TYPES],
+  ['_rels/.rels', ROOT_RELS],
+  ['word/document.xml', CUSTOM_CONTENT_CONTROLS_DOCUMENT],
+  ['word/_rels/document.xml.rels', DOCUMENT_RELS],
+  ['word/styles.xml', COMPACT_WORKFLOW_STYLES],
+  ['docProps/core.xml', CORE_PROPERTIES],
+  ['docProps/app.xml', appProperties(7)],
+]);
+
+await writeDocx('custom-selection-workflow.docx', [
+  ['[Content_Types].xml', CONTENT_TYPES],
+  ['_rels/.rels', ROOT_RELS],
+  ['word/document.xml', CUSTOM_SELECTION_DOCUMENT],
+  ['word/_rels/document.xml.rels', DOCUMENT_RELS],
+  ['word/styles.xml', COMPACT_WORKFLOW_STYLES],
+  ['docProps/core.xml', CORE_PROPERTIES],
+  ['docProps/app.xml', appProperties(7)],
 ]);
 
 await writeDocx('search-sample.docx', [

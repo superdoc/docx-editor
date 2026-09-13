@@ -1,11 +1,23 @@
-<aside aria-labelledby="comments-heading">
-  <h2 id="comments-heading">Comments</h2>
-  <textarea id="comment-text" placeholder="Add a comment to the selected text"></textarea>
-  <button id="add-comment" type="button" disabled>Add comment</button>
-  <p id="comments-status" role="status">Select text to add a comment.</p>
-  <ul id="comment-list"></ul>
-</aside>
+<div id="toolbar"></div>
 
-<div id="editor" style="height: 70vh"></div>
+<main class="comments-layout">
+  <div id="editor" style="height: 70vh; overflow: auto"></div>
+
+  <aside aria-labelledby="comments-heading">
+    <h2 id="comments-heading">Comments</h2>
+    <p id="comment-count">Opening document...</p>
+
+    <button id="start-comment" type="button" disabled>Comment on selection</button>
+    <form id="comment-composer" hidden>
+      <label for="comment-text">New comment</label>
+      <textarea id="comment-text" rows="3"></textarea>
+      <button id="add-comment" type="submit" disabled>Add comment</button>
+      <button id="cancel-comment" type="button">Cancel</button>
+    </form>
+
+    <p id="comments-status" role="status">Select text to start a comment.</p>
+    <ul id="comment-list"></ul>
+  </aside>
+</main>
 
 <script type="module" src="/src/main.ts"></script>

@@ -134,6 +134,14 @@ const FACADE_ENTRIES = [
     runsCommandSignatureProbe: false,
     ticket: 'collaboration-upgrade',
   },
+  {
+    name: 'collaboration-worker (./collaboration-worker)',
+    esm: path.join(PUBLIC_DIST, 'collaboration-worker.d.ts'),
+    cjs: path.join(PUBLIC_DIST, 'collaboration-worker.d.cts'),
+    source: path.join(PUBLIC_SRC, 'collaboration-worker.ts'),
+    runsCommandSignatureProbe: false,
+    ticket: 'SD-4815',
+  },
 ];
 
 function loadFile(file) {

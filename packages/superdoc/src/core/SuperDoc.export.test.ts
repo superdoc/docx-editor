@@ -43,6 +43,80 @@ afterEach(() => {
 });
 
 describe('SuperDoc.export', () => {
+  it.each([undefined, 'external', 'internal', 'clean'] as const)(
+    'rejects a mounted v2 generation failure with commentsType %s',
+    async (commentsType) => {
+      const instance = createInstance();
+      const error = new Error('DOCX generation failed');
+      const editor = { editorVersion: 2, exportDocx: vi.fn().mockRejectedValue(error) };
+      const doc = { id: 'edited-docx', type: DOCX, data: createDocxBlob(), getEditor: () => editor };
+      (instance as unknown as { superdocStore: { documents: unknown[] } }).superdocStore = { documents: [doc] };
+      const onException = vi.fn();
+      instance.on('exception', onException);
+      const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+
+      await expect(instance.export({ triggerDownload: false, commentsType })).rejects.toBe(error);
+
+      expect(editor.exportDocx).toHaveBeenCalledOnce();
+      expect(onException).toHaveBeenCalledTimes(2);
+      expect(onException).toHaveBeenNthCalledWith(1, { error, document: doc });
+      expect(onException).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+          error,
+          diagnosticCode: 'RENDER_ERROR',
+          diagnosticStage: 'export',
+          severity: 'error',
+          internalCode: 'Error',
+          documentId: 'edited-docx',
+          message: 'DOCX generation failed',
+        }),
+      );
+      expect(click).not.toHaveBeenCalled();
+    },
+  );
+
+  it('rejects an already bridged v2 generation error without emitting it twice', async () => {
+    const instance = createInstance();
+    const error = new Error('DOCX generation failed');
+    const editor = {
+      editorVersion: 2,
+      exportDocx: vi.fn(async () => {
+        instance.emit('exception', { error, editor });
+        throw error;
+      }),
+    };
+    (instance as unknown as { superdocStore: { documents: unknown[] } }).superdocStore = {
+      documents: [{ id: 'edited-docx', type: DOCX, data: createDocxBlob(), getEditor: () => editor }],
+    };
+    const onException = vi.fn();
+    instance.on('exception', onException);
+
+    await expect(instance.export({ triggerDownload: false })).rejects.toBe(error);
+
+    // Bridged errors must not also emit the translated diagnostic payload --
+    // the editor's own internal emission already covers this incident.
+    expect(onException).toHaveBeenCalledExactlyOnceWith({ error, editor });
+  });
+
+  it('returns the mounted v2 editor export instead of the opened file', async () => {
+    const instance = createInstance();
+    const original = createDocxBlob();
+    const edited = createDocxBlob();
+    const editor = { editorVersion: 2, exportDocx: vi.fn().mockResolvedValue(edited) };
+    (instance as unknown as { superdocStore: { documents: unknown[] } }).superdocStore = {
+      documents: [{ id: 'edited-docx', type: DOCX, data: original, getEditor: () => editor }],
+    };
+
+    await expect(instance.export({ triggerDownload: false })).resolves.toBe(edited);
+
+    expect(editor.exportDocx).toHaveBeenCalledExactlyOnceWith({
+      commentsType: 'external',
+      isFinalDoc: false,
+      fieldsHighlightColor: null,
+    });
+  });
+
   it.each([
     ['File', new File(['content'], 'contract.docx', { type: DOCX })],
     ['Blob', new Blob(['content'], { type: DOCX })],

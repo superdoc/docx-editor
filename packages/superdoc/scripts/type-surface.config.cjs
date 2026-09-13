@@ -63,6 +63,8 @@ const requiredEntryPoints = [
   'superdoc/src/public/ui-vue.d.cts',
   'superdoc/src/public/collaboration-upgrade-engine.d.ts',
   'superdoc/src/public/collaboration-upgrade-engine.d.cts',
+  'superdoc/src/public/collaboration-worker.d.ts',
+  'superdoc/src/public/collaboration-worker.d.cts',
 ];
 
 /**
@@ -302,6 +304,11 @@ const publicContract = {
       subpath: './collaboration-upgrade-engine',
       tier: 'supported',
       note: 'Node-only collaboration upgrade builder and validator; routes through src/public/collaboration-upgrade-engine.ts',
+    },
+    {
+      subpath: './collaboration-worker',
+      tier: 'supported',
+      note: 'Browser worker bootstrap for customer collaboration provider adapters; routes through src/public/collaboration-worker.ts',
     },
   ],
   legacy: [],

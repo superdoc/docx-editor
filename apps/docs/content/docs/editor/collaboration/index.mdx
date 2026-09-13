@@ -1,94 +1,37 @@
 ---
-title: Connect to a collaboration room
-navTitle: Connect
-description: Connect the browser editor to a v2 collaboration room with y-websocket, Hocuspocus, or Liveblocks.
+title: Understand collaboration
+navTitle: Overview
+description: Let people edit the same document together, using your existing editor UI.
 ---
 
-SuperDoc v2 synchronizes one DOCX through y-websocket, Hocuspocus, or Liveblocks. Supply a `v2Collaboration` target on the document; the Editor then owns the provider, Y.Doc, awareness, and cleanup lifecycle.
+Without collaboration, two people opening the same DOCX are editing separate copies. With collaboration, they work on a shared document: an edit in one person's editor appears in the other's.
 
-## Choose a provider target
+## One document, two editors
 
-All providers use a stable room identity and an explicit room operation:
+Alex changes a delivery date. Sam sees the new date without reloading the document or opening another file.
 
-| Provider    | Required connection fields                                   | Authentication                                  |
-| ----------- | ------------------------------------------------------------ | ----------------------------------------------- |
-| y-websocket | `documentId` and `serverUrl` or `url`                        | String `params` forwarded with the connection   |
-| Hocuspocus  | `providerType: 'hocuspocus'`, `documentId`, and a server URL | `token` or string `params`                      |
-| Liveblocks  | `providerType: 'liveblocks'` and `documentId` or `roomId`    | Exactly one of `publicApiKey` or `authEndpoint` |
+<CollaborationOverview />
 
-These are equivalent join targets:
+Both people can edit. SuperDoc synchronizes their document changes while each person keeps their own view and selection.
 
-```ts
-import type { V2CollaborationConfig } from 'superdoc';
+## Connect through a room
 
-const yWebsocket = {
-  providerType: 'y-websocket',
-  documentId: 'contract-123',
-  serverUrl: 'wss://collaboration.example.com',
-  params: { token: session.collaborationToken },
-  roomMode: 'join',
-} satisfies V2CollaborationConfig;
+A **room** connects the editors working on one shared document. Your application gives that room an ID so each editor knows which document to join. Opening the same file URL in two browsers does not connect them.
 
-const hocuspocus = {
-  providerType: 'hocuspocus',
-  documentId: 'contract-123',
-  serverUrl: 'wss://collaboration.example.com',
-  token: session.collaborationToken,
-  roomMode: 'join',
-} satisfies V2CollaborationConfig;
+A **provider** carries changes between the connected editors. You can run a collaboration server yourself or use a hosted service. The next guide starts with a local Hocuspocus server.
 
-const liveblocks = {
-  providerType: 'liveblocks',
-  roomId: 'contract-123',
-  authEndpoint: '/api/liveblocks-auth',
-  roomMode: 'join',
-} satisfies V2CollaborationConfig;
-```
+The first editor creates the room from a DOCX. The second joins that room. From then on, they work with its shared content.
 
-Use an authenticated endpoint instead of a public key when the server must authorize each Liveblocks room.
+Sharing edits is separate from reviewing them. Use [tracked changes](/editor/track-changes) when edits should remain
+proposals, or [comments](/editor/built-in-ui/comments) for discussion. Collaboration carries the shared document changes;
+it does not decide which proposals to accept.
 
-## Open the collaborative document
+## Keep the UI you already built
 
-Attach one target to a structured document and wait for collaboration readiness:
+Collaboration works with built-in controls, custom controls, or a mix of both. You add a connection to the document; you do not need to rebuild your toolbar or review panels.
 
-```ts
-const sharedDocument = {
-  id: 'shared-document',
-  type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  data: docxBlob,
-  v2Collaboration: hocuspocus,
-};
+Your application still decides who can access the document and how it is saved. Those are server responsibilities, separate from showing another person's edits.
 
-const superdoc = new SuperDoc({
-  selector: '#editor',
-  document: sharedDocument,
-  user: session.user,
-  onCollaborationReady: () => {
-    collaborationControls.disabled = false;
-  },
-  onException: ({ code, error }) => {
-    if (code === 'collaboration-v2-room-missing') showMissingRoom();
-    else if (code === 'collaboration-v2-room-already-exists') showExistingRoom();
-    else reportError(error);
-  },
-});
-```
+## Try it with two editors
 
-Call `destroy()` when the owning route unmounts so SuperDoc releases its connection.
-
-## Create once, then join
-
-Use `roomMode: 'create'` once to seed a missing room from the document data. Later clients use `roomMode: 'join'` with the same room identity.
-
-<Callout title='Create and join are explicit'>
-  V2 does not provide a join-or-create mode. Creating an existing room or joining a missing room fails. Retry with a
-  fresh Editor after the application decides which operation is correct.
-</Callout>
-
-## Lock a collaborative document
-
-`superdoc.setLocked(true)` writes the collaboration lock with the current user. Observe `onLocked` or the `locked` event and keep lock policy on the server; a client-side lock guides normal editing but is not authorization.
-
-The [collaboration example](https://go.superdoc.dev/examples/collaboration) provides a complete local setup with an in-memory Hocuspocus server and two synchronized browser pages.
-
-Next, [run the example server](/editor/collaboration/run-a-server) or add [presence and awareness](/editor/collaboration/presence-and-awareness).
+[Connect two editors](/editor/collaboration/connect-two-editors) walks you through creating a room, joining from another tab, and watching an edit appear in both. Start there, then add presence and persistent storage.

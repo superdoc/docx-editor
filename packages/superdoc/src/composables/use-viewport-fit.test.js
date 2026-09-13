@@ -5,6 +5,7 @@ import {
   computeFitZoom,
   computeAppliedFitZoom,
   normalizePdfPageMeasurement,
+  resolveEditorPageWidth,
 } from './use-viewport-fit.js';
 
 // Full wiring (watchers, metric storage, emit dedup, mode-driven fit
@@ -119,5 +120,46 @@ describe('normalizePdfPageMeasurement', () => {
     expect(normalizePdfPageMeasurement(0, PT_TO_PX, 1)).toBeNull();
     expect(normalizePdfPageMeasurement(-5, PT_TO_PX, 1)).toBeNull();
     expect(normalizePdfPageMeasurement(NaN, PT_TO_PX, 1)).toBeNull();
+  });
+});
+
+describe('resolveEditorPageWidth', () => {
+  it('uses the widest unzoomed V2 page metric', () => {
+    const editor = {
+      pageMetrics: {
+        getSnapshot: () => ({
+          pages: [
+            { base: { widthPx: 816 }, viewport: { widthPx: 1060.8 } },
+            { base: { widthPx: 1056 }, viewport: { widthPx: 1372.8 } },
+          ],
+        }),
+      },
+    };
+
+    expect(resolveEditorPageWidth(editor)).toBe(1056);
+  });
+
+  it('reads the published widest width without materializing V2 pages', () => {
+    // The producer publishes `widestPageWidthPx` so the lazily materialized
+    // `pages` array is never walked on a pagination update.
+    let reads = 0;
+    const pages = new Proxy([{ base: { widthPx: 816 } }, { base: { widthPx: 1056 } }], {
+      get(target, property, receiver) {
+        if (typeof property === 'string' && /^\d+$/u.test(property)) reads += 1;
+        return Reflect.get(target, property, receiver);
+      },
+    });
+    const editor = { pageMetrics: { getSnapshot: () => ({ pages, widestPageWidthPx: 1056 }) } };
+
+    expect(resolveEditorPageWidth(editor)).toBe(1056);
+    expect(resolveEditorPageWidth(editor)).toBe(1056);
+    expect(reads).toBe(0);
+  });
+
+  it('falls back to walking the pages for a snapshot without a published width', () => {
+    const editor = {
+      pageMetrics: { getSnapshot: () => ({ pages: [{ base: { widthPx: 816 } }, { base: { widthPx: 1224 } }] }) },
+    };
+    expect(resolveEditorPageWidth(editor)).toBe(1224);
   });
 });

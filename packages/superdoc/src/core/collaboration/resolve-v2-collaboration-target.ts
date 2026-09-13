@@ -1,5 +1,5 @@
 import { DOCX } from '@superdoc/common';
-import type { V2CollaborationConfig } from '../types/index.js';
+import type { DocumentCollaborationConfig } from '../types/index.js';
 
 /**
  * Centralized v2 collaboration target resolver.
@@ -10,7 +10,7 @@ import type { V2CollaborationConfig } from '../types/index.js';
  * first-class single-doc provider families — y-websocket, Hocuspocus, and
  * Liveblocks — each bound to one `Y.Doc`, one provider session, and one
  * awareness channel (implemented inside the bundled v2 runtime) and surfaced
- * publicly through {@link V2CollaborationConfig} (`Document.v2Collaboration`).
+ * publicly through {@link DocumentCollaborationConfig} (`Document.collaboration`).
  *
  * The resolver never returns a "maybe collaborative" result: it either returns
  * a normalized, supported target or a stable, redacted diagnostic. Tokens, auth
@@ -18,7 +18,7 @@ import type { V2CollaborationConfig } from '../types/index.js';
  */
 
 /** Provider families the shipped v2 single-doc runtime can drive. */
-export type SupportedV2ProviderFamily = 'y-websocket' | 'hocuspocus' | 'liveblocks';
+export type SupportedV2ProviderFamily = 'y-websocket' | 'hocuspocus' | 'liveblocks' | 'extension';
 
 /**
  * Stable, machine-readable reasons a target cannot be treated as a supported v2
@@ -31,6 +31,8 @@ export type V2CollaborationUnsupportedReason =
   | 'invalid-server-url'
   | 'invalid-room-mode'
   | 'invalid-auth-endpoint'
+  | 'invalid-adapter-id'
+  | 'invalid-provider-options'
   | 'missing-auth'
   | 'mixed-auth'
   | 'unsupported-document-type'
@@ -55,11 +57,15 @@ export interface NormalizedV2CollaborationTarget {
   /** Optional connection query params (e.g. auth token) forwarded verbatim. */
   params?: Record<string, string>;
   /** Hocuspocus auth-message token. */
-  token?: string;
+  token?: string | (() => string | Promise<string>);
   /** Liveblocks anonymous public key auth mode. */
   publicApiKey?: string;
   /** Liveblocks server-side auth endpoint mode. */
   authEndpoint?: string;
+  /** Adapter registration key for a customer collaboration Worker. */
+  adapterId?: string;
+  /** Structured-clone-safe options interpreted by the registered adapter. */
+  providerOptions?: unknown;
   /** Explicit room operation; join is the default at the untrusted input boundary. */
   roomMode: 'join' | 'create';
 }
@@ -87,7 +93,9 @@ export interface LegacyCollaborationLike {
 }
 
 export interface ResolveV2CollaborationTargetInput {
-  /** Document-level v2 collaboration config (canonical supported entry point). */
+  /** Preferred connection settings. Explicit null or invalid input never falls back to the alias. */
+  collaboration?: unknown;
+  /** Compatibility spelling for document-level connection settings. */
   v2Collaboration?: unknown;
   /** Legacy provider-agnostic collaboration block (`modules.collaboration` / upgrade opts). */
   legacyCollaboration?: LegacyCollaborationLike | null;
@@ -101,6 +109,11 @@ export interface ResolveV2CollaborationTargetInput {
    * closed when there is no origin against which to resolve them.
    */
   authEndpointBaseUrl?: string;
+}
+
+/** Select the public spelling before validation; do not merge settings from different rooms. */
+export function readCollaborationConfig(input: { collaboration?: unknown; v2Collaboration?: unknown }): unknown {
+  return input.collaboration !== undefined ? input.collaboration : input.v2Collaboration;
 }
 
 /**
@@ -218,7 +231,7 @@ function resolveWebsocketFamily(
     return {
       ok: false,
       reason: 'invalid-document-id',
-      message: `SuperDoc v2 collaboration requires a non-empty v2Collaboration.documentId for the "${family}" provider.`,
+      message: `SuperDoc v2 collaboration requires a non-empty collaboration.documentId for the "${family}" provider.`,
     };
   }
   // Accept either `url` or `serverUrl`; `url` wins when both are present.
@@ -234,7 +247,12 @@ function resolveWebsocketFamily(
     };
   }
   const params = normalizeParams(candidate.params);
-  const token = family === 'hocuspocus' ? normalizeNonEmptyString(candidate.token) : null;
+  const token =
+    family === 'hocuspocus' && typeof candidate.token === 'function'
+      ? (candidate.token as () => string | Promise<string>)
+      : family === 'hocuspocus'
+        ? normalizeNonEmptyString(candidate.token)
+        : null;
   const roomMode = normalizeRoomMode(candidate.roomMode);
   if (!roomMode) return invalidRoomMode();
   return {
@@ -245,6 +263,55 @@ function resolveWebsocketFamily(
       roomMode,
       serverUrl,
       ...(params ? { params } : {}),
+      ...(token ? { token } : {}),
+    },
+  };
+}
+
+function resolveProviderExtension(candidate: Record<string, unknown>): V2CollaborationTargetResolution {
+  const adapterId = normalizeNonEmptyString(candidate.adapterId);
+  if (!adapterId) {
+    return {
+      ok: false,
+      reason: 'invalid-adapter-id',
+      message: 'SuperDoc v2 provider extensions require a non-empty v2Collaboration.adapterId.',
+    };
+  }
+  const documentId = normalizeNonEmptyString(candidate.documentId);
+  if (!documentId) {
+    return {
+      ok: false,
+      reason: 'invalid-document-id',
+      message: 'SuperDoc v2 provider extensions require a non-empty v2Collaboration.documentId.',
+    };
+  }
+  const roomMode = normalizeRoomMode(candidate.roomMode);
+  if (!roomMode) return invalidRoomMode();
+  if (Object.prototype.hasOwnProperty.call(candidate, 'providerOptions')) {
+    try {
+      structuredClone(candidate.providerOptions);
+    } catch {
+      return {
+        ok: false,
+        reason: 'invalid-provider-options',
+        message: 'SuperDoc v2 provider extension options must be structured-clone-safe.',
+      };
+    }
+  }
+  const token =
+    typeof candidate.token === 'function'
+      ? (candidate.token as () => string | Promise<string>)
+      : normalizeNonEmptyString(candidate.token);
+  return {
+    ok: true,
+    target: {
+      providerFamily: 'extension',
+      adapterId,
+      documentId,
+      roomMode,
+      ...(Object.prototype.hasOwnProperty.call(candidate, 'providerOptions')
+        ? { providerOptions: candidate.providerOptions }
+        : {}),
       ...(token ? { token } : {}),
     },
   };
@@ -262,7 +329,7 @@ function resolveLiveblocksFamily(
       ok: false,
       reason: 'invalid-document-id',
       message:
-        'SuperDoc v2 collaboration requires a non-empty v2Collaboration.documentId (or roomId) for the "liveblocks" provider.',
+        'SuperDoc v2 collaboration requires a non-empty collaboration.documentId (or roomId) for the "liveblocks" provider.',
     };
   }
   const publicApiKey = normalizeNonEmptyString(candidate.publicApiKey);
@@ -323,7 +390,8 @@ function resolveLiveblocksFamily(
 export function resolveV2CollaborationTarget(
   input: ResolveV2CollaborationTargetInput,
 ): V2CollaborationTargetResolution {
-  const { v2Collaboration, legacyCollaboration, documentType, documentCount, authEndpointBaseUrl } = input;
+  const { legacyCollaboration, documentType, documentCount, authEndpointBaseUrl } = input;
+  const v2Collaboration = readCollaborationConfig(input);
 
   // Document-shape gates first: a supported v2 room is exactly one DOCX.
   if (typeof documentCount === 'number' && documentCount > 1) {
@@ -357,10 +425,10 @@ export function resolveV2CollaborationTarget(
         reason,
         message:
           family === 'external-ydoc-provider'
-            ? 'SuperDoc v2 collaboration cannot use an external { ydoc, provider } pair. Provide a v2Collaboration ' +
+            ? 'SuperDoc v2 collaboration cannot use an external { ydoc, provider } pair. Provide a collaboration ' +
               'target (e.g. { providerType, documentId, url }) instead.'
             : `SuperDoc v2 collaboration does not accept "${family}" through the legacy modules.collaboration block ` +
-              `(server: ${redactedUrl}). Configure it as a v2Collaboration target ` +
+              `(server: ${redactedUrl}). Configure it as a document.collaboration target ` +
               `({ providerType: "${family}", documentId, ... }) instead.`,
       };
     }
@@ -368,11 +436,11 @@ export function resolveV2CollaborationTarget(
       ok: false,
       reason: 'missing-target',
       message:
-        'SuperDoc v2 collaboration requires a v2Collaboration target ({ documentId, serverUrl } or { providerType, ... }). None was provided.',
+        'SuperDoc v2 collaboration requires a collaboration target ({ documentId, serverUrl } or { providerType, ... }). None was provided.',
     };
   }
 
-  const candidate = v2Collaboration as Partial<V2CollaborationConfig> & Record<string, unknown>;
+  const candidate = v2Collaboration as Partial<DocumentCollaborationConfig> & Record<string, unknown>;
 
   if (Object.prototype.hasOwnProperty.call(candidate, 'createIfMissing')) {
     return {
@@ -391,7 +459,7 @@ export function resolveV2CollaborationTarget(
       reason: 'unsupported-legacy-provider',
       message:
         'SuperDoc v2 collaboration cannot use an external { ydoc, provider } pair. v2 owns its provider; pass a ' +
-        'v2Collaboration target ({ providerType, documentId, url | publicApiKey | authEndpoint }) instead.',
+        'collaboration target ({ providerType, documentId, serverUrl | publicApiKey | authEndpoint }) instead.',
     };
   }
 
@@ -407,6 +475,9 @@ export function resolveV2CollaborationTarget(
   if (providerType === 'liveblocks') {
     return resolveLiveblocksFamily(candidate, authEndpointBaseUrl);
   }
+  if (providerType === 'extension') {
+    return resolveProviderExtension(candidate);
+  }
 
   // Any other providerType (e.g. "memory", "superdoc", or an unknown family) is
   // not a shipped v2 single-doc provider.
@@ -415,6 +486,6 @@ export function resolveV2CollaborationTarget(
     reason: 'unsupported-provider-family',
     message:
       `SuperDoc v2 collaboration does not support the "${providerType}" provider family. ` +
-      'Supported families are y-websocket, hocuspocus, and liveblocks.',
+      'Supported families are y-websocket, hocuspocus, liveblocks, and extension.',
   };
 }

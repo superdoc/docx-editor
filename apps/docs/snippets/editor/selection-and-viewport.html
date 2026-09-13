@@ -1,15 +1,28 @@
+<div id="toolbar"></div>
 <div id="editor-shell" style="position: relative">
-  <div id="selection-overlay" hidden style="position: absolute; z-index: 2">
-    <span id="selection-preview"></span>
-    <button id="restore-selection" type="button">Restore selection</button>
-  </div>
-  <div id="editor" style="height: 70vh"></div>
+  <div id="editor" style="height: 70vh; overflow: auto"></div>
+  <aside aria-label="Actions for selected text" data-mode="actions" id="prompt-card" hidden style="position: absolute; z-index: 2">
+    <div id="selection-actions">
+      <button aria-controls="selection-composer" aria-expanded="false" aria-haspopup="dialog" id="open-selection-prompt" type="button">Ask AI</button>
+    </div>
+    <div aria-label="Ask AI about selected text" id="selection-composer" hidden role="dialog" style="width: min(19rem, calc(100% - 1rem))">
+      <strong>Ask about this</strong>
+      <button aria-label="Close AI prompt" id="close-selection-prompt" type="button">Close</button>
+      <p id="selection-preview"></p>
+      <form id="selection-prompt">
+        <label for="selection-question">Ask about this selection</label>
+        <textarea id="selection-question" placeholder="What does this limit?" rows="2" style="resize: none"></textarea>
+        <button id="ask-selection" disabled type="submit">Ask</button>
+      </form>
+      <div id="prompt-response" hidden>
+        <strong>Response</strong>
+        <p id="prompt-answer"></p>
+      </div>
+      <button id="show-selection" type="button">Show selection</button>
+    </div>
+  </aside>
 </div>
 
-<label>
-  Review note
-  <textarea id="review-note" placeholder="Move focus here after selecting document text"></textarea>
-</label>
-<p id="selection-status" role="status">Select text in the document.</p>
+<output id="selection-status" aria-live="polite">Select text in the document.</output>
 
 <script type="module" src="/src/main.ts"></script>

@@ -52,6 +52,7 @@ import type { BrowserDocumentApi } from '../../public/browser-document-api.js';
 export type { BrowserDocumentApi } from '../../public/browser-document-api.js';
 
 import type { CustomCommandContext, FontFamilyOption as ToolbarFontFamilyOption } from '../../public/ui/types.js';
+export type { CommentsType, ExportParams, ExportType } from '../../public/export-types.js';
 
 /**
  * A row in a custom dropdown's option list, and the value handed back to the
@@ -636,11 +637,13 @@ export interface CollaborationProvider {
   off?: (...args: unknown[]) => unknown;
   disconnect?: () => unknown;
   destroy?: () => unknown;
+  /** Send a provider-specific stateless string payload. */
+  sendStateless?: (message: string) => unknown;
   [key: string]: unknown;
 }
 
 /**
- * Document-level v2 collaboration handoff.
+ * Connection settings for one shared document, used at startup and during an upgrade.
  *
  * This is the public surface for SuperDoc v2's shipped real-time collaboration
  * model. v2 collaboration is always single-doc: one `Y.Doc`, one provider
@@ -650,21 +653,24 @@ export interface CollaborationProvider {
  * single-doc provider internally. One `documentId` maps to exactly one
  * room/provider/root identity.
  *
- * SuperDoc v2 supports three first-class provider families through this field:
- * y-websocket, Hocuspocus, and Liveblocks. The provider is selected with
- * `providerType`; omitting it preserves the original y-websocket-only shape
- * (`{ documentId, serverUrl, params? }`) for backward compatibility.
+ * SuperDoc v2 includes y-websocket, Hocuspocus, and Liveblocks adapters and can
+ * route a named provider extension through a configured collaboration Worker.
+ * The provider is selected with `providerType`; omitting it preserves the
+ * original y-websocket-only shape (`{ documentId, serverUrl, params? }`).
  *
  * This is intentionally distinct from the legacy provider-agnostic
- * {@link CollaborationConfig} (`Config.modules.collaboration`): v2 owns its
- * provider internally and does **not** accept an external Yjs `provider`/`ydoc`
- * through this field. External `{ ydoc, provider }` remains a v1 /
- * provider-compat concern only and is rejected as a v2 content driver.
+ * {@link CollaborationConfig} (`Config.modules.collaboration`): v2 owns the
+ * Y.Doc. Provider extensions receive that document inside the collaboration
+ * Worker instead of replacing it.
  */
-export type V2CollaborationConfig =
+export type DocumentCollaborationConfig =
   | V2YWebsocketCollaborationConfig
   | V2HocuspocusCollaborationConfig
-  | V2LiveblocksCollaborationConfig;
+  | V2LiveblocksCollaborationConfig
+  | V2ProviderExtensionCollaborationConfig;
+
+/** @deprecated replaceWith=`DocumentCollaborationConfig` compat-indefinitely: existing v2 integrations import this type. */
+export type V2CollaborationConfig = DocumentCollaborationConfig;
 
 /**
  * y-websocket single-doc provider config.
@@ -704,8 +710,8 @@ export interface V2HocuspocusCollaborationConfig {
   url?: string;
   /** Optional connection params forwarded to the backend. */
   params?: Record<string, string> | null;
-  /** Auth-message token forwarded to the Hocuspocus backend. */
-  token?: string;
+  /** Static auth token or resolver invoked for every Hocuspocus connection. */
+  token?: string | (() => string | Promise<string>);
   /** Explicit room operation. Defaults to `'join'`; `'create'` never joins an existing room. */
   roomMode?: 'join' | 'create';
 }
@@ -730,6 +736,21 @@ export interface V2LiveblocksCollaborationConfig {
    * page; non-browser SDK/CLI callers must use an absolute HTTP(S) URL.
    */
   authEndpoint?: string;
+  /** Explicit room operation. Defaults to `'join'`; `'create'` never joins an existing room. */
+  roomMode?: 'join' | 'create';
+}
+
+/** Named provider adapter implemented by the configured collaboration Worker. */
+export interface V2ProviderExtensionCollaborationConfig {
+  providerType: 'extension';
+  /** Adapter registration key understood by the collaboration Worker. */
+  adapterId: string;
+  /** Stable shared document identity. */
+  documentId: string;
+  /** Structured-clone-safe options passed to the registered adapter factory. */
+  providerOptions?: unknown;
+  /** Optional host-owned credential resolver available to the adapter. */
+  token?: string | (() => string | Promise<string>);
   /** Explicit room operation. Defaults to `'join'`; `'create'` never joins an existing room. */
   roomMode?: 'join' | 'create';
 }
@@ -804,8 +825,15 @@ export interface FontsConfig {
   bundled?: boolean | 'baseline' | 'full' | string[] | Record<string, unknown>;
   families?: FontFamilyConfig[];
   /**
+   * Logical DOCX family to registered physical family. The mapping changes
+   * measurement and rendering for this document; export preserves the logical name.
+   */
+  map?: Record<string, string>;
+  /**
    * Base URL the bundled substitute pack (and curated faces) are fetched from, e.g. `'/fonts/'`.
-   * Canonical self-hosting field. When no pack is configured, SuperDoc fetches no bundled assets.
+   * Canonical self-hosting field. When no pack is configured, SuperDoc fetches no substitute-pack
+   * assets; the built-in core-symbol face is still requested for the symbol glyphs it covers, so it
+   * does not remove the need for a font allowance in your Content Security Policy.
    */
   assetBaseUrl?: string;
   /**
@@ -1004,29 +1032,21 @@ export interface AwarenessUser extends User {
 
 /**
  * One entry in the `states` array delivered to
- * {@link Config.onAwarenessUpdate}. SuperDoc emits an entry per remote
- * client, derived from the underlying Yjs awareness states.
+ * {@link Config.onAwarenessUpdate}. In V2, `states` includes the current
+ * user and remote participants. Do not append the current user again.
  *
- * The runtime helper `awarenessStatesToArray` spreads each remote user
- * onto the top of the entry (`{ clientId, ...value.user, color }`), so
- * `User` fields like `name`, `email`, `image` appear at the top level
- * (not nested under a `user` property). Consumers should read `state.id`,
- * `state.name`, and `state.email`, not `state.user.name`.
+ * Display fields such as `name`, `email`, and `color` are at the top
+ * level, not nested under `user`. Fields may be absent; a presence
+ * entry is not an authenticated account record.
  *
  * Application-specific fields attached to the awareness state by the
  * provider surface through the `[key: string]: unknown` index
  * signature; consumers narrow before use.
  */
 export interface AwarenessState extends User {
-  /** Yjs client identifier for the remote peer. */
+  /** Presence identifier. In V2, scoped to this editor instance, not a Yjs transport id. */
   clientId?: number;
-  /**
-   * Color assigned by SuperDoc's presence system. Spread onto the
-   * awareness entry after the user fields, so it takes precedence
-   * over any color the awareness user carried in (see
-   * {@link AwarenessUser.color}). Used when the presence system
-   * computes a stable palette assignment for the remote peer.
-   */
+  /** Resolved cursor color supplied by the presence system. */
   color?: string;
   /** Application-specific fields spread from the awareness provider. */
   [key: string]: unknown;
@@ -1045,6 +1065,12 @@ export type DocumentUploadSource = {
 export type DocumentDataSource = globalThis.File | globalThis.Blob | ArrayBuffer | Uint8Array | DocumentUploadSource;
 
 export interface Document {
+  /** V2 scalar-field values for this document, copied when it opens. */
+  fieldContext?: {
+    fileName?: string | null;
+    fullPath?: string | null;
+    currentUser?: { name?: string | null; initials?: string | null; address?: string | null } | null;
+  };
   /** The ID of the document. */
   id?: string;
   /** Document type as a MIME type or shorthand such as `docx`. */
@@ -1073,12 +1099,11 @@ export interface Document {
    */
   provider?: CollaborationProvider;
   /**
-   * Document-level v2 collaboration handoff. When present, the v2 runtime
-   * makes this document collaborative through the shipped single-doc
-   * y-websocket provider (one room / Y.Doc / awareness channel per
-   * `documentId`). See {@link V2CollaborationConfig}. Ignored by the v1
-   * editor, which uses `Config.modules.collaboration` instead.
+   * Connect this document to a shared room. SuperDoc owns the provider and Y.Doc.
+   * Takes precedence over `v2Collaboration`; `null` opens a local document.
    */
+  collaboration?: DocumentCollaborationConfig | null;
+  /** @deprecated replaceWith=`collaboration` compat-indefinitely: existing v2 integrations use this field. */
   v2Collaboration?: V2CollaborationConfig | null;
 }
 
@@ -1203,9 +1228,8 @@ export interface CollaborationConfig {
 /**
  * Options for `upgradeToCollaboration()`.
  *
- * v2 promotes a local single-DOCX editor into the shipped single-doc
- * y-websocket room described by {@link V2CollaborationConfig}. Pass a
- * `v2Collaboration` target to promote into a supported v2 room.
+ * Promote a local DOCX into a shared room using `collaboration`.
+ * Supports the same providers as {@link DocumentCollaborationConfig}.
  *
  * The legacy `ydoc` / `provider` fields remain accepted for source
  * compatibility with v1-shaped callers, but v2 does **not** drive document
@@ -1215,14 +1239,15 @@ export interface CollaborationConfig {
  * fields are therefore optional and only honored when they resolve to a
  * supported v2 room.
  *
- * @see {@link V2CollaborationConfig}
+ * @see {@link DocumentCollaborationConfig}
  */
 export interface UpgradeToCollaborationOptions {
   /**
-   * Canonical supported v2 promotion target: the single-doc y-websocket room
-   * ({ documentId, serverUrl, params? }) to create from the current document.
-   * Promotion fails if the v2 room already exists.
+   * Create a shared room from the current document. Fails if the room already exists.
+   * Takes precedence over `v2Collaboration`.
    */
+  collaboration?: DocumentCollaborationConfig;
+  /** @deprecated replaceWith=`collaboration` compat-indefinitely: existing v2 integrations use this field. */
   v2Collaboration?: V2CollaborationConfig;
   /**
    * Legacy external Yjs document. Accepted for v1 source compatibility; not a
@@ -2118,7 +2143,7 @@ export interface SearchStrings {
 
 /**
  * Resolved text for the older custom Search renderer.
- * @deprecated replaceWith=`SearchStrings` for built-in copy or `editor.ui.search` for custom UI removeIn=v3.0
+ * @deprecated replaceWith=`SearchStrings` for built-in copy or `superdoc.ui.search` for custom UI removeIn=v3.0
  */
 export interface ResolvedFindReplaceTexts {
   findPlaceholder: string;
@@ -2197,7 +2222,7 @@ export interface SearchMatch {
 
 /**
  * Reactive handle injected into the older custom Search renderer.
- * @deprecated replaceWith=`editor.ui.search` removeIn=v3.0
+ * @deprecated replaceWith=`superdoc.ui.search` removeIn=v3.0
  */
 export interface FindReplaceHandle {
   /** Current search query. */
@@ -2224,6 +2249,14 @@ export interface FindReplaceHandle {
    * (V2 read-only/viewing mode disables replace; V1 stays enabled).
    */
   canReplace: ComputedRef<boolean>;
+  /**
+   * Whether Replace all should be enabled right now: `canReplace` plus the
+   * active session enumerating every match. A truncated V2 session keeps the
+   * active match replaceable while refusing to replace all of them. Optional
+   * so handles built against the previous shape still type-check; surfaces
+   * fall back to `canReplace` when it is absent.
+   */
+  canReplaceAll?: ComputedRef<boolean>;
   /** Whether a replace mutation is currently in flight (re-entrancy guard). */
   replacePending: Ref<boolean>;
   /**
@@ -2267,7 +2300,7 @@ export interface FindReplaceHandle {
 
 /**
  * Read-only context passed to the older custom Search resolver.
- * @deprecated replaceWith=`editor.ui.search` removeIn=v3.0
+ * @deprecated replaceWith=`superdoc.ui.search` removeIn=v3.0
  */
 export interface FindReplaceContext {
   /** Resolved text strings. */
@@ -2278,7 +2311,7 @@ export interface FindReplaceContext {
 
 /**
  * Context passed to the older framework-independent Search renderer.
- * @deprecated replaceWith=`editor.ui.search` removeIn=v3.0
+ * @deprecated replaceWith=`superdoc.ui.search` removeIn=v3.0
  */
 export interface FindReplaceRenderContext {
   /** Empty DOM container to render into. */
@@ -2297,7 +2330,7 @@ export interface FindReplaceRenderContext {
 
 /**
  * Result returned by the older custom Search resolver.
- * @deprecated replaceWith=`editor.ui.search` removeIn=v3.0
+ * @deprecated replaceWith=`superdoc.ui.search` removeIn=v3.0
  */
 export type FindReplaceResolution =
   | { type: 'default' }
@@ -2336,7 +2369,7 @@ export interface SearchFloatingConfig {
 export interface SearchConfig extends SearchLegacyConfig {
   /**
    * Show replace controls (default: true). This changes the built-in UI only;
-   * it does not authorize or disable `editor.ui.search.replace()`.
+   * it does not authorize or disable `superdoc.ui.search.replace()`.
    */
   replaceControls?: boolean;
   /** Include text from pending tracked deletions in each search (default: false). */
@@ -2397,13 +2430,13 @@ interface SearchLegacyConfig {
   replaceEnabled?: boolean;
   /** @deprecated replaceWith=`ui.search.includeTrackedDeletions` removeIn=v3.0 */
   includeDeletedText?: boolean;
-  /** @deprecated replaceWith=`editor.ui.search` removeIn=v3.0 */
+  /** @deprecated replaceWith=`superdoc.ui.search` removeIn=v3.0 */
   component?: unknown;
-  /** @deprecated replaceWith=`editor.ui.search` removeIn=v3.0 */
+  /** @deprecated replaceWith=`superdoc.ui.search` removeIn=v3.0 */
   props?: Record<string, unknown>;
-  /** @deprecated replaceWith=`editor.ui.search` removeIn=v3.0 */
+  /** @deprecated replaceWith=`superdoc.ui.search` removeIn=v3.0 */
   render?: (ctx: FindReplaceRenderContext) => { destroy?: () => void } | void;
-  /** @deprecated replaceWith=`editor.ui.search` removeIn=v3.0 */
+  /** @deprecated replaceWith=`superdoc.ui.search` removeIn=v3.0 */
   resolver?: (ctx: FindReplaceContext) => FindReplaceResolution | null | undefined;
 }
 
@@ -2718,7 +2751,10 @@ export interface Modules {
   slashMenu?: ContextMenuConfig;
   /** Surface system configuration. */
   surfaces?: SurfacesModuleConfig;
-  /** Track changes module configuration. */
+  /**
+   * Previous namespace for tracked-change behavior.
+   * @deprecated replaceWith=`Config.trackChanges` removeIn=v3.0
+   */
   trackChanges?: TrackChangesModuleConfig;
   /**
    * Whiteboard module configuration. Pass `false` to disable the module
@@ -2854,6 +2890,51 @@ export interface TrackChangesSemanticColorsConfig {
   resolve?: (input: TrackedChangeSemanticColorResolverInput) => string | undefined;
 }
 
+/** How a tracked replacement is exposed for review. */
+export type TrackChangesReplacementMode = 'grouped' | 'separate';
+
+/** Controls replacement review and tracked-change colors in this Editor. */
+export interface TrackChangesConfig {
+  /**
+   * Whether tracked-change decorations are rendered. This does not control
+   * whether `suggesting` mode records edits. Defaults to `true`.
+   */
+  enabled?: boolean;
+  /**
+   * How the deletion and insertion created by typing over selected text are
+   * exposed for review.
+   *
+   * - `'grouped'` (default) exposes one proposal and one review decision.
+   * - `'separate'` exposes two proposals that can be decided independently.
+   */
+  replacementMode?: TrackChangesReplacementMode;
+  /**
+   * Per-author tracked-change colors. When configured, insert/delete/format
+   * tracked-change highlights are tinted per author through the
+   * `--sd-tracked-changes-*` CSS variable surface, and
+   * `ui.trackChanges.getSnapshot()` exposes the resolved author colors.
+   */
+  authorColors?: TrackChangesAuthorColorsConfig;
+  /**
+   * Semantic (structural) tracked-change colors. Colors structural change
+   * subtypes: moved text, table cell insertion/deletion, cell merge, and cell
+   * split, independently of {@link authorColors}. Supported keys are active by
+   * default; set `enabled: false` to fall back to existing author/broad
+   * defaults. Separate from the deprecated
+   * `modules.comments.trackChangeHighlightColors` field.
+   */
+  semanticColors?: TrackChangesSemanticColorsConfig;
+  /**
+   * Previous tracked-change visibility switch.
+   * @deprecated replaceWith=`viewing.trackedChanges` compat-indefinitely=v2 configuration compatibility
+   */
+  visible?: boolean;
+}
+
+/**
+ * Previous tracked-change configuration under `modules.trackChanges`.
+ * @deprecated replaceWith=`Config.trackChanges` removeIn=v3.0
+ */
 export interface TrackChangesModuleConfig {
   /**
    * Whether tracked-change indicators are shown in viewing mode.
@@ -2868,47 +2949,37 @@ export interface TrackChangesModuleConfig {
    * - 'final': show the document with changes applied
    * - 'off': disable tracked-change rendering
    *
-   * @deprecated replaceWith=`viewing.trackedChanges` for viewer projection or `modules.trackChanges.enabled` to disable tracking compat-indefinitely=v2 configuration compatibility
+   * @deprecated replaceWith=`viewing.trackedChanges` for viewer projection or `trackChanges.enabled` to disable tracking compat-indefinitely=v2 configuration compatibility
    */
   mode?: 'review' | 'original' | 'final' | 'off';
-  /** Whether the layout engine treats tracked changes as active. */
+  /**
+   * Whether tracked-change decorations are rendered. This does not control
+   * whether `suggesting` mode records edits.
+   * @deprecated replaceWith=`trackChanges.enabled` removeIn=v3.0
+   */
   enabled?: boolean;
   /**
-   * How a tracked replacement (adjacent insertion + deletion created by typing
-   * over selected text) surfaces in the UI and API.
-   * - `'paired'` (default, Google Docs model): the two halves share one id
-   *   and resolve together with a single accept/reject click.
-   * - `'independent'` (Microsoft Word / ECMA-376 §17.13.5 model): each
-   *   insertion and each deletion has its own id, is addressable on its own,
-   *   and resolves independently.
+   * Previous replacement-review setting.
+   *
+   * - `'paired'` groups the insertion and deletion as one proposal.
+   * - `'independent'` exposes them as separate proposals.
+   *
+   * @deprecated replaceWith=`trackChanges.replacementMode` removeIn=v3.0
    */
   replacements?: 'paired' | 'independent';
   /**
-   * Per-author tracked-change colors. When configured, insert/delete/format
-   * tracked-change highlights are tinted per author through the
-   * `--sd-tracked-changes-*` CSS variable surface, and
-   * `ui.trackChanges.getSnapshot()` exposes the resolved author colors.
+   * Previous location for per-author tracked-change colors.
+   * @deprecated replaceWith=`trackChanges.authorColors` removeIn=v3.0
    */
   authorColors?: TrackChangesAuthorColorsConfig;
   /**
-   * Semantic (structural) tracked-change colors. Colors structural change
-   * subtypes: moved text, table cell insertion/deletion, cell merge, and cell
-   * split, independently of {@link authorColors}. Supported keys are active by
-   * default; set `enabled: false` to fall back to existing author/broad
-   * defaults. Separate from `modules.comments.trackChangeHighlightColors`.
+   * Previous location for semantic tracked-change colors.
+   * @deprecated replaceWith=`trackChanges.semanticColors` removeIn=v3.0
    */
   semanticColors?: TrackChangesSemanticColorsConfig;
 }
 
 export type DocumentMode = 'editing' | 'viewing' | 'suggesting';
-
-export type ExportType = 'docx';
-
-/**
- * - 'external': Include only external comments (default)
- * - 'clean': Export without any comments
- */
-export type CommentsType = 'external' | 'clean';
 
 /**
  * Document view layout values — mirrors OOXML ST_View (ECMA-376 §17.18.102).
@@ -2928,31 +2999,6 @@ export interface ViewOptions {
    * rewraps content as the editor container changes width.
    */
   layout?: ViewLayout;
-}
-
-export interface ExportParams {
-  /** Browser export format. DOCX is the only supported output. */
-  exportType?: readonly [ExportType];
-  /** How to handle comments. */
-  commentsType?: CommentsType;
-  /** Custom filename (without extension). */
-  exportedName?: string;
-  /** Extra files to include in the export zip. */
-  additionalFiles?: globalThis.Blob[];
-  /** Filenames for the additional files. */
-  additionalFileNames?: string[];
-  /** Whether this is a final document export. */
-  isFinalDoc?: boolean;
-  /** Auto-download or return blob. */
-  triggerDownload?: boolean;
-  /**
-   * Color for field highlights. The runtime defaults to `null` when no
-   * value is supplied (and forwards `null` through to the underlying
-   * editor export, which accepts `string | null`); the typedef accepts
-   * `null` explicitly so consumers can pass an explicit "no highlight"
-   * value without a typecheck failure.
-   */
-  fieldsHighlightColor?: string | null;
 }
 
 /** Surface where the edit originated. */
@@ -3250,7 +3296,7 @@ export interface SuperDocLayoutEngineOptions {
   flowMode?: 'paginated' | 'semantic';
   /**
    * Optional override for paginated track-changes rendering.
-   * @deprecated replaceWith=`viewing.trackedChanges` and `modules.trackChanges.enabled` compat-indefinitely=v2 configuration compatibility
+   * @deprecated replaceWith=`viewing.trackedChanges` and `trackChanges.enabled` compat-indefinitely=v2 configuration compatibility
    */
   trackedChanges?: object;
   /**
@@ -3369,11 +3415,36 @@ export interface SuperDocExceptionRestorePayload {
  * re-emit path forwards `originalException?.editor ?? null`, so
  * consumers may receive `null` (not just `undefined`).
  */
+export interface SuperDocWorkerFailureDetail {
+  phase: string;
+  reason: string;
+  beforeHello: boolean;
+  message: string;
+  elapsedMs?: number;
+  errorName?: string;
+  errorMessage?: string;
+  errorStack?: string;
+  filename?: string;
+  lineno?: number;
+  colno?: number;
+}
+
 export interface SuperDocExceptionEditorPayload {
   error: unknown;
   editor?: Editor | null;
   code?: string;
   documentId?: string | null;
+  /** Structured browser-worker failure detail when editor startup failed in its worker transport. */
+  workerFailure?: SuperDocWorkerFailureDetail;
+}
+
+/** Connection failure while opening a collaboration room, reported through `onException`. */
+export interface SuperDocExceptionCollaborationPayload extends SuperDocExceptionEditorPayload {
+  error: Error;
+  code: 'collaboration-access-denied' | 'collaboration-connection-failed' | 'collaboration-sync-timeout';
+  /** Access denial requires an explicit provider rejection; a timeout is not proof of denied access. */
+  collaborationReason: 'access-denied' | 'connection-failed' | 'sync-timeout';
+  editor: null;
 }
 
 /**
@@ -3413,11 +3484,11 @@ export interface SuperDocExceptionHyperlinkPayload {
 export type SuperDocDiagnosticCode = 'PARSE_ERROR' | 'RENDER_ERROR' | 'UNSUPPORTED_FEATURE' | 'PERFORMANCE_ERROR';
 
 /**
- * Document-processing pipeline stage a diagnostic was raised from. `parse`
- * and `layout` are reserved for future use; only `unzip` and `render` are
+ * Document-processing pipeline stage a diagnostic was raised from. `layout`
+ * is reserved for future use; `unzip`, `parse`, `render`, and `export` are
  * emitted today.
  */
-export type SuperDocDiagnosticStage = 'unzip' | 'parse' | 'layout' | 'render';
+export type SuperDocDiagnosticStage = 'unzip' | 'parse' | 'layout' | 'render' | 'export';
 
 /**
  * Exception payload carrying a structured diagnostic translated from an
@@ -3454,6 +3525,7 @@ export interface SuperDocExceptionDiagnosticPayload {
  * Consumers can narrow with `'stage' in payload` (store init),
  * `'code' in payload` (editor lifecycle), `'itemName' in payload`
  * (built-in toolbar), `'source' in payload` (hyperlink activation),
+ * `'collaborationReason' in payload` (collaboration connection),
  * or `'diagnosticCode' in payload` (structured diagnostic).
  *
  * The union exists today because multiple independent emit sites pre-date a
@@ -3465,6 +3537,7 @@ export type SuperDocExceptionPayload =
   | SuperDocExceptionStorePayload
   | SuperDocExceptionRestorePayload
   | SuperDocExceptionEditorPayload
+  | SuperDocExceptionCollaborationPayload
   | SuperDocExceptionToolbarPayload
   | SuperDocExceptionHyperlinkPayload
   | SuperDocExceptionDiagnosticPayload;
@@ -4075,7 +4148,7 @@ export interface UIConfig {
   loading?: boolean;
   /**
    * Built-in Search surface. Disabled by default. Enabling it lets
-   * SuperDoc intercept Cmd+F / Ctrl+F; `editor.ui.search` stays available to
+   * SuperDoc intercept Cmd+F / Ctrl+F; `superdoc.ui.search` stays available to
    * custom UI either way.
    */
   search?: boolean | SearchConfig;
@@ -4127,6 +4200,15 @@ export interface CommentInteractionConfig {
   allowResolve?: boolean;
 }
 
+/** Client-side tracked-change actions allowed by this Editor. */
+export interface TrackChangesInteractionConfig {
+  /**
+   * Allow this Editor to accept or reject tracked changes (default: true).
+   * Document mode and command availability can still block these actions.
+   */
+  allowDecisions?: boolean;
+}
+
 /**
  * Controls which interactions this Editor allows, independent of what
  * SuperDoc renders.
@@ -4138,13 +4220,7 @@ export interface InteractionConfig {
   /** Comment interaction policy. */
   comments?: CommentInteractionConfig;
   /** Tracked-change interaction policy. */
-  trackedChanges?: {
-    /**
-     * Allow this Editor to accept or reject tracked changes (default: true).
-     * Document mode and command availability can still block these actions.
-     */
-    allowDecisions?: boolean;
-  };
+  trackedChanges?: TrackChangesInteractionConfig;
 }
 
 /**
@@ -4223,7 +4299,7 @@ export interface Config {
   role?: 'editor' | 'viewer' | 'suggester';
   /**
    * Document to open. Pass a URL, file, byte source, or structured source.
-   * Use a structured document carrying `v2Collaboration` for collaboration,
+   * Use a structured document carrying `collaboration` for collaboration,
    * or a structured source for other metadata. Omit it to open a blank DOCX.
    */
   document?: DocumentSource | null;
@@ -4254,7 +4330,7 @@ export interface Config {
    *
    * Pass `false` when the application owns the interface. SuperDoc then
    * renders no controls, chrome, dialogs, or popovers, while the document,
-   * the Document API, and `editor.ui` keep working — so a custom UI drives
+   * the Document API, and `superdoc.ui` keep working — so a custom UI drives
    * the same commands the built-in one would have.
    *
    * Pass an object to choose per surface. An omitted key keeps that
@@ -4309,6 +4385,10 @@ export interface Config {
    * `modules.comments.permissionResolver` field.
    */
   permissionResolver?: PermissionResolver;
+  /** Default V2 field values for one initial document. For multiple documents, set Document.fieldContext on each entry. */
+  fieldContext?: Document['fieldContext'];
+  /** Refresh supported unlocked V2 fields on local editable open. Omission preserves imported caches. */
+  fieldUpdatePolicy?: 'refreshOnOpen';
   /**
    * Where to render the built-in toolbar. Either an `HTMLElement`, or a
    * selector string in one of the supported forms: an id selector (`#toolbar`),
@@ -4461,8 +4541,8 @@ export interface Config {
    * diagnostic for each `(documentId, generation, internalCode)` tuple. It
    * also suppresses a generic boot diagnostic when a more specific package
    * diagnostic describes the same failure. A single incident can therefore
-   * raise 0..N structured diagnostics. Only the `unzip` and `render` stages
-   * are populated today; `parse` and `layout` are reserved for future
+   * raise 0..N structured diagnostics. The `unzip`, `parse`, `render`, and
+   * `export` stages are populated today; `layout` is reserved for future
    * coverage.
    */
   onException?: (params: SuperDocExceptionPayload) => void;
@@ -4535,10 +4615,11 @@ export interface Config {
    */
   comments?: ViewingVisibilityConfig;
   /**
-   * Toggle tracked-change visibility when `documentMode` is `viewing`.
-   * @deprecated replaceWith=`viewing.trackedChanges` compat-indefinitely=v2 configuration compatibility
+   * Configure replacement review and tracked-change colors. Use
+   * `viewing.trackedChanges` to choose what a viewer sees and
+   * `interaction.trackedChanges` to allow or prevent review decisions.
    */
-  trackChanges?: ViewingVisibilityConfig;
+  trackChanges?: TrackChangesConfig;
   /**
    * Initial shared lock metadata. This value does not make the document read-only.
    * Use `documentMode` or interaction policy to restrict editing in the client.
@@ -4639,8 +4720,10 @@ export interface Config {
    * `@superdoc-dev/fonts` package: pass `superdocFonts` (bundler) or the `SuperDocFonts`
    * global from its `superdoc-fonts.min.js` browser build (CDN). To self-host, set
    * `fonts.assetBaseUrl` (e.g. `/fonts/` or a CDN URL) or `fonts.resolveAssetUrl` for
-   * signed/versioned hosting. SuperDoc core ships no fonts; with none configured the
-   * toolbar shows the baseline and documents render with system fonts.
+   * signed/versioned hosting. Core ships no document families, so with none configured the
+   * toolbar shows the baseline and documents render with system fonts. It does ship one
+   * built-in face: a core-symbol provider requested whenever the document contains symbol or
+   * dingbat glyphs it covers, such as the • bullet, even with no `fonts` configuration.
    */
   fonts?: FontsConfig;
   /**

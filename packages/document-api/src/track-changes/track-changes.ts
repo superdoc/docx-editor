@@ -62,7 +62,7 @@ export interface ReviewDecideRangeTargetOptions {
    * ambiguous overlap surface. The adapter owns interpretation.
    */
   overlap?: string;
-  /** Optional revision side for paired replacement or move targets. */
+  /** Optional revision side for grouped replacement or move targets. */
   side?: ReviewDecideTargetSide;
   /** Optional story containing the range. */
   story?: StoryLocator;

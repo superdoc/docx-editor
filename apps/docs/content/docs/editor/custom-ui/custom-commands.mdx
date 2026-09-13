@@ -1,36 +1,72 @@
 ---
-title: Register custom commands
+title: Register an application command
 navTitle: Custom commands
-description: Add application-owned actions to the same reactive command system as SuperDoc controls.
+description: Define one application action, then reuse its behavior and state from more than one control.
 ---
 
-Register a custom command when an application action should share the Editor's enabled state, execution path, cleanup, and optional context-menu metadata. Keep ordinary application buttons outside the command system unless they need that integration.
+A normal function is enough when one control owns an action. Register a custom command when two or more controls need
+the same execution path and enabled state.
 
-Complete [Custom UI controller setup](/editor/custom-ui/controller-setup) first. This example expects `/contract.docx` to be available from your application.
+## Try one command from two controls
 
-## Add the application action
+1. Place the caret at the end of a sentence.
+2. Choose **Insert clause**. The status identifies the button and confirms the insertion.
+3. Move the caret, then press **Control-Shift-Y**. The status identifies the shortcut and confirms the same action.
 
-This control inserts a reusable clause at the live Editor selection:
+<CustomCommandDemo />
+
+Both controls execute `application.insertClause`. The button observes the registered command's state; neither control
+owns a separate insertion function.
+
+## Choose a function or a command
+
+| Your action                                      | Use                                     |
+| ------------------------------------------------ | --------------------------------------- |
+| Runs from one application control                | A normal function                       |
+| Runs from multiple controls with shared state    | A registered application command        |
+| Already exists in SuperDoc, such as Bold or Undo | Its existing handle under `superdoc.ui` |
+
+Do not wrap a built-in SuperDoc command in a custom command. Reuse its existing handle so every control reads the same
+state and result.
+
+## Build the same command
+
+This standalone Vanilla recipe uses the project from [Build your first custom control](/editor/custom-ui/controller-setup).
+Keep its `public/sample.docx`; the example retains the built-in toolbar.
+
+Replace the contents of `<body>` in `index.html` to add the application action beside the Editor:
 
 <include>../../../../snippets/editor/custom-command.html</include>
 
-## Register and execute the command
-
-Register after the Editor is ready and unregister during cleanup:
+Replace `src/main.ts` to register the command and connect both triggers to its typed handle:
 
 <include>../../../../snippets/editor/custom-command.ts</include>
 
-The registration provides four optional integration points:
+The registration defines the shared contract:
 
-- `getState()` derives `enabled`, `active`, `value`, and `reason` from current Editor state.
-- `execute()` receives the typed payload, live selection, document mode, controller, and Document API facade.
-- `shortcut` describes the intended shortcut. Your application still owns the keyboard listener and conflict policy.
-- `contextMenu` describes an item that your menu can obtain with `ui.commands.getContextMenuItems(context)`.
+- `getState()` derives whether the action is available from the live Editor state.
+- `execute()` owns the insertion and receives the typed payload.
+- `shortcut` records the intended key binding. Your application still owns the keyboard listener and conflict policy.
+- `observe()` keeps the button synchronized as the Editor state changes.
+- `executeAsync()` returns the settled result for either trigger.
 
-Use the returned handle to observe state and call `executeAsync()`. This keeps the button and keyboard path on one execution contract. Inspect the result before reporting success or starting dependent work.
+`getState()` describes availability; it does not block custom-command execution. Check `handle.getState().enabled` in
+every trigger before calling `executeAsync()`. Scope global keyboard listeners to the Editor experience so they do not
+take over the rest of your application.
 
-## Keep commands focused
+Custom commands do not create an authorization boundary. Checking `enabled` in each trigger keeps the interface honest,
+but a caller can invoke the handle directly. Your backend must still enforce document access, identity, persistence, and
+collaboration permissions.
 
-A custom command should represent one user intent. Compose existing commands through `context.executeAsync()`, use `context.insertText()` for the narrow insertion helper, or call the public `context.doc` Document API for document operations. Do not reach into Editor state, view objects, or DOM offsets.
+## Verify the shared action
 
-Custom commands do not create an authorization boundary. The browser can gate normal interactions, but your backend must still enforce document access, identity, persistence, and collaboration permissions.
+Run the project and place the caret in `/sample.docx`. Insert the clause once with the button and once with the shortcut.
+Confirm that both paths insert the same text and that the output identifies the trigger that ran. Move focus outside the
+Editor experience and confirm that the shortcut no longer runs.
+
+Keep custom commands focused on one user intent. Use `context.insertText()` for text insertion, call another command
+through `context.executeAsync()`, or use `context.doc` for Document API operations. Do not reach into Editor state, view
+objects, or DOM offsets.
+
+Custom commands are optional. Return to the [Custom UI overview](/editor/custom-ui/overview) to choose another surface
+for your application.

@@ -145,7 +145,11 @@ export const useSuperdocStore = defineStore('superdoc', () => {
     }
 
     // Initialize documents
-    await initializeDocuments(configDocs);
+    const initialDocs =
+      configDocs?.length === 1 && configDocs[0] && configDocs[0].fieldContext === undefined
+        ? [{ ...configDocs[0], fieldContext: config.fieldContext }]
+        : configDocs;
+    await initializeDocuments(initialDocs);
     isReady.value = true;
   };
 

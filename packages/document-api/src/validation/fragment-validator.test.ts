@@ -168,20 +168,20 @@ describe('Rule 4: inline array validation', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Rule 5: Heading level must be 1–6
+// Rule 5: Heading level must be 1–9
 // ---------------------------------------------------------------------------
 
 describe('Rule 5: heading level', () => {
   it('rejects missing level', () => {
-    expectError(() => validateSDFragment({ kind: 'heading', heading: {} }), 'INVALID_PAYLOAD', /between 1 and 6/);
+    expectError(() => validateSDFragment({ kind: 'heading', heading: {} }), 'INVALID_PAYLOAD', /between 1 and 9/);
   });
 
   it('rejects level 0', () => {
     expectError(() => validateSDFragment({ kind: 'heading', heading: { level: 0 } }), 'INVALID_PAYLOAD');
   });
 
-  it('rejects level 7', () => {
-    expectError(() => validateSDFragment({ kind: 'heading', heading: { level: 7 } }), 'INVALID_PAYLOAD');
+  it('rejects level 10', () => {
+    expectError(() => validateSDFragment({ kind: 'heading', heading: { level: 10 } }), 'INVALID_PAYLOAD');
   });
 
   it('rejects non-integer level', () => {
@@ -194,6 +194,10 @@ describe('Rule 5: heading level', () => {
 
   it('accepts level 6', () => {
     expect(() => validateSDFragment({ kind: 'heading', heading: { level: 6 } })).not.toThrow();
+  });
+
+  it.each([7, 8, 9])('accepts level %i', (level) => {
+    expect(() => validateSDFragment({ kind: 'heading', heading: { level } })).not.toThrow();
   });
 });
 

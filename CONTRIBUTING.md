@@ -1,27 +1,42 @@
 # Contributing to SuperDoc
 
-Thanks for helping out. Bug reports, docs, examples, tests, and code are all
-welcome.
+Community contributions start with an issue. Pull requests are limited to
+repository collaborators.
+
+We’ve found that reviewing and integrating external PRs often takes more time
+than implementing a fix from a clear report. Even a small change can affect
+other editor behavior that requires broader context to verify. We want to
+explain this upfront so you don’t spend time on a PR we can’t accept.
 
 ## Ways to contribute
 
-**Report a rendering bug.** Open a `.docx` in SuperDoc, compare it with
-Microsoft Word, and if they differ,
-[file an issue](https://github.com/superdoc/docx-editor/issues/new?template=bug-report.yml)
-with the file attached. A reproduction document is the single most useful thing
-you can send.
+Report suspected security vulnerabilities privately through
+[GitHub Security Advisories](https://github.com/superdoc/docx-editor/security/advisories/new),
+as described in our [security policy](SECURITY.md). Do not include vulnerability
+details in public issues.
 
-**Improve the docs.** They live in `apps/docs/` and ship to
+Bug reports, feature requests, documentation feedback, and technical
+investigations are welcome. Search [open issues](https://github.com/superdoc/docx-editor/issues)
+first, then [open an issue](https://github.com/superdoc/docx-editor/issues/new/choose)
+with what you’re trying to do, what happened, and what you expected.
+
+For bugs, include your SuperDoc version and a small reproduction if possible.
+For rendering differences, include a sample `.docx` and screenshots showing
+SuperDoc and Microsoft Word. Use synthetic or redacted documents without
+confidential information.
+
+Already investigated or written a fix? Include your findings, test results, or
+a link to the patch in the issue. That context helps us understand the problem
+and develop a solution. You don’t need to write code to contribute.
+
+## Working on the code
+
+The instructions below cover local development and PRs for repository
+collaborators. You can also use them to reproduce a problem locally.
+
+Documentation lives in `apps/docs/` and ships to
 [docs.superdoc.dev](https://docs.superdoc.dev). Run `pnpm run dev:docs` to
-preview your changes.
-
-**Add an example.** Keep it runnable and focused on one documented outcome. All examples live in `examples/`.
-
-**Fix a bug or add a feature.** Start with
-[good first issues](https://github.com/superdoc/docx-editor/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
-or [help wanted](https://github.com/superdoc/docx-editor/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22).
-For anything large, open an issue first so we can agree on the approach before
-you write code.
+preview it. Runnable examples live in `examples/`.
 
 ## Choose a branch
 
@@ -128,6 +143,16 @@ message, since the release version is derived from it:
 | `chore:`, `docs:`, `refactor:`, `test:` | none |
 
 A local Git hook checks the message format before the commit lands.
+
+### Peer dependency changes
+
+Peer dependencies are a compatibility contract with applications that install a published SuperDoc package. Any authored change to that contract requires manual review. CI compares the effective packed ranges, including `catalog:` and `workspace:` resolutions, with the pull request base and leaves a review comment when they differ.
+
+Use a `feat:` title for a backward-compatible expansion such as widening a tested range, adding an optional peer, or making a required peer optional. Use a breaking `!` title for a change that removes accepted versions, adds a required peer, makes an optional peer required, or removes or replaces a peer contract. The protected check fails when the configured release planner would produce less than the required release impact; a breaking peer change cannot merge until the release path can produce the required major release.
+
+The existing exact `superdoc` dependency and peer in `@superdoc/react` are a release-managed exception: the version stamper moves both pins only as part of the coordinated React and SuperDoc release train after protected PR checks. Changing the pin form, optionality, or compatibility policy is still an authored contract change and follows the rules above.
+
+Read the [package compatibility policy](https://docs.superdoc.dev/resources/package-compatibility) before changing `peerDependencies`, `peerDependenciesMeta`, or a catalog entry used by a peer.
 
 Before you open the PR:
 

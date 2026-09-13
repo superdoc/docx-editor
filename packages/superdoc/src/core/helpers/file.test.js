@@ -5,6 +5,49 @@ const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.doc
 const HTML = 'text/html';
 const PDF = 'application/pdf';
 
+describe('document collaboration configuration', () => {
+  const collaboration = { providerType: 'hocuspocus', documentId: 'shared', serverUrl: 'wss://example.com' };
+  const oldTarget = { documentId: 'old', serverUrl: 'wss://old.example.com' };
+
+  for (const source of [
+    { url: '/sample.docx', type: DOCX },
+    { data: new Uint8Array([1, 2]), type: DOCX },
+  ]) {
+    it(`normalizes collaboration for ${'url' in source ? 'URL' : 'byte'} sources without mutating the caller`, () => {
+      const input = Object.freeze({ ...source, collaboration, v2Collaboration: oldTarget });
+      const normalized = normalizeDocumentEntry(input);
+      expect(normalized.v2Collaboration).toBe(collaboration);
+      expect(normalized).not.toHaveProperty('collaboration');
+      expect(input.collaboration).toBe(collaboration);
+      expect(input.v2Collaboration).toBe(oldTarget);
+      expect(normalizeDocumentEntry(normalized).v2Collaboration).toBe(collaboration);
+    });
+  }
+
+  it('preserves existing callers and explicit local-document intent', () => {
+    expect(normalizeDocumentEntry({ type: DOCX, v2Collaboration: oldTarget }).v2Collaboration).toBe(oldTarget);
+    expect(
+      normalizeDocumentEntry({ type: DOCX, collaboration: null, v2Collaboration: oldTarget }).v2Collaboration,
+    ).toBeNull();
+    expect(
+      normalizeDocumentEntry({ type: DOCX, collaboration: undefined, v2Collaboration: oldTarget }).v2Collaboration,
+    ).toBe(oldTarget);
+  });
+
+  it('keeps connection settings when unwrapping an uploaded file', () => {
+    const file = new File(['sample'], 'sample.docx', { type: DOCX });
+    const normalized = normalizeDocumentEntry({ file, collaboration });
+    expect(normalized.data).toBe(file);
+    expect(normalized.v2Collaboration).toBe(collaboration);
+  });
+
+  it('preserves invalid input for preflight rejection rather than falling back to another room', () => {
+    expect(
+      normalizeDocumentEntry({ type: DOCX, collaboration: false, v2Collaboration: oldTarget }).v2Collaboration,
+    ).toBe(false);
+  });
+});
+
 describe('extractBrowserFile', () => {
   it('returns the same File instance when given a File', () => {
     const f = new File([new Blob(['abc'], { type: 'text/plain' })], 'note.txt', { type: 'text/plain' });

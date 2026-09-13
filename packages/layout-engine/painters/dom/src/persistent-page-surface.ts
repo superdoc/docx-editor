@@ -38,6 +38,7 @@
 // rollback integration.
 
 import type { DocumentBackground, ResolvedPage } from '@superdoc/contracts';
+import { validateDerivedRunTextPlane, type DerivedRunTextPlane } from './derived-run-text-plane.js';
 import { computeExpectedSdtLabelKeys } from './sdt/boundaries.js';
 import {
   dehydratePageContent,
@@ -128,6 +129,7 @@ export type DomPainterPersistentPageInput = {
   packetsByPageIndex: DomPainterPersistentPacketSource;
   sectionPageCounts?: Readonly<Record<string, number>>;
   documentBackground?: DocumentBackground | null;
+  derivedRunTextPlane?: DerivedRunTextPlane | null;
   captureSnapshot?: boolean;
 };
 
@@ -534,6 +536,7 @@ function reconcileContentWindow(
       packet,
       ctx.contentContext.totalPages,
       ctx.contentContext.getSectionPageCount(packet),
+      input.derivedRunTextPlane,
     );
     const expectedSdtLabels = expectedSdtLabelsByPage.get(pageIndex)!;
 
@@ -626,6 +629,7 @@ export function reconcilePersistentPageSurface(
   // Fail closed BEFORE any DOM mutation — shell OR content: every desired
   // page needs an exact, generation-matched, geometry-matched packet, or the
   // whole reconcile refuses to start.
+  validateDerivedRunTextPlane(input.derivedRunTextPlane, input.scaffold.generation);
   const desired = resolveDesiredContentPageIndices(input);
   const validatedPackets = new Map<number, ResolvedPage>();
   for (const pageIndex of desired) {

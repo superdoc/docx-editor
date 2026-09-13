@@ -19,7 +19,7 @@
     },
     {
       "name": "items",
-      "type": "{\n  left?: readonly ToolbarItemId[];\n  center?: readonly ToolbarItemId[];\n  right?: readonly ToolbarItemId[];\n}",
+      "type": "{\n  left?: readonly ToolbarItemId[];\n  right?: readonly ToolbarItemId[];\n  center?: readonly ToolbarItemId[];\n}",
       "typeName": "Readonly<Partial<Record<ToolbarRegion, readonly ToolbarItemId[]>>>",
       "required": false,
       "description": "Built-in controls to render by region. Controls keep their built-in order. Omit to use the default toolbar.",

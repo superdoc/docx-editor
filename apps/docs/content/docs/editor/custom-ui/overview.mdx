@@ -1,142 +1,74 @@
 ---
-title: Custom UI overview
+title: Build a custom UI
 navTitle: Overview
-description: Build application-owned controls over the public SuperDoc v2 UI controller.
+description: Keep SuperDoc's DOCX canvas while your application renders task-specific controls.
 ---
 
-A custom UI keeps SuperDoc's DOCX canvas and editing behavior while your application owns the toolbar, panels, and workflow around it.
-
-SuperDoc owns the DOCX canvas, layout, selection, and editing behavior. Your application builds the controls and workflow around it using reactive controller state, React hooks, commands, workflow methods, and the Document API.
+Build a custom UI when your product needs focused controls or workflows around a DOCX document. SuperDoc continues to
+render the document and handle editing. Your application renders the toolbar, panels, and other controls it needs.
 
 <CustomUiArchitecture />
 
-Use this approach when a general-purpose document toolbar does not match the product task. A contract approval screen, structured intake flow, or focused review experience may need a smaller set of controls and application-specific state.
+You can replace one surface or the complete interface. For example, keep the built-in toolbar while rendering your own
+comments panel, or set `ui: false` and render every control yourself.
 
-`Config.ui` chooses which built-in surfaces SuperDoc renders. It does not remove the underlying capabilities: turning off the comments panel leaves comment data and every comment operation intact.
-
-## Try one custom control
-
-Select text in the document below, then use the Bold button. It is application code: it reads `enabled` and `active` from the controller and executes through it, while SuperDoc keeps rendering the document.
-
-<CustomBoldDemo />
-
-That button demonstrates four habits for command controls, highlighted in the strip beneath it as you use them. `aria-pressed` is specific to toggles like Bold; a control that is not a toggle skips step 2's second half, and a panel that reads document content rather than running a command follows a different path entirely.
-
-The [custom UI example](https://go.superdoc.dev/examples/custom-ui) is a complete runnable project containing only this control and DOCX export.
-
-That control is this much code, using nothing but the public surface:
-
-```ts
-const bold = superdoc.ui.commands.get('bold');
-
-const stop = bold.observe((state) => {
-  button.disabled = !state.enabled;
-  button.setAttribute('aria-pressed', String(state.active));
-});
-
-button.addEventListener('click', async () => {
-  const result = await bold.executeAsync();
-  // Inspect `result` when later work depends on the command having applied.
-});
-```
-
-Call `stop()` when the control unmounts. The rest of this page describes the contract that makes those three lines work.
-
-## Four public surfaces
+## Choose the right surface
 
 | You need to                                | Use           |
 | ------------------------------------------ | ------------- |
-| Decide which built-in surfaces render      | `Config.ui`   |
-| Observe editor state and run UI actions    | `superdoc.ui` |
+| Choose which built-in surfaces render      | `Config.ui`   |
+| Observe UI state and run Editor actions    | `superdoc.ui` |
 | Read or mutate an explicit document target | `editor.doc`  |
-| Define what users are allowed to do        | `interaction` |
+| Decide which interactions are allowed      | `interaction` |
 
-`superdoc/ui/react` provides the same controller through a provider and hooks, and `superdoc/ui/vue` through `provideSuperDocUI()` and the `useSuperDoc*` composables. Use the framework-neutral controller when your application uses neither framework, or when UI state belongs outside a component tree.
+These surfaces work together. Setting `ui: { comments: false }` removes SuperDoc's comments interface, but your custom
+panel can still use `superdoc.ui.comments`. The `interaction` configuration decides whether that panel may read, write,
+or resolve comments.
 
-`Config.ui` and `interaction` look similar and are not. `ui: { comments: false }` hides the built-in comments interface while your own panel keeps creating comments; `interaction: { comments: { level: 'read' } }` is what refuses the write.
+`superdoc.ui` is the controller. Import its types from `superdoc/ui`. React applications use the provider and hooks from
+`superdoc/ui/react`, and Vue applications use the composables from `superdoc/ui/vue`. Each binding exposes the same
+controller.
 
-## Use the controller SuperDoc already owns
+## Try one custom control
 
-Every `SuperDoc` instance exposes its own UI controller as `superdoc.ui`. It is the shortest path to custom controls and the only path available when SuperDoc is loaded through a classic `<script>` tag, where package subpath imports are unavailable.
+Select text in the document, then choose **Bold**. The application-owned button observes the command's live state and
+executes the action through the same controller as SuperDoc's built-in toolbar.
 
-```ts
-const superdoc = new SuperDoc({ selector: '#editor', document: file });
+<CustomBoldDemo />
 
-const stop = superdoc.ui.comments.observe((comments) => renderSidebar(comments.items));
-const bold = superdoc.ui.commands.get('bold');
-```
+The control follows one reusable pattern: observe state, render it, execute the action, and inspect the result. The
+[custom UI example](https://go.superdoc.dev/examples/custom-ui) contains the complete runnable project.
 
-Four properties of `superdoc.ui` matter when you wire an application to it:
+## Start with one control
 
-- **One canonical controller.** Every SuperDoc instance owns one controller at `superdoc.ui`. SuperDoc's own toolbar, popovers, and keyboard routing read that same object, so your controls and the built-in ones never disagree about command state.
-- **Stable identity.** Reading it twice returns the same controller. Replacing the document or switching the active editor in a multi-document instance does not replace it.
-- **Safe before the document is ready.** Slices report `pending` rather than throwing, so you can subscribe in the same tick as the constructor.
-- **SuperDoc destroys it.** `superdoc.destroy()` tears the controller down. `superdoc.ui` is typed `BorrowedSuperDocUI`, which omits `destroy()`, so you cannot accidentally tear down state that every other consumer is observing. Release your own subscriptions and leave the controller alone.
+If this is your first custom UI, read these guides in this order:
 
-`superdoc.ui` is an observation and command surface, not a permission boundary. Anything it exposes is already reachable by the page hosting SuperDoc.
+1. [Build your first custom control](/editor/custom-ui/controller-setup) and move Bold into your application.
+2. [Keep commands and controls in sync](/editor/custom-ui/commands-and-state) as the selection changes.
 
-The controller provides:
+Then choose the controls your application needs:
 
-- Immutable snapshots for selection, toolbar, comments, tracked changes, content controls, fonts, zoom, document state, styles, and search.
-- Subscriptions that update controls when editor state changes.
-- Command handles with `enabled`, `active`, `value`, and stable disabled reasons.
-- Async command execution with receipts or explicit failure results.
-- Selection capture, viewport navigation, and document-aware workflow helpers.
-- One `destroy()` boundary for controller subscriptions and listeners.
+- [Build a custom toolbar](/editor/custom-ui/formatting-controls) to own formatting controls and their layout.
+- [Add document controls](/editor/custom-ui/zoom-and-document-state) to own zoom and download while keeping the built-in toolbar.
 
-Both forms expose the same surface.
+These are alternative recipes. Each replaces the first control's Editor code; neither requires the other.
 
-## Let controller state drive your controls
+## Choose a workflow
 
-When the selection or document state changes, SuperDoc publishes new control state. For command availability, read the command handle's `enabled` state rather than deriving it from the selection yourself.
+After the first control, choose only the workflows your product needs. These guides are independent unless a page names
+a prerequisite.
 
-| Controller state | UI behavior                   |
-| ---------------- | ----------------------------- |
-| `enabled: false` | Disable the control           |
-| `enabled: true`  | Allow the command to run      |
-| `active: true`   | Show a toggle as pressed      |
-| `reason`         | Explain why it is unavailable |
+| Your application needs to                                    | Guide                                                              |
+| ------------------------------------------------------------ | ------------------------------------------------------------------ |
+| Own the comment thread list and actions                      | [Comments](/editor/custom-ui/comments)                             |
+| Own the queue for accepting or rejecting revisions           | [Track changes](/editor/custom-ui/tracked-changes)                 |
+| Navigate and edit structured document fields                 | [Content controls](/editor/custom-ui/content-controls)             |
+| Own a visual find and replace session                        | [Search](/editor/custom-ui/search)                                 |
+| Replace the menu shown for a pointer or keyboard interaction | [Context menu](/editor/custom-ui/context-menus)                    |
+| Show table actions that follow the active cell               | [Tables](/editor/custom-ui/tables)                                 |
+| Position an AI prompt beside selected text                   | [Selection and position](/editor/custom-ui/selection-and-viewport) |
+| Turn an application finding into a tracked suggestion        | [Review findings](/editor/custom-ui/review-highlights)             |
+| Share one application action across multiple controls        | [Custom commands](/editor/custom-ui/custom-commands)               |
 
-For example, a Bold button should use the `bold` command handle's state. The controller decides whether the current selection can be formatted and whether bold is already active, which is what the live example above reads.
-
-The model below is a faster way to see all three states at once, including the disabled case that needs specific content to reproduce. It simulates the selection rather than running an Editor.
-
-<CommandStateDemo />
-
-## Check the result when the next step depends on success
-
-A command can be refused without throwing. If the next step is to save, navigate, close a dialog, or report success, inspect the result first — the absence of an exception is not the same as the document having changed.
-
-`executeAsync()` resolves once the routed work settles. It returns either a boolean or a Document API receipt, so read both shapes when you branch on it.
-
-## Clean up what you own
-
-One rule: clean up what you created, and nothing else.
-
-| You created                            | Release it with                          |
-| -------------------------------------- | ---------------------------------------- |
-| A subscription                         | The function `observe()` returned        |
-| The `SuperDoc` instance                | `superdoc.destroy()`                     |
-| A controller from `createSuperDocUI()` | Its own `destroy()`, before the instance |
-
-`superdoc.ui` is not on that list. SuperDoc created it, so `superdoc.destroy()` takes it down.
-
-## Advanced: construct a separate controller
-
-Most applications do not need this.
-
-|                    | Default              | Advanced                  |
-| ------------------ | -------------------- | ------------------------- |
-| Get the controller | Read `superdoc.ui`   | Call `createSuperDocUI()` |
-| Who owns it        | SuperDoc             | Your application          |
-| Teardown           | `superdoc.destroy()` | Both, controller first    |
-
-`createSuperDocUI` from `superdoc/ui` is an ownership escape hatch, not the normal path. It binds to a `SuperDoc` instance and exposes the same surface, but you own its lifecycle: you create it and you call its `destroy()`.
-
-Mounting and unmounting an ordinary panel is not a reason to build one. A panel can release its own subscriptions and keep sharing `superdoc.ui`, which is less to own and less to get wrong. Reach for the factory when a consumer genuinely needs a controller whose lifetime is independent of the Editor's — a detached preview driven from its own state, for example.
-
-Destroying a controller you built this way tears down only that controller. `superdoc.ui`, the built-in toolbar, and every other consumer keep working, so an independent lifecycle is a supported choice rather than a risky one.
-
-Prefer `superdoc.ui` everywhere else.
-
-Continue with [Custom UI controller setup](/editor/custom-ui/controller-setup) to build this control yourself against a real DOCX, then expand it into a formatting toolbar.
+Use [Dialogs and surfaces](/editor/dialogs-and-surfaces) when your application only needs content in a SuperDoc-managed
+layer. Use [Theming](/editor/theming) to apply product colors to SuperDoc UI.

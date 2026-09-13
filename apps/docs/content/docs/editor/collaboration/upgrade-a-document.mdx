@@ -8,11 +8,15 @@ Use `upgradeToCollaboration()` when a single local DOCX is already open and the 
 
 ## Create the room
 
-Wait until the local Editor is ready, then pass a supported collaboration target in create mode:
+Wait until the local Editor is ready, then pass a supported collaboration target in create mode. This snippet uses the [preview configuration API](/editor/collaboration/connect-two-editors#configure-your-application):
+
+Here, `superdoc` is your existing Editor and `session.collaborationToken` comes from your application's authenticated
+session. Replace the example server address with your configured provider. The token must be authorized to create
+`contract-123`; this snippet does not provide a server or sign-in flow.
 
 ```ts
 await superdoc.upgradeToCollaboration({
-  v2Collaboration: {
+  collaboration: {
     providerType: 'hocuspocus',
     documentId: 'contract-123',
     serverUrl: 'wss://collaboration.example.com',
@@ -35,4 +39,4 @@ The operation supports one DOCX and a new v2 room. It does not join an existing 
 
 Moving a final v1 recovery bundle into a v2 room is a server-side migration, not a live browser upgrade. The Node-only `superdoc/collaboration-upgrade-engine` subpath builds and validates provider-free upgrade artifacts without connecting to a room. It requires Node.js 20 or newer and should be paired with provider-specific read, write, and fresh-client validation.
 
-Start with [Migrate from v1](/editor/migrate-from-v1/overview) before planning that operation. For ordinary browser connections, use [Connect to a collaboration room](/editor/collaboration).
+Start with [Migrate from v1](/editor/migrate-from-v1/overview) before planning that operation. For ordinary browser connections, use [Connect two editors](/editor/collaboration/connect-two-editors).

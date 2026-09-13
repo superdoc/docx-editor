@@ -1,0 +1,84 @@
+---
+title: Initialize a shared document
+navTitle: Initialize a document
+description: Create a room from a DOCX once, then join it for every later editing session.
+---
+
+Your application has a DOCX that Alex and Sam need to edit together. Choose one place to create its shared room. After that, everyone—including the creator—joins the existing room.
+
+Start with the [local two-editor example](/editor/collaboration/connect-two-editors). Keep its Hocuspocus server running throughout this walkthrough; it stores rooms only in memory.
+
+## Create once, then join
+
+| First open                             | Another person arrives                           | Return to the document                             |
+| -------------------------------------- | ------------------------------------------------ | -------------------------------------------------- |
+| Alex **creates** a room from the DOCX. | Sam **joins** the room and receives its content. | Alex **joins** the same room, including its edits. |
+| `roomMode: 'create'`                   | `roomMode: 'join'`                               | `roomMode: 'join'`                                 |
+
+`create` is not “open or create.” It fails if the room already exists. `join` does not initialize a missing room from the supplied file.
+
+## 1. Create the room from a DOCX
+
+In the example, open `http://localhost:5173/?mode=create&user=Alex`. Alex's editor imports the sample DOCX into a new room and shows `Connected.` when it is ready.
+
+With the [preview configuration API](/editor/collaboration/connect-two-editors#configure-your-application), put the connection in the document's `collaboration` field. These are the creator's settings:
+
+```ts
+import type { DocumentCollaborationConfig } from 'superdoc';
+
+const createConnection = {
+  providerType: 'hocuspocus',
+  serverUrl: 'ws://127.0.0.1:1234',
+  documentId: 'example-room',
+  roomMode: 'create',
+} satisfies DocumentCollaborationConfig;
+```
+
+In your application's document configuration, use `collaboration: createConnection` for this first open. Leave the pinned example unchanged; its URL selects the same room operation.
+
+In your application, assign a stable room ID to each shared document. Store that association so future editors can find the same room. Do not generate a new ID on every page load or reuse one room for unrelated documents.
+
+The application chooses who initializes the room. Do not make every visitor try to create it. The collaboration server must still authorize access; knowing a room ID does not grant permission.
+
+## 2. Join the existing room
+
+After Alex's tab shows `Connected.`, open `http://localhost:5173/?user=Sam`. The server address and room ID stay the same; only the operation changes:
+
+```ts
+const joinConnection = {
+  ...createConnection,
+  roomMode: 'join',
+} satisfies DocumentCollaborationConfig;
+```
+
+Use `collaboration: joinConnection` for later opens. The example still supplies the sample DOCX, but the joiner receives the room's shared content. Supplying the original file does not reset the room.
+
+Type a short sentence in Sam's editor and confirm that Alex sees it.
+
+## 3. Reopen without resetting
+
+Keep Alex connected while you close Sam's tab and reopen `http://localhost:5173/?user=Sam`. His sentence should still be there. With Sam connected again, Alex can close his tab and return using `http://localhost:5173/?user=Alex`.
+
+Do not reuse Alex's original `mode=create` address to reopen the document. The person who created the room is now a joiner too.
+
+If creation reports that the room exists, reopen the intended document with `join`; do not overwrite it. If joining fails, check the connection, room ID, access, and whether initialization completed. A failed join is not permission to create a replacement from an older file.
+
+## Choose where initialization belongs
+
+The browser path above works when the first editor supplies the DOCX. Two other starting points have different owners:
+
+| Your application starts with…                                        | Initialize through…                                                                                                                                           |
+| -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A DOCX opened for its first shared editing session                   | The browser editor, as above.                                                                                                                                 |
+| A local editor with unsaved changes that someone wants to share      | [`upgradeToCollaboration()`](/editor/collaboration/upgrade-a-document), which creates a new room from the current document.                                   |
+| A backend workflow that prepares the document before anyone opens it | The [Node.js SDK](/agents/automation/node-sdk), opening the DOCX with a collaboration target and explicit `roomMode: 'create'`. Browsers then join that room. |
+
+The Hocuspocus server transports shared state; it does not import a DOCX by itself. Server-side initialization still needs a SuperDoc client to read the file and create the document in the room. Choose one initialization path, not competing browser and backend creators.
+
+## Keep the room after a restart
+
+Reopening this example proves that a new editor receives the existing room's edits. It does not prove durable saving. This server has no storage integration: restarting it clears its rooms, and a room can also be unloaded after its last editor leaves. Keep at least one editor connected during the walkthrough.
+
+`onCollaborationReady` is not a storage acknowledgment. To reopen after everyone leaves or the server restarts, your server needs persistent room storage.
+
+Next, [save and restore a room](/editor/collaboration/save-and-restore-a-room) so the document survives everyone leaving and the server restarting.

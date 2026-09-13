@@ -85,6 +85,28 @@ async def main():
 asyncio.run(main())
 ```
 
+## Open a token-authenticated collaboration document
+
+Pass a Hocuspocus or y-websocket token with the document's open request:
+
+```python
+document = await client.open(
+    {
+        "doc": "./contract.docx",
+        "collaboration": {
+            "providerType": "hocuspocus",
+            "url": "wss://collaboration.example.com",
+            "documentId": "contract-123",
+        },
+    },
+    collaboration_auth={"type": "token", "token": user_token},
+)
+```
+
+The credential is separate from the collaboration profile and command-line arguments. It applies to the provider
+created for this open request. Per-open token authentication is not supported for Liveblocks or the standalone
+document host.
+
 Use the [Node.js SDK](/agents/automation/node-sdk) for the same deterministic workflow from JavaScript or TypeScript.
 For the operation and receipt model shared by both SDKs, continue with the
 [Document API mental model](/document-api/mental-model).

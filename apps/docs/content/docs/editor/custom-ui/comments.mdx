@@ -1,109 +1,80 @@
 ---
-title: Build a custom comments UI
+title: Build a custom comments panel
 navTitle: Comments
-description: Render comment threads from reactive Editor state and run comment actions through the public UI controller.
+description: Render comment threads, create one from selected text, and connect each row to its document anchor.
 ---
 
-Use `ui.comments` when your application owns the comments panel. The handle provides reactive thread state, selection-aware creation, focus and navigation, and mutation receipts.
+Keep the [built-in comments UI](/editor/built-in-ui/comments) when its layout and actions fit your product. Build a
+custom panel when your application needs to own the markup or workflow.
 
-If SuperDoc should render the panel instead, see [built-in comments](/editor/built-in-ui/comments).
+This guide covers one complete custom workflow: list root threads, add a comment to selected text, navigate to its
+anchor, and resolve or reopen it. Use [Document API comments](/document-api/comments) for direct operations and the
+complete comment lifecycle.
 
-Complete [Custom UI controller setup](/editor/custom-ui/controller-setup) first. This page uses the same ready-Editor and cleanup lifecycle.
+## Try the custom workflow
 
-## Add the comments surface
+The example replaces only the comments panel. SuperDoc still renders its toolbar and a three-page DOCX.
 
-Create a composer, status message, thread list, and Editor container:
+1. Choose **Show in document** on each existing thread. The document moves between the first and final pages.
+2. On the middle page, select `approval criteria`, then choose **Comment on selection** and add a comment.
+3. Resolve or reopen a thread.
+
+<CustomCommentsDemo />
+
+The panel is application markup driven by `ui.comments`. The document, selection, comment anchors, and mutations still
+belong to SuperDoc.
+
+## Build the same panel
+
+Start from [Build your first custom control](/editor/custom-ui/controller-setup). This example keeps `/sample.docx`, the
+built-in toolbar, and every other built-in surface so comments remain the only new concern. If you already built a custom
+toolbar, keep it and apply the same comments changes.
+
+For Vanilla, replace the contents of `<body>` in `index.html` with the toolbar, Editor, and panel mounts below:
 
 <include>../../../../snippets/editor/custom-comments.html</include>
 
-Copy the [tracked-changes fixture](/fixtures/tracked-changes.docx) to your app's public directory as `contract.docx`, or use another DOCX.
+Replace the setup guide's Editor code:
 
-## Bind state and actions
+<FrameworkExampleTabs>
+  <FrameworkExample filename='src/main.ts' framework='Vanilla'>
+    <include>../../../../snippets/editor/custom-comments.ts</include>
+  </FrameworkExample>
+  <FrameworkExample filename='src/App.tsx' framework='React'>
+    <include>../../../../snippets/editor/react-custom-comments.tsx</include>
+  </FrameworkExample>
+</FrameworkExampleTabs>
 
-Read the Editor's controller, `superdoc.ui`, after `onReady`. Observe selection and comments separately so each part of the interface updates from its canonical state.
+Both versions follow the same loop:
 
-<include>../../../../snippets/editor/custom-comments.ts</include>
+1. Set `ui.comments` to `false` to remove SuperDoc's comments panel without removing comments from the DOCX.
+2. Observe `ui.comments` and render root threads from its current snapshot.
+3. Capture the document selection before the composer takes focus.
+4. Run `createFromCapture()`, `setActive()` with `scrollTo()`, or `resolve()` and `reopen()`. Show the returned result.
 
-The example uses four parts of the public comments handle:
+## Keep the comment target stable
 
-- `observe()` updates the list when comments or their status change.
-- `createFromCapture()` anchors a new thread after the composer takes focus.
-- `resolve()` and `reopen()` change the thread lifecycle and return receipts.
-- `setActive()` and `scrollTo()` coordinate the custom list with the document canvas.
+Capture the selection when the composer opens. The pointer path captures on `mousedown`, before focus moves to the
+button. Keyboard activation captures in the click handler. Submitting the saved capture keeps the draft anchored to the
+text that started it, even if the selection changes while someone writes.
 
-It also mounts with `ui: { comments: false }`. Without it, SuperDoc renders its own comments sidebar beside yours and the reader gets two comment interfaces on one document. Turning it off removes the built-in presentation only: threads in the DOCX are still parsed, and every action above still works through the controller.
+Use `ui.comments.createFromSelection()` only for an immediate action that does not move focus into a composer. Do not
+reconstruct a comment target from DOM ranges. See [Selection and viewport](/editor/custom-ui/selection-and-viewport)
+when you also need to position an application-owned popover.
 
-That is the only surface this example switches off, because the comments panel is the only one it replaces. [Custom UI controller setup](/editor/custom-ui/controller-setup) covers the rest for an application that owns more of the interface.
+## Match the configured actions
 
-## Choose a live or captured selection
+With the built-in panel disabled, `ui.comments.layout` no longer affects your markup. The configured
+`interaction.comments.level` still limits controller mutations. Render only the actions your application allows. Handle
+every receipt because document mode or stale state can still block an action. See the
+[comments configuration reference](/editor/built-in-ui/comments#configure-comments) for the complete contract.
 
-The example captures the document selection as soon as it becomes available, so the comment is anchored to the text the reader had selected when they started writing rather than to whatever is selected when they submit.
+## Verify the workflow
 
-This Editor keeps its selection when a control elsewhere on the page takes focus, so capture is not a workaround for losing it. Capture is how you freeze the intended target: once a draft is open, changing the selection in the document does not move the pending comment.
+Run the project and add a comment to selected text. Confirm that the new row appears, **Show in document** returns to its
+anchor, and Resolve changes to Reopen. The built-in toolbar should remain visible, and SuperDoc's comments panel should
+not appear beside yours.
 
-Use `createFromSelection()` only when the action runs while the Editor selection is still live:
-
-```ts
-const receipt = await ui.comments.createFromSelection({
-  text: 'Please verify this clause.',
-});
-
-if (!receipt.success) console.error(receipt.failure.message);
-```
-
-For a modal, textarea, or detached composer, use `ui.selection.capture()` followed by `createFromCapture()`, as the complete example does. Do not reconstruct a comment target from DOM ranges. The capture carries a document address that remains meaningful when layout changes. [Preserve selections and position UI](/editor/custom-ui/selection-and-viewport) covers the complete focus and geometry lifecycle.
-
-A capture stays usable for as long as its target still resolves. `capturedAt` records when the selection was frozen so your interface can show it; it is not an expiry, and elapsed time alone never invalidates a capture. Submitting with nothing captured fails the same way as submitting with an empty selection: both return a `NO_SELECTION` receipt before any document mutation runs.
-
-## Let an author correct a comment
-
-`edit()` replaces a comment's body text:
-
-```ts
-const receipt = await ui.comments.edit(commentId, {
-  text: 'Please verify this clause against schedule B.',
-});
-
-if (!receipt.success) console.error(receipt.failure.message);
-```
-
-Editing is available at the `write` and `resolve` comment levels. Only `resolve` adds the resolve and reopen actions. The
-`read` level refuses both kinds of mutation.
-
-## Build the panel in React
-
-The example above is deliberately small. A real panel has threads, replies, an edit affordance, a delete confirmation your product owns, and somewhere sensible for focus to land after each of those.
-
-This React version implements the complete lifecycle against the same controller:
-
-<include>../../../../snippets/editor/react-custom-comments.tsx</include>
-
-Three parts of it are worth reading closely.
-
-**The pointer path captures on `mousedown`, before focus moves.** `mousedown` fires while the document still owns the selection; `click` fires after focus has reached the button. Capturing on the press is what keeps the pointer path correct regardless of what focus does next.
-
-**The keyboard path captures in the click handler, and that is not the same guarantee.** Keyboard activation never fires `mousedown`, so the click handler is the only hook available. It works here because this controller keeps its selection when a control takes focus. A control that clears the selection on focus would already be too late by then, and would need a `keydown` handler instead. Do not read the two paths as sharing one timing guarantee.
-
-**The capture is the target, not the live selection.** Once the composer is open, changing the selection in the document does not move the pending comment. Submitting sends the frozen capture, so the comment lands on the text the user had selected when they started writing.
-
-**The thread list derives from `comments.items` on every render.** It is never copied into React state. Collaboration updates, undo, and redo all change the controller's snapshot, and a cached list would quietly drift from the document.
-
-**Creation success and navigation success are reported separately.** `scrollTo()` can fail after a comment was created perfectly well, and telling the user the comment did not save would be wrong.
-
-**Focus is restored after a render, not in the handler that closes an affordance.** The Edit button is unmounted while its editor is open, so its ref is null until React re-renders. Calling `focus()` in the same handler that clears the editing state silently does nothing; the example restores focus from an effect instead.
-
-## What the panel can and cannot anticipate
-
-The panel disables its write controls in viewing mode, which it reads from the public document slice. When your
-application configures `interaction.comments.level`, use that same application-owned value to decide which controls to
-render. The controller still refuses forbidden mutations, so always inspect its receipt.
-
-[React custom UI setup](/editor/custom-ui/react-setup) covers the provider and binding lifecycle this example assumes.
-
-## Handle failures in the interface
-
-Comment actions can fail because the Editor is not ready, the selection is empty, the target is stale, or the operation is unavailable. Keep the composer open and show the receipt message when an action fails.
-
-Client-side controls are not an authorization boundary. Enforce document access and trusted identity outside the Editor.
-
-For direct document operations without a custom panel, continue with [Document API comments](/document-api/comments).
+To accept or reject revisions, build a [tracked-change panel](/editor/custom-ui/tracked-changes). That guide restarts
+from the setup project with its own document and markup, so it is a separate workflow rather than a panel you add to
+this one. Otherwise, return to the [Custom UI overview](/editor/custom-ui/overview) and choose another workflow.

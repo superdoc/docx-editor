@@ -9,9 +9,13 @@ export default function App() {
 
   return (
     <SuperDocEditor
-      document='/contract.docx'
+      document='/sample.docx'
       renderLoading={() =>
-        loadFailed ? <p role='alert'>Could not open the document.</p> : <p role='status'>Opening document…</p>
+        loadFailed ? (
+          <p role='alert'>Could not open the document. Reload the page to retry.</p>
+        ) : (
+          <p role='status'>Opening document…</p>
+        )
       }
       onContentError={() => setLoadFailed(true)}
       onException={() => setLoadFailed(true)}

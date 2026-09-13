@@ -1,0 +1,104 @@
+---
+title: Theme the Editor UI
+navTitle: Theming
+description: Apply product colors to SuperDoc UI, then override one component when the semantic theme is not enough.
+---
+
+Use `createTheme()` to turn a small set of product tokens into SuperDoc CSS variables. Apply the returned class to
+`<html>` so toolbars, menus, and surfaces mounted under `document.body` inherit the same theme.
+
+## Try a theme
+
+Pick a color or paste a hex value, then open the dialog. Turn on **Toolbar override** to see when a
+component-specific variable is useful.
+
+<ThemePlayground />
+
+The DOCX content and formatting do not change. These tokens style the Editor UI around the document.
+
+## Start with semantic tokens
+
+Keep the Editor you built in the [Quickstart](/editor/quickstart). In that Vite project, create `src/theme.ts`:
+
+<include>../../../snippets/editor/theme.ts</include>
+
+Import it once from your entry file: `src/main.ts` in Vanilla or `src/main.tsx` in React.
+React projects also need `pnpm add superdoc` for the theme helpers.
+
+```ts
+import './theme';
+```
+
+Keep your existing Editor setup and controls. The theme styles them without creating another instance.
+
+The type derived from `createTheme` gives the object autocomplete and checks its shape. A stable `name` also makes the generated class
+predictable—in this example, `sd-theme-product`.
+
+Apply the class to `document.documentElement`, not only the Editor container. SuperDoc can mount dialogs, menus, and
+other temporary surfaces under `document.body`, outside that container.
+
+### Choose a token
+
+All theme fields are optional. Omitted values keep the stylesheet's defaults.
+
+| Inside `colors`                           | Controls                                                       |
+| ----------------------------------------- | -------------------------------------------------------------- |
+| `action`, `actionHover`, `actionText`     | Actions, their hover state, and text on action-colored buttons |
+| `bg`, `hoverBg`, `activeBg`, `disabledBg` | UI backgrounds and control states                              |
+| `text`, `textMuted`, `textDisabled`       | Primary, secondary, and disabled UI text                       |
+| `border`                                  | Shared UI borders                                              |
+
+Use `radius` and `shadow` for shared corners and shadows. `name` identifies the theme; `vars` overrides individual CSS
+variables. `font` sets the inherited UI font, but mounted Editor and toolbar roots can override it with
+`uiDisplayFallbackFont`. It does not choose the fonts stored in the DOCX.
+
+## Override one component
+
+Set semantic values first so related controls stay consistent. Use `vars` only when one component needs to differ:
+
+```ts
+const productTheme = {
+  name: 'product',
+  colors: {
+    action: '#4f46e5',
+    bg: '#f8fafc',
+    text: '#1e293b',
+    border: '#cbd5e1',
+  },
+  vars: {
+    '--sd-layout-page-bg': '#ffffff',
+    '--sd-ui-toolbar-bg': '#eef2ff',
+  },
+} satisfies ThemeConfig;
+```
+
+These overrides take precedence over semantic values in the same theme. Use names from the
+[published stylesheet](https://cdn.jsdelivr.net/npm/superdoc@2.12.0/dist/style.css): search for `--sd-ui-` and the component
+name, such as `toolbar`. The stylesheet also shows which semantic token each component inherits.
+
+In `superdoc@2.12.0`, `vars` accepts arbitrary string keys. TypeScript will not catch an unknown variable; confirm that
+the component actually changes before keeping an override.
+
+`--sd-layout-page-bg` defaults to the theme's `bg`, which paints the document page as well as the Editor surface. Pin it
+whenever `bg` is not near-white, or pages without an explicit DOCX background follow your UI color while their text does
+not.
+
+## Control style injection
+
+`createTheme()` injects a `<style>` element and returns its class name. For server rendering or a strict Content
+Security Policy, use `buildTheme()` to receive `{ className, css }`, then pass the CSS through your application's
+stylesheet or nonce-aware style pipeline. See [Secure integration](/editor/secure-integration) for the related CSP
+requirements.
+
+Emit that CSS after `superdoc/style.css`. The generated `.sd-theme-*` rule and the package defaults under `:root` have
+the same specificity, so whichever loads last wins — a theme emitted first is silently replaced by the defaults.
+`createTheme()` is unaffected, because it appends its `<style>` element to `document.head`.
+
+## Verify the theme
+
+Change the action color and open the dialog. The dialog action and active Editor controls should use the new color. The
+toolbar background should change only when **Toolbar override** is on.
+
+Themes style SuperDoc's own interface. They do not affect the fonts stored in the DOCX. Continue with
+[Fonts](/editor/fonts) to see how each document font resolves and to provide licensed files for families the browser
+cannot render.

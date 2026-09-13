@@ -489,3 +489,46 @@ describe('executeBlocksDeleteRange', () => {
     }
   });
 });
+
+describe('blocks.list execution fact filters', () => {
+  const blocks: BlocksListResult['blocks'] = Array.from({ length: 503 }, (_, ordinal) => ({
+    nodeId: `p${ordinal}`,
+    nodeType: 'paragraph',
+    ordinal,
+    text: ordinal === 3 ? 'needle needle first' : ordinal === 501 ? 'NEEDLE second' : 'unrelated',
+  }));
+  function pagedAdapter(): BlocksAdapter {
+    return {
+      ...makeAdapter(),
+      list: (input) => ({
+        blocks: blocks.slice(input?.offset ?? 0, (input?.offset ?? 0) + (input?.limit ?? blocks.length)),
+        total: blocks.length,
+        revision: '7',
+      }),
+    };
+  }
+  it('filters before pagination, counts matching blocks, and omits unrequested text', () => {
+    const page = executeBlocksList(pagedAdapter(), { textSearch: { terms: ['needle'] }, offset: 1, limit: 1 });
+    expect(page.total).toBe(2);
+    expect(page.blocks).toHaveLength(1);
+    expect(page.blocks[0]).toMatchObject({ nodeId: 'p501', ordinal: 501 });
+    expect(page.blocks[0]).not.toHaveProperty('text');
+    expect(executeBlocksList(pagedAdapter(), { nodeIds: ['p501'], includeText: true }).blocks[0].text).toBe(
+      'NEEDLE second',
+    );
+    expect(executeBlocksList(pagedAdapter(), { nodeIds: [] }).total).toBe(0);
+  });
+  it('rejects a changed revision or incomplete scan instead of returning partial matches', () => {
+    for (const fault of ['revision', 'empty']) {
+      const adapter = pagedAdapter();
+      const original = adapter.list;
+      adapter.list = (input) => {
+        const page = original(input);
+        return input?.offset ? { ...page, ...(fault === 'revision' ? { revision: '8' } : { blocks: [] }) } : page;
+      };
+      expect(() => executeBlocksList(adapter, { textSearch: { terms: ['needle'] }, limit: 1 })).toThrow(
+        DocumentApiValidationError,
+      );
+    }
+  });
+});

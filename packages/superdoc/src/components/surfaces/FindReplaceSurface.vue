@@ -24,6 +24,14 @@ const replaceDisabled = computed(() => {
   if (fr.canReplace && fr.canReplace.value === false) return true;
   return false;
 });
+// Replace all is gated separately: a truncated session can replace the active
+// match but not every match. Older handles without the ref follow `canReplace`.
+const replaceAllDisabled = computed(() => {
+  if (replaceDisabled.value) return true;
+  const fr = props.findReplace;
+  if (fr.canReplaceAll && fr.canReplaceAll.value === false) return true;
+  return false;
+});
 
 // The V2 driver marks ignore-diacritics unsupported; hide the toggle rather
 // than shipping a no-op control. Undefined (V1 / custom handles) shows it.
@@ -294,7 +302,7 @@ onMounted(() => {
         <button
           type="button"
           class="sd-find-replace__btn sd-find-replace__btn--action"
-          :disabled="replaceDisabled"
+          :disabled="replaceAllDisabled"
           :title="findReplace.texts.replaceAllLabel"
           @click="findReplace.replaceAll()"
         >

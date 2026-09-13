@@ -1,134 +1,223 @@
 ---
-title: Build durable review highlights
-navTitle: Review highlights
-description: Anchor application-owned review data to document text and paint the current ranges through a render-only extension.
+title: Turn AI findings into tracked suggestions
+navTitle: Review findings
+description: Save an application-owned AI finding with its source text, then propose a document edit as a tracked change.
 ---
 
-Build a durable review highlight from two public v2 surfaces. Anchored metadata stores the finding's identity and payload in the DOCX. An extension visual paints the finding while the document is open.
+An AI response can flag a risk without changing the document. Save it as a finding so your application can return to the
+same text. If the finding leads to a rewrite, add that rewrite as a tracked suggestion.
 
-Use this pattern for verification results, risk markers, provenance, and other application-owned review data. Use [comments](/editor/custom-ui/comments) when the document should contain a Word comment thread instead.
+## Try the review flow
 
-## Keep storage and paint separate
+1. Select `the fees Customer paid in the twelve months before the claim`, then choose **Ask AI**.
+2. Ask `What should I review?`, then choose **Save as finding**.
+3. Choose **Show in document** to return to the risk.
+4. Choose **Suggest edit**. The application paint disappears, and SuperDoc shows the rewrite as a tracked change. The
+   finding stays in the panel as the reason for the edit.
 
-Neither surface replaces the other:
+<CustomReviewFindingsDemo />
 
-| Responsibility                          | Public surface                 | Survives export                   |
-| --------------------------------------- | ------------------------------ | --------------------------------- |
-| Finding ID, namespace, and JSON payload | `doc.metadata`                 | Yes                               |
-| Current anchored range                  | `doc.metadata.resolve({ id })` | Recomputed from the stored anchor |
-| Visible class over the range            | `ctx.visuals.highlight()`      | No                                |
+The response is simulated locally. Saving the finding and creating the tracked change use the real Document API. To keep
+either after a reload, export the changed DOCX and save it through your application's storage flow.
 
-A metadata entry intentionally renders nothing. A visual layer intentionally writes nothing to the DOCX. Combining them gives the application durable identity without encoding interface styling into the document.
+## Give each layer one job
 
-## Build the workflow
+| Responsibility                      | Public surface                                | Included in export |
+| ----------------------------------- | --------------------------------------------- | ------------------ |
+| Finding, text anchor, and JSON data | `doc.metadata`                                | Yes                |
+| Risk paint over the resolved text   | `ctx.visuals.highlight()`                     | No                 |
+| Proposed rewrite for human review   | `doc.replace(..., { changeMode: 'tracked' })` | Yes                |
 
-Create controls for attaching and withdrawing one finding:
+Metadata does not render by itself. List and resolve findings when the document opens, then paint their current ranges.
+Use tracked changes for edits because SuperDoc already renders and exports them as reviewable revisions.
 
-<include>../../../../snippets/editor/review-highlights.html</include>
+The [Track changes](/editor/custom-ui/tracked-changes) page owns navigation and accept/reject controls. Use
+[comments](/editor/custom-ui/comments) instead when people need a Word comment thread.
 
-Keep the highlight class paint-only. Layout properties such as padding, margin, display, position, and font size are rejected because a visual must not change document geometry.
+## Run the complete example
 
-<include>../../../../snippets/editor/review-highlights.css</include>
+Use the Vanilla project from [Custom UI setup](/editor/custom-ui/controller-setup). Save this sample as
+`public/contract.docx`:
 
-The complete example uses a caller-owned ID. It reads the current selection, attaches metadata, resolves every current anchor, and replaces the visual layer's complete target set:
+<FileDownload
+  href='/fixtures/custom-selection-workflow.docx'
+  label='Download the selection sample'
+  description='Two pages of selectable contract text'
+  fileType='DOCX'
+/>
+
+Copy the two files under [Controller implementation](#controller-implementation) into `src/`.
+Replace the contents of `<body>` in `index.html` with:
+
+<include>../../../../snippets/editor/review-findings-app.html</include>
+
+Replace `src/main.ts` with:
+
+<include>../../../../snippets/editor/review-findings-app.ts</include>
+
+Select a short phrase, choose **Ask AI about selection**, and save the simulated response as a finding. Then choose
+**Suggest edit** and **Download DOCX**. The example uses no model service. Edit the suggested wording before saving;
+the supplied response only demonstrates the workflow, not legal advice.
+
+This standalone example opens one document. It disables review actions and download while an action is pending.
+Keep the replacement guards below if you add file switching.
+
+## Extend an existing selection workflow
+
+This advanced recipe builds on [Selection and position](/editor/custom-ui/selection-and-viewport). It reuses the captured
+selection and sample document. Your application supplies the model response and finding panel; the controller below
+owns saving findings, resolving their anchors, and creating tracked suggestions.
+
+Keep the implementation to three actions: save a finding, show its text, and suggest an edit. Add more controls only when
+your workflow needs them.
+
+Create `src/review-highlights.ts` and `src/review-highlights.css` from the [controller implementation](#controller-implementation)
+at the end of this guide. The integration fragments below belong in your existing selection workflow; they are not a
+second standalone Editor.
+
+Create one controller for each Editor. Pass its extension through `extensions`, not the removed `editorExtensions`
+option. Set `user` to the identity that should author tracked suggestions from this Editor:
+
+```ts
+import { createReviewFindings, isSupersededRefresh } from './review-highlights';
+
+function showRefreshError(error: unknown): void {
+  if (isSupersededRefresh(error)) return;
+  renderFindingPanel([]);
+  showError(error);
+}
+
+const reviewFindings = createReviewFindings({
+  // Called after an edit moves a finding's anchor and the controller re-resolves it.
+  onFindingsChanged: renderFindingPanel,
+  onFindingsError: showRefreshError,
+});
+
+const superdoc = new SuperDoc({
+  selector: '#editor',
+  document: '/contract.docx',
+  extensions: [reviewFindings.extension],
+  user: { name: 'Review assistant', email: 'review-assistant@example.com' },
+  onReady: ({ superdoc }) => {
+    void reviewFindings.refresh(superdoc.activeEditor?.doc).then(renderFindingPanel, showRefreshError);
+  },
+});
+```
+
+Only the newest `refresh()` publishes. `showRefreshError` ignores an older call's expected rejection and reports real
+failures through your application's `showError` handler.
+
+Bind the selection before sending the model request. The controller checks this binding before issuing a write and
+rejects it if the document has changed:
+
+```ts
+const reviewSelection = reviewFindings.bindSelection(capture);
+if (!reviewSelection) {
+  showError('Select plain body text before asking AI.');
+  return;
+}
+```
+
+Do not call `replaceFile()` while `save()`, `suggest()`, or `remove()` is pending. Await pending review actions before
+replacing the document, and prevent new review actions until replacement finishes. Binding rejects stale work before
+dispatch; it does not cancel a write already sent to the Editor. `expectedRevision` guards edits within one document,
+not document identity across replacements.
+
+Every action also carries the `doc` it runs against. Once `refresh()` has named this controller's document, an action
+carrying a different Editor's `doc` is refused: two Editors showing copies of one DOCX share block IDs, so the wrong
+document would accept the target and attach the finding to unrelated content.
+
+`refresh()` may bind a different document — that is how a replacement is adopted — but doing so retires the rows and
+captures from the previous binding. Re-render the panel from the value the new `refresh()` returns; a row or selection
+held across the swap is refused even though it carries the same activation.
+
+Before replacement, call `renderFindingPanel(await reviewFindings.refresh(null))` to clear the panel and retire pending
+reads. After `replaceFile()` resolves, refresh `superdoc.activeEditor?.doc` and pass the result to `renderFindingPanel`,
+using `showRefreshError` for failures. Do not rely on the initial `onReady` callback to load the replacement's findings.
+
+Refresh on both outcomes, not only on success. `replaceFile()` reports its result through `state`: a value other than
+`review-ready` or `editing-ready` means the replacement was rejected and the previous document was reopened and
+remounted. The panel has already been cleared by then, so skipping the refresh leaves that restored document with an
+empty panel and leaves the controller with no document to run its mutation refreshes against.
+
+Save the model's analysis and proposed replacement in one typed payload. `save()` persists the record; it does not
+re-render your panel, so refresh on success and show the message on failure:
+
+```ts
+const doc = superdoc.activeEditor?.doc;
+const result = await reviewFindings.save(doc, reviewSelection, {
+  question,
+  quote: reviewSelection.capture.quotedText,
+  summary: answer.summary,
+  suggestedText: answer.suggestedText,
+});
+
+if (result.success) {
+  void reviewFindings.refresh(doc).then(renderFindingPanel, showRefreshError);
+} else {
+  showError(result.message);
+}
+```
+
+`save()` refuses a selection that the reader edited while the model request was in flight, because the captured offsets
+no longer describe the same text. Ask for the selection again when that happens.
+
+When the reader chooses **Suggest edit**, resolve the finding's current anchor and create a tracked replacement:
+
+```ts
+const result = await reviewFindings.suggest(superdoc.activeEditor?.doc, finding);
+
+if (!result.success) {
+  showError(result.message);
+}
+```
+
+Use `superdoc.ui.metadata.scrollIntoView({ id: finding.id, block: 'center' })` for **Show in document**. Disable that
+control, and **Suggest edit**, while `finding.anchorStatus` is not `resolved`: neither can act on a finding whose anchor
+the document no longer contains.
+
+Also disable **Suggest edit** when `finding.payload.suggestionStatus` is set. The controller saves `pending` before
+requesting the edit, then `created` after it succeeds. This status travels with the exported DOCX, so reopening does not
+offer the same suggestion again. If a request is interrupted, show **Check document** for `pending`: the edit may have
+succeeded even though its final status was not saved. Inspect the document before creating a new finding.
+
+Use the controller's `remove()` method to delete the finding without deleting its text or any tracked suggestion already
+created from it. Like `save()`, it returns a result rather than re-rendering, so refresh the panel the same way:
+
+```ts
+const doc = superdoc.activeEditor?.doc;
+const result = await reviewFindings.remove(doc, finding);
+
+if (result.success) {
+  void reviewFindings.refresh(doc).then(renderFindingPanel, showRefreshError);
+} else {
+  showError(result.message);
+}
+```
+
+The sample accepts one-paragraph body-text selections, and enforces it: `save()` rejects a selection that spans
+paragraphs, because `suggest()` can only replace text inside one. See
+[Store application data in DOCX](/document-api/application-data) for all metadata target rules, collaboration behavior,
+and the application-data trust boundary.
+
+## Verify the result
+
+Save one finding and confirm that a risk mark and panel card appear. Choose **Suggest edit** and confirm that SuperDoc
+replaces the mark with a tracked revision. The finding card should remain available to explain the change.
+
+If the same application action will appear in more than one control, use
+[Custom commands](/editor/custom-ui/custom-commands) to share its behavior and state. Otherwise, return to the
+[Custom UI overview](/editor/custom-ui/overview).
+
+## Controller implementation
+
+The controller uses `defineSuperDocExtension()` to register its visual layer and document lifecycle handlers. It validates
+stored data, re-resolves anchors after edits, and rejects stale selections. Keep these checks when adapting it.
+
+Save as `src/review-highlights.ts`:
 
 <include>../../../../snippets/editor/review-highlights.ts</include>
 
-Copy a DOCX to your app's public directory as `contract.docx`. Select text in one paragraph before choosing **Attach finding**.
+Save as `src/review-highlights.css`:
 
-## Refresh from current anchors
-
-Do not keep the selection target used by `metadata.attach()`. That target is a snapshot from attachment time. Document edits can move the anchor.
-
-The example calls `metadata.resolve({ id })` whenever it rebuilds the layer. An unresolved entry remains durable metadata but contributes no visual target. Your interface can report that entry as orphaned instead of highlighting stale coordinates.
-
-Use `replace()`, not `add()`, when your array is the complete set of findings. `replace()` removes visuals for withdrawn or orphaned findings. `add()` would leave those old targets painted.
-
-## Repaint at each lifecycle boundary
-
-The example refreshes after five events:
-
-1. A successful metadata attachment.
-2. A successful withdrawal.
-3. A document mutation that may move an anchor.
-4. A new document source completing inside the same SuperDoc instance.
-5. Extension activation, resolving against whichever document is now open.
-
-Metadata attachment is not a text mutation, so an `onMutation()` listener alone does not repaint a newly attached finding. Refresh explicitly after the receipt succeeds.
-
-Each refresh re-resolves every stored finding, so the example coalesces mutation-driven refreshes into one per animation frame rather than running that walk on every keystroke. It also filters to `affects: ['text', 'block']`, since comment and tracked-change mutations do not move a metadata anchor.
-
-Hold that frame open until the refresh settles. On a document with enough findings for one pass to outlast a frame, releasing it when the callback fires would start a fresh `metadata.list()` and its N `metadata.resolve()` calls every frame while the previous pass is still running. A sequence guard discards the stale results but never cancels the requests, so they accumulate into the load the coalescing exists to prevent. The example keeps an in-flight marker and queues at most one follow-up, so mutations arriving mid-refresh cost one more pass rather than one per mutation.
-
-Clear the store and the layer when the extension activates. Targets held from an earlier document were resolved against that document's blocks, and a block id can collide with a different block in the replacement, which paints a finding over unrelated text. The example drops them on activation and resolves again from the current source, so a source completion that never arrives leaves nothing painted rather than leaving stale highlights indefinitely.
-
-The extension owns the visual handle and its subscriptions. Destroying SuperDoc disposes the visual layer. If your application replaces the complete SuperDoc instance, create the extension with the replacement and refresh after its document is ready.
-
-<Callout variant='warning' title='Collaborative documents need an application-owned refresh'>
-  `onMutation()` observes local commits. A remote apply from another client does not currently reach an extension
-  mutation handler, so a finding can stay painted over text another client edited, or stay visible after another client
-  removes it, until a local mutation triggers the next refresh. Until a public remote signal exists, refresh from
-  whatever your application already knows about collaboration activity, or restrict this workflow to single-client
-  editing.
-</Callout>
-
-## Handle failures without inventing positions
-
-Anchored metadata currently accepts non-empty text ranges within one body paragraph, and rejects a range that overlaps another entry's anchor. Anchors are invisible in the document, so a reader cannot tell why a selection is unavailable. The example preflights with `metadata.list({ within: target })` and names the entry in the way, rather than surfacing a bare `INVALID_TARGET`. Check the attachment receipt regardless before adding a finding to application state.
-
-Gate the attach control on the same rule rather than on the presence of a target. `capture()` returns a `selectionTarget` for a collapsed caret, for a selection spanning paragraphs, and for a selection inside a header, footer, note, or textbox. `attach()` rejects all of them: the first two cannot be represented as a single hidden inline SDT, and the adapter resolves the paragraph against `document.xml`, so a non-body block id fails with `TARGET_NOT_FOUND`. The example requires text endpoints, one shared block id, a non-empty range, and the body story.
-
-Reject tracked-space targets too. A selection crossing deletion-side tracked text carries `coordinateSpace: 'tracked'`, and those offsets count characters the anchor rewrite cannot see, since it searches visible `w:t` runs only. The same numbers therefore mean different positions on each side: the call either fails or stores a durable finding over the wrong text. Check `coordinateSpace` before writing, not only before painting.
-
-Metadata ids are unique document-wide. `attach()` rejects an id that already exists under **any** namespace, and it checks that before considering the namespace at all, so the example lists twice: namespace-filtered for the rows it displays and highlights, and unfiltered to decide whether the id is free. Withdraw follows the rows this namespace owns; Attach follows whether the id is taken anywhere. Both come from the listed metadata rather than from which control was clicked last, so a DOCX opened with the finding already present starts in the correct state.
-
-That check narrows the failure, it does not remove it. `attach()` applies a second uniqueness rule the public API cannot see: an anchor SDT whose payload record was lost, through an external edit of the storage part, still occupies its id while appearing in no `list()` result. A fixed id can therefore collide with an orphan nobody can enumerate. Treat the attach receipt as the authority and surface its failure, as the example does, and prefer caller-generated unique ids over a fixed one in real integrations.
-
-Serialize the writes. The browser Document API is worker-backed, so two clicks before the first settles issue two concurrent attachments with the same id: one wins, the other returns `INVALID_INPUT`, and the status ends up reporting failure for a finding that exists. The example holds both controls disabled from the moment a write starts until its refresh settles.
-
-Generation-scope them as well. Both mutations await a read before writing, and the `doc` facade follows the host into a replacement document, so a continuation that resumes after `replaceFile()` would carry the previous document's intent into the new one: withdrawing its same-id finding, or anchoring to a block id that collides. The example captures a source generation before the first await and abandons the write when it no longer matches. Retiring reads is not enough, because the write is the part that does damage.
-
-Pass the read's revision to the write. Every discovery result carries `evaluatedRevision`, and every mutation accepts `expectedRevision` through its options, so the example hands the preflight's revision to `attach()` and the ownership read's revision to `remove()`. An edit landing between the read and the write then fails the guard instead of applying a target the document has moved past.
-
-<Callout variant='warning' title='A document swap is a different race from an edit'>
-  `expectedRevision` covers edits to the same document. It does not cover `replaceFile()` landing during the write's own
-  await, because the replacement carries its own revision sequence and the request commits against it. If your
-  application replaces documents while review actions are in flight, block the swap until pending writes settle. The
-  example does not swap documents, so its exposure is the window an embedding application introduces.
-</Callout>
-
-<Callout variant='warning' title='Attaching rewrites the runs it wraps'>
-  Anchoring splits the containing `w:r` into up to three runs and rebuilds them, and the rebuilt runs carry no `w:rPr`.
-  Attaching over formatted text therefore drops that run's bold, font, language, and character-style properties. A range
-  spanning two runs is rejected outright with `TARGET_NOT_FOUND`, so the single-paragraph rule above is necessary but
-  not sufficient. Until anchoring preserves and spans existing runs, use this pattern on plain body text, and treat a
-  selection whose formatting matters as unsupported rather than assuming the round trip is lossless.
-</Callout>
-
-Clear the panel and controls on activation as well, not just the painted targets. The refresh that repopulates them is asynchronous and can fail, and until it lands the rows would describe the previous document while the controls acted on its state.
-
-`remove()` takes an id and nothing else, so it will delete whatever currently holds that id. If your entry was withdrawn elsewhere and the id reused under another namespace, removing by id alone destroys that other application's metadata. Re-read ownership immediately before removing and fail closed when the id is no longer yours, as the example does. That narrows the window rather than closing it: the API has no transactional guard on the operation, so treat a document with several metadata writers as a case needing coordination outside SuperDoc.
-
-Do not rebuild a failed anchor from numeric ProseMirror positions or renderer DOM attributes. Keep the durable entry visible in your review panel, mark it as unresolved, and let the reviewer withdraw or re-anchor it.
-
-## Migrate from `editor.state.doc`
-
-Do not translate ProseMirror mark traversal node for node. First identify what the mark represented:
-
-- Store application-owned identity and payload with `doc.metadata.attach()`.
-- Read entries with `metadata.list()` and `metadata.get()`.
-- Resolve the current public target with `metadata.resolve()`.
-- Paint that target with `ctx.visuals.highlight()`.
-
-Replace the v1 `Extensions` helper and `editorExtensions` configuration with an extension created by `defineSuperDocExtension()` and passed through the v2 `extensions` configuration.
-
-There is no public ProseMirror document tree in v2. A workflow that depends on arbitrary nodes, marks, or numeric document positions must be redesigned around Document API addresses and targets.
-
-<Callout variant='success' title='Verification target'>
-  Select text in one paragraph and attach the finding. The selected text should gain the highlight class, the list
-  should show the caller-owned ID, and the status should report success. Withdraw the finding. Its metadata row and
-  visible highlight should both disappear. After exporting and reopening the DOCX, activate the extension and refresh
-  the metadata list to repaint the stored findings.
-</Callout>
-
-Continue with [Selection and viewport](/editor/custom-ui/selection-and-viewport) for public target geometry, or [Custom commands](/editor/custom-ui/custom-commands) to expose review actions through the shared command catalog.
+<include>../../../../snippets/editor/review-highlights.css</include>

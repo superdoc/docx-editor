@@ -1,0 +1,16 @@
+{
+  "schema": "superdoc.ooxml-fixture.manifest.v1",
+  "fixture": "collaboration-sample",
+  "documents": [
+    {
+      "file": "collaboration-sample.docx",
+      "parts": {
+        "[Content_Types].xml": "common/[Content_Types].xml",
+        "_rels/.rels": "common/_rels/.rels",
+        "word/_rels/document.xml.rels": "common/word/_rels/document.xml.rels",
+        "word/document.xml": "common/word/document.xml",
+        "word/settings.xml": "control/word/settings.xml"
+      }
+    }
+  ]
+}

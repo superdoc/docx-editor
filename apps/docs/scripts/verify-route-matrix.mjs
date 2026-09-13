@@ -14,6 +14,7 @@
  * Usage: node scripts/verify-route-matrix.mjs [origin]
  */
 import { readFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { archiveHost } from './v1-routes.mjs';
 
@@ -102,10 +103,12 @@ async function probeAll(dispositions) {
  * the route. A config change would otherwise turn this exception back into a
  * failure with nothing about the routes having changed.
  */
-const INTENDED_MERGES = new Map([
+export const INTENDED_MERGES = new Map([
   // The V1 security guide moved into the resources section, and its old path
   // was kept pointing at the new page rather than retired.
   ['/resources/security', ['/guides/general/security', '/resources/security']],
+  // The React setup guide was folded into the shared custom UI setup page.
+  ['/editor/custom-ui/controller-setup', ['/editor/custom-ui/controller-setup', '/editor/custom-ui/react-setup']],
 ]);
 
 /**
@@ -121,7 +124,7 @@ const INTENDED_MERGES = new Map([
  * redirects, which legitimately merge section indexes onto a first article, and
  * this repository cannot change that.
  */
-function collapsedRoutes(results) {
+export function collapsedRoutes(results) {
   const byLanding = new Map();
   for (const { landed, source, kind } of results) {
     if (!landed || kind !== 'v2') continue;
@@ -136,25 +139,30 @@ function collapsedRoutes(results) {
   });
 }
 
-const { dispositions } = JSON.parse(await readFile(dispositionsPath, 'utf8'));
-process.stdout.write(`Probing ${dispositions.length} V1 routes against ${origin}\n`);
+async function run() {
+  const { dispositions } = JSON.parse(await readFile(dispositionsPath, 'utf8'));
+  process.stdout.write(`Probing ${dispositions.length} V1 routes against ${origin}\n`);
 
-const results = await probeAll(dispositions);
-const failures = results.filter((result) => result.failure);
-const collapsed = collapsedRoutes(results);
+  const results = await probeAll(dispositions);
+  const failures = results.filter((result) => result.failure);
+  const collapsed = collapsedRoutes(results);
 
-for (const { source, kind, landed, failure } of failures) {
-  process.stdout.write(`  ${kind} ${source} -> ${landed ?? 'no response'}: ${failure}\n`);
+  for (const { source, kind, landed, failure } of failures) {
+    process.stdout.write(`  ${kind} ${source} -> ${landed ?? 'no response'}: ${failure}\n`);
+  }
+  for (const [landing, sources] of collapsed) {
+    process.stdout.write(`  ${sources.length} routes collapse onto ${landing}: ${sources.join(', ')}\n`);
+  }
+
+  const archived = results.filter((result) => result.kind === 'archive').length;
+  const retired = results.filter((result) => result.kind === 'retired').length;
+  process.stdout.write(
+    `\n${results.length - failures.length}/${results.length} routes land where the registry says ` +
+      `(${archived} on the archive, ${retired} retired, ${results.length - archived - retired} here)\n`,
+  );
+
+  if (failures.length > 0 || collapsed.length > 0) process.exit(1);
 }
-for (const [landing, sources] of collapsed) {
-  process.stdout.write(`  ${sources.length} routes collapse onto ${landing}: ${sources.join(', ')}\n`);
-}
 
-const archived = results.filter((result) => result.kind === 'archive').length;
-const retired = results.filter((result) => result.kind === 'retired').length;
-process.stdout.write(
-  `\n${results.length - failures.length}/${results.length} routes land where the registry says ` +
-    `(${archived} on the archive, ${retired} retired, ${results.length - archived - retired} here)\n`,
-);
-
-if (failures.length > 0 || collapsed.length > 0) process.exit(1);
+const invokedScript = process.argv[1] ? resolve(process.argv[1]) : undefined;
+if (invokedScript === fileURLToPath(import.meta.url)) await run();

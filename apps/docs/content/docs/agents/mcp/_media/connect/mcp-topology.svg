@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="300" viewBox="0 0 960 300" role="img" aria-labelledby="title description">
+  <title id="title">SuperDoc MCP server topology</title>
+  <desc id="description">A coding agent talks to the SuperDoc MCP server over stdio. The server keeps each open DOCX as an in-memory session backed by the document engine, and reads and writes DOCX files on local disk only when the agent opens or saves.</desc>
+  <rect width="960" height="300" rx="18" fill="#fafafa"/>
+  <g font-family="Inter, Arial, sans-serif" fill="#212121">
+    <rect x="40" y="82" width="222" height="136" rx="9" fill="#ffffff" stroke="#dbdbdb"/>
+    <text x="151" y="128" text-anchor="middle" font-size="16" font-weight="700">Coding agent</text>
+    <text x="151" y="154" text-anchor="middle" font-size="13" fill="#5a5a61">Claude Code, Cursor,</text>
+    <text x="151" y="172" text-anchor="middle" font-size="13" fill="#5a5a61">Windsurf, Claude Desktop</text>
+    <text x="151" y="242" text-anchor="middle" font-size="16" font-weight="700">Spawns the server</text>
+
+    <path d="M286 138h70" stroke="#7da2ff" stroke-width="3"/>
+    <path d="m346 129 12 9-12 9" fill="none" stroke="#7da2ff" stroke-width="3"/>
+    <path d="M356 162h-70" stroke="#7da2ff" stroke-width="3"/>
+    <path d="m296 153-12 9 12 9" fill="none" stroke="#7da2ff" stroke-width="3"/>
+    <text x="321" y="122" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="11" fill="#5a5a61">tools/call</text>
+    <text x="321" y="188" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="11" fill="#5a5a61">stdio</text>
+
+    <rect x="374" y="48" width="250" height="204" rx="9" fill="#16181d" stroke="#343741" stroke-width="2"/>
+    <circle cx="397" cy="70" r="4" fill="#7da2ff"/>
+    <text x="413" y="75" font-family="JetBrains Mono, monospace" font-size="12" fill="#a9bfff">@superdoc/mcp</text>
+    <text x="402" y="115" font-family="JetBrains Mono, monospace" font-size="14" fill="#ffffff">superdoc_open</text>
+    <text x="402" y="145" font-family="JetBrains Mono, monospace" font-size="14" fill="#ffffff">superdoc_inspect</text>
+    <text x="402" y="175" font-family="JetBrains Mono, monospace" font-size="14" fill="#ffffff">superdoc_perform_action</text>
+    <text x="402" y="205" font-family="JetBrains Mono, monospace" font-size="14" fill="#ffffff">superdoc_save</text>
+    <text x="402" y="235" font-family="JetBrains Mono, monospace" font-size="12" fill="#8b90a0">sessions in memory</text>
+    <text x="499" y="278" text-anchor="middle" font-size="16" font-weight="700">Edits a live session</text>
+
+    <path d="M642 138h70" stroke="#7da2ff" stroke-width="3"/>
+    <path d="m702 129 12 9-12 9" fill="none" stroke="#7da2ff" stroke-width="3"/>
+    <path d="M712 162h-70" stroke="#7da2ff" stroke-width="3"/>
+    <path d="m652 153-12 9 12 9" fill="none" stroke="#7da2ff" stroke-width="3"/>
+    <text x="677" y="122" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="11" fill="#5a5a61">save</text>
+    <text x="677" y="188" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="11" fill="#5a5a61">open</text>
+
+    <rect x="730" y="82" width="190" height="136" rx="9" fill="#ffffff" stroke="#dbdbdb"/>
+    <path d="M790 112h71l31 31v50h-102z" fill="#eef4ff" stroke="#1355ff" stroke-width="2"/>
+    <path d="M861 112v31h31" fill="none" stroke="#1355ff" stroke-width="2"/>
+    <text x="837" y="169" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="15" font-weight="700" fill="#0f44cc">DOCX</text>
+    <text x="825" y="242" text-anchor="middle" font-size="16" font-weight="700">Files on local disk</text>
+  </g>
+</svg>

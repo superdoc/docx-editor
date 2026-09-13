@@ -23,6 +23,8 @@ export type PageState = {
    *  Used when starting a mid-page region so the new section begins below
    *  all column content, not just the current column's cursor. */
   maxCursorY: number;
+  /** Committed paragraph footprint, excluding speculative before/after spacing. */
+  committedBodyBottom?: number;
   /**
    * SD-3049: Page-level footnote reserve already baked into `contentBottom`
    * via `getActiveBottomMargin`. The block-aware break decision compares
@@ -68,6 +70,7 @@ export type PaginatorOptions = {
     prefixFragments: readonly Page['fragments'][number][];
     cursorY: number;
     maxCursorY: number;
+    committedBodyBottom?: number;
     columnIndex: number;
     trailingSpacing: number;
     lastParagraphStyleId?: string;
@@ -93,6 +96,8 @@ export type PaginatorOptions = {
    * created. Defaults to 0 when not provided.
    */
   getFootnoteReserveForPage?: (pageIndex: number) => number;
+  /** Coupled note-only continuation pages are real content before note injection. */
+  keepNoteOnlyPages?: boolean;
 };
 
 export class PaginationEarlyStop extends Error {
@@ -125,7 +130,11 @@ export function createPaginator(opts: PaginatorOptions) {
   const pages: Page[] = [];
 
   const pruneTrailingEmptyPages = (): void => {
-    while (pages.length > 0 && pages[pages.length - 1].fragments.length === 0) {
+    while (
+      pages.length > 0 &&
+      pages[pages.length - 1].fragments.length === 0 &&
+      !(opts.keepNoteOnlyPages && (pages[pages.length - 1].footnoteReserved ?? 0) > 0)
+    ) {
       pages.pop();
       states.pop();
     }
@@ -203,6 +212,7 @@ export function createPaginator(opts: PaginatorOptions) {
       lastParagraphStyleId: undefined,
       lastParagraphContextualSpacing: false,
       maxCursorY: topMargin,
+      ...(opts.keepNoteOnlyPages ? { committedBodyBottom: topMargin } : {}),
       pageFootnoteReserve,
       footnoteDemandThisPage: 0,
       footnoteRefsThisPage: 0,
@@ -213,6 +223,7 @@ export function createPaginator(opts: PaginatorOptions) {
       state.page.fragments.push(...initial.prefixFragments.map((fragment) => ({ ...fragment })));
       state.cursorY = initial.cursorY;
       state.maxCursorY = initial.maxCursorY;
+      if (initial.committedBodyBottom != null) state.committedBodyBottom = initial.committedBodyBottom;
       state.columnIndex = initial.columnIndex;
       state.trailingSpacing = initial.trailingSpacing;
       state.lastParagraphStyleId = initial.lastParagraphStyleId;

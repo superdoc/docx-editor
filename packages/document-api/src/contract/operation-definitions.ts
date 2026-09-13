@@ -111,6 +111,7 @@ export const V1_RUNTIME_UNAVAILABLE_OPERATION_IDS = [
   'lists.remove',
   'format.paragraph.setMarkRunProps',
   'tables.moveRow',
+  'tables.moveColumn',
 ] as const;
 
 const V2_BACKED_ONLY_DESCRIPTION_NOTE =
@@ -1088,10 +1089,22 @@ export const OPERATION_DEFINITIONS = {
     referenceGroup: 'format',
     skipAsATool: true,
   },
+  'blocks.findText': {
+    memberPath: 'blocks.findText',
+    description:
+      'Find top-level body blocks containing a literal case-insensitive substring. Matches flattened block text, coalescing repeated hits and nested table paragraphs into one block. Scans at most 20,000 blocks inside the document host and returns compact previews without transferring full-text pages.',
+    expectedResult:
+      'Returns matching-block total within the scan, limited matches with zero-based ordinals and 100-character previews, firstMatchOrdinal even for limit:0, scannedBlocks, truncated, and revision. A failed read retains completed pages and reports scanError; revision is unknown if no page succeeded. Whitespace and Unicode are not normalized.',
+    requiresDocumentContext: true,
+    metadata: readOperation({ throws: ['INVALID_INPUT'] }),
+    referenceDocPath: 'blocks/find-text.mdx',
+    referenceGroup: 'blocks',
+    skipAsATool: true,
+  },
   'blocks.list': {
     memberPath: 'blocks.list',
     description:
-      'List top-level blocks in document order with IDs, types, text previews, and optional full text when includeText:true. Supports pagination via offset/limit, optional nodeType filtering, single-story scoping via `in: <StoryLocator>`, and final/original/redline projection of numbering metadata without changing block membership.',
+      'List top-level blocks in document order with IDs, types, text previews, and optional full text when includeText:true. Supports pagination via offset/limit after optional nodeTypes, nodeIds, and literal textSearch filtering, single-story scoping via `in: <StoryLocator>`, and final/original/redline projection of numbering metadata without changing block membership.',
     expectedResult:
       'Returns a BlocksListResult with total block count, an ordered array of block entries, the effective numbering reviewMode, and the current document revision.',
     requiresDocumentContext: true,
@@ -3352,6 +3365,32 @@ export const OPERATION_DEFINITIONS = {
     referenceGroup: 'tables',
     intentGroup: 'table',
     intentAction: 'delete_column',
+  },
+  'tables.moveColumn': {
+    memberPath: 'tables.moveColumn',
+    description: v2BackedOnlyDescription(
+      'Move a column to a new position within the same table. Direct mode only; tables with vertical merges, nested tables, or irregular column coverage are rejected, and tracked (suggesting) mode is not supported yet.',
+    ),
+    expectedResult:
+      'Returns a TableMutationResult receipt; reports NO_OP if the column is already at the requested position.',
+    requiresDocumentContext: true,
+    metadata: mutationOperation({
+      idempotency: 'conditional',
+      supportsDryRun: true,
+      supportsTrackedMode: false,
+      possibleFailureCodes: [
+        'TARGET_NOT_FOUND',
+        'INVALID_TARGET',
+        'NO_OP',
+        'CAPABILITY_UNAVAILABLE',
+        'INVALID_CONTEXT',
+      ],
+      throws: [...T_NOT_FOUND_COMMAND, 'INVALID_TARGET'],
+    }),
+    referenceDocPath: 'tables/move-column.mdx',
+    referenceGroup: 'tables',
+    intentGroup: 'table',
+    intentAction: 'move_column',
   },
   'tables.setColumnWidth': {
     memberPath: 'tables.setColumnWidth',

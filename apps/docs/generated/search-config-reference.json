@@ -14,7 +14,7 @@
       "name": "replaceControls",
       "type": "boolean",
       "required": false,
-      "description": "Show replace controls (default: true). This changes the built-in UI only; it does not authorize or disable `editor.ui.search.replace()`.",
+      "description": "Show replace controls (default: true). This changes the built-in UI only; it does not authorize or disable `superdoc.ui.search.replace()`.",
       "group": "other"
     },
     {

@@ -6,7 +6,14 @@
  * matching Microsoft Word's behavior.
  */
 
-import { getColumnGeometry, getColumnX, hasGenuinelyUnequalExplicitColumnWidths } from '@superdoc/contracts';
+import {
+  findColumnContaining,
+  getColumnAtX,
+  getColumnGeometry,
+  getColumnX,
+  hasGenuinelyUnequalExplicitColumnWidths,
+} from '@superdoc/contracts';
+import type { BaseDirection } from '@superdoc/contracts';
 
 // ============================================================================
 // Types and Interfaces
@@ -657,6 +664,16 @@ export interface SectionColumnLayout {
    */
   gaps?: number[];
   equalWidth?: boolean;
+  /**
+   * Section page direction (`w:sectPr/w:bidi`) and the content width it was normalized against.
+   *
+   * Declared here — and not left to the structural subset above — because balancing REBUILDS the
+   * geometry and then overwrites every fragment's `x` from it. A balanced page that dropped these
+   * would be laid out left-to-right while every earlier page of the same RTL section was laid out
+   * right-to-left, so the last page of a two-column Hebrew section would visibly flip.
+   */
+  direction?: BaseDirection;
+  contentWidth?: number;
 }
 
 export interface BalanceSectionOnPageArgs {
@@ -692,6 +709,52 @@ export interface BalanceSectionOnPageArgs {
    * every multi-line paragraph is splittable. (SD-3359)
    */
   keepLinesBlockIds?: Set<string>;
+}
+
+const COLUMN_EDGE_EPSILON = 0.01;
+
+function fragmentColumnIndex(
+  fragment: BalancingFragment,
+  geometry: ReturnType<typeof getColumnGeometry>,
+  originX: number,
+): number {
+  const recorded = (fragment as BalancingFragment & { columnIndex?: number }).columnIndex;
+  if (typeof recorded === 'number' && Number.isInteger(recorded) && recorded >= 0 && recorded < geometry.length) {
+    return recorded;
+  }
+
+  const x = fragment.x - originX;
+  const width = Number.isFinite(fragment.width) && fragment.width > 0 ? fragment.width : 0;
+
+  for (const column of geometry) {
+    if (Math.abs(x - column.x) <= COLUMN_EDGE_EPSILON) return column.index;
+  }
+  for (const column of geometry) {
+    if (Math.abs(x + width - (column.x + column.width)) <= COLUMN_EDGE_EPSILON) return column.index;
+  }
+
+  const containing = findColumnContaining(geometry, x);
+  if (containing !== null) {
+    const column = geometry.find((candidate) => candidate.index === containing);
+    if (column && width <= column.width + COLUMN_EDGE_EPSILON) return containing;
+  }
+
+  let bestIndex: number | null = null;
+  let bestOverlap = 0;
+  for (const column of geometry) {
+    const overlap = Math.min(x + width, column.x + column.width) - Math.max(x, column.x);
+    if (overlap > bestOverlap) {
+      bestOverlap = overlap;
+      bestIndex = column.index;
+    }
+  }
+  return bestIndex ?? getColumnAtX(geometry, fragment.x, originX);
+}
+
+function setRecordedColumnIndex(fragment: BalancingFragment, columnIndex: number): void {
+  if ('columnIndex' in fragment) {
+    (fragment as BalancingFragment & { columnIndex: number }).columnIndex = columnIndex;
+  }
 }
 
 /**
@@ -783,12 +846,24 @@ export function balanceSectionOnPage(args: BalanceSectionOnPageArgs): { maxY: nu
     precedingHeight: precedingHeightBeforeTable,
   });
 
-  // Order fragments in document order: by current column (x → left-to-right),
-  // then by y within each column. During unbalanced layout the paginator fills
-  // column 0 top-to-bottom, then column 1, etc. — so (x, y) preserves the
-  // original sequence.
+  const balancedGeometry = getColumnGeometry({
+    count: columnCount,
+    gap: columnGap,
+    width: columnWidth,
+    ...(Array.isArray(sectionColumns.widths) ? { widths: sectionColumns.widths } : {}),
+    ...(Array.isArray(sectionColumns.gaps) ? { gaps: sectionColumns.gaps } : {}),
+    ...(sectionColumns.direction !== undefined ? { direction: sectionColumns.direction } : {}),
+    ...(sectionColumns.contentWidth !== undefined ? { contentWidth: sectionColumns.contentWidth } : {}),
+  });
+
+  // Reconstruct document order from the owning column, then the vertical position inside it. Raw x
+  // is not a column key: indents, positioned frames, and over-wide tables can move a fragment's
+  // origin without moving the fragment to another column.
   const ordered = [...sectionFragments].sort((a, b) => {
-    if (a.x !== b.x) return a.x - b.x;
+    const columnDifference =
+      fragmentColumnIndex(a, balancedGeometry, args.margins.left) -
+      fragmentColumnIndex(b, balancedGeometry, args.margins.left);
+    if (columnDifference !== 0) return columnDifference;
     return a.y - b.y;
   });
 
@@ -858,13 +933,6 @@ export function balanceSectionOnPage(args: BalanceSectionOnPageArgs): { maxY: nu
   // Per-column x from the resolved geometry, not a uniform stride. SD-2629's core case is equal
   // widths with NON-uniform gaps (e.g. F9), which the equal-width guard above still admits, so
   // columnIndex * (width + gap) would mis-place later columns. Equal gaps reduce to the old stride.
-  const balancedGeometry = getColumnGeometry({
-    count: columnCount,
-    gap: columnGap,
-    width: columnWidth,
-    ...(Array.isArray(sectionColumns.widths) ? { widths: sectionColumns.widths } : {}),
-    ...(Array.isArray(sectionColumns.gaps) ? { gaps: sectionColumns.gaps } : {}),
-  });
   const columnX = (columnIndex: number): number => getColumnX(balancedGeometry, columnIndex, args.margins.left);
 
   const colCursors = new Array<number>(columnCount).fill(sectionTopY);
@@ -873,6 +941,7 @@ export function balanceSectionOnPage(args: BalanceSectionOnPageArgs): { maxY: nu
     const f = ordered[i];
     const block = contentBlocks[i];
     const col = result.columnAssignments.get(block.blockId) ?? 0;
+    setRecordedColumnIndex(f, col);
     f.x = columnX(col);
     f.y = colCursors[col];
     f.width = columnWidth;
@@ -900,6 +969,7 @@ export function balanceSectionOnPage(args: BalanceSectionOnPageArgs): { maxY: nu
         continuesFromPrev: true,
         continuesOnNext: originalContinuesOnNext,
       } as BalancingFragment;
+      setRecordedColumnIndex(secondHalf, col + 1);
       // Remeasured fragments render their own `lines` wholesale (fromLine/toLine are
       // ignored by the resolve stage then), so the halves must each carry ONLY their
       // slice or both columns render the entire paragraph.

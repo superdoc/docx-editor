@@ -5,7 +5,14 @@
  * resolved getter exposes the canonical fields and the deprecated booleans
  * retained for existing custom interfaces.
  */
-import type { CommentInteractionConfig, CommentInteractionLevel, Config, InteractionConfig, SuperDoc } from 'superdoc';
+import type {
+  CommentInteractionConfig,
+  CommentInteractionLevel,
+  Config,
+  InteractionConfig,
+  SuperDoc,
+  TrackChangesInteractionConfig,
+} from 'superdoc';
 
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
 type AssertEqual<A, B> = Equal<A, B> extends true ? true : never;
@@ -25,6 +32,7 @@ const _interactionConfig: InteractionConfig = {
 
 const _commentInteractionLevel: CommentInteractionLevel = 'resolve';
 const _commentInteractionConfig: CommentInteractionConfig = { level: 'write' };
+const _trackChangesInteractionConfig: TrackChangesInteractionConfig = { allowDecisions: false };
 
 const _invalidLevel: Config = {
   selector: '#editor',
@@ -43,6 +51,7 @@ void [
   _interactionConfig,
   _commentInteractionLevel,
   _commentInteractionConfig,
+  _trackChangesInteractionConfig,
   _invalidLevel,
   _levelType,
   _decisionType,

@@ -15,7 +15,7 @@ const ADVERTISED_TOOLS = new Set(['superdoc_inspect', 'superdoc_perform_action']
 // deliberately absent: it neither needs a change mode nor counts as a mutation.
 const MUTATING_TOOLS = new Set(['superdoc_perform_action']);
 
-// `superdoc_perform_action` advertises `changeMode` once for all forty actions,
+// `superdoc_perform_action` advertises `changeMode` once for every action,
 // but only some of them honor it — the rest ignore the argument and edit
 // directly. Passing `changeMode: 'tracked'` to one of those looks compliant and
 // silently produces an untracked edit, so this workflow allows only the actions

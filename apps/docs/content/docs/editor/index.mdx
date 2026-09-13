@@ -1,41 +1,52 @@
 ---
 title: SuperDoc Editor
 navTitle: Overview
-description: Understand how SuperDoc edits DOCX files before you add the Editor to your application.
+description: Understand the challenge of editing DOCX on the web and how SuperDoc approaches it with an OOXML-backed document model.
 ---
 
-SuperDoc adds DOCX editing to your web application. People work in a document editor while your application controls
-where files come from, where they are saved, and which workflows surround them.
+SuperDoc is a document editor you embed in your web application. It lets people open, edit, and export DOCX files,
+using the document's underlying format as the foundation for editing.
 
-## Keep DOCX as the document
+## A document is more than its text
 
-A DOCX is a package of XML parts, relationships, and assets. An HTML-first editor converts that package into another
-format for editing, then reconstructs a DOCX for export.
+A Word document can contain styles, page sections, headers, footers, comments, and tracked changes. Those details are
+stored in OOXML: the XML parts, relationships, and assets packaged inside a DOCX file.
 
-SuperDoc takes a different path. It reads the document's OOXML package into editable state and writes changes back to
-OOXML without converting the document to HTML. The browser DOM is a rendered view, not the document format.
+Bringing that document into a web editor is not just a matter of displaying its text. The editor must represent those
+details while people work, then write their changes back to a DOCX.
 
-| Approach          | Editing model               | DOCX output                         |
-| ----------------- | --------------------------- | ----------------------------------- |
-| HTML-first editor | Converted HTML              | Reconstructed from HTML             |
-| SuperDoc          | OOXML-backed document state | Changes written back to the package |
+When an editor converts DOCX into HTML or another editing format, it has to translate between two document models.
+Details that the editing model cannot represent may be changed or dropped when the DOCX is rebuilt for export.
 
-## Fit the Editor into your application
+## Edit the document, not an HTML conversion
 
-The browser Editor mounts inside your application and needs no SuperDoc server to render or edit a document. Your
-application chooses the document source, storage, authentication, and collaboration provider.
+SuperDoc reads the OOXML package into editable document state. The browser renders a view of that state; edits update
+it, and export writes the changes back into the OOXML package.
 
-People edit through the browser UI. Application code can use the Document API against the same open document. For
-server-side automation and agent workflows, SuperDoc provides headless tools built on the same OOXML-backed model.
+The browser DOM is a view of the document, not the source used to reconstruct it. This avoids a DOCX-to-HTML-to-DOCX
+conversion step and keeps document structure at the center of editing.
 
-SuperDoc is open source under AGPLv3. A commercial license is available for proprietary applications. See
-[Licensing](/resources/license) for the requirements of each option.
+For the engine architecture, see [How SuperDoc works](/resources/how-superdoc-works).
+
+## The Editor in your application
+
+The Editor runs in the browser and needs no SuperDoc server to render or edit a document. It provides built-in controls
+for editing and review. You can configure those controls or build your own UI through the public APIs.
+
+People edit through the interface; application code can read and change the same open document through the Document
+API. Your application decides where documents come from, who can access them, and where changes are saved.
 
 ## What changed in v2?
 
-SuperDoc v1 used ProseMirror as its authoritative browser editing model. V2 uses an OOXML-backed document model across
-browser and headless workflows. If you already use v1, start with [Migrate from v1](/editor/migrate-from-v1/overview).
+SuperDoc v1 used ProseMirror as its authoritative browser editing model. V2 uses OOXML-backed document state instead,
+with the same document engine and Document API contract across browser and supported headless workflows.
+
+This changes how application code interacts with the document: use the public Document API rather than ProseMirror
+state or commands. If you already use v1, start with [Migrate from v1](/editor/migrate-from-v1/overview).
 
 ## Open your first document
 
-[Follow the Quickstart](/editor/quickstart) to install the Editor, open a DOCX, make an edit, and export the result.
+[Follow the Quickstart](/editor/quickstart) to open a sample DOCX, make an edit, and download the result.
+
+SuperDoc is open source under AGPLv3. A commercial license is available for proprietary applications. See
+[Licensing](/resources/license) for the requirements of each option.

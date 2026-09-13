@@ -1,33 +1,73 @@
 ---
-title: Control zoom and document state
-navTitle: Zoom and document
-description: Build fit-to-width, manual zoom, dirty-state, and export controls around the active document.
+title: Build application document controls
+navTitle: Document controls
+description: Add application-owned zoom and DOCX download while SuperDoc keeps the remaining built-in controls.
 ---
 
-Use `ui.zoom` for viewport scale and `ui.document` for readiness, mode, dirty state, export, and file replacement. These handles keep application chrome synchronized with the active Editor.
+Zoom and download apply to the document or its view, not the current selection. Put them in your application header,
+observe the Editor state that keeps them current, and leave the rest of the built-in toolbar in place.
 
-Complete [Custom UI controller setup](/editor/custom-ui/controller-setup) first. This example expects `/contract.docx` to be available from your application.
+## Try document-wide controls
 
-## Add document controls
+1. Use **Zoom out**, **Zoom in**, and **Fit width**. The document and percentage update together.
+2. Choose **Download DOCX**. The status reports when the export is ready.
 
-Create zoom, export, and status controls next to the Editor:
+<CustomDocumentControlsDemo />
+
+The application owns these document-wide controls. SuperDoc still renders the Editor and the remaining toolbar without
+its Zoom control.
+
+## Build zoom and download controls
+
+Start from [Custom UI setup](/editor/custom-ui/controller-setup) with `/sample.docx` in your application's `public`
+directory.
+
+The examples below use manual zoom. In `superdoc@2.12.0`, automatic Fit width can shrink the document to 10% after
+resizing. The demo above includes a docs-only fitting helper; the copied examples do not depend on it.
+
+### Add the controls
+
+Vanilla adds mounts for the remaining built-in toolbar and the application controls. React creates the built-in toolbar
+mount and renders the controls in the component below. For Vanilla, replace the contents of `<body>` in `index.html` with:
 
 <include>../../../../snippets/editor/custom-zoom-document.html</include>
 
-## Observe both snapshots
+### Connect them to the Editor
 
-Bind the controls after the Editor is ready:
+Replace the setup guide's Editor code:
 
-<include>../../../../snippets/editor/custom-zoom-document.ts</include>
+<FrameworkExampleTabs>
+  <FrameworkExample filename='src/main.ts' framework='Vanilla'>
+    <include>../../../../snippets/editor/custom-zoom-document.ts</include>
+  </FrameworkExample>
+  <FrameworkExample filename='src/App.tsx' framework='React'>
+    <include>../../../../snippets/editor/react-custom-zoom-document.tsx</include>
+  </FrameworkExample>
+</FrameworkExampleTabs>
 
-`ui.zoom.getSnapshot()` returns the current mode, percentage, and supported range. Setting a percentage switches the example to manual mode. Fit-to-width remains responsive as the Editor container changes size, so it is the better default for flexible layouts.
+`toolbar.excludeItems` removes only Zoom. SuperDoc continues to render the other built-in toolbar controls. Vanilla also
+sets `toolbar.container` because the application owns that mount. React creates one when `container` is omitted. Use
+`toolbar: false` only when your application will render the complete toolbar.
 
-`ui.document.getSnapshot()` reports whether the Editor is ready, its mode, and whether it has unsaved changes. Treat `dirty` as a prompt to save or export, not as proof that a remote persistence request succeeded.
+`ui.zoom` reports the current percentage and supported range. `set()` switches to manual zoom. Zoom changes the view,
+not the DOCX.
 
-## Handle unavailable host operations
+The document snapshot's `ready` field tells you when document actions can run, and its `mode` field reports whether
+the Editor is in editing, suggesting, or viewing mode. Read them from `ui.document.getSnapshot()` or receive them from
+`ui.document.observe()`, as the examples do, so application controls follow both values without reading the rendered
+document DOM.
 
-`ui.document.export()` and `replaceFile()` return `undefined` when the host does not expose the operation. Check before awaiting. Export triggers a browser download by default; pass `{ triggerDownload: false }` when your application needs the result for upload instead.
+`ui.document.export()` accepts the same typed DOCX options as `superdoc.export()`. It returns `undefined` when the bound
+host cannot export. The example passes `triggerDownload: true` so a successful browser export downloads the returned
+DOCX.
 
-`ui.zoom.set()`, `ui.zoom.setMode()`, and `ui.document.setMode()` are control methods, not mutation receipts. Observe the resulting snapshot. When later work depends on a document-mode change, use the `document-mode` command and await `executeAsync()` instead.
+## Verify the controls
 
-For file loading policies and export options, read [Load and save documents](/editor/load-and-save-documents). For the meaning of editing, suggesting, and viewing, read [Document modes](/editor/document-modes).
+Run the project. The built-in toolbar should render without Zoom. Change the zoom and download the DOCX. The
+application status should follow the current percentage and document mode.
+
+Use [Load and save documents](/editor/load-and-save-documents) to send exported bytes to your storage layer. Use
+[Document modes](/editor/document-modes) to control editing, suggesting, and viewing.
+
+Return to the [Custom UI overview](/editor/custom-ui/overview) and choose the
+workflow your product needs.

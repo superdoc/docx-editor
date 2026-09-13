@@ -23,6 +23,8 @@ import type {
   BlocksDeleteResult,
   BlocksListInput,
   BlocksListResult,
+  BlocksFindTextInput,
+  BlocksFindTextResult,
   BlocksDeleteRangeInput,
   BlocksDeleteRangeResult,
   BlocksMergeInput,
@@ -446,6 +448,7 @@ import type {
   TablesSetRowOptionsInput,
   TablesInsertColumnInput,
   TablesDeleteColumnInput,
+  TablesMoveColumnInput,
   TablesSetColumnWidthInput,
   TablesDistributeColumnsInput,
   TablesInsertCellInput,
@@ -617,6 +620,7 @@ export interface OperationRegistry extends FormatInlineAliasOperationRegistry {
   formatRange: { input: FormatRangeInput; options: MutationOptions; output: TextMutationReceipt };
   // --- blocks.* ---
   'blocks.list': { input: BlocksListInput | undefined; options: never; output: BlocksListResult };
+  'blocks.findText': { input: BlocksFindTextInput; options: never; output: BlocksFindTextResult };
   'blocks.delete': { input: BlocksDeleteInput; options: MutationOptions; output: BlocksDeleteResult };
   'blocks.deleteRange': { input: BlocksDeleteRangeInput; options: MutationOptions; output: BlocksDeleteRangeResult };
   'blocks.split': { input: BlocksSplitInput; options: MutationOptions; output: BlocksSplitResult };
@@ -990,6 +994,7 @@ export interface OperationRegistry extends FormatInlineAliasOperationRegistry {
   'tables.setRowOptions': { input: TablesSetRowOptionsInput; options: MutationOptions; output: TableMutationResult };
   'tables.insertColumn': { input: TablesInsertColumnInput; options: MutationOptions; output: TableMutationResult };
   'tables.deleteColumn': { input: TablesDeleteColumnInput; options: MutationOptions; output: TableMutationResult };
+  'tables.moveColumn': { input: TablesMoveColumnInput; options: MutationOptions; output: TableMutationResult };
   'tables.setColumnWidth': { input: TablesSetColumnWidthInput; options: MutationOptions; output: TableMutationResult };
   'tables.distributeColumns': {
     input: TablesDistributeColumnsInput;
@@ -1706,7 +1711,11 @@ export type InvokeRequest<T extends OperationId> = OperationRegistry[T]['options
 /**
  * Typed invoke result, narrowed by operationId.
  */
-export type InvokeResult<T extends OperationId> = OperationRegistry[T]['output'];
+export type InvokeResult<T extends OperationId> = T extends 'mutations.preview' | 'mutations.apply'
+  ? Promise<OperationRegistry[T]['output']>
+  : T extends 'plan.execute'
+    ? OperationRegistry[T]['output'] | Promise<OperationRegistry[T]['output']>
+    : OperationRegistry[T]['output'];
 /**
  * Loose invoke request for dynamic callers who don't know the operation at compile time.
  * Invalid inputs will produce adapter-level errors, not input-validation errors.

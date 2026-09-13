@@ -82,6 +82,20 @@ export interface SDPasteRun {
   marks?: SDPasteRunMarks;
   /** Transient conversion identity used to map mutation effects back to source nodes. */
   sourcePath?: readonly (string | number)[];
+  /**
+   * Clipboard-local comment identities overlapping this run. Paste mints
+   * fresh destination ids; source comments stay intact.
+   */
+  commentIds?: readonly string[];
+  /** True when this run is a tracked insertion that paste must wrap in a fresh `w:ins`. */
+  trackedInsertion?: boolean;
+}
+
+export interface SDPasteComment {
+  /** Clipboard-local id referenced by {@link SDPasteRun.commentIds}. */
+  id: string;
+  text: string;
+  author?: string;
 }
 
 export interface SDPasteParagraphProperties {
@@ -103,7 +117,14 @@ export interface SDPasteParagraphProperties {
 }
 
 export type SDPasteLeafInline =
-  | { kind: 'text'; text: string; marks?: SDPasteRunMarks; sourcePath?: readonly (string | number)[] }
+  | {
+      kind: 'text';
+      text: string;
+      marks?: SDPasteRunMarks;
+      sourcePath?: readonly (string | number)[];
+      commentIds?: readonly string[];
+      trackedInsertion?: boolean;
+    }
   | { kind: 'lineBreak'; sourcePath?: readonly (string | number)[] }
   | {
       kind: 'image';
@@ -239,6 +260,8 @@ export interface SDPasteFragment {
   version: typeof SUPERDOC_V2_CLIPBOARD_FRAGMENT_VERSION | string;
   blocks: readonly SDPasteBlock[];
   assets?: readonly SDPasteAsset[];
+  /** Comment bodies keyed by clipboard-local ids on overlapping runs. */
+  comments?: readonly SDPasteComment[];
   diagnostics?: readonly ClipboardInsertDiagnostic[];
 }
 

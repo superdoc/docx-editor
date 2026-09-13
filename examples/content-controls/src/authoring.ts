@@ -3,6 +3,7 @@ import type { BrowserDocumentApi, ContentControlInfo, SelectionSlice } from 'sup
 
 const addInlineButton = requireElement<HTMLButtonElement>('#add-inline-field');
 const addBlockButton = requireElement<HTMLButtonElement>('#add-block-field');
+const replaceClauseButton = requireElement<HTMLButtonElement>('#replace-clause');
 const controlsList = requireElement<HTMLUListElement>('#detected-controls');
 const exportButton = requireElement<HTMLButtonElement>('#export-docx');
 const status = requireElement<HTMLParagraphElement>('#authoring-status');
@@ -11,6 +12,7 @@ let documentApi: BrowserDocumentApi | null = null;
 let latestSelection: SelectionSlice | null = null;
 let detectedControls: readonly ContentControlInfo[] = [];
 let selectionCleanup: (() => void) | null = null;
+let busy = false;
 const clientName = 'Acme Products, Inc.';
 const confidentialitySlotBlockId = 'A100000B';
 const selectionSettleTimeoutMs = 2_000;
@@ -46,9 +48,10 @@ function renderControls(items: readonly ContentControlInfo[]): void {
     }
   }
 
-  addInlineButton.disabled = !documentApi || hasTag('client.legalName');
-  addBlockButton.disabled = !documentApi || hasTag('agreement.confidentiality');
-  exportButton.disabled = !documentApi || items.length === 0;
+  addInlineButton.disabled = busy || !documentApi || hasTag('client.legalName');
+  addBlockButton.disabled = busy || !documentApi || hasTag('agreement.confidentiality');
+  replaceClauseButton.disabled = busy || !documentApi || !hasTag('agreement.confidentiality');
+  exportButton.disabled = busy || !documentApi || items.length === 0;
 }
 
 function mutationFailure(error: unknown): string {
@@ -91,6 +94,9 @@ async function readReadySelection(): Promise<SelectionSlice | null> {
 }
 
 addInlineButton.addEventListener('click', async () => {
+  if (busy) return;
+  busy = true;
+  renderControls(detectedControls);
   const selection = await readReadySelection();
   const target =
     selection?.status === 'ready' && selection.empty === false && selection.quotedText === clientName
@@ -98,6 +104,8 @@ addInlineButton.addEventListener('click', async () => {
       : null;
   if (!documentApi || !target) {
     status.textContent = 'Select the client name in the document first.';
+    busy = false;
+    renderControls(detectedControls);
     return;
   }
 
@@ -119,11 +127,15 @@ addInlineButton.addEventListener('click', async () => {
   } catch (error) {
     status.textContent = mutationFailure(error);
   } finally {
+    busy = false;
     renderControls(detectedControls);
   }
 });
 
 addBlockButton.addEventListener('click', async () => {
+  if (busy) return;
+  busy = true;
+  renderControls(detectedControls);
   const selection = await readReadySelection();
   const target = selection?.status === 'ready' && selection.empty === true ? selection.selectionTarget : null;
   const isConfidentialitySlot =
@@ -133,6 +145,8 @@ addBlockButton.addEventListener('click', async () => {
     target.end.blockId === confidentialitySlotBlockId;
   if (!documentApi || !target || !isConfidentialitySlot) {
     status.textContent = 'Place the caret on the empty line under Confidentiality first.';
+    busy = false;
+    renderControls(detectedControls);
     return;
   }
 
@@ -155,6 +169,33 @@ addBlockButton.addEventListener('click', async () => {
   } catch (error) {
     status.textContent = mutationFailure(error);
   } finally {
+    busy = false;
+    renderControls(detectedControls);
+  }
+});
+
+replaceClauseButton.addEventListener('click', async () => {
+  if (!documentApi || busy) return;
+  busy = true;
+  renderControls(detectedControls);
+  try {
+    const { items } = await documentApi.contentControls.selectByTag({ tag: 'agreement.confidentiality' });
+    if (items.length !== 1 || items[0].kind !== 'block') throw new Error('Expected one block-level clause field.');
+    const receipt = await documentApi.contentControls.replaceContent({
+      target: items[0].target,
+      content: 'Both parties will protect confidential information for three years after this agreement ends.',
+      format: 'text',
+    });
+    status.textContent = receipt.success
+      ? 'Replaced the confidentiality clause.'
+      : receipt.failure.code === 'NO_OP'
+        ? 'The mutual confidentiality clause is already in use.'
+        : receipt.failure.message;
+    await refreshControls();
+  } catch (error) {
+    status.textContent = mutationFailure(error);
+  } finally {
+    busy = false;
     renderControls(detectedControls);
   }
 });
@@ -191,12 +232,15 @@ const superdoc = new SuperDoc({
 });
 
 exportButton.addEventListener('click', async () => {
-  exportButton.disabled = true;
+  if (busy) return;
+  busy = true;
+  renderControls(detectedControls);
   try {
     await superdoc.export({ exportType: ['docx'], exportedName: 'service-agreement-template' });
   } catch {
     status.textContent = 'The template could not be exported.';
   } finally {
+    busy = false;
     renderControls(detectedControls);
   }
 });

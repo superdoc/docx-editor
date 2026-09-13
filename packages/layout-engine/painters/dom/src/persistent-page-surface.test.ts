@@ -19,6 +19,7 @@ import type {
 } from '@superdoc/contracts';
 import { resolveLayout } from '@superdoc/layout-resolved';
 import { createDomPainter } from './index.js';
+import type { DerivedRunTextPlane } from './derived-run-text-plane.js';
 import type { DomPainterPersistentPageInput, DomPainterPersistentScaffold } from './persistent-page-surface.js';
 
 const GAP_PX = 24;
@@ -100,6 +101,58 @@ function paraBlock(id: string, text: string): FlowBlock {
     id,
     runs: [{ text, fontFamily: 'Arial', fontSize: 12, pmStart: 0, pmEnd: text.length }],
   } as unknown as FlowBlock;
+}
+
+function noteMarkerResolved(markerText: string, pageCount = 1): ResolvedLayout {
+  const blocks = Array.from({ length: pageCount }, (_, index) => ({
+    kind: 'paragraph' as const,
+    id: `note-page-${index}`,
+    runs: [
+      {
+        kind: 'text' as const,
+        text: markerText,
+        fontFamily: 'Arial',
+        fontSize: 12,
+        pmStart: index,
+        pmEnd: index + markerText.length,
+        dataAttrs: { 'data-v2-note-ref': 'footnote:note-1' },
+      },
+    ],
+  }));
+  const layout: Layout = {
+    pageSize: REAL_PAGE,
+    pages: blocks.map((block, index) => ({
+      number: index + 1,
+      fragments: [
+        {
+          kind: 'para',
+          blockId: block.id,
+          fromLine: 0,
+          toLine: 1,
+          x: 20,
+          y: 30,
+          width: 320,
+          pmStart: index,
+          pmEnd: index + markerText.length,
+        },
+      ],
+    })),
+    layoutEpoch: 7,
+  } as unknown as Layout;
+  return resolveLayout({
+    layout,
+    flowMode: 'paginated',
+    blocks,
+    measures: blocks.map(() => paraMeasure([[0, markerText.length]])),
+  });
+}
+
+function noteDisplayPlane(generation: number, markerText: string): DerivedRunTextPlane {
+  return {
+    generation,
+    revision: `note:${markerText}`,
+    valuesByDataAttribute: new Map([['data-v2-note-ref', new Map([['footnote:note-1', markerText]])]]),
+  };
 }
 
 function paraMeasure(lineCharRanges: Array<[number, number]>): Measure {
@@ -681,6 +734,103 @@ describe('persistent content hydration and dehydration', () => {
     // moment a desired page consumes one.
     const staleInput = persistentInput(uniformScaffold(2, 8), packetsFor(pages), [0]);
     expect(() => painter.paintPersistentPages(staleInput, mount)).toThrow(/torn generation/);
+    expect(mount.innerHTML).toBe(htmlBefore);
+  });
+
+  it('repaints a mounted derived marker when only the display-plane revision changes', () => {
+    const painter = createDomPainter({ flowMode: 'paginated' });
+    const mount = document.createElement('div');
+    const resolved = noteMarkerResolved('8735');
+    const scaffold = realScaffold(resolved, 7);
+    const packets = packetsFor(resolved.pages);
+
+    painter.paintPersistentPages(persistentInput(scaffold, packets, [0]), mount);
+    expect(mount.querySelector('[data-v2-note-ref="footnote:note-1"]')?.textContent).toBe('8735');
+    painter.consumePaintWorkSummary();
+
+    painter.paintPersistentPages(
+      persistentInput(scaffold, packets, [0], {
+        derivedRunTextPlane: noteDisplayPlane(7, '8720'),
+      }),
+      mount,
+    );
+
+    expect(mount.querySelector('[data-v2-note-ref="footnote:note-1"]')?.textContent).toBe('8720');
+    const work = painter.consumePaintWorkSummary();
+    expect(work.contentPatched).toBe(1);
+    expect(work.contentUntouched).toBe(0);
+    expect(work.fragmentsRendered).toBe(1);
+  });
+
+  it('restores canonical marker text when the display plane is removed and reapplies it on redo', () => {
+    const painter = createDomPainter({ flowMode: 'paginated' });
+    const mount = document.createElement('div');
+    const resolved = noteMarkerResolved('8735');
+    const scaffold = realScaffold(resolved, 7);
+    const packets = packetsFor(resolved.pages);
+
+    painter.paintPersistentPages(
+      persistentInput(scaffold, packets, [0], {
+        derivedRunTextPlane: noteDisplayPlane(7, '8720'),
+      }),
+      mount,
+    );
+    expect(mount.querySelector('[data-v2-note-ref="footnote:note-1"]')?.textContent).toBe('8720');
+    painter.consumePaintWorkSummary();
+
+    painter.paintPersistentPages(persistentInput(scaffold, packets, [0]), mount);
+
+    expect(mount.querySelector('[data-v2-note-ref="footnote:note-1"]')?.textContent).toBe('8735');
+    const undoWork = painter.consumePaintWorkSummary();
+    expect(undoWork.contentPatched).toBe(1);
+    expect(undoWork.contentUntouched).toBe(0);
+
+    painter.paintPersistentPages(
+      persistentInput(scaffold, packets, [0], {
+        derivedRunTextPlane: noteDisplayPlane(7, '8720'),
+      }),
+      mount,
+    );
+
+    expect(mount.querySelector('[data-v2-note-ref="footnote:note-1"]')?.textContent).toBe('8720');
+    const redoWork = painter.consumePaintWorkSummary();
+    expect(redoWork.contentPatched).toBe(1);
+    expect(redoWork.contentUntouched).toBe(0);
+  });
+
+  it('hydrates an offscreen marker from the current display plane', () => {
+    const painter = createDomPainter({ flowMode: 'paginated' });
+    const mount = document.createElement('div');
+    const resolved = noteMarkerResolved('8735', 2);
+    const scaffold = realScaffold(resolved, 7);
+    const input = persistentInput(scaffold, packetsFor(resolved.pages), [0], {
+      derivedRunTextPlane: noteDisplayPlane(7, '8720'),
+    });
+
+    painter.paintPersistentPages(input, mount);
+    painter.paintPersistentPages({ ...input, desiredContentPageIndices: [1] }, mount);
+
+    const secondPage = mount.querySelector<HTMLElement>('[data-page-index="1"]');
+    expect(secondPage?.querySelector('[data-v2-note-ref="footnote:note-1"]')?.textContent).toBe('8720');
+  });
+
+  it('rejects a stale display plane before mutating the mounted surface', () => {
+    const painter = createDomPainter({ flowMode: 'paginated' });
+    const mount = document.createElement('div');
+    const resolved = noteMarkerResolved('8735');
+    const scaffold = realScaffold(resolved, 7);
+    const packets = packetsFor(resolved.pages);
+    painter.paintPersistentPages(persistentInput(scaffold, packets, [0]), mount);
+    const htmlBefore = mount.innerHTML;
+
+    expect(() =>
+      painter.paintPersistentPages(
+        persistentInput(scaffold, packets, [0], {
+          derivedRunTextPlane: noteDisplayPlane(6, '8720'),
+        }),
+        mount,
+      ),
+    ).toThrow(/display plane generation 6 does not match scaffold generation 7/);
     expect(mount.innerHTML).toBe(htmlBefore);
   });
 });

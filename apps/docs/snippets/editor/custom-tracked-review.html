@@ -1,9 +1,18 @@
-<aside aria-labelledby="review-heading">
-  <h2 id="review-heading">Review changes</h2>
-  <p id="review-status" role="status">Loading tracked changes…</p>
-  <ul id="change-list"></ul>
-</aside>
+<div id="toolbar"></div>
 
-<div id="editor" style="height: 70vh"></div>
+<main class="review-layout">
+  <div id="editor" style="height: 70vh; overflow: auto"></div>
+
+  <aside aria-labelledby="review-heading">
+    <h2 id="review-heading">Review changes</h2>
+    <p id="change-count">Opening document...</p>
+    <nav aria-label="Tracked change navigation">
+      <button id="previous-change" type="button">Previous</button>
+      <button id="next-change" type="button">Next</button>
+    </nav>
+    <ul id="change-list"></ul>
+    <p id="review-status" role="status">Choose a change to review it.</p>
+  </aside>
+</main>
 
 <script type="module" src="/src/main.ts"></script>

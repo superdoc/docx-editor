@@ -31,6 +31,7 @@ import { computeBetweenBorderFlags, type BetweenBorderInfo } from './paragraph/b
 import { applyStyles } from './utils/apply-styles.js';
 import { CLASS_NAMES, pageStyles, type PageStyles } from './styles.js';
 import { TABLE_ROW_ROLE_ATTRIBUTE } from './table/row-role.js';
+import { blockUsesDerivedRunTextPlane, type DerivedRunTextPlane } from './derived-run-text-plane.js';
 
 export type FragmentDomState = {
   key: string;
@@ -152,8 +153,9 @@ export function createEmptyPaintWorkSummary(): PaintWorkSummary {
  * Painter plan P3a: reuse key for one exact page slot on the persistent-page
  * path. Joins everything the painted page DOM depends on for a fixed page
  * index: the resolve-stage version stamp per item (the product paint-reuse
- * mechanism), fragment identity + geometry (stamps do not cover geometry),
- * and, only when body content contains a dynamic field, its page context.
+ * mechanism), fragment identity + geometry + column ownership (stamps do not
+ * cover these), and, only when body content contains a dynamic field, its
+ * page context.
  * Header/footer providers have a separate decoration-only refresh path, so
  * their context must not invalidate otherwise reusable body fragments.
  *
@@ -179,6 +181,7 @@ export function persistentPageVersionKey(
   page: ResolvedPage,
   totalPages: number,
   sectionPageCount: number,
+  derivedRunTextPlane?: DerivedRunTextPlane | null,
 ): string | null {
   const parts: string[] = [`w:${page.width}`, `h:${page.height}`, `n:${page.number}`];
   const hasBodyPageContextToken = page.items.some((item) => {
@@ -206,8 +209,14 @@ export function persistentPageVersionKey(
     const signature = resolvedPaintCacheSignature(item);
     if (signature === '') missingStamp = true;
     const fragment = item.fragment;
+    if (blockUsesDerivedRunTextPlane(item.block, derivedRunTextPlane)) {
+      parts.push(`d:${derivedRunTextPlane!.revision}`);
+    }
     const height = (fragment as { height?: number }).height;
-    parts.push(`f:${fragmentKey(fragment)}@${fragment.x},${fragment.y},${fragment.width},${height ?? ''}#${signature}`);
+    const columnIndex = 'columnIndex' in fragment ? fragment.columnIndex : undefined;
+    parts.push(
+      `f:${fragmentKey(fragment)}@${fragment.x},${fragment.y},${fragment.width},${height ?? ''},${columnIndex ?? ''}#${signature}`,
+    );
   }
   if (missingStamp) return null;
   return parts.join('|');
@@ -226,6 +235,7 @@ export interface PageContentContext {
   totalPages: number;
   currentMapping: PositionMapping | null;
   changedBlocks: ReadonlySet<string>;
+  derivedRunTextPlane?: DerivedRunTextPlane | null;
   /** Record the smallest newly painted subtree for transaction finalization. */
   recordChangedRoot?(root: HTMLElement): void;
   sdtLabelsRendered: Set<string>;
@@ -314,6 +324,7 @@ export function hydratePageContent(
     sectionPageCount: ctx.getSectionPageCount(page),
     pageIndex,
     ...(page.pageCountFieldsExact === false ? { pageCountFieldsExact: false } : {}),
+    ...(ctx.derivedRunTextPlane ? { derivedRunTextPlane: ctx.derivedRunTextPlane } : {}),
   };
 
   const resolvedItems = page.items;
@@ -428,6 +439,7 @@ export function patchPage(
     sectionPageCount: ctx.getSectionPageCount(page),
     pageIndex,
     ...(page.pageCountFieldsExact === false ? { pageCountFieldsExact: false } : {}),
+    ...(ctx.derivedRunTextPlane ? { derivedRunTextPlane: ctx.derivedRunTextPlane } : {}),
   };
 
   resolvedItems.forEach((resolvedItem, index) => {
@@ -698,8 +710,14 @@ export function needsRebuildForPageContext(
   resolvedItem: ResolvedPaintItem | undefined,
 ): boolean {
   const block = resolvedItem?.kind === 'fragment' && 'block' in resolvedItem ? resolvedItem.block : undefined;
+  if (pageContextSignature(currentContext) !== pageContextSignature(nextContext) && hasPageContextTokenInBlock(block)) {
+    return true;
+  }
+  const currentPlane = currentContext.derivedRunTextPlane;
+  const nextPlane = nextContext.derivedRunTextPlane;
   return (
-    pageContextSignature(currentContext) !== pageContextSignature(nextContext) && hasPageContextTokenInBlock(block)
+    currentPlane?.revision !== nextPlane?.revision &&
+    (blockUsesDerivedRunTextPlane(block, currentPlane) || blockUsesDerivedRunTextPlane(block, nextPlane))
   );
 }
 

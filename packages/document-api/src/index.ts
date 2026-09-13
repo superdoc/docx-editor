@@ -292,6 +292,7 @@ import {
   executeCreateTableOfContents,
 } from './create/create.js';
 import type { BlocksAdapter, BlocksApi } from './blocks/blocks.js';
+import { executeBlocksFindText } from './blocks/find-text.js';
 import {
   executeBlocksList,
   executeBlocksDelete,
@@ -305,6 +306,8 @@ import type {
   BlocksDeleteResult,
   BlocksListInput,
   BlocksListResult,
+  BlocksFindTextInput,
+  BlocksFindTextResult,
   BlocksDeleteRangeInput,
   BlocksDeleteRangeResult,
 } from './types/blocks.types.js';
@@ -327,6 +330,7 @@ import type {
   TablesSetRowOptionsInput,
   TablesInsertColumnInput,
   TablesDeleteColumnInput,
+  TablesMoveColumnInput,
   TablesSetColumnWidthInput,
   TablesDistributeColumnsInput,
   TablesInsertCellInput,
@@ -397,7 +401,7 @@ import type {
 import type { OperationId } from './contract/types.js';
 import type { DynamicInvokeRequest, InvokeRequest, InvokeResult } from './contract/operation-registry.js';
 import { buildDispatchTable } from './invoke/invoke.js';
-import { createPlanApi, type PlanApi } from './plan/plan.js';
+import { createPlanApi, type PlanApi, type PlanExecuteResult } from './plan/plan.js';
 export {
   createPlanApi,
   type PlanApi,
@@ -425,6 +429,10 @@ import type {
   DiffApplyOptions,
   DiffApplyOperationReceipt,
   DiffApplyReviewItem,
+  DiffApplyEligibility,
+  DiffApplyModeEligibility,
+  DiffApplyEligibilityBlocker,
+  DiffApplyEligibilityBlockerCode,
 } from './diff/diff.types.js';
 export type {
   DiffSnapshot,
@@ -435,6 +443,10 @@ export type {
   DiffApplyOptions,
   DiffApplyOperationReceipt,
   DiffApplyReviewItem,
+  DiffApplyEligibility,
+  DiffApplyModeEligibility,
+  DiffApplyEligibilityBlocker,
+  DiffApplyEligibilityBlockerCode,
 } from './diff/diff.types.js';
 import type { ExportAdapter, ExportApi } from './export/export.js';
 import { executeExportToDocx } from './export/export.js';
@@ -1688,6 +1700,7 @@ export type {
   CommentTarget,
 } from './comments/comments.types.js';
 export type { BlocksApi } from './blocks/blocks.js';
+export { executeBlocksFindText } from './blocks/find-text.js';
 export {
   executeBlocksList,
   executeBlocksDelete,
@@ -1739,6 +1752,7 @@ export interface TablesApi {
   setRowOptions(input: TablesSetRowOptionsInput, options?: MutationOptions): TableMutationResult;
   insertColumn(input: TablesInsertColumnInput, options?: MutationOptions): TableMutationResult;
   deleteColumn(input: TablesDeleteColumnInput, options?: MutationOptions): TableMutationResult;
+  moveColumn(input: TablesMoveColumnInput, options?: MutationOptions): TableMutationResult;
   setColumnWidth(input: TablesSetColumnWidthInput, options?: MutationOptions): TableMutationResult;
   distributeColumns(input: TablesDistributeColumnsInput, options?: MutationOptions): TableMutationResult;
   insertCell(input: TablesInsertCellInput, options?: MutationOptions): TableMutationResult;
@@ -1773,8 +1787,9 @@ export interface TablesApi {
   setDefaultStyle(input: TablesSetDefaultStyleInput, options?: MutationOptions): DocumentMutationResult;
   clearDefaultStyle(input?: TablesClearDefaultStyleInput, options?: MutationOptions): DocumentMutationResult;
 }
-export type TablesAdapter = Omit<TablesApi, 'moveRow'> & {
+export type TablesAdapter = Omit<TablesApi, 'moveRow' | 'moveColumn'> & {
   moveRow?: TablesApi['moveRow'];
+  moveColumn?: TablesApi['moveColumn'];
 };
 /**
  * Callable capability accessor returned by `createDocumentApi`.
@@ -1791,8 +1806,8 @@ export interface QueryApi {
   match(input: QueryMatchInput | TextSelector | NodeSelector): QueryMatchOutput;
 }
 export interface MutationsApi {
-  preview(input: MutationsPreviewInput): MutationsPreviewOutput;
-  apply(input: MutationsApplyInput): PlanReceipt;
+  preview(input: MutationsPreviewInput): Promise<MutationsPreviewOutput>;
+  apply(input: MutationsApplyInput): Promise<PlanReceipt>;
 }
 export interface RangesApi {
   resolve(input: ResolveRangeInput): ResolveRangeOutput;
@@ -1804,8 +1819,8 @@ export interface QueryAdapter {
   match(input: QueryMatchInput): QueryMatchOutput;
 }
 export interface MutationsAdapter {
-  preview(input: MutationsPreviewInput): MutationsPreviewOutput;
-  apply(input: MutationsApplyInput): PlanReceipt;
+  preview(input: MutationsPreviewInput): Promise<MutationsPreviewOutput>;
+  apply(input: MutationsApplyInput): Promise<PlanReceipt>;
 }
 /**
  * The Document API interface for querying and inspecting document nodes.
@@ -2005,7 +2020,7 @@ export interface DocumentApi {
   /**
    * Throughput-oriented batch executor with stepwise operation semantics.
    */
-  plan: PlanApi;
+  plan: PlanApi<PlanExecuteResult | Promise<PlanExecuteResult>>;
   /**
    * Snapshot-based document comparison and replay.
    */
@@ -2471,6 +2486,9 @@ export function createDocumentApi(adapters: DocumentApiAdapters): DocumentApi {
       },
     },
     blocks: {
+      findText(input: BlocksFindTextInput): BlocksFindTextResult {
+        return executeBlocksFindText(adapters.blocks, input);
+      },
       list(input?: BlocksListInput): BlocksListResult {
         return executeBlocksList(adapters.blocks, input);
       },
@@ -2897,6 +2915,12 @@ export function createDocumentApi(adapters: DocumentApiAdapters): DocumentApi {
           input,
           options,
         );
+      },
+      moveColumn(input, options?) {
+        const moveColumnAdapter =
+          adapters.tables.moveColumn?.bind(adapters.tables) ??
+          (() => unavailableTableMutationResult('tables.moveColumn'));
+        return executeTableLocatorOp('tables.moveColumn', moveColumnAdapter, input, options);
       },
       setColumnWidth(input, options?) {
         return executeTableLocatorOp(
@@ -3637,10 +3661,10 @@ export function createDocumentApi(adapters: DocumentApiAdapters): DocumentApi {
       },
     },
     mutations: {
-      preview(input: MutationsPreviewInput): MutationsPreviewOutput {
+      preview(input: MutationsPreviewInput): Promise<MutationsPreviewOutput> {
         return adapters.mutations.preview(input);
       },
-      apply(input: MutationsApplyInput): PlanReceipt {
+      apply(input: MutationsApplyInput): Promise<PlanReceipt> {
         return adapters.mutations.apply(input);
       },
     },

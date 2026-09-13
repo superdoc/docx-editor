@@ -63,6 +63,15 @@ function hasAlias(resolution, find, replacement) {
   return resolution.aliases.some((alias) => String(alias.find) === find && alias.replacement === replacement);
 }
 
+function resolveThroughAliases(resolution, specifier) {
+  const alias = resolution.aliases.find(({ find }) =>
+    find instanceof RegExp
+      ? find.test(specifier)
+      : specifier === find || specifier.startsWith(`${find}/`),
+  );
+  return alias ? specifier.replace(alias.find, alias.replacement) : null;
+}
+
 function aliasesTouchV2Src(resolution, v2Root = V2_ROOT) {
   const srcRoot = path.join(v2Root, 'src');
   return aliasReplacements(resolution).some((r) => r.startsWith(`${srcRoot}${path.sep}`));
@@ -89,8 +98,10 @@ function sealFixture(tmpV2, { version = DECLARED_ENGINE_VERSION } = {}) {
   const distFiles = {
     'docx-engine.es.js': 'export {};\n',
     'collaboration-upgrade-engine.js': 'export {};\n',
+    'collaboration-worker.js': 'export {};\n',
     'style.css': '',
     'docx-engine.d.ts': 'export {};\n',
+    'collaboration-worker.d.ts': 'export {};\n',
   };
   for (const [name, contents] of Object.entries(distFiles)) {
     writeFileSync(path.join(dist, name), contents);
@@ -204,6 +215,8 @@ check('sealed dist-only prepared engine resolves (public-topology equivalent) an
     if (!hasSuperdocEntry) throw new Error('package mode did not map @superdoc/docx-engine onto the dist entry');
     const hasUpgradeEngine = aliasReplacements(r).some((rep) => rep.endsWith('collaboration-upgrade-engine.js'));
     if (!hasUpgradeEngine) throw new Error('package mode did not map the collaboration upgrade engine build input');
+    const hasCollaborationWorker = aliasReplacements(r).some((rep) => rep.endsWith('collaboration-worker.js'));
+    if (!hasCollaborationWorker) throw new Error('package mode did not map the collaboration worker build input');
     const hasHeadless = r.aliases.some((alias) => String(alias.find).includes('headless'));
     if (hasHeadless) throw new Error('package mode must not alias @superdoc/headless');
 
@@ -304,6 +317,40 @@ if (v2SourcePresent) {
     const contractsSource = path.join(LAYOUT_ENGINE_ROOT, 'contracts', 'src', 'index.ts');
     if (!hasAlias(r, '/^@superdoc\\/contracts$/', contractsSource)) {
       throw new Error('source mode must alias @superdoc/contracts to live public source');
+    }
+    const collaborationSdkSource = path.join(
+      V2_ROOT,
+      'document-api-v2-adapter',
+      'src',
+      'worker',
+      'collaboration-sdk.ts',
+    );
+    const collaborationSdkSpecifier = '@superdoc/document-api-v2-adapter/worker/collaboration-sdk';
+    const resolvedCollaborationSdk = resolveThroughAliases(r, collaborationSdkSpecifier);
+    if (resolvedCollaborationSdk !== collaborationSdkSource) {
+      throw new Error(
+        `source mode resolved ${collaborationSdkSpecifier} to ${resolvedCollaborationSdk ?? 'nothing'}`,
+      );
+    }
+    const workerSource = path.join(V2_ROOT, 'document-api-v2-adapter', 'src', 'worker', 'index.ts');
+    const workerSpecifier = '@superdoc/document-api-v2-adapter/worker';
+    const resolvedWorker = resolveThroughAliases(r, workerSpecifier);
+    if (resolvedWorker !== workerSource) {
+      throw new Error(`source mode resolved ${workerSpecifier} to ${resolvedWorker ?? 'nothing'}`);
+    }
+    const nodeWorkerSource = path.join(
+      V2_ROOT,
+      'document-api-v2-adapter',
+      'src',
+      'worker',
+      'node-channel.ts',
+    );
+    const nodeWorkerSpecifier = '@superdoc/document-api-v2-adapter/worker/node';
+    const resolvedNodeWorker = resolveThroughAliases(r, nodeWorkerSpecifier);
+    if (resolvedNodeWorker !== nodeWorkerSource) {
+      throw new Error(
+        `source mode resolved ${nodeWorkerSpecifier} to ${resolvedNodeWorker ?? 'nothing'}`,
+      );
     }
   });
 } else {

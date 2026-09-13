@@ -2,6 +2,10 @@ import { useRef, useState } from 'react';
 import { SuperDocEditor, type SuperDocRef } from '@superdoc/react';
 import '@superdoc/react/style.css';
 
+function reportDocumentError({ error }: { error: unknown }) {
+  console.error('SuperDoc could not open the document.', error);
+}
+
 export default function App() {
   const editorRef = useRef<SuperDocRef>(null);
   const exportingRef = useRef(false);
@@ -29,8 +33,8 @@ export default function App() {
       </button>
       <SuperDocEditor
         document='/sample.docx'
-        onContentError={({ error }) => console.error('SuperDoc could not open the document.', error)}
-        onException={({ error }) => console.error('SuperDoc could not open the document.', error)}
+        onContentError={reportDocumentError}
+        onException={reportDocumentError}
         onReady={() => setReady(true)}
         ref={editorRef}
       />

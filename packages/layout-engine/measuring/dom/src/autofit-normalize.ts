@@ -428,10 +428,7 @@ function hasAutoTableWidthSemantics(tableWidth: TableWidthAttr | undefined): boo
   if (tableWidth == null) return false;
   if (typeof tableWidth !== 'object') return false;
   const type = typeof tableWidth.type === 'string' ? tableWidth.type.toLowerCase() : undefined;
-  if (type !== 'auto') return false;
-
-  const rawWidth = tableWidth.width ?? tableWidth.value;
-  return rawWidth == null || (typeof rawWidth === 'number' && Number.isFinite(rawWidth) && rawWidth <= 0);
+  return type === 'auto';
 }
 
 function hasNonUniformGrid(widths: number[]): boolean {
@@ -726,6 +723,9 @@ function determineGridColumnCount(preferredColumnCount: number, rows: AutoFitRow
  * Resolve a preferred table width into pixels when possible.
  */
 function resolvePreferredTableWidth(tableWidth: TableWidthAttr | undefined, maxWidth: number): number | undefined {
+  // OOXML `tblW type="auto"` ignores its numeric `w` payload,
+  // which exporters may retain as a positive placeholder. Fixed tables use tblGrid instead.
+  if (hasAutoTableWidthSemantics(tableWidth)) return undefined;
   const resolvedWidth = resolveTableWidthAttr(tableWidth);
   if (!resolvedWidth) return undefined;
   if (resolvedWidth.type === 'pct') {

@@ -72,6 +72,40 @@ export function getV2TrackedChangeMutationImpact(event) {
   };
 }
 
+/**
+ * Comment ids retired by a committed v2 mutation.
+ *
+ * AIDEV-NOTE: History commits put invalidated comment ids on `result`; cut and
+ * other command receipts use `receipt`. Same origin split as
+ * getV2TrackedChangeMutationImpact. Reading the wrong field, or treating a
+ * tracked-change entity as a comment, leaves a sidebar card after cut or
+ * undo/redo.
+ */
+export function collectV2InvalidatedCommentIds(event) {
+  const removedIds = new Set();
+  if (event?.type !== 'mutation:committed') return removedIds;
+  const payload = event.origin === 'history' ? event.result : event.receipt;
+  if (!Array.isArray(payload?.invalidatedRefs)) return removedIds;
+  for (const ref of payload.invalidatedRefs) {
+    if (ref?.kind === 'entity' && ref.entityType === 'comment' && typeof ref.entityId === 'string' && ref.entityId) {
+      removedIds.add(ref.entityId);
+    }
+  }
+  return removedIds;
+}
+
+export function applyV2CommentInvalidationFromMutation({ event, commentsStore, superdoc, documentId } = {}) {
+  const removedIds = collectV2InvalidatedCommentIds(event);
+  if (removedIds.size === 0) return { ok: true, removedIds: [] };
+  return (
+    commentsStore?.dropCommentsFromMutationImpact?.({
+      superdoc,
+      documentId,
+      removedIds,
+    }) ?? { ok: true, removedIds: [] }
+  );
+}
+
 function readAllResolvedFact(event, receipt) {
   const fact = event?.trackedChangeAllResolved;
   if (

@@ -30,6 +30,7 @@ import type {
   SDResolvedTableLayout,
 } from './sd-objects.js';
 import type { SDSection } from './sd-sections.js';
+import type { SemanticHeadingLevel } from './paragraph.types.js';
 
 // ---------------------------------------------------------------------------
 // Base interfaces
@@ -70,7 +71,7 @@ export interface SDParagraph extends SDParagraphLikeBase {
 export interface SDHeading extends SDParagraphLikeBase {
   kind: 'heading';
   heading: {
-    level: 1 | 2 | 3 | 4 | 5 | 6;
+    level: SemanticHeadingLevel;
     inlines: SDInlineNode[];
     styleRef?: string;
     props?: SDParagraphProps;

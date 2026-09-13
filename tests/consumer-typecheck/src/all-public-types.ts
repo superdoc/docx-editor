@@ -61,10 +61,17 @@ import type {
   DocRange,
   Document,
   DocumentDataSource,
+  DocumentCollaborationConfig,
   DocumentSource,
   DocumentUploadSource,
   DocumentApi,
+  DiffApplyEligibility,
+  DiffApplyEligibilityBlocker,
+  DiffApplyEligibilityBlockerCode,
+  DiffApplyModeEligibility,
+  DiffPayload,
   DocumentMode,
+  DocumentReplacementResult,
   DocumentProtectionState,
   EntityAddress,
   EditorSurface,
@@ -82,8 +89,10 @@ import type {
   FlowBlock,
   FlowMode,
   FontFamilyOption,
+  FontResolutionRecord,
   FontsChangedPayload,
   FontsChangedSource,
+  FontsConfig,
   FontsResolvedPayload,
   HyperlinkActivationContext,
   HyperlinkActivationHandler,
@@ -185,6 +194,7 @@ import type {
   SuperDocExceptionHyperlinkPayload,
   SuperDocExceptionToolbarPayload,
   SuperDocExceptionPayload,
+  SuperDocExceptionCollaborationPayload,
   SuperDocExceptionRestorePayload,
   SuperDocExceptionStorePayload,
   SuperDocExtension,
@@ -244,6 +254,7 @@ import type {
   SuperDocVisualHandle,
   SuperDocVisualOptions,
   SuperDocVisualTarget,
+  SuperDocWorkerFailureDetail,
   SuperDocZoomConfig,
   SuperDocZoomMode,
   SuperDocZoomPayload,
@@ -258,12 +269,19 @@ import type {
   SurfaceResolver,
   StructuredDocumentSource,
   SurfacesModuleConfig,
+  ThemeColors,
+  ThemeConfig,
+  ThemeResult,
+  ThemeVariableOverrides,
   TextAddress,
   TextSegment,
   TextTarget,
   TrackChangeAuthor,
   TrackChangesAuthorColorsConfig,
+  TrackChangesConfig,
+  TrackChangesInteractionConfig,
   TrackChangesModuleConfig,
+  TrackChangesReplacementMode,
   TrackChangesSemanticColorsConfig,
   TrackedChangeAddress,
   TrackedChangeSemanticColorKey,
@@ -323,10 +341,17 @@ const _real_DirectSurfaceRequest: AssertNotAny<DirectSurfaceRequest> = true;
 const _real_DocRange: AssertNotAny<DocRange> = true;
 const _real_Document: AssertNotAny<Document> = true;
 const _real_DocumentDataSource: AssertNotAny<DocumentDataSource> = true;
+const _real_DocumentCollaborationConfig: AssertNotAny<DocumentCollaborationConfig> = true;
 const _real_DocumentSource: AssertNotAny<DocumentSource> = true;
 const _real_DocumentUploadSource: AssertNotAny<DocumentUploadSource> = true;
 const _real_DocumentApi: AssertNotAny<DocumentApi> = true;
+const _real_DiffApplyEligibility: AssertNotAny<DiffApplyEligibility> = true;
+const _real_DiffApplyEligibilityBlocker: AssertNotAny<DiffApplyEligibilityBlocker> = true;
+const _real_DiffApplyEligibilityBlockerCode: AssertNotAny<DiffApplyEligibilityBlockerCode> = true;
+const _real_DiffApplyModeEligibility: AssertNotAny<DiffApplyModeEligibility> = true;
+const _real_DiffPayload: AssertNotAny<DiffPayload> = true;
 const _real_DocumentMode: AssertNotAny<DocumentMode> = true;
+const _real_DocumentReplacementResult: AssertNotAny<DocumentReplacementResult> = true;
 const _real_DocumentProtectionState: AssertNotAny<DocumentProtectionState> = true;
 const _real_EntityAddress: AssertNotAny<EntityAddress> = true;
 const _real_EditorSurface: AssertNotAny<EditorSurface> = true;
@@ -344,8 +369,10 @@ const _real_FindReplaceResolution: AssertNotAny<FindReplaceResolution> = true;
 const _real_FlowBlock: AssertNotAny<FlowBlock> = true;
 const _real_FlowMode: AssertNotAny<FlowMode> = true;
 const _real_FontFamilyOption: AssertNotAny<FontFamilyOption> = true;
+const _real_FontResolutionRecord: AssertNotAny<FontResolutionRecord> = true;
 const _real_FontsChangedPayload: AssertNotAny<FontsChangedPayload> = true;
 const _real_FontsChangedSource: AssertNotAny<FontsChangedSource> = true;
+const _real_FontsConfig: AssertNotAny<FontsConfig> = true;
 const _real_FontsResolvedPayload: AssertNotAny<FontsResolvedPayload> = true;
 const _real_HyperlinkActivationContext: AssertNotAny<HyperlinkActivationContext> = true;
 const _real_HyperlinkActivationHandler: AssertNotAny<HyperlinkActivationHandler> = true;
@@ -447,6 +474,7 @@ const _real_SuperDocExceptionEditorPayload: AssertNotAny<SuperDocExceptionEditor
 const _real_SuperDocExceptionHyperlinkPayload: AssertNotAny<SuperDocExceptionHyperlinkPayload> = true;
 const _real_SuperDocExceptionToolbarPayload: AssertNotAny<SuperDocExceptionToolbarPayload> = true;
 const _real_SuperDocExceptionPayload: AssertNotAny<SuperDocExceptionPayload> = true;
+const _real_SuperDocExceptionCollaborationPayload: AssertNotAny<SuperDocExceptionCollaborationPayload> = true;
 const _real_SuperDocExceptionRestorePayload: AssertNotAny<SuperDocExceptionRestorePayload> = true;
 const _real_SuperDocExceptionStorePayload: AssertNotAny<SuperDocExceptionStorePayload> = true;
 const _real_SuperDocExtension: AssertNotAny<SuperDocExtension> = true;
@@ -506,6 +534,7 @@ const _real_SuperDocVisualApi: AssertNotAny<SuperDocVisualApi> = true;
 const _real_SuperDocVisualHandle: AssertNotAny<SuperDocVisualHandle> = true;
 const _real_SuperDocVisualOptions: AssertNotAny<SuperDocVisualOptions> = true;
 const _real_SuperDocVisualTarget: AssertNotAny<SuperDocVisualTarget> = true;
+const _real_SuperDocWorkerFailureDetail: AssertNotAny<SuperDocWorkerFailureDetail> = true;
 const _real_SuperDocZoomConfig: AssertNotAny<SuperDocZoomConfig> = true;
 const _real_SuperDocZoomMode: AssertNotAny<SuperDocZoomMode> = true;
 const _real_SuperDocZoomPayload: AssertNotAny<SuperDocZoomPayload> = true;
@@ -520,12 +549,19 @@ const _real_SurfaceResolution: AssertNotAny<SurfaceResolution> = true;
 const _real_SurfaceResolver: AssertNotAny<SurfaceResolver> = true;
 const _real_StructuredDocumentSource: AssertNotAny<StructuredDocumentSource> = true;
 const _real_SurfacesModuleConfig: AssertNotAny<SurfacesModuleConfig> = true;
+const _real_ThemeColors: AssertNotAny<ThemeColors> = true;
+const _real_ThemeConfig: AssertNotAny<ThemeConfig> = true;
+const _real_ThemeResult: AssertNotAny<ThemeResult> = true;
+const _real_ThemeVariableOverrides: AssertNotAny<ThemeVariableOverrides> = true;
 const _real_TextAddress: AssertNotAny<TextAddress> = true;
 const _real_TextSegment: AssertNotAny<TextSegment> = true;
 const _real_TextTarget: AssertNotAny<TextTarget> = true;
 const _real_TrackChangeAuthor: AssertNotAny<TrackChangeAuthor> = true;
 const _real_TrackChangesAuthorColorsConfig: AssertNotAny<TrackChangesAuthorColorsConfig> = true;
+const _real_TrackChangesConfig: AssertNotAny<TrackChangesConfig> = true;
+const _real_TrackChangesInteractionConfig: AssertNotAny<TrackChangesInteractionConfig> = true;
 const _real_TrackChangesModuleConfig: AssertNotAny<TrackChangesModuleConfig> = true;
+const _real_TrackChangesReplacementMode: AssertNotAny<TrackChangesReplacementMode> = true;
 const _real_TrackChangesSemanticColorsConfig: AssertNotAny<TrackChangesSemanticColorsConfig> = true;
 const _real_TrackedChangeAddress: AssertNotAny<TrackedChangeAddress> = true;
 const _real_TrackedChangeSemanticColorKey: AssertNotAny<TrackedChangeSemanticColorKey> = true;

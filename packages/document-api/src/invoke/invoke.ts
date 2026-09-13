@@ -11,9 +11,14 @@ import { INLINE_PROPERTY_REGISTRY } from '../format/inline-run-patch.js';
 // ---------------------------------------------------------------------------
 // TypedDispatchTable: compile-time contract between registry and dispatch
 // ---------------------------------------------------------------------------
+type DispatchOutput<K extends OperationId> = K extends 'mutations.preview' | 'mutations.apply'
+  ? Promise<OperationRegistry[K]['output']>
+  : K extends 'plan.execute'
+    ? OperationRegistry[K]['output'] | Promise<OperationRegistry[K]['output']>
+    : OperationRegistry[K]['output'];
 type TypedDispatchHandler<K extends OperationId> = OperationRegistry[K]['options'] extends never
-  ? (input: OperationRegistry[K]['input']) => OperationRegistry[K]['output']
-  : (input: OperationRegistry[K]['input'], options?: OperationRegistry[K]['options']) => OperationRegistry[K]['output'];
+  ? (input: OperationRegistry[K]['input']) => DispatchOutput<K>
+  : (input: OperationRegistry[K]['input'], options?: OperationRegistry[K]['options']) => DispatchOutput<K>;
 export type TypedDispatchTable = {
   [K in OperationId]: TypedDispatchHandler<K>;
 };
@@ -71,6 +76,7 @@ export function buildDispatchTable(api: DocumentApi): TypedDispatchTable {
     formatRange: (input, options) => api.formatRange(input, options),
     // --- blocks.* ---
     'blocks.list': (input) => api.blocks.list(input),
+    'blocks.findText': (input) => api.blocks.findText(input),
     'blocks.delete': (input, options) => api.blocks.delete(input, options),
     'blocks.deleteRange': (input, options) => api.blocks.deleteRange(input, options),
     'blocks.split': (input, options) => api.blocks.split(input, options),
@@ -227,6 +233,7 @@ export function buildDispatchTable(api: DocumentApi): TypedDispatchTable {
     'tables.setRowOptions': (input, options) => api.tables.setRowOptions(input, options),
     'tables.insertColumn': (input, options) => api.tables.insertColumn(input, options),
     'tables.deleteColumn': (input, options) => api.tables.deleteColumn(input, options),
+    'tables.moveColumn': (input, options) => api.tables.moveColumn(input, options),
     'tables.setColumnWidth': (input, options) => api.tables.setColumnWidth(input, options),
     'tables.distributeColumns': (input, options) => api.tables.distributeColumns(input, options),
     'tables.insertCell': (input, options) => api.tables.insertCell(input, options),

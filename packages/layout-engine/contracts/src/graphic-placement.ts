@@ -1,4 +1,5 @@
 import { getColumnGeometry, getColumnX } from './column-layout.js';
+import type { BaseDirection } from './direction-context.js';
 
 /** ECMA-376 Part 1 §20.4.3.4 (`ST_RelFromH`). */
 export const ANCHOR_H_RELATIVE_VALUES = [
@@ -105,6 +106,12 @@ export type ColumnLayoutForAnchor = {
   // stride; equal columns reduce to the old stride. (SD-2629)
   widths?: number[];
   gaps?: number[];
+  // Section page direction and the content width it was normalized against, both read by
+  // getColumnGeometry. Declared rather than left to structural pass-through: a column-relative
+  // anchor in an RTL section must resolve against the mirrored geometry, and silently dropping
+  // these would place it against the wrong margin with no type error to catch it.
+  direction?: BaseDirection;
+  contentWidth?: number;
 };
 
 /**
@@ -261,7 +268,7 @@ export function resolveAnchoredGraphicX(
   // Column ORIGIN from the resolved geometry so column-relative anchors honor per-column widths and
   // gaps (SD-2629) rather than a uniform columnIndex * (width + gap) stride. Equal columns reduce to
   // the old stride. Page/margin semantics are unchanged. (Available width stays scalar; see below.)
-  const geometry = getColumnGeometry(columns);
+  const geometry = getColumnGeometry({ ...columns, contentWidth: columns.contentWidth ?? contentWidth });
   const columnX = getColumnX(geometry, columnIndex, contentLeft);
   const resolvedPageWidth = pageWidth != null ? pageWidth : contentWidth + marginLeft + marginRight;
   const isOddPage = Math.max(1, Math.trunc(context.pageNumber ?? 1)) % 2 === 1;

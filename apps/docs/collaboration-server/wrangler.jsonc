@@ -1,0 +1,20 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "superdoc-docs-collaboration-staging",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-09-09",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "preview_urls": false,
+  "limits": { "cpu_ms": 50 },
+  "vars": {
+    "ALLOWED_ORIGINS": "https://docs-staging.superdoc.dev,https://docs-collaboration.superdoc-docs-next.pages.dev",
+  },
+  "durable_objects": { "bindings": [{ "name": "ROOMS", "class_name": "CollaborationRoom" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["CollaborationRoom"] }],
+  "ratelimits": [
+    { "name": "ADMISSION", "namespace_id": "1001", "simple": { "limit": 6, "period": 60 } },
+    { "name": "TOTAL_ADMISSION", "namespace_id": "1002", "simple": { "limit": 60, "period": 60 } },
+  ],
+  "observability": { "enabled": false },
+}

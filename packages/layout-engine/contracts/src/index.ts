@@ -21,6 +21,7 @@ export type {
 } from './direction-context.js';
 export { getParagraphInlineDirection, getTableVisualDirection } from './direction-context.js';
 import type {
+  BaseDirection,
   ParagraphDirectionContext,
   RunBidiContext,
   RunScriptContext,
@@ -162,6 +163,7 @@ export {
   cloneColumnLayout,
   columnLayoutsEqual,
   columnRenderLayoutsEqual,
+  findColumnContaining,
   getColumnAtX,
   getColumnGapAfter,
   getColumnGeometry,
@@ -402,7 +404,7 @@ export type TrackedChangesMode = 'review' | 'original' | 'final' | 'off';
  * Mirrors the author metadata carried on {@link TrackedChangeMeta}
  * (`author` → `name`, `authorEmail` → `email`, `authorImage` → `image`).
  * Hosts configure per-author colors through this shape (see the
- * `modules.trackChanges.authorColors` config on the `superdoc` package).
+ * `trackChanges.authorColors` config on the `superdoc` package).
  */
 export type TrackChangeAuthor = {
   name?: string;
@@ -2886,6 +2888,20 @@ export type ColumnLayout = {
    * mode uses the scalar `gap`. When absent, consumers fall back to the uniform `gap`. (SD-2629)
    */
   gaps?: number[];
+  /**
+   * Section page direction, from `w:sectPr/w:bidi`. Decides which side the FIRST column sits on:
+   * `'ltr'` (default) fills left to right, `'rtl'` fills right to left, matching Word.
+   *
+   * Per ECMA-376 §17.6.1 a section's `w:bidi` governs section-level chrome — page numbers, gutters
+   * and columns — and is independent of the paragraph inline direction (§17.3.1.6). It is carried
+   * here, on the column layout itself, because `getColumnGeometry` is the single source every
+   * column consumer reads for positioning (fill, hit testing, separators, balancing, floating
+   * anchors, footnotes); threading the axis alongside the widths keeps those consumers from having
+   * to re-derive it, and keeps them from disagreeing.
+   *
+   * Absent means `'ltr'`. Every existing producer therefore keeps its current geometry unchanged.
+   */
+  direction?: BaseDirection;
 };
 
 /**
@@ -3587,9 +3603,13 @@ export type HeaderFooterLayout = {
 export type LayoutBlockResumeCheckpoint = {
   blockId: BlockId;
   pageIndex: number;
+  /** Page before keep/fit decisions; editing may pull a deferred paragraph back here. */
+  preflightPageIndex?: number;
   prefixFragmentCount: number;
   cursorY: number;
   maxCursorY: number;
+  /** Exact accepted body footprint for coupled paragraph/note pagination. */
+  committedBodyBottom?: number;
   columnIndex: number;
   trailingSpacing: number;
   lastParagraphStyleId?: string;
@@ -3685,8 +3705,13 @@ export { isResolvedTableItem, isResolvedImageItem, isResolvedDrawingItem } from 
 // and painter-dom). Located in contracts to avoid reverse stage dependencies.
 export {
   expandRunsForInlineNewlines,
+  isBodyNoteReferenceRun,
+  isNoteLabelRun,
+  isNumberedNoteMarkerRun,
   isEmptyInlineSdtPlaceholderRun,
   isEmptySdtPlaceholderRun,
+  NOTE_LABEL_MARKER_ATTR,
+  NOTE_REFERENCE_MARKER_ATTR,
   sliceRunsForLine,
   usesPositionedTextGeometry,
 } from './run-helpers.js';

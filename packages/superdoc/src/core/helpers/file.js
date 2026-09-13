@@ -1,4 +1,5 @@
 import { DOCX, PDF, HTML } from '@superdoc/common';
+import { readCollaborationConfig } from '../collaboration/resolve-v2-collaboration-target.js';
 
 /**
  * @typedef {Object} UploadWrapper
@@ -148,6 +149,12 @@ const GENERIC_BINARY_MIME = 'application/octet-stream';
  * @returns {DocumentEntry|any} A normalized entry, or the original value when it is unsupported or unchanged
  */
 export const normalizeDocumentEntry = (entry) => {
+  if (entry && typeof entry === 'object' && Object.prototype.hasOwnProperty.call(entry, 'collaboration')) {
+    const source = { ...entry };
+    delete source.collaboration;
+    // The internal document lifecycle uses one field, including upgrade rollback and reopen.
+    entry = { ...source, v2Collaboration: readCollaborationConfig(entry) };
+  }
   if (isDocumentByteSource(entry)) {
     return {
       type: DOCX,
@@ -174,6 +181,7 @@ export const normalizeDocumentEntry = (entry) => {
     }
 
     return {
+      ...(entry.v2Collaboration !== undefined ? { v2Collaboration: entry.v2Collaboration } : {}),
       type,
       data,
       name,

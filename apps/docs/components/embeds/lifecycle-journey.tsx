@@ -11,7 +11,7 @@ function DocumentSheet({ edited = false }: { edited?: boolean }) {
   return (
     <div className='sd-lifecycle-document' aria-hidden='true'>
       <FileText size={18} strokeWidth={1.75} />
-      <strong>Mutual NDA</strong>
+      <strong>Statement of work</strong>
       <span />
       <span />
       <span className={edited ? 'sd-lifecycle-document-edit' : undefined} />
@@ -23,21 +23,21 @@ function DocumentSheet({ edited = false }: { edited?: boolean }) {
 function ApplicationPreview({
   stage,
   onRetry,
-  onSave,
+  onExport,
 }: {
   stage: ActiveLifecycleStage;
   onRetry: () => void;
-  onSave: () => void;
+  onExport: () => void;
 }) {
-  const edited = stage.appView === 'edited' || stage.appView === 'saved';
+  const edited = stage.appView === 'edited' || (stage.appView === 'exported' && stage.appTone === 'dirty');
 
   return (
     <div className='sd-lifecycle-preview'>
       <div className='sd-lifecycle-app'>
         <div className='sd-lifecycle-appbar'>
-          <strong>NDA review</strong>
-          <button disabled={!stage.actionsEnabled} onClick={onSave} type='button'>
-            Save
+          <strong>Document editor</strong>
+          <button disabled={!stage.actionsEnabled} onClick={onExport} type='button'>
+            Export
           </button>
           <output className='sd-lifecycle-app-status' data-tone={stage.appTone} aria-live='polite'>
             <span aria-hidden='true' />
@@ -55,10 +55,12 @@ function ApplicationPreview({
               <span />
             </div>
           )}
-          {(stage.appView === 'document' || edited) && <DocumentSheet edited={edited} />}
-          {stage.appView === 'saved' && (
+          {(stage.appView === 'document' || stage.appView === 'exported' || edited) && (
+            <DocumentSheet edited={edited} />
+          )}
+          {stage.appView === 'exported' && (
             <div className='sd-lifecycle-saved' role='status'>
-              <Check aria-hidden='true' size={13} /> Saved to your backend
+              <Check aria-hidden='true' size={13} /> DOCX copy downloaded
             </div>
           )}
           {stage.appView === 'unmounted' && <div className='sd-lifecycle-empty'>Editor container released</div>}
@@ -80,15 +82,21 @@ function ApplicationPreview({
 export function LifecycleJourney() {
   const [activeId, setActiveId] = useState<LifecycleStageId | 'failure'>('mount');
   const [isPlaying, setIsPlaying] = useState(false);
-  const activeStage =
+  const [isCleanExport, setIsCleanExport] = useState(false);
+  const selectedStage =
     activeId === 'failure'
       ? lifecycleFailure
       : (lifecycleStages.find((stage) => stage.id === activeId) ?? lifecycleStages[0]);
+  const activeStage: ActiveLifecycleStage =
+    selectedStage.id === 'export' && isCleanExport
+      ? { ...selectedStage, appStatus: 'Ready', appTone: 'ready' }
+      : selectedStage;
   const activeIndex = lifecycleStages.findIndex((stage) => stage.id === activeId);
 
   useEffect(() => {
     if (!isPlaying) return;
 
+    setIsCleanExport(false);
     let nextIndex = 0;
     setActiveId(lifecycleStages[nextIndex].id);
     const timer = window.setInterval(() => {
@@ -106,6 +114,7 @@ export function LifecycleJourney() {
 
   function chooseStage(id: LifecycleStageId | 'failure') {
     setIsPlaying(false);
+    setIsCleanExport(false);
     setActiveId(id);
   }
 
@@ -155,7 +164,11 @@ export function LifecycleJourney() {
         <ApplicationPreview
           stage={activeStage}
           onRetry={() => chooseStage('mount')}
-          onSave={() => chooseStage('save')}
+          onExport={() => {
+            const clean = activeStage.appTone !== 'dirty';
+            chooseStage('export');
+            setIsCleanExport(clean);
+          }}
         />
 
         <div className='sd-lifecycle-detail'>

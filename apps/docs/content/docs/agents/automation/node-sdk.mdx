@@ -56,4 +56,26 @@ Saving to a separate path leaves the source session dirty by design. After the o
 
 For the contract behind each step, read the [Document API mental model](/document-api/mental-model).
 
+## Open a token-authenticated collaboration document
+
+Pass a Hocuspocus or y-websocket token in the options for that document's open request:
+
+```js
+const document = await client.open(
+  {
+    doc: './contract.docx',
+    collaboration: {
+      providerType: 'hocuspocus',
+      url: 'wss://collaboration.example.com',
+      documentId: 'contract-123',
+    },
+  },
+  { collaborationAuth: { type: 'token', token: userToken } },
+);
+```
+
+The credential is separate from the collaboration profile and command-line arguments. It applies to the provider
+created for this open request. Per-open token authentication is not supported for Liveblocks or the standalone
+document host.
+
 Prefer Python? Follow the [Python SDK guide](/agents/automation/python-sdk) for the same deterministic workflow.

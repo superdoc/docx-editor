@@ -1,0 +1,75 @@
+---
+title: Debug the MCP server
+navTitle: Debugging
+description: Inspect the SuperDoc MCP server directly, read its log, and recognize the failures that look like something else.
+---
+
+{/* Media decision: none. The page is a set of symptom-to-cause lookups, which a table serves better than a diagram. */}
+
+Most MCP problems fall into three groups: the client cannot start the server, the tool list is not what you expected, or a call fails against a session. Work out which group you are in before changing configuration.
+
+## Call the server without a client
+
+The MCP Inspector spawns the server the way a client would and lets you call each tool by hand from a browser:
+
+```bash
+MCP_PRESET=core npx @modelcontextprotocol/inspector -- npx @superdoc/mcp
+```
+
+Use it to confirm the registered tool list, call `superdoc_open` with an absolute path, and read a raw receipt. If a call works here and fails from the agent, the model is choosing or parameterizing the tool badly, and the fix is in the instruction rather than in the server.
+
+To read the instructions the server sends the client, print them from the CLI:
+
+```bash
+superdoc preset get-mcp-prompt --preset core
+```
+
+## Read the server log
+
+Standard output is reserved for the protocol, so everything the server logs goes to standard error with a level tag:
+
+```text
+[mcp:log]   Regular output
+[mcp:info]  Informational messages
+[mcp:debug] Debug details
+[mcp:warn]  Warnings
+```
+
+Where that stream lands depends on the client. Claude Code shows it in the MCP server status view, and Claude Desktop writes it to its log directory. When nothing appears at all, the client usually never managed to spawn the process.
+
+## The server does not start
+
+| Symptom                                      | Cause                                                             | Fix                                                                                    |
+| -------------------------------------------- | ----------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| Client reports the server exited immediately | `MCP_PRESET` set to something other than `legacy` or `core`       | The server exits with an unknown-preset message. Fix the value                         |
+| Client reports a JSON parse error on connect | Something wrote to standard output before the protocol handshake  | Check for a dependency or shell wrapper that prints to stdout. Run under the inspector |
+| `npx` cannot find the package                | Node.js older than 20, or no network access for the first install | Confirm `node --version` and install once with network access                          |
+
+## The tool list is wrong
+
+The surface is decided at startup from `MCP_PRESET`. If the agent sees `superdoc_edit`, `superdoc_search`, and other grouped tools, the server is running the default `legacy` preset. If it sees `superdoc_inspect` and `superdoc_perform_action`, it is running `core`. Restart the client after changing the variable, because it only reads the configuration when it spawns the server.
+
+Under `legacy`, each tool's exact action list is generated from the Document API contract and changes with it. Read the schema the server serves rather than a copy of it.
+
+## A call fails
+
+Two kinds of failure reach the agent. A thrown error arrives as an error result whose text starts with the tool name, for example `superdoc_perform_action failed: Action delete_table is excluded by configuration.` A receipt with `status: "failed"` is a normal result that the action produced after resolving targets, and it carries `errors[].message` written for the model to act on.
+
+| Message or receipt                                             | Cause                                                                    | Fix                                                                             |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------- |
+| `No open session with id "…". Use superdoc_open first.`        | The session was closed, or the id came from an earlier server process    | Open the document again. Session ids do not survive a restart                   |
+| Inspect reports zero blocks on a document you know has content | The path did not exist, so `superdoc_open` created a blank document      | Use an absolute path and check the `filePath` in the open result                |
+| `status: "failed"` with `MATCH_NOT_FOUND`                      | The target text is not in the document, or drifted after an earlier edit | Nothing changed. Re-inspect with `findText` and target the current wording      |
+| `status: "partial"`                                            | Some edits in a batch applied and some did not                           | Read the per-edit counts in the receipt and retry only the skipped ones         |
+| A tracked edit landed as a direct edit                         | `changeMode: "tracked"` was omitted, or the action ignores it            | Check the tool call arguments and the [action reference](/agents/build/actions) |
+| `Unknown tool` under `core`                                    | The model used a `legacy` tool name from an older conversation           | Start a fresh conversation so the model reads the current tool list             |
+
+`superdoc_inspect` returns a snapshot, not a receipt. It has no `status`, so a client-side check that expects one on every result misreads every successful read as a failure.
+
+## The file on disk is not what you expected
+
+`superdoc_save` writes the resolved `out` path, or the original path when `out` is omitted, and replaces whatever is there. If the source changed when you asked for a copy, the agent omitted `out` or passed the source path. Ask for the destination explicitly and keep the source under version control or a backup while iterating on instructions.
+
+## Next
+
+[Debug an agent run](/agents/operate/debugging) covers the same separation of model mistakes from operation failures for agents built on the SDK, including the error codes the dispatcher throws.

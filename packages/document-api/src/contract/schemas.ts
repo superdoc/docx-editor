@@ -527,7 +527,7 @@ const SHARED_DEFS: Record<string, JsonSchema> = {
       side: {
         enum: ['inserted', 'deleted', 'source', 'destination'],
         description:
-          'Which revision side to anchor the comment on. Optional for paired replacements (defaults to inserted) and paired moves (defaults to destination); required for independent replacements where both sides are separately reviewable.',
+          'Which revision side to anchor the comment on. Optional for grouped replacements (defaults to inserted) and paired moves (defaults to destination); required for separate replacements where both sides are reviewed independently.',
       },
       story: ref('StoryLocator'),
     },
@@ -1333,7 +1333,8 @@ function createHeadingResultSchemaFor(operationId: OperationId): JsonSchema {
     oneOf: [createHeadingSuccessSchema, createHeadingFailureSchemaFor(operationId)],
   };
 }
-const headingLevelSchema: JsonSchema = { type: 'integer', minimum: 1, maximum: 6 };
+const createHeadingLevelSchema: JsonSchema = { type: 'integer', minimum: 1, maximum: 6 };
+const semanticHeadingLevelSchema: JsonSchema = { type: 'integer', minimum: 1, maximum: 9 };
 const listsInsertSuccessSchema = objectSchema(
   {
     success: { const: true },
@@ -1449,26 +1450,7 @@ const textSelectorSchema = objectSchema(
   },
   ['type', 'pattern'],
 );
-// Intentionally omits includeDeletedText — plan engine (apply/preview) still
-// resolves only visible-text selectors.
-const planTextSelectorSchema = objectSchema(
-  {
-    type: { const: 'text', description: "Must be 'text' for text pattern search." },
-    pattern: {
-      type: 'string',
-      description:
-        'Text to match. In regex mode, patterns are validated for syntax, maximum length, and safety before execution.',
-    },
-    mode: {
-      enum: ['contains', 'regex'],
-      description:
-        "Match mode: 'contains' (literal substring, recommended for literal text) or 'regex' (validated regular expression).",
-    },
-    caseSensitive: { type: 'boolean', description: 'Case-sensitive matching. Default: false.' },
-    wholeWord: { type: 'boolean', description: 'Require word-boundary matches. Default: false.' },
-  },
-  ['type', 'pattern'],
-);
+const planTextSelectorSchema = textSelectorSchema;
 const nodeSelectorSchema = objectSchema(
   {
     type: { const: 'node', description: "Must be 'node' for node type search." },
@@ -2409,7 +2391,7 @@ const reviewDecideRangeTargetOptions = {
   },
   side: {
     enum: ['insert', 'inserted', 'delete', 'deleted', 'source', 'destination'],
-    description: 'Optional revision side for paired replacement or move targets.',
+    description: 'Optional revision side for grouped replacement or move targets.',
   },
   story: {
     ...storyLocatorSchema,
@@ -3193,6 +3175,7 @@ const contentControlTargetSchema = objectSchema(
     kind: { enum: ['block', 'inline'] },
     nodeType: { const: 'sdt' },
     nodeId: { type: 'string' },
+    story: storyLocatorSchema,
   },
   ['kind', 'nodeType', 'nodeId'],
 );
@@ -3440,7 +3423,17 @@ function buildContentControlSchemas(): Record<ContentControlOperationId, Operati
       input: ccTargetInput(),
       output: objectSchema({ content: { type: 'string' }, format: { enum: ['text', 'html'] } }, ['content', 'format']),
     },
-    'contentControls.replaceContent': ccContentMutation,
+    'contentControls.replaceContent': {
+      ...ccContentMutation,
+      input: objectSchema(
+        {
+          target: contentControlTargetSchema,
+          content: { type: 'string' },
+          format: { enum: ['text', 'html', 'ooxml'] },
+        },
+        ['target', 'content'],
+      ),
+    },
     'contentControls.clearContent': targetOnlyMutation,
     'contentControls.appendContent': ccContentMutation,
     'contentControls.prependContent': ccContentMutation,
@@ -3968,6 +3961,41 @@ const diffSnapshotSchema: JsonSchema = objectSchema(
   },
   ['version', 'engine', 'fingerprint', 'coverage', 'payload'],
 );
+const diffApplyEligibilityBlockerSchema: JsonSchema = objectSchema(
+  {
+    code: {
+      type: 'string',
+      enum: [
+        'family-apply-lane-unavailable',
+        'header-footer-physical-lifecycle-unsafe',
+        'header-footer-tracked-lifecycle-unsupported',
+        'comment-replay-unsafe',
+        'comment-anchor-marker-semantics-unsafe',
+        'styles-replay-unsafe',
+        'numbering-replay-unsafe',
+        'section-reference-replay-unsafe',
+        'structural-paragraph-unsupported',
+      ],
+    },
+    message: { type: 'string' },
+    families: { type: 'array', items: { type: 'string' } },
+  },
+  ['code', 'message'],
+);
+const diffApplyModeEligibilitySchema: JsonSchema = objectSchema(
+  {
+    status: { type: 'string', enum: ['candidate', 'blocked'] },
+    blockers: { type: 'array', items: diffApplyEligibilityBlockerSchema },
+  },
+  ['status', 'blockers'],
+);
+const diffApplyEligibilitySchema: JsonSchema = objectSchema(
+  {
+    direct: diffApplyModeEligibilitySchema,
+    tracked: diffApplyModeEligibilitySchema,
+  },
+  ['direct', 'tracked'],
+);
 const diffPayloadSchema: JsonSchema = objectSchema(
   {
     version: { type: 'string', enum: ['sd-diff-payload/v1', 'sd-diff-payload/v2'] },
@@ -3976,6 +4004,7 @@ const diffPayloadSchema: JsonSchema = objectSchema(
     targetFingerprint: { type: 'string' },
     coverage: diffCoverageSchema,
     summary: diffSummarySchema,
+    applyEligibility: diffApplyEligibilitySchema,
     payload: { type: 'object', description: 'Opaque engine-owned diff data.' },
   },
   ['version', 'engine', 'baseFingerprint', 'targetFingerprint', 'coverage', 'summary', 'payload'],
@@ -4198,7 +4227,10 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
                   ['text'],
                 ),
               },
-              headingLevel: { type: 'integer', description: 'Heading level (1-6). Only present for headings.' },
+              headingLevel: {
+                ...semanticHeadingLevelSchema,
+                description: 'Heading level (1-9). Only present for headings.',
+              },
               tableContext: objectSchema(
                 {
                   tableOrdinal: {
@@ -4260,7 +4292,7 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
                 type: 'string',
                 enum: ['insert', 'delete', 'replacement', 'format'],
                 description:
-                  "Aggregate type at the entity level. In paired replacement mode, a delete+insert pair shares one entity and this surfaces as 'replacement'; per-half type lives on block.textSpans[].trackedChanges[].",
+                  "Aggregate type at the entity level. In grouped replacement mode, a delete+insert pair shares one entity and this surfaces as 'replacement'; per-half type lives on block.textSpans[].trackedChanges[].",
               },
               blockIds: {
                 type: 'array',
@@ -4278,7 +4310,7 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
               excerpt: {
                 type: 'string',
                 description:
-                  'Short text excerpt of the changed content. Omitted for paired replacements; read block.textSpans for the per-half text.',
+                  'Short text excerpt of the changed content. Omitted for grouped replacements; read block.textSpans for the per-half text.',
               },
               author: { type: 'string', description: 'Change author name.' },
               date: { type: 'string', description: 'Change date (ISO string).' },
@@ -4461,8 +4493,56 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
     failure: textMutationFailureSchemaFor('format.apply'),
   },
   ...formatInlineAliasOperationSchemas,
+  'blocks.findText': {
+    input: objectSchema(
+      {
+        text: {
+          type: 'string',
+          pattern: '\\S',
+          description: 'Literal case-insensitive substring. Whitespace is preserved.',
+        },
+        limit: { type: 'integer', minimum: 0, description: 'Maximum matches. Default: 8; zero returns counts only.' },
+      },
+      ['text'],
+    ),
+    output: objectSchema(
+      {
+        total: { type: 'integer', minimum: 0 },
+        matches: arraySchema(
+          objectSchema(
+            {
+              ordinal: { type: 'integer', minimum: 0, description: 'Zero-based top-level body ordinal.' },
+              nodeId: { type: 'string' },
+              nodeType: { enum: [...blockNodeTypeValues] },
+              preview: { type: 'string', maxLength: 100 },
+            },
+            ['ordinal', 'nodeId', 'nodeType', 'preview'],
+          ),
+        ),
+        firstMatchOrdinal: { type: 'integer', minimum: 0 },
+        scanError: objectSchema({ message: { type: 'string' } }, ['message']),
+        scannedBlocks: { type: 'integer', minimum: 0, maximum: 20000 },
+        truncated: { type: 'boolean' },
+        revision: { type: 'string' },
+      },
+      ['total', 'matches', 'scannedBlocks', 'truncated', 'revision'],
+    ),
+  },
   'blocks.list': {
     input: objectSchema({
+      nodeIds: {
+        type: 'array',
+        items: { type: 'string', minLength: 1 },
+        description: 'Top-level block identities to match before pagination.',
+      },
+      textSearch: objectSchema(
+        {
+          terms: { type: 'array', minItems: 1, items: { type: 'string', minLength: 1 } },
+          match: { enum: ['all', 'any'] },
+          caseSensitive: { type: 'boolean' },
+        },
+        ['terms'],
+      ),
       in: storyLocatorSchema,
       offset: { type: 'number', minimum: 0, description: 'Number of blocks to skip. Default: 0.' },
       limit: { type: 'number', minimum: 1, description: 'Maximum blocks to return. Omit for all blocks.' },
@@ -4499,7 +4579,7 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
               bold: { type: 'boolean', description: 'True if text is bold.' },
               color: { type: 'string', description: "Text color when explicitly set (e.g. '#000000')." },
               alignment: { type: 'string', description: 'Paragraph alignment.' },
-              headingLevel: { type: 'number', description: 'Heading level (1-6).' },
+              headingLevel: { ...semanticHeadingLevelSchema, description: 'Heading level (1-9).' },
               paragraphNumbering: {
                 type: 'object',
                 description:
@@ -5414,7 +5494,7 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
     input: objectSchema(
       {
         in: storyLocatorSchema,
-        level: { ...headingLevelSchema, description: 'Heading level (1-6).' },
+        level: { ...createHeadingLevelSchema, description: 'Heading level (1-6).' },
         at: {
           description:
             "Position: {kind:'documentEnd'} to append, {kind:'documentStart'} to prepend, or {kind:'before'|'after', target:{kind:'block', nodeType:'...', nodeId:'...'}} for relative placement.",
@@ -7100,6 +7180,8 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
         args: objectSchema(
           {
             replacement: replacementPayloadSchema,
+            replacementMode: { enum: ['literal', 'regex-template'], type: 'string' },
+            caseHandling: { enum: ['exact', 'preserve-match'], type: 'string' },
             style: stylePolicySchema,
           },
           ['replacement'],
@@ -7184,29 +7266,40 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
         assertStepSchema,
       ],
     };
-    const mutationsInputSchema = objectSchema(
+    const mutationsInputProperties = {
+      in: storyLocatorSchema,
+      expectedRevision: {
+        type: 'string',
+        description:
+          'Document revision for optimistic concurrency. Mutation fails if document was modified since this revision.',
+      },
+      atomic: {
+        const: true,
+        type: 'boolean',
+        description: 'Must be true. All steps execute as one atomic transaction.',
+      },
+      changeMode: {
+        enum: ['direct', 'tracked'],
+        description:
+          "Required. Use 'direct' for immediate edits or 'tracked' for suggestions. Must always be provided.",
+      },
+      steps: {
+        ...arraySchema(mutationStepSchema),
+        description:
+          "Ordered array of mutation steps. Each step needs 'op' (text.rewrite, text.insert, text.delete, format.apply, or assert) and a 'where' targeting clause.",
+      },
+    };
+    const mutationsInputSchema = objectSchema(mutationsInputProperties, ['atomic', 'changeMode', 'steps']);
+    const mutationsPreviewInputSchema = objectSchema(
       {
-        in: storyLocatorSchema,
-        expectedRevision: {
-          type: 'string',
-          description:
-            'Document revision for optimistic concurrency. Mutation fails if document was modified since this revision.',
-        },
-        atomic: {
-          const: true,
-          type: 'boolean',
-          description: 'Must be true. All steps execute as one atomic transaction.',
-        },
-        changeMode: {
-          enum: ['direct', 'tracked'],
-          description:
-            "Required. Use 'direct' for immediate edits or 'tracked' for suggestions. Must always be provided.",
-        },
-        steps: {
-          ...arraySchema(mutationStepSchema),
-          description:
-            "Ordered array of mutation steps. Each step needs 'op' (text.rewrite, text.insert, text.delete, format.apply, or assert) and a 'where' targeting clause.",
-        },
+        ...mutationsInputProperties,
+        detail: objectSchema(
+          {
+            offset: { type: 'number', minimum: 0 },
+            limit: { type: 'number', minimum: 0, maximum: 1000 },
+          },
+          [],
+        ),
       },
       ['atomic', 'changeMode', 'steps'],
     );
@@ -7304,7 +7397,7 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
         ),
       },
       'mutations.preview': {
-        input: mutationsInputSchema,
+        input: mutationsPreviewInputSchema,
         output: objectSchema(
           {
             evaluatedRevision: { type: 'string' },
@@ -7702,6 +7795,36 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
           columnIndex: { type: 'integer', minimum: 0 },
         },
         ['columnIndex'],
+      ),
+      oneOf: [{ required: ['target'] }, { required: ['nodeId'] }],
+    },
+    output: tableMutationResultSchema,
+    success: tableMutationSuccessSchema,
+    failure: tableMutationFailureSchema,
+  },
+  'tables.moveColumn': {
+    input: {
+      ...objectSchema(
+        {
+          target: tableAddressSchema,
+          nodeId: { type: 'string' },
+          columnIndex: { type: 'integer', minimum: 0 },
+          destination: {
+            oneOf: [
+              objectSchema({ kind: { const: 'first' } }, ['kind']),
+              objectSchema({ kind: { const: 'last' } }, ['kind']),
+              objectSchema({ kind: { const: 'before' }, columnIndex: { type: 'integer', minimum: 0 } }, [
+                'kind',
+                'columnIndex',
+              ]),
+              objectSchema({ kind: { const: 'after' }, columnIndex: { type: 'integer', minimum: 0 } }, [
+                'kind',
+                'columnIndex',
+              ]),
+            ],
+          },
+        },
+        ['columnIndex', 'destination'],
       ),
       oneOf: [{ required: ['target'] }, { required: ['nodeId'] }],
     },
@@ -8218,6 +8341,7 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
           type: 'array',
           items: objectSchema(
             {
+              firstParagraphNodeId: { type: 'string' },
               nodeId: { type: 'string' },
               address: tableCellAddressSchema,
               rowIndex: { type: 'integer', minimum: 0 },

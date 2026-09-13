@@ -276,12 +276,12 @@ function validateHeadingPayload(rec: Record<string, unknown>, seenIds: Set<strin
     throw new DocumentApiValidationError('INVALID_PAYLOAD', 'heading payload must be an object.');
   }
 
-  // Rule 5: heading level must be 1–6
+  // Rule 5: heading level must be 1–9
   const level = payload.level;
-  if (typeof level !== 'number' || !Number.isInteger(level) || level < 1 || level > 6) {
+  if (typeof level !== 'number' || !Number.isInteger(level) || level < 1 || level > 9) {
     throw new DocumentApiValidationError(
       'INVALID_PAYLOAD',
-      `Heading level must be an integer between 1 and 6, got ${JSON.stringify(level)}.`,
+      `Heading level must be an integer between 1 and 9, got ${JSON.stringify(level)}.`,
       { field: 'level' },
     );
   }

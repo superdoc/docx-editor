@@ -1,0 +1,48 @@
+---
+title: Package compatibility
+navTitle: Package compatibility
+description: Understand how SuperDoc declares and changes npm peer dependency compatibility.
+---
+
+SuperDoc changes compatibility ranges when an integration or its tested support changes, not on a fixed schedule. The `peerDependencies` and `peerDependenciesMeta` fields in each published package are the machine-readable requirements for that release.
+
+`@superdoc/react` also carries an exact `superdoc` peer that release automation updates when the adapter and core are published together. Applications should upgrade those coordinated releases as a pair. This version-only synchronization can occur more often than an authored compatibility-policy change.
+
+## Why peer dependencies are different
+
+A peer dependency is supplied by the application that installs SuperDoc. It lets SuperDoc and the application share a framework or integration runtime instead of installing unrelated copies. React, Yjs, PDF.js, and collaboration providers are examples of dependencies that can participate in this contract.
+
+A regular dependency is selected as part of SuperDoc's package tree. Updating one can still affect bundle size, security review, or runtime behavior, but it does not normally require the application to provide a matching version.
+
+## Required and optional peers
+
+A required peer must be available at a version accepted by the published range. Package managers can warn or fail when the application cannot provide one.
+
+An optional peer is not needed to install the package or use unrelated features. The application must provide a compatible version when it uses the integration that depends on that peer.
+
+Inspect the requirements for the version you install:
+
+```bash
+npm view superdoc@latest peerDependencies peerDependenciesMeta
+```
+
+Framework adapters and other published `@superdoc/*` packages declare their own peer requirements in the same fields.
+
+## How changes are released
+
+Authored peer dependency changes receive manual review in addition to automated package checks.
+
+| Change                                                                   | Release policy              |
+| ------------------------------------------------------------------------ | --------------------------- |
+| Widen a tested range                                                     | Minor release               |
+| Add an optional peer                                                     | Minor release               |
+| Change a peer from required to optional                                  | Minor release               |
+| Narrow a range or stop accepting a previously supported version          | Breaking release            |
+| Add a required peer                                                      | Breaking release            |
+| Change a peer from optional to required                                  | Breaking release            |
+| Remove or replace a peer contract                                        | Breaking release            |
+| Synchronize a release-managed exact peer to its coordinated core release | Coordinated package release |
+
+Except for the coordinated version-only synchronization above, breaking peer changes require a major package release, release notes, and migration guidance. A security issue can require a faster compatibility change; when that happens, the release notes identify the affected versions and the required upgrade.
+
+Before widening a range, validate the additional versions. Narrow a range only when SuperDoc can no longer support the removed versions safely.

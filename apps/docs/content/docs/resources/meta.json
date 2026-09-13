@@ -1,5 +1,5 @@
 {
   "title": "Resources",
   "root": true,
-  "pages": ["how-superdoc-works", "security", "license"]
+  "pages": ["how-superdoc-works", "package-compatibility", "security", "license"]
 }

@@ -1,9 +1,13 @@
-<label>
-  Clause text
-  <input id="clause-text" value="This agreement is governed by the laws of California." />
-</label>
-<button id="insert-clause" type="button" disabled>Insert clause</button>
-<output id="command-status" aria-live="polite"></output>
-<div id="editor" style="height: 70vh"></div>
+<div id="command-demo">
+  <div id="toolbar"></div>
+  <div aria-label="Application actions" role="toolbar">
+    <button aria-keyshortcuts="Control+Shift+Y" id="insert-clause" type="button" disabled>
+      Insert clause
+    </button>
+    <kbd>Control-Shift-Y</kbd>
+  </div>
+  <output id="command-status" aria-live="polite">Place the caret in the document.</output>
+  <div id="editor" style="height: 70vh"></div>
+</div>
 
 <script type="module" src="/src/main.ts"></script>

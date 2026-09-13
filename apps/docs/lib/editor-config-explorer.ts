@@ -23,6 +23,7 @@ const fieldsByGroup = {
     'superdocId',
     'password',
     'documents',
+    'fieldContext',
     'users',
     'colors',
     'format',
@@ -47,6 +48,7 @@ const fieldsByGroup = {
     'disableContextMenu',
   ],
   behavior: [
+    'fieldUpdatePolicy',
     'hyperlinks',
     'trackChanges',
     'isLocked',
@@ -124,6 +126,8 @@ const summaries = {
   document: 'Open a document from a URL, File, Blob, or collaboration source.',
   password: 'Open an encrypted DOCX with its password.',
   documents: 'Load documents through the legacy multi-document field.',
+  fieldContext: 'Provide V2 field values for one initial document; use Document.fieldContext for multiple documents.',
+  fieldUpdatePolicy: 'Refresh supported unlocked V2 fields when opening a local editable document.',
   user: 'Identify the current user for collaboration and tracked changes.',
   users: 'Provide the people available for mentions.',
   colors: 'Provide awareness colors for users.',
@@ -174,7 +178,7 @@ const summaries = {
   conversations: 'Load conversation data.',
   comments: 'Legacy comment visibility setting.',
   hyperlinks: 'Choose what happens when a person activates a hyperlink.',
-  trackChanges: 'Legacy tracked-change visibility setting.',
+  trackChanges: 'Configure replacement review and tracked-change colors.',
   isLocked: 'Set the initial shared lock metadata.',
   handleImageUpload: 'Store images inserted into the document.',
   lockedBy: 'Identify the user who locked the Editor.',
@@ -280,11 +284,14 @@ const presentation = {
   },
   uiDisplayFallbackFont: {
     example: { value: "'Inter, sans-serif'", code: "uiDisplayFallbackFont: 'Inter, sans-serif'" },
-    guide: { label: 'Themes and fonts', href: '/editor/themes-and-fonts' },
   },
   trackChanges: {
-    status: 'Deprecated. Use viewing.trackedChanges.',
-    guide: { label: 'Document modes', href: '/editor/document-modes' },
+    default: "{ enabled: true, replacementMode: 'grouped' }",
+    example: {
+      value: "{ replacementMode: 'separate' }",
+      code: "trackChanges: { replacementMode: 'separate' }",
+    },
+    guide: { label: 'Track changes', href: '/editor/track-changes' },
   },
   comments: {
     status: 'Deprecated. Use viewing.comments.',
@@ -314,8 +321,7 @@ const presentation = {
   },
   modules: {
     type: '{\n  trackChanges?: TrackChangesModuleConfig;\n}',
-    example: { value: '{ trackChanges: … }', code: 'modules: { trackChanges: { enabled: true } }' },
-    guide: { label: 'Track changes', href: '/editor/track-changes' },
+    status: 'The trackChanges module path is deprecated. Use the top-level trackChanges field.',
   },
   editorExtensions: {
     status: 'Ignored by superdoc@2. Use extensions.',
@@ -342,7 +348,6 @@ const presentation = {
   },
   fonts: {
     example: { value: '{ assetBaseUrl: … }', code: "fonts: { assetBaseUrl: '/fonts/' }" },
-    guide: { label: 'Themes and fonts', href: '/editor/themes-and-fonts' },
   },
   workerUrls: {
     example: { value: '{ document: … }', code: "workerUrls: { document: '/workers/document.js' }" },

@@ -18,10 +18,13 @@ import type { Config } from 'superdoc';
 
 const runtimePackageUrl = `${runtime.cdnOrigin}/${runtime.runtimePackage}@${runtime.runtimeVersion}`;
 const runtimeBaseUrl = `${runtimePackageUrl}/dist-cdn`;
-const engineBaseUrl = `${runtime.cdnOrigin}/${runtime.enginePackage}@${runtime.engineVersion}/dist-cdn`;
+const localEngineUrl =
+  process.env.NODE_ENV === 'development' ? process.env.NEXT_PUBLIC_DOCS_ENGINE_URL?.replace(/\/+$/, '') : undefined;
+const engineBaseUrl = `${localEngineUrl || `${runtime.cdnOrigin}/${runtime.enginePackage}@${runtime.engineVersion}`}/dist-cdn`;
 const uiModuleUrl = `${runtimePackageUrl}${runtime.uiModulePath}`;
 
-export type SuperDocConstructor = typeof import('superdoc').SuperDoc & Pick<typeof import('superdoc'), 'BlankDOCX'>;
+export type SuperDocConstructor = typeof import('superdoc').SuperDoc &
+  Pick<typeof import('superdoc'), 'BlankDOCX' | 'createTheme' | 'defineSuperDocExtension'>;
 export type SuperDocInstance = InstanceType<SuperDocConstructor>;
 export type SuperDocUIModule = Pick<typeof import('superdoc/ui'), 'createSuperDocUI'>;
 
@@ -29,6 +32,7 @@ declare global {
   interface Window {
     SuperDoc?: SuperDocConstructor;
     __SUPERDOC_V2_BROWSER_WORKER_URL__?: string;
+    SUPERDOC_ENGINE_CDN_BASE_URL?: string;
   }
 }
 
@@ -111,6 +115,7 @@ function loadRuntimeAsset(element: HTMLLinkElement | HTMLScriptElement) {
 /** Load the pinned runtime once per page and resolve with the constructor. */
 export function loadRuntime() {
   if (runtimePromise) return runtimePromise;
+  if (localEngineUrl) window.SUPERDOC_ENGINE_CDN_BASE_URL = localEngineUrl;
   if (window.SuperDoc) return configureWorkers().then(() => window.SuperDoc!);
 
   const stylesheet = document.createElement('link');

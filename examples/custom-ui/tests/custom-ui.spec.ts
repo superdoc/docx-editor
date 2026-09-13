@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import JSZip from 'jszip';
 
-const edit = 'CUSTOMUIBOLDMARKER';
+const selectedText = 'Amazing';
 
 test('formats the DOCX with an application-owned control', async ({ page }) => {
   test.setTimeout(240_000);
@@ -16,16 +16,28 @@ test('formats the DOCX with an application-owned control', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Export DOCX' })).toBeEnabled({ timeout: 120_000 });
   await expect(page.locator('.superdoc-toolbar')).toHaveCount(0);
 
-  const textRun = page.locator('.superdoc-text-run').nth(1);
+  const textRun = page.locator('.superdoc-text-run').filter({ hasText: selectedText }).first();
   await expect(textRun).toBeVisible();
-  await textRun.click();
+  await textRun.dblclick();
 
+  // The editor owns its selection and paints it in an overlay, so the native
+  // browser selection stays empty. The control reads the editor's command
+  // state, which is the signal that the double-click selected the word.
   const bold = page.getByRole('button', { name: 'Bold' });
   await expect(bold).toBeEnabled();
+  await expect(bold).toHaveAttribute('aria-pressed', 'false');
   await bold.click();
   await expect(page.locator('#status')).toHaveText('Bold applied.');
-  await page.keyboard.type(edit);
-  await expect(page.locator('#editor')).toContainText(edit);
+  await expect(bold).toHaveAttribute('aria-pressed', 'true');
+  await bold.click();
+  await expect(page.locator('#status')).toHaveText('Bold removed.');
+  await expect(bold).toHaveAttribute('aria-pressed', 'false');
+  await bold.click();
+  await expect(page.locator('#status')).toHaveText('Bold applied.');
+  await expect(bold).toHaveAttribute('aria-pressed', 'true');
+  await expect
+    .poll(() => textRun.evaluate((element) => Number.parseInt(getComputedStyle(element).fontWeight, 10)))
+    .toBeGreaterThanOrEqual(600);
 
   const download = page.waitForEvent('download', { timeout: 120_000 });
   await page.getByRole('button', { name: 'Export DOCX' }).click();
@@ -35,7 +47,9 @@ test('formats the DOCX with an application-owned control', async ({ page }) => {
   const zip = await JSZip.loadAsync(await readFile(path));
   const documentXml = await zip.file('word/document.xml')?.async('string');
   expect(documentXml).toBeTruthy();
-  const editedRun = documentXml?.match(new RegExp(`<w:r>[\\s\\S]*?${edit}[\\s\\S]*?</w:r>`))?.[0];
-  expect(editedRun).toContain('<w:b');
+  const selectedRun = documentXml
+    ?.match(/<w:r(?:\s[^>]*)?>[\s\S]*?<\/w:r>/g)
+    ?.find((run) => run.includes(`>${selectedText}</w:t>`));
+  expect(selectedRun).toContain('<w:b');
   expect(errors).toEqual([]);
 });

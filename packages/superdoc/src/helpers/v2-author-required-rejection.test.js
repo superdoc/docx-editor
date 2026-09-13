@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vite-plus/test';
 
-import SuperDocSource from '../SuperDoc.vue?raw';
 import {
   createV2AuthorRequiredNotificationGate,
   isV2AuthorRequiredRejection,
@@ -20,7 +19,7 @@ describe('isV2AuthorRequiredRejection', () => {
     ).toBe(true);
   });
 
-  it('deduplicates per document and re-arms only the cleared session', () => {
+  it('suppresses duplicate delivery of the same rejection within its document session', () => {
     const gate = createV2AuthorRequiredNotificationGate();
     const rejection = {
       type: 'mutation:rejected',
@@ -33,6 +32,17 @@ describe('isV2AuthorRequiredRejection', () => {
     gate.clear('doc-a');
     expect(gate.shouldNotify('doc-a', rejection)).toBe(true);
     expect(gate.shouldNotify('doc-b', rejection)).toBe(false);
+  });
+
+  it('reports a second author-required attempt before any successful mutation', () => {
+    const gate = createV2AuthorRequiredNotificationGate();
+    const rejection = () => ({
+      type: 'mutation:rejected',
+      failureSource: 'receipt',
+      failure: { code: 'PRECONDITION_FAILED', message: 'no-author-configured' },
+    });
+    expect(gate.shouldNotify('doc-a', rejection())).toBe(true);
+    expect(gate.shouldNotify('doc-a', rejection())).toBe(true);
   });
 
   it('matches a shell-source author-required rejection', () => {
@@ -75,14 +85,5 @@ describe('isV2AuthorRequiredRejection', () => {
     expect(V2_AUTHOR_REQUIRED_MESSAGE).toContain('user.name');
     // No document text / imported author / email / path / raw kernel reason.
     expect(V2_AUTHOR_REQUIRED_MESSAGE).not.toMatch(/@|\/word\/|no-author-configured/);
-  });
-});
-
-describe('mounted author-required status wiring', () => {
-  it('keeps document scope on host events and exposes an assertive visually-hidden status', () => {
-    expect(SuperDocSource).toContain('@v2-host-event="(event) => onV2HostEvent(doc, event)"');
-    expect(SuperDocSource).toContain('data-superdoc-v2-author-required');
-    expect(SuperDocSource).toContain('aria-live="assertive"');
-    expect(SuperDocSource).toMatch(/\.sd-visually-hidden\s*\{[^}]*clip:\s*rect/s);
   });
 });

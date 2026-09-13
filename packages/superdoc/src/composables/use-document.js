@@ -103,6 +103,7 @@ export default function useDocument(params, superdocConfig) {
     html,
     markdown,
     password,
+    fieldContext: params.fieldContext,
     type,
     config,
     state,

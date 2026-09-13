@@ -47,13 +47,13 @@ only at the returned `evaluatedRevision`; discard them after any mutation. See
 
 ## Choosing between them
 
-|                            | `legacy`                            | `core`                                            |
-| -------------------------- | ----------------------------------- | ------------------------------------------------- |
-| Advertised tools           | 10 grouped intent tools             | 2 (`superdoc_inspect`, `superdoc_perform_action`) |
-| Edit selection             | Tool plus `action` within its group | One `action` from a 40-verb registry              |
-| `excludeActions`           | Ignored, no action surface          | Supported                                         |
-| Receipts with verification | No                                  | Yes                                               |
-| Default                    | Yes                                 | No, pass `preset: 'core'`                         |
+|                            | `legacy`                            | `core`                                                         |
+| -------------------------- | ----------------------------------- | -------------------------------------------------------------- |
+| Advertised tools           | 10 grouped intent tools             | 2 (`superdoc_inspect`, `superdoc_perform_action`)              |
+| Edit selection             | Tool plus `action` within its group | One `action` from the [action registry](/agents/build/actions) |
+| `excludeActions`           | Ignored, no action surface          | Supported                                                      |
+| Receipts with verification | No                                  | Yes                                                            |
+| Default                    | Yes                                 | No, pass `preset: 'core'`                                      |
 
 Build new integrations on `core`. It narrows the advertised surface, supports exclusions, and returns receipts carrying verification results.
 

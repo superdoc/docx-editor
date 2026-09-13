@@ -1,0 +1,100 @@
+---
+title: Connect two editors
+description: Run the local example and watch an edit appear in another browser.
+---
+
+Connect Alex and Sam to the same document. Start with the working example, then look at the configuration that connects them.
+
+## Try it here
+
+The editors connect automatically. Expand the demo, then change Monday to Friday in Alex's document. Watch Sam's document update. Alex's cursor is blue; Sam's is green. This sample is temporary; do not enter private information.
+
+<CollaborationDemo />
+
+## 1. Start the example
+
+Download or clone the [collaboration example](https://go.superdoc.dev/examples/collaboration). It includes the browser app, a sample DOCX, and a local Hocuspocus server.
+
+You need Node.js 22.12 or newer and pnpm 11. In the example's `collaboration` directory, run:
+
+```bash
+pnpm install --ignore-scripts
+pnpm dev
+```
+
+The example pins SuperDoc 2.11.0 and Hocuspocus 2.15.3. The install command skips dependency lifecycle scripts. Keep the terminal running: it serves the app on port `5173` and the collaboration connection on port `1234`.
+
+<Callout title='Local example only'>
+  This server has no authentication or persistent storage. Use the included sample, not private documents. Restarting
+  the server clears its rooms.
+</Callout>
+
+## 2. Open Alex and Sam's editors
+
+Open these addresses in separate tabs, in this order:
+
+| Editor | Address                                        | What happens                         |
+| ------ | ---------------------------------------------- | ------------------------------------ |
+| Alex   | `http://localhost:5173/?mode=create&user=Alex` | Creates a room from the sample DOCX. |
+| Sam    | `http://localhost:5173/?user=Sam`              | Joins Alex's room.                   |
+
+Wait for Alex's tab to show `Connected.` before opening Sam's. Then wait for Sam's tab to show the same status. Place the browser windows side by side so you can see both documents.
+
+## 3. Edit together
+
+In Alex's editor, change Monday to Friday. Watch the delivery date update in Sam's editor without reloading.
+
+Now type a reply in Sam's editor. It appears in Alex's editor too. Both editors can send and receive changes; neither is a read-only preview of the other.
+
+## Configure your application
+
+The connection belongs to the document. Both editors use the same server and room ID; the creator uses `create`, and everyone else uses `join`.
+
+<Callout title='Preview API'>
+  The `collaboration` configuration and typed connection failures below require the upcoming SuperDoc release. They are
+  available in the current source, not in the pinned 2.11.0 example. Run that example unchanged to try the behavior.
+</Callout>
+
+```ts
+import { SuperDoc, type DocumentCollaborationConfig } from 'superdoc';
+import 'superdoc/style.css';
+
+const collaboration = {
+  providerType: 'hocuspocus',
+  documentId: 'example-room',
+  serverUrl: 'ws://127.0.0.1:1234',
+  roomMode: 'join',
+} satisfies DocumentCollaborationConfig;
+
+const superdoc = new SuperDoc({
+  selector: '#editor',
+  document: { url: '/sample.docx', collaboration },
+  user: { name: 'Sam', email: 'sam@example.com' },
+});
+```
+
+Provide an `#editor` element and serve your DOCX at `/sample.docx`. Use these settings when integrating the preview API into your application, not as a patch to the pinned example.
+
+| Setting                        | Its job                                                                      |
+| ------------------------------ | ---------------------------------------------------------------------------- |
+| `providerType` and `serverUrl` | Connect to the Hocuspocus server you started.                                |
+| `documentId`                   | Put both editors in the same room.                                           |
+| `roomMode`                     | Create the room once, then join it. Alex uses `'create'`; Sam uses `'join'`. |
+
+The `mode` and `user` URL parameters belong to this example, not SuperDoc. The app reads them to choose the room operation and display name.
+
+Both editors supply the sample DOCX. The creator uses it to initialize the room. The joiner reads the room's shared content; supplying the file again does not overwrite it.
+
+The example shows `Connected.` when `onCollaborationReady` fires. That means initial synchronization and editor readiness have completed, not that the server has saved the document. Call `destroy()` when your owning route or component unmounts to release the connection; the standalone example does this when the page closes.
+
+## Reopen or start over
+
+To reopen the existing room, use a join address such as `http://localhost:5173/?user=Alex`. Reloading the original `mode=create` address tries to create the room again and fails.
+
+To start over, restart the example server, then open the create address followed by the join address.
+
+If the example shows `Connection failed.`, inspect the error reported by `onException`. Check that the server is still running, both editors use the same `documentId`, and the creator reached `Connected.` before the joiner opened. A failed join is not a reason to overwrite the room with a local file.
+
+## Show who is editing
+
+Next, [add presence and cursors](/editor/collaboration/presence-and-awareness) so Alex and Sam can identify each other while they work.

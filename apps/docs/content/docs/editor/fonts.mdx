@@ -1,0 +1,189 @@
+---
+title: Resolve document fonts
+navTitle: Fonts
+description: See how each DOCX font resolves, then provide licensed files for missing families.
+---
+
+The theme from the previous page styles controls around the document. Document fonts are separate. A DOCX stores family
+names such as Aptos, but may not contain the corresponding font files.
+
+Continue with `/sample.docx` from the [Quickstart](/editor/quickstart). It requests Aptos for body text and Aptos Display
+for headings. Start without adding a `fonts` configuration.
+
+## Start with the available fonts
+
+By default, SuperDoc keeps each font name from the DOCX. It uses an embedded font when the document contains one and its
+embedding permissions allow it. Otherwise, the browser uses an installed system font with that name. With no font
+provider configured, SuperDoc does not fetch a replacement for an unavailable document family.
+
+One built-in provider is the exception. SuperDoc always registers a core-symbol face and requests it when the document
+contains symbol or dingbat characters it covers — including the `•` bullet in the Quickstart sample. That request
+happens with no `fonts` configuration at all, so the package's bundled font assets must stay reachable under your
+Content Security Policy even before you add a provider. It supplies those glyphs only; it never substitutes a document
+family.
+
+If the requested font is unavailable, the browser paints with its fallback. The text remains editable and export keeps
+the original DOCX font name, but different glyph widths can change line and page breaks.
+
+| Your document and audience                             | Recommended path                                                      |
+| ------------------------------------------------------ | --------------------------------------------------------------------- |
+| The DOCX contains an eligible embedded font            | Open the document without font configuration.                         |
+| Every supported device has the requested font          | Use the system font and verify each supported environment.            |
+| The font is proprietary or is not installed everywhere | Host licensed web-font files and register each required face.         |
+| You intentionally accept a different typeface          | Register that font, map the DOCX family to it, and verify pagination. |
+
+The font names shown in the built-in toolbar are choices, not font files bundled with `superdoc`.
+
+## See the resolution path
+
+Compare what happens to the Aptos body text in the Quickstart document. The DOCX name stays the same while the available
+provider changes.
+
+<FontResolutionExplorer />
+
+For an available system font, `loadStatus: 'unloaded'` does not mean the font is missing. It means SuperDoc did not load a
+registered font asset. `systemAvailability` reports whether the browser can use the system face.
+
+## Host a proprietary font
+
+Host a proprietary font only when its license permits web delivery. For the Quickstart document, place the licensed
+Aptos files under `public/fonts`, then register the families and faces the document uses. Each tab is the Quickstart
+file with `fonts` added, so the export button the fidelity checklist relies on keeps working:
+
+<FrameworkExampleTabs>
+  <FrameworkExample filename='src/main.ts' framework='Vanilla'>
+    <include>../../../snippets/editor/fonts-application.ts</include>
+  </FrameworkExample>
+  <FrameworkExample filename='src/App.tsx' framework='React'>
+    <include>../../../snippets/editor/react-fonts-application-app.tsx</include>
+  </FrameworkExample>
+</FrameworkExampleTabs>
+
+The `Config['fonts']` type behind `documentFonts` checks the configuration while preserving its specific values. `family`
+matches the logical name stored in the DOCX. Because the names match, no mapping is needed. Each `source` identifies one
+physical face. Register regular, bold, italic, and bold italic when the document uses them; one face does not make the
+others available.
+
+The sample's bullet markers are set in `Symbol` by its numbering definition, so the report also lists a `Symbol` row.
+That family ships with most desktop systems and is not one you would normally host; if it reports `missing: true` on a
+target device, map it to a face you can provide rather than registering a licensed `Symbol` file.
+
+A font loaded by your application's `@font-face` CSS can also be available to the browser. Prefer `fonts.families` for
+document fonts so SuperDoc knows which source and face descriptors to load before it measures the document.
+
+SuperDoc registers these providers at startup and loads required faces before measuring when it can. A missing or blocked
+asset still allows the document to open, but the report identifies the fallback.
+
+## Check what rendered
+
+Subscribe after the Editor is ready. `fonts.onReport()` immediately replays the current report when one exists, then
+reports changes such as a late font load. Save this helper as `src/font-report.ts`; it takes a SuperDoc instance, so
+both frameworks use the same file:
+
+<include>../../../snippets/editor/fonts-diagnostics.ts</include>
+
+Import it where you create the Editor and keep the returned function for teardown. These are additions to the complete
+files above, not replacements — the export button and error handlers they already set up stay as they are. Vanilla
+subscribes from `onReady` and unsubscribes on unload:
+
+```ts
+// src/main.ts — additions to the file you already have.
+import { observeDocumentFonts } from './font-report';
+
+let stopFontReport: (() => void) | undefined;
+
+// Inside the existing onReady, alongside `exportButton.disabled = false`:
+stopFontReport = observeDocumentFonts(superdoc);
+
+// The Quickstart has no teardown listener yet; add one:
+window.addEventListener('beforeunload', () => {
+  stopFontReport?.();
+});
+```
+
+React subscribes from the same callback and releases the handle when the component unmounts:
+
+```tsx
+// src/App.tsx — additions to the file you already have.
+import { useEffect } from 'react';
+import { observeDocumentFonts } from './font-report';
+
+const stopFontReport = useRef<(() => void) | undefined>(undefined);
+
+useEffect(() => () => stopFontReport.current?.(), []);
+
+// Inside the existing onReady, alongside `setReady(true)`:
+const instance = editorRef.current?.getInstance();
+if (instance) stopFontReport.current = observeDocumentFonts(instance);
+```
+
+Use these fields to decide whether the document needs another font provider:
+
+| Field                | What it tells you                                                                 |
+| -------------------- | --------------------------------------------------------------------------------- |
+| `logicalFamily`      | Font family requested by the DOCX.                                                |
+| `physicalFamily`     | Family SuperDoc resolved for measurement and paint.                               |
+| `reason`             | Why that physical family was selected.                                            |
+| `loadStatus`         | State of a registered font asset.                                                 |
+| `systemAvailability` | Whether an unregistered system face is available.                                 |
+| `exportFamily`       | Font family that export preserves in the DOCX.                                    |
+| `missing`            | Whether SuperDoc has confirmed that the requested face lacks a faithful provider. |
+| `face`               | Weight and style on face-level rows; absent on family-level rows.                 |
+
+Act on `missing: true`, not on a transient `loadStatus`. A system face with `systemAvailability: 'unknown'` is unresolved,
+but SuperDoc does not call it missing without evidence.
+
+When `reason` is `as_requested` and `missing` is `true`, `physicalFamily` remains the requested name. The browser chose a
+fallback, but does not report that fallback's family to SuperDoc.
+
+Use `superdoc.fonts.getReport()` when you only need the current snapshot.
+
+## Map an intentional substitute
+
+Use a mapping when the font you can provide has a different family name from the one stored in the DOCX. This example
+substitutes Inter for both Aptos families, so place `inter-regular.woff2` and `inter-bold.woff2` in `public/fonts`
+alongside the Aptos files before continuing — the mapping resolves to a browser fallback if those assets are missing.
+
+Change only the `documentFonts` value in the file you already have: it registers Inter and maps both DOCX families onto
+it. Everything else — including the `observeDocumentFonts` wiring from the previous section — stays as it is, because the
+fidelity checklist below reads the report that wiring produces. The snippets show the whole file for context.
+
+<FrameworkExampleTabs>
+  <FrameworkExample filename='src/main.ts' framework='Vanilla'>
+    <include>../../../snippets/editor/fonts-mapping.ts</include>
+  </FrameworkExample>
+  <FrameworkExample filename='src/App.tsx' framework='React'>
+    <include>../../../snippets/editor/react-fonts-mapping-app.tsx</include>
+  </FrameworkExample>
+</FrameworkExampleTabs>
+
+SuperDoc registers Inter, follows each `map` entry, and loads the required faces before initial measurement. The mapping
+changes measurement and paint for this document. It does not rename the fonts in the DOCX; export still preserves Aptos
+and Aptos Display.
+
+Use `superdoc.fonts.add()`, `superdoc.fonts.map()`, and `superdoc.fonts.preload()` instead when a user chooses a provider
+after the document opens. `preload()` accepts logical DOCX family names and follows the active mapping.
+
+An arbitrary substitute can change layout even when it loads successfully. Prefer the original font or a substitute
+whose metrics you have evaluated for the documents you support.
+
+## Verify font fidelity
+
+- Confirm every report row has the expected `physicalFamily`, `missing: false`, **and** positive evidence that the face
+  resolved: a registered face at `loadStatus: 'loaded'`, or a pass-through face at `systemAvailability: 'available'`.
+  Both halves are needed. `missing: false` alone is not enough, because the report withholds `missing` while
+  availability is `checking` or `unknown`; a loaded face alone is not enough either, because a non-metric
+  `category_fallback` loads successfully and still reports `missing: true`.
+- Rows whose `reason` is `bundled_substitute` or `category_fallback` also carry `evidence`. Check
+  `evidence.lineBreakSafe` on those: such a row can report `loadStatus: 'loaded'` and `missing: false` while the runtime
+  marks it `verdict: 'visual_only'` with `lineBreakSafe: false` — Cooper Black resolving to Caprasimo is one. Those rows
+  render, but their advances do not preserve line breaks, so treat them as a layout change to review rather than a
+  passing fidelity check. Every other reason, including the `custom_mapping` this page's Inter mapping produces, leaves
+  `evidence` undefined; verify those with the line and page break comparison below.
+- Exercise every weight and style your documents use; a loaded regular face does not verify bold or italic.
+- Compare line and page breaks in SuperDoc and Word after changing a provider or mapping.
+- Export and reopen the DOCX. The original logical family should remain selected.
+- For cross-origin assets, allow the font origin in CORS and Content Security Policy rules.
+
+Continue with [Track changes](/editor/track-changes) to let reviewers propose and decide edits without immediately
+changing the accepted document.

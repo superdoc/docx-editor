@@ -265,6 +265,24 @@ describe('FindReplaceSurface — keyboard focus (SD-3045)', () => {
     wrapper.unmount();
   });
 
+  it('disables only Replace all when the session is truncated', () => {
+    const handle = createHandle({
+      handle: {
+        showReplace: ref(true),
+        canReplace: computed(() => true),
+        canReplaceAll: computed(() => false),
+        replacePending: ref(false),
+      },
+    });
+    const wrapper = mountSurface(handle);
+
+    const [replaceButton, replaceAllButton] = wrapper.findAll('.sd-find-replace__btn--action');
+    expect(replaceButton.attributes('disabled')).toBeUndefined();
+    expect(replaceAllButton.attributes('disabled')).toBeDefined();
+
+    wrapper.unmount();
+  });
+
   it('hides the replace expander and row entirely when the session cannot mutate (SD-3569)', () => {
     const handle = createHandle({
       handle: {

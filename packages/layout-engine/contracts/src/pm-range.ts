@@ -1,5 +1,5 @@
 import type { FlowBlock, Line, ParagraphBlock, ParagraphMeasure } from './index.js';
-import { isEmptySdtPlaceholderRun } from './run-helpers.js';
+import { isBodyNoteReferenceRun, isEmptySdtPlaceholderRun } from './run-helpers.js';
 
 /**
  * Represents a ProseMirror position range for a line or fragment.
@@ -103,7 +103,7 @@ export function computeLinePmRange(block: FlowBlock, line: Line): LinePmRange {
       continue;
     }
 
-    if (isAtomicRunKind((run as { kind?: unknown }).kind) || isImageLikeRun(run)) {
+    if (isBodyNoteReferenceRun(run) || isAtomicRunKind((run as { kind?: unknown }).kind) || isImageLikeRun(run)) {
       const runPmEnd = coercePmEnd(run) ?? runPmStart + 1;
       if (pmStart == null) {
         pmStart = runPmStart;

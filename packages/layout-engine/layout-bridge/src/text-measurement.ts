@@ -4,6 +4,7 @@ import {
   calculateJustifySpacing,
   calculateInterCharacterJustifySpacing,
   interCharacterJustifyAdvanceBeforeOffset,
+  isBodyNoteReferenceRun,
   sliceRunsForLine,
   SPACE_CHARS as SHARED_SPACE_CHARS,
 } from '@superdoc/contracts';
@@ -773,7 +774,10 @@ export function charOffsetToPm(block: FlowBlock, line: Line, charOffset: number,
     if (safeCharOffset <= cursor + runLength) {
       const offsetInRun = Math.max(0, safeCharOffset - cursor);
       if (runPmStart != null) {
-        return runPmStart + Math.min(offsetInRun, runLength);
+        const coordinateLength = isBodyNoteReferenceRun(run)
+          ? Math.max(0, (runPmEnd ?? runPmStart + 1) - runPmStart)
+          : runLength;
+        return runPmStart + Math.min(offsetInRun, coordinateLength);
       }
 
       if (isVisualOnlyRun(run)) {

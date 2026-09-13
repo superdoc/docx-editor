@@ -64,6 +64,8 @@ import {
 } from './section-breaks.js';
 import { layoutParagraphBlock, type FootnoteAnchorRef } from './layout-paragraph.js';
 import { buildFootnoteAnchorIndexSteps } from './footnote-anchor-index.js';
+import { coupledFootnoteBodyBottom, type FootnotePageFlow } from './footnote-page-flow.js';
+export type { FootnotePageFlow } from './footnote-page-flow.js';
 import { layoutImageBlock } from './layout-image.js';
 import { layoutDrawingBlock } from './layout-drawing.js';
 import { alignInlineZeroHeightDrawingFragments } from './inline-drawing-alignment.js';
@@ -88,7 +90,8 @@ import {
 import { normalizeFragmentsForRegion } from './normalize-header-footer-fragments.js';
 import { createPaginator, isPaginationEarlyStop, type PageState, type ConstraintBoundary } from './paginator.js';
 import { formatPageNumber } from './pageNumbering.js';
-import { shouldSuppressSpacingForEmpty, shouldSuppressOwnSpacing } from './layout-utils.js';
+import { shouldSuppressSpacingForEmpty, shouldSuppressOwnSpacing, findLineIndexForRunOrdinal } from './layout-utils.js';
+export { findLineIndexForRunOrdinal } from './layout-utils.js';
 import { shouldSkipParagraphDuringLayout } from './paragraph-layout-eligibility.js';
 import {
   balanceSectionOnPage,
@@ -395,11 +398,19 @@ function* computeKeepNextChainSteps(
  * //        + 20 (anchor first line)
  * //        = 122px
  */
+function keptAnchorLineCount(block: ParagraphBlock, measure: ParagraphMeasure): number {
+  if (block.attrs?.keepLines === true) return measure.lines.length;
+  if (block.attrs?.widowControl === false) return 1;
+  // A three-line paragraph cannot split 1+2 or 2+1 under widow control.
+  return Math.min(measure.lines.length, measure.lines.length === 3 ? 3 : 2);
+}
+
 function calculateChainHeight(
   chain: KeepNextChain,
   blocks: FlowBlock[],
   measures: Measure[],
   state: PageState,
+  protectAnchorLines = false,
 ): number {
   let totalHeight = 0;
 
@@ -489,7 +500,20 @@ function calculateChainHeight(
 
         // Optimization (SD-1282): Only require space for anchor's first line, not full height.
         // This prevents excessive page breaks while still honoring the keepNext contract.
-        const firstLineHeight = anchorMeasure.lines[0]?.lineHeight;
+        // keepLines is an explicit paragraph-level indivisibility contract. A
+        // keepNext predecessor therefore needs room for the whole anchor even
+        // when the coupled note flow has no demand on those lines. Widow-line
+        // protection remains coupled-note-specific so ordinary keepNext
+        // pagination keeps its established first-line behavior.
+        const requiredLines =
+          anchorBlock.attrs?.keepLines === true
+            ? anchorMeasure.lines.length
+            : protectAnchorLines
+              ? keptAnchorLineCount(anchorBlock, anchorMeasure)
+              : 1;
+        const firstLineHeight = anchorMeasure.lines
+          .slice(0, requiredLines)
+          .reduce((sum, line) => sum + line.lineHeight, 0);
         const anchorHeight =
           typeof firstLineHeight === 'number' && Number.isFinite(firstLineHeight) && firstLineHeight > 0
             ? firstLineHeight
@@ -527,6 +551,8 @@ function calculateChainHeight(
 }
 
 export type LayoutOptions = {
+  /** @internal Exact forward body/note pagination; never supplied by document authors. */
+  footnotePageFlow?: FootnotePageFlow;
   pageSize?: PageSize;
   margins?: Margins;
   documentBackground?: DocumentBackground;
@@ -563,7 +589,7 @@ export type LayoutOptions = {
    * (`blocksById`, separator dimensions, etc.) which the engine ignores.
    */
   footnotes?: {
-    refs?: Array<{ id: string; pos: number }>;
+    refs?: Array<{ id: string; pos: number; blockId?: string; runOrdinal?: number | null }>;
     /**
      * SD-3049: total measured body height per footnote id (sum of measured
      * paragraph heights + per-paragraph spacingAfter + inter-footnote gap +
@@ -702,6 +728,7 @@ export type LayoutOptions = {
       prefixFragments: readonly Page['fragments'][number][];
       cursorY: number;
       maxCursorY: number;
+      committedBodyBottom?: number;
       columnIndex: number;
       trailingSpacing: number;
       lastParagraphStyleId?: string;
@@ -1669,7 +1696,11 @@ function* layoutDocumentSteps(
   // one type. The shared iterator also checkpoints nested table/ref scans;
   // synchronous callers drain it with checkpoints disabled.
   const footnoteAnchorsByBlockId = yield* mapLayoutWorkCheckpoints(
-    buildFootnoteAnchorIndexSteps(blocks, options.footnotes, checkpointEveryBlocks),
+    buildFootnoteAnchorIndexSteps(
+      blocks,
+      options.footnotes ? { ...options.footnotes, nativeRunOwnership: options.footnotePageFlow != null } : undefined,
+      checkpointEveryBlocks,
+    ),
     'layout-document:preflight-footnote',
   );
 
@@ -1876,11 +1907,24 @@ function* layoutDocumentSteps(
   // value flows into both `getActiveBottomMargin` (existing behavior) and
   // `getFootnoteReserveForPage` (new — for the block-aware break decision).
   const readFootnoteReserveForPageIndex = (pageIndex: number): number => {
+    if (options.footnotePageFlow) return 0;
     const reserves = options.footnoteReservedByPageIndex;
     const reserve = Array.isArray(reserves) ? reserves[pageIndex] : 0;
     return typeof reserve === 'number' && Number.isFinite(reserve) && reserve > 0 ? reserve : 0;
   };
 
+  const completedFootnotePages = new WeakSet<Page>();
+  const completeFootnotePage = (state: PageState): void => {
+    if (!options.footnotePageFlow || completedFootnotePages.has(state.page)) return;
+    options.footnotePageFlow.completePage({
+      page: state.page,
+      pageIndex: state.page.number - 1,
+      bodyBottom: state.committedBodyBottom ?? state.topMargin,
+      physicalBottom: state.contentBottom + state.pageFootnoteReserve,
+      anchors: state.footnoteAnchorsThisPage,
+    });
+    completedFootnotePages.add(state.page);
+  };
   const paginator = createPaginator({
     margins: paginatorMargins,
     getActiveTopMargin: () => activeTopMargin,
@@ -1896,14 +1940,20 @@ function* layoutDocumentSteps(
     getActiveColumns: () => activeColumns,
     initialPageState: options.startContext?.initialPageState,
     pageNumberOffset,
+    keepNoteOnlyPages: options.footnotePageFlow != null,
     createPage,
-    shouldStopBeforeNewPage: options.pageBoundary?.shouldStopBeforeNewPage
-      ? ({ completedPageIndex, pages: completedPages }) =>
-          options.pageBoundary!.shouldStopBeforeNewPage!({
-            completedPageIndex,
-            pages: completedPages,
-          })
-      : undefined,
+    shouldStopBeforeNewPage:
+      options.pageBoundary?.shouldStopBeforeNewPage || options.footnotePageFlow
+        ? ({ completedPageIndex, pages: completedPages, states: completedStates }) => {
+            completeFootnotePage(completedStates[completedPageIndex]);
+            return (
+              options.pageBoundary?.shouldStopBeforeNewPage?.({
+                completedPageIndex,
+                pages: completedPages,
+              }) ?? false
+            );
+          }
+        : undefined,
     onNewPage: (state?: PageState, pageStartOptions?: { applyPendingSection: boolean }) => {
       // apply pending->active and invalidate columns cache (first callback)
       if (!state) {
@@ -2651,6 +2701,7 @@ function* layoutDocumentSteps(
       prefixFragmentCount: state.page.fragments.length,
       cursorY: state.cursorY,
       maxCursorY: state.maxCursorY,
+      ...(state.committedBodyBottom != null ? { committedBodyBottom: state.committedBodyBottom } : {}),
       columnIndex: state.columnIndex,
       trailingSpacing: state.trailingSpacing,
       ...(state.lastParagraphStyleId ? { lastParagraphStyleId: state.lastParagraphStyleId } : {}),
@@ -3109,6 +3160,9 @@ function* layoutDocumentSteps(
               ? anchorsForPara.filter((entry) => entry.block.id !== deferredSplitCarrierAnchorId)
               : anchorsForPara;
           const hasAnchorsForLayout = anchorsForLayout != null && anchorsForLayout.length > 0;
+          const preflightPageIndex = options.footnotePageFlow
+            ? paginator.ensurePage().page.number - 1 - pageNumberOffset
+            : undefined;
 
           /**
            * keepNext Chain-Aware Page Break Logic
@@ -3130,7 +3184,38 @@ function* layoutDocumentSteps(
           } else if (chain) {
             // Case 2: Chain starter - evaluate entire chain height
             let state = paginator.ensurePage();
-            const availableHeight = state.contentBottom - state.cursorY;
+            const groupAnchors: FootnoteAnchorRef[] = [];
+            let protectAnchorLines = false;
+            if (options.footnotePageFlow) {
+              for (const memberIndex of chain.memberIndices) {
+                groupAnchors.push(...getFootnoteAnchorsForBlockId(blocks[memberIndex].id));
+              }
+              const anchor = blocks[chain.anchorIndex];
+              const anchorMeasure = measures[chain.anchorIndex];
+              if (anchor?.kind === 'paragraph' && anchorMeasure?.kind === 'paragraph') {
+                const lineCount = keptAnchorLineCount(anchor, anchorMeasure);
+                for (const entry of getFootnoteAnchorsForBlockId(anchor.id)) {
+                  const line =
+                    entry.runOrdinal == null ? null : findLineIndexForRunOrdinal(anchorMeasure.lines, entry.runOrdinal);
+                  if (line != null && line < lineCount) {
+                    groupAnchors.push(entry);
+                    protectAnchorLines = true;
+                  }
+                }
+              }
+            }
+            const groupDemand = groupAnchors.reduce((sum, anchor) => sum + anchor.fullHeight, 0);
+            const committedDemand = state.footnoteAnchorsThisPage.reduce((sum, anchor) => sum + anchor.fullHeight, 0);
+            const groupBottom = options.footnotePageFlow
+              ? coupledFootnoteBodyBottom(
+                  state,
+                  committedDemand + groupDemand,
+                  state.footnoteRefsThisPage + groupAnchors.length,
+                  options.footnotePageFlow.incomingDemand(state.page.number - 1),
+                  getFootnoteBandOverhead,
+                )
+              : state.contentBottom;
+            const availableHeight = groupBottom - state.cursorY;
 
             // Check if first chain member has contextualSpacing that would reclaim trailing space.
             // When contextualSpacing applies, the previous paragraph's trailing spacing is not
@@ -3148,11 +3233,34 @@ function* layoutDocumentSteps(
               Number.isFinite(state.trailingSpacing) && state.trailingSpacing > 0 ? state.trailingSpacing : 0;
             const effectiveAvailableHeight = prevSuppressAfter ? availableHeight + prevTrailing : availableHeight;
 
-            const chainHeight = calculateChainHeight(chain, blocks, measures, state);
+            const chainHeight = calculateChainHeight(chain, blocks, measures, state, protectAnchorLines);
 
             // Calculate page content height to check if chain fits on a blank page
-            const pageContentHeight = state.contentBottom - state.topMargin;
-            const chainFitsOnBlankPage = chainHeight <= pageContentHeight;
+            const blankBottom = options.footnotePageFlow
+              ? coupledFootnoteBodyBottom(
+                  state,
+                  groupDemand,
+                  groupAnchors.length,
+                  { height: 0, refs: 0 },
+                  getFootnoteBandOverhead,
+                )
+              : state.contentBottom;
+            const pageContentHeight = blankBottom - state.topMargin;
+            const blankChainHeight = options.footnotePageFlow
+              ? calculateChainHeight(
+                  chain,
+                  blocks,
+                  measures,
+                  {
+                    ...state,
+                    trailingSpacing: 0,
+                    lastParagraphStyleId: undefined,
+                    lastParagraphContextualSpacing: false,
+                  },
+                  protectAnchorLines,
+                )
+              : chainHeight;
+            const chainFitsOnBlankPage = blankChainHeight <= pageContentHeight;
 
             // Only advance if chain fits on blank page but not current page
             // (prevents infinite loop for chains taller than page)
@@ -3275,9 +3383,13 @@ function* layoutDocumentSteps(
           blockResumeCheckpoints.set(block.id, {
             blockId: block.id,
             pageIndex: checkpointState.page.number - 1 - pageNumberOffset,
+            ...(preflightPageIndex != null ? { preflightPageIndex } : {}),
             prefixFragmentCount: checkpointState.page.fragments.length,
             cursorY: checkpointState.cursorY,
             maxCursorY: checkpointState.maxCursorY,
+            ...(checkpointState.committedBodyBottom != null
+              ? { committedBodyBottom: checkpointState.committedBodyBottom }
+              : {}),
             columnIndex: checkpointState.columnIndex,
             trailingSpacing: checkpointState.trailingSpacing,
             ...(checkpointState.lastParagraphStyleId
@@ -3312,6 +3424,7 @@ function* layoutDocumentSteps(
               getFootnoteRefCountForBlockId,
               getFootnoteBandOverhead,
               getFootnoteAnchorsForBlockId,
+              incomingFootnoteDemand: options.footnotePageFlow?.incomingDemand,
               // A section-boundary filler paragraph can still be the coordinate
               // base for a paragraph-relative DrawingML object. Register that
               // object, but keep the carrier itself out of normal flow so it
@@ -3675,6 +3788,16 @@ function* layoutDocumentSteps(
     // Prune trailing empty page(s) that can be created by page-boundary rules
     // (e.g., parity requirements) when no content follows. Word does not render
     // a final blank page for continuous final sections.
+    if (options.footnotePageFlow && options.footnotePageFlow.completeDocument !== false && pages.length > 0) {
+      completeFootnotePage(paginator.ensurePage());
+      while (options.footnotePageFlow.hasPendingContinuation()) {
+        const state = paginator.startNewPage();
+        completeFootnotePage(state);
+        if (checkpointEveryBlocks != null) {
+          yield { phase: 'layout-document:footnote-continuation', index: pages.length - 1 };
+        }
+      }
+    }
     paginator.pruneTrailingEmptyPages();
 
     const resetPaginationStateForBlankPageFallback = (): void => {
@@ -4160,7 +4283,9 @@ function* layoutDocumentSteps(
     const raw = Math.max(maxY, cursorY, floatingTableMaxY);
     const trailingAttachedToMax = cursorY >= maxY;
     const adjusted = raw - (trailingAttachedToMax ? trailing : 0);
-    (pages[i] as { bodyMaxY?: number }).bodyMaxY = Math.max(s.topMargin ?? 0, adjusted);
+    (pages[i] as { bodyMaxY?: number }).bodyMaxY = options.footnotePageFlow
+      ? (s.committedBodyBottom ?? s.topMargin)
+      : Math.max(s.topMargin ?? 0, adjusted);
   }
 
   const layout: Layout = {
@@ -5068,6 +5193,11 @@ function toBalancingColumns(normalized: NormalizedColumns): SectionColumnLayout 
     ...(Array.isArray(normalized.widths) ? { widths: normalized.widths } : {}),
     ...(Array.isArray(normalized.gaps) ? { gaps: normalized.gaps } : {}),
     ...(normalized.equalWidth !== undefined ? { equalWidth: normalized.equalWidth } : {}),
+    // Direction and the content width it was measured against travel with the widths: balancing
+    // rebuilds the geometry and overwrites fragment x from it, so dropping them here would lay the
+    // balanced page out left-to-right inside an otherwise right-to-left section.
+    ...(normalized.direction !== undefined ? { direction: normalized.direction } : {}),
+    ...(normalized.contentWidth !== undefined ? { contentWidth: normalized.contentWidth } : {}),
   };
 }
 

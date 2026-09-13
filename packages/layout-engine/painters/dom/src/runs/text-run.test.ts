@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vite-plus/test';
 import type { TextRun } from '@superdoc/contracts';
 import type { FragmentRenderContext } from '../renderer.js';
+import type { DerivedRunTextPlane } from '../derived-run-text-plane.js';
 import type { RunRenderContext } from './types.js';
 import { textRunMergeSignature } from './hash.js';
 import { applyRunStyles, renderTextRun, resolveRunText } from './text-run.js';
@@ -37,6 +38,22 @@ describe('resolveRunText', () => {
     const run: TextRun = { text: '0', token: 'pageNumber', fontFamily: 'Arial', fontSize: 12 };
 
     expect(resolveRunText(run, context)).toBe('v');
+  });
+
+  it('resolves a derived run-text override by stable data attribute identity', () => {
+    const run: TextRun = {
+      text: '8735',
+      fontFamily: 'Arial',
+      fontSize: 12,
+      dataAttrs: { 'data-v2-note-ref': 'footnote:note-1' },
+    };
+    const plane: DerivedRunTextPlane = {
+      generation: 42,
+      revision: 'notes-2',
+      valuesByDataAttribute: new Map([['data-v2-note-ref', new Map([['footnote:note-1', '8720']])]]),
+    };
+
+    expect(resolveRunText(run, { ...context, derivedRunTextPlane: plane })).toBe('8720');
   });
 
   it('uses run-local page number format when present', () => {

@@ -5,6 +5,8 @@ import type {
   BlocksDeleteResult,
   BlocksListInput,
   BlocksListResult,
+  BlocksFindTextInput,
+  BlocksFindTextResult,
   BlocksDeleteRangeInput,
   BlocksDeleteRangeResult,
   BlocksMergeInput,
@@ -25,6 +27,7 @@ import { validateStoryLocator } from '../validation/story-validator.js';
 // ---------------------------------------------------------------------------
 export interface BlocksApi {
   list(input?: BlocksListInput): BlocksListResult;
+  findText(input: BlocksFindTextInput): BlocksFindTextResult;
   delete(input: BlocksDeleteInput, options?: MutationOptions): BlocksDeleteResult;
   deleteRange(input: BlocksDeleteRangeInput, options?: MutationOptions): BlocksDeleteRangeResult;
   /** Split a paragraph at a visible-text offset. */
@@ -35,6 +38,7 @@ export interface BlocksApi {
   move(input: BlocksMoveInput, options?: MutationOptions): BlocksMoveResult;
 }
 export interface BlocksAdapter {
+  readonly supportsIdentityFilter?: boolean;
   list(input?: BlocksListInput): BlocksListResult;
   delete(input: BlocksDeleteInput, options?: MutationOptions): BlocksDeleteResult;
   deleteRange(input: BlocksDeleteRangeInput, options?: MutationOptions): BlocksDeleteRangeResult;
@@ -74,6 +78,35 @@ function normalizeBlocksListInput(input?: BlocksListInput): BlocksListInput | un
 }
 function validateBlocksListInput(input?: BlocksListInput): void {
   if (!input) return;
+  if (
+    input.nodeIds !== undefined &&
+    (!Array.isArray(input.nodeIds) || input.nodeIds.some((id) => typeof id !== 'string' || !id))
+  ) {
+    throw new DocumentApiValidationError('INVALID_INPUT', 'blocks.list nodeIds must be an array of non-empty strings.');
+  }
+  if (input.textSearch !== undefined) {
+    const search = input.textSearch;
+    if (
+      !search ||
+      typeof search !== 'object' ||
+      Array.isArray(search) ||
+      !Array.isArray(search.terms) ||
+      !search.terms.length ||
+      search.terms.some((term) => typeof term !== 'string' || !term.trim()) ||
+      (search.match !== undefined && !['all', 'any'].includes(search.match)) ||
+      (search.caseSensitive !== undefined && typeof search.caseSensitive !== 'boolean')
+    ) {
+      throw new DocumentApiValidationError(
+        'INVALID_INPUT',
+        'blocks.list textSearch requires non-blank terms and valid match options.',
+      );
+    }
+    assertNoUnknownFields(
+      search as unknown as Record<string, unknown>,
+      new Set(['terms', 'match', 'caseSensitive']),
+      'blocks.list textSearch',
+    );
+  }
   validateStoryLocator(input.in, 'in');
   if (input.offset != null && (typeof input.offset !== 'number' || input.offset < 0)) {
     throw new DocumentApiValidationError('INVALID_INPUT', 'blocks.list offset must be a non-negative number.', {
@@ -214,7 +247,54 @@ function validateBlocksDeleteRangeInput(input: BlocksDeleteRangeInput): void {
 export function executeBlocksList(adapter: BlocksAdapter, input?: BlocksListInput): BlocksListResult {
   const normalized = normalizeBlocksListInput(input);
   validateBlocksListInput(normalized);
-  return adapter.list(normalized);
+  if (!normalized?.textSearch && (!normalized?.nodeIds || adapter.supportsIdentityFilter))
+    return adapter.list(normalized);
+  const { textSearch, nodeIds, offset = 0, limit = Infinity, ...scanInput } = normalized!;
+  const identities = nodeIds ? new Set(nodeIds) : undefined;
+  const terms = textSearch
+    ? textSearch.caseSensitive
+      ? textSearch.terms
+      : textSearch.terms.map((term) => term.toLocaleLowerCase())
+    : [];
+  const result: BlocksListResult = {
+    blocks: [],
+    total: 0,
+    revision: 'unknown',
+    reviewMode: normalized!.reviewMode ?? 'final',
+  };
+  let scanned = 0;
+  for (;;) {
+    const page = adapter.list({
+      ...scanInput,
+      ...(adapter.supportsIdentityFilter ? { nodeIds } : {}),
+      offset: scanned,
+      limit: 250,
+      includeText: !!textSearch || normalized!.includeText,
+    });
+    if (scanned > 0 && page.revision !== result.revision)
+      throw new DocumentApiValidationError('REVISION_CONFLICT', 'Document changed during block search.');
+    result.revision = page.revision;
+    result.reviewMode = page.reviewMode;
+    for (const block of page.blocks) {
+      if (identities && !identities.has(block.nodeId)) continue;
+      const text = textSearch?.caseSensitive ? (block.text ?? '') : (block.text ?? '').toLocaleLowerCase();
+      const matches = terms.map((term) => text.includes(term));
+      if (
+        textSearch &&
+        (!text.trim() || !(textSearch.match === 'any' ? matches.some(Boolean) : matches.every(Boolean)))
+      )
+        continue;
+      const index = result.total++;
+      if (index >= offset && result.blocks.length < limit) {
+        const { text: fullText, ...summary } = block;
+        result.blocks.push(normalized!.includeText ? block : summary);
+      }
+    }
+    scanned += page.blocks.length;
+    if (scanned >= page.total) return result;
+    if (!page.blocks.length)
+      throw new DocumentApiValidationError('INVALID_INPUT', 'Block search did not return a complete page.');
+  }
 }
 export function executeBlocksDelete(
   adapter: BlocksAdapter,

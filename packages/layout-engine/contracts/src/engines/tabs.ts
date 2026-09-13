@@ -14,6 +14,7 @@
 import type { ParagraphIndent } from './paragraph.js';
 
 const TAB_POSITION_TOLERANCE_TWIPS = 20;
+const DEFAULT_TAB_INTERVAL_TWIPS = 720;
 
 /**
  * OOXML-aligned tab stop definition.
@@ -33,7 +34,7 @@ export interface TabStop {
  */
 export interface TabContext {
   explicitStops: TabStop[]; // Stops defined in paragraph style (OOXML format)
-  defaultTabInterval: number; // Twips (default 720 = 0.5 inch)
+  defaultTabInterval: number; // Twips (invalid values fall back to 720 = 0.5 inch)
   paragraphIndent: ParagraphIndent; // Left/right/hanging indents (in twips)
   rawParagraphIndent?: ParagraphIndent; // Unclamped indents, used for Word implicit tab-stop rules
 }
@@ -114,6 +115,8 @@ export interface CalculateTabWidthResult {
  */
 export function computeTabStops(context: TabContext): TabStop[] {
   const { explicitStops, defaultTabInterval, paragraphIndent, rawParagraphIndent } = context;
+  const resolvedDefaultTabInterval =
+    Number.isFinite(defaultTabInterval) && defaultTabInterval > 0 ? defaultTabInterval : DEFAULT_TAB_INTERVAL_TWIPS;
   const leftIndent = paragraphIndent.left ?? 0;
   const hanging = paragraphIndent.hanging ?? 0;
   const rawLeftIndent = rawParagraphIndent?.left ?? leftIndent;
@@ -192,7 +195,7 @@ export function computeTabStops(context: TabContext): TabStop[] {
   const targetLimit = Math.max(defaultStart, leftIndent, maxExplicit) + 14400; // 14400 twips = 10 inches
 
   while (pos < targetLimit) {
-    pos += defaultTabInterval;
+    pos += resolvedDefaultTabInterval;
 
     // Don't add if there's already a stop OR a cleared position at this position
     const hasExistingStop = stops.some((s) => Math.abs(s.pos - pos) < TAB_POSITION_TOLERANCE_TWIPS);

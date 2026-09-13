@@ -1,5 +1,6 @@
 import type { FloatingObjectManager } from './floating-objects';
 import type { PageState } from './paginator';
+import { coupledFootnoteBodyBottom, type FootnotePageFlow } from './footnote-page-flow';
 import type {
   PageMargins,
   ParagraphBlock,
@@ -18,9 +19,11 @@ import type {
   TableAnchor,
   TableWrap,
   ParagraphLineRegion,
+  ColumnLayoutForAnchor,
 } from '@superdoc/contracts';
 import {
   computeFragmentPmRange,
+  findLineIndexForRunOrdinal,
   normalizeLines,
   extractBlockPmRange,
   isEmptyTextParagraph,
@@ -104,6 +107,8 @@ function graphicAnchorH(anchor: TableAnchor): Parameters<typeof resolveAnchoredG
  */
 export type FootnoteAnchorRef = {
   pmPos: number;
+  /** Exact run in this paragraph; absent for legacy or containing-table anchors. */
+  runOrdinal?: number;
   refId: string;
   fullHeight: number;
   firstLineHeight: number;
@@ -361,6 +366,7 @@ function calculateFirstLineIndent(block: ParagraphBlock, measure: ParagraphMeasu
 }
 
 export type ParagraphLayoutContext = {
+  incomingFootnoteDemand?: FootnotePageFlow['incomingDemand'];
   block: ParagraphBlock;
   measure: ParagraphMeasure;
   columnWidth: number;
@@ -464,7 +470,9 @@ export type ParagraphAnchorsContext = {
   columnWidth: number;
   pageWidth: number;
   pageMargins: PageMargins;
-  columns: { width: number; gap: number; count: number };
+  // Carries the resolved column layout through to resolveAnchoredGraphicX, direction included: a
+  // column-relative anchor in an RTL section resolves against the mirrored geometry.
+  columns: ColumnLayoutForAnchor;
   placedAnchoredIds: Set<string>;
 };
 
@@ -994,6 +1002,7 @@ export function layoutParagraphBlock(ctx: ParagraphLayoutContext, anchors?: Para
     const fragment: ParaFragment = {
       kind: 'para',
       blockId: block.id,
+      columnIndex: state.columnIndex,
       fromLine: 0,
       toLine: lines.length,
       x,
@@ -1147,6 +1156,33 @@ export function layoutParagraphBlock(ctx: ParagraphLayoutContext, anchors?: Para
     }
   }
 
+  // Resolve exact markers after width/float remeasurement, once for this
+  // paragraph invocation. PM boundaries may coincide across lines; native run
+  // ownership must match the final footnote planner rather than charge both.
+  const paragraphAnchors = ctx.getFootnoteAnchorsForBlockId?.(block.id) ?? [];
+  const anchorLines = new Map<FootnoteAnchorRef, number>();
+  for (const anchor of paragraphAnchors) {
+    if (anchor.runOrdinal == null) continue;
+    const lineIndex = findLineIndexForRunOrdinal(lines, anchor.runOrdinal);
+    if (lineIndex != null) anchorLines.set(anchor, lineIndex);
+  }
+  const getSliceAnchors = (startLine: number, endLine: number): ReadonlyArray<FootnoteAnchorRef> => {
+    if (paragraphAnchors.length === 0) return paragraphAnchors;
+    const range = computeFragmentPmRange(block, lines, startLine, endLine);
+    return paragraphAnchors.filter((anchor) => {
+      const lineIndex = anchorLines.get(anchor);
+      if (lineIndex != null) return lineIndex >= startLine && lineIndex < endLine;
+      return (
+        range.pmStart == null || range.pmEnd == null || (anchor.pmPos >= range.pmStart && anchor.pmPos <= range.pmEnd)
+      );
+    });
+  };
+  const getSliceRefCount = (anchors: ReadonlyArray<FootnoteAnchorRef>, startLine: number, endLine: number): number => {
+    if (ctx.getFootnoteAnchorsForBlockId) return anchors.length;
+    const range = computeFragmentPmRange(block, lines, startLine, endLine);
+    return ctx.getFootnoteRefCountForBlockId?.(block.id, range.pmStart, range.pmEnd) ?? 0;
+  };
+
   // PHASE 2: Layout the paragraph with the remeasured lines
   while (fromLine < lines.length) {
     let state = ensurePage();
@@ -1204,11 +1240,29 @@ export function layoutParagraphBlock(ctx: ParagraphLayoutContext, anchors?: Para
     const keepLines = attrs?.keepLines === true;
     if (keepLines && fromLine === 0) {
       const neededSpacingBefore = collapseSpacingBefore(spacingBefore, state.trailingSpacing);
-      const pageContentHeight = state.contentBottom - state.topMargin;
+      const keptAnchors = ctx.incomingFootnoteDemand ? getSliceAnchors(0, lines.length) : [];
+      const keptDemand = keptAnchors.reduce((sum, anchor) => sum + anchor.fullHeight, 0);
+      const committedDemand = ctx.incomingFootnoteDemand
+        ? state.footnoteAnchorsThisPage.reduce((sum, anchor) => sum + anchor.fullHeight, 0)
+        : 0;
+      const overhead = ctx.getFootnoteBandOverhead ?? ((refs: number) => (refs > 0 ? 22 + (refs - 1) * 2 : 0));
+      const keptBottom = ctx.incomingFootnoteDemand
+        ? coupledFootnoteBodyBottom(
+            state,
+            committedDemand + keptDemand,
+            state.footnoteRefsThisPage + keptAnchors.length,
+            ctx.incomingFootnoteDemand(state.page.number - 1),
+            overhead,
+          )
+        : state.contentBottom;
+      const blankBottom = ctx.incomingFootnoteDemand
+        ? coupledFootnoteBodyBottom(state, keptDemand, keptAnchors.length, { height: 0, refs: 0 }, overhead)
+        : state.contentBottom;
+      const pageContentHeight = blankBottom - state.topMargin;
       const linesHeight = lines.reduce((sum, line) => sum + (line.lineHeight || 0), 0);
       const fullHeight = linesHeight + borderExpansion.top + borderExpansion.bottom;
       const fitsOnBlankPage = fullHeight + baseSpacingBefore <= pageContentHeight;
-      const remainingHeightAfterSpacing = state.contentBottom - (state.cursorY + neededSpacingBefore);
+      const remainingHeightAfterSpacing = keptBottom - (state.cursorY + neededSpacingBefore);
       if (fitsOnBlankPage && pageHasNonTableAnchorContent(state) && fullHeight > remainingHeightAfterSpacing) {
         state = advanceColumn(state);
         spacingBefore = baseSpacingBefore;
@@ -1385,6 +1439,16 @@ export function layoutParagraphBlock(ctx: ParagraphLayoutContext, anchors?: Para
      */
     const rawContentBottom = state.contentBottom + state.pageFootnoteReserve;
     const computeEffectiveBottom = (extraDemand: number, extraRefs: number): number => {
+      if (ctx.incomingFootnoteDemand) {
+        return coupledFootnoteBodyBottom(
+          state,
+          extraDemand,
+          state.footnoteRefsThisPage + extraRefs,
+          ctx.incomingFootnoteDemand(state.page.number - 1),
+          ctx.getFootnoteBandOverhead ?? fallbackBandOverhead,
+          lines[fromLine]?.lineHeight ?? 0,
+        );
+      }
       const totalDemand = extraDemand;
       const totalRefs = state.footnoteRefsThisPage + extraRefs;
       const demandWithOverhead = totalDemand > 0 ? totalDemand + bandOverhead(totalRefs) : 0;
@@ -1422,10 +1486,7 @@ export function layoutParagraphBlock(ctx: ParagraphLayoutContext, anchors?: Para
     // and patching later. Cost: bodies that previously packed to the brink
     // grow ≤ 1–4 pages per fixture; gain: footnote splits drop to ~0 on
     // the representative complex-footnote fixtures we measured.
-    const computeFootnoteClusterDemand = (pmStart: number, pmEnd: number): number => {
-      const candidate = ctx.getFootnoteAnchorsForBlockId
-        ? ctx.getFootnoteAnchorsForBlockId(block.id, pmStart, pmEnd)
-        : [];
+    const computeFootnoteClusterDemand = (candidate: ReadonlyArray<FootnoteAnchorRef>): number => {
       const committed = state.footnoteAnchorsThisPage ?? [];
       if (candidate.length === 0 && committed.length === 0) return 0;
       let demand = 0;
@@ -1434,14 +1495,12 @@ export function layoutParagraphBlock(ctx: ParagraphLayoutContext, anchors?: Para
       return demand;
     };
 
-    const previewRange = computeFragmentPmRange(block, lines, fromLine, fromLine + 1);
-    const previewRefs = ctx.getFootnoteRefCountForBlockId
-      ? ctx.getFootnoteRefCountForBlockId(block.id, previewRange.pmStart, previewRange.pmEnd)
-      : 0;
+    const previewAnchors = getSliceAnchors(fromLine, fromLine + 1);
+    const previewRefs = getSliceRefCount(previewAnchors, fromLine, fromLine + 1);
     // Re-evaluates against current state after advanceColumn (footnoteAnchorsThisPage
     // resets on a fresh page, so demand can shrink).
     const computePreviewBottom = () => {
-      const demand = computeFootnoteClusterDemand(previewRange.pmStart ?? 0, previewRange.pmEnd ?? 0);
+      const demand = computeFootnoteClusterDemand(previewAnchors);
       return computeEffectiveBottom(demand, previewRefs);
     };
     let effectiveBottom = computePreviewBottom();
@@ -1500,15 +1559,10 @@ export function layoutParagraphBlock(ctx: ParagraphLayoutContext, anchors?: Para
         // iteration will move the remaining line below the exclusion band.
         break;
       }
-      const range = computeFragmentPmRange(block, lines, fromLine, toLine + 1);
-      // SD-2656 Phase 1: ordered-minimum acceptance. The body accepts a
-      // line if ordered demand (full of non-last + firstLine of last)
-      // still fits. The planner uses any leftover capacity opportunistically
-      // (continuations, extending the last anchor).
-      const orderedDemand = computeFootnoteClusterDemand(range.pmStart ?? 0, range.pmEnd ?? 0);
-      const nextRefs = ctx.getFootnoteRefCountForBlockId
-        ? ctx.getFootnoteRefCountForBlockId(block.id, range.pmStart, range.pmEnd)
-        : 0;
+      const candidateAnchors = getSliceAnchors(fromLine, toLine + 1);
+      // Preserve full-cluster acceptance; only marker ownership changes.
+      const orderedDemand = computeFootnoteClusterDemand(candidateAnchors);
+      const nextRefs = getSliceRefCount(candidateAnchors, fromLine, toLine + 1);
 
       if (toLine === fromLine) {
         // First line: commit unconditionally. The pre-slicer checks above
@@ -1554,11 +1608,9 @@ export function layoutParagraphBlock(ctx: ParagraphLayoutContext, anchors?: Para
       toLine -= 1;
       height -= lines[toLine].lineHeight || 0;
       advanceForWidow = true;
-      const adjustedRange = computeFragmentPmRange(block, lines, fromLine, toLine);
-      sliceDemand = computeFootnoteClusterDemand(adjustedRange.pmStart ?? 0, adjustedRange.pmEnd ?? 0);
-      sliceRefs = ctx.getFootnoteRefCountForBlockId
-        ? ctx.getFootnoteRefCountForBlockId(block.id, adjustedRange.pmStart, adjustedRange.pmEnd)
-        : 0;
+      const adjustedAnchors = getSliceAnchors(fromLine, toLine);
+      sliceDemand = computeFootnoteClusterDemand(adjustedAnchors);
+      sliceRefs = getSliceRefCount(adjustedAnchors, fromLine, toLine);
     }
 
     const slice = { toLine, height };
@@ -1577,8 +1629,7 @@ export function layoutParagraphBlock(ctx: ParagraphLayoutContext, anchors?: Para
     // see them as committed (so the current cluster's last anchor upgrades
     // from firstLine to fullHeight when a new anchor is added later).
     if (ctx.getFootnoteAnchorsForBlockId) {
-      const committedRange = computeFragmentPmRange(block, lines, fromLine, toLine);
-      const newAnchors = ctx.getFootnoteAnchorsForBlockId(block.id, committedRange.pmStart, committedRange.pmEnd);
+      const newAnchors = getSliceAnchors(fromLine, toLine);
       if (newAnchors.length > 0) {
         if (!state.footnoteAnchorsThisPage) state.footnoteAnchorsThisPage = [];
         const seen = new Set(state.footnoteAnchorsThisPage.map((a) => a.refId));
@@ -1605,6 +1656,7 @@ export function layoutParagraphBlock(ctx: ParagraphLayoutContext, anchors?: Para
     const fragment: ParaFragment = {
       kind: 'para',
       blockId: block.id,
+      columnIndex: state.columnIndex,
       fromLine,
       toLine: slice.toLine,
       x: adjustedX,
@@ -1613,10 +1665,6 @@ export function layoutParagraphBlock(ctx: ParagraphLayoutContext, anchors?: Para
       sourceAnchor: block.sourceAnchor,
       ...computeFragmentPmRange(block, lines, fromLine, slice.toLine),
     };
-    if (ctx.collapseSplitLineBreakCarrier) {
-      fragment.columnIndex = state.columnIndex;
-    }
-
     // Store remeasured lines in fragment so renderer can use them.
     // This is needed because the original measure has different line breaks.
     if (didRemeasureForColumnWidth || didRemeasureForFloats) {
@@ -1661,6 +1709,9 @@ export function layoutParagraphBlock(ctx: ParagraphLayoutContext, anchors?: Para
     state.page.fragments.push(fragment);
 
     state.cursorY += borderExpansion.top + fragmentHeight + borderExpansion.bottom;
+    if (ctx.incomingFootnoteDemand) {
+      state.committedBodyBottom = Math.max(state.committedBodyBottom ?? state.topMargin, state.cursorY);
+    }
     state.maxCursorY = Math.max(state.maxCursorY, state.cursorY);
     lastState = state;
     fromLine = slice.toLine;

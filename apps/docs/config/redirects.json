@@ -32,8 +32,13 @@
     },
     {
       "source": "/editor/platform/themes-and-fonts/",
-      "destination": "/editor/themes-and-fonts/",
-      "reason": "Themes and fonts now belong to the Interface stage."
+      "destination": "/editor/theming/",
+      "reason": "Editor UI theming now has a focused guide in the Interface stage."
+    },
+    {
+      "source": "/editor/themes-and-fonts/",
+      "destination": "/editor/theming/",
+      "reason": "Editor UI theming and document font resolution are separate tasks; theming links on to /editor/fonts/."
     },
     {
       "source": "/editor/platform/accessibility-and-keyboard/",
@@ -59,6 +64,11 @@
       "source": "/editor/custom-ui/failures-and-capabilities/",
       "destination": "/editor/custom-ui/commands-and-state/",
       "reason": "Failure handling was merged into the command state contract."
+    },
+    {
+      "source": "/editor/custom-ui/react-setup/",
+      "destination": "/editor/custom-ui/controller-setup/",
+      "reason": "Vanilla and React now share one custom UI setup guide."
     },
     {
       "source": "/start/choose-your-path/",

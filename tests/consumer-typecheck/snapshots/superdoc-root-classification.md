@@ -1,22 +1,22 @@
 # SD-3212 A1 — root classification
 
 Generated: derived from superdoc-root-classification.json (aligned with current root export inventory)
-Input: tests/consumer-typecheck/snapshots/superdoc-root-classification.json (263 names)
+Input: tests/consumer-typecheck/snapshots/superdoc-root-classification.json (276 names)
 
 ## Summary
 
 | Bucket | Count |
 |---|---|
-| supported-root | 260 |
+| supported-root | 273 |
 | legacy-root | 3 |
 | move-to-subpath | 0 |
 | internal-candidate | 0 |
 | NEEDS-REVIEW | 0 |
-| **total** | **263** |
+| **total** | **276** |
 
-Confidence: high=215, medium=48, low=0, needs-review=0.
+Confidence: high=228, medium=48, low=0, needs-review=0.
 
-## supported-root (260)
+## supported-root (273)
 
 | Name | Confidence | Source | Rationale |
 |---|---|---|---|
@@ -59,9 +59,11 @@ Confidence: high=215, medium=48, low=0, needs-review=0.
 | `DocRange` | medium | core | Customer-facing core API type or runtime export. Type-reachable through documented config / callback / event / method surfaces; runtime exports are documented utilities. |
 | `Document` | high | core | Customer-facing core API type or runtime export. Consumer-supplied document descriptor used in Config.documents and now SuperDocState.documents; the public counterpart to the internal RuntimeDocument (which carries runtime-only fields and stays internal). |
 | `DocumentApi` | high | doc-api | Customer-facing Document API handle type exposed through activeEditor.doc and used by public examples that type programmatic document operations from the root package. |
+| `DocumentCollaborationConfig` | high | config-supported | Shared-document connection settings accepted by Document.collaboration and upgradeToCollaboration. |
 | `DocumentDataSource` | high | config-supported | File and byte inputs accepted by Document.data and structured Config.document sources. |
 | `DocumentMode` | medium | core | Customer-facing core API type or runtime export. Type-reachable through documented config / callback / event / method surfaces; runtime exports are documented utilities. |
 | `DocumentProtectionState` | high | doc-api | Document API result type returned by activeEditor.doc.protection.get(); useful for consumers typing document-protection workflows from the root package. |
+| `DocumentReplacementResult` | high | core | Confirmed replacement outcome shared by root and UI document methods without exposing host internals. |
 | `DocumentSource` | high | config-supported | Canonical input accepted by Config.document, covering URL, file, byte, uploader, and structured sources. |
 | `DocumentUploadSource` | high | config-supported | Compatibility shape for common uploader wrappers accepted by document normalization. |
 | `EditorSurface` | medium | surface | Headless Surface API type. Public extension surface for custom UI integrations. |
@@ -79,8 +81,10 @@ Confidence: high=215, medium=48, low=0, needs-review=0.
 | `FlowBlock` | high | layout-engine | Current shared layout-engine input contract exported from @superdoc/contracts and consumed by the v2 layout adapter, v2 host, layout bridge, and layout-engine tests. Useful for consumers typing custom layout projections and layout-engine integrations. |
 | `FlowMode` | high | layout-engine | Current layout flow-mode union exported from @superdoc/contracts and used by Config.layoutEngineOptions.flowMode and the v2 layout runtime to select paginated versus semantic flow. |
 | `FontFamilyOption` | high | font-system | Typed row accepted by ui.toolbar.fontOptions and returned by superdoc.fonts.getFontFamilyOptions(). |
+| `FontResolutionRecord` | high | font-system | One typed result row returned by superdoc.fonts.getReport() and delivered through font report callbacks. |
 | `FontsChangedPayload` | high | font-system | Payload passed to Config.onFontsChanged, superdoc.fonts.onReport(), and the fonts-changed event. |
 | `FontsChangedSource` | high | font-system | Closed reason union carried by FontsChangedPayload.source so font-report handlers get autocomplete and exhaustive narrowing. |
+| `FontsConfig` | high | font-system | Canonical startup configuration type for document font providers and bundled font assets. |
 | `FontsResolvedPayload` | high | font-system | Initial font report passed to the deprecated Config.onFontsResolved callback and fonts-resolved event. |
 | `HTML` | high | locked | Content-format constant. Heavily used (85 docs, 204 demos). Customer-facing. |
 | `HyperlinkActivationContext` | high | hyperlinks | Context for the canonical top-level hyperlink activation handler. |
@@ -153,6 +157,7 @@ Confidence: high=215, medium=48, low=0, needs-review=0.
 | `SuperDocDisposableBag` | high | core | v2 SuperDoc extension authoring API (defineSuperDocExtension contract). Customer-facing public type exported from src/public/index.ts; reachable through Config.extensions and the activeEditor.extensions facet. |
 | `SuperDocDocumentModeChangePayload` | high | core | Payload emitted with document-mode-change after role restrictions are applied. |
 | `SuperDocEditorPayload` | high | core | Wrapper payload emitted with editorBeforeCreate / editorCreate / collaboration-ready events; promoted to a named public type so callback signatures match the runtime wrapper instead of a bare Editor. |
+| `SuperDocExceptionCollaborationPayload` | high | collab | Typed onException payload for collaboration connection failures, narrowed by collaborationReason. |
 | `SuperDocExceptionDiagnosticPayload` | high | diagnostics | Member of the SuperDocExceptionPayload union; structured diagnostic translated from an internal v2-kernel diagnostic. Narrowed by 'diagnosticCode' in payload. SuperDoc Diagnostics MVP. |
 | `SuperDocExceptionEditorPayload` | high | locked | Member of the SuperDocExceptionPayload union; named so consumers can discriminate the editor-lifecycle shape. SD-673 Phase 4D. |
 | `SuperDocExceptionHyperlinkPayload` | high | hyperlinks | Exception payload for application hyperlink activation and rendering failures, narrowed by source. |
@@ -217,6 +222,7 @@ Confidence: high=215, medium=48, low=0, needs-review=0.
 | `SuperDocVisualHandle` | high | extensions | Handle returned by ctx.visuals.highlight/decorate (replace/add/clear/invalidate/dispose). Public extension-authoring type defined in core/extensions/types.ts. |
 | `SuperDocVisualOptions` | high | extensions | Options for ctx.visuals.highlight/decorate (className/data/scope). Public extension-authoring type defined in core/extensions/types.ts. |
 | `SuperDocVisualTarget` | high | extensions | Target accepted by SuperDocVisualHandle.replace/add (anchor, Document API target, or per-target override). Public extension-authoring type defined in core/extensions/types.ts. |
+| `SuperDocWorkerFailureDetail` | high | worker-diagnostics | Structured browser-worker boot and transport failure detail exposed on SuperDocExceptionEditorPayload so consumers can diagnose the phase and typed reason without parsing error text. |
 | `SuperDocZoomConfig` | high | core | Config.zoom domain object (initial + fitToContainer); named so consumers can build zoom configuration values with a public type. |
 | `SuperDocZoomMode` | high | core | Closed zoom mode union (manual | fit-width) used by Config.zoom.mode, setZoomMode, and the zoomChange payload. |
 | `SuperDocZoomPayload` | high | core | Payload emitted with the zoomChange event and passed to Config.onZoomChange; promoted from an internal interface when the config callback made it consumer-facing. |
@@ -234,6 +240,10 @@ Confidence: high=215, medium=48, low=0, needs-review=0.
 | `TextAddress` | high | doc-api | Document API text target accepted by v2 comments, formatting, insertion, and replace-style operations; resolved and validated by the v2 Document API adapter. |
 | `TextSegment` | high | doc-api | Document API text-range segment used inside TextTarget.segments; needed for consumers typing multi-segment text targets from the root package. |
 | `TextTarget` | high | doc-api | Document API range target used by v2 comments, tracked-change decisions, fields, and selection flows; resolved by the v2 Document API adapter. |
+| `ThemeColors` | high | theme | Semantic color configuration accepted by createTheme() and buildTheme(); exported so consumers can type reusable palettes directly. |
+| `ThemeConfig` | high | theme | Public input contract for createTheme() and buildTheme(); exported so theme objects retain autocomplete when declared outside a call. |
+| `ThemeResult` | high | theme | Public return shape of buildTheme(), containing the generated class name and CSS for consumer-managed style injection. |
+| `ThemeVariableOverrides` | high | theme | Typed component-level theme override map that preserves autocomplete and rejects keys outside the SuperDoc --sd-* variable namespace. |
 | `ToolbarCommandId` | high | toolbar-config | Command id accepted by the runtime toolbar handle, including application ids registered through ui.commands.register(). |
 | `ToolbarConfig` | high | toolbar-config | Named startup configuration for the built-in toolbar under ui.toolbar. Lets consumers assemble and validate a readonly toolbar config outside the root Config object. |
 | `ToolbarCustomButton` | high | toolbar-custom-buttons | Deprecated union accepted by ui.toolbar.customButtons. Kept for existing v2 integrations; use ToolbarCustomItem. |
@@ -259,14 +269,17 @@ Confidence: high=215, medium=48, low=0, needs-review=0.
 | `ToolbarOptionalItemId` | high | toolbar-config | Exact opt-in control ids accepted by ui.toolbar.includeItems. |
 | `ToolbarRegion` | high | toolbar-config | The left, center, and right regions rendered by the built-in toolbar. |
 | `ToolbarStringId` | high | toolbar-config | Exact public keys accepted by ui.toolbar.strings. |
-| `TrackChangeAuthor` | high | locked | Structured author identity passed to modules.trackChanges.authorColors.resolve. |
+| `TrackChangeAuthor` | high | locked | Structured author identity passed to trackChanges.authorColors.resolve. |
 | `TrackChangeHighlightColors` | high | config-supported | Tracked-change highlight color shape, referenced by CommentsConfig for both the base and active states. |
-| `TrackChangesAuthorColorsConfig` | high | locked | Module config for per-author tracked-change colors (modules.trackChanges.authorColors). Documented at the module-config layer. |
-| `TrackChangesModuleConfig` | high | locked | Module config for track-changes (modules.trackChanges). Documented at the module-config layer. |
-| `TrackChangesSemanticColorsConfig` | high | locked | Module config for semantic tracked-change colors (modules.trackChanges.semanticColors). Documented at the module-config layer. |
+| `TrackChangesAuthorColorsConfig` | high | config-supported | Per-author color overrides accepted by the canonical trackChanges.authorColors configuration. |
+| `TrackChangesConfig` | high | config-supported | Canonical configuration for grouped or separate replacement review and tracked-change color overrides. |
+| `TrackChangesInteractionConfig` | high | config-supported | Named client-side tracked-change decision policy accepted by InteractionConfig.trackedChanges. |
+| `TrackChangesModuleConfig` | high | locked | Deprecated modules.trackChanges configuration retained for v2 compatibility; use Config.trackChanges. |
+| `TrackChangesReplacementMode` | high | config-supported | Grouped or separate review behavior accepted by trackChanges.replacementMode. |
+| `TrackChangesSemanticColorsConfig` | high | config-supported | Semantic color overrides accepted by the canonical trackChanges.semanticColors configuration. |
 | `TrackedChangeAddress` | high | doc-api | Document API navigation/address/selection type. Promoted into the root facade by SD-3185. |
-| `TrackedChangeSemanticColorKey` | high | locked | Semantic key union used by modules.trackChanges.semanticColors overrides and resolver input. Named so consumers can type supported tracked-change color keys. |
-| `TrackedChangeSemanticColorResolverInput` | high | locked | Resolver input passed to modules.trackChanges.semanticColors.resolve. Named so consumers can type semantic color resolver callbacks. |
+| `TrackedChangeSemanticColorKey` | high | locked | Semantic key union used by trackChanges.semanticColors overrides and resolver input. Named so consumers can type supported tracked-change color keys. |
+| `TrackedChangeSemanticColorResolverInput` | high | locked | Resolver input passed to trackChanges.semanticColors.resolve. Named so consumers can type semantic color resolver callbacks. |
 | `UIConfig` | high | config | Built-in UI configuration type for Config.ui. Customer-facing: names which built-in surfaces SuperDoc renders. |
 | `UpgradeToCollaborationOptions` | medium | core | Customer-facing core API type or runtime export. Type-reachable through documented config / callback / event / method surfaces; runtime exports are documented utilities. |
 | `User` | high | config-supported | Customer-facing user identity type used by v2 config, collaboration/awareness, shared-user management, and locking methods. |
@@ -348,9 +361,11 @@ Confidence: high=215, medium=48, low=0, needs-review=0.
 | `DocRange` | ✓ | ✓ |   |   |
 | `Document` | ✓ | ✓ |   |   |
 | `DocumentApi` | ✓ | ✓ |   |   |
+| `DocumentCollaborationConfig` | ✓ | ✓ |   |   |
 | `DocumentDataSource` | ✓ | ✓ |   |   |
 | `DocumentMode` | ✓ | ✓ |   |   |
 | `DocumentProtectionState` | ✓ | ✓ |   |   |
+| `DocumentReplacementResult` | ✓ | ✓ |   |   |
 | `DocumentSource` | ✓ | ✓ |   |   |
 | `DocumentUploadSource` | ✓ | ✓ |   |   |
 | `EditorSurface` | ✓ | ✓ |   |   |
@@ -369,8 +384,10 @@ Confidence: high=215, medium=48, low=0, needs-review=0.
 | `FlowBlock` | ✓ | ✓ |   |   |
 | `FlowMode` | ✓ | ✓ |   |   |
 | `FontFamilyOption` | ✓ | ✓ |   |   |
+| `FontResolutionRecord` | ✓ | ✓ |   |   |
 | `FontsChangedPayload` | ✓ | ✓ |   |   |
 | `FontsChangedSource` | ✓ | ✓ |   |   |
+| `FontsConfig` | ✓ | ✓ |   |   |
 | `FontsResolvedPayload` | ✓ | ✓ |   |   |
 | `HTML` | ✓ | ✓ | ✓ | ✓ |
 | `HyperlinkActivationContext` | ✓ | ✓ |   |   |
@@ -443,6 +460,7 @@ Confidence: high=215, medium=48, low=0, needs-review=0.
 | `SuperDocDisposableBag` | ✓ | ✓ |   |   |
 | `SuperDocDocumentModeChangePayload` | ✓ | ✓ |   |   |
 | `SuperDocEditorPayload` | ✓ | ✓ |   |   |
+| `SuperDocExceptionCollaborationPayload` | ✓ | ✓ |   |   |
 | `SuperDocExceptionDiagnosticPayload` | ✓ | ✓ |   |   |
 | `SuperDocExceptionEditorPayload` | ✓ | ✓ |   |   |
 | `SuperDocExceptionHyperlinkPayload` | ✓ | ✓ |   |   |
@@ -507,6 +525,7 @@ Confidence: high=215, medium=48, low=0, needs-review=0.
 | `SuperDocVisualHandle` | ✓ | ✓ |   |   |
 | `SuperDocVisualOptions` | ✓ | ✓ |   |   |
 | `SuperDocVisualTarget` | ✓ | ✓ |   |   |
+| `SuperDocWorkerFailureDetail` | ✓ | ✓ |   |   |
 | `SuperDocZoomConfig` | ✓ | ✓ |   |   |
 | `SuperDocZoomMode` | ✓ | ✓ |   |   |
 | `SuperDocZoomPayload` | ✓ | ✓ |   |   |
@@ -524,6 +543,10 @@ Confidence: high=215, medium=48, low=0, needs-review=0.
 | `TextAddress` | ✓ | ✓ |   |   |
 | `TextSegment` | ✓ | ✓ |   |   |
 | `TextTarget` | ✓ | ✓ |   |   |
+| `ThemeColors` | ✓ | ✓ |   |   |
+| `ThemeConfig` | ✓ | ✓ |   |   |
+| `ThemeResult` | ✓ | ✓ |   |   |
+| `ThemeVariableOverrides` | ✓ | ✓ |   |   |
 | `ToolbarCommandId` | ✓ | ✓ |   |   |
 | `ToolbarConfig` | ✓ | ✓ |   |   |
 | `ToolbarCustomButton` | ✓ | ✓ |   |   |
@@ -552,7 +575,10 @@ Confidence: high=215, medium=48, low=0, needs-review=0.
 | `TrackChangeAuthor` | ✓ | ✓ |   |   |
 | `TrackChangeHighlightColors` | ✓ | ✓ |   |   |
 | `TrackChangesAuthorColorsConfig` | ✓ | ✓ |   |   |
+| `TrackChangesConfig` | ✓ | ✓ |   |   |
+| `TrackChangesInteractionConfig` | ✓ | ✓ |   |   |
 | `TrackChangesModuleConfig` | ✓ | ✓ |   |   |
+| `TrackChangesReplacementMode` | ✓ | ✓ |   |   |
 | `TrackChangesSemanticColorsConfig` | ✓ | ✓ |   |   |
 | `TrackedChangeAddress` | ✓ | ✓ |   |   |
 | `TrackedChangeSemanticColorKey` | ✓ | ✓ |   |   |

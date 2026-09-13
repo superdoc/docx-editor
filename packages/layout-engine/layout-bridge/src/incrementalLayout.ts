@@ -40,10 +40,15 @@ import type {
   TableBlock,
   TextRun,
 } from '@superdoc/contracts';
-import type { FontMeasureContext } from '@superdoc/font-system';
+import {
+  DEFAULT_FONT_MEASURE_CONTEXT,
+  type FontMeasureCapabilities,
+  type FontMeasureContext,
+} from '@superdoc/font-system';
 import {
   layoutDocument,
   layoutDocumentCooperatively,
+  findLineIndexForRunOrdinal,
   type LayoutOptions,
   type HeaderFooterConstraints,
   computeDisplayPageNumber,
@@ -95,6 +100,35 @@ import { PageTokenLogger, HeaderFooterCacheLogger, globalMetrics } from './instr
 import { HeaderFooterCacheState, invalidateHeaderFooterCache } from './cacheInvalidation';
 import { hydrateTableTextboxMeasures } from './hydrateTableTextboxMeasures';
 import {
+  buildFootnoteRanges,
+  getParagraphSpacingAfter,
+  getRangeRenderHeight,
+  resolveSeparatorSpacingBefore,
+  type FootnoteRange,
+  type FootnoteSlice,
+} from './footnote-content';
+import { planFootnotePage, type FootnotePageLedgerDraft } from './footnote-page-planner';
+import {
+  createCoupledFootnotePagination,
+  CoupledFootnotePaginationError,
+  validateCoupledFootnoteReferenceConservation,
+  type CoupledFootnotePagination,
+} from './coupled-footnote-pagination';
+import {
+  getCoupledFootnotePaginationUnsupportedReason,
+  getCoupledFootnoteParagraphUpdatesUnsupportedReason,
+} from './coupled-footnote-profile';
+import {
+  createFootnoteCertificateOwner,
+  issueFootnotePageCertificate,
+  readFootnotePageCertificate,
+  rebaseFootnotePageCertificate,
+  transferFootnotePageCertificate,
+  pendingFootnoteQueuesEqual,
+  type FootnoteCertificateOwner,
+  type FootnoteCertificatePreparedOptions,
+} from './footnote-page-certificate';
+import {
   buildPageStyleReferenceResolver,
   cloneLiveCrossReferenceFieldBlocks,
   flowBlocksContainCrossReferenceMetadata,
@@ -139,6 +173,10 @@ export type HeaderFooterLayoutResult = {
  * hashes — see the SD-3418 post-mortem for why identity keys are forbidden).
  */
 export type FootnoteReserveSeed = {
+  /** Identifies canonical forward output; not, by itself, a reuse certificate. */
+  paginationPolicy?: 'coupled-v1';
+  /** Opaque bridge-issued note/profile state; numeric reserve vectors never authorize page reuse. */
+  coupled?: CoupledFootnoteRetainedState;
   reserves: number[];
   /** Sparse page indexes that held a reserve, ledger, or injected note slice. */
   notePageIndexes?: number[];
@@ -170,6 +208,370 @@ export type FootnoteReserveSeed = {
     referencePageIndexes: number[];
   };
 };
+
+type CoupledFootnoteRetainedState = {
+  readonly owner: FootnoteCertificateOwner;
+  /** Current note inventory; may extend the certificate owner's page input during exact Undo. */
+  readonly prepared: FootnoteCertificatePreparedOptions;
+  readonly headerFooterGeometryFingerprint: string;
+  readonly reserves: readonly number[];
+  readonly notePageIndexes: readonly number[];
+  readonly refs: readonly FootnoteReference[];
+  readonly referencePlaneIdentity: FootnotesLayoutInput['refs'];
+  readonly noteBlocksPlaneIdentity: FootnotesLayoutInput['blocksById'];
+  readonly referenceTopologyRevision: string | undefined;
+  readonly refIndexesByBlock: ReadonlyMap<string, readonly number[]>;
+  readonly refIndexById: ReadonlyMap<string, number>;
+  readonly blocksById: Map<string, FlowBlock>;
+  /** Current text measures; certificate geometry may predate a layout-equivalent renumber. */
+  readonly measuresById: Map<string, Measure>;
+  readonly extraBlocks: FlowBlock[];
+  readonly extraMeasures: Measure[];
+  readonly extraIndexById: ReadonlyMap<string, number>;
+};
+const issuedCoupledFootnoteStates = new WeakSet<CoupledFootnoteRetainedState>();
+const issueCoupledFootnoteState = (state: CoupledFootnoteRetainedState): CoupledFootnoteRetainedState => {
+  issuedCoupledFootnoteStates.add(state);
+  return Object.freeze(state);
+};
+
+function readExactCoupledNotePlane(
+  retained: CoupledFootnoteRetainedState | null | undefined,
+  blocksByNoteId: FootnotesLayoutInput['blocksById'],
+): {
+  blocksByBlockId: Map<string, FlowBlock>;
+  measuresByBlockId: Map<string, Measure>;
+  totalMap: Map<string, number>;
+  firstLineMap: Map<string, number>;
+} | null {
+  if (
+    !retained ||
+    !issuedCoupledFootnoteStates.has(retained) ||
+    retained.noteBlocksPlaneIdentity !== blocksByNoteId ||
+    !(retained.measuresById instanceof Map) ||
+    !(retained.prepared.fullHeightById instanceof Map) ||
+    !(retained.prepared.firstLineHeightById instanceof Map) ||
+    retained.blocksById.size === 0 ||
+    retained.blocksById.size !== retained.measuresById.size ||
+    retained.refIndexById.size !== retained.prepared.fullHeightById.size ||
+    retained.refIndexById.size !== retained.prepared.firstLineHeightById.size
+  )
+    return null;
+  return {
+    blocksByBlockId: retained.blocksById,
+    measuresByBlockId: retained.measuresById,
+    totalMap: retained.prepared.fullHeightById,
+    firstLineMap: retained.prepared.firstLineHeightById,
+  };
+}
+type PreparedCoupledFootnoteLayout = {
+  retained: CoupledFootnoteRetainedState;
+  footnotes: FootnotesLayoutInput;
+  /** Current note geometry owns a fresh coupled pass and may not resume an older page certificate. */
+  freshDocumentStart?: true;
+  /** A complete measured current note plane retained this exact immutable owner. */
+  measuredCurrentNotePlaneRetainsOwner?: true;
+};
+type CoupledFootnoteLayoutPass = {
+  owner: FootnoteCertificateOwner;
+  plan: CoupledFootnotePagination['plan'];
+  startPageIndex: number;
+};
+
+/** Exact carrier topology keeps array indexes stable; current run ordinals still come from this input. */
+function readCoupledCarrierReferences(
+  retained: CoupledFootnoteRetainedState,
+  footnotes: FootnotesLayoutInput,
+  blockId: string,
+): FootnoteReference[] | null {
+  const refs: FootnoteReference[] = [];
+  for (const index of retained.refIndexesByBlock.get(blockId) ?? []) {
+    const previous = retained.refs[index];
+    const current = footnotes.refs[index];
+    if (!previous || !current || current.id !== previous.id || current.blockId !== blockId) return null;
+    refs.push(current);
+  }
+  return refs;
+}
+
+function mergeRestoredCoupledPrepared(input: {
+  current: FootnoteCertificatePreparedOptions;
+  source: FootnoteCertificatePreparedOptions;
+  restoredNoteIds: ReadonlySet<string>;
+  currentBlocksByNoteId: ReadonlyMap<string, readonly FlowBlock[]>;
+}): FootnoteCertificatePreparedOptions | null {
+  const { current, source } = input;
+  if (
+    current.pageSize.w !== source.pageSize.w ||
+    current.pageSize.h !== source.pageSize.h ||
+    current.separatorSpacingBefore !== source.separatorSpacingBefore ||
+    current.dividerHeight !== source.dividerHeight ||
+    current.continuationDividerHeight !== source.continuationDividerHeight ||
+    current.topPadding !== source.topPadding ||
+    current.gap !== source.gap
+  )
+    return null;
+  const rangesByFootnoteId = new Map(current.rangesByFootnoteId);
+  const measuresById = new Map(current.measuresById);
+  const fullHeightById = new Map(current.fullHeightById);
+  const firstLineHeightById = new Map(current.firstLineHeightById);
+  for (const noteId of input.restoredNoteIds) {
+    const ranges = source.rangesByFootnoteId.get(noteId);
+    const fullHeight = source.fullHeightById.get(noteId);
+    const firstLineHeight = source.firstLineHeightById.get(noteId);
+    const blocks = input.currentBlocksByNoteId.get(noteId);
+    if (!ranges || fullHeight == null || firstLineHeight == null || !blocks?.length) return null;
+    rangesByFootnoteId.set(noteId, ranges);
+    fullHeightById.set(noteId, fullHeight);
+    firstLineHeightById.set(noteId, firstLineHeight);
+    for (const block of blocks) {
+      const measure = source.measuresById.get(block.id);
+      if (!measure) return null;
+      measuresById.set(block.id, measure);
+    }
+  }
+  return Object.freeze({
+    ...current,
+    rangesByFootnoteId,
+    measuresById,
+    fullHeightById,
+    firstLineHeightById,
+  });
+}
+
+/**
+ * Rebase a bridge-issued coupled inventory only when the current reference
+ * sequence is an ordered subset of the retained sequence. References may be
+ * removed from proved dirty owners or reassigned among proved dirty owners
+ * (paragraph merge/split); additions, reorder, or distant owner changes fail
+ * closed to canonical pagination.
+ */
+function rebaseCoupledFootnoteReferences(input: {
+  retained: CoupledFootnoteRetainedState;
+  footnotes: FootnotesLayoutInput;
+  blocks: readonly FlowBlock[];
+  dirty: ReturnType<typeof computeDirtyRegions>;
+  reuse: IncrementalLayoutReuseOptions;
+  currentNoteBlocksById: Map<string, FlowBlock>;
+  currentNoteMeasuresById: ReadonlyMap<string, Measure>;
+  restoration?: {
+    source: CoupledFootnoteRetainedState;
+    restoredNoteIds: ReadonlySet<string>;
+  };
+}): CoupledFootnoteRetainedState | null {
+  const { retained, footnotes, blocks, dirty, reuse, currentNoteBlocksById, currentNoteMeasuresById, restoration } =
+    input;
+  const previousToCurrent = reuse.blockIdRewrites?.previousToCurrent ?? new Map<string, string>();
+  const currentToPrevious = reuse.blockIdRewrites?.currentToPrevious ?? new Map<string, string>();
+  const retainedCarrierDeleted = dirty.deletedBlockIds.some((id) => retained.refIndexesByBlock.has(id));
+  const topologyRevisionChanged =
+    retained.referenceTopologyRevision !== footnotes.referenceTopologyRevision ||
+    !retained.referenceTopologyRevision ||
+    !footnotes.referenceTopologyRevision;
+  const requiresRebase =
+    retainedCarrierDeleted ||
+    dirty.insertedBlockIds.length > 0 ||
+    previousToCurrent.size > 0 ||
+    footnotes.refs.length !== retained.refs.length ||
+    (footnotes.refs !== retained.referencePlaneIdentity && topologyRevisionChanged);
+  if (!requiresRebase) return retained;
+  if (!reuse.previousBlockIndexById || !reuse.currentBlockIndexById) return null;
+
+  const changedCurrent = new Set(dirty.changedBlockIds);
+  const insertedCurrent = new Set(dirty.insertedBlockIds);
+  const deletedPrevious = new Set(dirty.deletedBlockIds);
+  const affectedCurrent = new Set([...changedCurrent, ...insertedCurrent]);
+  const affectedPrevious = new Set(deletedPrevious);
+  for (const currentId of changedCurrent) affectedPrevious.add(currentToPrevious.get(currentId) ?? currentId);
+
+  const currentIds = new Set<string>();
+  for (const current of footnotes.refs) {
+    const blockId = current.blockId;
+    const blockIndex = blockId ? reuse.currentBlockIndexById.get(blockId) : undefined;
+    if (
+      !current.id ||
+      currentIds.has(current.id) ||
+      !blockId ||
+      blockIndex == null ||
+      blocks[blockIndex]?.id !== blockId ||
+      blocks[blockIndex]?.kind !== 'paragraph' ||
+      !footnotes.blocksById.has(current.id)
+    )
+      return null;
+    currentIds.add(current.id);
+  }
+
+  const refs: FootnoteReference[] = [];
+  const refIndexesByBlock = new Map<string, number[]>();
+  const refIndexById = new Map<string, number>();
+  const appendCurrent = (current: FootnoteReference): void => {
+    const frozen = Object.freeze({ ...current });
+    const nextIndex = refs.length;
+    refs.push(frozen);
+    const indexes = refIndexesByBlock.get(current.blockId!) ?? [];
+    indexes.push(nextIndex);
+    refIndexesByBlock.set(current.blockId!, indexes);
+    refIndexById.set(current.id, nextIndex);
+  };
+  if (restoration) {
+    if (
+      !issuedCoupledFootnoteStates.has(restoration.source) ||
+      restoration.restoredNoteIds.size === 0 ||
+      [...restoration.restoredNoteIds].some((id) => retained.refIndexById.has(id)) ||
+      footnotes.refs.length !== restoration.source.refs.length ||
+      footnotes.refs.some((reference, index) => restoration.source.refs[index]?.id !== reference.id)
+    )
+      return null;
+    let retainedIndex = 0;
+    const restoredObserved = new Set<string>();
+    for (const current of footnotes.refs) {
+      const previous = retained.refs[retainedIndex];
+      if (previous?.id === current.id) {
+        if (!previous.blockId || !current.blockId) return null;
+        const mappedOwner = previousToCurrent.get(previous.blockId) ?? previous.blockId;
+        if (
+          current.blockId !== mappedOwner &&
+          !(affectedPrevious.has(previous.blockId) && affectedCurrent.has(current.blockId))
+        )
+          return null;
+        retainedIndex += 1;
+      } else {
+        const sourceIndex = restoration.source.refIndexById.get(current.id);
+        const sourceReference = sourceIndex == null ? null : restoration.source.refs[sourceIndex];
+        if (
+          !restoration.restoredNoteIds.has(current.id) ||
+          restoredObserved.has(current.id) ||
+          !sourceReference ||
+          !sourceReference.blockId ||
+          !current.blockId ||
+          !affectedCurrent.has(current.blockId) ||
+          (sourceReference.blockId !== current.blockId && !affectedCurrent.has(sourceReference.blockId))
+        )
+          return null;
+        restoredObserved.add(current.id);
+      }
+      appendCurrent(current);
+    }
+    if (
+      retainedIndex !== retained.refs.length ||
+      restoredObserved.size !== restoration.restoredNoteIds.size ||
+      [...restoration.restoredNoteIds].some((id) => !restoredObserved.has(id))
+    )
+      return null;
+  } else {
+    let currentIndex = 0;
+    for (const previous of retained.refs) {
+      const current = footnotes.refs[currentIndex];
+      if (current?.id !== previous.id) {
+        // A retained id appearing later in the current sequence is a reorder,
+        // not a removal. Only references owned by the proved dirty range may
+        // disappear from the retained topology.
+        if (currentIds.has(previous.id) || !previous.blockId || !affectedPrevious.has(previous.blockId)) return null;
+        continue;
+      }
+      if (!previous.blockId || !current.blockId) return null;
+      const mappedOwner = previousToCurrent.get(previous.blockId) ?? previous.blockId;
+      if (
+        current.blockId !== mappedOwner &&
+        !(affectedPrevious.has(previous.blockId) && affectedCurrent.has(current.blockId))
+      )
+        return null;
+      appendCurrent(current);
+      currentIndex += 1;
+    }
+    if (currentIndex !== footnotes.refs.length) return null;
+  }
+
+  const prepared = restoration
+    ? mergeRestoredCoupledPrepared({
+        current: retained.prepared,
+        source: restoration.source.prepared,
+        restoredNoteIds: restoration.restoredNoteIds,
+        currentBlocksByNoteId: footnotes.blocksById,
+      })
+    : retained.prepared;
+  if (!prepared) return null;
+
+  let extraBlocks = retained.extraBlocks;
+  let extraMeasures = retained.extraMeasures;
+  let extraIndexById = retained.extraIndexById;
+  if (restoration) {
+    for (const noteId of restoration.restoredNoteIds) {
+      const blocks = footnotes.blocksById.get(noteId);
+      if (!blocks?.length) return null;
+      for (const block of blocks) {
+        const measure = currentNoteMeasuresById.get(block.id);
+        if (!measure) return null;
+        const retainedIndex = extraIndexById.get(block.id);
+        if (retainedIndex != null && extraBlocks[retainedIndex] === block && extraMeasures[retainedIndex] === measure)
+          continue;
+        if (extraBlocks === retained.extraBlocks) {
+          extraBlocks = extraBlocks.slice();
+          extraMeasures = extraMeasures.slice();
+          extraIndexById = new Map(extraIndexById);
+        }
+        const targetIndex = retainedIndex ?? extraBlocks.length;
+        extraBlocks[targetIndex] = block;
+        extraMeasures[targetIndex] = measure;
+        (extraIndexById as Map<string, number>).set(block.id, targetIndex);
+      }
+    }
+  } else {
+    // The certificate owner keeps its immutable prepared geometry. The painter
+    // plane is separate: after an exactly proved removal it must contain the
+    // current surviving note objects and their current equivalent measures,
+    // while orphaned note blocks disappear. Decorative separator entries are
+    // retained unchanged.
+    const notePlaneChanged =
+      currentNoteBlocksById.size !== retained.blocksById.size ||
+      [...currentNoteBlocksById].some(
+        ([blockId, block]) =>
+          retained.blocksById.get(blockId) !== block ||
+          currentNoteMeasuresById.get(blockId) !== retained.measuresById.get(blockId),
+      );
+    if (notePlaneChanged) {
+      const retainedNoteBlockIds = new Set(retained.blocksById.keys());
+      const observedCurrentNoteBlockIds = new Set<string>();
+      extraBlocks = [];
+      extraMeasures = [];
+      extraIndexById = new Map<string, number>();
+      retained.extraBlocks.forEach((block, index) => {
+        const isRetainedNoteBlock = retainedNoteBlockIds.has(block.id);
+        const currentNoteBlock = currentNoteBlocksById.get(block.id);
+        if (isRetainedNoteBlock && !currentNoteBlock) return;
+        const currentMeasure = currentNoteBlock ? currentNoteMeasuresById.get(block.id) : retained.extraMeasures[index];
+        if (!currentMeasure) return;
+        const targetIndex = extraBlocks.length;
+        extraBlocks.push(currentNoteBlock ?? block);
+        extraMeasures.push(currentMeasure);
+        (extraIndexById as Map<string, number>).set(block.id, targetIndex);
+        if (currentNoteBlock) observedCurrentNoteBlockIds.add(block.id);
+      });
+      if (
+        observedCurrentNoteBlockIds.size !== currentNoteBlocksById.size ||
+        [...currentNoteBlocksById.keys()].some((blockId) => !observedCurrentNoteBlockIds.has(blockId))
+      ) {
+        return null;
+      }
+    }
+  }
+
+  return issueCoupledFootnoteState({
+    ...retained,
+    prepared,
+    refs: Object.freeze(refs),
+    referencePlaneIdentity: footnotes.refs,
+    noteBlocksPlaneIdentity: footnotes.blocksById,
+    referenceTopologyRevision: footnotes.referenceTopologyRevision,
+    refIndexesByBlock,
+    refIndexById,
+    blocksById: currentNoteBlocksById,
+    measuresById: new Map(currentNoteMeasuresById),
+    extraBlocks,
+    extraMeasures,
+    extraIndexById,
+  });
+}
 
 export type IncrementalLayoutResult = {
   layout: Layout;
@@ -213,6 +615,8 @@ export type IncrementalLayoutResult = {
 };
 
 export type IncrementalLayoutBridgeTiming = {
+  /** Content-free reason a document used the conservative note fallback. */
+  footnoteCoupledRejection?: string;
   totalMs: number;
   inputPreparationMs: number;
   measureTotalMs: number;
@@ -278,6 +682,9 @@ export type IncrementalLayoutBridgeTiming = {
     footnoteWidowRelayouts: number;
     footnoteRevertRelayouts: number;
     footnoteOtherRelayouts: number;
+    footnoteCoupledRelayouts?: number;
+    footnoteCoupledPages?: number;
+    footnoteCoupledFallbacks?: number;
     footnoteAssignmentReferencesRead: number;
     footnoteAssignmentReferencesReused: number;
     footnoteAssignmentPagesIndexed: number;
@@ -356,6 +763,8 @@ export type IncrementalLayoutReuseSummary = {
   sourceConvergencePageIndex: number | null;
   pagesPaginated: number | null;
   pagesSplicedByReuse: number;
+  /** Shifted adopted pages carry exact note queues reissued by the retained coupled owner. */
+  coupledFootnoteTailCertificateRebased?: true;
   /**
    * Proof for a retained tail. Pages in this interval remain byte-for-byte
    * retained; consumers apply the position transforms only when a page enters
@@ -413,6 +822,8 @@ export type IncrementalLayoutTailAdoption = {
   /** Lazy old->current block-id rekeys for an ordinal-changing structural splice. */
   blockIdRewrites?: ReadonlyMap<string, string> | null;
 };
+
+const shiftedCoupledFootnoteTailOwners = new WeakMap<IncrementalLayoutTailAdoption, FootnoteCertificateOwner>();
 
 function roundTimingMs(value: number): number {
   return Math.round(Math.max(0, value) * 1000) / 1000;
@@ -766,6 +1177,11 @@ export type IncrementalLayoutReuseOptions = {
     noteIds: readonly string[];
     bodyReferenceBlockIds: readonly string[];
   };
+  /** History-only inverse of a compiler-proved footnote removal. */
+  provedNoteReferenceRestoration?: {
+    sourceTxId: string;
+    restoredNoteIds: readonly string[];
+  };
   /**
    * Host-proved header/footer-only refresh. The bridge still compares the
    * current pre-layout height fingerprint before retaining body pagination.
@@ -847,6 +1263,52 @@ function liveCrossReferenceResultSignature(block: FlowBlock | undefined): string
   };
   visit(block);
   return entries.length > 0 ? JSON.stringify(entries) : null;
+}
+
+function collectTableOwnedFootnoteIds(
+  blocks: readonly FlowBlock[],
+  references: readonly { id: string; blockId?: string }[],
+): Set<string> {
+  const noteIdsByBlockId = new Map<string, string[]>();
+  for (const reference of references) {
+    if (!reference.blockId) continue;
+    const noteIds = noteIdsByBlockId.get(reference.blockId) ?? [];
+    noteIds.push(reference.id);
+    noteIdsByBlockId.set(reference.blockId, noteIds);
+  }
+  const unresolvedBlockIds = new Set(noteIdsByBlockId.keys());
+  const tableOwnedFootnoteIds = new Set<string>();
+  const visit = (block: FlowBlock, insideTable: boolean): void => {
+    if (unresolvedBlockIds.has(block.id)) {
+      if (insideTable || block.kind === 'table') {
+        for (const noteId of noteIdsByBlockId.get(block.id) ?? []) tableOwnedFootnoteIds.add(noteId);
+      }
+      unresolvedBlockIds.delete(block.id);
+    }
+    if (block.kind === 'list') {
+      for (const item of (block as ListBlock).items ?? []) visit(item.paragraph, insideTable);
+      return;
+    }
+    if (block.kind === 'table') {
+      for (const row of (block as TableBlock).rows ?? []) {
+        for (const cell of row.cells ?? []) {
+          for (const child of cell.blocks ?? (cell.paragraph ? [cell.paragraph] : [])) visit(child, true);
+        }
+      }
+      return;
+    }
+    if (block.kind === 'drawing') {
+      const drawing = block as DrawingBlock;
+      if (drawing.drawingKind === 'textboxShape') {
+        for (const child of drawing.contentBlocks ?? []) visit(child, insideTable);
+      }
+    }
+  };
+  for (const block of blocks) {
+    visit(block, false);
+    if (unresolvedBlockIds.size === 0) break;
+  }
+  return tableOwnedFootnoteIds;
 }
 
 function mergeLiveCrossReferenceDirtyRegion(
@@ -1067,15 +1529,6 @@ const isFootnotesLayoutInput = (value: unknown): value is FootnotesLayoutInput =
   return true;
 };
 
-const findLineIndexForRunOrdinal = (measure: ParagraphMeasure | undefined, runOrdinal: number): number | null => {
-  if (!measure || !Array.isArray(measure.lines)) return null;
-  for (let lineIndex = 0; lineIndex < measure.lines.length; lineIndex += 1) {
-    const line = measure.lines[lineIndex];
-    if (runOrdinal >= line.fromRun && runOrdinal <= line.toRun) return lineIndex;
-  }
-  return null;
-};
-
 const findPageIndexForPos = (layout: Layout, pos: number): number | null => {
   if (!Number.isFinite(pos)) return null;
   const fallbackRanges: Array<{ pageIndex: number; minStart: number; maxEnd: number } | null> = [];
@@ -1179,11 +1632,12 @@ const resolvePageColumns = (
   options: LayoutOptions,
   blocks?: FlowBlock[],
   retainedSectionColumns?: ReadonlyMap<number, ColumnLayout>,
+  pageIndexes?: Iterable<number>,
 ): Map<number, PageColumns> => {
   const sectionColumns = retainedSectionColumns ?? resolveSectionColumnsByIndex(options, blocks);
   const result = new Map<number, PageColumns>();
 
-  for (let pageIndex = 0; pageIndex < layout.pages.length; pageIndex += 1) {
+  for (const pageIndex of pageIndexes ?? layout.pages.keys()) {
     const page = layout.pages[pageIndex];
     const pageSize = page.size ?? layout.pageSize ?? DEFAULT_PAGE_SIZE;
     const marginLeft = normalizeMargin(
@@ -1269,7 +1723,7 @@ const assignFootnotesToColumns = (
         const paragraphMeasure = paragraphMeasuresByBlockId.get(ref.blockId);
         const lineIndex = lineIndexByReference?.has(ref)
           ? (lineIndexByReference.get(ref) ?? null)
-          : findLineIndexForRunOrdinal(paragraphMeasure, ref.runOrdinal);
+          : findLineIndexForRunOrdinal(paragraphMeasure?.lines, ref.runOrdinal);
         if (lineIndex != null) {
           for (const candidate of candidates) {
             const candidateFragment = candidate.fragment;
@@ -1301,14 +1755,25 @@ const assignFootnotesToColumns = (
       if (fragment?.kind === 'table' && typeof fragment.columnIndex === 'number') {
         columnIndex = Math.max(0, Math.min(columns.count - 1, fragment.columnIndex));
       } else if (fragment && typeof fragment.x === 'number') {
-        // Geometry-derived midpoint assignment: assign the ref to the column whose right edge plus
-        // half its own gap the fragment falls before. Per-column widths/gaps come from the resolved
+        // Geometry-derived midpoint assignment: assign the ref to the column whose far edge plus
+        // half its own gap the fragment falls short of. Per-column widths/gaps come from the resolved
         // geometry, preserving the prior midpoint rule. The old uniform-stride branch was unreachable
         // for count>1 (normalized columns always carry widths). (SD-2629 4c)
+        //
+        // "Far edge" is direction-relative: in an RTL section column 0 sits on the right, so x
+        // DESCENDS with the index and the fragment must be compared against the column's LEFT edge
+        // minus half its gap instead. Walking the geometry with the LTR test in an RTL section
+        // matched column 0 for every fragment, which collapsed all of a page's footnotes into the
+        // first column's group — the left column's notes printed under the right column and its own
+        // note area stayed empty.
         const geometry = getColumnGeometry(columns);
+        const mirrored = geometry.length > 1 && geometry[1].x < geometry[0].x;
         columnIndex = Math.max(0, geometry.length - 1);
         for (const col of geometry) {
-          if (fragment.x < columns.left + col.x + col.width + col.gapAfter / 2) {
+          const boundary = mirrored
+            ? columns.left + col.x - col.gapAfter / 2
+            : columns.left + col.x + col.width + col.gapAfter / 2;
+          if (mirrored ? fragment.x >= boundary : fragment.x < boundary) {
             columnIndex = col.index;
             break;
           }
@@ -1398,41 +1863,6 @@ const computeMaxFootnoteReserve = (layoutForPages: Layout, pageIndex: number, ba
   return Math.max(0, availableForBody - MIN_FOOTNOTE_BODY_HEIGHT);
 };
 
-type FootnoteRange =
-  | {
-      kind: 'paragraph';
-      blockId: string;
-      fromLine: number;
-      toLine: number;
-      totalLines: number;
-      height: number;
-      spacingAfter: number;
-    }
-  | {
-      kind: 'list-item';
-      blockId: string;
-      itemId: string;
-      fromLine: number;
-      toLine: number;
-      totalLines: number;
-      height: number;
-      spacingAfter: number;
-    }
-  | {
-      kind: 'table' | 'image' | 'drawing';
-      blockId: string;
-      height: number;
-    };
-
-type FootnoteSlice = {
-  id: string;
-  pageIndex: number;
-  columnIndex: number;
-  isContinuation: boolean;
-  ranges: FootnoteRange[];
-  totalHeight: number;
-};
-
 type FootnoteLayoutPlan = {
   slicesByPage: Map<number, FootnoteSlice[]>;
   reserves: number[];
@@ -1443,333 +1873,6 @@ type FootnoteLayoutPlan = {
   // vs extendedSlices and the continuation in/out queues — surface that here
   // so injectFragments can attach it to each Page object.
   ledgersByPage: Map<number, FootnotePageLedgerDraft>;
-};
-
-/**
- * Planner-emitted per-page ledger fragments. Combined with the applied body
- * reserve at injection time to form the full FootnotePageLedger.
- */
-type FootnotePageLedgerDraft = {
-  anchorIds: string[];
-  mandatorySliceIds: string[];
-  continuationSliceIds: string[];
-  extendedSliceIds: string[];
-  continuationIn: Array<{ id: string; remainingRangeCount: number; remainingHeightPx: number }>;
-  continuationOut: Array<{ id: string; remainingRangeCount: number; remainingHeightPx: number }>;
-  mandatoryReservePx: number;
-  /** SD-2656 Phase 7: Word-like preferred reserve = full(non-last) + full(last) + overhead. */
-  preferredReservePx: number;
-  actualBandHeightPx: number;
-  /** Number of measured lines rendered for the last anchor on this page (0 if no cluster). */
-  lastAnchorRenderedLines: number;
-};
-
-const sumLineHeights = (
-  lines: Array<{ lineHeight?: number }> | undefined,
-  fromLine: number,
-  toLine: number,
-): number => {
-  if (!lines || fromLine >= toLine) return 0;
-  let total = 0;
-  for (let i = fromLine; i < toLine; i += 1) {
-    total += lines[i]?.lineHeight ?? 0;
-  }
-  return total;
-};
-
-const getParagraphSpacingAfter = (block: ParagraphBlock): number => {
-  const spacing = block.attrs?.spacing as Record<string, unknown> | undefined;
-  const value = spacing?.after ?? spacing?.lineSpaceAfter;
-  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0;
-};
-
-const resolveSeparatorSpacingBefore = (
-  rangesByFootnoteId: Map<string, FootnoteRange[]>,
-  measuresById: Map<string, Measure>,
-  explicitValue: number | undefined,
-  fallbackValue: number,
-): number => {
-  if (typeof explicitValue === 'number' && Number.isFinite(explicitValue)) {
-    return Math.max(0, explicitValue);
-  }
-
-  for (const ranges of rangesByFootnoteId.values()) {
-    for (const range of ranges) {
-      if (range.kind === 'paragraph') {
-        const measure = measuresById.get(range.blockId);
-        if (measure?.kind !== 'paragraph') continue;
-        const lineHeight = measure.lines?.[range.fromLine]?.lineHeight ?? measure.lines?.[0]?.lineHeight;
-        if (typeof lineHeight === 'number' && Number.isFinite(lineHeight) && lineHeight > 0) {
-          return lineHeight;
-        }
-      }
-
-      if (range.kind === 'list-item') {
-        const measure = measuresById.get(range.blockId);
-        if (measure?.kind !== 'list') continue;
-        const itemMeasure = measure.items.find((item) => item.itemId === range.itemId);
-        const lineHeight =
-          itemMeasure?.paragraph?.lines?.[range.fromLine]?.lineHeight ?? itemMeasure?.paragraph?.lines?.[0]?.lineHeight;
-        if (typeof lineHeight === 'number' && Number.isFinite(lineHeight) && lineHeight > 0) {
-          return lineHeight;
-        }
-      }
-    }
-  }
-
-  return Math.max(0, fallbackValue);
-};
-
-const getRangeRenderHeight = (range: FootnoteRange): number => {
-  if (range.kind === 'paragraph' || range.kind === 'list-item') {
-    const spacing = range.toLine >= range.totalLines ? range.spacingAfter : 0;
-    return range.height + spacing;
-  }
-  return range.height;
-};
-
-const buildFootnoteRanges = (blocks: FlowBlock[], measuresById: Map<string, Measure>): FootnoteRange[] => {
-  const ranges: FootnoteRange[] = [];
-
-  blocks.forEach((block) => {
-    const measure = measuresById.get(block.id);
-    if (!measure) return;
-
-    if (block.kind === 'paragraph') {
-      if (measure.kind !== 'paragraph') return;
-      const lineCount = measure.lines?.length ?? 0;
-      if (lineCount === 0) return;
-      ranges.push({
-        kind: 'paragraph',
-        blockId: block.id,
-        fromLine: 0,
-        toLine: lineCount,
-        totalLines: lineCount,
-        height: sumLineHeights(measure.lines, 0, lineCount),
-        spacingAfter: getParagraphSpacingAfter(block as ParagraphBlock),
-      });
-      return;
-    }
-
-    if (block.kind === 'list') {
-      if (measure.kind !== 'list') return;
-      block.items.forEach((item) => {
-        const itemMeasure = measure.items.find((entry) => entry.itemId === item.id);
-        if (!itemMeasure) return;
-        const lineCount = itemMeasure.paragraph.lines?.length ?? 0;
-        if (lineCount === 0) return;
-        ranges.push({
-          kind: 'list-item',
-          blockId: block.id,
-          itemId: item.id,
-          fromLine: 0,
-          toLine: lineCount,
-          totalLines: lineCount,
-          height: sumLineHeights(itemMeasure.paragraph.lines, 0, lineCount),
-          spacingAfter: getParagraphSpacingAfter(item.paragraph),
-        });
-      });
-      return;
-    }
-
-    if (block.kind === 'table' && measure.kind === 'table') {
-      const height = Math.max(0, measure.totalHeight ?? 0);
-      if (height > 0) {
-        ranges.push({ kind: 'table', blockId: block.id, height });
-      }
-      return;
-    }
-
-    if (block.kind === 'image' && measure.kind === 'image') {
-      const height = Math.max(0, measure.height ?? 0);
-      if (height > 0) {
-        ranges.push({ kind: 'image', blockId: block.id, height });
-      }
-      return;
-    }
-
-    if (block.kind === 'drawing' && measure.kind === 'drawing') {
-      const height = Math.max(0, measure.height ?? 0);
-      if (height > 0) {
-        ranges.push({ kind: 'drawing', blockId: block.id, height });
-      }
-    }
-  });
-
-  return ranges;
-};
-
-const splitRangeAtHeight = (
-  range: FootnoteRange,
-  availableHeight: number,
-  measuresById: Map<string, Measure>,
-): { fitted: FootnoteRange | null; remaining: FootnoteRange | null } => {
-  if (availableHeight <= 0) return { fitted: null, remaining: range };
-  if (range.kind !== 'paragraph') {
-    return getRangeRenderHeight(range) <= availableHeight
-      ? { fitted: range, remaining: null }
-      : { fitted: null, remaining: range };
-  }
-
-  const measure = measuresById.get(range.blockId);
-  if (!measure || measure.kind !== 'paragraph' || !measure.lines) {
-    return getRangeRenderHeight(range) <= availableHeight
-      ? { fitted: range, remaining: null }
-      : { fitted: null, remaining: range };
-  }
-
-  let accumulatedHeight = 0;
-  let splitLine = range.fromLine;
-
-  for (let i = range.fromLine; i < range.toLine; i += 1) {
-    const lineHeight = measure.lines[i]?.lineHeight ?? 0;
-    if (accumulatedHeight + lineHeight > availableHeight) break;
-    accumulatedHeight += lineHeight;
-    splitLine = i + 1;
-  }
-
-  if (splitLine === range.fromLine) {
-    return { fitted: null, remaining: range };
-  }
-
-  const fitted: FootnoteRange = {
-    ...range,
-    toLine: splitLine,
-    height: sumLineHeights(measure.lines, range.fromLine, splitLine),
-  };
-
-  if (splitLine >= range.toLine) {
-    // SD-2656: when all lines fit, return the fitted range regardless of
-    // spacingAfter. spacingAfter is the gap to the *next* paragraph; for
-    // the last item placed in a band slice it shouldn't be charged against
-    // the available height. Without this, a single-fn band whose body lines
-    // fit exactly but whose post-paragraph spacing pushes the total over
-    // the limit gets force-split (1 line placed + 3 lines continuation),
-    // which is what caused the reference fixture's last fn to drip across 2 pages.
-    if (fitted.height <= availableHeight) {
-      return { fitted, remaining: null };
-    }
-    return { fitted: null, remaining: range };
-  }
-
-  const remaining: FootnoteRange = {
-    ...range,
-    fromLine: splitLine,
-    height: sumLineHeights(measure.lines, splitLine, range.toLine),
-  };
-  return { fitted, remaining };
-};
-
-const forceFitFirstRange = (
-  range: FootnoteRange,
-  measuresById: Map<string, Measure>,
-): { fitted: FootnoteRange | null; remaining: FootnoteRange | null } => {
-  if (range.kind !== 'paragraph') {
-    return { fitted: range, remaining: null };
-  }
-
-  const measure = measuresById.get(range.blockId);
-  if (!measure || measure.kind !== 'paragraph' || !measure.lines?.length) {
-    return { fitted: range, remaining: null };
-  }
-
-  const nextLine = Math.min(range.fromLine + 1, range.toLine);
-  const fitted: FootnoteRange = {
-    ...range,
-    toLine: nextLine,
-    height: sumLineHeights(measure.lines, range.fromLine, nextLine),
-  };
-
-  if (nextLine >= range.toLine) {
-    return { fitted, remaining: null };
-  }
-
-  const remaining: FootnoteRange = {
-    ...range,
-    fromLine: nextLine,
-    height: sumLineHeights(measure.lines, nextLine, range.toLine),
-  };
-
-  return { fitted, remaining };
-};
-
-const fitFootnoteContent = (
-  id: string,
-  inputRanges: FootnoteRange[],
-  availableHeight: number,
-  pageIndex: number,
-  columnIndex: number,
-  isContinuation: boolean,
-  measuresById: Map<string, Measure>,
-  forceFirstRange: boolean,
-): { slice: FootnoteSlice; remainingRanges: FootnoteRange[] } => {
-  const fittedRanges: FootnoteRange[] = [];
-  let remainingRanges: FootnoteRange[] = [];
-  let usedHeight = 0;
-  const maxHeight = Math.max(0, availableHeight);
-
-  for (let index = 0; index < inputRanges.length; index += 1) {
-    const range = inputRanges[index];
-    const remainingSpace = maxHeight - usedHeight;
-    const rangeHeight = getRangeRenderHeight(range);
-
-    if (rangeHeight <= remainingSpace) {
-      fittedRanges.push(range);
-      usedHeight += rangeHeight;
-      continue;
-    }
-
-    if (range.kind === 'paragraph') {
-      const split = splitRangeAtHeight(range, remainingSpace, measuresById);
-      if (split.fitted) {
-        // SD-2656: charge only the fitted *body* height (no spacingAfter)
-        // when the fitted range completes the input — it's the last item in
-        // this band slice, so trailing paragraph spacing is wasted. This
-        // matches the relaxed check inside splitRangeAtHeight above.
-        const fittedBodyHeight = split.fitted.height;
-        const fittedFullHeight = getRangeRenderHeight(split.fitted);
-        const charged = !split.remaining ? fittedBodyHeight : fittedFullHeight;
-        if (charged <= remainingSpace) {
-          fittedRanges.push(split.fitted);
-          usedHeight += charged;
-        }
-      }
-      if (split.remaining) {
-        remainingRanges = [split.remaining, ...inputRanges.slice(index + 1)];
-      } else {
-        remainingRanges = inputRanges.slice(index + 1);
-      }
-      break;
-    }
-
-    remainingRanges = [range, ...inputRanges.slice(index + 1)];
-    break;
-  }
-
-  if (fittedRanges.length === 0 && forceFirstRange && inputRanges.length > 0) {
-    const forced = forceFitFirstRange(inputRanges[0], measuresById);
-    if (forced.fitted) {
-      fittedRanges.push(forced.fitted);
-      usedHeight = getRangeRenderHeight(forced.fitted);
-      remainingRanges = [];
-      if (forced.remaining) {
-        remainingRanges.push(forced.remaining);
-      }
-      remainingRanges.push(...inputRanges.slice(1));
-    }
-  }
-
-  return {
-    slice: {
-      id,
-      pageIndex,
-      columnIndex,
-      isContinuation,
-      ranges: fittedRanges,
-      totalHeight: usedHeight,
-    },
-    remainingRanges,
-  };
 };
 
 /**
@@ -1866,6 +1969,7 @@ async function measureNoteBlocks(
   constraints: { maxWidth: number; maxHeight: number },
   measureBlock: (block: FlowBlock, constraints: { maxWidth: number; maxHeight: number }) => Promise<Measure>,
   fontSignature: string,
+  fontCapabilities: FontMeasureCapabilities | undefined,
   invocationMeasures: Map<string, Measure>,
   retainedSeed: FootnoteReserveSeed | null,
 ): Promise<{ blocks: FlowBlock[]; measuresById: Map<string, Measure> }> {
@@ -1902,7 +2006,13 @@ async function measureNoteBlocks(
         measuresById.set(block.id, retained);
         return;
       }
-      const cached = measureCache.get(block, constraints.maxWidth, constraints.maxHeight, fontSignature);
+      const cached = measureCache.get(
+        block,
+        constraints.maxWidth,
+        constraints.maxHeight,
+        fontSignature,
+        fontCapabilities,
+      );
       if (cached) {
         hydrateTabRunWidthsFromMeasure(block, cached);
         invocationMeasures.set(block.id, cached);
@@ -1910,7 +2020,14 @@ async function measureNoteBlocks(
         return;
       }
       const measurement = await measureBlock(block, constraints);
-      measureCache.set(block, constraints.maxWidth, constraints.maxHeight, measurement, fontSignature);
+      measureCache.set(
+        block,
+        constraints.maxWidth,
+        constraints.maxHeight,
+        measurement,
+        fontSignature,
+        fontCapabilities,
+      );
       invocationMeasures.set(block.id, measurement);
       measuresById.set(block.id, measurement);
     }),
@@ -1942,6 +2059,38 @@ function validateRetainedNoteMeasurePlane(
     }
   }
   return observed === retainedBlocks.size ? retainedMeasures : null;
+}
+
+/**
+ * Reads the exact surviving subset of a retained note plane. This is weaker
+ * than whole-plane equality and therefore never authorizes ordinary reserve
+ * reuse by itself. The coupled structural lane combines it with a proved
+ * ordered reference removal/reassignment before it may retain pagination.
+ */
+function readRetainedNoteMeasureSubset(
+  blocksByNoteId: ReadonlyMap<string, readonly FlowBlock[]>,
+  seed: FootnoteReserveSeed | null,
+): { blocksByBlockId: Map<string, FlowBlock>; measuresByBlockId: Map<string, Measure> } | null {
+  const retainedBlocks = seed?.noteBlocksByBlockId;
+  const retainedMeasures = seed?.noteMeasuresByBlockId;
+  if (!retainedBlocks || !retainedMeasures || retainedBlocks.size !== retainedMeasures.size) return null;
+  const blocksByBlockId = new Map<string, FlowBlock>();
+  const measuresByBlockId = new Map<string, Measure>();
+  for (const blocks of blocksByNoteId.values()) {
+    for (const block of blocks) {
+      const measure = block?.id ? retainedMeasures.get(block.id) : undefined;
+      if (
+        !block?.id ||
+        blocksByBlockId.has(block.id) ||
+        retainedBlocks.get(block.id) !== block ||
+        measure === undefined
+      )
+        return null;
+      blocksByBlockId.set(block.id, block);
+      measuresByBlockId.set(block.id, measure);
+    }
+  }
+  return blocksByBlockId.size > 0 ? { blocksByBlockId, measuresByBlockId } : null;
 }
 
 /**
@@ -2067,6 +2216,182 @@ function computeNoteBodyHeights(
   return { totalMap, firstLineMap };
 }
 
+function prepareFreshDocumentCoupledFootnotes(input: {
+  footnotes: FootnotesLayoutInput;
+  measuresByBlockId: Map<string, Measure>;
+  bodyHeightByNoteId: Map<string, number>;
+  firstLineHeightByNoteId: Map<string, number>;
+  options: LayoutOptions;
+  headerFooterGeometryFingerprint: string;
+}): PreparedCoupledFootnoteLayout | null {
+  const noteIds = [...new Set(input.footnotes.refs.map((reference) => reference.id))];
+  if (noteIds.length === 0 || noteIds.length !== input.footnotes.blocksById.size) return null;
+
+  const blocksById = new Map<string, FlowBlock>();
+  const rangesByFootnoteId = new Map<string, FootnoteRange[]>();
+  for (const noteId of noteIds) {
+    const blocks = input.footnotes.blocksById.get(noteId);
+    if (!blocks?.length || !input.bodyHeightByNoteId.has(noteId) || !input.firstLineHeightByNoteId.has(noteId))
+      return null;
+    for (const block of blocks) {
+      if (!block.id || blocksById.has(block.id) || !input.measuresByBlockId.has(block.id)) return null;
+      blocksById.set(block.id, block);
+    }
+    rangesByFootnoteId.set(noteId, buildFootnoteRanges(blocks, input.measuresByBlockId));
+  }
+  if (blocksById.size !== input.measuresByBlockId.size) return null;
+
+  const gap =
+    typeof input.footnotes.gap === 'number' && Number.isFinite(input.footnotes.gap)
+      ? Math.max(0, input.footnotes.gap)
+      : 2;
+  const topPadding =
+    typeof input.footnotes.topPadding === 'number' && Number.isFinite(input.footnotes.topPadding)
+      ? Math.max(0, input.footnotes.topPadding)
+      : 6;
+  const dividerHeight =
+    typeof input.footnotes.dividerHeight === 'number' && Number.isFinite(input.footnotes.dividerHeight)
+      ? Math.max(0, input.footnotes.dividerHeight)
+      : 6;
+  const separatorSpacingBefore = resolveSeparatorSpacingBefore(
+    rangesByFootnoteId,
+    input.measuresByBlockId,
+    input.footnotes.separatorSpacingBefore,
+    DEFAULT_FOOTNOTE_SEPARATOR_SPACING_BEFORE,
+  );
+  const prepared = Object.freeze({
+    pageSize: input.options.pageSize ?? DEFAULT_PAGE_SIZE,
+    rangesByFootnoteId,
+    measuresById: new Map(input.measuresByBlockId),
+    fullHeightById: new Map(input.bodyHeightByNoteId),
+    firstLineHeightById: new Map(input.firstLineHeightByNoteId),
+    separatorSpacingBefore,
+    dividerHeight,
+    continuationDividerHeight: dividerHeight,
+    topPadding,
+    gap,
+  });
+  const owner = createFootnoteCertificateOwner(prepared);
+  const refs = Object.freeze(input.footnotes.refs.map((reference) => Object.freeze({ ...reference })));
+  const refIndexesByBlock = new Map<string, number[]>();
+  const refIndexById = new Map<string, number>();
+  for (const [index, reference] of input.footnotes.refs.entries()) {
+    if (!reference.blockId || refIndexById.has(reference.id)) return null;
+    const indexes = refIndexesByBlock.get(reference.blockId) ?? [];
+    indexes.push(index);
+    refIndexesByBlock.set(reference.blockId, indexes);
+    refIndexById.set(reference.id, index);
+  }
+  const extraBlocks = [...blocksById.values()];
+  const extraMeasures = extraBlocks.map((block) => input.measuresByBlockId.get(block.id)!);
+
+  return {
+    retained: issueCoupledFootnoteState({
+      owner,
+      prepared,
+      headerFooterGeometryFingerprint: input.headerFooterGeometryFingerprint,
+      reserves: Object.freeze([]),
+      notePageIndexes: Object.freeze([]),
+      refs,
+      referencePlaneIdentity: input.footnotes.refs,
+      noteBlocksPlaneIdentity: input.footnotes.blocksById,
+      referenceTopologyRevision: input.footnotes.referenceTopologyRevision,
+      refIndexesByBlock,
+      refIndexById,
+      blocksById,
+      measuresById: prepared.measuresById,
+      extraBlocks,
+      extraMeasures,
+      extraIndexById: new Map(extraBlocks.map((block, index) => [block.id, index])),
+    }),
+    footnotes: input.footnotes,
+    freshDocumentStart: true,
+  };
+}
+
+/**
+ * Proves that a fully measured current surviving-note plane can paginate with
+ * an existing owner's immutable prepared geometry. Content objects may differ
+ * after renumbering, but every frame, range, and height consumed by coupled
+ * pagination must remain exact. Removed notes are excluded by the separately
+ * proved ordered-reference rebase.
+ */
+function readMeasuredLayoutEquivalentCoupledNotePlane(input: {
+  retained: CoupledFootnoteRetainedState | null | undefined;
+  footnotes: FootnotesLayoutInput;
+  measuresByBlockId: ReadonlyMap<string, Measure>;
+  bodyHeightByNoteId: ReadonlyMap<string, number>;
+  firstLineHeightByNoteId: ReadonlyMap<string, number>;
+}): { blocksByBlockId: Map<string, FlowBlock>; measuresByBlockId: ReadonlyMap<string, Measure> } | null {
+  const { retained, footnotes, measuresByBlockId, bodyHeightByNoteId, firstLineHeightByNoteId } = input;
+  if (!retained || !issuedCoupledFootnoteStates.has(retained)) return null;
+  const noteIds = footnotes.refs.map((reference) => reference.id);
+  const uniqueNoteIds = new Set(noteIds);
+  if (
+    noteIds.length === 0 ||
+    uniqueNoteIds.size !== noteIds.length ||
+    uniqueNoteIds.size !== footnotes.blocksById.size ||
+    [...footnotes.blocksById.keys()].some((noteId) => !uniqueNoteIds.has(noteId))
+  ) {
+    return null;
+  }
+
+  const blocksByBlockId = new Map<string, FlowBlock>();
+  const rangesByNoteId = new Map<string, FootnoteRange[]>();
+  for (const noteId of noteIds) {
+    const blocks = footnotes.blocksById.get(noteId);
+    const retainedRanges = retained.prepared.rangesByFootnoteId.get(noteId);
+    if (!blocks?.length || !retainedRanges || !retained.refIndexById.has(noteId)) return null;
+    for (const block of blocks) {
+      const retainedBlock = retained.blocksById.get(block.id);
+      const retainedMeasure = retained.prepared.measuresById.get(block.id);
+      const currentMeasure = measuresByBlockId.get(block.id);
+      if (!block.id || blocksByBlockId.has(block.id) || !retainedBlock || !retainedMeasure || !currentMeasure) {
+        return null;
+      }
+      if (
+        (block !== retainedBlock || currentMeasure !== retainedMeasure) &&
+        !areChangedFootnoteBlockFramesEquivalent(retainedBlock, block, retainedMeasure, currentMeasure)
+      ) {
+        return null;
+      }
+      // Continuation cuts consume individual line heights from the immutable
+      // certificate measure, even when the paragraph's total height is equal.
+      if (
+        currentMeasure !== retainedMeasure &&
+        (retainedMeasure.kind !== 'paragraph' ||
+          currentMeasure.kind !== 'paragraph' ||
+          retainedMeasure.lines.length !== currentMeasure.lines.length ||
+          retainedMeasure.lines.some((line, index) => line.lineHeight !== currentMeasure.lines[index].lineHeight))
+      ) {
+        return null;
+      }
+      blocksByBlockId.set(block.id, block);
+    }
+    const currentRanges = buildFootnoteRanges(blocks, measuresByBlockId);
+    if (!areFootnoteRangesLayoutEquivalent(retainedRanges, currentRanges)) return null;
+    if (
+      bodyHeightByNoteId.get(noteId) !== retained.prepared.fullHeightById.get(noteId) ||
+      firstLineHeightByNoteId.get(noteId) !== retained.prepared.firstLineHeightById.get(noteId)
+    ) {
+      return null;
+    }
+    rangesByNoteId.set(noteId, currentRanges);
+  }
+  if (blocksByBlockId.size !== measuresByBlockId.size) return null;
+  if (
+    resolveSeparatorSpacingBefore(
+      rangesByNoteId,
+      measuresByBlockId,
+      footnotes.separatorSpacingBefore,
+      DEFAULT_FOOTNOTE_SEPARATOR_SPACING_BEFORE,
+    ) !== retained.prepared.separatorSpacingBefore
+  ) {
+    return null;
+  }
+  return { blocksByBlockId, measuresByBlockId };
+}
+
 export interface IncrementalLayoutExecutionControl {
   signal?: AbortSignal;
   /** Budget-aware host-task yield; may resolve immediately. */
@@ -2106,20 +2431,32 @@ export async function incrementalLayout(
   previousMeasures?: Measure[] | null,
   // Narrow runtime context (deliberately NOT on LayoutOptions): the per-document FontMeasureContext -
   // the SAME object whose `resolvePhysical` is bound into the measureBlock callback - plus the
-  // signature the previous measures were taken with. Only `fontContext.fontSignature` is read here:
-  // for the measure-cache keys (so two documents with different `fonts.map` cannot share a measure)
+  // signature the previous measures were taken with. The context supplies both fast-remeasurement
+  // line metrics and measure-cache identity (so two documents with different `fonts.map` cannot share a measure)
   // and to invalidate previous-measure reuse when this document's mapping changed since the prior
   // render. Passing the whole context rather than a separate signature string keys every cache off
   // the same object that supplies the resolver, so signature and resolver can never drift apart.
-  fontRuntime?: { fontContext?: FontMeasureContext; previousFontSignature?: string },
+  fontRuntime?: {
+    fontContext?: FontMeasureContext;
+    previousFontSignature?: string;
+    fontCapabilities?: FontMeasureCapabilities;
+  },
   // SD-3432: warm-start context (deliberately NOT on LayoutOptions, mirroring
   // fontRuntime): the previous run's footnote reserve fixed point, if any.
   warmStart?: {
     footnoteReserveSeed?: FootnoteReserveSeed | null;
     /** Host proved the authoritative note projection bundle was retained exactly. */
     noteMeasurePlaneRetainedExact?: true;
+    /** Host proved this seed is an exact, geometry-equivalent subset of the current note plane. */
+    noteMeasurePlaneRetainedSubset?: true;
     /** Extra note/decorative planes paired with the retained note bundle. */
     retainedFootnoteExtras?: { blocks: FlowBlock[]; measures: Measure[] };
+    /** Bridge-issued pre-removal owner selected by the exact history source tx. */
+    historyFootnoteRestoration?: {
+      sourceTxId: string;
+      restoredNoteIds: readonly string[];
+      sourceSeed: FootnoteReserveSeed;
+    };
     /** Current immutable host owner and the prior bridge-issued geometry seed. */
     headerFooterGeometry?: {
       ownerFingerprint: string;
@@ -2188,8 +2525,10 @@ export async function incrementalLayout(
   if (headerFooter?.measure) {
     headerFooter = { ...headerFooter, measure: timeMeasureCallback(headerFooter.measure) };
   }
-  const fontSignature = fontRuntime?.fontContext?.fontSignature ?? '';
+  const fontContext = fontRuntime?.fontContext ?? DEFAULT_FONT_MEASURE_CONTEXT;
+  const fontSignature = fontContext.fontSignature;
   const previousFontSignature = fontRuntime?.previousFontSignature ?? '';
+  const fontCapabilities = fontRuntime?.fontCapabilities;
   // Provisional-vs-exact page-count field mode for every header/footer layout
   // this call performs (pre-layout height passes and final per-page layout).
   const hfTokenOptions: ResolveHeaderFooterTokensOptions | undefined =
@@ -2299,7 +2638,49 @@ export async function incrementalLayout(
   // builds the content map.
   const CONTENT_ADOPTION_MISS_THRESHOLD = 4;
 
-  const invalidatedMeasureBlockIds = [...new Set([...dirty.changedBlockIds, ...dirty.deletedBlockIds])];
+  const measurementEquivalentChangedBlockIds = new Set<string>();
+  if (fontCapabilities && dirty.changedBlockIds.length > 0) {
+    const indexedBlocksAreUnique = effectiveMeasureReuseProof?.dependencyProof?.blockIdsUnique === true;
+    const readChangedBlock = (
+      blocks: readonly FlowBlock[],
+      indexById: ReadonlyMap<string, number> | null | undefined,
+      blockId: string,
+    ): FlowBlock | null => {
+      if (indexedBlocksAreUnique && indexById) {
+        const index = indexById.get(blockId);
+        const block = index == null ? undefined : blocks[index];
+        return block?.id === blockId ? block : null;
+      }
+      let match: FlowBlock | null = null;
+      for (const block of blocks) {
+        if (block.id !== blockId) continue;
+        if (match) return null;
+        match = block;
+      }
+      return match;
+    };
+    for (const blockId of dirty.changedBlockIds) {
+      const previousBlock = readChangedBlock(
+        previousBlocks,
+        effectiveMeasureReuseProof?.previousBlockIndexById,
+        blockId,
+      );
+      const nextBlock = readChangedBlock(nextBlocks, effectiveMeasureReuseProof?.currentBlockIndexById, blockId);
+      if (
+        previousBlock &&
+        nextBlock &&
+        hashMeasureContent(previousBlock, fontCapabilities) === hashMeasureContent(nextBlock, fontCapabilities)
+      ) {
+        measurementEquivalentChangedBlockIds.add(blockId);
+      }
+    }
+  }
+  const invalidatedMeasureBlockIds = [
+    ...new Set([
+      ...dirty.changedBlockIds.filter((blockId) => !measurementEquivalentChangedBlockIds.has(blockId)),
+      ...dirty.deletedBlockIds,
+    ]),
+  ];
   if (invalidatedMeasureBlockIds.length > 0) {
     measureCache.invalidate(invalidatedMeasureBlockIds);
   }
@@ -2427,12 +2808,15 @@ export async function incrementalLayout(
         if (previousBlock.kind === 'sectionBreak') continue;
         const constraints = previousPerSectionConstraints![index];
         measureContentSignatureComputations += 1;
-        const key = `${hashMeasureContent(previousBlock)}@${constraints.maxWidth}x${constraints.maxHeight}`;
+        const key = `${hashMeasureContent(previousBlock, fontCapabilities)}@${constraints.maxWidth}x${constraints.maxHeight}`;
         if (!previousMeasuresByContent.has(key)) previousMeasuresByContent.set(key, previousMeasures![index]);
       }
     }
     measureContentSignatureComputations += 1;
-    return previousMeasuresByContent?.get(`${hashMeasureContent(block)}@${maxWidth}x${maxHeight}`) ?? undefined;
+    return (
+      previousMeasuresByContent?.get(`${hashMeasureContent(block, fontCapabilities)}@${maxWidth}x${maxHeight}`) ??
+      undefined
+    );
   };
 
   const provedDirtyMeasure = provedDirtyMeasureCandidate && canReusePreviousMeasures ? provedDirtyMeasurePacket : null;
@@ -2488,7 +2872,14 @@ export async function incrementalLayout(
       actualMeasureTime += performance.now() - measureBlockStart;
       bodyBlocksMeasuredByKind[block.kind] += 1;
       const cacheWriteStart = performance.now();
-      measureCache.set(block, constraints.maxWidth, constraints.maxHeight, measurement, fontSignature);
+      measureCache.set(
+        block,
+        constraints.maxWidth,
+        constraints.maxHeight,
+        measurement,
+        fontSignature,
+        fontCapabilities,
+      );
       cacheWriteTime += performance.now() - cacheWriteStart;
       bodyMeasureCacheWrites += 1;
       bodyMeasureCacheKeyComputations += 1;
@@ -2552,7 +2943,13 @@ export async function incrementalLayout(
 
       // Time the cache lookup (includes hashRuns computation)
       const lookupStart = performance.now();
-      const measureCacheKey = measureCache.prepareKey(block, blockMeasureWidth, blockMeasureHeight, fontSignature);
+      const measureCacheKey = measureCache.prepareKey(
+        block,
+        blockMeasureWidth,
+        blockMeasureHeight,
+        fontSignature,
+        fontCapabilities,
+      );
       const cached = measureCache.getPrepared(measureCacheKey);
       cacheLookupTime += performance.now() - lookupStart;
       bodyMeasureCacheReads += 1;
@@ -2718,7 +3115,7 @@ export async function incrementalLayout(
           kind,
           headerFooterCacheSignature,
           (block, maxWidth, firstLineIndent, lineRegions) =>
-            remeasureParagraph(block as ParagraphBlock, maxWidth, firstLineIndent, lineRegions),
+            remeasureParagraph(block as ParagraphBlock, maxWidth, firstLineIndent, lineRegions, fontContext),
           hfTokenOptions,
           headerFooterExecution,
         );
@@ -2755,7 +3152,7 @@ export async function incrementalLayout(
         kind,
         headerFooterCacheSignature,
         (block, maxWidth, firstLineIndent, lineRegions) =>
-          remeasureParagraph(block as ParagraphBlock, maxWidth, firstLineIndent, lineRegions),
+          remeasureParagraph(block as ParagraphBlock, maxWidth, firstLineIndent, lineRegions, fontContext),
         hfTokenOptions,
         headerFooterExecution,
       );
@@ -2818,7 +3215,7 @@ export async function incrementalLayout(
         'header',
         headerFooterCacheSignature,
         (block, maxWidth, firstLineIndent, lineRegions) =>
-          remeasureParagraph(block as ParagraphBlock, maxWidth, firstLineIndent, lineRegions),
+          remeasureParagraph(block as ParagraphBlock, maxWidth, firstLineIndent, lineRegions, fontContext),
         hfTokenOptions,
         headerFooterExecution,
       );
@@ -2940,7 +3337,7 @@ export async function incrementalLayout(
           'footer',
           headerFooterCacheSignature,
           (block, maxWidth, firstLineIndent, lineRegions) =>
-            remeasureParagraph(block as ParagraphBlock, maxWidth, firstLineIndent, lineRegions),
+            remeasureParagraph(block as ParagraphBlock, maxWidth, firstLineIndent, lineRegions, fontContext),
           hfTokenOptions,
           headerFooterExecution,
         );
@@ -3078,9 +3475,16 @@ export async function incrementalLayout(
     }
     return assignment;
   })();
-  const retainedNoteMeasures = warmSeedBaseUsable
-    ? validateRetainedNoteMeasurePlane(earlyFootnotesInput!.blocksById, warmSeed!)
-    : null;
+  const retainedCoupledNotePlane =
+    warmSeedBaseUsable && warmStart?.noteMeasurePlaneRetainedExact === true
+      ? readExactCoupledNotePlane(warmSeed?.coupled, earlyFootnotesInput!.blocksById)
+      : null;
+  const retainedNoteMeasures =
+    retainedCoupledNotePlane?.measuresByBlockId ??
+    (warmSeedBaseUsable ? validateRetainedNoteMeasurePlane(earlyFootnotesInput!.blocksById, warmSeed!) : null);
+  const retainedCurrentNotePlane =
+    retainedCoupledNotePlane ??
+    (warmSeedBaseUsable ? readRetainedNoteMeasureSubset(earlyFootnotesInput!.blocksById, warmSeed!) : null);
   // SD-4692: footnote convergence may request the same immutable note story
   // dozens of times during one incrementalLayout call. Keep that invocation's
   // exact measure plane independently of the bounded cross-call LRU, whose
@@ -3098,15 +3502,19 @@ export async function incrementalLayout(
     warmSeedBaseUsable &&
     (warmSeed!.measurementHeight === measurementHeight ||
       (provedDirtyMeasureCandidate && retainedNoteMeasurePlaneExact));
-  const retainedNoteHeights =
-    retainedNoteMeasurePlaneExact &&
-    warmSeed?.noteBodyHeightById instanceof Map &&
-    warmSeed.noteFirstLineHeightById instanceof Map &&
-    new Set(earlyFootnotesInput?.refs.map((reference) => reference.id) ?? []).size ===
-      warmSeed.noteBodyHeightById.size &&
-    [...new Set(earlyFootnotesInput?.refs.map((reference) => reference.id) ?? [])].every(
-      (id) => warmSeed.noteBodyHeightById!.has(id) && warmSeed.noteFirstLineHeightById!.has(id),
-    )
+  const retainedNoteHeights = retainedCoupledNotePlane
+    ? {
+        totalMap: retainedCoupledNotePlane.totalMap,
+        firstLineMap: retainedCoupledNotePlane.firstLineMap,
+      }
+    : retainedNoteMeasurePlaneExact &&
+        warmSeed?.noteBodyHeightById instanceof Map &&
+        warmSeed.noteFirstLineHeightById instanceof Map &&
+        new Set(earlyFootnotesInput?.refs.map((reference) => reference.id) ?? []).size ===
+          warmSeed.noteBodyHeightById.size &&
+        [...new Set(earlyFootnotesInput?.refs.map((reference) => reference.id) ?? [])].every(
+          (id) => warmSeed.noteBodyHeightById!.has(id) && warmSeed.noteFirstLineHeightById!.has(id),
+        )
       ? {
           totalMap: warmSeed.noteBodyHeightById,
           firstLineMap: warmSeed.noteFirstLineHeightById,
@@ -3127,10 +3535,128 @@ export async function incrementalLayout(
           sectionColumnsByIndex: warmSeed.sectionColumnsByIndex,
         }
       : null;
+  const prepareRetainedCoupled = (
+    currentNotePlane: {
+      blocksByBlockId: Map<string, FlowBlock>;
+      measuresByBlockId: ReadonlyMap<string, Measure>;
+    } | null,
+  ): PreparedCoupledFootnoteLayout | null => {
+    let retained = warmSeed?.coupled;
+    const proof = layoutReuse?.dependencyProof;
+    const restorationProof = layoutReuse?.provedNoteReferenceRestoration;
+    const restorationHistory = warmStart?.historyFootnoteRestoration;
+    const restoration =
+      restorationProof || restorationHistory
+        ? (() => {
+            const source = restorationHistory?.sourceSeed.coupled;
+            if (
+              !restorationProof ||
+              !restorationHistory ||
+              restorationProof.sourceTxId !== restorationHistory.sourceTxId ||
+              restorationProof.restoredNoteIds.length === 0 ||
+              restorationProof.restoredNoteIds.length !== restorationHistory.restoredNoteIds.length ||
+              new Set(restorationProof.restoredNoteIds).size !== restorationProof.restoredNoteIds.length ||
+              restorationProof.restoredNoteIds.some((id) => !restorationHistory.restoredNoteIds.includes(id)) ||
+              !source ||
+              !issuedCoupledFootnoteStates.has(source)
+            )
+              return null;
+            return {
+              source,
+              restoredNoteIds: new Set(restorationProof.restoredNoteIds),
+            };
+          })()
+        : undefined;
+    if (
+      !retained ||
+      !issuedCoupledFootnoteStates.has(retained) ||
+      !warmSeedUsable ||
+      !currentNotePlane ||
+      !earlyFootnotesInput ||
+      !layoutReuse?.currentBlockIndexById ||
+      !layoutReuse.provedDirtyRegion ||
+      proof?.renderInputsUnchanged !== true ||
+      retained.headerFooterGeometryFingerprint !== headerFooterGeometryFingerprint ||
+      !_previousLayout?.pages.length ||
+      !readFootnotePageCertificate(_previousLayout.pages[0], retained.owner)
+    )
+      return null;
+    if ((restorationProof || restorationHistory) && !restoration) return null;
+    const prepared = retained.prepared;
+    if (
+      (earlyFootnotesInput.gap ?? 2) !== prepared.gap ||
+      (earlyFootnotesInput.topPadding ?? 6) !== prepared.topPadding ||
+      (earlyFootnotesInput.dividerHeight ?? 6) !== prepared.dividerHeight ||
+      (earlyFootnotesInput.separatorSpacingBefore !== undefined &&
+        earlyFootnotesInput.separatorSpacingBefore !== prepared.separatorSpacingBefore)
+    )
+      return null;
+    const rebasedRetained = rebaseCoupledFootnoteReferences({
+      retained,
+      footnotes: earlyFootnotesInput,
+      blocks: nextBlocks,
+      dirty,
+      reuse: layoutReuse,
+      currentNoteBlocksById: currentNotePlane.blocksByBlockId,
+      currentNoteMeasuresById: currentNotePlane.measuresByBlockId,
+      ...(restoration ? { restoration } : {}),
+    });
+    if (!rebasedRetained) return null;
+    retained = rebasedRetained;
+    const indexes = new Set<number>();
+    for (const id of [...dirty.changedBlockIds, ...dirty.insertedBlockIds]) {
+      const index = layoutReuse.currentBlockIndexById.get(id);
+      if (index == null || nextBlocks[index]?.id !== id || nextBlocks[index]?.kind !== 'paragraph') return null;
+      for (
+        let candidate = Math.max(0, index - 1);
+        candidate <= Math.min(nextBlocks.length - 1, index + 1);
+        candidate++
+      ) {
+        if (nextBlocks[candidate]?.kind === 'paragraph') indexes.add(candidate);
+      }
+    }
+    const updates = [];
+    for (const index of indexes) {
+      const block = nextBlocks[index];
+      const refs = readCoupledCarrierReferences(retained, earlyFootnotesInput, block.id);
+      if (!refs || !measures[index]) return null;
+      updates.push({
+        block,
+        measure: measures[index],
+        refs,
+        previousRefs: (retained.refIndexesByBlock.get(block.id) ?? []).map((position) => retained.refs[position]),
+        predecessor: nextBlocks[index - 1] ?? null,
+        successor: nextBlocks[index + 1] ?? null,
+      });
+    }
+    if (
+      getCoupledFootnoteParagraphUpdatesUnsupportedReason(updates, {
+        baselineProfileExact: true,
+        referenceTopologyExact: true,
+      }) !== null
+    )
+      return null;
+    return { retained, footnotes: earlyFootnotesInput };
+  };
+  const preparedWarmCoupled =
+    warmStart?.noteMeasurePlaneRetainedExact === true ? prepareRetainedCoupled(retainedCurrentNotePlane) : null;
+  let preparedCoupled = preparedWarmCoupled;
   let preparedWarmNoteMeasures: ReadonlyMap<string, Measure> | null = null;
   let seededInitialLayout = false;
   let seededInitialOptions: Record<string, unknown> = {};
-  if (warmSeedUsable) {
+  if (preparedCoupled) {
+    const prepared = preparedCoupled.retained.prepared;
+    seededInitialOptions = {
+      footnoteReservedByPageIndex: undefined,
+      footnotes: {
+        ...earlyFootnotesInput,
+        bodyHeightById: prepared.fullHeightById,
+        firstLineHeightById: prepared.firstLineHeightById,
+        separatorSpacingBefore: prepared.separatorSpacingBefore,
+      },
+    };
+    preparedWarmNoteMeasures = preparedCoupled.retained.measuresById;
+  } else if (warmSeedUsable) {
     const earlyFootnoteWidth =
       retainedFootnoteGeometry?.measurementWidth ?? resolveFootnoteMeasurementWidth(options, nextBlocks);
     if (earlyFootnoteWidth > 0) {
@@ -3144,6 +3670,7 @@ export async function incrementalLayout(
             { maxWidth: earlyFootnoteWidth, maxHeight: measurementHeight },
             measureBlock,
             fontSignature,
+            fontCapabilities,
             invocationNoteMeasures,
             warmSeed,
           )
@@ -3151,24 +3678,67 @@ export async function incrementalLayout(
       preparedWarmNoteMeasures = measuresById;
       const { totalMap, firstLineMap } =
         retainedNoteHeights ?? computeNoteBodyHeights(earlyFootnotesInput, measuresById);
-      seededInitialOptions = {
-        footnoteReservedByPageIndex: warmSeed.reserves,
-        footnotes: {
-          ...earlyFootnotesInput,
-          bodyHeightById: totalMap,
-          firstLineHeightById: firstLineMap,
-          ...(typeof warmSeed.separatorSpacingBefore === 'number' && Number.isFinite(warmSeed.separatorSpacingBefore)
-            ? { separatorSpacingBefore: warmSeed.separatorSpacingBefore }
-            : {}),
-        },
-      };
-      seededInitialLayout = true;
+      if (
+        warmStart?.noteMeasurePlaneRetainedSubset === true &&
+        warmSeed.paginationPolicy === 'coupled-v1' &&
+        getCoupledFootnotePaginationUnsupportedReason(nextBlocks, measures, options, earlyFootnotesInput.refs) == null
+      ) {
+        const layoutEquivalentPlane = readMeasuredLayoutEquivalentCoupledNotePlane({
+          retained: warmSeed.coupled,
+          footnotes: earlyFootnotesInput,
+          measuresByBlockId: measuresById,
+          bodyHeightByNoteId: totalMap,
+          firstLineHeightByNoteId: firstLineMap,
+        });
+        const measuredRetainedCoupled = prepareRetainedCoupled(layoutEquivalentPlane);
+        preparedCoupled = measuredRetainedCoupled
+          ? { ...measuredRetainedCoupled, measuredCurrentNotePlaneRetainsOwner: true }
+          : prepareFreshDocumentCoupledFootnotes({
+              footnotes: earlyFootnotesInput,
+              measuresByBlockId: measuresById,
+              bodyHeightByNoteId: totalMap,
+              firstLineHeightByNoteId: firstLineMap,
+              options,
+              headerFooterGeometryFingerprint,
+            });
+      }
+      if (preparedCoupled) {
+        const prepared = preparedCoupled.retained.prepared;
+        seededInitialOptions = {
+          footnoteReservedByPageIndex: undefined,
+          footnotes: {
+            ...earlyFootnotesInput,
+            bodyHeightById: prepared.fullHeightById,
+            firstLineHeightById: prepared.firstLineHeightById,
+            separatorSpacingBefore: prepared.separatorSpacingBefore,
+          },
+        };
+      } else {
+        seededInitialOptions = {
+          footnoteReservedByPageIndex: warmSeed.reserves,
+          footnotes: {
+            ...earlyFootnotesInput,
+            bodyHeightById: totalMap,
+            firstLineHeightById: firstLineMap,
+            ...(typeof warmSeed.separatorSpacingBefore === 'number' && Number.isFinite(warmSeed.separatorSpacingBefore)
+              ? { separatorSpacingBefore: warmSeed.separatorSpacingBefore }
+              : {}),
+          },
+        };
+        seededInitialLayout = true;
+      }
     }
   }
   const warmStartPreparationTime = performance.now() - warmStartPreparationStart;
 
   const layoutStart = performance.now();
-  const initialLayoutInvocationTiming = { layoutDocumentMs: 0, layoutDocumentCalls: 0 };
+  const initialLayoutInvocationTiming = {
+    layoutDocumentMs: 0,
+    layoutDocumentCalls: 0,
+    coupledPages: 0,
+    coupledPasses: 0,
+    coupledFallbacks: 0,
+  };
   const initialBodyLayoutOptions: LayoutOptions = {
     ...options,
     ...seededInitialOptions,
@@ -3183,7 +3753,7 @@ export async function incrementalLayout(
       maxWidth: number,
       firstLineIndent?: number,
       lineRegions?: readonly (readonly ParagraphLineRegion[])[],
-    ) => remeasureParagraph(block as ParagraphBlock, maxWidth, firstLineIndent, lineRegions),
+    ) => remeasureParagraph(block as ParagraphBlock, maxWidth, firstLineIndent, lineRegions, fontContext),
   };
   const initialLayoutResult = await layoutWithOptionalReuse({
     previousBlocks,
@@ -3194,6 +3764,7 @@ export async function incrementalLayout(
     dirty,
     stableBlockIds: dirty.stableBlockIds,
     reuse: layoutReuse,
+    ...(preparedCoupled ? { preparedCoupled } : {}),
     relayoutProvedPrefixToDocumentEndOnBoundedConvergenceFailure:
       earlyFootnotesInput != null &&
       layoutReuse?.dependencyProof != null &&
@@ -3368,7 +3939,7 @@ export async function incrementalLayout(
           maxWidth: number,
           firstLineIndent?: number,
           lineRegions?: readonly (readonly ParagraphLineRegion[])[],
-        ) => remeasureParagraph(block as ParagraphBlock, maxWidth, firstLineIndent, lineRegions),
+        ) => remeasureParagraph(block as ParagraphBlock, maxWidth, firstLineIndent, lineRegions, fontContext),
       };
       layout = layoutExecution
         ? await layoutDocumentCooperatively(currentBlocks, currentMeasures, pageTokenLayoutOptions, layoutExecution)
@@ -3393,7 +3964,7 @@ export async function incrementalLayout(
   // untouched document merely to discover that there are none.
   if (layoutReuseSummary.mode === 'full') {
     currentBlocks = hydrateTableTextboxMeasures(currentBlocks, (block, maxWidth) =>
-      remeasureParagraph(block, maxWidth),
+      remeasureParagraph(block, maxWidth, 0, undefined, fontContext),
     );
   }
 
@@ -3430,6 +4001,10 @@ export async function incrementalLayout(
   const footnoteStart = performance.now();
   let footnoteFullRelayoutPerformed = false;
   let footnoteRelayouts = 0;
+  let footnoteCoupledRelayouts = initialLayoutInvocationTiming.coupledPasses;
+  let footnoteCoupledPages = initialLayoutInvocationTiming.coupledPages;
+  let footnoteCoupledFallbacks = initialLayoutInvocationTiming.coupledFallbacks;
+  let footnoteCoupledRejection: string | null = null;
   let footnoteAssignmentReferencesRead = 0;
   let footnoteAssignmentReferencesReused = 0;
   const footnoteAssignmentIndexWork = { pagesIndexed: 0, fragmentsIndexed: 0 };
@@ -3539,6 +4114,8 @@ export async function incrementalLayout(
         return ids;
       };
 
+      let tableOwnedFootnoteIds: ReadonlySet<string> = new Set();
+
       const measureFootnoteBlocks = async (ids: Set<string>) => {
         try {
           return await measureNoteBlocks(
@@ -3547,6 +4124,7 @@ export async function incrementalLayout(
             footnoteConstraints,
             measureBlock,
             fontSignature,
+            fontCapabilities,
             invocationNoteMeasures,
             warmSeed,
           );
@@ -3576,6 +4154,12 @@ export async function incrementalLayout(
           const blocks = footnotesInput.blocksById.get(id) ?? [];
           rangesByFootnoteId.set(id, buildFootnoteRanges(blocks, measuresById));
         });
+        const fullRangeHeightById = new Map(
+          [...rangesByFootnoteId].map(([id, ranges]) => [
+            id,
+            ranges.reduce((sum, range) => sum + getRangeRenderHeight(range), 0),
+          ]),
+        );
 
         const separatorSpacingBefore = resolveSeparatorSpacingBefore(
           rangesByFootnoteId,
@@ -3603,7 +4187,6 @@ export async function incrementalLayout(
           // the page's bottom margin.
           // SD-2656: placement ceiling = maxReserve (the actual band capacity
           // left by the body after its ordered-cluster reservation).
-          const placementCeiling = maxReserve;
 
           // SD-2656: per-footnote full and first-line heights, used to
           // estimate next-page cluster demand for the carry-forward bump.
@@ -3625,331 +4208,30 @@ export async function incrementalLayout(
             return ranges.length > 0 ? ranges[0].height : 0;
           };
 
-          const pendingForPage = new Map<number, Array<{ id: string; ranges: FootnoteRange[] }>>();
-          pendingByColumn.forEach((entries, columnIndex) => {
-            const targetIndex = columnIndex < columnCount ? columnIndex : Math.max(0, columnCount - 1);
-            const list = pendingForPage.get(targetIndex) ?? [];
-            list.push(...entries);
-            pendingForPage.set(targetIndex, list);
+          const pagePlan = planFootnotePage({
+            pageIndex,
+            columnCount,
+            availableHeight: maxReserve,
+            idsByColumn: idsByColumn.get(pageIndex) ?? new Map(),
+            rangesByFootnoteId,
+            measuresById,
+            fullHeightById: fullRangeHeightById,
+            firstLineHeightById,
+            pendingByColumn,
+            separatorSpacingBefore,
+            dividerHeight: safeDividerHeight,
+            continuationDividerHeight,
+            topPadding: safeTopPadding,
+            gap: safeGap,
           });
-          // SD-2656 Phase 0: capture continuationIn for the ledger BEFORE we
-          // start placing on this page (pendingForPage will be consumed by
-          // placement).
-          const continuationInForPage: Array<{ id: string; remainingRangeCount: number; remainingHeightPx: number }> =
-            [];
-          pendingForPage.forEach((entries) => {
-            entries.forEach((entry) => {
-              let total = 0;
-              entry.ranges.forEach((range) => {
-                const spacingAfter = 'spacingAfter' in range ? (range.spacingAfter ?? 0) : 0;
-                total += range.height + spacingAfter;
-              });
-              continuationInForPage.push({
-                id: entry.id,
-                remainingRangeCount: entry.ranges.length,
-                remainingHeightPx: total,
-              });
-            });
-          });
-          pendingByColumn = new Map();
-
-          const pageSlices: FootnoteSlice[] = [];
-          let pageReserve = 0;
-
-          for (let columnIndex = 0; columnIndex < columnCount; columnIndex += 1) {
-            let usedHeight = 0;
-            const columnSlices: FootnoteSlice[] = [];
-            const nextPending: Array<{ id: string; ranges: FootnoteRange[] }> = [];
-            const columnKey = footnoteColumnKey(pageIndex, columnIndex);
-
-            // SD-2656: planner enforcement of the ordered-cluster rule. For
-            // new anchors that are NOT the last on this page, partial
-            // placement is forbidden — they must fit fully, otherwise the
-            // body reserved space for `full(non-last)` that the planner
-            // would waste on a single line. For the LAST anchor (and for
-            // incoming continuations), forceFirst keeps the existing
-            // behavior (place at least one slice when budget allows).
-            const placeFootnote = (
-              id: string,
-              ranges: FootnoteRange[],
-              isContinuation: boolean,
-              isLastOnPage: boolean,
-            ): { placed: boolean; remaining: FootnoteRange[] } => {
-              if (!ranges || ranges.length === 0) {
-                return { placed: false, remaining: [] };
-              }
-
-              const isFirstSlice = columnSlices.length === 0;
-              const separatorBefore = isFirstSlice ? safeSeparatorSpacingBefore : 0;
-              const separatorHeight = isFirstSlice
-                ? isContinuation
-                  ? continuationDividerHeight
-                  : safeDividerHeight
-                : 0;
-              const overhead = isFirstSlice ? separatorBefore + separatorHeight + safeTopPadding : 0;
-              const gapBefore = !isFirstSlice ? safeGap : 0;
-              const availableHeight = Math.max(0, placementCeiling - usedHeight - overhead - gapBefore);
-              // SD-2656: forceFirst applies whenever the anchor is allowed to
-              // split — i.e. the LAST anchor on the cluster (rule), or a
-              // continuation draining leftover space. Not gated on
-              // isFirstSlice — the last anchor is usually placed AFTER its
-              // non-last siblings, so it's rarely the first slice on the
-              // column. Without this, fn N on a cluster of [A..N-1, N] fails
-              // to render its first line and the rule "last anchor renders
-              // at least firstLine" is violated.
-              const allowForceFirst = (isLastOnPage || isContinuation) && placementCeiling > 0;
-              const { slice, remainingRanges } = fitFootnoteContent(
-                id,
-                ranges,
-                availableHeight,
-                pageIndex,
-                columnIndex,
-                isContinuation,
-                measuresById,
-                allowForceFirst,
-              );
-
-              if (slice.ranges.length === 0) {
-                return { placed: false, remaining: ranges };
-              }
-              // Non-last new anchor that only partially fit: refuse the
-              // placement entirely. The whole anchor defers to the next page
-              // so the rule "non-last anchors complete on their page" holds.
-              if (!isLastOnPage && !isContinuation && remainingRanges.length > 0) {
-                return { placed: false, remaining: ranges };
-              }
-
-              if (isFirstSlice) {
-                usedHeight += overhead;
-                if (isContinuation) {
-                  hasContinuationByColumn.set(columnKey, true);
-                }
-              }
-              if (gapBefore > 0) {
-                usedHeight += gapBefore;
-              }
-
-              usedHeight += slice.totalHeight;
-              columnSlices.push(slice);
-              return { placed: true, remaining: remainingRanges };
-            };
-
-            // SD-2656: reserve cluster room BEFORE placing continuations, so
-            // a huge incoming continuation can't eat the band and starve the
-            // current page's cluster. Continuations render at the TOP of the
-            // band (Word's order) because we place them first onto
-            // columnSlices, but their availableHeight is capped at
-            // (placementCeiling - clusterReserve).
-            const ids = idsByColumn.get(pageIndex)?.get(columnIndex) ?? [];
-            const lastIdx = ids.length - 1;
-            let clusterReserve = 0;
-            for (let i = 0; i < ids.length; i += 1) {
-              const isLast = i === lastIdx;
-              clusterReserve += isLast ? firstLineOf(ids[i]) : fullHeightOf(ids[i]);
-              if (i > 0) clusterReserve += safeGap;
-            }
-
-            // Continuations first (visual top). Pretend cluster's room is
-            // already used so placeFootnote sees the lowered ceiling.
-            usedHeight += clusterReserve;
-            const pending = pendingForPage.get(columnIndex) ?? [];
-            for (let pendingIdx = 0; pendingIdx < pending.length; pendingIdx += 1) {
-              const entry = pending[pendingIdx];
-              if (!entry.ranges || entry.ranges.length === 0) continue;
-              const result = placeFootnote(entry.id, entry.ranges, true, false);
-              if (!result.placed) {
-                // Continuation doesn't fit alongside the cluster reservation
-                // — defer this and all later continuations to preserve order.
-                for (let deferIdx = pendingIdx; deferIdx < pending.length; deferIdx += 1) {
-                  nextPending.push(pending[deferIdx]);
-                }
-                break;
-              }
-              if (result.remaining.length > 0) {
-                nextPending.push({ id: entry.id, ranges: result.remaining });
-              }
-            }
-            usedHeight -= clusterReserve;
-
-            // New anchors second (visual bottom).
-            for (let idIndex = 0; idIndex < ids.length; idIndex += 1) {
-              const id = ids[idIndex];
-              const ranges = rangesByFootnoteId.get(id) ?? [];
-              if (ranges.length === 0) continue;
-              const isLastOnPage = idIndex === lastIdx;
-              const result = placeFootnote(id, ranges, false, isLastOnPage);
-              if (!result.placed) {
-                nextPending.push({ id, ranges });
-                for (let remainingIndex = idIndex + 1; remainingIndex < ids.length; remainingIndex += 1) {
-                  const remainingId = ids[remainingIndex];
-                  const remainingRanges = rangesByFootnoteId.get(remainingId) ?? [];
-                  nextPending.push({ id: remainingId, ranges: remainingRanges });
-                }
-                break;
-              }
-              if (result.remaining.length > 0) {
-                nextPending.push({ id, ranges: result.remaining });
-              }
-            }
-
-            if (columnSlices.length > 0) {
-              const rawReserve = Math.max(0, Math.ceil(usedHeight));
-              const cappedReserve = Math.min(rawReserve, maxReserve);
-              if (cappedReserve < rawReserve) {
-                cappedPages.add(pageIndex);
-              }
-              pageReserve = Math.max(pageReserve, cappedReserve);
-              pageSlices.push(...columnSlices);
-            }
-
-            if (nextPending.length > 0) {
-              pendingByColumn.set(columnIndex, nextPending);
-            }
+          pendingByColumn = pagePlan.pendingByColumn;
+          if (pagePlan.slices.length > 0) slicesByPage.set(pageIndex, pagePlan.slices);
+          if (pagePlan.capped) cappedPages.add(pageIndex);
+          reserves[pageIndex] = Math.max(reserves[pageIndex] ?? 0, pagePlan.reserve);
+          for (const [columnIndex, continuing] of pagePlan.hasContinuationByColumn) {
+            if (continuing) hasContinuationByColumn.set(pageIndex + ':' + columnIndex, true);
           }
-
-          if (pageSlices.length > 0) {
-            slicesByPage.set(pageIndex, pageSlices);
-          }
-          // SD-2656: MAX with any pre-existing value (set by an earlier
-          // page's pending-continuation bump) so we don't overwrite the
-          // bumped reserve.
-          reserves[pageIndex] = Math.max(reserves[pageIndex] ?? 0, pageReserve);
-
-          // SD-2656 Phase 0: build the per-page ledger draft. The planner is
-          // the only place that knows which slices were placed as
-          // continuations vs new anchors and what continuationOut carries to
-          // the next page. injectFragments combines this with the applied
-          // body reserve to populate page.footnoteLedger.
-          {
-            const idsOnPage = (() => {
-              const out: string[] = [];
-              for (let cIdx = 0; cIdx < columnCount; cIdx += 1) {
-                const colIds = idsByColumn.get(pageIndex)?.get(cIdx) ?? [];
-                for (const id of colIds) if (!out.includes(id)) out.push(id);
-              }
-              return out;
-            })();
-
-            // Slice classification: mandatorySlice = first placed slice of
-            // each new anchor (the rule's "render at least firstLine of
-            // last + full of non-last" is satisfied by the union of these);
-            // extendedSlice = subsequent slices of the same new anchor;
-            // continuationSlice = isContinuation slices (from prior pages).
-            const seenNewAnchor = new Set<string>();
-            const mandatorySliceIds: string[] = [];
-            const continuationSliceIds: string[] = [];
-            const extendedSliceIds: string[] = [];
-            let actualBandHeight = 0;
-            const safeSepBefore = Math.max(0, separatorSpacingBefore);
-            const overheadBase = safeSepBefore + safeDividerHeight + safeTopPadding;
-            for (const slice of pageSlices) {
-              if (slice.isContinuation) {
-                continuationSliceIds.push(slice.id);
-              } else if (!seenNewAnchor.has(slice.id)) {
-                mandatorySliceIds.push(slice.id);
-                seenNewAnchor.add(slice.id);
-              } else {
-                extendedSliceIds.push(slice.id);
-              }
-              actualBandHeight += slice.totalHeight;
-            }
-            if (pageSlices.length > 0) {
-              actualBandHeight += overheadBase + safeGap * Math.max(0, pageSlices.length - 1);
-            }
-
-            // Mandatory reserve = full of non-last + firstLine of last for
-            // the page's anchor cluster (regardless of how the planner
-            // actually placed them — this is what the rule requires).
-            let mandatoryReserve = 0;
-            // SD-2656 Phase 7: Preferred reserve = full of every anchor on the
-            // cluster (Word-like — last anchor also renders fully when room
-            // exists). Body slicer may choose this when safe.
-            let preferredReserve = 0;
-            // SD-2656: Any continuation flowing
-            // INTO this page (from a prior page's spill) must also fit on this
-            // page — it can't move anywhere else. Include it in BOTH reserves
-            // so the scorer's preferred target is large enough to actually
-            // fit the full cluster alongside the carry-over content.
-            let continuationInHeight = 0;
-            for (const entry of continuationInForPage) {
-              continuationInHeight += entry.remainingHeightPx;
-            }
-            if (continuationInHeight > 0) {
-              mandatoryReserve += continuationInHeight;
-              preferredReserve += continuationInHeight;
-              if (idsOnPage.length > 0) {
-                mandatoryReserve += safeGap;
-                preferredReserve += safeGap;
-              }
-            }
-            if (idsOnPage.length > 0) {
-              for (let i = 0; i < idsOnPage.length; i += 1) {
-                const isLast = i === idsOnPage.length - 1;
-                mandatoryReserve += isLast ? firstLineOf(idsOnPage[i]) : fullHeightOf(idsOnPage[i]);
-                preferredReserve += fullHeightOf(idsOnPage[i]);
-                if (i > 0) {
-                  mandatoryReserve += safeGap;
-                  preferredReserve += safeGap;
-                }
-              }
-              mandatoryReserve += overheadBase;
-              preferredReserve += overheadBase;
-            } else if (continuationInHeight > 0) {
-              // Continuation-only page (no new anchors). Still needs overhead.
-              mandatoryReserve += overheadBase;
-              preferredReserve += overheadBase;
-            }
-
-            // SD-2656 Phase 7: how many measured lines of the last anchor we
-            // actually rendered. Used to flag "mandatory-only" pages where
-            // Word would have rendered more of the last footnote.
-            let lastAnchorRenderedLines = 0;
-            if (idsOnPage.length > 0) {
-              const lastId = idsOnPage[idsOnPage.length - 1];
-              for (const slice of pageSlices) {
-                if (slice.id !== lastId || slice.isContinuation) continue;
-                for (const range of slice.ranges) {
-                  // Only paragraph and list-item ranges have line tracking;
-                  // table/image/drawing footnote ranges are single blocks.
-                  if (range.kind === 'paragraph' || range.kind === 'list-item') {
-                    lastAnchorRenderedLines += Math.max(0, range.toLine - range.fromLine);
-                  } else {
-                    lastAnchorRenderedLines += 1;
-                  }
-                }
-              }
-            }
-
-            // continuationOut: what we just deferred to the next page.
-            const continuationOut: Array<{ id: string; remainingRangeCount: number; remainingHeightPx: number }> = [];
-            pendingByColumn.forEach((entries) => {
-              entries.forEach((entry) => {
-                let total = 0;
-                entry.ranges.forEach((range) => {
-                  const spacingAfter = 'spacingAfter' in range ? (range.spacingAfter ?? 0) : 0;
-                  total += range.height + spacingAfter;
-                });
-                continuationOut.push({
-                  id: entry.id,
-                  remainingRangeCount: entry.ranges.length,
-                  remainingHeightPx: total,
-                });
-              });
-            });
-
-            ledgersByPage.set(pageIndex, {
-              anchorIds: idsOnPage,
-              mandatorySliceIds,
-              continuationSliceIds,
-              extendedSliceIds,
-              continuationIn: continuationInForPage,
-              continuationOut,
-              mandatoryReservePx: Math.ceil(mandatoryReserve),
-              preferredReservePx: Math.ceil(preferredReserve),
-              actualBandHeightPx: Math.ceil(actualBandHeight),
-              lastAnchorRenderedLines,
-            });
-          }
+          ledgersByPage.set(pageIndex, pagePlan.ledger);
 
           // SD-2656 Phase 3: bounded continuation draining.
           //
@@ -3969,10 +4251,16 @@ export async function incrementalLayout(
           // The carry-forward bump counts only the FIRST LINE of the last entry
           // (the rest continues onto the following page); the terminal-page bump
           // needs full heights because there is nowhere to continue.
-          const clusterDemandFor = (targetPageIndex: number, lastEntryFirstLineOnly: boolean): number => {
+          const clusterDemandFor = (
+            targetPageIndex: number,
+            lastEntryFirstLineOnly: boolean,
+            excludeTableOwnedAnchors = false,
+          ): number => {
             let demand = 0;
             for (let cIdx = 0; cIdx < columnCount; cIdx += 1) {
-              const ids = idsByColumn.get(targetPageIndex)?.get(cIdx) ?? [];
+              const ids = (idsByColumn.get(targetPageIndex)?.get(cIdx) ?? []).filter(
+                (id) => !excludeTableOwnedAnchors || !tableOwnedFootnoteIds.has(id),
+              );
               if (ids.length === 0) continue;
               let columnCluster = 0;
               for (let i = 0; i < ids.length; i += 1) {
@@ -4007,8 +4295,30 @@ export async function incrementalLayout(
                 });
               });
             });
-            // Next page's mandatory cluster demand (ordered minimum).
-            const nextClusterDemand = clusterDemandFor(pageIndex + 1, true);
+            // A table can require the whole body area to keep its anchor row
+            // together. Reserving its note cluster one page early displaces
+            // the table, then the anchors and reserve chase each other across
+            // passes. Defer that demand only when the existing tail has enough
+            // physical band capacity for every pending and anchored note. If
+            // it does not, preserve the advance demand so the body yields the
+            // additional page that the continuation needs.
+            let tailDemand = continuationDemand;
+            let tailCapacity = Math.max(
+              0,
+              computeMaxFootnoteReserve(
+                layoutForPages,
+                pageIndex + 1,
+                Number.isFinite(baseReserves?.[pageIndex + 1]) ? Math.max(0, baseReserves[pageIndex + 1]) : 0,
+              ) - bandOverhead,
+            );
+            for (let targetPageIndex = pageIndex + 1; targetPageIndex < pageCount; targetPageIndex += 1) {
+              tailDemand += clusterDemandFor(targetPageIndex, false);
+              if (targetPageIndex > pageIndex + 1) {
+                tailCapacity += Math.max(0, maxBandFor(targetPageIndex) - bandOverhead);
+              }
+            }
+            const tailCanDrainTableAnchors = tailDemand <= tailCapacity;
+            const nextClusterDemand = clusterDemandFor(pageIndex + 1, true, tailCanDrainTableAnchors);
             if (continuationDemand > 0 || nextClusterDemand > 0) {
               const nextPageMaxBand = maxBandFor(pageIndex + 1);
               // The band has a single overhead block (separator + padding)
@@ -4424,7 +4734,10 @@ export async function incrementalLayout(
             }
             cachedFootnoteLineIndexes.set(
               reference,
-              findLineIndexForRunOrdinal(cachedFootnoteParagraphMeasures.get(reference.blockId), reference.runOrdinal),
+              findLineIndexForRunOrdinal(
+                cachedFootnoteParagraphMeasures.get(reference.blockId)?.lines,
+                reference.runOrdinal,
+              ),
             );
           }
         }
@@ -4534,7 +4847,7 @@ export async function incrementalLayout(
             maxWidth: number,
             firstLineIndent?: number,
             lineRegions?: readonly (readonly ParagraphLineRegion[])[],
-          ) => remeasureParagraph(block as ParagraphBlock, maxWidth, firstLineIndent, lineRegions),
+          ) => remeasureParagraph(block as ParagraphBlock, maxWidth, firstLineIndent, lineRegions, fontContext),
         };
         const nextFootnoteLayoutInput = isFootnotesLayoutInput(footnoteLayoutOptions.footnotes)
           ? footnoteLayoutOptions.footnotes
@@ -4745,7 +5058,242 @@ export async function incrementalLayout(
       // mid-loop, which would zero their entries and cause oscillation.
       const allFootnoteIds = new Set(footnotesInput.refs.map((ref) => ref.id));
 
+      const publishFootnoteLayout = (
+        finalPlan: FootnoteLayoutPlan,
+        finalMeasuresById: Map<string, Measure>,
+        finalBlocks: FlowBlock[],
+        reservesAppliedToLayout: number[],
+        finalPageColumns: Map<number, PageColumns>,
+        finalIdsByColumn: Map<number, Map<number, string[]>>,
+        footnotePageIndexesToFinalize: ReadonlySet<number> | null,
+        paginationPolicy?: 'coupled-v1',
+      ): FootnoteReserveSeed | null => {
+        const blockById = new Map<string, FlowBlock>();
+        finalBlocks.forEach((block) => {
+          blockById.set(block.id, block);
+        });
+        const injected = injectFragments(
+          layout,
+          finalPlan,
+          finalMeasuresById,
+          reservesAppliedToLayout,
+          blockById,
+          finalPageColumns,
+          footnotePageIndexesToFinalize,
+        );
+        if (footnotePageIndexesToFinalize) {
+          layout = {
+            ...layout,
+            pages: ensureEmptyFootnoteMetadataOutsideFinalizedPages(layout.pages, footnotePageIndexesToFinalize),
+          };
+        }
+
+        const alignedBlocks: FlowBlock[] = [];
+        const alignedMeasures: Measure[] = [];
+        finalBlocks.forEach((block) => {
+          const measure = finalMeasuresById.get(block.id);
+          if (!measure) return;
+          alignedBlocks.push(block);
+          alignedMeasures.push(measure);
+        });
+        extraBlocks = injected ? alignedBlocks.concat(injected.decorativeBlocks) : alignedBlocks;
+        extraMeasures = injected ? alignedMeasures.concat(injected.decorativeMeasures) : alignedMeasures;
+
+        // SD-3432: capture the applied reserves as the next run's seed
+        // whenever this run reserved anything. Capture is deliberately
+        // UNCONDITIONAL on exactness: the seed is only a starting vector that
+        // the next run fully re-validates, so capturing a NEAR-fixed-point is
+        // both safe and necessary — it is how the chain bootstraps. Real
+        // documents (the SD-3432 repro) end their cold ladder with small dead
+        // reserves left by reverted tighten attempts; refusing to capture
+        // those keeps the document cold forever, while seeding them lets the
+        // next run converge the rest of the way and capture the TRUE fixed
+        // point, after which every keystroke validates in a single relayout.
+        // The exactness check below is diagnostics only: `exact=true` means
+        // the next identical run will pass-1-validate (the steady state).
+        if (reservesAppliedToLayout.some((h) => h > 0)) {
+          // Convergence can grow or remove pages after a reserve vector is
+          // chosen. Publish the reserves of the actual output pages, not
+          // obsolete trailing entries or an incomplete pre-growth vector.
+          const publishedReserves = layout.pages.map((page) => page.footnoteReserved ?? 0);
+          nextFootnoteReserveSeed = {
+            ...(paginationPolicy ? { paginationPolicy } : {}),
+            reserves: publishedReserves,
+            notePageIndexes: [...collectFootnoteOutputPageIndexes(finalPlan, publishedReserves)].sort(
+              (left, right) => left - right,
+            ),
+            ...(typeof footnotesInput.referenceTopologyRevision === 'string' &&
+            footnotesInput.referenceTopologyRevision.length > 0
+              ? {
+                  footnoteAssignment: {
+                    referenceTopologyRevision: footnotesInput.referenceTopologyRevision,
+                    referenceCount: footnotesInput.refs.length,
+                    noteIdCount: allFootnoteIds.size,
+                    assignedNoteIdCount: collectFootnoteIdsByColumn(finalIdsByColumn).size,
+                    referencePageIndexes: [...finalIdsByColumn.keys()].sort((left, right) => left - right),
+                  },
+                }
+              : {}),
+            separatorSpacingBefore: finalPlan.separatorSpacingBefore,
+            fontSignature,
+            measurementWidth,
+            measurementHeight,
+            footnoteMeasurementWidth: footnoteWidth,
+            sectionColumnsByIndex: new Map(
+              [...footnoteSectionColumnsByIndex].map(([sectionIndex, columns]) => [
+                sectionIndex,
+                cloneColumnLayout(columns),
+              ]),
+            ),
+            noteBlocksByBlockId: new Map(finalBlocks.map((block) => [block.id, block])),
+            noteMeasuresByBlockId: new Map(finalMeasuresById),
+            noteBodyHeightById: new Map(bodyHeightById),
+            noteFirstLineHeightById: new Map(firstLineHeightById),
+          };
+        }
+        return nextFootnoteReserveSeed;
+      };
+
       footnoteFinalization: {
+        const initialCoupled = initialLayoutResult.coupled;
+        if (initialCoupled && preparedCoupled) {
+          const retained = preparedCoupled.retained;
+          const start = initialCoupled.startPageIndex;
+          const end = layoutReuseSummary.tailAdoption?.startPageIndex ?? layout.pages.length;
+          const indexes = new Set(Array.from({ length: end - start }, (_, offset) => start + offset));
+          const prepared = retained.prepared;
+          // Only the accepted interval is injected. Candidate/probe pages and
+          // their provisional continuation slices never escape to paint.
+          const columns = resolvePageColumns(layout, options, undefined, footnoteSectionColumnsByIndex, indexes);
+          const injected = injectFragments(
+            layout,
+            initialCoupled.plan,
+            prepared.measuresById as Map<string, Measure>,
+            initialCoupled.plan.reserves,
+            retained.blocksById,
+            columns,
+            indexes,
+          );
+          const retainedExtraPlane = rebaseRetainedCoupledExtraPlaneForTail(retained, layoutReuseSummary);
+          let nextExtras = retainedExtraPlane.blocks;
+          let nextExtraMeasures = retainedExtraPlane.measures;
+          let nextExtraIndexes = retainedExtraPlane.indexById;
+          for (let index = 0; index < injected.decorativeBlocks.length; index++) {
+            const block = injected.decorativeBlocks[index];
+            const measured = injected.decorativeMeasures[index];
+            const retainedIndex = nextExtraIndexes.get(block.id);
+            if (
+              retainedIndex != null &&
+              JSON.stringify(nextExtras[retainedIndex]) === JSON.stringify(block) &&
+              JSON.stringify(nextExtraMeasures[retainedIndex]) === JSON.stringify(measured)
+            )
+              continue;
+            if (nextExtras === retained.extraBlocks) {
+              nextExtras = nextExtras.slice();
+              nextExtraMeasures = nextExtraMeasures.slice();
+              nextExtraIndexes = new Map(nextExtraIndexes);
+            }
+            const targetIndex = retainedIndex ?? nextExtras.length;
+            nextExtras[targetIndex] = block;
+            nextExtraMeasures[targetIndex] = measured;
+            (nextExtraIndexes as Map<string, number>).set(block.id, targetIndex);
+          }
+          extraBlocks = nextExtras;
+          extraMeasures = nextExtraMeasures;
+          const exactNotePlane = readExactCoupledNotePlane(retained, footnotesInput.blocksById);
+          const currentNoteMeasures = exactNotePlane?.measuresByBlockId ?? new Map<string, Measure>();
+          const currentNoteBodyHeights = exactNotePlane?.totalMap ?? new Map<string, number>();
+          const currentNoteFirstLineHeights = exactNotePlane?.firstLineMap ?? new Map<string, number>();
+          if (!exactNotePlane) {
+            for (const blockId of retained.blocksById.keys()) {
+              const measure = retained.measuresById.get(blockId);
+              if (!measure) {
+                throw new CoupledFootnotePaginationError(
+                  'missing-anchor',
+                  start,
+                  `Retained measure is unavailable for current note block ${blockId}`,
+                );
+              }
+              currentNoteMeasures.set(blockId, measure);
+            }
+            for (const noteId of retained.refIndexById.keys()) {
+              const total = prepared.fullHeightById.get(noteId);
+              const first = prepared.firstLineHeightById.get(noteId);
+              if (total == null || first == null) {
+                throw new CoupledFootnotePaginationError(
+                  'missing-anchor',
+                  start,
+                  `Retained geometry is unavailable for current footnote ${noteId}`,
+                  noteId,
+                );
+              }
+              currentNoteBodyHeights.set(noteId, total);
+              currentNoteFirstLineHeights.set(noteId, first);
+            }
+          }
+          const shiftedAdoption =
+            layoutReuseSummary.tailAdoption?.pageIndexDelta !== 0 ? layoutReuseSummary.tailAdoption : null;
+          const reserves = shiftedAdoption
+            ? Array.from({ length: layout.pages.length }, (_, pageIndex) =>
+                pageIndex < start ? (retained.reserves[pageIndex] ?? 0) : 0,
+              )
+            : retained.reserves.slice(0, layout.pages.length);
+          const notePages = shiftedAdoption
+            ? new Set(
+                retained.notePageIndexes.flatMap((sourcePageIndex) => {
+                  if (sourcePageIndex < start) return [sourcePageIndex];
+                  if (
+                    sourcePageIndex >= shiftedAdoption.sourcePageStartIndex &&
+                    sourcePageIndex < shiftedAdoption.sourcePageEndIndexExclusive
+                  ) {
+                    const targetPageIndex = sourcePageIndex + shiftedAdoption.pageIndexDelta;
+                    return targetPageIndex >= 0 && targetPageIndex < layout.pages.length ? [targetPageIndex] : [];
+                  }
+                  return [];
+                }),
+              )
+            : new Set(retained.notePageIndexes.filter((index) => index < layout.pages.length));
+          if (shiftedAdoption) {
+            for (
+              let sourcePageIndex = shiftedAdoption.sourcePageStartIndex;
+              sourcePageIndex < shiftedAdoption.sourcePageEndIndexExclusive;
+              sourcePageIndex += 1
+            ) {
+              const targetPageIndex = sourcePageIndex + shiftedAdoption.pageIndexDelta;
+              if (targetPageIndex >= 0 && targetPageIndex < reserves.length) {
+                reserves[targetPageIndex] = retained.reserves[sourcePageIndex] ?? 0;
+              }
+            }
+          }
+          for (const index of indexes) {
+            reserves[index] = layout.pages[index].footnoteReserved ?? 0;
+            if (reserves[index] > 0) notePages.add(index);
+            else notePages.delete(index);
+          }
+          const notePageIndexes = [...notePages].sort((left, right) => left - right);
+          nextFootnoteReserveSeed = {
+            ...warmSeed!,
+            reserves,
+            notePageIndexes,
+            footnoteAssignment: undefined,
+            noteBlocksByBlockId: exactNotePlane?.blocksByBlockId ?? new Map(retained.blocksById),
+            noteMeasuresByBlockId: currentNoteMeasures,
+            noteBodyHeightById: currentNoteBodyHeights,
+            noteFirstLineHeightById: currentNoteFirstLineHeights,
+            coupled: issueCoupledFootnoteState({
+              ...retained,
+              referencePlaneIdentity: footnotesInput.refs,
+              noteBlocksPlaneIdentity: footnotesInput.blocksById,
+              reserves: Object.freeze(reserves.slice()),
+              notePageIndexes: Object.freeze(notePageIndexes.slice()),
+              extraBlocks: nextExtras,
+              extraMeasures: nextExtraMeasures,
+              extraIndexById: nextExtraIndexes,
+            }),
+          };
+          footnoteAssignmentReferencesReused = footnotesInput.refs.length;
+          break footnoteFinalization;
+        }
         // Pass 1: assign + reserve from current layout. Pre-measure ALL footnote
         // bodies (the cache makes the assigned-only subset essentially free).
         const adoption = layoutReuseSummary.tailAdoption;
@@ -4765,6 +5313,7 @@ export async function incrementalLayout(
           if (reserve > 0) previousNotePageIndexes.add(pageIndex);
         });
         const retainedFootnotePlaneBaseAdoptable =
+          warmSeed?.paginationPolicy !== 'coupled-v1' &&
           localPageEnd != null &&
           (adoption == null || adoption.pageIndexDelta === 0) &&
           Number.isInteger(checkpointPageIndex) &&
@@ -4885,8 +5434,142 @@ export async function incrementalLayout(
             break footnoteFinalization;
           }
         }
-        let { measuresById } = await measureFootnoteBlocks(allFootnoteIds);
+        let { measuresById, blocks: measuredFootnoteBlocks } = await measureFootnoteBlocks(allFootnoteIds);
         refreshBodyHeights(measuresById);
+        // A legacy partial layout has no canonical boundary certificates.
+        // Policy migration needs a fresh full profile, not a scan of an
+        // otherwise proved local edit's untouched body.
+        footnoteCoupledRejection =
+          warmSeedUsable && warmSeed?.paginationPolicy !== 'coupled-v1' && layoutReuseSummary.mode !== 'full'
+            ? 'retained-legacy-policy'
+            : getCoupledFootnotePaginationUnsupportedReason(
+                currentBlocks,
+                currentMeasures,
+                options,
+                footnotesInput.refs,
+              );
+        if (footnoteCoupledRejection == null) {
+          const rangesByFootnoteId = new Map(
+            [...allFootnoteIds].map((id) => [
+              id,
+              buildFootnoteRanges(footnotesInput.blocksById.get(id) ?? [], measuresById),
+            ]),
+          );
+          const fullHeightById = new Map(
+            [...rangesByFootnoteId].map(([id, ranges]) => [
+              id,
+              ranges.reduce((sum, range) => sum + getRangeRenderHeight(range), 0),
+            ]),
+          );
+          const separatorSpacingBefore = resolveSeparatorSpacingBefore(
+            rangesByFootnoteId,
+            measuresById,
+            footnotesInput.separatorSpacingBefore,
+            DEFAULT_FOOTNOTE_SEPARATOR_SPACING_BEFORE,
+          );
+          const owner = createFootnoteCertificateOwner({
+            pageSize: options.pageSize ?? DEFAULT_PAGE_SIZE,
+            rangesByFootnoteId,
+            measuresById,
+            fullHeightById,
+            firstLineHeightById,
+            separatorSpacingBefore,
+            dividerHeight: safeDividerHeight,
+            continuationDividerHeight,
+            topPadding: safeTopPadding,
+            gap: safeGap,
+          });
+          const coupled = createCoupledFootnotePagination(owner.prepared);
+          const coupledOptions: LayoutOptions = {
+            ...initialBodyLayoutOptions,
+            startContext: undefined,
+            pageBoundary: undefined,
+            footnotePageFlow: {
+              ...coupled.flow,
+              completePage(completion) {
+                coupled.flow.completePage(completion);
+                issueFootnotePageCertificate(completion.page, owner, {
+                  pageIndex: completion.pageIndex,
+                  incomingByColumn: coupled.plan.incomingByPage.get(completion.pageIndex)!,
+                  outgoingByColumn: coupled.plan.outgoingByPage.get(completion.pageIndex)!,
+                });
+              },
+            },
+            footnoteReservedByPageIndex: undefined,
+            footnotes: {
+              ...footnotesInput,
+              bodyHeightById: fullHeightById,
+              firstLineHeightById,
+              separatorSpacingBefore,
+            },
+          };
+          try {
+            const coupledLayout = await timeFootnotePagination(() =>
+              layoutExecution
+                ? layoutDocumentCooperatively(currentBlocks, currentMeasures, coupledOptions, layoutExecution)
+                : layoutDocument(currentBlocks, currentMeasures, coupledOptions),
+            );
+            validateCoupledFootnoteReferenceConservation(
+              coupled.plan,
+              footnotesInput.refs.map((ref) => ref.id),
+            );
+            layout = coupledLayout;
+            footnoteFullRelayoutPerformed = true;
+            footnoteRelayouts += 1;
+            footnoteRelayoutBreakdown.other += 1;
+            footnoteCoupledRelayouts += 1;
+            footnoteCoupledPages += layout.pages.length;
+            bodyHeightById = fullHeightById;
+            const finalColumns = resolvePageColumns(layout, options, undefined, footnoteSectionColumnsByIndex);
+            const finalIds = new Map(
+              [...coupled.plan.ledgersByPage].map(([index, ledger]) => [index, new Map([[0, ledger.anchorIds]])]),
+            );
+            const publishedSeed = publishFootnoteLayout(
+              coupled.plan,
+              measuresById,
+              measuredFootnoteBlocks,
+              coupled.plan.reserves,
+              finalColumns,
+              finalIds,
+              null,
+              'coupled-v1',
+            );
+            if (publishedSeed && extraBlocks && extraMeasures) {
+              const refIndexesByBlock = new Map<string, number[]>();
+              const refIndexById = new Map<string, number>();
+              footnotesInput.refs.forEach((ref, index) => {
+                const indexes = refIndexesByBlock.get(ref.blockId!) ?? [];
+                indexes.push(index);
+                refIndexesByBlock.set(ref.blockId!, indexes);
+                refIndexById.set(ref.id, index);
+              });
+              publishedSeed.coupled = issueCoupledFootnoteState({
+                owner,
+                prepared: owner.prepared,
+                headerFooterGeometryFingerprint,
+                reserves: Object.freeze(publishedSeed.reserves.slice()),
+                notePageIndexes: Object.freeze(publishedSeed.notePageIndexes!.slice()),
+                refs: Object.freeze(footnotesInput.refs.map((ref) => Object.freeze({ ...ref }))),
+                referencePlaneIdentity: footnotesInput.refs,
+                noteBlocksPlaneIdentity: footnotesInput.blocksById,
+                referenceTopologyRevision: footnotesInput.referenceTopologyRevision,
+                refIndexesByBlock,
+                refIndexById,
+                blocksById: new Map(measuredFootnoteBlocks.map((block) => [block.id, block])),
+                measuresById: new Map(measuresById),
+                extraBlocks,
+                extraMeasures,
+                extraIndexById: new Map(extraBlocks.map((block, index) => [block.id, index])),
+              });
+            }
+            break footnoteFinalization;
+          } catch (error) {
+            if (!(error instanceof CoupledFootnotePaginationError)) throw error;
+            footnoteCoupledFallbacks += 1;
+            footnoteCoupledRejection = error.code;
+          }
+        }
+        tableOwnedFootnoteIds = collectTableOwnedFootnoteIds(currentBlocks, footnotesInput.refs);
         let plan = computeFootnoteLayoutPlan(
           layout,
           idsByColumn,
@@ -5421,88 +6104,15 @@ export async function incrementalLayout(
             }
           }
 
-          const blockById = new Map<string, FlowBlock>();
-          finalBlocks.forEach((block) => {
-            blockById.set(block.id, block);
-          });
-          const injected = injectFragments(
-            layout,
+          publishFootnoteLayout(
             finalPlan,
             finalMeasuresById,
+            finalBlocks,
             reservesAppliedToLayout,
-            blockById,
             finalPageColumns,
+            finalIdsByColumn,
             footnotePageIndexesToFinalize,
           );
-          if (footnotePageIndexesToFinalize) {
-            layout = {
-              ...layout,
-              pages: ensureEmptyFootnoteMetadataOutsideFinalizedPages(layout.pages, footnotePageIndexesToFinalize),
-            };
-          }
-
-          const alignedBlocks: FlowBlock[] = [];
-          const alignedMeasures: Measure[] = [];
-          finalBlocks.forEach((block) => {
-            const measure = finalMeasuresById.get(block.id);
-            if (!measure) return;
-            alignedBlocks.push(block);
-            alignedMeasures.push(measure);
-          });
-          extraBlocks = injected ? alignedBlocks.concat(injected.decorativeBlocks) : alignedBlocks;
-          extraMeasures = injected ? alignedMeasures.concat(injected.decorativeMeasures) : alignedMeasures;
-
-          // SD-3432: capture the applied reserves as the next run's seed
-          // whenever this run reserved anything. Capture is deliberately
-          // UNCONDITIONAL on exactness: the seed is only a starting vector that
-          // the next run fully re-validates, so capturing a NEAR-fixed-point is
-          // both safe and necessary — it is how the chain bootstraps. Real
-          // documents (the SD-3432 repro) end their cold ladder with small dead
-          // reserves left by reverted tighten attempts; refusing to capture
-          // those keeps the document cold forever, while seeding them lets the
-          // next run converge the rest of the way and capture the TRUE fixed
-          // point, after which every keystroke validates in a single relayout.
-          // The exactness check below is diagnostics only: `exact=true` means
-          // the next identical run will pass-1-validate (the steady state).
-          if (reservesAppliedToLayout.some((h) => h > 0)) {
-            // Convergence can grow or remove pages after a reserve vector is
-            // chosen. Publish the reserves of the actual output pages, not
-            // obsolete trailing entries or an incomplete pre-growth vector.
-            const publishedReserves = layout.pages.map((page) => page.footnoteReserved ?? 0);
-            nextFootnoteReserveSeed = {
-              reserves: publishedReserves,
-              notePageIndexes: [...collectFootnoteOutputPageIndexes(finalPlan, publishedReserves)].sort(
-                (left, right) => left - right,
-              ),
-              ...(typeof footnotesInput.referenceTopologyRevision === 'string' &&
-              footnotesInput.referenceTopologyRevision.length > 0
-                ? {
-                    footnoteAssignment: {
-                      referenceTopologyRevision: footnotesInput.referenceTopologyRevision,
-                      referenceCount: footnotesInput.refs.length,
-                      noteIdCount: allFootnoteIds.size,
-                      assignedNoteIdCount: collectFootnoteIdsByColumn(finalIdsByColumn).size,
-                      referencePageIndexes: [...finalIdsByColumn.keys()].sort((left, right) => left - right),
-                    },
-                  }
-                : {}),
-              separatorSpacingBefore: finalPlan.separatorSpacingBefore,
-              fontSignature,
-              measurementWidth,
-              measurementHeight,
-              footnoteMeasurementWidth: footnoteWidth,
-              sectionColumnsByIndex: new Map(
-                [...footnoteSectionColumnsByIndex].map(([sectionIndex, columns]) => [
-                  sectionIndex,
-                  cloneColumnLayout(columns),
-                ]),
-              ),
-              noteBlocksByBlockId: new Map(finalBlocks.map((block) => [block.id, block])),
-              noteMeasuresByBlockId: new Map(finalMeasuresById),
-              noteBodyHeightById: new Map(bodyHeightById),
-              noteFirstLineHeightById: new Map(firstLineHeightById),
-            };
-          }
           const exactFixedPoint =
             finalPlan.reserves.length <= reservesAppliedToLayout.length &&
             reservesAppliedToLayout.every((h, i) => (finalPlan.reserves[i] ?? 0) === (h ?? 0)) &&
@@ -5646,7 +6256,7 @@ export async function incrementalLayout(
         'header',
         headerFooterCacheSignature,
         (block, maxWidth, firstLineIndent, lineRegions) =>
-          remeasureParagraph(block as ParagraphBlock, maxWidth, firstLineIndent, lineRegions),
+          remeasureParagraph(block as ParagraphBlock, maxWidth, firstLineIndent, lineRegions, fontContext),
         finalHfTokenOptions,
         headerFooterExecution,
       );
@@ -5663,7 +6273,7 @@ export async function incrementalLayout(
         'footer',
         headerFooterCacheSignature,
         (block, maxWidth, firstLineIndent, lineRegions) =>
-          remeasureParagraph(block as ParagraphBlock, maxWidth, firstLineIndent, lineRegions),
+          remeasureParagraph(block as ParagraphBlock, maxWidth, firstLineIndent, lineRegions, fontContext),
         finalHfTokenOptions,
         headerFooterExecution,
       );
@@ -5705,6 +6315,7 @@ export async function incrementalLayout(
     layoutExposureTime +
     finalHeaderFooterTime;
   const bridgeTiming: IncrementalLayoutBridgeTiming = {
+    ...(footnoteCoupledRejection ? { footnoteCoupledRejection } : {}),
     totalMs: roundTimingMs(totalBridgeTime),
     inputPreparationMs: roundTimingMs(inputPreparationMs),
     measureTotalMs: roundTimingMs(totalMeasureTime),
@@ -5761,6 +6372,9 @@ export async function incrementalLayout(
       footnoteWidowRelayouts: footnoteRelayoutBreakdown.widow,
       footnoteRevertRelayouts: footnoteRelayoutBreakdown.revert,
       footnoteOtherRelayouts: footnoteRelayoutBreakdown.other,
+      footnoteCoupledRelayouts,
+      footnoteCoupledPages,
+      footnoteCoupledFallbacks,
       footnoteAssignmentReferencesRead,
       footnoteAssignmentReferencesReused,
       footnoteAssignmentPagesIndexed: footnoteAssignmentIndexWork.pagesIndexed,
@@ -6361,6 +6975,9 @@ function tryBuildProvedNoteOnlyLayoutReuse(input: {
       extraMeasures: extraPlane.measures,
       footnoteReserveSeed: {
         ...prepared.warmSeed,
+        // Equal note geometry does not preserve the prepared content/measure
+        // owner. Rebuild that owner before a later body edit may reuse it.
+        coupled: undefined,
         reserves: prepared.warmSeed.reserves.slice(),
         notePageIndexes: notePageIndexes.slice(),
         noteBlocksByBlockId: new Map(currentNoteBlocks.map((block) => [block.id, block])),
@@ -6685,6 +7302,61 @@ function validateSameInvocationReserveRelayoutProof(input: {
   return null;
 }
 
+const PREPARED_COUPLED_CONVERGENCE_RETRY_PAGE_HORIZON = 128;
+
+function readMeasuredCoupledInitialPageHorizon(input: {
+  requestedPageHorizon: number;
+  sourceAffectedFrontierPageIndex: number;
+  previousPageCount: number;
+}): number {
+  const remainingTailPages = Math.max(0, input.previousPageCount - 1 - input.sourceAffectedFrontierPageIndex);
+  const retainedTailQuarter = Math.floor(remainingTailPages / 4);
+  return Math.min(
+    PREPARED_COUPLED_CONVERGENCE_RETRY_PAGE_HORIZON,
+    Math.max(input.requestedPageHorizon, retainedTailQuarter),
+  );
+}
+
+export const __test_only_readMeasuredCoupledInitialPageHorizon = readMeasuredCoupledInitialPageHorizon;
+
+function shouldAttemptPreparedCoupledConvergenceRetry(input: {
+  preparedCoupled: boolean;
+  provedPrefixToDocumentEnd: boolean;
+  sameInvocationReserveRelayout: boolean;
+  paginationPrefix: boolean;
+  boundedRenderDiagnosticRetry: boolean;
+  retryAttempted: boolean;
+  terminalAttempted: boolean;
+  reachesSourceTail: boolean;
+  currentPageHorizon: number;
+  sourceAffectedFrontierPageIndex: number;
+  checkpointPageIndex: number;
+  previousPageCount: number;
+}): boolean {
+  const retryPageCap = Math.max(
+    6,
+    input.sourceAffectedFrontierPageIndex -
+      input.checkpointPageIndex +
+      PREPARED_COUPLED_CONVERGENCE_RETRY_PAGE_HORIZON +
+      2,
+  );
+  const retainedSuffixPageCount = input.previousPageCount - input.checkpointPageIndex;
+  return (
+    input.preparedCoupled &&
+    input.provedPrefixToDocumentEnd &&
+    !input.sameInvocationReserveRelayout &&
+    !input.paginationPrefix &&
+    !input.boundedRenderDiagnosticRetry &&
+    !input.retryAttempted &&
+    !input.terminalAttempted &&
+    !input.reachesSourceTail &&
+    input.currentPageHorizon < PREPARED_COUPLED_CONVERGENCE_RETRY_PAGE_HORIZON &&
+    retryPageCap * 4 <= retainedSuffixPageCount
+  );
+}
+
+export const __test_only_shouldAttemptPreparedCoupledConvergenceRetry = shouldAttemptPreparedCoupledConvergenceRetry;
+
 async function layoutWithOptionalReuse(input: {
   previousBlocks: readonly FlowBlock[];
   blocks: FlowBlock[];
@@ -6696,17 +7368,27 @@ async function layoutWithOptionalReuse(input: {
   reuse?: IncrementalLayoutReuseOptions;
   preparedNoteOnly?: PreparedNoteOnlyLayoutReuse;
   preparedHeaderFooterOnly?: PreparedHeaderFooterOnlyLayoutReuse;
+  preparedCoupled?: PreparedCoupledFootnoteLayout;
   sameInvocationReserveRelayout?: SameInvocationReserveRelayoutProof;
   relayoutProvedPrefixToDocumentEndOnBoundedConvergenceFailure?: boolean;
-  timing: { layoutDocumentMs: number; layoutDocumentCalls: number };
+  timing: {
+    layoutDocumentMs: number;
+    layoutDocumentCalls: number;
+    coupledPages?: number;
+    coupledPasses?: number;
+    coupledFallbacks?: number;
+  };
   execution?: LayoutExecutionControl;
 }): Promise<{
   layout: Layout;
   reuse: IncrementalLayoutReuseSummary;
   provedNoteOnlyFinalization?: ProvedNoteOnlyLayoutFinalization;
+  coupled?: CoupledFootnoteLayoutPass;
 }> {
   let noteOnlyRejectionReason: string | null = null;
   let headerFooterOnlyRejectionReason: string | null = null;
+  let lastCoupledPass: CoupledFootnoteLayoutPass | undefined;
+  let coupledDisabled = false;
   const runLayoutDocument = async (
     blocks: FlowBlock[],
     measures: Measure[],
@@ -6714,10 +7396,109 @@ async function layoutWithOptionalReuse(input: {
   ): Promise<Layout> => {
     const startedAt = performance.now();
     input.timing.layoutDocumentCalls += 1;
+    lastCoupledPass = undefined;
     try {
-      return input.execution
-        ? await layoutDocumentCooperatively(blocks, measures, options, input.execution)
-        : layoutDocument(blocks, measures, options);
+      const prepared = coupledDisabled ? undefined : input.preparedCoupled;
+      let passOptions = options;
+      let coupled: CoupledFootnotePagination | undefined;
+      let freshDocumentStart = false;
+      const startPageIndex = options.startContext?.pageNumberOffset ?? 0;
+      if (prepared) {
+        input.timing.coupledPasses = (input.timing.coupledPasses ?? 0) + 1;
+        const retained = prepared.retained;
+        const sourcePage = input.reuse?.previousLayout?.pages[startPageIndex];
+        const sourceCertificate = sourcePage ? readFootnotePageCertificate(sourcePage, retained.owner) : null;
+        const coversCurrentDocument =
+          startPageIndex === 0 &&
+          blocks.length > 0 &&
+          blocks.length === input.blocks.length &&
+          blocks[0] === input.blocks[0] &&
+          blocks[blocks.length - 1] === input.blocks[input.blocks.length - 1];
+        freshDocumentStart = prepared.freshDocumentStart === true && coversCurrentDocument;
+        const resumed = options.startContext != null && !freshDocumentStart;
+        if (resumed && (!sourceCertificate || sourceCertificate.pageIndex !== startPageIndex)) {
+          throw new CoupledFootnotePaginationError(
+            'page-sequence',
+            startPageIndex,
+            'Exact continuation checkpoint is unavailable',
+          );
+        }
+        const firstBlockIndex = input.reuse?.currentBlockIndexById?.get(blocks[0]?.id);
+        const prefixAnchors = new Set(
+          options.startContext?.initialPageState?.footnoteAnchorsThisPage.map((anchor) => anchor.refId) ?? [],
+        );
+        coupled = createCoupledFootnotePagination({
+          ...retained.prepared,
+          ...(resumed
+            ? {
+                start: {
+                  pageIndex: startPageIndex,
+                  pendingByColumn: sourceCertificate!.incomingByColumn,
+                  isPreviouslyAnchored(id) {
+                    if (prefixAnchors.has(id)) return false;
+                    const refIndex = retained.refIndexById.get(id);
+                    const ref = refIndex == null ? undefined : prepared.footnotes.refs[refIndex];
+                    const ownerIndex = ref?.blockId ? input.reuse?.currentBlockIndexById?.get(ref.blockId) : undefined;
+                    return ownerIndex != null && firstBlockIndex != null && ownerIndex < firstBlockIndex;
+                  },
+                },
+              }
+            : {}),
+        });
+        const pageFlow = coupled;
+        passOptions = {
+          ...options,
+          footnoteReservedByPageIndex: undefined,
+          footnotePageFlow: {
+            ...pageFlow.flow,
+            completeDocument: options.pageBoundary == null,
+            completePage(completion) {
+              pageFlow.flow.completePage(completion);
+              input.timing.coupledPages = (input.timing.coupledPages ?? 0) + 1;
+              issueFootnotePageCertificate(completion.page, retained.owner, {
+                pageIndex: completion.pageIndex,
+                incomingByColumn: pageFlow.plan.incomingByPage.get(completion.pageIndex)!,
+                outgoingByColumn: pageFlow.plan.outgoingByPage.get(completion.pageIndex)!,
+              });
+            },
+          },
+        };
+      }
+      const result = input.execution
+        ? await layoutDocumentCooperatively(blocks, measures, passOptions, input.execution)
+        : layoutDocument(blocks, measures, passOptions);
+      if (prepared && coupled) {
+        if (options.pageBoundary == null) {
+          // A complete suffix must conserve source anchors, including any
+          // retained prefix on its first page. Do not scan the source reference
+          // plane for a bounded probe that will adopt an exact retained tail.
+          const firstIndex = input.reuse?.currentBlockIndexById?.get(blocks[0]?.id);
+          const prefixAnchors = new Set(
+            options.startContext?.initialPageState?.footnoteAnchorsThisPage.map((anchor) => anchor.refId) ?? [],
+          );
+          const expectedIds = function* (): Iterable<string> {
+            for (const ref of prepared.footnotes.refs) {
+              if (options.startContext == null || freshDocumentStart) {
+                yield ref.id;
+                continue;
+              }
+              const ownerIndex = ref.blockId == null ? undefined : input.reuse?.currentBlockIndexById?.get(ref.blockId);
+              if (ownerIndex == null || firstIndex == null) {
+                throw new CoupledFootnotePaginationError(
+                  'reference-conservation',
+                  startPageIndex,
+                  'Reference source owner is unresolved',
+                  ref.id,
+                );
+              }
+              if (ownerIndex >= firstIndex || prefixAnchors.has(ref.id)) yield ref.id;
+            }
+          };
+          validateCoupledFootnoteReferenceConservation(coupled.plan, expectedIds());
+        }
+        lastCoupledPass = { owner: prepared.retained.owner, plan: coupled.plan, startPageIndex };
+      }
+      return result;
     } finally {
       input.timing.layoutDocumentMs += performance.now() - startedAt;
     }
@@ -6733,14 +7514,29 @@ async function layoutWithOptionalReuse(input: {
     (input.reuse as IncrementalLayoutReuseOptions & Record<PropertyKey, unknown>)[
       V2_RENDER_DIAGNOSTIC_BOUNDED_RETRY
     ] === true;
-  const full = async (reason: string): Promise<{ layout: Layout; reuse: IncrementalLayoutReuseSummary }> => {
+  const full = async (
+    reason: string,
+  ): Promise<{ layout: Layout; reuse: IncrementalLayoutReuseSummary; coupled?: CoupledFootnoteLayoutPass }> => {
     if (isBoundedRenderDiagnosticRetry) {
       const error = new Error(`bounded render diagnostic layout retry was not admitted: ${reason}`);
       error.name = 'V2RenderDiagnosticBoundedRetryRejectedError';
       throw error;
     }
+    let layout: Layout;
+    try {
+      layout = await runLayoutDocument(input.blocks, input.measures, input.options);
+    } catch (error) {
+      if (!(error instanceof CoupledFootnotePaginationError) || !input.preparedCoupled) throw error;
+      // Discard the failed attempt's fresh pages before the conservative full
+      // note finalizer takes ownership. No partial certificate is published.
+      input.timing.coupledFallbacks = (input.timing.coupledFallbacks ?? 0) + 1;
+      coupledDisabled = true;
+      reason += `;coupled-full-fallback=${error.code}`;
+      layout = await runLayoutDocument(input.blocks, input.measures, input.options);
+    }
     return {
-      layout: await runLayoutDocument(input.blocks, input.measures, input.options),
+      layout,
+      ...(lastCoupledPass ? { coupled: lastCoupledPass } : {}),
       reuse: {
         mode: 'full',
         reason: withSpecializedRejections(reason),
@@ -7233,21 +8029,89 @@ async function layoutWithOptionalReuse(input: {
             previousToCurrentBlockId: reuse.blockIdRewrites?.previousToCurrent ?? null,
           })
       : { ok: false as const, reason: 'profile-or-dirty-shape-ineligible' };
-  const partialPageCheckpoint = partialPageCheckpointResult.ok ? partialPageCheckpointResult : null;
+  let partialPageCheckpoint = partialPageCheckpointResult.ok ? partialPageCheckpointResult : null;
+  if (partialPageCheckpoint && input.preparedCoupled) {
+    const currentId =
+      reuse.blockIdRewrites?.previousToCurrent.get(partialPageCheckpoint.previousBlockId) ??
+      partialPageCheckpoint.previousBlockId;
+    const index = reuse.currentBlockIndexById?.get(currentId);
+    if (index != null) {
+      let decisionIndex = index;
+      while (
+        decisionIndex > 0 &&
+        input.blocks[decisionIndex - 1]?.kind === 'paragraph' &&
+        (input.blocks[decisionIndex - 1] as ParagraphBlock).attrs?.keepNext === true
+      ) {
+        decisionIndex -= 1;
+      }
+      if (decisionIndex < index) {
+        // The dirty paragraph checkpoint is after keep preflight. Prefer the
+        // exact same-page checkpoint for the kept predecessor so pagination
+        // can reconsider the chain without discarding an unrelated page
+        // prefix. A chain that moved during preflight keeps the conservative
+        // clean-page rewind below.
+        const decisionCurrentId = input.blocks[decisionIndex]!.id;
+        const decisionPreviousId = reuse.blockIdRewrites?.currentToPrevious.get(decisionCurrentId) ?? decisionCurrentId;
+        const decisionRange = reuse.previousBlockPageIndex?.get(decisionPreviousId);
+        const decisionCheckpoint = previousLayout.blockResumeCheckpoints?.get(decisionPreviousId);
+        const decisionPartial =
+          decisionRange &&
+          decisionCheckpoint?.pageIndex === decisionRange.firstPage &&
+          (decisionCheckpoint.preflightPageIndex ?? decisionCheckpoint.pageIndex) === decisionCheckpoint.pageIndex
+            ? findSafePartialPageCheckpoint({
+                layout: previousLayout,
+                pages: previousPages,
+                previousBlockId: decisionPreviousId,
+                currentBlockId: decisionCurrentId,
+                currentBlockIndexById: reuse.currentBlockIndexById!,
+                blocks: input.blocks,
+                expectedPageIndex: decisionRange.firstPage,
+                stableBlockIds: input.stableBlockIds,
+                previousToCurrentBlockId: reuse.blockIdRewrites?.previousToCurrent ?? null,
+              })
+            : { ok: false as const, reason: 'keep-decision-checkpoint-moved-or-missing' };
+        partialPageCheckpoint = decisionPartial.ok ? decisionPartial : null;
+      }
+    }
+  }
   const partialPageCheckpointRejection = partialPageCheckpointResult.ok ? null : partialPageCheckpointResult.reason;
   let checkpointPageIndex =
     partialPageCheckpoint?.checkpoint.pageIndex ?? (reuse.requireDocumentStartCheckpoint === true ? 0 : dirtyPage);
+  if (input.preparedCoupled) {
+    // A paragraph can be deferred by keep/widow/line fitting after the engine
+    // records its starting page. Revisit that decision, not only its first
+    // painted fragment. A changed chain follower also invalidates its starter.
+    for (const id of [...dirtyBlockIds, ...input.dirty.deletedBlockIds]) {
+      let currentIndex = reuse.currentBlockIndexById?.get(id);
+      while (
+        currentIndex != null &&
+        currentIndex > 0 &&
+        input.blocks[currentIndex - 1]?.kind === 'paragraph' &&
+        (input.blocks[currentIndex - 1] as ParagraphBlock).attrs?.keepNext === true
+      )
+        currentIndex -= 1;
+      const decisionId = currentIndex == null ? id : input.blocks[currentIndex].id;
+      const previousId = reuse.blockIdRewrites?.currentToPrevious.get(decisionId) ?? decisionId;
+      const checkpoint = previousLayout.blockResumeCheckpoints?.get(previousId);
+      const decisionPage = checkpoint?.preflightPageIndex ?? checkpoint?.pageIndex;
+      if (Number.isInteger(decisionPage) && decisionPage! >= 0 && decisionPage! < checkpointPageIndex) {
+        partialPageCheckpoint = null;
+        checkpointPageIndex = decisionPage!;
+      }
+    }
+  }
   if (!partialPageCheckpoint) {
     while (checkpointPageIndex > 0 && !pageStartsAtCleanBlockBoundary(previousPages[checkpointPageIndex])) {
       checkpointPageIndex -= 1;
     }
   }
-  if (sameInvocationReserveRelayout) {
+  if (sameInvocationReserveRelayout || input.preparedCoupled) {
     // A keep-next chain can pull its predecessor from the retained page into
     // the changed-reserve page. Rewind until no such chain crosses the page
     // checkpoint; unchanged pages before that boundary are then independent.
     while (checkpointPageIndex > 0) {
-      const checkpointStartBlockId = readFirstPageBlockId(previousPages[checkpointPageIndex]);
+      const checkpointStartBlockId =
+        partialPageCheckpoint?.previousBlockId ?? readFirstPageBlockId(previousPages[checkpointPageIndex]);
       const checkpointStartBlockIndex = checkpointStartBlockId
         ? reuse.currentBlockIndexById?.get(checkpointStartBlockId)
         : null;
@@ -7269,12 +8133,15 @@ async function layoutWithOptionalReuse(input: {
         return full('m4-layout-reuse-disabled-reserve-keep-chain-page-unresolved');
       }
       if (keepChainStartPage! >= checkpointPageIndex) break;
+      // A rewind invalidates the later page's saved fragments and cursor.
+      // Never pair that partial state with an earlier page number.
+      partialPageCheckpoint = null;
       checkpointPageIndex = keepChainStartPage!;
       while (checkpointPageIndex > 0 && !pageStartsAtCleanBlockBoundary(previousPages[checkpointPageIndex])) {
         checkpointPageIndex -= 1;
       }
     }
-    if (checkpointPageIndex === 0) {
+    if (checkpointPageIndex === 0 && sameInvocationReserveRelayout) {
       return full('m4-layout-reuse-disabled-reserve-checkpoint-has-no-stable-prefix');
     }
   }
@@ -7325,6 +8192,13 @@ async function layoutWithOptionalReuse(input: {
       `m4-layout-reuse-disabled-current-block-index-stale:suffix=${currentSuffixStartBlockId}@${suffixStartBlockIndex} saw=${String(input.blocks[suffixStartBlockIndex]?.id)} blocks=${input.blocks.length}`,
     );
   }
+  if (
+    partialPageCheckpoint &&
+    (partialPageCheckpoint.checkpoint.pageIndex !== checkpointPageIndex ||
+      partialPageCheckpoint.checkpoint.blockId !== suffixStartBlockId)
+  ) {
+    return full('m4-layout-reuse-disabled-partial-checkpoint-origin-mismatch');
+  }
 
   // `maxRelaidPages` is the first locality probe, not a correctness horizon.
   // A finalized page can miss convergence just beyond that probe (for
@@ -7340,8 +8214,18 @@ async function layoutWithOptionalReuse(input: {
     : 1;
   const initialRelaidPageHorizon = sameInvocationReserveRelayout
     ? previousPages.length
-    : Math.max(requestedRelaidPageHorizon, balanceableFencePageHorizon);
+    : input.preparedCoupled?.measuredCurrentNotePlaneRetainsOwner === true
+      ? Math.max(
+          readMeasuredCoupledInitialPageHorizon({
+            requestedPageHorizon: requestedRelaidPageHorizon,
+            sourceAffectedFrontierPageIndex,
+            previousPageCount: previousPages.length,
+          }),
+          balanceableFencePageHorizon,
+        )
+      : Math.max(requestedRelaidPageHorizon, balanceableFencePageHorizon);
   let convergenceProbePageHorizon = initialRelaidPageHorizon;
+  let coupledConvergenceRetryAttempted = false;
   let terminalSuffixRelayoutAttempted = false;
   let reuseProbePagesPaginated = 0;
   const scopedAnchorPreflightEndBlockIndexExclusive = scopedPageRelativeAnchorBoundary
@@ -7467,16 +8351,30 @@ async function layoutWithOptionalReuse(input: {
         ? Math.max(6, sourceAffectedFrontierPageIndex - checkpointPageIndex + maxRelaidPages + 2)
         : Math.max(4, sourceAffectedFrontierPageIndex - checkpointPageIndex + maxRelaidPages + 1);
     const suffixFootnotesInput = isFootnotesLayoutInput(input.options.footnotes)
-      ? sameInvocationReserveRelayout
-        ? input.options.footnotes
-        : (() => {
-            const suffixBlockIds = new Set(suffixBlocks.map((block) => block.id));
-            if (input.options.footnotes!.refs.some((reference) => typeof reference.blockId !== 'string')) return null;
-            return {
-              ...input.options.footnotes!,
-              refs: input.options.footnotes!.refs.filter((reference) => suffixBlockIds.has(reference.blockId!)),
-            };
+      ? input.preparedCoupled
+        ? (() => {
+            const refs: FootnoteReference[] = [];
+            for (const block of suffixBlocks) {
+              const current = readCoupledCarrierReferences(
+                input.preparedCoupled!.retained,
+                input.preparedCoupled!.footnotes,
+                block.id,
+              );
+              if (!current) return null;
+              refs.push(...current);
+            }
+            return { ...input.options.footnotes!, refs };
           })()
+        : sameInvocationReserveRelayout
+          ? input.options.footnotes
+          : (() => {
+              const suffixBlockIds = new Set(suffixBlocks.map((block) => block.id));
+              if (input.options.footnotes!.refs.some((reference) => typeof reference.blockId !== 'string')) return null;
+              return {
+                ...input.options.footnotes!,
+                refs: input.options.footnotes!.refs.filter((reference) => suffixBlockIds.has(reference.blockId!)),
+              };
+            })()
       : undefined;
     if (isFootnotesLayoutInput(input.options.footnotes) && suffixFootnotesInput == null) {
       return full('m4-layout-reuse-disabled-footnote-reference-block-id-missing');
@@ -7499,6 +8397,7 @@ async function layoutWithOptionalReuse(input: {
                 prefixFragments: partialPageCheckpoint.prefixFragments,
                 cursorY: partialPageCheckpoint.checkpoint.cursorY,
                 maxCursorY: partialPageCheckpoint.checkpoint.maxCursorY,
+                committedBodyBottom: partialPageCheckpoint.checkpoint.committedBodyBottom,
                 columnIndex: partialPageCheckpoint.checkpoint.columnIndex,
                 trailingSpacing: partialPageCheckpoint.checkpoint.trailingSpacing,
                 ...(partialPageCheckpoint.checkpoint.lastParagraphStyleId
@@ -7540,7 +8439,13 @@ async function layoutWithOptionalReuse(input: {
       // current suffix before claiming document end.
       delete suffixLayoutOptions.pageBoundary;
     }
-    const suffixLayout = await runLayoutDocument(suffixBlocks, suffixMeasures, suffixLayoutOptions);
+    let suffixLayout: Layout;
+    try {
+      suffixLayout = await runLayoutDocument(suffixBlocks, suffixMeasures, suffixLayoutOptions);
+    } catch (error) {
+      if (!(error instanceof CoupledFootnotePaginationError)) throw error;
+      return full(`coupled-checkpoint-rejected-${error.code}`);
+    }
     reuseProbePagesPaginated += suffixLayout.pages.length;
 
     for (let completedPageIndex = 0; completedPageIndex < suffixLayout.pages.length; completedPageIndex += 1) {
@@ -7661,6 +8566,24 @@ async function layoutWithOptionalReuse(input: {
           return false;
         }
         if (
+          input.preparedCoupled &&
+          (() => {
+            const owner = input.preparedCoupled.retained.owner;
+            const before = readFootnotePageCertificate(sourcePage, owner);
+            const after = readFootnotePageCertificate(completedPage, owner);
+            return (
+              !before ||
+              !after ||
+              before.pageIndex !== sourcePageIndex ||
+              after.pageIndex !== targetPageIndex ||
+              !pendingFootnoteQueuesEqual(before.incomingByColumn, after.incomingByColumn)
+            );
+          })()
+        ) {
+          checkpointConvergenceRejection = `target-${targetPageIndex}-coupled-continuation-boundary-mismatch`;
+          return false;
+        }
+        if (
           !pagesShareConvergenceBoundary(
             sourcePage,
             completedPage,
@@ -7730,8 +8653,13 @@ async function layoutWithOptionalReuse(input: {
       break;
     }
 
+    const terminalCoupledTailIsProved =
+      probeIncludesExactCurrentSuffix &&
+      input.preparedCoupled != null &&
+      lastCoupledPass?.owner === input.preparedCoupled.retained.owner &&
+      lastCoupledPass.startPageIndex === checkpointPageIndex;
     if (
-      !terminalSuffixRelayoutAttempted &&
+      (!terminalSuffixRelayoutAttempted || terminalCoupledTailIsProved) &&
       convergencePageIndex != null &&
       sourceConvergencePageIndex != null &&
       convergenceSectionPageNumberTransform != null
@@ -7781,8 +8709,28 @@ async function layoutWithOptionalReuse(input: {
         positionTransforms,
       });
       if (tableResumeCheckpoints) writeTableLayoutResumeCheckpoints(nextLayout, tableResumeCheckpoints);
+      const tailAdoption: IncrementalLayoutTailAdoption = {
+        startPageIndex: convergencePageIndex,
+        endPageIndexExclusive: pages.length,
+        sourcePageStartIndex: sourceConvergencePageIndex,
+        sourcePageEndIndexExclusive: previousPages.length,
+        pageIndexDelta,
+        sectionPageNumberTransform: convergenceSectionPageNumberTransform,
+        displayPageNumberTransform: convergenceDisplayPageNumberTransform,
+        pageReferenceLocationsStable:
+          pageIndexDelta === 0 &&
+          convergenceSectionPageNumberTransform.delta === 0 &&
+          supportsLocalizedDecimalNumbering(input.options),
+        sourceLayoutEpoch: previousLayout.layoutEpoch ?? null,
+        positionTransforms,
+        blockIdRewrites: reuse.blockIdRewrites?.previousToCurrent ?? null,
+      };
+      if (pageIndexDelta !== 0 && input.preparedCoupled) {
+        shiftedCoupledFootnoteTailOwners.set(tailAdoption, input.preparedCoupled.retained.owner);
+      }
       return {
         layout: nextLayout,
+        ...(lastCoupledPass ? { coupled: lastCoupledPass } : {}),
         reuse: {
           mode: 'tail-splice',
           reason: withSpecializedRejections('m4-affected-frontier-converged-tail-adopted'),
@@ -7794,22 +8742,10 @@ async function layoutWithOptionalReuse(input: {
           sourceConvergencePageIndex,
           pagesPaginated: reuseProbePagesPaginated,
           pagesSplicedByReuse: previousPages.length - sourceConvergencePageIndex,
-          tailAdoption: {
-            startPageIndex: convergencePageIndex,
-            endPageIndexExclusive: pages.length,
-            sourcePageStartIndex: sourceConvergencePageIndex,
-            sourcePageEndIndexExclusive: previousPages.length,
-            pageIndexDelta,
-            sectionPageNumberTransform: convergenceSectionPageNumberTransform,
-            displayPageNumberTransform: convergenceDisplayPageNumberTransform,
-            pageReferenceLocationsStable:
-              pageIndexDelta === 0 &&
-              convergenceSectionPageNumberTransform.delta === 0 &&
-              supportsLocalizedDecimalNumbering(input.options),
-            sourceLayoutEpoch: previousLayout.layoutEpoch ?? null,
-            positionTransforms,
-            blockIdRewrites: reuse.blockIdRewrites?.previousToCurrent ?? null,
-          },
+          ...(pageIndexDelta !== 0 && shiftedCoupledFootnoteTailOwners.has(tailAdoption)
+            ? { coupledFootnoteTailCertificateRebased: true as const }
+            : {}),
+          tailAdoption,
         },
       };
     }
@@ -7877,9 +8813,14 @@ async function layoutWithOptionalReuse(input: {
       if (tableResumeCheckpoints) writeTableLayoutResumeCheckpoints(nextLayout, tableResumeCheckpoints);
       return {
         layout: nextLayout,
+        ...(lastCoupledPass ? { coupled: lastCoupledPass } : {}),
         reuse: {
           mode: 'tail-splice',
-          reason: withSpecializedRejections('m4-terminal-suffix-relaid-with-prefix-adoption'),
+          reason: withSpecializedRejections(
+            terminalCoupledTailIsProved && checkpointConvergenceRejection
+              ? `m4-terminal-suffix-relaid-with-prefix-adoption:${checkpointConvergenceRejection}`
+              : 'm4-terminal-suffix-relaid-with-prefix-adoption',
+          ),
           tailDisposition: 'relaid-to-document-end',
           checkpointPageIndex,
           affectedFrontierPageIndex,
@@ -7894,6 +8835,37 @@ async function layoutWithOptionalReuse(input: {
     }
 
     if (
+      shouldAttemptPreparedCoupledConvergenceRetry({
+        preparedCoupled: input.preparedCoupled != null,
+        provedPrefixToDocumentEnd: input.relayoutProvedPrefixToDocumentEndOnBoundedConvergenceFailure === true,
+        sameInvocationReserveRelayout,
+        paginationPrefix: paginationPrefix != null,
+        boundedRenderDiagnosticRetry: isBoundedRenderDiagnosticRetry,
+        retryAttempted: coupledConvergenceRetryAttempted,
+        terminalAttempted: terminalSuffixRelayoutAttempted,
+        reachesSourceTail,
+        currentPageHorizon: convergenceProbePageHorizon,
+        sourceAffectedFrontierPageIndex,
+        checkpointPageIndex,
+        previousPageCount: previousPages.length,
+      })
+    ) {
+      // A coupled edit can restore the exact body and note continuation state
+      // beyond the ordinary four-page locality probe. Retry once from the
+      // original issued checkpoint with a wider, still-bounded window before
+      // paying for the exact EOF pass. Never continue from the discarded probe:
+      // runLayoutDocument recreates the coupled plan and its page certificates
+      // for every attempt. Cap speculative work at 25% of the retained suffix
+      // so a miss cannot nearly double medium-document pagination cost.
+      coupledConvergenceRetryAttempted = true;
+      convergenceProbePageHorizon = PREPARED_COUPLED_CONVERGENCE_RETRY_PAGE_HORIZON;
+      if (input.execution) {
+        await checkpointLayoutExecution(input.execution, { phase: 'footnote:phase' });
+      }
+      continue;
+    }
+
+    if (
       input.relayoutProvedPrefixToDocumentEndOnBoundedConvergenceFailure === true &&
       !isBoundedRenderDiagnosticRetry &&
       !terminalSuffixRelayoutAttempted &&
@@ -7902,8 +8874,9 @@ async function layoutWithOptionalReuse(input: {
       // A changed footnote reserve can shift every later page, leaving no
       // retained convergence key inside the bounded probe. Keep the already
       // proved prefix and lay out the remaining current suffix exactly once.
-      // This is not the old geometric probe expansion: no speculative
-      // intermediate result or retained tail can be adopted from this retry.
+      // Generic retries cannot adopt a retained tail. A coupled true-EOF pass
+      // may do so only through the issued-owner and existing convergence gates
+      // above, after complete source-reference conservation.
       terminalSuffixRelayoutAttempted = true;
       convergenceProbePageHorizon = previousPages.length;
       continue;
@@ -8249,6 +9222,9 @@ class SplicedBlockResumeCheckpointMap implements ReadonlyMap<string, LayoutBlock
         ...source,
         blockId,
         pageIndex: source.pageIndex + piece.pageIndexDelta,
+        ...(source.preflightPageIndex != null
+          ? { preflightPageIndex: source.preflightPageIndex + piece.pageIndexDelta }
+          : {}),
         footnoteAnchorsThisPage: piece.positionTransforms
           ? source.footnoteAnchorsThisPage.map((anchor) => ({
               ...anchor,
@@ -8426,6 +9402,7 @@ interface LazyPageSegment {
   sectionPageNumberDeltas: ReadonlyMap<number, number> | null;
   displayPageNumberTransforms: readonly IncrementalDisplayPageNumberTransform[] | null;
   blockIdRewrites: ReadonlyMap<string, string> | null;
+  coupledFootnoteCertificateOwner: FootnoteCertificateOwner | null;
   /** Lazily stamp the canonical empty note row on proved note-free pages. */
   ensureEmptyFootnoteMetadata: boolean;
 }
@@ -8477,6 +9454,7 @@ function appendPageSequenceSlice(
       sectionPageNumberDeltas: null,
       displayPageNumberTransforms: null,
       blockIdRewrites: null,
+      coupledFootnoteCertificateOwner: null,
       ensureEmptyFootnoteMetadata: false,
     });
     return;
@@ -8530,6 +9508,7 @@ function createLazyPageSequence(segments: readonly LazyPageSegment[]): Page[] {
           (segment.sectionPageNumberDeltas?.size ?? 0) > 0 ||
           segment.displayPageNumberTransforms != null ||
           hasBlockIdRewrites(segment.blockIdRewrites) ||
+          segment.coupledFootnoteCertificateOwner != null ||
           segment.ensureEmptyFootnoteMetadata
             ? materializeAdoptedLayoutPage(
                 sourcePage,
@@ -8539,6 +9518,7 @@ function createLazyPageSequence(segments: readonly LazyPageSegment[]): Page[] {
                 segment.sectionPageNumberDeltas,
                 segment.displayPageNumberTransforms,
                 segment.positionDelta,
+                segment.coupledFootnoteCertificateOwner,
               )
             : sourcePage;
         if (segment.ensureEmptyFootnoteMetadata) {
@@ -8751,6 +9731,7 @@ function composeDisplayPageNumberTransforms(
 function addAdoptionTransform(pages: Page[], adoption: IncrementalLayoutTailAdoption): Page[] {
   const source = lazyPageSequences.get(pages);
   if (!source) return pages;
+  const coupledFootnoteCertificateOwner = shiftedCoupledFootnoteTailOwners.get(adoption) ?? null;
   const transformed: LazyPageSegment[] = [];
   const appendRange = (segment: LazyPageSegment, start: number, end: number, adopt: boolean): void => {
     if (end <= start) return;
@@ -8773,6 +9754,10 @@ function addAdoptionTransform(pages: Page[], adoption: IncrementalLayoutTailAdop
       blockIdRewrites: adopt
         ? composeBlockIdRewrites(segment.blockIdRewrites, adoption.blockIdRewrites ?? null)
         : segment.blockIdRewrites,
+      coupledFootnoteCertificateOwner:
+        adopt && coupledFootnoteCertificateOwner
+          ? coupledFootnoteCertificateOwner
+          : segment.coupledFootnoteCertificateOwner,
     });
   };
   for (const segment of source.segments) {
@@ -8841,6 +9826,7 @@ function guardAdoptedLayoutPages(
   const materializedPages = new Map<number, Page>();
   const sectionPageNumberDeltas = composeSectionPageNumberDeltas(null, adoption.sectionPageNumberTransform);
   const displayPageNumberTransforms = composeDisplayPageNumberTransforms(null, adoption.displayPageNumberTransform);
+  const coupledFootnoteCertificateOwner = shiftedCoupledFootnoteTailOwners.get(adoption) ?? null;
   const readPageIndex = (property: string | symbol): number | null => {
     if (typeof property !== 'string' || !/^(0|[1-9]\d*)$/.test(property)) return null;
     const pageIndex = Number(property);
@@ -8859,6 +9845,8 @@ function guardAdoptedLayoutPages(
       adoption.blockIdRewrites ?? null,
       sectionPageNumberDeltas,
       displayPageNumberTransforms,
+      0,
+      coupledFootnoteCertificateOwner,
     );
     const displayInfo = numberingContext?.displayPages[pageIndex];
     if (displayInfo) {
@@ -8901,6 +9889,54 @@ function guardAdoptedLayoutPages(
   return { ...layout, pages };
 }
 
+function rebasePageScopedFootnoteSeparatorId(value: string, pageIndexDelta: number): string {
+  if (pageIndexDelta === 0) return value;
+  const match = /^(footnote-(?:continuation-)?separator-page-)(\d+)(-col-\d+)$/.exec(value);
+  if (!match) return value;
+  const pageNumber = Number(match[2]) + pageIndexDelta;
+  return Number.isSafeInteger(pageNumber) && pageNumber >= 1 ? `${match[1]}${pageNumber}${match[3]}` : value;
+}
+
+function rebaseRetainedCoupledExtraPlaneForTail(
+  retained: CoupledFootnoteRetainedState,
+  reuse: IncrementalLayoutReuseSummary,
+): { blocks: FlowBlock[]; measures: Measure[]; indexById: ReadonlyMap<string, number> } {
+  const adoption = reuse.tailAdoption;
+  if (!adoption || adoption.pageIndexDelta === 0) {
+    return {
+      blocks: retained.extraBlocks,
+      measures: retained.extraMeasures,
+      indexById: retained.extraIndexById,
+    };
+  }
+  const relaidSourceStart = reuse.checkpointPageIndex ?? adoption.sourcePageStartIndex;
+  const blocks: FlowBlock[] = [];
+  const measures: Measure[] = [];
+  const indexById = new Map<string, number>();
+  retained.extraBlocks.forEach((block, sourceIndex) => {
+    const separator = /^(?:footnote-(?:continuation-)?separator-page-)(\d+)-col-\d+$/.exec(block.id);
+    const sourcePageIndex = separator ? Number(separator[1]) - 1 : null;
+    if (
+      sourcePageIndex != null &&
+      sourcePageIndex >= relaidSourceStart &&
+      sourcePageIndex < adoption.sourcePageStartIndex
+    ) {
+      return;
+    }
+    const id =
+      sourcePageIndex != null &&
+      sourcePageIndex >= adoption.sourcePageStartIndex &&
+      sourcePageIndex < adoption.sourcePageEndIndexExclusive
+        ? rebasePageScopedFootnoteSeparatorId(block.id, adoption.pageIndexDelta)
+        : block.id;
+    const targetIndex = blocks.length;
+    blocks.push(id === block.id ? block : { ...block, id });
+    measures.push(retained.extraMeasures[sourceIndex]!);
+    indexById.set(id, targetIndex);
+  });
+  return { blocks, measures, indexById };
+}
+
 function materializeAdoptedLayoutPage(
   sourcePage: Page,
   transforms: readonly LayoutPositionTransform[] | CheckpointPositionTransformLedger | null,
@@ -8909,6 +9945,7 @@ function materializeAdoptedLayoutPage(
   sectionPageNumberDeltas: ReadonlyMap<number, number> | null = null,
   displayPageNumberTransforms: readonly IncrementalDisplayPageNumberTransform[] | null = null,
   positionDelta = 0,
+  coupledFootnoteCertificateOwner: FootnoteCertificateOwner | null = null,
 ): Page {
   const transformPosition = (value: number): number => {
     const shifted = value + positionDelta;
@@ -8927,7 +9964,10 @@ function materializeAdoptedLayoutPage(
       return transformPosition(value);
     }
     if (key === 'blockId' && typeof value === 'string') {
-      return blockIdRewrites?.get(value) ?? value;
+      return rebasePageScopedFootnoteSeparatorId(blockIdRewrites?.get(value) ?? value, pageIndexDelta);
+    }
+    if (key === 'id' && typeof value === 'string') {
+      return rebasePageScopedFootnoteSeparatorId(value, pageIndexDelta);
     }
     if (key === 'pageIndex' && typeof value === 'number') return value + pageIndexDelta;
     if (value == null || typeof value !== 'object') return value;
@@ -8951,6 +9991,14 @@ function materializeAdoptedLayoutPage(
 
   const page = clone(sourcePage) as Page;
   page.number += pageIndexDelta;
+  // The string-key geometry clone deliberately cannot recreate private proof
+  // objects. Shifted note provenance requires the exact owner established by
+  // coupled-tail convergence; generic materialization remains zero-shift only.
+  if (coupledFootnoteCertificateOwner) {
+    rebaseFootnotePageCertificate(sourcePage, page, pageIndexDelta, coupledFootnoteCertificateOwner);
+  } else {
+    transferFootnotePageCertificate(sourcePage, page, pageIndexDelta);
+  }
   const sectionPageNumberDelta = sectionPageNumberDeltas?.get(page.sectionIndex ?? 0) ?? 0;
   if (sectionPageNumberDelta !== 0 && page.sectionPageNumber != null) {
     page.sectionPageNumber += sectionPageNumberDelta;

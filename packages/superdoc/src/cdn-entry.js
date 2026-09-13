@@ -18,8 +18,9 @@ configureCdnEngineLoader({
       : null,
 });
 
-// The CDN build ships NO fonts and does not auto-activate the bundled pack: by default the
-// toolbar shows the baseline (one font per CSS generic) and documents render with system fonts.
+// The CDN build ships no substitute pack and does not auto-activate the bundled pack: by default
+// the toolbar shows the baseline (one font per CSS generic) and documents render with system fonts.
+// The built-in core-symbol face is still requested for the symbol glyphs it covers.
 // To load the reviewed substitute pack, add the separate `@superdoc-dev/fonts` script and pass
 // its config:
 //   <script src="https://cdn.jsdelivr.net/npm/@superdoc-dev/fonts/dist/superdoc-fonts.min.js"></script>

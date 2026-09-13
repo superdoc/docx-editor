@@ -833,8 +833,9 @@ const v2TrackedChangesAdapter = computed(() =>
 const v2WriteCapability = computed(() => {
   if (!v2CommentsAdapter.value) return null;
   const documentMode = commentsStore.viewingVisibility.documentMode;
-  const capability = v2CommentsAdapter.value.getCapabilityState?.() ?? null;
-  if (documentMode === 'viewing') {
+  const command = isPendingNewComment.value ? 'comments.createFromSelection' : null;
+  const capability = v2CommentsAdapter.value.getCapabilityState?.(command) ?? null;
+  if (documentMode === 'viewing' && !isPendingNewComment.value) {
     return { ...(capability ?? {}), canWrite: false, reason: 'review-surface-read-only' };
   }
   return capability;

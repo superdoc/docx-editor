@@ -8374,6 +8374,28 @@ describe('DomPainter', () => {
           id: 'textbox-paragraph-lines',
           runs: [{ text: 'Textbox line', fontFamily: 'Arial', fontSize: 16, pmStart: 10, pmEnd: 22 }],
           sourceAnchor: { sourceNodeId: 'textbox-para-node' },
+          attrs: {
+            indent: { left: 48, hanging: 24 },
+            wordLayout: {
+              indentLeftPx: 48,
+              hangingPx: 24,
+              marker: {
+                markerText: '(A)',
+                markerBoxWidthPx: 24,
+                markerX: 24,
+                textStartX: 48,
+                justification: 'left',
+                suffix: 'tab',
+                run: { fontFamily: 'Arial', fontSize: 16 },
+              },
+            },
+          },
+        },
+        {
+          kind: 'paragraph',
+          id: 'textbox-paragraph-second-line',
+          runs: [{ text: 'Textbox second line', fontFamily: 'Arial', fontSize: 16, pmStart: 22, pmEnd: 41 }],
+          sourceAnchor: { sourceNodeId: 'textbox-second-para-node' },
         },
       ],
       textContent: {
@@ -8424,6 +8446,23 @@ describe('DomPainter', () => {
                     },
                   ],
                   totalHeight: 20,
+                  marker: { markerWidth: 24, markerTextWidth: 20, indentLeft: 48 },
+                },
+                {
+                  kind: 'paragraph',
+                  lines: [
+                    {
+                      fromRun: 0,
+                      fromChar: 0,
+                      toRun: 0,
+                      toChar: 19,
+                      width: 100,
+                      ascent: 12,
+                      descent: 4,
+                      lineHeight: 20,
+                    },
+                  ],
+                  totalHeight: 20,
                 },
               ],
             },
@@ -8446,6 +8485,7 @@ describe('DomPainter', () => {
     const shapeEl = mount.querySelector('.superdoc-vector-shape') as HTMLElement | null;
     const shapeSvg = shapeEl?.querySelector('svg') as SVGElement | null;
     const lineEl = mount.querySelector('.superdoc-line') as HTMLElement | null;
+    const lineEls = Array.from(mount.querySelectorAll('.superdoc-line')) as HTMLElement[];
     const contentRoot = lineEl?.closest('.superdoc-textbox-shape div[style*="z-index: 1"]') as HTMLElement | null;
 
     expect(shapeEl).toBeTruthy();
@@ -8463,16 +8503,134 @@ describe('DomPainter', () => {
     expect(lineEl?.dataset.layoutBlockRef).toBe('textbox-paragraph-lines');
     expect(lineEl?.dataset.layoutFragmentId).toBe('textbox:tb0|textbox-paragraph-lines|para:0:1');
     expect(lineEl?.dataset.sourceNodeId).toBe('textbox-para-node');
+    expect(shapeEl?.querySelector('.superdoc-paragraph-marker')?.textContent).toBe('(A)');
+    expect(lineEl?.style.paddingLeft).toBe('24px');
+    expect(lineEls).toHaveLength(2);
+    expect(lineEls[0]?.parentElement?.style.height).toBe('20px');
+    expect(lineEls[1]?.parentElement?.style.height).toBe('20px');
+    expect(lineEls[1]?.dataset.sourceNodeId).toBe('textbox-second-para-node');
     expect(shapeEl?.textContent).toContain('Textbox line');
+    expect(shapeEl?.textContent).toContain('Textbox second line');
     expect(shapeEl?.textContent).not.toContain('Fallback textbox line');
     expect(painter.consumePositionValidationSummary().groups).toContainEqual(
       expect.objectContaining({
         requirement: 'story-identity-required',
         storyKind: 'textbox',
         storyNamed: true,
-        valid: 1,
+        valid: 2,
       }),
     );
+  });
+
+  it('keeps textbox paragraph shading and borders inside that paragraph', () => {
+    const textboxBlock: FlowBlock = {
+      kind: 'drawing',
+      id: 'drawing-textbox-shaded-para',
+      drawingKind: 'textboxShape',
+      geometry: { width: 120, height: 80, rotation: 0, flipH: false, flipV: false },
+      shapeKind: 'rect',
+      fillColor: '#ffffff',
+      strokeColor: '#000000',
+      strokeWidth: 1,
+      textInsets: { top: 0, right: 0, bottom: 0, left: 0 },
+      attrs: { textboxId: 'tb-shaded' },
+      contentBlocks: [
+        {
+          kind: 'paragraph',
+          id: 'textbox-shaded-paragraph',
+          runs: [{ text: 'Shaded line', fontFamily: 'Arial', fontSize: 16, pmStart: 0, pmEnd: 11 }],
+          attrs: {
+            shading: { fill: '#ffeeaa' },
+            borders: {
+              top: { style: 'single', width: 1, color: '#000000' },
+              bottom: { style: 'single', width: 1, color: '#000000' },
+              left: { style: 'single', width: 1, color: '#000000' },
+              right: { style: 'single', width: 1, color: '#000000' },
+            },
+          },
+        },
+        {
+          kind: 'paragraph',
+          id: 'textbox-plain-paragraph',
+          runs: [{ text: 'Plain line', fontFamily: 'Arial', fontSize: 16, pmStart: 12, pmEnd: 22 }],
+        },
+      ],
+    };
+
+    const paragraphLine = {
+      fromRun: 0,
+      fromChar: 0,
+      toRun: 0,
+      toChar: 10,
+      width: 80,
+      ascent: 12,
+      descent: 4,
+      lineHeight: 20,
+    };
+    const paragraphMeasure = {
+      kind: 'paragraph' as const,
+      lines: [paragraphLine],
+      totalHeight: 20,
+    };
+
+    const textboxMeasure: Measure = {
+      kind: 'drawing',
+      drawingKind: 'textboxShape',
+      width: 120,
+      height: 80,
+      scale: 1,
+      naturalWidth: 120,
+      naturalHeight: 80,
+      geometry: { width: 120, height: 80, rotation: 0, flipH: false, flipV: false },
+    };
+
+    const painter = createTestPainter({ blocks: [textboxBlock], measures: [textboxMeasure] });
+    painter.paint(
+      {
+        pageSize: layout.pageSize,
+        pages: [
+          {
+            number: 1,
+            fragments: [
+              {
+                kind: 'drawing',
+                drawingKind: 'textboxShape',
+                blockId: 'drawing-textbox-shaded-para',
+                x: 30,
+                y: 40,
+                width: 120,
+                height: 80,
+                geometry: { width: 120, height: 80, rotation: 0, flipH: false, flipV: false },
+                scale: 1,
+                textboxId: 'tb-shaded',
+                contentMeasures: [paragraphMeasure, paragraphMeasure],
+              },
+            ],
+          },
+        ],
+      },
+      mount,
+    );
+
+    const lineEls = Array.from(mount.querySelectorAll('.superdoc-line')) as HTMLElement[];
+    expect(lineEls).toHaveLength(2);
+    const shadedHost = lineEls[0]?.parentElement as HTMLElement | null;
+    const plainHost = lineEls[1]?.parentElement as HTMLElement | null;
+    const shadingLayer = shadedHost?.querySelector('.superdoc-paragraph-shading') as HTMLElement | null;
+    const borderLayer = shadedHost?.querySelector('.superdoc-paragraph-border') as HTMLElement | null;
+
+    expect(shadedHost).toBeTruthy();
+    expect(plainHost).toBeTruthy();
+    expect(shadedHost).not.toBe(plainHost);
+    expect(shadedHost?.style.position).toBe('relative');
+    expect(shadedHost?.style.flex).toBe('0 0 auto');
+    expect(plainHost?.querySelector('.superdoc-paragraph-shading')).toBeNull();
+    expect(plainHost?.querySelector('.superdoc-paragraph-border')).toBeNull();
+    expect(shadingLayer).toBeTruthy();
+    expect(borderLayer).toBeTruthy();
+    expect(shadingLayer?.style.position).toBe('absolute');
+    expect(borderLayer?.style.position).toBe('absolute');
+    expectCssColor(shadingLayer?.style.backgroundColor ?? '', '#ffeeaa');
   });
 
   it('renders a canonical table inside the textbox clipping viewport', () => {

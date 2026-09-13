@@ -34,6 +34,8 @@ const SUPPORTED_EXPORTS = [
   { specifier: 'superdoc/ui/vue', key: './ui/vue' },
   // Node-only migration engine used by @superdoc/v2-collaboration-upgrade.
   { specifier: 'superdoc/collaboration-upgrade-engine', key: './collaboration-upgrade-engine' },
+  // Browser Worker bootstrap for customer-owned collaboration provider adapters.
+  { specifier: 'superdoc/collaboration-worker', key: './collaboration-worker' },
 ];
 
 // Removed v1 subpaths that must stay absent from the v2 package contract. The

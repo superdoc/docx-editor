@@ -32,6 +32,28 @@ describe('pm-range', () => {
     expect(result).toEqual({ pmStart: 10, pmEnd: 15 });
   });
 
+  it('preserves the explicit one-unit range of a multi-digit body note reference', () => {
+    const block: ParagraphBlock = {
+      kind: 'paragraph',
+      id: 'atomic-note-reference',
+      runs: [
+        {
+          kind: 'text',
+          text: '10',
+          fontFamily: 'Arial',
+          fontSize: 14,
+          pmStart: 10,
+          pmEnd: 11,
+          dataAttrs: { 'data-v2-note-ref': 'footnote:10' },
+        },
+      ],
+    };
+
+    const line = makeLine({ fromRun: 0, fromChar: 0, toRun: 0, toChar: 2 });
+
+    expect(computeLinePmRange(block, line)).toEqual({ pmStart: 10, pmEnd: 11 });
+  });
+
   it('treats field annotations as atomic units (pmEnd fallback = pmStart + 1)', () => {
     const block: ParagraphBlock = {
       kind: 'paragraph',

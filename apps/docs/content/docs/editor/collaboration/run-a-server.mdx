@@ -1,46 +1,58 @@
 ---
 title: Run a collaboration server
 navTitle: Run a server
-description: Start the local Hocuspocus server used by the SuperDoc collaboration example.
+description: Choose a provider and connect room access, storage, and recovery before deployment.
 ---
 
-Run a local Hocuspocus server when you need to test a complete collaboration room before connecting production authentication and persistence.
+The [two-editor example](/editor/collaboration/connect-two-editors) already runs a Hocuspocus server. Keep it for local
+development. Before deployment, choose who operates the provider and how rooms are authorized, saved, and recovered.
 
-## 1. Install the server
+## Run the server separately
 
-In a small Node.js project, install Hocuspocus and a TypeScript runner:
+The [collaboration example](https://go.superdoc.dev/examples/collaboration) pins Hocuspocus 2.15.3. Its `pnpm dev` command
+starts both the browser app and server. You do not need a second server process.
 
-```bash
-pnpm add @hocuspocus/server
-pnpm add --save-dev tsx
-```
-
-Create `server.ts` from the tested collaboration example:
-
-<include>../../../../../../examples/collaboration/server.ts</include>
-
-## 2. Start it
+To run only the server, stop `pnpm dev`, then run this from the example directory:
 
 ```bash
 pnpm exec tsx server.ts
 ```
 
-The example listens on port `1234` and keeps rooms in memory. Restarting the process clears them.
+The example listens on port `1234` and keeps rooms in memory. Restarting the process clears them. With no storage integration, unloading a room after its last editor disconnects also loses its state.
 
-## 3. Connect two editors
+Start the browser app separately with `pnpm exec vite`, or return to `pnpm dev` after stopping the standalone server.
 
-Configure the first browser with a Hocuspocus target and `roomMode: 'create'`. After the room exists, open a second browser with the same `documentId` and `roomMode: 'join'`. [Connect to a collaboration room](/editor/collaboration) shows the browser configuration.
-
-The complete two-browser project is available at [go.superdoc.dev/examples/collaboration](https://go.superdoc.dev/examples/collaboration).
-
-<Callout variant='success' title='Verification target'>
-  Edit the first browser. The second browser should show the change and export a DOCX containing the synchronized text.
-</Callout>
+Use the [two-editor walkthrough](/editor/collaboration/connect-two-editors#2-open-alex-and-sams-editors) to check the
+connection. For storage, pass `COLLABORATION_STORAGE_DIR` to the server command. For the access example, pass
+`COLLABORATION_DEMO_AUTH=1` to the server command and `VITE_COLLABORATION_DEMO_AUTH=1` to the Vite command.
+The default commands enable neither storage nor access checks.
 
 ## Prepare for production
 
+### Choose a provider
+
+Hocuspocus is the local example's default, not a requirement. The document's `collaboration` field accepts these targets through `DocumentCollaborationConfig` in the [preview API](/editor/collaboration/connect-two-editors#configure-your-application):
+
+| `providerType`  | Room and connection                     | Authentication                                  |
+| --------------- | --------------------------------------- | ----------------------------------------------- |
+| `'hocuspocus'`  | `documentId` and `serverUrl` (or `url`) | `token` or string `params`                      |
+| `'y-websocket'` | `documentId` and `serverUrl` (or `url`) | String `params` forwarded to your server        |
+| `'liveblocks'`  | `documentId` or `roomId`                | Exactly one of `authEndpoint` or `publicApiKey` |
+
+For Liveblocks, use an authenticated endpoint when access must be checked per room; a public key does not provide that check. Configure the chosen provider's server or service before pointing the editor at it. SuperDoc owns the browser connection and local shared state; pass connection settings, not an external `{ ydoc, provider }` pair.
+
+### Authorize access
+
 The minimal server deliberately has no authentication or durable storage. Before deployment, authenticate the WebSocket connection, authorize each room, persist room updates, set connection and document limits, and define backup and recovery behavior in the server layer.
 
-Do not treat a browser `documentId`, token, or hidden control as authorization. The server must decide which authenticated users may create, join, update, or lock each room.
+[Control access to a room](/editor/collaboration/control-room-access) demonstrates credential validation and per-room permission checks. Your server owns authorization; browser controls and display identity do not enforce it.
 
-Next, add [presence and awareness](/editor/collaboration/presence-and-awareness).
+### Initialize the document
+
+[Initialize a shared document](/editor/collaboration/initialize-a-document) explains who imports the DOCX, when to create or join, and how browser and backend initialization differ. The Hocuspocus server transports and stores shared state; it does not import the DOCX itself.
+
+### Persist the room separately from DOCX files
+
+[Save and restore a room](/editor/collaboration/save-and-restore-a-room) shows how to store binary Yjs state, restart the server, and reopen with edits intact. It also explains why DOCX exports and presence are separate from room storage.
+
+If your application starts with a local document, [upgrade it to collaboration](/editor/collaboration/upgrade-a-document) when someone invites another person to edit.

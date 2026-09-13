@@ -113,6 +113,38 @@ describe('DomPainter — editor-neutral layout identity (prep-001)', () => {
     expect(fragment.dataset.pmEnd).toBe('12');
   });
 
+  it('updates the fragment column owner across persistent paints', () => {
+    const painter = createDomPainter({});
+    const resolve = (columnIndex?: number): ResolvedLayout =>
+      resolveLayout({
+        layout: {
+          ...layout,
+          pages: [
+            {
+              ...layout.pages[0],
+              fragments: layout.pages[0].fragments.map((fragment) => ({
+                ...fragment,
+                ...(columnIndex == null ? {} : { columnIndex }),
+              })),
+            },
+          ],
+        },
+        flowMode: 'paginated',
+        blocks: [block],
+        measures: [measure],
+      });
+
+    paintResolvedLayoutPersistent(painter, resolve(1), mount);
+    const fragment = mount.querySelector('.superdoc-fragment') as HTMLElement;
+    expect(fragment.dataset.layoutColumnIndex).toBe('1');
+
+    paintResolvedLayoutPersistent(painter, resolve(0), mount);
+    expect((mount.querySelector('.superdoc-fragment') as HTMLElement).dataset.layoutColumnIndex).toBe('0');
+
+    paintResolvedLayoutPersistent(painter, resolve(), mount);
+    expect((mount.querySelector('.superdoc-fragment') as HTMLElement).dataset.layoutColumnIndex).toBeUndefined();
+  });
+
   it('emits the same fragment id across repaints when the producer state is unchanged', () => {
     paintLayout(mount);
     const firstId = (mount.querySelector('.superdoc-fragment') as HTMLElement).dataset.layoutFragmentId;

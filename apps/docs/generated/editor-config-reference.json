@@ -82,7 +82,7 @@
       "name": "document",
       "type": "DocumentSource | null",
       "required": false,
-      "description": "Document to open. Pass a URL, file, byte source, or structured source. Use a structured document carrying `v2Collaboration` for collaboration, or a structured source for other metadata. Omit it to open a blank DOCX.",
+      "description": "Document to open. Pass a URL, file, byte source, or structured source. Use a structured document carrying `collaboration` for collaboration, or a structured source for other metadata. Omit it to open a blank DOCX.",
       "group": "other"
     },
     {
@@ -126,7 +126,7 @@
       "type": "false | {\n  toolbar?: false | true | ToolbarConfig;\n  comments?: false | true | CommentsConfig;\n  contextMenu?: false | true | ContextMenuConfig;\n  loading?: boolean;\n  search?: false | true | SearchConfig;\n  linkPopover?: false | true | LinkPopoverConfig;\n  ruler?: false | true | RulerConfig;\n  contentControls?: false | true | ContentControlsConfig;\n}",
       "typeName": "false | UIConfig",
       "required": false,
-      "description": "Which built-in interface SuperDoc renders. Omit it to keep SuperDoc's historical rendering: comments, the context menu, content-control chrome, and mode-aware hyperlink activation are on; search and the ruler are opt-in; and the toolbar renders once it has somewhere to mount. That profile is not symmetrical, and omitting this field reproduces it exactly. Pass `false` when the application owns the interface. SuperDoc then renders no controls, chrome, dialogs, or popovers, while the document, the Document API, and `editor.ui` keep working — so a custom UI drives the same commands the built-in one would have. Pass an object to choose per surface. An omitted key keeps that surface's default rather than following its siblings, so `{ comments: false }` disables comments and changes nothing else.",
+      "description": "Which built-in interface SuperDoc renders. Omit it to keep SuperDoc's historical rendering: comments, the context menu, content-control chrome, and mode-aware hyperlink activation are on; search and the ruler are opt-in; and the toolbar renders once it has somewhere to mount. That profile is not symmetrical, and omitting this field reproduces it exactly. Pass `false` when the application owns the interface. SuperDoc then renders no controls, chrome, dialogs, or popovers, while the document, the Document API, and `superdoc.ui` keep working — so a custom UI drives the same commands the built-in one would have. Pass an object to choose per surface. An omitted key keeps that surface's default rather than following its siblings, so `{ comments: false }` disables comments and changes nothing else.",
       "group": "other"
     },
     {
@@ -139,7 +139,7 @@
     },
     {
       "name": "interaction",
-      "type": "{\n  comments?: CommentInteractionConfig;\n  trackedChanges?: { allowDecisions?: boolean; };\n}",
+      "type": "{\n  comments?: CommentInteractionConfig;\n  trackedChanges?: TrackChangesInteractionConfig;\n}",
       "typeName": "InteractionConfig",
       "required": false,
       "description": "Client-side interaction policy. Independent of `ui`, so it still applies when the application renders its own UI. This is not an authorization boundary.",
@@ -167,6 +167,21 @@
       "typeName": "PermissionResolver",
       "required": false,
       "description": "Customize client-side permission decisions. This is not an authorization boundary. When both resolver spellings are present, this field takes precedence over the deprecated `modules.comments.permissionResolver` field.",
+      "group": "other"
+    },
+    {
+      "name": "fieldContext",
+      "type": "{\n  fileName?: null | string;\n  fullPath?: null | string;\n  currentUser?: null | { name?: string | null; initials?: string | null; address?: string | null; };\n}",
+      "typeName": "{ fileName?: string | null; fullPath?: string | null; currentUser?: { name?: string | null; initials?: string | null; address?: string | null; } | null; }",
+      "required": false,
+      "description": "Default V2 field values for one initial document. For multiple documents, set Document.fieldContext on each entry.",
+      "group": "other"
+    },
+    {
+      "name": "fieldUpdatePolicy",
+      "type": "\"refreshOnOpen\"",
+      "required": false,
+      "description": "Refresh supported unlocked V2 fields on local editable open. Omission preserves imported caches.",
       "group": "other"
     },
     {
@@ -310,7 +325,7 @@
       "name": "onException",
       "type": "(params: SuperDocExceptionPayload) => void",
       "required": false,
-      "description": "Callback when SuperDoc emits an `exception` event. The payload is a union of runtime shapes (store init, restore failure, editor lifecycle, built-in toolbar, hyperlink activation, structured diagnostic). Narrow with `'stage' in params` (store init), `'code' in params` (editor), `'itemName' in params` (toolbar), `'source' in params` (hyperlink), or `'diagnosticCode' in params` (structured diagnostic) before reading shape-specific fields. A structured diagnostic (`SuperDocExceptionDiagnosticPayload`, `diagnosticCode` one of `PARSE_ERROR` | `RENDER_ERROR` | `UNSUPPORTED_FEATURE` | `PERFORMANCE_ERROR`) can accompany a legacy exception payload. SuperDoc filters unsupported internal records. For translated package and readiness records, it emits at most one structured diagnostic for each `(documentId, generation, internalCode)` tuple. It also suppresses a generic boot diagnostic when a more specific package diagnostic describes the same failure. A single incident can therefore raise 0..N structured diagnostics. Only the `unzip` and `render` stages are populated today; `parse` and `layout` are reserved for future coverage.",
+      "description": "Callback when SuperDoc emits an `exception` event. The payload is a union of runtime shapes (store init, restore failure, editor lifecycle, built-in toolbar, hyperlink activation, structured diagnostic). Narrow with `'stage' in params` (store init), `'code' in params` (editor), `'itemName' in params` (toolbar), `'source' in params` (hyperlink), or `'diagnosticCode' in params` (structured diagnostic) before reading shape-specific fields. A structured diagnostic (`SuperDocExceptionDiagnosticPayload`, `diagnosticCode` one of `PARSE_ERROR` | `RENDER_ERROR` | `UNSUPPORTED_FEATURE` | `PERFORMANCE_ERROR`) can accompany a legacy exception payload. SuperDoc filters unsupported internal records. For translated package and readiness records, it emits at most one structured diagnostic for each `(documentId, generation, internalCode)` tuple. It also suppresses a generic boot diagnostic when a more specific package diagnostic describes the same failure. A single incident can therefore raise 0..N structured diagnostics. The `unzip`, `parse`, `render`, and `export` stages are populated today; `layout` is reserved for future coverage.",
       "group": "other"
     },
     {
@@ -372,6 +387,14 @@
       "type": "string",
       "required": false,
       "description": "Fallback filename for `export()` when `exportedName` is omitted.",
+      "group": "other"
+    },
+    {
+      "name": "trackChanges",
+      "type": "{\n  enabled?: boolean;\n  replacementMode?: \"grouped\" | \"separate\";\n  authorColors?: TrackChangesAuthorColorsConfig;\n  semanticColors?: TrackChangesSemanticColorsConfig;\n  visible?: boolean;\n}",
+      "typeName": "TrackChangesConfig",
+      "required": false,
+      "description": "Configure replacement review and tracked-change colors. Use `viewing.trackedChanges` to choose what a viewer sees and `interaction.trackedChanges` to allow or prevent review decisions.",
       "group": "other"
     },
     {
@@ -450,10 +473,10 @@
     },
     {
       "name": "fonts",
-      "type": "{\n  bundled?: false | true | string[] | Record<string, unknown> | \"baseline\" | \"full\";\n  families?: FontFamilyConfig[];\n  assetBaseUrl?: string;\n  resolveAssetUrl?: (context: import(\"@superdoc/font-system\").FontAssetUrlContext) => string;\n  assetUrl?: string | (context: import(\"@superdoc/font-system\").FontAssetUrlContext) => string;\n}",
+      "type": "{\n  bundled?: false | true | string[] | Record<string, unknown> | \"baseline\" | \"full\";\n  families?: FontFamilyConfig[];\n  map?: Record<string, string>;\n  assetBaseUrl?: string;\n  resolveAssetUrl?: (context: import(\"@superdoc/font-system\").FontAssetUrlContext) => string;\n  assetUrl?: string | (context: import(\"@superdoc/font-system\").FontAssetUrlContext) => string;\n}",
       "typeName": "FontsConfig",
       "required": false,
-      "description": "Font system configuration. The reviewed fallback pack ships in the optional `@superdoc-dev/fonts` package: pass `superdocFonts` (bundler) or the `SuperDocFonts` global from its `superdoc-fonts.min.js` browser build (CDN). To self-host, set `fonts.assetBaseUrl` (e.g. `/fonts/` or a CDN URL) or `fonts.resolveAssetUrl` for signed/versioned hosting. SuperDoc core ships no fonts; with none configured the toolbar shows the baseline and documents render with system fonts.",
+      "description": "Font system configuration. The reviewed fallback pack ships in the optional `@superdoc-dev/fonts` package: pass `superdocFonts` (bundler) or the `SuperDocFonts` global from its `superdoc-fonts.min.js` browser build (CDN). To self-host, set `fonts.assetBaseUrl` (e.g. `/fonts/` or a CDN URL) or `fonts.resolveAssetUrl` for signed/versioned hosting. Core ships no document families, so with none configured the toolbar shows the baseline and documents render with system fonts. It does ship one built-in face: a core-symbol provider requested whenever the document contains symbol or dingbat glyphs it covers, such as the • bullet, even with no `fonts` configuration.",
       "group": "other"
     },
     {

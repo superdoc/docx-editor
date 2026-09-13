@@ -1,6 +1,7 @@
 import '../style.css';
 
 import { EventEmitter } from 'eventemitter3';
+import type { DocumentReplacementResult } from '../public/document-replacement.js';
 import { v4 as uuidv4 } from 'uuid';
 import { markRaw, nextTick, toRaw } from 'vue';
 import type { HocuspocusProviderWebsocket } from '@hocuspocus/provider';
@@ -10,7 +11,7 @@ import JSZip from 'jszip';
 import { DOCX, PDF, HTML, getActorIdentityKey, normalizeActorEmail } from '@superdoc/common';
 import { DOM_CLASS_NAMES } from '@superdoc/dom-contract';
 import { SuperComments } from '../components/CommentsLayer/commentsList/super-comments-list.js';
-import { resolveFitWidthOptions } from '../composables/use-viewport-fit.js';
+import { computeAppliedFitZoom, resolveFitWidthOptions } from '../composables/use-viewport-fit.js';
 import { createSuperdocVueApp } from './create-app.js';
 import { shuffleArray } from '@superdoc/common/collaboration/awareness';
 import { createDownload, cleanName } from './helpers/export.js';
@@ -37,6 +38,7 @@ import { normalizeCommentsUiConfig } from '../helpers/comment-small-screen.js';
 import { EditorRuntimeRegistry } from './editor-runtime/editor-runtime-registry.js';
 import type { EditorRuntimeFocusOptions } from './editor-runtime/types.js';
 import { createBuiltInToolbar } from '../internal/toolbar/index.js';
+import { translateExportDiagnostic } from '../internal/diagnostics/translate-diagnostic.js';
 import { createSuperDocUI } from '../public/ui/create-super-doc-ui.js';
 import type { BorrowedSuperDocUI, SelectionSlice, SuperDocUI } from '../public/ui/types.js';
 import { loadDefaultV2IntegrationOrFallback } from './v2-integration/v2-integration.js';
@@ -488,11 +490,6 @@ function isV2ActiveEditorFacade(editor: unknown): editor is V2ActiveEditorFacade
   return Boolean(editor && typeof editor === 'object' && (editor as { editorVersion?: unknown }).editorVersion === 2);
 }
 
-function isV2FailClosedExportError(error: unknown): boolean {
-  const code = error && typeof error === 'object' ? (error as { code?: unknown }).code : null;
-  return code === 'comment-export-missing-story-reference' || code === 'v2-worker-comment-export-mode-unsupported';
-}
-
 function normalizeActiveEditorDocumentId(documentId: unknown): string | null {
   return typeof documentId === 'string' && documentId.length > 0 ? documentId : null;
 }
@@ -942,9 +939,6 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
 
   /** Count of editors that have signaled `editorCreate`. */
   readyEditors = 0;
-
-  /** Outstanding async saves waiting for collaboration ack. */
-  pendingCollaborationSaves = 0;
 
   // ─── Runtime fields populated by `#init` ──────────────────────────────
   // Declared with `declare` so TS knows the field shape without emitting a
@@ -1542,7 +1536,10 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
         this.#pendingContentControlInputExpiresAt = null;
       });
 
-      contentControlsUnsub = this.#ui.contentControls.observe((snapshot) => {
+      // Passive: the bridge only needs the active path. Taking the directory
+      // lease here would renew catalog demand on every typing revision for any
+      // consumer that merely listens for the event.
+      contentControlsUnsub = this.#ui.contentControls.observeActivePath((snapshot) => {
         const editor = this.activeEditor;
         const activePath = snapshot.activeIds.map((id) =>
           toContentControlRef(snapshot.items.find((item) => item.id === id)),
@@ -2175,6 +2172,16 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
   }
 
   #toV2CollaborationConfig(target: NormalizedV2CollaborationTarget): V2CollaborationConfig {
+    if (target.providerFamily === 'extension') {
+      return {
+        providerType: 'extension',
+        adapterId: target.adapterId as string,
+        documentId: target.documentId,
+        roomMode: target.roomMode,
+        ...(target.providerOptions !== undefined ? { providerOptions: target.providerOptions } : {}),
+        ...(target.token ? { token: target.token } : {}),
+      };
+    }
     if (target.providerFamily === 'liveblocks') {
       return {
         providerType: 'liveblocks',
@@ -2278,10 +2285,12 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
         ? ({ ...configDoc.v2Collaboration, roomMode: 'join' } as RuntimeDocument['v2Collaboration'])
         : null;
     configDoc.data = nextData;
+    configDoc.fieldContext = {};
     if (nextV2Collaboration) configDoc.v2Collaboration = nextV2Collaboration;
     const storeDoc = this.superdocStore?.documents.find((d: RuntimeDocument) => d.id === configDoc.id) ?? null;
     if (storeDoc) {
       storeDoc.data = nextData;
+      storeDoc.fieldContext = {};
       if (nextV2Collaboration) this.#writeStoreDocV2Collaboration(storeDoc, nextV2Collaboration);
     }
   }
@@ -2484,6 +2493,7 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
       null;
 
     const resolution = resolveV2CollaborationTarget({
+      collaboration: options.collaboration,
       v2Collaboration,
       legacyCollaboration,
       documentType: DOCX,
@@ -3503,12 +3513,24 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
    */
   setTrackedChangesPreferences(preferences?: { mode?: 'review' | 'original' | 'final' | 'off'; enabled?: boolean }) {
     if (typeof preferences?.enabled === 'boolean') {
+      this.config.trackChanges = {
+        ...this.config.trackChanges,
+        enabled: preferences.enabled,
+      };
       this.config.modules.trackChanges = {
         ...this.config.modules.trackChanges,
         enabled: preferences.enabled,
       };
     }
     this.#applyTrackedChangesRenderOptions(preferences);
+  }
+
+  /** The configured tracked-change opt-out, honoring the deprecated module spelling. */
+  #trackedChangesEnabled(): boolean {
+    if (typeof this.config.trackChanges?.enabled === 'boolean') return this.config.trackChanges.enabled;
+    if (typeof this.config.modules?.trackChanges?.enabled === 'boolean')
+      return this.config.modules.trackChanges.enabled;
+    return true;
   }
 
   #applyTrackedChangesRenderOptions(options?: { mode?: 'review' | 'original' | 'final' | 'off'; enabled?: boolean }) {
@@ -3573,8 +3595,9 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
       if (firstEditor) this.setActiveEditor(firstEditor);
     }
 
-    // Enable tracked changes for editing mode
-    this.#applyTrackedChangesRenderOptions({ mode: 'review', enabled: true });
+    // Editing mode reviews tracked changes, but an integration that configured
+    // `trackChanges.enabled: false` keeps that choice across mode changes.
+    this.#applyTrackedChangesRenderOptions({ mode: 'review', enabled: this.#trackedChangesEnabled() });
 
     store.documents.forEach((doc: RuntimeDocument) => {
       doc.restoreComments?.();
@@ -3590,8 +3613,8 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
       if (firstEditor) this.setActiveEditor(firstEditor);
     }
 
-    // Enable tracked changes for suggesting mode
-    this.#applyTrackedChangesRenderOptions({ mode: 'review', enabled: true });
+    // Suggesting mode reviews tracked changes, subject to the same configured opt-out.
+    this.#applyTrackedChangesRenderOptions({ mode: 'review', enabled: this.#trackedChangesEnabled() });
 
     store.documents.forEach((doc: RuntimeDocument) => {
       doc.restoreComments?.();
@@ -3780,6 +3803,19 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
     }
     if (this.superdocStore.zoomMode === mode) return;
     this.superdocStore.zoomMode = mode;
+
+    if (mode === 'fit-width') {
+      const metrics = this.superdocStore.viewportMetrics;
+      if (metrics) {
+        const target = computeAppliedFitZoom(
+          metrics.availableWidth,
+          metrics.documentWidth,
+          resolveFitWidthOptions(this.config.zoom?.fitWidth),
+        );
+        if (target !== null) this.superdocStore.activeZoom = target;
+      }
+    }
+
     this.emit('zoomChange', { zoom: this.getZoom(), mode });
   }
 
@@ -3975,21 +4011,45 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
   /**
    * Replace the active document with a new file while preserving the mounted
    * editor instance when the active runtime supports it.
+   * Returns the raw runtime value. Use `replaceDocument()` for a typed outcome.
    *
    * V2 collaboration routes this through the host-owned replace-file command so
    * the room can be atomically cleared and reseeded instead of tearing down the
    * SuperDoc instance and racing an empty Y.Doc against imported DOCX bytes.
    */
   async replaceFile(source: File | Blob | ArrayBuffer | Uint8Array): Promise<unknown> {
+    return (await this.#replaceActiveDocument(source)).raw;
+  }
+
+  /**
+   * Replace mounted content and report whether the requested document opened.
+   * Operational errors reject the promise. `onReady` can also fire during recovery;
+   * use `ok` to decide whether this replacement succeeded.
+   */
+  async replaceDocument(source: File | Blob | ArrayBuffer | Uint8Array): Promise<DocumentReplacementResult> {
+    const { raw, confirmed } = await this.#replaceActiveDocument(source);
+    if (confirmed) return { ok: true };
+    const result: DocumentReplacementResult = { ok: false };
+    if (raw && typeof raw === 'object') {
+      if ('reason' in raw && typeof raw.reason === 'string') result.reason = raw.reason;
+      if ('detail' in raw && typeof raw.detail === 'string') result.detail = raw.detail;
+    }
+    return result;
+  }
+
+  async #replaceActiveDocument(
+    source: File | Blob | ArrayBuffer | Uint8Array,
+  ): Promise<{ raw: unknown; confirmed: boolean }> {
     const activeEditor = this.activeEditor as ActiveEditor | null;
     if (isV2ActiveEditorFacade(activeEditor) && typeof activeEditor.replaceFile === 'function') {
       const result = await activeEditor.replaceFile(source);
       const state = result && typeof result === 'object' ? (result as { state?: unknown }).state : null;
-      if (state === null || state === 'review-ready' || state === 'editing-ready') {
+      const confirmed = state === null || state === 'review-ready' || state === 'editing-ready';
+      if (confirmed) {
         this.#replaceActiveDocumentData(activeEditor, source);
         this.emit('document-replaced', { editor: activeEditor, host: (activeEditor as { host?: unknown })?.host });
       }
-      return result;
+      return { raw: result, confirmed };
     }
 
     const legacyReplaceFile =
@@ -3999,16 +4059,7 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
         : null;
     if (typeof legacyReplaceFile === 'function') {
       const result = await legacyReplaceFile.call(activeEditor, source);
-      // Same confirmation gate as the v2 branch, and covering the same two
-      // effects. A legacy adapter that reports a non-ready state without
-      // throwing should neither have its bytes persisted into config and the
-      // store nor trigger a UI reset — v2 has always gated both together, and
-      // gating only the emit here would ship a half-applied rule that reads as
-      // if the data write were covered too.
-      //
-      // A result carrying no `state` counts as confirmed, which is what every
-      // adapter predating that field returns, so existing legacy behaviour is
-      // unchanged for them.
+      // Unlike v2, older adapters confirm by resolving without a state field.
       const legacyState = result && typeof result === 'object' ? (result as { state?: unknown }).state : undefined;
       const legacyConfirmed =
         legacyState === undefined ||
@@ -4019,7 +4070,7 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
         this.#replaceActiveDocumentData(activeEditor, source);
         this.emit('document-replaced', { editor: activeEditor, host: (activeEditor as { host?: unknown })?.host });
       }
-      return result;
+      return { raw: result, confirmed: legacyConfirmed };
     }
 
     throw new Error('SuperDoc: replaceFile is unavailable for the active editor');
@@ -4145,8 +4196,9 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
           } catch (error) {
             if (!error || typeof error !== 'object' || !bridgedExportErrors.has(error)) {
               this.emit('exception', { error, document: doc });
+              this.emit('exception', translateExportDiagnostic(error, { documentId: doc.id, editor: null }));
             }
-            if (isV2Editor && (commentsType === 'clean' || isV2FailClosedExportError(error))) {
+            if (isV2Editor) {
               throw error;
             }
           }
@@ -4165,50 +4217,23 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
   }
 
   /**
-   * Request an immediate save from all collaboration documents
-   * @returns Resolves when all documents have saved
-   */
-  async #triggerCollaborationSaves() {
-    this.#log('🦋 [superdoc] Triggering collaboration saves');
-    const store = this.#requireSuperdocStore('save');
-    return new Promise<void>((resolve) => {
-      store.documents.forEach((doc: RuntimeDocument, index: number) => {
-        this.#log(`Before reset - Doc ${index}: pending = ${this.pendingCollaborationSaves}`);
-        this.pendingCollaborationSaves = 0;
-        if (doc.ydoc) {
-          this.pendingCollaborationSaves++;
-          this.#log(`After increment - Doc ${index}: pending = ${this.pendingCollaborationSaves}`);
-          const metaMap = doc.ydoc.getMap('meta');
-          metaMap.observe((event: Y.YMapEvent<unknown>) => {
-            if (event.changes.keys.has('immediate-save-finished')) {
-              this.pendingCollaborationSaves--;
-              if (this.pendingCollaborationSaves <= 0) {
-                resolve();
-              }
-            }
-          });
-          metaMap.set('immediate-save', true);
-        }
-      });
-      this.#log(
-        `FINAL pending = ${this.pendingCollaborationSaves}, but we have ${store.documents.filter((d: RuntimeDocument) => d.ydoc).length} docs!`,
-      );
-    });
-  }
-
-  /**
-   * Save the superdoc if in collaboration mode. Resolves when all
-   * collaboration documents have flushed their pending writes.
+   * Run each DOCX editor's save, including its V2 collaboration barrier.
+   * Resolves after serialization; rejects if an editor cannot save.
+   * Backend storage persistence is controlled by the collaboration server
+   * and is not acknowledged by this method. Use export() to obtain DOCX bytes.
    */
   async save(): Promise<void> {
-    const savePromises = [
-      this.#triggerCollaborationSaves(),
-      // this.exportEditorsToDOCX(),
-    ];
-
-    this.#log('🦋 [superdoc] Saving superdoc');
-    await Promise.all(savePromises);
-    this.#log('🦋 [superdoc] Save complete');
+    const documents = this.#requireSuperdocStore('save').documents;
+    await Promise.all(
+      documents.map(async (doc: RuntimeDocument) => {
+        if (doc.type !== DOCX) return;
+        const editor = doc.getEditor?.();
+        if (!isV2ActiveEditorFacade(editor) || typeof editor.save !== 'function') {
+          throw new Error(`SuperDoc: save is unavailable for document "${doc.id}"`);
+        }
+        await editor.save();
+      }),
+    );
   }
 
   /**

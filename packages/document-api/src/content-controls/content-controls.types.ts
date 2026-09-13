@@ -9,6 +9,7 @@ import type { BlockNodeAddress, NodeKind } from '../types/base.js';
 import type { SelectionTarget } from '../types/address.js';
 import type { SDFragment } from '../types/fragment.js';
 import type { ReceiptFailure, ReceiptInsert } from '../types/receipt.js';
+import type { StoryLocator } from '../types/story.types.js';
 
 // ---------------------------------------------------------------------------
 // Enums and constants
@@ -183,6 +184,8 @@ export interface ContentControlTarget {
   kind: NodeKind;
   nodeType: 'sdt';
   nodeId: string;
+  /** Story containing this content control. Omit for body (backward compatible). */
+  story?: StoryLocator;
 }
 
 export type ContentControlMoveDestination =
@@ -399,7 +402,7 @@ export interface ContentControlsGetContentResult {
 export interface ContentControlsReplaceContentInput {
   target: ContentControlTarget;
   content: string;
-  format?: 'text' | 'html';
+  format?: 'text' | 'html' | 'ooxml';
 }
 
 export interface ContentControlsClearContentInput {

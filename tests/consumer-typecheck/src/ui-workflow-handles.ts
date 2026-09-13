@@ -17,6 +17,7 @@ import type {
   ContentControlsHandle,
   ContentControlsSlice,
   ContentControlFocusResult,
+  ContentControlHighlightResult,
   MetadataHandle,
   SelectionHandle,
   SelectionInfo,
@@ -35,6 +36,7 @@ import type {
   CommandExecutionResult,
   SuperDocUIReason,
 } from 'superdoc/ui';
+import type { ExportParams } from 'superdoc';
 
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
 type AssertEqual<A, B> = Equal<A, B> extends true ? true : never;
@@ -75,8 +77,20 @@ void comments.scrollTo('c-1').then((r) => {
 // ─── Track changes (row 748) ────────────────────────────────────────
 const trackChanges: TrackChangesHandle = ui.trackChanges;
 const _trackChangesList: AssertEqual<ReturnType<TrackChangesHandle['list']>, readonly TrackChangesItem[]> = true;
+const _accept: AssertEqual<ReturnType<TrackChangesHandle['accept']>, CommandExecutionResult> = true;
+const _acceptAsync: AssertEqual<ReturnType<TrackChangesHandle['acceptAsync']>, Promise<CommandExecutionResult>> = true;
+const _reject: AssertEqual<ReturnType<TrackChangesHandle['reject']>, CommandExecutionResult> = true;
+const _rejectAsync: AssertEqual<ReturnType<TrackChangesHandle['rejectAsync']>, Promise<CommandExecutionResult>> = true;
 const _acceptAll: AssertEqual<ReturnType<TrackChangesHandle['acceptAll']>, CommandExecutionResult> = true;
+const _acceptAllAsync: AssertEqual<
+  ReturnType<TrackChangesHandle['acceptAllAsync']>,
+  Promise<CommandExecutionResult>
+> = true;
 const _rejectAll: AssertEqual<ReturnType<TrackChangesHandle['rejectAll']>, CommandExecutionResult> = true;
+const _rejectAllAsync: AssertEqual<
+  ReturnType<TrackChangesHandle['rejectAllAsync']>,
+  Promise<CommandExecutionResult>
+> = true;
 const _next: AssertEqual<ReturnType<TrackChangesHandle['next']>, string | null> = true;
 const _previous: AssertEqual<ReturnType<TrackChangesHandle['previous']>, string | null> = true;
 const _navigateNext: AssertEqual<ReturnType<TrackChangesHandle['navigateNext']>, Promise<ScrollIntoViewOutput>> = true;
@@ -87,14 +101,25 @@ const _navigatePrevious: AssertEqual<
 const _tcSetActive: AssertEqual<ReturnType<TrackChangesHandle['setActive']>, boolean> = true;
 const _tcScrollTo: AssertEqual<ReturnType<TrackChangesHandle['scrollTo']>, Promise<WorkflowScrollResult>> = true;
 void trackChanges.list();
+void trackChanges.accept('tc-1');
+void trackChanges.acceptAsync('tc-1');
+void trackChanges.reject('tc-1');
+void trackChanges.rejectAsync('tc-1');
+void trackChanges.acceptAsync({ id: 'tc-footnote', story: { kind: 'story', storyType: 'footnote', noteId: 'fn-1' } });
 void trackChanges.acceptAll();
+void trackChanges.acceptAllAsync();
 void trackChanges.rejectAll();
+void trackChanges.rejectAllAsync();
 const navResult: string | null = trackChanges.next();
 void navResult;
 void trackChanges.navigateNext();
 void trackChanges.navigatePrevious();
 const _tcSetActiveAccepted: boolean = trackChanges.setActive('tc-1');
 const _tcScrollAsV1: Promise<ScrollIntoViewOutput> = trackChanges.scrollTo('tc-1');
+// A row's `{ id, story }` pins the occurrence for both activation and reveal.
+const _tcSetActiveStory: boolean = trackChanges.setActive({ id: 'tc-1', story: { kind: 'story' } });
+void trackChanges.scrollTo({ id: 'tc-1', story: { kind: 'story' } });
+void _tcSetActiveStory;
 void _tcSetActiveAccepted;
 
 // ─── Content controls (row 738) ─────────────────────────────────────
@@ -107,6 +132,23 @@ const _ccScrollIntoView: AssertEqual<
   Promise<ScrollIntoViewOutput>
 > = true;
 const _ccFocus: AssertEqual<ReturnType<ContentControlsHandle['focus']>, Promise<ContentControlFocusResult>> = true;
+const _ccHighlight: AssertEqual<
+  ReturnType<ContentControlsHandle['highlight']>,
+  Promise<ContentControlHighlightResult>
+> = true;
+const _ccHighlightInput: AssertEqual<Parameters<ContentControlsHandle['highlight']>, [input: { id: string }]> = true;
+const _ccClearHighlight: AssertEqual<ReturnType<ContentControlsHandle['clearHighlight']>, void> = true;
+const _ccClearHighlightInput: AssertEqual<Parameters<ContentControlsHandle['clearHighlight']>, []> = true;
+void contentControls.highlight({ id: 'cc-1' });
+contentControls.clearHighlight();
+// @ts-expect-error Appearance is configured through inherited CSS variables.
+void contentControls.highlight({ id: 'cc-1', color: 'green' });
+// @ts-expect-error A control id is required.
+void contentControls.highlight({});
+void _ccHighlight;
+void _ccHighlightInput;
+void _ccClearHighlight;
+void _ccClearHighlightInput;
 void contentControls.list();
 const _ccSnapshotFromGet: ContentControlsSlice = contentControls.get();
 const _ccFromMainGet: ContentControlInfo | null = contentControls.get({ id: 'cc-1' });
@@ -114,6 +156,20 @@ void contentControls.getById('cc-1');
 void contentControls.getRect({ id: 'cc-1' });
 void contentControls.scrollIntoView({ id: 'cc-1' });
 void contentControls.focus({ id: 'cc-1' });
+// The passive active-path subscription has the same listener shape and
+// disposer return as observe.
+const _ccObserveActivePath: AssertEqual<
+  Parameters<ContentControlsHandle['observeActivePath']>,
+  Parameters<ContentControlsHandle['observe']>
+> = true;
+const _ccObserveActivePathReturn: AssertEqual<
+  ReturnType<ContentControlsHandle['observeActivePath']>,
+  () => void
+> = true;
+const _ccObserveReturn: AssertEqual<ReturnType<ContentControlsHandle['observe']>, () => void> = true;
+const stopActivePath = contentControls.observeActivePath(() => undefined);
+stopActivePath();
+void [_ccObserveActivePath, _ccObserveActivePathReturn, _ccObserveReturn];
 // Reactive reads come from the snapshot; `doc` owns fresh live reads.
 const _ccItems: AssertEqual<ReturnType<ContentControlsHandle['getSnapshot']>['items'], readonly ContentControlInfo[]> =
   true;
@@ -149,7 +205,10 @@ void styles.getActiveParagraphStyle();
 // ─── Document (compat) ──────────────────────────────────────────────
 const document: DocumentHandle = ui.document;
 const _documentGetText: AssertEqual<ReturnType<DocumentHandle['getText']>, string | null> = true;
+const _documentExportParams: AssertEqual<Parameters<DocumentHandle['export']>, [input?: ExportParams]> = true;
+const _documentExportResult: AssertEqual<ReturnType<DocumentHandle['export']>, Promise<Blob> | undefined> = true;
 void document.getText();
+void document.export({ exportType: ['docx'], triggerDownload: false });
 
 // ─── Fail-closed result reason is the stable union, not string/any ──
 const _wfReason: WorkflowActionResult['reason'] = 'host-capability-unavailable';

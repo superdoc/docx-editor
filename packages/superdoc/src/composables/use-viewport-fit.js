@@ -66,6 +66,70 @@ export const normalizePdfPageMeasurement = (measured, scaleFactor, zoomFactor) =
   return zoomFactor > 0 ? measured / zoomFactor : measured;
 };
 
+// Page width in CSS px at 100% zoom for one DOCX editor. V2 publishes
+// zoom-independent base geometry through pageMetrics. Other editor
+// implementations expose the same geometry through laid-out pages or page styles.
+// V2 publishes a new page-metrics snapshot per paint, and its `pages` array
+// materializes entries lazily on read, so walking it on every
+// `pagination-update` would materialize every retained page after each
+// keystroke. The producer publishes `widestPageWidthPx` for exactly this
+// reason; the walk stays only as a fallback for snapshots that predate it.
+const resolveV2WidestPageWidth = (snapshot) => {
+  if (!snapshot || typeof snapshot !== 'object') return 0;
+  const published = snapshot.widestPageWidthPx;
+  if (typeof published === 'number' && Number.isFinite(published)) return published;
+  let widestPage = 0;
+  const pages = snapshot.pages;
+  if (Array.isArray(pages)) {
+    for (const page of pages) {
+      const width = page?.base?.widthPx;
+      if (typeof width === 'number' && Number.isFinite(width) && width > widestPage) {
+        widestPage = width;
+      }
+    }
+  }
+  return widestPage;
+};
+
+export const resolveEditorPageWidth = (editor) => {
+  if (!editor) return null;
+
+  let widestPage = 0;
+  try {
+    widestPage = resolveV2WidestPageWidth(editor.pageMetrics?.getSnapshot?.());
+  } catch {
+    widestPage = 0;
+  }
+  if (widestPage > 0) return widestPage;
+
+  try {
+    const pages = editor.getPages?.();
+    if (Array.isArray(pages)) {
+      for (const page of pages) {
+        const width = page?.size?.w;
+        if (typeof width === 'number' && Number.isFinite(width) && width > widestPage) {
+          widestPage = width;
+        }
+      }
+    }
+  } catch {
+    widestPage = 0;
+  }
+  if (widestPage > 0) return widestPage;
+
+  let pageStyles = null;
+  try {
+    pageStyles = editor.getPageStyles?.() ?? null;
+  } catch {
+    pageStyles = null;
+  }
+  const pageWidthInches = pageStyles?.pageSize?.width;
+  if (typeof pageWidthInches === 'number' && Number.isFinite(pageWidthInches) && pageWidthInches > 0) {
+    return pageWidthInches * CSS_PX_PER_INCH;
+  }
+  return null;
+};
+
 /**
  * Viewport fit tracking. Maintains pure viewport metrics (available width,
  * document base width, fit zoom), stores them for `getViewportMetrics()`,
@@ -101,45 +165,6 @@ export function useViewportFit({
   superdocRoot,
   documents,
 }) {
-  // Page width in CSS px at 100% zoom for one DOCX editor. Same two-tier
-  // source the renderer's own container sizing uses (SuperDoc editor.vue):
-  // the widest laid-out page first, so interior landscape or custom-width
-  // sections fit correctly, then the body section's page styles before
-  // pagination has produced pages. Both are zoom-independent. Like the
-  // renderer, the value converges as wider sections first render; the
-  // pagination-update hook re-evaluates on exactly that signal.
-  const resolveEditorPageWidth = (editor) => {
-    if (!editor) return null;
-
-    let widestPage = 0;
-    try {
-      const pages = editor.getPages?.();
-      if (Array.isArray(pages)) {
-        for (const page of pages) {
-          const width = page?.size?.w;
-          if (typeof width === 'number' && Number.isFinite(width) && width > widestPage) {
-            widestPage = width;
-          }
-        }
-      }
-    } catch {
-      widestPage = 0;
-    }
-    if (widestPage > 0) return widestPage;
-
-    let pageStyles = null;
-    try {
-      pageStyles = editor.getPageStyles?.() ?? null;
-    } catch {
-      pageStyles = null;
-    }
-    const pageWidthInches = pageStyles?.pageSize?.width;
-    if (typeof pageWidthInches === 'number' && Number.isFinite(pageWidthInches) && pageWidthInches > 0) {
-      return pageWidthInches * CSS_PX_PER_INCH;
-    }
-    return null;
-  };
-
   // Widest rendered PDF page in CSS px at 100% zoom. See
   // `normalizePdfPageMeasurement` for the unit handling. Skipped entirely
   // when no PDF document is loaded: the query plus per-page computed-style

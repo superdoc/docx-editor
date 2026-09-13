@@ -1,0 +1,67 @@
+---
+title: Save and restore a room
+navTitle: Save and restore
+description: Keep collaborative edits after everyone leaves or the server restarts.
+---
+
+Alex and Sam can reopen a room while another editor keeps it alive. Now make it survive everyone leaving and the server restarting.
+
+Use the [collaboration example](/editor/collaboration/connect-two-editors). This page adds local storage to its Hocuspocus server; the browser configuration stays the same.
+
+## What should you save?
+
+A `Y.Doc` holds a local copy of the shared document state. Each client has its own copy; the provider exchanges Yjs updates between them. SuperDoc manages the browser's copy inside its worker. Your application supplies connection settings, not its own `Y.Doc`.
+
+| Data                  | Keep it for…                                                      |
+| --------------------- | ----------------------------------------------------------------- |
+| Binary Yjs room state | Reopening the same collaborative document, including its edits.   |
+| Exported DOCX         | Downloading, sharing, or keeping a file snapshot.                 |
+| Awareness             | Showing who is here now. It is temporary, not saved room content. |
+
+Saving only DOCX snapshots does not persist the Yjs room. Saving room state does not automatically write a DOCX to your file storage.
+
+## 1. Enable local storage
+
+Stop the example's development command. In the same directory, restart it with:
+
+```bash
+COLLABORATION_STORAGE_DIR=.collaboration-data pnpm dev
+```
+
+The directory is created automatically and ignored by Git. It contains binary room snapshots, not DOCX files. Keep using this directory when restarting the server.
+
+This local example has no authentication. Use the sample document, not private information. The embedded docs demo remains temporary.
+
+Use the local server for this step: reconnecting the embedded demo cannot demonstrate a storage write or server restart.
+
+## 2. Edit and wait for a save
+
+Open `http://localhost:5173/?mode=create&user=Alex`, then `http://localhost:5173/?user=Sam`. If this room already exists in your storage directory, use the join addresses for both people instead.
+
+Type “Saved after restart.” in Sam's editor. Wait for the server terminal to print `Room state saved.` after the edit. Hocuspocus schedules storage writes; a keystroke does not mean the room has been saved yet.
+
+Close both tabs. Stop the development command, then restart it with the same command and directory.
+
+## 3. Restore the room
+
+Open `http://localhost:5173/?user=Alex`, using `join`, not `create`. Confirm that “Saved after restart.” is still there. Join as Sam and make another edit to check that collaboration still works.
+
+Select **Export DOCX** to download a file containing the restored edits. Exporting is separate from saving the room.
+
+## How the server saves and loads
+
+The example enables these hooks only when `COLLABORATION_STORAGE_DIR` is set:
+
+<include>../../../../../../examples/collaboration/local-storage.ts</include>
+
+`encodeStateAsUpdate()` produces a complete state update for the current `Y.Doc`. `applyUpdate()` restores those bytes before clients synchronize. Store binary data, not `Y.Doc.toJSON()`.
+
+Only a missing file is treated as a new room. Unreadable or corrupt state must fail rather than silently replace saved content with the original DOCX.
+
+## Before using production storage
+
+This single-process example uses synchronous writes and a temporary-file rename. It does not provide multi-server coordination, backups, or a power-loss durability guarantee. Use your provider's storage integration for your database or object store, with authorization and a recovery policy.
+
+`onCollaborationReady` means the editor has synchronized and is ready. It is not a storage acknowledgment. Show “Saved” only when your storage flow confirms the changes it committed.
+
+Next, [control access to a room](/editor/collaboration/control-room-access) so only authorized users can connect to the saved document.

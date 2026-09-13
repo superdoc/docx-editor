@@ -45,7 +45,7 @@ export interface ExtractTextSpanTrackedChange {
   entityId: string;
   /**
    * The mark type carried on this run: insert, delete, or format.
-   * Entity-level paired replacements surface as `replacement` only on
+   * Entity-level grouped replacements surface as `replacement` only on
    * `ExtractResult.trackedChanges[]`, not on span marks.
    */
   type: TrackChangeType;
@@ -79,6 +79,9 @@ export interface ExtractTextSpan {
  * Paragraph-like descendants of table cells are emitted individually with
  * `tableContext` attached.
  *
+ * Textbox paragraphs are nested stories. They appear immediately after the
+ * body or table-cell paragraph they are anchored to, not after the whole body.
+ *
  * Block SDTs (structured document tags / content controls) are transparent:
  * their children emit individually as if they were direct children of the
  * enclosing container. No wrapper `sdt` block is emitted. This prevents
@@ -97,7 +100,7 @@ export interface ExtractBlock {
    * tracked change. When concatenated, span text equals `text`.
    */
   textSpans?: ExtractTextSpan[];
-  /** Heading level (1-6). Only present for headings. */
+  /** Heading level (1-9). Only present for headings. */
   headingLevel?: number;
   /** Table coordinates. Only present for blocks inside a table cell. */
   tableContext?: ExtractTableContext;
@@ -124,15 +127,16 @@ export interface ExtractTrackedChange {
   /**
    * Change type at the entity level.
    *
-   * In paired replacement mode (the default: set
-   * `modules.trackChanges.replacements: 'independent'` for one entity per
-   * `<w:ins>` / `<w:del>` instead), a delete + insert pair shares one entity
+   * In grouped replacement mode (the default), a delete + insert pair shares one entity
    * and `type` is `'replacement'`. Per-half information still lives on
    * `block.textSpans[].trackedChanges[].type`, which is the source of truth
    * for what each run actually represents.
    *
-   * In independent mode every revision is its own entity and `type` is the
-   * entity's only type.
+   * In separate replacement mode every revision is its own entity and `type` is the
+   * entity's only type. The option that selects it is surface-specific: the browser
+   * `Config` takes `trackChanges.replacementMode: 'grouped' | 'separate'`, while the Node
+   * SDK and CLI `open` contract takes `trackChanges.replacements: 'paired' | 'independent'`.
+   * This type is shared by both, so it names neither as the spelling to use.
    */
   type: TrackChangeType;
   /**
@@ -144,13 +148,13 @@ export interface ExtractTrackedChange {
   blockIds?: string[];
   /**
    * Original OOXML `w:id` values (per ECMA-376 §17.13.5) for the marks that
-   * make up this entity. In paired mode a replacement populates both
-   * `insert` and `delete`. In independent mode only one key is set. Useful
+   * make up this entity. In grouped replacement mode, a replacement populates
+   * both `insert` and `delete`. In separate replacement mode, only one key is set. Useful
    * for spec-aware consumers that need to map back to the source document.
    */
   wordRevisionIds?: TrackChangeWordRevisionIds;
   /**
-   * Short text excerpt of the changed content. Omitted for paired
+   * Short text excerpt of the changed content. Omitted for grouped
    * replacements: the underlying text spans both halves and any single
    * string would either concatenate them (misleading) or pick a side
    * arbitrarily. Read `block.textSpans` for the per-half text instead.
@@ -163,7 +167,10 @@ export interface ExtractTrackedChange {
 }
 
 export interface ExtractResult {
-  /** All blocks in document order with stable IDs and full text. */
+  /**
+   * All blocks in document order with stable IDs and full text.
+   * Nested textbox paragraphs follow the paragraph they are anchored to.
+   */
   blocks: ExtractBlock[];
   /** All comments with entity IDs and anchored block references. */
   comments: ExtractComment[];

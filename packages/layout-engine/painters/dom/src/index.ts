@@ -71,6 +71,7 @@ export type {
   DomPainterPersistentScaffold,
   DomPainterPersistentScaffoldPage,
 } from './persistent-page-surface.js';
+export type { DerivedRunTextPlane } from './derived-run-text-plane.js';
 // Painter plan §4.6: dark observability for the persistent-page paint path.
 export type { PaintWorkSummary } from './page-content.js';
 export type { RenderedLineInfo } from './runs/index.js';

@@ -64,6 +64,35 @@ export class CompareApplyFallbackError extends Error {
   }
 }
 
+export class CompareApplyIneligibleError extends Error {
+  constructor(readonly blockers: readonly string[]) {
+    super(`Compare apply is blocked: ${blockers.join('; ') || 'no complete apply lane is available'}`);
+    this.name = 'CompareApplyIneligibleError';
+  }
+}
+
+function applyEligibilityForMode(
+  diff: unknown,
+  mode: 'tracked' | 'direct',
+): { status: 'candidate' | 'blocked'; blockers: readonly string[] } | null {
+  if (!diff || typeof diff !== 'object' || !('applyEligibility' in diff)) return null;
+  const eligibility = (diff as { applyEligibility?: unknown }).applyEligibility;
+  if (!eligibility || typeof eligibility !== 'object' || !(mode in eligibility)) return null;
+  const modeEligibility = (eligibility as Record<string, unknown>)[mode];
+  if (!modeEligibility || typeof modeEligibility !== 'object') return null;
+  const status = (modeEligibility as { status?: unknown }).status;
+  const blockers = (modeEligibility as { blockers?: unknown }).blockers;
+  if ((status !== 'candidate' && status !== 'blocked') || !Array.isArray(blockers)) return null;
+  return {
+    status,
+    blockers: blockers.flatMap((blocker) =>
+      blocker && typeof blocker === 'object' && typeof (blocker as { message?: unknown }).message === 'string'
+        ? [(blocker as { message: string }).message]
+        : [],
+    ),
+  };
+}
+
 function isRelationshipBackedTrackedCompareDeferred(error: unknown, diff: unknown): boolean {
   if (!error || typeof error !== 'object' || !diff || typeof diff !== 'object') return false;
   const candidate = error as {
@@ -154,6 +183,19 @@ export async function applyCompareWithWs09Fallback(
   docApi: CompareApplyDocApi,
   diff: unknown,
 ): Promise<CompareApplyOutcome> {
+  const trackedEligibility = applyEligibilityForMode(diff, 'tracked');
+  if (trackedEligibility?.status === 'blocked') {
+    const directEligibility = applyEligibilityForMode(diff, 'direct');
+    if (directEligibility?.status === 'blocked') {
+      throw new CompareApplyIneligibleError([...trackedEligibility.blockers, ...directEligibility.blockers]);
+    }
+    return {
+      applyResult: await docApi.diff.apply({ diff }, { changeMode: 'direct' }),
+      changeMode: 'direct',
+      fallbackFromTracked: true,
+      fallbackReason: 'tracked-deferred',
+    };
+  }
   try {
     return {
       applyResult: await docApi.diff.apply({ diff }, { changeMode: 'tracked' }),

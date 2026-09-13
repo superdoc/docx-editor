@@ -424,8 +424,8 @@ function makeApi(overrides: Partial<DocumentApiAdapters> = {}) {
       })),
     },
     mutations: {
-      preview: mock(() => ({ evaluatedRevision: 'r1', steps: [], valid: true })),
-      apply: mock(() => ({
+      preview: mock(async () => ({ evaluatedRevision: 'r1', steps: [], valid: true })),
+      apply: mock(async () => ({
         success: true as const,
         revision: { before: 'r1', after: 'r2' },
         steps: [],
@@ -444,7 +444,7 @@ function makeApi(overrides: Partial<DocumentApiAdapters> = {}) {
 describe('overview.mdx examples', () => {
   describe('Plan with query.match, then apply with mutations', () => {
     // Mirrors the exact code block from overview.mdx § "Plan with query.match, then apply with mutations"
-    it('matches, previews, and applies a deterministic plan', () => {
+    it('matches, previews, and applies a deterministic plan', async () => {
       const doc = makeApi();
 
       const match = doc.query.match({
@@ -469,9 +469,9 @@ describe('overview.mdx examples', () => {
         ],
       };
 
-      const preview = doc.mutations.preview(plan);
+      const preview = await doc.mutations.preview(plan);
       if (preview.valid) {
-        doc.mutations.apply(plan);
+        await doc.mutations.apply(plan);
       }
 
       expect(ref).toBeDefined();
@@ -481,7 +481,7 @@ describe('overview.mdx examples', () => {
 
   describe('Run multiple edits as one plan', () => {
     // Mirrors the exact code block from overview.mdx § "Run multiple edits as one plan"
-    it('runs multiple steps through preview + apply', () => {
+    it('runs multiple steps through preview + apply', async () => {
       const doc = makeApi();
 
       const match = doc.query.match({
@@ -514,9 +514,9 @@ describe('overview.mdx examples', () => {
         ],
       };
 
-      const preview = doc.mutations.preview(plan);
+      const preview = await doc.mutations.preview(plan);
       if (preview.valid) {
-        doc.mutations.apply(plan);
+        await doc.mutations.apply(plan);
       }
 
       expect(ref).toBeDefined();

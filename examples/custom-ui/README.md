@@ -1,6 +1,6 @@
 # Custom UI
 
-Keep the SuperDoc canvas and replace its surrounding interface with one application-owned Bold button.
+Keep the SuperDoc canvas and replace its built-in toolbar with one application-owned Bold button.
 
 The example intentionally implements one control. Add more commands only when your product needs them.
 
@@ -26,4 +26,5 @@ pnpm test
 
 The browser test selects text through the real editor, runs the application-owned command, exports the DOCX, and verifies the formatting in `word/document.xml`.
 
-See [Custom UI overview](https://docs.superdoc.dev/editor/custom-ui/overview) for the controller model.
+See [Build your first custom control](https://docs.superdoc.dev/editor/custom-ui/controller-setup) for the Vanilla and
+React setup.

@@ -25,6 +25,7 @@ export {
   useClearSuperDoc,
   useSuperDocSlice,
   useSuperDocSelection,
+  useSuperDocSearch,
   useSuperDocComments,
   useSuperDocContentControls,
   useSuperDocTrackChanges,

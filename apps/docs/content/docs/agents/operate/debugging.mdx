@@ -1,0 +1,105 @@
+---
+title: Debug an agent run
+navTitle: Debugging
+description: Separate model mistakes from operation failures, read dispatcher errors by code, and trace a run without logging document content.
+---
+
+{/* Media decision: none. The Document API decision flow diagram already shows the receipt branches; this page adds the agent-specific layer in tables. */}
+
+A model-driven edit can go wrong in two places. The model can choose or parameterize the wrong tool, or the operation can fail against the document. They need different fixes, and most debugging time is lost working on the wrong one.
+
+## Decide which layer failed
+
+Every tool call is an ordinary SDK operation underneath. Run the same call without the model:
+
+```ts
+const receipt = await dispatch(doc, 'superdoc_perform_action', {
+  action: 'replace_text',
+  edits: [{ find: 'termination', replace: 'cancellation' }],
+  changeMode: 'tracked',
+});
+```
+
+If the direct call produces the right result, the operation is fine and the model chose or parameterized it badly. Look at the instruction, the system prompt, and whether the tool list the model saw matches the dispatcher. If the direct call reproduces the problem, the operation or the document is where to look, and [Receipts and errors](/document-api/receipts-and-errors) covers that contract.
+
+The pre-bound `dispatch` from `createAgentToolkit` cannot mismatch its preset. The standalone `dispatchSuperDocTool` defaults to `legacy`, so a replay that omits `{ preset: 'core' }` fails with an unknown tool rather than reproducing anything.
+
+## Read what dispatch returns
+
+Three outcomes come back from a dispatch, and code that checks only `status` mishandles two of them:
+
+| Outcome                   | Shape                               | What it means                                                          |
+| ------------------------- | ----------------------------------- | ---------------------------------------------------------------------- |
+| Snapshot                  | Object without `status`             | `superdoc_inspect` succeeded. Nothing changed                          |
+| Receipt                   | Object with `status`                | The action ran. `ok`, `partial`, `failed`, or `aborted`                |
+| Thrown `SuperDocCliError` | Exception with `code` and `details` | Validation or transport failed before, or independently of, the action |
+
+A receipt that says `failed` is not proof that nothing changed. An action can apply its operation and then fail its own post-check. Compare `preSnapshot.revision` with `postSnapshot.revision` before retrying, or the retry applies the edit twice. `MATCH_NOT_FOUND` in `errors[]` is the exception: the target was not in the document and nothing was touched, so the model can re-inspect and try again safely.
+
+## Error codes
+
+Thrown errors and `errors[].code` share one vocabulary. The codes an agent loop meets most often:
+
+| Code                      | Where   | Meaning                                                                                                  | Next step                                                        |
+| ------------------------- | ------- | -------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `INVALID_ARGUMENT`        | Thrown  | Missing, unknown, or malformed argument. `details.excluded: true` means your `excludeActions` refused it | Return it to the model as a tool result. It can correct the call |
+| `TOOL_DISPATCH_NOT_FOUND` | Thrown  | The tool name is unknown to the selected preset                                                          | Fix the preset pairing, or reject a hallucinated name            |
+| `MATCH_NOT_FOUND`         | Receipt | Target text or element not found. Nothing changed                                                        | Re-inspect and target the current wording                        |
+| `TARGET_NOT_FOUND`        | Receipt | A resolved block disappeared from the snapshot before the edit                                           | Re-inspect. Treat as a stale target                              |
+| `ACTION_FAILED`           | Receipt | The action could not complete, for example a required operation is unavailable on this handle            | Read `errors[].message`. Check the revisions before retrying     |
+| `PRESET_NOT_FOUND`        | Thrown  | An unknown preset id                                                                                     | Use `listPresets()` to see what is registered                    |
+| `DOCUMENT_CLOSED`         | Thrown  | The handle was closed before the call                                                                    | Reopen. Usually a cleanup path ran early                         |
+| `HOST_HANDSHAKE_FAILED`   | Thrown  | The embedded runtime could not start                                                                     | Environment problem. See below                                   |
+| `HOST_DISCONNECTED`       | Thrown  | The runtime exited mid-call                                                                              | Environment problem. The session is gone                         |
+| `HOST_TIMEOUT`, `TIMEOUT` | Thrown  | The runtime did not answer in time                                                                       | Retry once with a fresh session. Check document size             |
+
+Only the first two are safe to hand back to the model without inspection. A thrown transport error means the document session is in an unknown state and the run should stop.
+
+## The runtime will not start
+
+`HOST_HANDSHAKE_FAILED` and `HOST_DISCONNECTED` have several distinct causes. Check them in order:
+
+1. **Bundling removed the runtime.** The SDK loads a native runtime from a platform package installed as an optional dependency. In Next.js, list `@superdoc/sdk` in `serverExternalPackages` so the bundler leaves it alone. Other bundlers need the equivalent external setting.
+2. **The binary is blocked.** On macOS, a quarantined download is killed at launch. On locked-down hosts, an execution policy can do the same. The SDK reports the exit rather than the reason, so check the platform's own logs.
+3. **Unsupported platform.** Published runtimes cover macOS on Apple Silicon and Intel, Linux on ARM64 and x64, and Windows on x64. An `UNSUPPORTED_PLATFORM` error at connect time names the missing target.
+4. **The runtime crashed on a document.** Reproduce with the SDK alone, with no model involved, and open the document by itself first.
+
+## Log the run without logging the document
+
+Log tool names, action names, receipt `status`, `verificationPassed`, the two revisions, and error codes. Do not log arguments or full receipts. Arguments carry the text the model is inserting and receipts carry text previews, and both end up in log storage that has none of the protections the document has.
+
+```ts
+const args = JSON.parse(call.function.arguments);
+console.log(`[agent] ${call.function.name}${args.action ? `:${args.action}` : ''}`);
+
+const result = await dispatch(doc, call.function.name, args);
+if (typeof result === 'object' && result !== null && 'status' in result) {
+  const receipt = result as {
+    status: string;
+    verificationPassed?: boolean;
+    preSnapshot?: { revision?: string };
+    postSnapshot?: { revision?: string };
+  };
+  console.log(
+    `[agent] ${receipt.status} verified=${receipt.verificationPassed ?? 'n/a'} ${receipt.preSnapshot?.revision}→${receipt.postSnapshot?.revision}`,
+  );
+}
+```
+
+For a full trace during development, set `SUPERDOC_SDK_DEBUG_TRACE=1`. The SDK appends one JSON line per runtime request and preset dispatch to `.superdoc-sdk-traces/sdk-trace-<pid>.jsonl` in the working directory, or under `SUPERDOC_SDK_DEBUG_TRACE_DIR`. Those traces include arguments, so they carry document content. Turn the variable off outside development and delete the directory afterwards.
+
+## Common failure modes
+
+| Symptom                                        | Cause                                                                         | Fix                                                                                  |
+| ---------------------------------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| Model calls a tool that does not exist         | Prompt from one preset paired with tools from another, or a hallucinated name | Build all three pieces with `createAgentToolkit`. Reject names you did not advertise |
+| Model never calls a tool                       | `tools` not passed to the provider call, or a provider shape mismatch         | Check `meta.provider` matches the client you are calling                             |
+| Same failing action repeats until the turn cap | The model cannot read the failure                                             | Return errors as tool results, not exceptions, and include `errors[].message`        |
+| Edit landed directly when tracked was asked    | `changeMode` omitted, or the action ignores it                                | Enforce the allowlist from the [action reference](/agents/build/actions#changemode)  |
+| `partial` receipts on batch actions            | Some targets matched and some did not                                         | Read `editsApplied` and `editsSkipped`, then retry only the skipped targets          |
+| Output file identical to input                 | The model decided the work was done, or every action was a dry run            | Count mutations by comparing revisions, and refuse to save when there are none       |
+| Works in a script, fails in the server         | The runtime was bundled away or blocked                                       | See the runtime section above                                                        |
+
+## Next
+
+The [MCP debugging page](/agents/mcp/debugging) covers the same ground for coding agents connected over MCP. [Manage context and cost](/agents/operate/context-and-cost) explains the token pressure that makes a confused model loop.

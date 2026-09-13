@@ -150,7 +150,56 @@ describe('viewport.entityAt / trackChanges.getAt — point hit-testing', () => {
       expect(ctx.entities).toEqual([{ type: 'trackedChange', id: 'tc-1' }]);
       expect(ctx.position).toBeNull();
       expect(ctx.insideSelection).toBe(false);
+      expect(ui.contextMenu.contextAt({ x: 10, y: 20 })).toEqual(ctx);
     });
+
+    ui.destroy();
+  });
+
+  it('contextAt returns a copy of the queried point', () => {
+    const hit = document.createElement('span');
+    hit.setAttribute('data-track-change-id', 'tc-1');
+    const { superdoc } = makeHitStub(hit, [{ id: 'tc-1', type: 'insert' }]);
+    const ui = createSuperDocUI({ superdoc });
+
+    withElementFromPoint(hit, () => {
+      const point = { x: 10, y: 20 };
+      const ctx = ui.contextMenu.contextAt(point);
+      point.x = 99;
+      point.y = 99;
+      expect(ctx.point).toEqual({ x: 10, y: 20 });
+      expect(ctx.point).not.toBe(point);
+    });
+
+    ui.destroy();
+  });
+
+  it('contextAt fails closed for malformed input without hit-testing the origin', () => {
+    const hit = document.createElement('span');
+    hit.setAttribute('data-track-change-id', 'tc-1');
+    const { superdoc } = makeHitStub(hit, [{ id: 'tc-1', type: 'insert' }]);
+    const ui = createSuperDocUI({ superdoc });
+
+    // A real entity is painted under every point, including {0,0}. Malformed
+    // input must not reach it through either entry point.
+    const docAny = document as unknown as { elementFromPoint?: (x: number, y: number) => Element | null };
+    const original = docAny.elementFromPoint;
+    const elementFromPoint = vi.fn(() => hit);
+    docAny.elementFromPoint = elementFromPoint;
+    try {
+      for (const input of [null, undefined, {}, { x: '10', y: 20 }] as unknown[]) {
+        const viaMenu = ui.contextMenu.contextAt(input as { x: number; y: number });
+        expect(viaMenu.entities).toEqual([]);
+        expect(viaMenu.point).toEqual({ x: 0, y: 0 });
+        expect(ui.viewport.contextAt(input as { x: number; y: number })).toEqual(viaMenu);
+      }
+      expect(elementFromPoint).not.toHaveBeenCalled();
+      // A well-formed point still hit-tests.
+      expect(ui.contextMenu.contextAt({ x: 10, y: 20 }).entities).toEqual([{ type: 'trackedChange', id: 'tc-1' }]);
+    } finally {
+      if (original) docAny.elementFromPoint = original;
+      else delete docAny.elementFromPoint;
+    }
 
     ui.destroy();
   });

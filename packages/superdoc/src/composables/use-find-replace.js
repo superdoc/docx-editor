@@ -164,6 +164,10 @@ export function useFindReplace({
   // `replaceEnabled` config governs V1); the V2 driver drives it from the host
   // search session so viewing/read-only mode disables the replace controls.
   const canReplaceState = ref(true);
+  // Whether replace-all can run right now. The V2 host reports it separately:
+  // a truncated session still replaces the active match but refuses to replace
+  // every match it could not enumerate. V1 leaves this true.
+  const canReplaceAllState = ref(true);
   // Re-entrancy guard so a repeated click cannot issue overlapping mutations.
   const replacePending = ref(false);
   // V1 supports ignore-diacritics search; V2 (Document API query) does not, so
@@ -190,6 +194,8 @@ export function useFindReplace({
   // is not in flight, and the active session allows mutation (V2 read-only mode
   // sets `canReplaceState` false; V1 keeps it true).
   const canReplaceComputed = computed(() => hasMatches.value && !replacePending.value && canReplaceState.value);
+  // Replace all additionally needs the session to enumerate every match.
+  const canReplaceAllComputed = computed(() => canReplaceComputed.value && canReplaceAllState.value);
 
   // ---- timers ---------------------------------------------------------------
 
@@ -233,6 +239,9 @@ export function useFindReplace({
     matchCount.value = typeof slice.total === 'number' ? slice.total : 0;
     activeMatchIndex.value = typeof slice.activeIndex === 'number' ? slice.activeIndex : -1;
     canReplaceState.value = slice.canReplace === true;
+    // Older controllers publish only `canReplace`; treat that as covering both.
+    canReplaceAllState.value =
+      typeof slice.canReplaceAll === 'boolean' ? slice.canReplaceAll : slice.canReplace === true;
     searchError.value = slice.reason === 'search-invalid-pattern' ? currentTexts.invalidPatternLabel : null;
   }
 
@@ -412,7 +421,7 @@ export function useFindReplace({
     if (replacePending.value) return;
     if (!hasMatches.value) return;
     if (currentV2Search) {
-      if (!canReplaceState.value) return;
+      if (!canReplaceState.value || !canReplaceAllState.value) return;
       const search = currentV2Search;
       replacePending.value = true;
       const finish = createReplaceContinuation(search, {
@@ -495,6 +504,7 @@ export function useFindReplace({
     matchCount.value = 0;
     activeMatchIndex.value = -1;
     canReplaceState.value = true;
+    canReplaceAllState.value = true;
     replacePending.value = false;
   }
 
@@ -618,6 +628,11 @@ export function useFindReplace({
       hasMatches,
       canReplace: canReplaceComputed,
       /**
+       * `canReplace` plus the session enumerating every match. A truncated V2
+       * session keeps Replace enabled and disables Replace all.
+       */
+      canReplaceAll: canReplaceAllComputed,
+      /**
        * Runtime mutability of the active session (viewing/read-only mode sets
        * this false). Distinct from the static `replaceEnabled` config and from
        * `canReplace`, which also requires matches: surfaces hide replace
@@ -709,6 +724,9 @@ export function useFindReplace({
       },
       get canReplace() {
         return handle.canReplace.value;
+      },
+      get canReplaceAll() {
+        return handle.canReplaceAll ? handle.canReplaceAll.value : handle.canReplace.value;
       },
       get replacePending() {
         return handle.replacePending.value;

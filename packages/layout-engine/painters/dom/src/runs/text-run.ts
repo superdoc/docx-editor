@@ -19,6 +19,7 @@ import {
   normalizeRtlDateTokenForWordParity,
   resolveRunDirectionAttribute,
 } from '../features/inline-direction/index.js';
+import { resolveDerivedRunText } from '../derived-run-text-plane.js';
 
 const DEFAULT_SUPERSCRIPT_RAISE_RATIO = 0.33;
 const DEFAULT_SUBSCRIPT_LOWER_RATIO = 0.14;
@@ -217,6 +218,8 @@ const applyParagraphMarkDeletionGlyphMetadata = (element: HTMLElement, run: Text
 };
 
 export const resolveRunText = (run: Run, context: FragmentRenderContext): string => {
+  const derivedText = resolveDerivedRunText(run, context.derivedRunTextPlane);
+  if (derivedText !== undefined) return derivedText;
   const runToken = 'token' in run ? run.token : undefined;
 
   if (run.kind === 'tab') {

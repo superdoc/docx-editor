@@ -11,6 +11,12 @@ const toolbar = {
   responsiveTo: 'container',
 } satisfies ToolbarConfig;
 
+const ui = { toolbar };
+
+function reportDocumentError({ error }: { error: unknown }) {
+  console.error('SuperDoc could not open the document.', error);
+}
+
 function withImageMimeType(file: File): Blob {
   const type = file.type.toLowerCase();
   if (type === 'image/png' || type === 'image/jpeg' || type === 'image/jpg') return file;
@@ -57,11 +63,11 @@ export default function App() {
       <SuperDocEditor
         document='/sample.docx'
         handleImageUpload={handleImageUpload}
-        onContentError={({ error }) => console.error('SuperDoc could not open the document.', error)}
-        onException={({ error }) => console.error('SuperDoc could not open the document.', error)}
+        onContentError={reportDocumentError}
+        onException={reportDocumentError}
         onReady={() => setReady(true)}
         ref={editorRef}
-        ui={{ toolbar }}
+        ui={ui}
       />
     </main>
   );

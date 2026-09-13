@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vite-plus/test';
 import {
   applyCompareWithWs09Fallback,
+  CompareApplyIneligibleError,
   captureCompareApplyDebugSnapshot,
   compareApplyFallbackMessage,
   settleCompareApplyPaint,
@@ -27,6 +28,37 @@ describe('dev compare apply fallback', () => {
     expect(outcome.applyResult.appliedOperations).toBe(3);
     expect(apply).toHaveBeenCalledTimes(1);
     expect(apply).toHaveBeenNthCalledWith(1, { diff: { id: 'diff' } }, { changeMode: 'tracked' });
+  });
+
+  it('uses direct mode without attempting a known-blocked tracked apply', async () => {
+    const apply = vi.fn(async () => ({ appliedOperations: 2, diagnostics: [] }));
+    const diff = {
+      applyEligibility: {
+        tracked: { status: 'blocked', blockers: [{ message: 'Tracked topology is unsupported.' }] },
+        direct: { status: 'candidate', blockers: [] },
+      },
+    };
+
+    const outcome = await applyCompareWithWs09Fallback({ diff: { apply } }, diff);
+
+    expect(outcome).toMatchObject({ changeMode: 'direct', fallbackFromTracked: true });
+    expect(apply).toHaveBeenCalledTimes(1);
+    expect(apply).toHaveBeenCalledWith({ diff }, { changeMode: 'direct' });
+  });
+
+  it('does not call apply when both modes have known blockers', async () => {
+    const apply = vi.fn();
+    const diff = {
+      applyEligibility: {
+        tracked: { status: 'blocked', blockers: [{ message: 'Tracked apply is blocked.' }] },
+        direct: { status: 'blocked', blockers: [{ message: 'Direct apply is blocked.' }] },
+      },
+    };
+
+    await expect(applyCompareWithWs09Fallback({ diff: { apply } }, diff)).rejects.toBeInstanceOf(
+      CompareApplyIneligibleError,
+    );
+    expect(apply).not.toHaveBeenCalled();
   });
 
   it('falls back to direct compare apply for relationship-backed tracked deferral', async () => {

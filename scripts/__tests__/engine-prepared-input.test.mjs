@@ -280,6 +280,7 @@ test('engine input identity invalidates on every public producer helper without 
     const helperPaths = [
       'superdoc/public/scripts/audit-publish-artifact.mjs',
       'superdoc/public/scripts/engine-prepared-input.mjs',
+      'superdoc/public/scripts/engine-native-runtime.mjs',
       'superdoc/public/scripts/superdoc-artifact-store.mjs',
       'superdoc/public/scripts/superdoc-build-timing.mjs',
     ];
@@ -398,8 +399,10 @@ test('installed contract verifies packaged manifest hashes when present', () => 
     const files = {
       'docx-engine.es.js': 'export {};\n',
       'collaboration-upgrade-engine.js': 'export {};\n',
+      'collaboration-worker.js': 'export {};\n',
       'style.css': '',
       'docx-engine.d.ts': 'export {};\n',
+      'collaboration-worker.d.ts': 'export {};\n',
       'DOCX-ENGINE-LICENSE.md': 'license\n',
       'NOTICE.md': 'notice\n',
     };

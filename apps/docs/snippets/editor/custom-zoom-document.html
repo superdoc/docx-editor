@@ -1,10 +1,11 @@
-<div class="document-controls" aria-label="Document controls">
-  <button id="zoom-out" type="button">Zoom out</button>
-  <button id="fit-width" type="button">Fit width</button>
-  <button id="zoom-in" type="button">Zoom in</button>
-  <button id="export" type="button">Download DOCX</button>
-  <output id="document-status" aria-live="polite">Loading the document…</output>
+<div id="toolbar"></div>
+<div class="document-controls" aria-label="Document controls" role="toolbar">
+  <button id="zoom-out" type="button" disabled>Zoom out</button>
+  <button id="zoom-in" type="button" disabled>Zoom in</button>
+  <button id="export" type="button" disabled>Download DOCX</button>
+  <output id="document-status" aria-live="polite" role="status">Loading the document…</output>
 </div>
+<p id="document-error" role="alert"></p>
 <div id="editor" style="height: 70vh"></div>
 
 <script type="module" src="/src/main.ts"></script>

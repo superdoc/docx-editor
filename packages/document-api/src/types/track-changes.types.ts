@@ -43,7 +43,7 @@ export type TrackChangeState = 'open' | 'accepted' | 'rejected';
  * @deprecated Provenance metadata only. Prefer {@link TrackChangeSourceIds}
  * for new code. Retained as a compatibility alias surfacing the prior
  * legacy shape: an insertion fragment surfaces `insert`, a deletion
- * surfaces `delete`, a formatting revision surfaces `format`, and a paired
+ * surfaces `delete`, a formatting revision surfaces `format`, and a grouped
  * replacement may surface both text sides.
  */
 export interface TrackChangeWordRevisionIds {
@@ -71,7 +71,7 @@ export interface TrackChangeSourceIds {
   rsids?: readonly string[];
 }
 /**
- * Per-side metadata returned for replacement changes in `paired` mode. The
+ * Per-side metadata returned for replacement changes in `grouped` mode. The
  * `id` values are stable SuperDoc-internal side ids so callers (e.g. decide
  * decide range targeting) can address either side without re-reading OOXML.
  */
@@ -412,7 +412,7 @@ export interface TrackChangeSnapshot {
 export type TrackChangeProvenanceOrigin = 'word' | 'google-docs' | 'superdoc' | 'custom' | 'unknown';
 export type TrackChangeSourcePlatform = TrackChangeProvenanceOrigin;
 /**
- * Public semantic grouping for a tracked change. A paired replacement is one
+ * Public semantic grouping for a tracked change. A grouped replacement is one
  * logical public item representing both the deleted and inserted Word
  * revision wrappers.
  */
@@ -567,7 +567,7 @@ export interface TrackChangeInfo {
   revisionGroupId?: string;
   /** Set to the retired source id when this change is a partial-split fragment; otherwise `null`. */
   splitFromId?: string | null;
-  /** Replacement side metadata (`paired` mode replacements only). */
+  /** Replacement side metadata (`grouped` mode replacements only). */
   replacement?: TrackChangeReplacementSides;
   /** Move side metadata for paired tracked moves. */
   move?: TrackChangeMoveSides;

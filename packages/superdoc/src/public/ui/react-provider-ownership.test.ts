@@ -9,16 +9,16 @@
  *
  * `react-dom` is deliberately not a dependency of this package (see
  * `react-shim.d.ts`), so the provider is driven through a minimal hook
- * dispatcher that implements exactly the four React APIs it uses. That is
- * enough to observe what it publishes on the context and when.
+ * dispatcher. That is enough to observe what it publishes on the context and
+ * when.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 
 import { createSuperDocUI } from './create-super-doc-ui.js';
-import type { SuperDocLike, SuperDocUI } from './types.js';
+import type { CommandState, SuperDocLike, SuperDocUI } from './types.js';
 
 /** Hook state for the single component instance under test. */
-const dispatcher = vi.hoisted(() => ({ slots: [] as unknown[], cursor: 0 }));
+const dispatcher = vi.hoisted(() => ({ slots: [] as unknown[], cursor: 0, contextValue: null as unknown }));
 
 vi.mock('react', () => {
   function useState<T>(initial: T | (() => T)): [T, (next: T | ((previous: T) => T)) => void] {
@@ -46,7 +46,8 @@ vi.mock('react', () => {
     useCallback: <T>(callback: T): T => callback,
     useRef,
     useContext: () => {
-      throw new Error('useContext is not exercised by this test');
+      if (!dispatcher.contextValue) throw new Error('No test context is bound.');
+      return dispatcher.contextValue;
     },
     useEffect: (effect: () => void | (() => void)) => {
       effects.push(effect);
@@ -58,7 +59,7 @@ vi.mock('react', () => {
 /** Effects registered during a render, so a teardown pass can be forced. */
 const effects: Array<() => void | (() => void)> = [];
 
-const { SuperDocUIProvider } = await import('./react.js');
+const { SuperDocUIProvider, useSuperDocCommand } = await import('./react.js');
 const { SuperDoc } = await import('../../core/SuperDoc.js');
 const { BuiltInToolbar } = await import('../../internal/toolbar/built-in-toolbar.js');
 
@@ -117,6 +118,8 @@ function hostWithoutUi(): SuperDocLike {
 beforeEach(() => {
   dispatcher.slots.length = 0;
   dispatcher.cursor = 0;
+  dispatcher.contextValue = null;
+  effects.length = 0;
 });
 
 /** Real `SuperDoc` instances created by a test, torn down together. */
@@ -212,6 +215,118 @@ describe('SuperDocUIProvider — ownership', () => {
 
     expect(destroySpy).toHaveBeenCalledTimes(1);
     expect(render().ui).toBe(real.ui);
+  });
+});
+
+describe('useSuperDocCommand — execution', () => {
+  it('fails closed before binding and routes through the bound controller', async () => {
+    dispatcher.contextValue = { ui: null, host: null, setSuperDoc: () => {} } satisfies ContextValue;
+    let command = useSuperDocCommand('bold');
+
+    expect(command.execute()).toBe(false);
+    await expect(command.executeAsync()).resolves.toBe(false);
+
+    dispatcher.slots.length = 0;
+    dispatcher.cursor = 0;
+    dispatcher.contextValue = null;
+
+    const superdoc = host();
+    render().setSuperDoc(superdoc);
+    const bound = render();
+    const execute = vi.spyOn(bound.ui!.commands, 'execute').mockReturnValue(true);
+    const executeAsync = vi.spyOn(bound.ui!.commands, 'executeAsync').mockResolvedValue(true);
+
+    dispatcher.slots.length = 0;
+    dispatcher.cursor = 0;
+    dispatcher.contextValue = bound;
+    command = useSuperDocCommand('bold');
+
+    expect(command.execute('payload')).toBe(true);
+    await expect(command.executeAsync('payload')).resolves.toBe(true);
+    expect(execute).toHaveBeenCalledWith('bold', 'payload');
+    expect(executeAsync).toHaveBeenCalledWith('bold', 'payload');
+  });
+
+  it('reads and observes the current command when its id changes', () => {
+    const unsubscribeBold = vi.fn();
+    const unsubscribeItalic = vi.fn();
+    const states = {
+      bold: { enabled: true, active: true, supported: true },
+      italic: { enabled: false, active: false, supported: true },
+    };
+    const listeners: Partial<Record<keyof typeof states, (state: CommandState) => void>> = {};
+    const ui = {
+      commands: {
+        get: (id: 'bold' | 'italic') => ({
+          getState: () => states[id],
+          observe: (listener: (state: CommandState) => void) => {
+            listeners[id] = listener;
+            return () => {
+              delete listeners[id];
+              (id === 'bold' ? unsubscribeBold : unsubscribeItalic)();
+            };
+          },
+        }),
+      },
+    } as unknown as SuperDocUI;
+    dispatcher.contextValue = { ui, host: null, setSuperDoc: () => {} } satisfies ContextValue;
+
+    let command = useSuperDocCommand('bold');
+    const stopBold = effects[0]?.();
+    dispatcher.cursor = 0;
+    effects.length = 0;
+    command = useSuperDocCommand('bold');
+    expect(command.active).toBe(true);
+
+    listeners.bold?.({ enabled: true, active: false, supported: true });
+    dispatcher.cursor = 0;
+    effects.length = 0;
+    command = useSuperDocCommand('bold');
+    expect(command.active).toBe(false);
+
+    if (typeof stopBold === 'function') stopBold();
+    dispatcher.cursor = 0;
+    effects.length = 0;
+    command = useSuperDocCommand('italic');
+    const stopItalic = effects[0]?.();
+    dispatcher.cursor = 0;
+    effects.length = 0;
+    command = useSuperDocCommand('italic');
+
+    expect(command.enabled).toBe(false);
+    expect(command.active).toBe(false);
+    expect(unsubscribeBold).toHaveBeenCalledTimes(1);
+    if (typeof stopItalic === 'function') stopItalic();
+    expect(unsubscribeItalic).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('useSuperDocCommand — id switch', () => {
+  it('serves the new command state on the render that changes id', () => {
+    const states = {
+      bold: { enabled: true, active: true, supported: true },
+      italic: { enabled: false, active: false, supported: true },
+    };
+    const ui = {
+      commands: {
+        get: (id: 'bold' | 'italic') => ({ getState: () => states[id], observe: () => () => {} }),
+      },
+    } as unknown as SuperDocUI;
+    dispatcher.slots.length = 0;
+    dispatcher.cursor = 0;
+    dispatcher.contextValue = { ui, host: null, setSuperDoc: () => {} } satisfies ContextValue;
+
+    let command = useSuperDocCommand('bold');
+    effects[0]?.();
+    expect(command.active).toBe(true);
+
+    // The committed render before the passive effect re-subscribes must not
+    // pair bold's state with italic's execute callbacks.
+    dispatcher.cursor = 0;
+    effects.length = 0;
+    command = useSuperDocCommand('italic');
+    expect(command.enabled).toBe(false);
+    expect(command.active).toBe(false);
   });
 });
 

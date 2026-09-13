@@ -111,6 +111,36 @@ describe('determineColumn (SD-2629: resolved per-column boundaries)', () => {
     expect(determineColumn(layout, 540, page)).toBe(2);
   });
 
+  it('resolves a click to the visually containing column in an RTL section', () => {
+    // In an RTL section column 0 sits against the RIGHT margin, so a click on the right half of the
+    // page selects the FIRST column. Resolving this with the left-to-right rule sends every click to
+    // the wrong column — the issue's "clicks will select the wrong column".
+    const columns = { count: 3, gap: 24, direction: 'rtl' as const };
+    const page = {
+      columns,
+      margins: { left: 96, right: 96 },
+      size: { w: 816, h: 1056 },
+    } as unknown as Page;
+    const layout = { pageSize: { w: 816, h: 1056 }, columns, pages: [page] } as unknown as Layout;
+
+    // Content width 624 -> 192px columns with a 24px gutter between them. Mirrored, column 0 spans
+    // 528..720, column 1 312..504, column 2 96..288 (absolute) -- each start is the previous
+    // column's start less width+gap, so the gutters are 504..528 and 288..312.
+    expect(determineColumn(layout, 700, page)).toBe(0);
+    expect(determineColumn(layout, 400, page)).toBe(1);
+    expect(determineColumn(layout, 150, page)).toBe(2);
+    // The outer margins stay with their own end columns.
+    expect(determineColumn(layout, 816, page)).toBe(0);
+    expect(determineColumn(layout, 0, page)).toBe(2);
+
+    // Same geometry without the direction keeps answering left to right.
+    const ltrColumns = { count: 3, gap: 24 };
+    const ltrPage = { ...page, columns: ltrColumns } as unknown as Page;
+    const ltrLayout = { pageSize: { w: 816, h: 1056 }, columns: ltrColumns, pages: [ltrPage] } as unknown as Layout;
+    expect(determineColumn(ltrLayout, 700, ltrPage)).toBe(2);
+    expect(determineColumn(ltrLayout, 150, ltrPage)).toBe(0);
+  });
+
   it('maps a hit to its mid-page column region, not the page-start columns (SD-2629)', () => {
     // A continuous section break splits the page: region 0 (y 96-300) is single-column; region 1
     // (y 300-700) is two-column. page.columns is only the page-START config (single column), so a

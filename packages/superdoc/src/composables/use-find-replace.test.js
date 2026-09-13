@@ -733,12 +733,13 @@ describe('useFindReplace', () => {
     }
 
     /** Stateful `ui.search` stub mirroring the host search session contract. */
-    function createV2SearchStub({ canReplace = true, available = true } = {}) {
+    function createV2SearchStub({ canReplace = true, canReplaceAll = canReplace, available = true } = {}) {
       const state = {
         query: '',
         total: 0,
         activeIndex: -1,
         canReplace,
+        canReplaceAll: false,
         available,
         includeTrackedDeletions: false,
       };
@@ -748,6 +749,7 @@ describe('useFindReplace', () => {
           state.query = query;
           state.total = query ? 2 : 0;
           state.activeIndex = query ? 0 : -1;
+          state.canReplaceAll = state.total > 0 && canReplaceAll;
           state.includeTrackedDeletions = options.includeTrackedDeletions === true;
           return { ...state };
         }),
@@ -777,9 +779,9 @@ describe('useFindReplace', () => {
       };
     }
 
-    function makeV2({ canReplace = true, available = true } = {}) {
+    function makeV2({ canReplace = true, canReplaceAll = canReplace, available = true } = {}) {
       const v2Editor = createV2Editor();
-      const search = createV2SearchStub({ canReplace, available });
+      const search = createV2SearchStub({ canReplace, canReplaceAll, available });
       const fr = useFindReplace({
         getSurfaceManager: () => manager,
         getActiveEditor: () => v2Editor,
@@ -989,6 +991,26 @@ describe('useFindReplace', () => {
       await tick();
       await tick();
       expect(handle.replacePending.value).toBe(false);
+      fr.close();
+    });
+
+    it('keeps Replace enabled and refuses Replace all for a truncated session', async () => {
+      const { fr, search } = makeV2({ canReplace: true, canReplaceAll: false });
+      await fr.open();
+      await vi.dynamicImportSettled();
+      const handle = manager.open.mock.calls.at(-1)[0].props.findReplace;
+
+      handle.findQuery.value = 'needle';
+      await new Promise((resolve) => setTimeout(resolve, 180));
+
+      expect(handle.canReplace.value).toBe(true);
+      expect(handle.canReplaceAll.value).toBe(false);
+
+      handle.replaceText.value = 'pin';
+      handle.replaceAll();
+      expect(search.replaceAll).not.toHaveBeenCalled();
+      handle.replaceCurrent();
+      expect(search.replace).toHaveBeenCalledTimes(1);
       fr.close();
     });
 

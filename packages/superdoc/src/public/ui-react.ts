@@ -24,6 +24,7 @@ export {
   useSetSuperDoc,
   useSuperDocSlice,
   useSuperDocSelection,
+  useSuperDocSearch,
   useSuperDocComments,
   useSuperDocContentControls,
   useSuperDocTrackChanges,
@@ -35,4 +36,4 @@ export {
   useSuperDocZoom,
 } from './ui/react.js';
 
-export type { SuperDocHost, SuperDocUIProviderProps } from './ui/react.js';
+export type { SuperDocHost, SuperDocUIProviderProps, UseSuperDocCommandResult } from './ui/react.js';

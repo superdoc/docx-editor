@@ -383,6 +383,11 @@ function unquote(value) {
   return match ? match[1] : value;
 }
 
+test('the docs collaboration runtime may install its platform binary', () => {
+  const workspace = readFileSync(resolve(REPO_ROOT, 'pnpm-workspace.yaml'), 'utf8');
+  assert.ok(readSectionEntries(workspace, 'allowBuilds').includes('workerd=true'));
+});
+
 test('readSectionEntries reads exact keys with their values, not substrings', () => {
   // The reader is what makes the coverage assertion meaningful, so it has to be
   // able to fail. A substring check passed while `vue:` was deleted because

@@ -21,6 +21,7 @@ import type {
 
 const SNAPSHOT_VERSIONS = new Set(['sd-diff-snapshot/v1', 'sd-diff-snapshot/v2']);
 const PAYLOAD_VERSIONS = new Set(['sd-diff-payload/v1', 'sd-diff-payload/v2']);
+const APPLY_ELIGIBILITY_STATUSES = new Set(['candidate', 'blocked']);
 
 // ---------------------------------------------------------------------------
 // Adapter interface: implemented by each engine
@@ -99,8 +100,44 @@ function validateDiffPayloadWrapper(diff: unknown): asserts diff is DiffPayload 
   if (!isRecord(diff.summary)) {
     throw new DocumentApiValidationError('INVALID_INPUT', 'diff.summary must be an object.');
   }
+  if (diff.applyEligibility !== undefined) validateApplyEligibility(diff.applyEligibility);
   if (!isRecord(diff.payload)) {
     throw new DocumentApiValidationError('INVALID_INPUT', 'diff.payload must be an object.');
+  }
+}
+
+function validateApplyEligibility(value: unknown): void {
+  if (!isRecord(value)) {
+    throw new DocumentApiValidationError('INVALID_INPUT', 'diff.applyEligibility must be an object.');
+  }
+  for (const mode of ['direct', 'tracked'] as const) {
+    const eligibility = value[mode];
+    if (!isRecord(eligibility) || !APPLY_ELIGIBILITY_STATUSES.has(String(eligibility.status))) {
+      throw new DocumentApiValidationError(
+        'INVALID_INPUT',
+        `diff.applyEligibility.${mode} must have status "candidate" or "blocked".`,
+      );
+    }
+    if (!Array.isArray(eligibility.blockers)) {
+      throw new DocumentApiValidationError('INVALID_INPUT', `diff.applyEligibility.${mode}.blockers must be an array.`);
+    }
+    for (const blocker of eligibility.blockers) {
+      if (!isRecord(blocker) || typeof blocker.code !== 'string' || typeof blocker.message !== 'string') {
+        throw new DocumentApiValidationError(
+          'INVALID_INPUT',
+          `diff.applyEligibility.${mode}.blockers entries must have string code and message fields.`,
+        );
+      }
+      if (
+        blocker.families !== undefined &&
+        (!Array.isArray(blocker.families) || blocker.families.some((family) => typeof family !== 'string'))
+      ) {
+        throw new DocumentApiValidationError(
+          'INVALID_INPUT',
+          `diff.applyEligibility.${mode}.blockers families must be a string array.`,
+        );
+      }
+    }
   }
 }
 

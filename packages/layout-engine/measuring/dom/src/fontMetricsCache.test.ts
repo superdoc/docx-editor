@@ -10,6 +10,7 @@ import {
   getFontMetricsCacheSize,
   getCalibratedBodyEmptyLine,
   getCalibratedNaturalSingleLine,
+  FontMetricsMeasurementCache,
 } from './fontMetricsCache';
 
 describe('fontMetricsCache', () => {
@@ -42,6 +43,86 @@ describe('fontMetricsCache', () => {
   it('uses the Word mutation-derived empty body-line calibration for Arial and its physical substitute', () => {
     expect(getCalibratedBodyEmptyLine('Arial, sans-serif', 16)).toBeCloseTo(18.4, 3);
     expect(getCalibratedBodyEmptyLine('Liberation Sans, sans-serif', 16)).toBeCloseTo(18.4, 3);
+  });
+
+  it('does not derive uncalibrated line height from availability-sensitive font bounds', () => {
+    const metrics = new FontMetricsMeasurementCache().get(
+      {
+        font: '',
+        measureText: () => ({
+          actualBoundingBoxAscent: 12.496875,
+          actualBoundingBoxDescent: 2.902921,
+          fontBoundingBoxAscent: 19,
+          fontBoundingBoxDescent: 3,
+        }),
+      } as unknown as CanvasRenderingContext2D,
+      { fontFamily: 'Unknown Font, sans-serif', fontSize: 40 / 3 },
+      'browser',
+      defaultFonts,
+    );
+
+    expect(metrics).toEqual({ ascent: 12.496875, descent: 2.902921, naturalSingleLine: undefined });
+  });
+
+  it('preserves Word-native calibration when Canvas font bounds are ignored', () => {
+    const metrics = new FontMetricsMeasurementCache().get(
+      {
+        font: '',
+        measureText: () => ({
+          actualBoundingBoxAscent: 8,
+          actualBoundingBoxDescent: 2,
+          fontBoundingBoxAscent: 20,
+          fontBoundingBoxDescent: 5,
+        }),
+      } as unknown as CanvasRenderingContext2D,
+      { fontFamily: 'Physical Font, sans-serif', wordLineMetricFamily: 'Aptos, sans-serif', fontSize: 12 },
+      'browser',
+      defaultFonts,
+    );
+
+    expect(metrics.ascent).toBe(8);
+    expect(metrics.descent).toBe(2);
+    expect(metrics.naturalSingleLine).toBeCloseTo(14.688, 3);
+  });
+
+  it('uses deterministic embedded metrics without overriding a reviewed Word calibration', () => {
+    const cache = new FontMetricsMeasurementCache();
+    const canvas = {
+      font: '',
+      measureText: () => ({ actualBoundingBoxAscent: 8, actualBoundingBoxDescent: 2 }),
+    } as unknown as CanvasRenderingContext2D;
+    const embedded = cache.get(
+      canvas,
+      {
+        fontFamily: 'Embedded Alias',
+        wordLineMetricFamily: 'Helvetica Neue',
+        fontSize: 12,
+        naturalLineMultiplier: 2581 / 2048,
+      },
+      'browser',
+      defaultFonts,
+    );
+    const calibrated = cache.get(
+      canvas,
+      { fontFamily: 'Embedded Alias', wordLineMetricFamily: 'Aptos', fontSize: 12, naturalLineMultiplier: 2 },
+      'browser',
+      defaultFonts,
+    );
+    const changedEmbeddedMetric = cache.get(
+      canvas,
+      {
+        fontFamily: 'Embedded Alias',
+        wordLineMetricFamily: 'Helvetica Neue',
+        fontSize: 12,
+        naturalLineMultiplier: 1.5,
+      },
+      'browser',
+      defaultFonts,
+    );
+
+    expect(embedded.naturalSingleLine).toBeCloseTo(12 * (2581 / 2048), 6);
+    expect(calibrated.naturalSingleLine).toBeCloseTo(12 * 1.224, 6);
+    expect(changedEmbeddedMetric.naturalSingleLine).toBe(18);
   });
 
   describe('getFontMetrics', () => {

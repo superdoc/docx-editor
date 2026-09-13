@@ -6,6 +6,7 @@ const previewPort = 4181 + portOffset;
 
 export default defineConfig({
   testDir: './tests',
+  testIgnore: ['**/persistence.spec.ts', '**/access.spec.ts'],
   workers: 1,
   retries: 0,
   reporter: 'list',

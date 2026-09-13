@@ -67,6 +67,7 @@ const legacySlice: SearchSlice = {
   includeDeletedText: false,
   regex: false,
   canReplace: false,
+  // A pre-existing SearchSlice literal keeps compiling without the new field.
 };
 const legacyHandle: SearchHandle = {
   getSnapshot: () => legacySlice,

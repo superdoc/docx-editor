@@ -4,6 +4,14 @@ labels:
   - "stage: triage"
   - "type: bug"
 body:
+  - type: markdown
+    attributes:
+      value: |
+        Community contributions start with issues. Pull requests are limited to repository collaborators.
+        [Read why and how to contribute](https://github.com/superdoc/docx-editor/blob/main/CONTRIBUTING.md).
+        Report suspected security vulnerabilities privately through [GitHub Security Advisories](https://github.com/superdoc/docx-editor/security/advisories/new), not in a public issue.
+        Remove confidential information from any files, screenshots, or logs you share.
+
   - type: textarea
     id: description
     attributes:
@@ -19,7 +27,7 @@ body:
     id: reproduction
     attributes:
       label: Steps to reproduce
-      description: How can we reproduce this? Include a sample .docx file if possible.
+      description: How can we reproduce this? Include a small reproduction or synthetic .docx file if possible.
       placeholder: |
         1. Open the attached .docx file
         2. Scroll to page 2
@@ -55,3 +63,11 @@ body:
     attributes:
       label: Additional context
       description: Screenshots, error messages, browser console output, or anything else that helps.
+
+  - type: textarea
+    id: investigation
+    attributes:
+      label: Investigation or proposed fix
+      description: If you’ve already investigated, share your findings, test results, or a link to a patch. You don’t need to write a fix to report a bug.
+    validations:
+      required: false

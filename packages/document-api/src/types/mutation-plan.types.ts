@@ -88,6 +88,10 @@ export type TextRewriteStep = {
   where: StepWhere;
   args: {
     replacement: ReplacementPayload;
+    /** Interpret positional `$1`…`$99` and `$&` tokens for regex matches. */
+    replacementMode?: 'literal' | 'regex-template';
+    /** Preserve the matched text's casing pattern instead of using replacement casing verbatim. */
+    caseHandling?: 'exact' | 'preserve-match';
     /**
      * Style policy for the replacement text.
      * When omitted, defaults to preserve mode:
@@ -202,6 +206,8 @@ export type MutationsPreviewInput = {
   atomic: true;
   changeMode: ChangeMode;
   steps: MutationStep[];
+  /** Optional page over verbose resolved-target details. Defaults to the first 100 targets. */
+  detail?: { offset?: number; limit?: number };
 };
 
 // ---------------------------------------------------------------------------
@@ -215,7 +221,10 @@ export type MutationsPreviewInput = {
 /** Maximum number of steps per mutation plan. */
 export const MAX_PLAN_STEPS = 200;
 
-/** Maximum total resolved targets across all steps in a plan. */
+/**
+ * @deprecated Historical compatibility metadata. Text replacement no longer
+ * enforces this value; callers must not treat it as a supported target limit.
+ */
 export const MAX_PLAN_RESOLVED_TARGETS = 500;
 
 // ---------------------------------------------------------------------------
@@ -247,9 +256,14 @@ export type SelectionStepResolution = {
 
 export type TextStepData = {
   domain: 'text';
-  resolutions: TextStepResolution[];
-  spanResolutions?: SpanStepResolution[];
-  selectionResolutions?: SelectionStepResolution[];
+  /** Exact number of targets selected from the step's input revision. */
+  matchedCount: number;
+  /** Exact number of targets whose content changed. */
+  changedCount: number;
+  /** Exact number of targets already equal to their requested replacement. */
+  noopCount: number;
+  /** Exact number of tracked-change identities authored by this step. */
+  trackedChangeCount: number;
 };
 
 export type AssertStepData = {
@@ -316,7 +330,10 @@ export type PreviewFailure = {
 export type StepPreview = {
   stepId: string;
   op: string;
+  /** Exact number of targets resolved for this step. */
+  matchCount?: number;
   resolutions?: TextStepResolution[];
+  detailPage?: { offset: number; limit: number; returned: number };
   spanResolutions?: SpanStepResolution[];
   selectionResolutions?: SelectionStepResolution[];
   style?: unknown;

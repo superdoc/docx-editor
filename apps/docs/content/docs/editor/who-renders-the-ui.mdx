@@ -4,22 +4,26 @@ navTitle: Choose your interface
 description: Decide who renders the controls around the DOCX canvas.
 ---
 
-SuperDoc always renders the DOCX canvas. Choose how much of the surrounding interface SuperDoc renders and how much
-your application owns. This choice does not change how you load, edit, or save the document.
+Keep the document loading and saving you already built. Now choose who renders the controls around it. SuperDoc
+continues to render the document and handle editing in all three approaches.
 
 ## Compare the approaches
 
-Switch between the three approaches. The toolbar and comments panel change ownership; the DOCX canvas does not.
+Switch between Built-in, Hybrid, and Fully custom in the diagram. The toolbar and comments panel change ownership;
+the document stays with SuperDoc.
 
 <InterfaceOwnership />
 
-Start with the built-in interface. Move to a hybrid or fully custom interface only for controls your application needs
-to own.
+Start with the built-in interface and configure it for your product. Use a hybrid interface when you need to own one
+part, such as a comments panel. Choose fully custom only when your application needs to render all the controls.
 
-## Set the interface boundary
+## What the configuration changes
 
 `Config.ui` controls which built-in surfaces render. A partial `ui` object changes only the surfaces it names. Hiding a
 surface does not remove its document data or public API.
+
+For example, `ui: { comments: false }` hides the built-in comments UI. It does not create a replacement panel; your
+application renders that panel and connects it to the comments API.
 
 `SuperDocEditor` creates a built-in toolbar container by default. Vanilla integrations add their own container when they
 want the toolbar.
@@ -28,5 +32,3 @@ want the toolbar.
 
 - [Use the built-in UI](/editor/built-in-ui/overview) to configure SuperDoc's toolbar and review surfaces.
 - [Build a custom UI](/editor/custom-ui/overview) to connect application-owned controls to `superdoc.ui`.
-
-A hybrid interface uses both paths: keep the built-in surfaces that fit and replace only the ones your application owns.

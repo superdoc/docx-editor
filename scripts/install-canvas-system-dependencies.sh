@@ -3,6 +3,7 @@ set -euo pipefail
 
 apt_timeout="${APT_COMMAND_TIMEOUT:-10m}"
 apt_mirror_file="${APT_MIRROR_FILE:-/etc/apt/apt-mirrors.txt}"
+apt_ubuntu_sources_file="${APT_UBUNTU_SOURCES_FILE:-/etc/apt/sources.list.d/ubuntu.sources}"
 export DEBIAN_FRONTEND="${DEBIAN_FRONTEND:-noninteractive}"
 
 apt_opts=(
@@ -91,6 +92,15 @@ if ((${#missing_packages[@]} == 0)); then
 fi
 
 stabilize_github_apt_mirrors
+if [ "${GITHUB_ACTIONS:-}" = "true" ] && [ -f "${apt_ubuntu_sources_file}" ]; then
+  # Canvas packages come from Ubuntu; unrelated runner repositories can have
+  # inconsistent indexes and must not block this dependency installation.
+  apt_opts+=(
+    -o "Dir::Etc::sourcelist=${apt_ubuntu_sources_file}"
+    -o Dir::Etc::sourceparts=-
+  )
+  echo "::notice::Using configured Ubuntu sources for canvas system dependencies."
+fi
 run_apt "apt-get update" update
 run_apt "apt-get install canvas system dependencies" install -y --no-install-recommends \
   "${missing_packages[@]}"

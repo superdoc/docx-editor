@@ -1,42 +1,74 @@
 import { SuperDoc } from 'superdoc';
+import type { UIConfig } from 'superdoc';
 import 'superdoc/style.css';
 
 const boldButton = document.querySelector<HTMLButtonElement>('#bold');
-if (!boldButton) throw new Error('The Bold button is missing.');
+const status = document.querySelector<HTMLOutputElement>('#status');
+if (!boldButton || !status) throw new Error('The custom controls are missing.');
 
 let stopObserving: (() => void) | null = null;
-let removeClickHandler: (() => void) | null = null;
+let removeHandlers: (() => void) | null = null;
+
+const editorUi = {
+  toolbar: {
+    container: '#toolbar',
+    excludeItems: ['bold'],
+  },
+} satisfies UIConfig;
 
 const superdoc = new SuperDoc({
   selector: '#editor',
-  document: '/contract.docx',
-  // This page's Bold button replaces one toolbar control, so the built-in
-  // toolbar is the only surface turned off.
-  ui: { toolbar: false },
+  document: '/sample.docx',
+  ui: editorUi,
   onReady: ({ superdoc: readySuperDoc }) => {
+    stopObserving?.();
+    removeHandlers?.();
     const bold = readySuperDoc.ui.commands.get('bold');
 
+    let pending = false;
     const render = (state: ReturnType<typeof bold.getState>) => {
-      boldButton.disabled = !state.enabled;
+      boldButton.disabled = pending || !state.enabled;
       boldButton.setAttribute('aria-pressed', String(state.active));
       boldButton.title = state.reason ?? 'Toggle bold';
     };
 
     const onBoldClick = async () => {
-      const result = await bold.executeAsync();
-      if (result === false) console.warn('Bold is not available for the current selection.');
+      if (pending) return;
+      const message = bold.getState().active ? 'Bold removed.' : 'Bold applied.';
+      pending = true;
+      render(bold.getState());
+      try {
+        const result = await bold.executeAsync();
+        const applied = result === true || (typeof result === 'object' && result.success);
+        status.textContent = applied ? message : 'Bold was not changed.';
+      } finally {
+        pending = false;
+        render(bold.getState());
+      }
     };
 
+    const preserveSelection = (event: MouseEvent) => event.preventDefault();
     render(bold.getState());
     stopObserving = bold.observe(render);
+    boldButton.addEventListener('mousedown', preserveSelection);
     boldButton.addEventListener('click', onBoldClick);
-    removeClickHandler = () => boldButton.removeEventListener('click', onBoldClick);
+    removeHandlers = () => {
+      boldButton.removeEventListener('mousedown', preserveSelection);
+      boldButton.removeEventListener('click', onBoldClick);
+    };
+  },
+  onContentError: ({ error }) => {
+    status.textContent = 'The document could not be opened.';
+    console.error(error);
+  },
+  onException: ({ error }) => {
+    status.textContent = 'The document could not be opened.';
+    console.error(error);
   },
 });
 
 window.addEventListener('beforeunload', () => {
   stopObserving?.();
-  removeClickHandler?.();
-  // Tears the controller down too. Never call `superdoc.ui.destroy()` yourself.
+  removeHandlers?.();
   superdoc.destroy();
 });

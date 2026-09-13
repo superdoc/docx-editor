@@ -85,9 +85,14 @@ package state through one collaboration model.
 
 ## Contributing
 
-Read the [contributing guide](https://github.com/superdoc/docx-editor/blob/main/CONTRIBUTING.md),
-browse [open issues](https://github.com/superdoc/docx-editor/issues), or join
-[Discord](https://discord.com/invite/b9UuaZRyaB).
+Community contributions start with an
+[issue](https://github.com/superdoc/docx-editor/issues/new/choose). Bug reports,
+feature requests, and technical investigations are welcome. Pull requests are
+limited to repository collaborators. Read the
+[contributing guide](https://github.com/superdoc/docx-editor/blob/main/CONTRIBUTING.md)
+for why and how to help, or join [Discord](https://discord.com/invite/b9UuaZRyaB)
+for questions. Report suspected security vulnerabilities privately through
+[GitHub Security Advisories](https://github.com/superdoc/docx-editor/security/advisories/new).
 
 ## Contributors
 

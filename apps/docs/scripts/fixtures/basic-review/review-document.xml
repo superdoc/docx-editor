@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>
+<w:p><w:r><w:rPr><w:b/><w:sz w:val="28"/></w:rPr><w:t>Review the delivery terms</w:t></w:r></w:p>
+<w:p><w:r><w:rPr><w:sz w:val="24"/></w:rPr><w:t xml:space="preserve">Delivery includes </w:t></w:r><w:ins w:id="1" w:author="Alex Rivera" w:date="2026-01-15T12:00:00Z"><w:r><w:rPr><w:sz w:val="24"/></w:rPr><w:t xml:space="preserve">installation and </w:t></w:r></w:ins><w:r><w:rPr><w:sz w:val="24"/></w:rPr><w:t>training.</w:t></w:r></w:p>
+<w:p><w:r><w:rPr><w:sz w:val="24"/></w:rPr><w:t>Payment is due within 30 days.</w:t></w:r></w:p>
+<w:p><w:r><w:rPr><w:sz w:val="24"/></w:rPr><w:t>Support lasts for one year.</w:t></w:r></w:p>
+<w:sectPr><w:pgSz w:w="8640" w:h="7200"/><w:pgMar w:top="720" w:right="720" w:bottom="720" w:left="720" w:header="360" w:footer="360" w:gutter="0"/></w:sectPr>
+</w:body></w:document>

@@ -304,4 +304,63 @@ describe('useCommentSmallScreen', () => {
 
     window.ResizeObserver = originalResizeObserver;
   });
+
+  // Regression coverage: while the v2 loading overlay is present, `.superdoc__layers`
+  // (and `.superdoc__document`, being 100% of it) is forced to fill the container.
+  // Once the overlay unmounts, that width settles to the real page size — a resize
+  // of a descendant the container's own ResizeObserver never sees. These tests
+  // assert recalculation follows that settling directly, without the container ever
+  // resizing.
+  it('re-evaluates when the layers element resizes on its own, with the container untouched', () => {
+    commentsModuleConfig.value = { layout: 'auto' };
+    setClientWidth(parent, 1890);
+    setClientWidth(layers, 1890); // forced full-width, as while the loading overlay is present
+
+    const ro = createMockResizeObserver();
+    const { api: state, wrapper } = mountComposable();
+
+    state.recalculateCompactCommentsMode();
+    expect(state.isCompactCommentsMode.value).toBe(true); // required width (1890+320+24) > 1890
+
+    const documentWidthObserver = ro.instances.find((instance) =>
+      instance.observe.mock.calls.some(([el]) => el === layers),
+    );
+    expect(documentWidthObserver).toBeTruthy();
+
+    // Container is untouched — only `layers` settles to its real (narrower) width,
+    // as it does once the loading overlay unmounts.
+    setClientWidth(layers, 816);
+    documentWidthObserver._cb();
+
+    expect(state.isCompactCommentsMode.value).toBe(false);
+    wrapper.unmount();
+    ro.restore();
+  });
+
+  it('re-evaluates when .superdoc__document resizes on its own, with the container untouched', () => {
+    commentsModuleConfig.value = { layout: 'auto' };
+    const documentEl = document.createElement('div');
+    documentEl.className = 'superdoc__document';
+    root.appendChild(documentEl);
+    setClientWidth(parent, 1890);
+    setClientWidth(documentEl, 1890);
+
+    const ro = createMockResizeObserver();
+    const { api: state, wrapper } = mountComposable();
+
+    state.recalculateCompactCommentsMode();
+    expect(state.isCompactCommentsMode.value).toBe(true);
+
+    const documentWidthObserver = ro.instances.find((instance) =>
+      instance.observe.mock.calls.some(([el]) => el === documentEl),
+    );
+    expect(documentWidthObserver).toBeTruthy();
+
+    setClientWidth(documentEl, 816);
+    documentWidthObserver._cb();
+
+    expect(state.isCompactCommentsMode.value).toBe(false);
+    wrapper.unmount();
+    ro.restore();
+  });
 });

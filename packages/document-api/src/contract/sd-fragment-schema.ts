@@ -176,7 +176,7 @@ export const SD_CONVERSION_FRAGMENT_SCHEMA_DEFS: Record<string, JsonSchema> = {
       kind: { const: 'heading' },
       heading: objectSchema(
         {
-          level: { type: 'integer', minimum: 1, maximum: 6 },
+          level: { type: 'integer', minimum: 1, maximum: 9 },
           inlines: arraySchema(ref('SDInboundInlineNode')),
           styleRef: { type: 'string' },
           props: ref('SDInboundParagraphProps'),

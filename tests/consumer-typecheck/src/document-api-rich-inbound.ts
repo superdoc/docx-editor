@@ -45,7 +45,11 @@ const mutationInput: Parameters<DocumentApi['mutations']['apply']>[0] = {
   ],
 };
 const mutationResult: ReturnType<DocumentApi['mutations']['apply']> = doc.mutations.apply(mutationInput);
-const invalidatedRefs = mutationResult.invalidatedRefs;
+const inspectMutationResult = async () => {
+  const invalidatedRefs = (await mutationResult).invalidatedRefs;
+  void invalidatedRefs;
+};
+void inspectMutationResult;
 
 for (const diagnostic of htmlResult.diagnostics) {
   const format: 'html' | 'markdown' = diagnostic.source.format;
@@ -104,12 +108,24 @@ if (parsedClipboard.success) {
     } else if (block.kind === 'horizontalRule') {
       void block.sourcePath;
     } else if (block.kind === 'paragraph') {
+      for (const run of block.runs) {
+        const commentIds: readonly string[] | undefined = run.commentIds;
+        const trackedInsertion: boolean | undefined = run.trackedInsertion;
+        void [commentIds, trackedInsertion];
+      }
       for (const inline of block.inlines ?? []) {
         if (inline.kind === 'hyperlink') void inline.target;
         if (inline.kind === 'lineBreak') void inline.sourcePath;
+        if (inline.kind === 'text') {
+          const commentIds: readonly string[] | undefined = inline.commentIds;
+          const trackedInsertion: boolean | undefined = inline.trackedInsertion;
+          void [commentIds, trackedInsertion];
+        }
       }
     }
   }
+  const comments: typeof parsedClipboard.plan.fragment.comments = parsedClipboard.plan.fragment.comments;
+  void comments;
 }
 
 for (const receipt of [
@@ -172,5 +188,4 @@ void [
   oldReplace,
   oldMarkdown,
   parsedClipboard,
-  invalidatedRefs,
 ];

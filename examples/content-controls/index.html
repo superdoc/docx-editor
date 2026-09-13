@@ -37,6 +37,7 @@
             <h2>Confidentiality clause</h2>
             <p>Place the caret on the empty line under the heading.</p>
             <button id="add-block-field" type="button" disabled>Add block field</button>
+            <button id="replace-clause" type="button" disabled>Use mutual confidentiality clause</button>
           </div>
         </section>
 
@@ -63,7 +64,9 @@
           <div class="field-meta">
             <code>client.legalName</code>
             <span class="occurrence-nav" hidden>
-              <button id="previous-client-name" type="button" aria-label="Previous client legal name occurrence">‹</button>
+              <button id="previous-client-name" type="button" aria-label="Previous client legal name occurrence">
+                ‹
+              </button>
               <span id="client-name-position"></span>
               <button id="next-client-name" type="button" aria-label="Next client legal name occurrence">›</button>
             </span>
@@ -74,6 +77,7 @@
           <label for="client-address">Client address</label>
           <input id="client-address" type="text" disabled />
           <code>client.address</code>
+          <label><input id="lock-address" type="checkbox" disabled /> Lock address after filling</label>
         </div>
 
         <div class="field-row" data-field="effectiveDate">

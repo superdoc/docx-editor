@@ -124,6 +124,25 @@ describe('sliceRunsForLine', () => {
     expect(result[0]).toMatchObject({ text: 'hello', pmStart: 100, pmEnd: 105 });
   });
 
+  it('preserves a multi-digit body note reference as one coordinate unit', () => {
+    const marker: TextRun = {
+      kind: 'text',
+      text: '10',
+      fontFamily: 'Arial',
+      fontSize: 12,
+      pmStart: 100,
+      pmEnd: 101,
+      dataAttrs: { 'data-v2-note-ref': 'footnote:10' },
+    };
+    const block = makeParagraph([marker]);
+    const line = makeLine({ fromRun: 0, fromChar: 0, toRun: 0, toChar: marker.text.length });
+
+    expect(sliceRunsForLine(block, line)).toEqual([marker]);
+
+    const partialLine = makeLine({ fromRun: 0, fromChar: 1, toRun: 0, toChar: 2 });
+    expect(sliceRunsForLine(block, partialLine)).toEqual([{ ...marker, text: '0' }]);
+  });
+
   it('passes middle text runs through unchanged when the line spans multiple runs', () => {
     const first = makeTextRun('foo', 0);
     const middle = makeTextRun('bar', 3);

@@ -1,5 +1,7 @@
 import type { BaseNodeInfo } from './base.js';
 
+export type SemanticHeadingLevel = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
+
 export interface ParagraphNodeInfo extends BaseNodeInfo {
   nodeType: 'paragraph';
   kind: 'block';
@@ -59,7 +61,7 @@ export interface HeadingProperties extends ParagraphProperties {
   /**
    * Headings are paragraphs with a heading style.
    */
-  headingLevel: 1 | 2 | 3 | 4 | 5 | 6;
+  headingLevel: SemanticHeadingLevel;
 }
 
 export interface ListItemProperties extends ParagraphProperties {

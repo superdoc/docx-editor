@@ -16,7 +16,7 @@
  *   - `ui: false` renders no built-in chrome. It is an explicit
  *     no-built-in-UI profile, not the inverse of a hypothetical `ui: true`,
  *     and it never disables document content, the Document API, or
- *     `editor.ui`.
+ *     `superdoc.ui`.
  *   - `ui: { ... }` opts in per surface. An omitted key keeps that surface's
  *     historical default rather than inheriting from its siblings.
  *

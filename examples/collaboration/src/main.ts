@@ -1,5 +1,7 @@
 import { SuperDoc } from 'superdoc';
 import 'superdoc/style.css';
+import { renderParticipants } from './participants';
+import { demoCredentials } from './demo-credentials';
 
 const exportButton = document.querySelector<HTMLButtonElement>('#export-docx');
 const status = document.querySelector<HTMLSpanElement>('#status');
@@ -25,10 +27,12 @@ const superdoc = new SuperDoc({
         documentId: 'example-room',
         serverUrl: `ws://127.0.0.1:${collaborationPort}`,
         roomMode,
+        token: import.meta.env.VITE_COLLABORATION_DEMO_AUTH === '1' ? demoCredentials[userName] : undefined,
       },
     },
   ],
   user: { name: userName, email: `${userName.toLowerCase().replaceAll(' ', '-')}@example.com` },
+  onAwarenessUpdate: renderParticipants,
   onCollaborationReady: () => {
     exportButton.disabled = false;
     status.textContent = 'Connected.';

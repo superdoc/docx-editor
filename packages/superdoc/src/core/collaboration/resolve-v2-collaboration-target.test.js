@@ -3,6 +3,32 @@ import { DOCX, PDF } from '@superdoc/common';
 import { resolveV2CollaborationTarget, redactCollaborationUrl } from './resolve-v2-collaboration-target.ts';
 
 describe('resolveV2CollaborationTarget', () => {
+  for (const collaboration of [
+    { providerType: 'y-websocket', documentId: 'room', serverUrl: 'wss://example.com' },
+    { providerType: 'hocuspocus', documentId: 'room', serverUrl: 'wss://example.com', token: 'token' },
+    { providerType: 'liveblocks', roomId: 'room', authEndpoint: 'https://example.com/auth' },
+  ]) {
+    it(`accepts both config spellings for ${collaboration.providerType}`, () => {
+      expect(resolveV2CollaborationTarget({ collaboration })).toEqual(
+        resolveV2CollaborationTarget({ v2Collaboration: collaboration }),
+      );
+    });
+  }
+
+  it('uses the complete canonical target without merging fields from its alias', () => {
+    const collaboration = { providerType: 'hocuspocus', documentId: 'new', serverUrl: 'wss://new.example.com' };
+    const v2Collaboration = {
+      providerType: 'hocuspocus',
+      documentId: 'old',
+      serverUrl: 'wss://old.example.com',
+      token: 'old-secret',
+    };
+    expect(resolveV2CollaborationTarget({ collaboration, v2Collaboration })).toEqual(
+      resolveV2CollaborationTarget({ collaboration }),
+    );
+    expect(resolveV2CollaborationTarget({ collaboration: {}, v2Collaboration }).ok).toBe(false);
+    expect(resolveV2CollaborationTarget({ collaboration: null, v2Collaboration }).ok).toBe(false);
+  });
   it('resolves a valid v2Collaboration target to a y-websocket family', () => {
     const result = resolveV2CollaborationTarget({
       v2Collaboration: { documentId: 'room-1', serverUrl: 'wss://collab.example.com' },
@@ -397,6 +423,53 @@ describe('resolveV2CollaborationTarget', () => {
     });
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.target.params).toEqual({ token: 'abc' });
+  });
+
+  describe('provider extension contract', () => {
+    it('preserves a Hocuspocus token resolver for the browser-to-worker callback bridge', () => {
+      const resolveToken = async () => 'jwt-current';
+      const result = resolveV2CollaborationTarget({
+        v2Collaboration: {
+          providerType: 'hocuspocus',
+          documentId: 'fieldguide-report',
+          serverUrl: 'wss://collaboration.example.test',
+          token: resolveToken,
+        },
+      });
+
+      expect(result).toEqual({
+        ok: true,
+        target: {
+          providerFamily: 'hocuspocus',
+          documentId: 'fieldguide-report',
+          roomMode: 'join',
+          serverUrl: 'wss://collaboration.example.test',
+          token: resolveToken,
+        },
+      });
+    });
+
+    it('accepts a customer adapter id and structured-clone-safe provider options', () => {
+      const result = resolveV2CollaborationTarget({
+        v2Collaboration: {
+          providerType: 'extension',
+          adapterId: 'fieldguide-hocuspocus',
+          documentId: 'fieldguide-report',
+          providerOptions: { tenant: 'acme', reconnect: true },
+        },
+      });
+
+      expect(result).toEqual({
+        ok: true,
+        target: {
+          providerFamily: 'extension',
+          adapterId: 'fieldguide-hocuspocus',
+          documentId: 'fieldguide-report',
+          providerOptions: { tenant: 'acme', reconnect: true },
+          roomMode: 'join',
+        },
+      });
+    });
   });
 });
 

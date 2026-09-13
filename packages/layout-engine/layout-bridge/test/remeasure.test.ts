@@ -505,6 +505,37 @@ describe('remeasureParagraph', () => {
       expect(measure.lines[1]?.lineHeight).toBeCloseTo(fontSize * 1.224 * lineMultiplier, 6);
     });
 
+    it('uses the same loaded embedded-face pitch during fast remeasurement', () => {
+      const fontSize = 12;
+      const multiplier = 2581 / 2048;
+      const block = createBlock([textRun('Embedded line', { fontFamily: 'Helvetica Neue', fontSize })]);
+      const measure = remeasureParagraph(block, 200, 0, undefined, {
+        fontSignature: 'embedded:1',
+        resolvePhysical: (family) => family,
+        resolveNaturalLineMultiplier: (_family, face, text) =>
+          face.weight === '400' && text === 'Embedded line' ? multiplier : undefined,
+      });
+
+      expect(measure.lines).toHaveLength(1);
+      expect(measure.lines[0].lineHeight).toBeCloseTo(fontSize * multiplier, 6);
+    });
+
+    it('uses the largest embedded-face pitch when equal-size runs share a line', () => {
+      const fontSize = 12;
+      const block = createBlock([
+        textRun('Tall', { fontFamily: 'Tall Embedded', fontSize }),
+        textRun('Short', { fontFamily: 'Short Embedded', fontSize }),
+      ]);
+      const measure = remeasureParagraph(block, 200, 0, undefined, {
+        fontSignature: 'embedded:2',
+        resolvePhysical: (family) => family,
+        resolveNaturalLineMultiplier: (family) => (family === 'Tall Embedded' ? 1.4 : 1.2),
+      });
+
+      expect(measure.lines).toHaveLength(1);
+      expect(measure.lines[0].lineHeight).toBeCloseTo(fontSize * 1.4, 6);
+    });
+
     it('handles runs with different formatting on same line', () => {
       const block = createBlock([
         textRun('Bold', { bold: true }),

@@ -10,10 +10,12 @@ import {
   useClearSuperDoc,
   useSuperDocCommand,
   useSuperDocSlice,
+  useSuperDocSearch,
   useSuperDocUI,
 } from 'superdoc/ui/vue';
 import type { SuperDocHost, SuperDocUIBinding, UseSuperDocCommandResult } from 'superdoc/ui/vue';
-import type { CommandState, SuperDocUIState } from 'superdoc/ui';
+import type { CommandId, CommandState, SearchSnapshot, SuperDocUIState } from 'superdoc/ui';
+import type { FindReplaceHandle } from 'superdoc';
 import type { ComputedRef, MaybeRefOrGetter, ShallowRef } from 'vue';
 
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
@@ -35,18 +37,27 @@ type PublishedUi = NonNullable<ReturnType<typeof useSuperDocUI>['value']>;
 const _noDestroy: AssertEqual<'destroy' extends keyof PublishedUi ? true : false, false> = true;
 
 // Command state is exposed as Vue refs beside execution methods, and the id
-// parameter accepts a plain string, a ref, or a getter.
+// parameter accepts a plain or reactive command id.
 const _commandReturns: AssertEqual<ReturnType<typeof useSuperDocCommand>, UseSuperDocCommandResult> = true;
-const _commandParams: AssertEqual<Parameters<typeof useSuperDocCommand>, [id: MaybeRefOrGetter<string>]> = true;
+const _commandParams: AssertEqual<Parameters<typeof useSuperDocCommand>, [id: MaybeRefOrGetter<CommandId>]> = true;
 const _commandState: AssertEqual<UseSuperDocCommandResult['state'], Readonly<ShallowRef<CommandState>>> = true;
 const _commandEnabled: AssertEqual<UseSuperDocCommandResult['enabled'], Readonly<ComputedRef<boolean>>> = true;
+
+// The built-in find/replace handle reports Replace and Replace all separately:
+// a truncated session keeps the active match replaceable but not every match.
+const _findReplaceCanReplace: AssertEqual<FindReplaceHandle['canReplace'], ComputedRef<boolean>> = true;
+const _findReplaceCanReplaceAll: AssertEqual<FindReplaceHandle['canReplaceAll'], ComputedRef<boolean> | undefined> =
+  true;
 
 // The generic slice composable accepts a raw `ui.select(...)` subscribable and
 // returns a ref of the selected slice type.
 declare const _binding: SuperDocUIBinding;
 const _mode = useSuperDocSlice((ui) => ui.select((state: SuperDocUIState) => state.documentMode), null);
 const _modeShape: AssertEqual<typeof _mode, Readonly<ShallowRef<SuperDocUIState['documentMode'] | null>>> = true;
+const _searchShape: AssertEqual<ReturnType<typeof useSuperDocSearch>, Readonly<ShallowRef<SearchSnapshot>>> = true;
+const _searchParams: AssertEqual<Parameters<typeof useSuperDocSearch>, []> = true;
 
+void _searchParams;
 void _provideParams;
 void _provideReturns;
 void _setterShape;
@@ -56,5 +67,8 @@ void _commandReturns;
 void _commandParams;
 void _commandState;
 void _commandEnabled;
+void _findReplaceCanReplace;
+void _findReplaceCanReplaceAll;
 void _binding;
 void _modeShape;
+void _searchShape;

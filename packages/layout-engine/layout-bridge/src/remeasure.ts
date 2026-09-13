@@ -28,6 +28,7 @@ import {
   DEFAULT_TAB_INTERVAL_PX as _DEFAULT_TAB_INTERVAL_PX,
 } from '@superdoc/common/layout-constants';
 import { resolveListTextStartPx } from '@superdoc/common/list-marker-utils';
+import { DEFAULT_FONT_MEASURE_CONTEXT, type FaceKey, type FontMeasureContext } from '@superdoc/font-system';
 import {
   getCalibratedNaturalSingleLine,
   collectCjkJustificationBoundaries,
@@ -1297,10 +1298,22 @@ const applyTabLayoutToLines = (
  */
 const DEFAULT_AUTO_LINE_HEIGHT_MULTIPLIER = 1.15;
 
-function resolveLineHeight(spacing: ParagraphSpacing | undefined, fontSize: number, fontFamily?: string): number {
+function resolveLineHeight(
+  spacing: ParagraphSpacing | undefined,
+  fontSize: number,
+  fontFamily?: string,
+  face?: FaceKey,
+  text?: string,
+  fontContext: FontMeasureContext = DEFAULT_FONT_MEASURE_CONTEXT,
+): number {
+  const calibratedMultiplier = fontFamily ? getCalibratedNaturalSingleLine(fontFamily, 1) : undefined;
+  const embeddedMultiplier =
+    calibratedMultiplier == null && fontFamily && face
+      ? fontContext.resolveNaturalLineMultiplier?.(fontFamily, face, text ?? '')
+      : undefined;
   const defaultLineHeight = Math.max(
     fontSize * DEFAULT_AUTO_LINE_HEIGHT_MULTIPLIER,
-    fontFamily ? (getCalibratedNaturalSingleLine(fontFamily, fontSize) ?? 0) : 0,
+    fontSize * (calibratedMultiplier ?? embeddedMultiplier ?? 0),
   );
   if (!spacing || spacing.line == null) {
     return defaultLineHeight;
@@ -1330,20 +1343,24 @@ function lineHeightForRuns(
   toRun: number,
   fallbackFontSize: number = 16,
   spacing?: ParagraphSpacing,
+  fontContext: FontMeasureContext = DEFAULT_FONT_MEASURE_CONTEXT,
 ): number {
-  let maxSize = 0;
-  let maxFamily: string | undefined;
+  let maxLineHeight = 0;
   for (let i = fromRun; i <= toRun; i += 1) {
     const run = runs[i];
     const size = visibleLineHeightFontSize(run) ?? 0;
-    if (size >= maxSize) {
-      maxSize = size;
-      maxFamily =
-        typeof (run as TextRun | undefined)?.fontFamily === 'string' ? (run as TextRun).fontFamily : undefined;
-    }
+    if (size <= 0) continue;
+    const metricRun = run as TextRun | TabRun | undefined;
+    const family = typeof metricRun?.fontFamily === 'string' ? metricRun.fontFamily : undefined;
+    const face: FaceKey | undefined = metricRun
+      ? { weight: metricRun.bold ? '700' : '400', style: metricRun.italic ? 'italic' : 'normal' }
+      : undefined;
+    maxLineHeight = Math.max(
+      maxLineHeight,
+      resolveLineHeight(spacing, size, family, face, metricRun?.text, fontContext),
+    );
   }
-  const resolvedSize = maxSize > 0 ? maxSize : fallbackFontSize;
-  return resolveLineHeight(spacing, resolvedSize, maxFamily);
+  return maxLineHeight > 0 ? maxLineHeight : resolveLineHeight(spacing, fallbackFontSize);
 }
 
 type RegionCursor = { runIndex: number; charIndex: number };
@@ -1381,6 +1398,7 @@ function remeasurePlainTextAcrossRegions(
   maxWidth: number,
   firstLineIndent: number,
   lineRegions: readonly (readonly ParagraphLineRegion[])[],
+  fontContext: FontMeasureContext,
 ): ParagraphMeasure | null {
   const attrs = block.attrs;
   const internalAttrs = attrs as ParagraphBlockAttrs | undefined;
@@ -1474,7 +1492,7 @@ function remeasurePlainTextAcrossRegions(
       if (!remaining) break;
       const regionOriginAdjustment = regionIndex === 0 ? 0 : firstLineOffset;
       const regionMeasureWidth = Math.max(1, region.width - (regionIndex === 0 ? firstLineOffset : 0));
-      const regionMeasure = remeasureParagraph(remaining.block, regionMeasureWidth);
+      const regionMeasure = remeasureParagraph(remaining.block, regionMeasureWidth, 0, undefined, fontContext);
       const regionLine = regionMeasure.lines[0];
       if (!regionLine) break;
 
@@ -1642,6 +1660,7 @@ export function remeasureParagraph(
   maxWidth: number,
   firstLineIndent: number = 0,
   lineRegions?: readonly (readonly ParagraphLineRegion[])[],
+  fontContext: FontMeasureContext = DEFAULT_FONT_MEASURE_CONTEXT,
 ): ParagraphMeasure {
   // Input validation: maxWidth must be positive
   if (!Number.isFinite(maxWidth) || maxWidth <= 0) {
@@ -1664,7 +1683,7 @@ export function remeasureParagraph(
   }
 
   if (lineRegions?.some((regions) => regions.length > 1)) {
-    const composedMeasure = remeasurePlainTextAcrossRegions(block, maxWidth, firstLineIndent, lineRegions);
+    const composedMeasure = remeasurePlainTextAcrossRegions(block, maxWidth, firstLineIndent, lineRegions, fontContext);
     if (composedMeasure) return composedMeasure;
   }
 
@@ -2122,7 +2141,7 @@ export function remeasureParagraph(
     // Text-derived line height is the threshold for the baseline decision.
     // Reflowed lines still preserve line-expanding image height, matching
     // measuring/dom's `max(textLineHeight, maxImageHeight)` behavior.
-    const textLineHeight = lineHeightForRuns(runs, startRun, endRun, lastMeasuredFontSize, spacing);
+    const textLineHeight = lineHeightForRuns(runs, startRun, endRun, lastMeasuredFontSize, spacing, fontContext);
     const lineHeight = Math.max(textLineHeight, lineMaxImageHeight);
     const line: Line = {
       fromRun: startRun,

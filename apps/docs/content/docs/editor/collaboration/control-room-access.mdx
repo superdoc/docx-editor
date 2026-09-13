@@ -1,0 +1,103 @@
+---
+title: Control access to a room
+navTitle: Control access
+description: Check credentials and document permissions before an editor joins a shared room.
+---
+
+Decide who may open a shared document. A room ID identifies it; it does not grant access. A cursor's display name is not
+proof of identity. This walkthrough adds authorization to the local example; it does not require persistent storage.
+
+Edit Alex's document, then connect Sam to see the same edits. Connect Taylor: the server rejects the request because Taylor has no permission for this room.
+
+<CollaborationDemo access />
+
+## Let the server decide
+
+| Browser                                 | Collaboration server                                    | Result                               |
+| --------------------------------------- | ------------------------------------------------------- | ------------------------------------ |
+| Sends a credential and requests a room. | Verifies the credential and checks access to that room. | Allows the connection or rejects it. |
+
+Keep both checks on the server. Hiding a document link or disabling an editor control does not protect the room.
+
+## 1. Enable the access example
+
+Use the [local collaboration example](/editor/collaboration/connect-two-editors). Stop its development command, then run:
+
+```bash
+COLLABORATION_DEMO_AUTH=1 VITE_COLLABORATION_DEMO_AUTH=1 pnpm dev
+```
+
+The first flag enables server checks. The second lets the browser select a test credential for each example user.
+
+To keep the storage from the previous guide too, add `COLLABORATION_STORAGE_DIR=.collaboration-data` to the same
+command. If `example-room` is already saved, open both Alex and Sam with their join addresses below, not `mode=create`.
+
+<Callout title='Public test credentials only'>
+  This example simulates signed-in users with fixed, public credentials. Anyone can select Alex's credential. It teaches
+  the connection checks, not a production login system. Use only the sample document.
+</Callout>
+
+## 2. Allow Alex and Sam
+
+For a new room, open `http://localhost:5173/?mode=create&user=Alex`. If `example-room` is already saved,
+open `http://localhost:5173/?user=Alex` instead. Wait for `Connected.`, then open `http://localhost:5173/?user=Sam`.
+
+Type in Alex's editor and confirm that Sam receives the edit. The server allows both credentials to access `example-room`.
+
+## 3. Reject Taylor
+
+Open `http://localhost:5173/?user=Taylor`. Taylor's credential is recognized, but it has no room permissions. The page should show `Connection failed.` and keep **Export DOCX** disabled. Taylor must not receive Alex's shared edits.
+
+This is different from an unknown credential, which the server also rejects. Knowing who someone is does not mean they can open every document.
+
+## Check the credential and room together
+
+The example's `demo-access.ts` supplies Hocuspocus's `onAuthenticate` hook:
+
+<include>../../../../../../examples/collaboration/demo-access.ts</include>
+
+For the pinned SuperDoc 2.11.0 example, `documentId: 'example-room'` reaches Hocuspocus as `sd2/v2.1/example-room`. The hook checks that exact provider room name, not just whether the token is valid. Keep this mapping with your document permissions; do not authorize by matching only a suffix.
+
+Returning allows the connection; throwing rejects it. This example grants the same room access to creators and joiners; it does not implement separate create, read-only, or edit roles.
+
+In the [preview configuration API](/editor/collaboration/connect-two-editors#configure-your-application), send the browser credential through `document.collaboration.token`. It is separate from `user`, which supplies display identity for the editor.
+
+## Handle a rejected connection
+
+The preview API adds `collaborationReason` to connection failures reported by `onException`. Add this callback to your editor configuration:
+
+```ts
+import type { Config } from 'superdoc';
+
+const onException: NonNullable<Config['onException']> = (failure) => {
+  if ('collaborationReason' in failure) {
+    switch (failure.collaborationReason) {
+      case 'access-denied':
+        console.error('Check your sign-in and permission to open this document.');
+        break;
+      case 'connection-failed':
+      case 'sync-timeout':
+        console.error('Could not connect. Check your connection and try again.');
+        break;
+    }
+    return;
+  }
+  console.error(failure.error);
+};
+```
+
+`access-denied` means the provider explicitly rejected the connection. It does not distinguish an invalid credential from missing room permission. A timeout is not proof of denied access, and a worker startup failure is not a collaboration rejection. Do not parse error messages or show the server's raw rejection text to users.
+
+The pinned 2.11.0 example reports only `Connection failed.`; keep its existing error handling until you upgrade. The embedded demo confirms rejection with its example server.
+
+## Connect your application's sign-in flow
+
+Replace the public credential map with server-side validation of your application's session or access token. Look up the verified user's permission for the requested document. Do not accept a browser-supplied user ID as proof of identity.
+
+On the browser side, replace `src/demo-credentials.ts` and its name-based selection with a credential obtained through your authenticated application. Never put production secrets in a `VITE_` variable, source file, or URL. Use HTTPS and secure WebSockets outside local development.
+
+Returning `userId` from this server hook does not make the browser's cursor label trustworthy. Keep authorization tied to the verified server identity, not awareness names or colors.
+
+Protect the source DOCX download and export storage too; room authorization does not secure separate file endpoints. Rechecking access after token expiry or permission changes needs an explicit server policy, not just this initial connection check.
+
+Next, [run a collaboration server](/editor/collaboration/run-a-server) to review provider choices and deployment responsibilities.

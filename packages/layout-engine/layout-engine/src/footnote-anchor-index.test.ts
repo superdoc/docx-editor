@@ -120,6 +120,43 @@ const makeFootnotes = (
 });
 
 describe('buildFootnoteAnchorIndexSteps', () => {
+  it('preserves exact native run ownership when reference positions are synthetic or shared', () => {
+    const owner = paragraphWithRunRange('native-owner', 10, 20);
+    if (owner.kind !== 'paragraph') throw new Error('Expected paragraph fixture');
+    owner.runs.push({ text: '2', pmStart: 20, pmEnd: 20, fontFamily: 'Arial', fontSize: 12 });
+    const refs = [
+      { id: 'first', pos: 9_000, blockId: owner.id, runOrdinal: 0 },
+      { id: 'second', pos: 9_000, blockId: owner.id, runOrdinal: 1 },
+      { id: 'first', pos: 9_001, blockId: owner.id, runOrdinal: 1 },
+    ];
+    const footnotes = makeFootnotes(refs);
+    footnotes.nativeRunOwnership = true;
+
+    const actual = drain(buildFootnoteAnchorIndexSteps([owner], footnotes, 1));
+
+    expect(actual.get(owner.id)).toEqual([
+      { pmPos: 9_000, refId: 'first', runOrdinal: 0, fullHeight: 22, firstLineHeight: 10 },
+      { pmPos: 9_000, refId: 'second', runOrdinal: 1, fullHeight: 21, firstLineHeight: 9 },
+    ]);
+  });
+
+  it('keeps invalid native anchors and nested table references on the legacy fallback', () => {
+    const owner = paragraphWithRunRange('owner', 10, 20);
+    const nested = paragraphWithRunRange('nested', 30, 40);
+    const blocks = [owner, table('table', [nested])];
+    const refs = [
+      { id: 'invalid-run', pos: 15, blockId: owner.id, runOrdinal: 9 },
+      { id: 'missing-owner', pos: 16, blockId: 'absent', runOrdinal: 0 },
+      { id: 'nested-ref', pos: 35, blockId: nested.id, runOrdinal: 0 },
+    ];
+    const footnotes = makeFootnotes(refs);
+
+    const actual = drain(buildFootnoteAnchorIndexSteps(blocks, footnotes, 1));
+
+    expect(actual).toEqual(legacyAnchorIndex(blocks, footnotes).result);
+    expect(actual.get('table')?.map((entry) => entry.refId)).toEqual(['nested-ref']);
+  });
+
   it.each([1, 8, 16])(
     'bounds scalar preflight work without a scheduler resumption per lookup (block cadence %i)',
     (cadence) => {

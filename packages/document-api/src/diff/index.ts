@@ -13,4 +13,8 @@ export type {
   DiffChangeMode,
   DiffApplyOperationReceipt,
   DiffApplyReviewItem,
+  DiffApplyEligibility,
+  DiffApplyModeEligibility,
+  DiffApplyEligibilityBlocker,
+  DiffApplyEligibilityBlockerCode,
 } from './diff.types.js';

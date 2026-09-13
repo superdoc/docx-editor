@@ -1,9 +1,11 @@
-import type { FlowBlock } from '@superdoc/contracts';
+import type { FlowBlock, ParagraphBlock } from '@superdoc/contracts';
 import type { LayoutWorkCheckpoint } from './execution.js';
 import type { FootnoteAnchorRef } from './layout-paragraph.js';
 
 export type FootnoteAnchorIndexInput = {
-  refs?: Array<{ id: string; pos: number; blockId?: string }>;
+  /** Use proved native paragraph/run ownership in the coupled page path. */
+  nativeRunOwnership?: boolean;
+  refs?: Array<{ id: string; pos: number; blockId?: string; runOrdinal?: number | null }>;
   bodyHeightById?: Map<string, number>;
   firstLineHeightById?: Map<string, number>;
 };
@@ -104,6 +106,26 @@ export function* buildFootnoteAnchorIndexSteps(
     return { pmStart, pmEnd: pmEnd ?? pmStart + 1 };
   }
 
+  // Native references already prove their paragraph/run owner. Their positions
+  // can be synthetic or shared by zero-width markers, so do not key them by PM
+  // position. Nested table references keep the conservative table-level path.
+  const paragraphsById = new Map<string, ParagraphBlock>();
+  for (const block of footnotes?.nativeRunOwnership ? blocks : []) {
+    const checkpoint = nextCheckpoint();
+    if (checkpoint) yield checkpoint;
+    if (block.kind === 'paragraph') paragraphsById.set(block.id, block);
+  }
+  const appendAnchor = (position: number, refId: string, ownerId: string, runOrdinal?: number): boolean => {
+    const fullHeight = bodyHeights.get(refId);
+    if (!validBodyHeight(fullHeight)) return false;
+    const firstLineRaw = firstLineHeights?.get(refId);
+    const firstLineHeight = validBodyHeight(firstLineRaw) ? Math.min(firstLineRaw, fullHeight) : fullHeight;
+    const list = out.get(ownerId) ?? [];
+    list.push({ pmPos: position, refId, fullHeight, firstLineHeight, ...(runOrdinal == null ? {} : { runOrdinal }) });
+    out.set(ownerId, list);
+    return true;
+  };
+
   const refByPos = new Map<number, string>();
   const seenIds = new Set<string>();
   let canUseIndexedLookup = true;
@@ -112,6 +134,17 @@ export function* buildFootnoteAnchorIndexSteps(
     if (checkpoint) yield checkpoint;
     if (seenIds.has(ref.id)) continue;
     seenIds.add(ref.id);
+    const owner = ref.blockId == null ? undefined : paragraphsById.get(ref.blockId);
+    if (
+      owner &&
+      typeof ref.runOrdinal === 'number' &&
+      Number.isInteger(ref.runOrdinal) &&
+      ref.runOrdinal >= 0 &&
+      ref.runOrdinal < owner.runs.length
+    ) {
+      appendAnchor(ref.pos, ref.id, owner.id, ref.runOrdinal);
+      continue;
+    }
     refByPos.set(ref.pos, ref.id);
     if (!Number.isFinite(ref.pos)) canUseIndexedLookup = false;
   }
@@ -185,13 +218,7 @@ export function* buildFootnoteAnchorIndexSteps(
   }
 
   const record = (position: number, refId: string, topLevelId: string): boolean => {
-    const fullHeight = bodyHeights.get(refId);
-    if (!validBodyHeight(fullHeight)) return false;
-    const firstLineRaw = firstLineHeights?.get(refId);
-    const firstLineHeight = validBodyHeight(firstLineRaw) ? Math.min(firstLineRaw, fullHeight) : fullHeight;
-    const list = out.get(topLevelId) ?? [];
-    list.push({ pmPos: position, refId, fullHeight, firstLineHeight });
-    out.set(topLevelId, list);
+    if (!appendAnchor(position, refId, topLevelId)) return false;
     refByPos.delete(position);
     removeIndexedPosition(position);
     return true;

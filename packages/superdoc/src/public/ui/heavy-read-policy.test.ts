@@ -388,6 +388,58 @@ describe('public ui — heavy-read policy behavior details', () => {
     harness.ui.destroy();
   });
 
+  it('observing content controls requests the catalog during loading', async () => {
+    vi.useFakeTimers();
+    const harness = makeHarness('source-loading');
+    await settle();
+    expect(harness.countFor('contentControls')).toBe(0);
+
+    const stop = harness.ui.contentControls.observe(() => undefined);
+    await settle();
+    expect(harness.countFor('contentControls')).toBeGreaterThan(0);
+
+    stop();
+    harness.ui.destroy();
+  });
+
+  it('observeActivePath never requests the catalog, during loading or across mutations', async () => {
+    vi.useFakeTimers();
+    const harness = makeHarness('source-loading');
+    await settle();
+    expect(harness.countFor('contentControls')).toBe(0);
+
+    const stop = harness.ui.contentControls.observeActivePath(() => undefined);
+    await settle();
+    expect(harness.countFor('contentControls')).toBe(0);
+
+    harness.emitMutation();
+    await settle();
+    expect(harness.countFor('contentControls')).toBe(0);
+
+    stop();
+    harness.ui.destroy();
+  });
+
+  it('an attached content-control observer renews catalog demand across mutations', async () => {
+    vi.useFakeTimers();
+    const harness = makeHarness('source-loading');
+    await settle();
+
+    const stop = harness.ui.contentControls.observe(() => undefined);
+    await settle();
+    const attached = harness.countFor('contentControls');
+    expect(attached).toBeGreaterThan(0);
+
+    // A mutation advances the content revision. The still-mounted panel must
+    // get the catalog for the new revision, not the one it attached at.
+    harness.emitMutation();
+    await settle();
+    expect(harness.countFor('contentControls')).toBeGreaterThan(attached);
+
+    stop();
+    harness.ui.destroy();
+  });
+
   it('explicit style-catalog demand issues only the requested read during loading', async () => {
     vi.useFakeTimers();
     const harness = makeHarness('source-loading');

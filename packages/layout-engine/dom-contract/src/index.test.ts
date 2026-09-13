@@ -69,6 +69,7 @@ describe('@superdoc/dom-contract', () => {
       LAYOUT_FRAGMENT_ID: 'data-layout-fragment-id',
       LAYOUT_STORY: 'data-layout-story',
       LAYOUT_BLOCK_REF: 'data-layout-block-ref',
+      LAYOUT_COLUMN_INDEX: 'data-layout-column-index',
     });
 
     expect(DATASET_KEYS).toEqual({
@@ -88,6 +89,7 @@ describe('@superdoc/dom-contract', () => {
       LAYOUT_FRAGMENT_ID: 'layoutFragmentId',
       LAYOUT_STORY: 'layoutStory',
       LAYOUT_BLOCK_REF: 'layoutBlockRef',
+      LAYOUT_COLUMN_INDEX: 'layoutColumnIndex',
     });
   });
 

@@ -1,71 +1,70 @@
 ---
-title: Commands and state
+title: Keep custom controls in sync
 navTitle: Commands and state
-description: Keep custom controls synchronized with the Editor and handle command results explicitly.
+description: Render selection-aware controls and confirm what each command did.
 ---
 
-A custom control has two responsibilities: render the current command state and route an action back through the same command handle. SuperDoc owns the state because availability can change with the selection, document mode, history, and document content.
+The Bold button from the [first control guide](/editor/custom-ui/controller-setup) changes as you move the selection. It
+does not inspect the document DOM. It renders command state from the Editor, runs the command, and handles the result.
 
-Start with the [framework-neutral controller example](/editor/custom-ui/controller-setup) or [React setup](/editor/custom-ui/react-setup). Both use the contract described here.
+## Follow one control through the loop
 
-## Read the state you need
+Choose each sample selection below, then press **Bold** when it is available. This simulation isolates the state your
+control renders and the result it handles. The first control guide runs the same loop in a real Editor.
+
+<CommandStateDemo />
+
+Every custom control repeats the same four steps:
+
+1. Read the command's current state.
+2. Render that state in your control.
+3. Run the command from the user's action.
+4. Inspect the result before reporting success or starting dependent work.
+
+## Render the current state
 
 Each command exposes a small state object:
 
-| Field       | Use it for                                                               |
-| ----------- | ------------------------------------------------------------------------ |
-| `enabled`   | Disable the control when the command cannot run in the current context   |
-| `active`    | Show toggle state for formatting, lists, links, and similar controls     |
-| `value`     | Show a command-specific value such as document mode, zoom, font, or link |
-| `reason`    | Explain why a recognized command is disabled                             |
-| `supported` | Distinguish a routed command from an unknown or unsupported command      |
+| Field       | What your control should do                                       |
+| ----------- | ----------------------------------------------------------------- |
+| `enabled`   | Disable the action when it cannot run                             |
+| `active`    | Show whether a toggle is applied                                  |
+| `value`     | Show the current value for a picker                               |
+| `reason`    | Explain why an action is disabled                                 |
+| `supported` | Check whether the controller recognizes and can route the command |
 
-Use `getState()` for the initial framework-neutral value and `observe()` for updates. In React, `useSuperDocCommand(id)` performs both steps and rerenders the component when the state changes.
+Use `getState()` for the initial value and `observe()` for later changes. In React, `useSuperDocCommand(id)` does both
+and rerenders the component when the state changes.
 
-Do not infer these fields from the document DOM. The canvas is the rendered document, not the public command-state boundary.
+Do not derive state from the rendered document DOM. Selection, mode, history, and document content can all change
+whether a command is available.
 
-## Keep unavailable controls understandable
+Disable a control when `enabled` is `false`. Show `reason` when it helps someone recover. Remove the control only when
+the workflow does not need it.
 
-Disable a control when `enabled` is false. Use `reason` in a tooltip or nearby explanation when the cause is useful to the person editing.
+## Confirm the command result
 
-A disabled command often needs context rather than removal. Bold needs a text selection. Undo needs document history. Table actions need a table selection. Hiding those controls can make a stable toolbar appear to change unpredictably.
+Use `executeAsync()` when your interface or later work depends on the action:
 
-Remove a control when the workflow does not need it. Disable it when the workflow needs it but the current context does not allow it.
+| Result               | Meaning                                               |
+| -------------------- | ----------------------------------------------------- |
+| `false`              | The controller could not route the command            |
+| `true`               | The host completed the command without a receipt      |
+| `{ success: true }`  | The document operation completed                      |
+| `{ success: false }` | The receipt explains why the operation did not finish |
 
-Map stable `reason` values to product language. Keep a fallback so newer reasons remain understandable before the application adds tailored copy:
+Command state is a snapshot, so check the result even when `enabled` was `true`. For receipt failure codes, see
+[Receipts and errors](/document-api/receipts-and-errors).
 
-<include>../../../../snippets/editor/command-failures.ts</include>
+## Choose commands deliberately
 
-Use the state fields together. `enabled: false` means the action cannot run now; `supported: false` means the controller cannot route it on this host. State is a snapshot rather than a guarantee, so execution still needs its own result check.
+Use `BuiltInCommandId` when a control accepts only SuperDoc commands. Use `CommandId` when it can also accept commands
+registered by your application. Both types are exported from `superdoc/ui`.
 
-## Await actions that affect later work
+`ui.commands.ids` lists the commands known to the current controller, and `ui.commands.has(id)` checks one ID. Use those
+methods for discovery or capability checks. Choose the actions your workflow needs instead of generating a toolbar from
+the entire list.
 
-Use `executeAsync()` when saving, navigating, or running another action depends on the command finishing.
-
-The result can be:
-
-- `false` when the controller could not route the command.
-- `true` when the host reports completion without a structured receipt.
-- A receipt object when the command routes through a document operation.
-
-For a receipt, inspect `success` before continuing. Do not treat a resolved promise or the absence of an exception as proof that the document changed.
-
-Branch on stable reason strings and receipt failure codes. Show the supplied message to developers or adapt it for users, but keep a fallback for codes the application does not recognize yet.
-
-For document-operation capability checks and receipt failure codes, read [Receipts and errors](/document-api/receipts-and-errors).
-
-## Treat values as command-specific
-
-`value` is intentionally not one universal type. A document-mode control reads a mode string. Zoom reads a percentage. A font control reads a font value. A link control can expose the active URL.
-
-Pass only the payload documented for that command. Do not reuse a value from one command as another command's payload.
-
-## Choose commands for the workflow
-
-`BUILT_IN_COMMAND_IDS` from `superdoc/ui` provides the stable core command ids. `ui.commands.ids` lists the commands recognized by the bound controller, including registered custom commands. `ui.commands.has(id)` checks one id.
-
-Do not render every recognized command automatically. Choose the controls the product task needs, then use command state to keep those controls truthful.
-
-The exhaustive command reference remains generated-source work. Until it is integrated into this site, use the focused examples in this section instead of copying the old command matrix.
-
-Continue with [React custom UI setup](/editor/custom-ui/react-setup), or compare custom controls with the [configured built-in toolbar](/editor/built-in-ui/configure-the-toolbar).
+Next, [build a custom toolbar](/editor/custom-ui/formatting-controls) that applies this loop to Bold, font, and size. If
+you do not need to own the toolbar's markup or interaction design, configure the
+[built-in toolbar](/editor/built-in-ui/configure-the-toolbar) instead.

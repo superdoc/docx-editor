@@ -92,7 +92,13 @@ import {
 import { resolveListTextStartPx, type MinimalMarker } from '@superdoc/common/list-marker-utils';
 import { calculateRotatedBounds, normalizeRotation } from '@superdoc/geometry-utils';
 import { toCssFontFamily } from '@superdoc/font-utils';
-import { DEFAULT_FONT_MEASURE_CONTEXT, type FaceKey, type FontMeasureContext } from '@superdoc/font-system';
+import {
+  DEFAULT_FONT_MEASURE_CONTEXT,
+  type FaceKey,
+  type FontMeasureCapabilities,
+  type FontMeasureContext,
+  type FontMeasureFace,
+} from '@superdoc/font-system';
 export { installNodeCanvasPolyfill } from './setup.js';
 import {
   clearMeasurementCache,
@@ -133,6 +139,7 @@ import {
   type SurfaceMeasurementExecutionControl,
 } from './measurement-runtime-context.js';
 import { DomMeasurementInfrastructureError } from './measurement-infrastructure-error.js';
+import { createTabularDigitProbe, type TabularDigitProbe } from './tabular-digits.js';
 import {
   clearTableCellBlockMeasureCache,
   measureTableCellBlocks,
@@ -259,6 +266,7 @@ function resolveWordGlyphAdvanceScale(fontFamily: string | undefined, text: stri
 export type DomMeasurementExecutionControl = SurfaceMeasurementExecutionControl;
 
 export interface DomMeasurementPass {
+  readonly fontCapabilities: FontMeasureCapabilities;
   measureBlock(block: FlowBlock, constraints: number | MeasureConstraints): Promise<Measure>;
   snapshotStats(): TextWidthCacheStats;
   finish(): TextWidthCacheStats;
@@ -304,6 +312,10 @@ function statsDelta(current: TextWidthCacheStats, baseline: TextWidthCacheStats)
 }
 
 const measurementCheckpointIfDue = surfaceMeasurementCheckpointIfDue;
+// Wrapped long words retain their per-code-point checks. Batching only the
+// word-boundary checks avoids repeated clock reads while ordinary prose remains
+// cancellable within 8 tokens.
+const WORD_BOUNDARIES_PER_MEASUREMENT_CHECKPOINT = 8;
 
 export function createDomMeasurementRuntime(options: DomMeasurementRuntimeOptions = {}): DomMeasurementRuntime {
   const state = createSurfaceMeasurementRuntimeState({
@@ -323,12 +335,32 @@ export function createDomMeasurementRuntime(options: DomMeasurementRuntimeOption
       const passFontContext: FontMeasureContext = Object.freeze({
         fontSignature: fontContext.fontSignature,
         resolvePhysical: fontContext.resolvePhysical,
+        ...(fontContext.resolveNaturalLineMultiplier
+          ? { resolveNaturalLineMultiplier: fontContext.resolveNaturalLineMultiplier }
+          : {}),
       });
       bindSurfaceMeasurementPass(state, passFontContext, execution);
       const baseline = state.textWidths.snapshotStats();
       let finished = false;
+      let digitProbe: TabularDigitProbe | undefined;
+      const fontCapabilities: FontMeasureCapabilities = Object.freeze({
+        hasTabularDigits: (face: FontMeasureFace) => {
+          digitProbe ??= createTabularDigitProbe(ensureSurfaceMeasurementCanvas(state));
+          const { font } = buildFontString(
+            {
+              fontFamily: face.family,
+              fontSize: face.sizePx,
+              bold: face.weight === '700',
+              italic: face.style === 'italic',
+            },
+            passFontContext,
+          );
+          return digitProbe.hasTabularDigits(font);
+        },
+      });
       const snapshot = (): TextWidthCacheStats => statsDelta(state.textWidths.snapshotStats(), baseline);
       return {
+        fontCapabilities,
         measureBlock: async (block, constraints) => {
           if (finished) throw new DomMeasurementInfrastructureError('DomMeasurementPass has finished');
           state.execution?.throwIfAborted?.();
@@ -1119,6 +1151,7 @@ function calculateEmptyParagraphMetrics(
     const metrics = measuredFontMetrics(ctx, {
       ...fontInfo,
       wordLineMetricFamily: undefined,
+      naturalLineMultiplier: undefined,
     });
     ascent = roundValue(metrics.ascent);
     descent = roundValue(metrics.descent);
@@ -1161,9 +1194,15 @@ function lineHeightFontSize(run: TextRun): number {
  * which may have no loaded face and would yield fallback metrics.
  */
 function getFontInfoFromRun(run: TextRun, fontContext: FontMeasureContext, resolvedPhysicalFamily?: string): FontInfo {
+  const face = faceOf(run);
   return {
-    fontFamily: normalizeFontFamily(resolvedPhysicalFamily ?? fontContext.resolvePhysical(run.fontFamily, faceOf(run))),
+    fontFamily: normalizeFontFamily(resolvedPhysicalFamily ?? fontContext.resolvePhysical(run.fontFamily, face)),
     wordLineMetricFamily: run.fontFamily,
+    naturalLineMultiplier: fontContext.resolveNaturalLineMultiplier?.(
+      run.fontFamily,
+      face,
+      typeof run.text === 'string' ? run.text : '',
+    ),
     fontSize: normalizeFontSize(lineHeightFontSize(run)),
     bold: run.bold,
     italic: run.italic,
@@ -2399,6 +2438,8 @@ async function measureParagraphBlock(
     tabWidths?: Record<number, number>;
     /** Internal marker for an empty line seeded by an explicit line break. */
     isLineBreakPlaceholder?: boolean;
+    /** Internal marker: a terminal wrap space was already collapsed onto this line. */
+    collapsedWrapSpaces?: true;
     /** Inline image runs on this line, tracked for measured baseline-vs-top resolution. */
     imageRunCandidates?: InlineImageCandidate[];
   } | null = null;
@@ -2430,7 +2471,12 @@ async function measureParagraphBlock(
     }
     const metrics = finalizeLineMetrics(lineState, spacing, fontContext, emptyParagraphLineMetrics);
     const { textLineHeight, ...lineMetrics } = metrics;
-    const { imageRunCandidates, fontMetricEnvelope: _fontMetricEnvelope, ...rest } = lineState;
+    const {
+      imageRunCandidates,
+      fontMetricEnvelope: _fontMetricEnvelope,
+      collapsedWrapSpaces: _collapsedWrapSpaces,
+      ...rest
+    } = lineState;
     const completedLine: Line = { ...rest, ...lineMetrics };
     // A small inline image on an otherwise textless OOXML run still composes
     // against that run's font baseline. Callers that do not provide run
@@ -2713,6 +2759,16 @@ async function measureParagraphBlock(
     runsToProcess.length >= 2 &&
     isLineBreakRun(runsToProcess[runsToProcess.length - 1]) &&
     isTabRun(runsToProcess[runsToProcess.length - 2]);
+  const endsAtLineBoundary = (runIndex: number): boolean => {
+    for (let nextRunIndex = runIndex + 1; nextRunIndex < runsToProcess.length; nextRunIndex += 1) {
+      const nextRun = runsToProcess[nextRunIndex];
+      // Vanished and empty runs paint nothing, so they do not make the space non-terminal.
+      if (isVanishedRun(nextRun)) continue;
+      if (isTextRun(nextRun) && /^[ ]*$/.test(nextRun.text)) continue;
+      return isLineBreakRun(nextRun) || nextRun.kind === 'break';
+    }
+    return true;
+  };
 
   /**
    * Trims trailing regular spaces from a line when it is finalized.
@@ -2758,6 +2814,28 @@ async function measureParagraphBlock(
     if (lineToTrim.naturalWidth != null) {
       lineToTrim.naturalWidth = roundValue(Math.max(0, lineToTrim.naturalWidth - delta));
     }
+  };
+
+  /**
+   * Collapses an overflowing terminal wrap space onto the line it overflowed from.
+   *
+   * Like `trimTrailingWrapSpaces`, the characters stay in the line's source range and
+   * only width and `spaceCount` are dropped. Sibling spaces of the same terminal cluster
+   * that an earlier run or word token already committed are trimmed exactly once.
+   */
+  const collapseTerminalWrapSpaces = (
+    lineToExtend: NonNullable<typeof currentLine>,
+    runIndex: number,
+    fromChar: number,
+    toChar: number,
+  ): void => {
+    if (!lineToExtend.collapsedWrapSpaces) {
+      trimTrailingWrapSpaces(lineToExtend);
+      lineToExtend.collapsedWrapSpaces = true;
+    }
+    lineToExtend.toRun = runIndex;
+    lineToExtend.toChar = toChar;
+    appendSegment(lineToExtend.segments, runIndex, fromChar, toChar, 0);
   };
 
   // Per-line-segment tab counts. The heuristic below binds the last N tabs of a
@@ -2812,6 +2890,7 @@ async function measureParagraphBlock(
   };
 
   let sequentialTabIndex = 0;
+  let wordBoundariesUntilCheckpoint = WORD_BOUNDARIES_PER_MEASUREMENT_CHECKPOINT;
   for (let runIndex = 0; runIndex < runsToProcess.length; runIndex++) {
     const runCheckpoint = measurementCheckpointIfDue(fontContext);
     if (runCheckpoint) await runCheckpoint;
@@ -3591,6 +3670,7 @@ async function measureParagraphBlock(
       const isLastSegment = segmentIndex === tabSegments.length - 1;
       if (/^[ ]+$/.test(segment)) {
         const isRunStart = charPosInRun === 0 && segmentIndex === 0;
+        const isTerminalWrapSpace = isLastSegment && endsAtLineBoundary(runIndex);
         const spacesLength = segment.length;
         const spacesStartChar = charPosInRun;
         const spacesEndChar = charPosInRun + spacesLength;
@@ -3611,10 +3691,17 @@ async function measureParagraphBlock(
           };
         } else {
           const boundarySpacing = resolveBoundarySpacing(currentLine.width, isRunStart, run as TextRun);
-          if (
+          const spaceOverflows =
             currentLine.width + boundarySpacing + spacesWidth > currentLine.maxWidth - WIDTH_FUDGE_PX &&
-            currentLine.width > 0
-          ) {
+            currentLine.width > 0;
+          // Once part of a terminal cluster has collapsed, the rest must collapse too, even
+          // though each later space now fits against the trimmed width.
+          if (isTerminalWrapSpace && (spaceOverflows || currentLine.collapsedWrapSpaces)) {
+            collapseTerminalWrapSpaces(currentLine, runIndex, spacesStartChar, spacesEndChar);
+            charPosInRun = spacesEndChar;
+            continue;
+          }
+          if (spaceOverflows) {
             trimTrailingWrapSpaces(currentLine);
             const completedLine: Line = closeLineWithMetrics(currentLine);
             lines.push(completedLine);
@@ -3692,8 +3779,12 @@ async function measureParagraphBlock(
       };
 
       for (let wordIndex = 0; wordIndex < words.length; wordIndex++) {
-        const wordCheckpoint = measurementCheckpointIfDue(fontContext);
-        if (wordCheckpoint) await wordCheckpoint;
+        wordBoundariesUntilCheckpoint -= 1;
+        if (wordBoundariesUntilCheckpoint === 0) {
+          wordBoundariesUntilCheckpoint = WORD_BOUNDARIES_PER_MEASUREMENT_CHECKPOINT;
+          const wordCheckpoint = measurementCheckpointIfDue(fontContext);
+          if (wordCheckpoint) await wordCheckpoint;
+        }
         const word = words[wordIndex];
         /**
          * Handle empty strings from split(' ') representing space characters.
@@ -3712,6 +3803,8 @@ async function measureParagraphBlock(
           const spaceEndChar = charPosInRun + 1;
           const singleSpaceWidth = resolveParagraphRunWidth(' ', font, ctx, run, spaceStartChar);
           const isRunStart = charPosInRun === 0 && segmentIndex === 0 && wordIndex === 0;
+          const isTerminalWrapSpace =
+            isLastSegment && wordIndex > lastNonEmptyWordIndex && endsAtLineBoundary(runIndex);
 
           if (!currentLine) {
             // Start a new line with just the space
@@ -3731,10 +3824,15 @@ async function measureParagraphBlock(
             // Add space to existing line
             // Safe cast: only TextRuns produce word segments from split(), other run types are handled earlier
             const boundarySpacing = resolveBoundarySpacing(currentLine.width, isRunStart, run as TextRun);
-            if (
+            const spaceOverflows =
               currentLine.width + boundarySpacing + singleSpaceWidth > currentLine.maxWidth - WIDTH_FUDGE_PX &&
-              currentLine.width > 0
-            ) {
+              currentLine.width > 0;
+            if (isTerminalWrapSpace && (spaceOverflows || currentLine.collapsedWrapSpaces)) {
+              collapseTerminalWrapSpaces(currentLine, runIndex, spaceStartChar, spaceEndChar);
+              charPosInRun = spaceEndChar;
+              continue;
+            }
+            if (spaceOverflows) {
               // Space doesn't fit - finish current line and start new one with the space
               trimTrailingWrapSpaces(currentLine);
               const completedLine: Line = closeLineWithMetrics(currentLine);

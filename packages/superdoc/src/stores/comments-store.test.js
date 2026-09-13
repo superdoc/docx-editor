@@ -86,6 +86,22 @@ function makeTrackedChangeRow(overrides = {}) {
   });
 }
 
+function compactTrackedChangeRows(store, rows) {
+  store.commentsList = rows;
+  const adapter = {
+    documentId: 'doc-1',
+    mapV2TrackedChangeToCommentParams: vi.fn(),
+  };
+  store.setV2TrackedChangesAdapter(adapter);
+  store.reconcileTrackedChangesFromV2({
+    superdoc: { config: { isInternal: true }, emit: vi.fn() },
+    adapter,
+    documentId: 'doc-1',
+    items: [],
+    pruneStale: false,
+  });
+}
+
 describe('comments-store read-only mutation policy (SD-3164)', () => {
   let store;
   let superdoc;
@@ -1203,6 +1219,531 @@ describe('comments-store v2 tracked-change hydration', () => {
     expect(store.commentsList[0].trackedChangePositionAliases).toEqual(['00000030']);
     expect(store.commentsList[0].getValues().trackedChangePositionAliases).toEqual(['00000030']);
   });
+
+  it('compacts duplicate body tracked-change rows during reconciliation', () => {
+    const identity = {
+      commentId: 'tc-rewrite',
+      importedId: '1',
+      trackedChangeCanonicalId: 'tc-rewrite',
+      trackedChangeAnchorKey: 'tc::body::tc-rewrite',
+      trackedChangePositionAliases: ['1', '2', '00000002'],
+      trackedChangeStory: { kind: 'story', storyType: 'body' },
+      trackedChangeStoryKind: 'body',
+      trackedChangeText: 'meanings',
+      trackedChangeType: 'both',
+      trackedChangeDisplayType: 'both',
+    };
+    store.commentsList = [makeTrackedChangeRow(identity), makeTrackedChangeRow(identity)];
+    const adapter = {
+      documentId: 'doc-1',
+      mapV2TrackedChangeToCommentParams: vi.fn(() => ({
+        event: 'add',
+        changeId: 'tc-rewrite',
+        importedId: '1',
+        documentId: 'doc-1',
+        trackedChangeCanonicalId: 'tc-rewrite',
+        trackedChangeAnchorKey: 'tc::body::tc-rewrite',
+        trackedChangePositionAliases: ['1', '2', '00000002'],
+        trackedChangeStory: { kind: 'story', storyType: 'body' },
+        trackedChangeText: 'meanings',
+        trackedChangeType: 'both',
+        trackedChangeDisplayType: 'both',
+      })),
+    };
+    store.setV2TrackedChangesAdapter(adapter);
+
+    store.reconcileTrackedChangesFromV2({
+      superdoc: { config: { isInternal: true }, emit: vi.fn() },
+      adapter,
+      documentId: 'doc-1',
+      items: [{ id: 'tc-rewrite' }],
+      pruneStale: false,
+    });
+
+    expect(store.commentsList).toHaveLength(1);
+  });
+
+  it('keeps the live rewrite row when compacting an earlier leftover then pruning', () => {
+    const liveId = 'tc|main%3A%2Fword%2Fdocument.xml|replacement|00000004%7CwId%3A2|00000004%7CwId%3A1';
+    store.commentsList = [
+      makeTrackedChangeRow({
+        commentId: 'tc-old',
+        importedId: '1',
+        trackedChangeAnchorKey: 'tc::body::tc-old',
+      }),
+      makeTrackedChangeRow({
+        commentId: liveId,
+        importedId: '1',
+        trackedChangeCanonicalId: liveId,
+        trackedChangeAnchorKey: `tc::body::${liveId}`,
+        trackedChangePositionAliases: ['1', '2', '00000004'],
+      }),
+    ];
+    const adapter = {
+      documentId: 'doc-1',
+      mapV2TrackedChangeToCommentParams: vi.fn(() => ({
+        event: 'add',
+        changeId: liveId,
+        importedId: '1',
+        documentId: 'doc-1',
+        trackedChangeCanonicalId: liveId,
+        trackedChangeAnchorKey: `tc::body::${liveId}`,
+        trackedChangePositionAliases: ['1', '2', '00000004'],
+        trackedChangeText: 'meanings',
+        trackedChangeType: 'both',
+        trackedChangeDisplayType: 'both',
+      })),
+    };
+    store.setV2TrackedChangesAdapter(adapter);
+
+    store.reconcileTrackedChangesFromV2({
+      superdoc: { config: { isInternal: true }, emit: vi.fn() },
+      adapter,
+      documentId: 'doc-1',
+      items: [{ id: liveId }],
+      pruneStale: true,
+    });
+
+    const trackedRows = store.commentsList.filter((comment) => comment.trackedChange);
+    expect(trackedRows).toHaveLength(1);
+    expect(trackedRows[0].commentId).toBe(liveId);
+    expect(trackedRows[0].trackedChangeAnchorKey).toBe(`tc::body::${liveId}`);
+  });
+
+  it('compacts duplicate body rows that share a production tracked-change id', () => {
+    const commentId = 'tc|main%3A%2Fword%2Fdocument.xml|replacement|00000002%7CwId%3A2|00000002%7CwId%3A1';
+    const identity = {
+      commentId,
+      importedId: '1',
+      trackedChangeCanonicalId: commentId,
+      trackedChangeAnchorKey: `tc::body::${commentId}`,
+      trackedChangePositionAliases: ['1', '2', '00000002'],
+      trackedChangeStory: { kind: 'story', storyType: 'body' },
+      trackedChangeStoryKind: 'body',
+      trackedChangeText: 'meanings',
+      trackedChangeType: 'both',
+      trackedChangeDisplayType: 'both',
+    };
+    store.commentsList = [makeTrackedChangeRow(identity), makeTrackedChangeRow(identity)];
+    const adapter = {
+      documentId: 'doc-1',
+      mapV2TrackedChangeToCommentParams: vi.fn(() => ({
+        event: 'add',
+        changeId: commentId,
+        importedId: '1',
+        documentId: 'doc-1',
+        trackedChangeCanonicalId: commentId,
+        trackedChangeAnchorKey: `tc::body::${commentId}`,
+        trackedChangePositionAliases: ['1', '2', '00000002'],
+        trackedChangeStory: { kind: 'story', storyType: 'body' },
+        trackedChangeText: 'meanings',
+        trackedChangeType: 'both',
+        trackedChangeDisplayType: 'both',
+      })),
+    };
+    store.setV2TrackedChangesAdapter(adapter);
+
+    store.reconcileTrackedChangesFromV2({
+      superdoc: { config: { isInternal: true }, emit: vi.fn() },
+      adapter,
+      documentId: 'doc-1',
+      items: [{ id: commentId }],
+      pruneStale: false,
+    });
+
+    expect(store.commentsList).toHaveLength(1);
+    expect(store.commentsList[0].commentId).toBe(commentId);
+  });
+
+  it('does not steal selection from a Word comment whose id collides with a tracked-change alias', () => {
+    const commentId = 'tc|main%3A%2Fword%2Fdocument.xml|replacement|00000002%7CwId%3A2|00000002%7CwId%3A1';
+    const identity = {
+      commentId,
+      importedId: '1',
+      trackedChangeCanonicalId: commentId,
+      trackedChangeAnchorKey: `tc::body::${commentId}`,
+      trackedChangePositionAliases: ['1', '2', '00000002'],
+      trackedChangeStory: { kind: 'story', storyType: 'body' },
+      trackedChangeStoryKind: 'body',
+      trackedChangeText: 'meanings',
+      trackedChangeType: 'both',
+      trackedChangeDisplayType: 'both',
+    };
+    store.commentsList = [
+      useComment(makeOpenRow({ commentId: '2', commentText: 'real comment' })),
+      makeTrackedChangeRow(identity),
+      makeTrackedChangeRow(identity),
+    ];
+    store.activeComment = '2';
+    store.activeFloatingCommentInstanceId = '2';
+    const adapter = {
+      documentId: 'doc-1',
+      mapV2TrackedChangeToCommentParams: vi.fn(() => ({
+        event: 'add',
+        changeId: commentId,
+        importedId: '1',
+        documentId: 'doc-1',
+        trackedChangeCanonicalId: commentId,
+        trackedChangeAnchorKey: `tc::body::${commentId}`,
+        trackedChangePositionAliases: ['1', '2', '00000002'],
+        trackedChangeStory: { kind: 'story', storyType: 'body' },
+        trackedChangeText: 'meanings',
+        trackedChangeType: 'both',
+        trackedChangeDisplayType: 'both',
+      })),
+    };
+    store.setV2TrackedChangesAdapter(adapter);
+
+    store.reconcileTrackedChangesFromV2({
+      superdoc: { config: { isInternal: true }, emit: vi.fn() },
+      adapter,
+      documentId: 'doc-1',
+      items: [{ id: commentId }],
+      pruneStale: false,
+    });
+
+    expect(store.commentsList.map((comment) => comment.commentId)).toEqual(['2', commentId]);
+    expect(store.activeComment).toBe('2');
+    expect(store.activeFloatingCommentInstanceId).toBe('2');
+    expect(store.getComment('2')?.commentText).toBe('real comment');
+  });
+
+  it('rewires thread parents and selection when compact drops a distinct commentId', () => {
+    store.commentsList = [
+      makeTrackedChangeRow({ commentId: 'tc-first', importedId: 'shared-imported' }),
+      makeTrackedChangeRow({ commentId: 'tc-second', importedId: 'shared-imported' }),
+      useComment({
+        commentId: 'reply-1',
+        fileId: 'doc-1',
+        commentText: 'thread reply',
+        parentCommentId: 'tc-second',
+        threadingParentCommentId: 'tc-second',
+        trackedChangeParentId: 'tc-second',
+        trackedChangeThreadParentId: 'tc-second',
+      }),
+    ];
+    store.activeComment = 'tc-second';
+    store.activeFloatingCommentInstanceId = 'tc-second';
+    const adapter = {
+      documentId: 'doc-1',
+      mapV2TrackedChangeToCommentParams: vi.fn(() => ({
+        event: 'add',
+        changeId: 'tc-first',
+        importedId: 'shared-imported',
+        documentId: 'doc-1',
+        trackedChangeText: 'meanings',
+        trackedChangeType: 'both',
+        trackedChangeDisplayType: 'both',
+      })),
+    };
+    store.setV2TrackedChangesAdapter(adapter);
+
+    store.reconcileTrackedChangesFromV2({
+      superdoc: { config: { isInternal: true }, emit: vi.fn() },
+      adapter,
+      documentId: 'doc-1',
+      items: [{ id: 'tc-first' }],
+      pruneStale: false,
+    });
+
+    expect(store.commentsList.map((comment) => comment.commentId)).toEqual(['tc-first', 'reply-1']);
+    expect(store.activeComment).toBe('tc-first');
+    expect(store.activeFloatingCommentInstanceId).toBe('tc-first');
+    const reply = store.commentsList.find((comment) => comment.commentId === 'reply-1');
+    expect(reply).toMatchObject({
+      parentCommentId: 'tc-first',
+      threadingParentCommentId: 'tc-first',
+      trackedChangeParentId: 'tc-first',
+      trackedChangeThreadParentId: 'tc-first',
+    });
+    expect(reply?.getValues()).toMatchObject({
+      parentCommentId: 'tc-first',
+      threadingParentCommentId: 'tc-first',
+      trackedChangeParentId: 'tc-first',
+      trackedChangeThreadParentId: 'tc-first',
+    });
+  });
+
+  it('keeps synthetic move-side identities separate from shared canonical aliases', () => {
+    compactTrackedChangeRows(store, [
+      makeTrackedChangeRow({
+        commentId: 'move-from',
+        importedId: 'shared-imported',
+        trackedChangeCanonicalId: 'move',
+        trackedChangePositionAliases: ['shared-position'],
+      }),
+      makeTrackedChangeRow({
+        commentId: 'move-to',
+        importedId: 'shared-imported',
+        trackedChangeCanonicalId: 'move',
+        trackedChangePositionAliases: ['shared-position'],
+      }),
+    ]);
+
+    expect(store.commentsList.map((comment) => comment.commentId)).toEqual(['move-from', 'move-to']);
+  });
+
+  it('compacts transitive tracked-change identity groups into the earliest row', () => {
+    compactTrackedChangeRows(store, [
+      makeTrackedChangeRow({ commentId: 'tc-first', importedId: 'identity-a' }),
+      makeTrackedChangeRow({
+        commentId: 'tc-second',
+        importedId: 'identity-a',
+        trackedChangePositionAliases: ['identity-b'],
+      }),
+      makeTrackedChangeRow({ commentId: 'tc-third', trackedChangePositionAliases: ['identity-b'] }),
+    ]);
+
+    expect(store.commentsList).toHaveLength(1);
+    expect(store.commentsList[0].commentId).toBe('tc-first');
+    expect(store.commentsList[0].trackedChangePositionAliases).toEqual(
+      expect.arrayContaining(['tc-second', 'tc-third', 'identity-b']),
+    );
+  });
+
+  it('normalizes merged aliases before removing duplicate rows', () => {
+    compactTrackedChangeRows(store, [
+      makeTrackedChangeRow({
+        commentId: 'tc-first',
+        importedId: 'shared-imported',
+        trackedChangePositionAliases: ['shared-position', 'shared-position'],
+      }),
+      makeTrackedChangeRow({
+        commentId: 'tc-second',
+        importedId: 'shared-imported',
+        trackedChangePositionAliases: ['shared-position', 'second-position'],
+      }),
+    ]);
+
+    expect(store.commentsList[0].trackedChangePositionAliases).toEqual([
+      'shared-position',
+      'tc-second',
+      'shared-imported',
+      'second-position',
+    ]);
+  });
+
+  it('keeps resolved lifecycle metadata when compacting a duplicate', () => {
+    const resolvedAt = 1_700_000_000_000;
+    compactTrackedChangeRows(store, [
+      makeTrackedChangeRow({ commentId: 'tc-first', importedId: 'shared-imported' }),
+      makeTrackedChangeRow({
+        commentId: 'tc-second',
+        importedId: 'shared-imported',
+        resolvedTime: resolvedAt,
+        resolvedById: 'reviewer-1',
+        resolvedByEmail: 'reviewer@example.com',
+        resolvedByName: 'Reviewer',
+        trackedChangeDecision: 'accept',
+      }),
+    ]);
+
+    expect(store.commentsList).toHaveLength(1);
+    expect(store.commentsList[0]).toMatchObject({
+      commentId: 'tc-first',
+      resolvedTime: resolvedAt,
+      resolvedById: 'reviewer-1',
+      resolvedByEmail: 'reviewer@example.com',
+      resolvedByName: 'Reviewer',
+      trackedChangeDecision: 'accept',
+    });
+  });
+
+  it('does not broadcast UPDATE for a resolved duplicate dropped during prune compact', () => {
+    const resolvedAt = 1_700_000_000_000;
+    store.commentsList = [
+      makeTrackedChangeRow({
+        commentId: 'tc-first',
+        importedId: 'shared-imported',
+        trackedChangeCanonicalId: 'tc-first',
+        resolvedTime: resolvedAt,
+        resolvedById: 'reviewer-1',
+        resolvedByEmail: 'reviewer@example.com',
+        resolvedByName: 'Reviewer',
+      }),
+      makeTrackedChangeRow({
+        commentId: 'tc-second',
+        importedId: 'shared-imported',
+        trackedChangeCanonicalId: 'tc-second',
+        resolvedTime: resolvedAt,
+        resolvedById: 'reviewer-1',
+        resolvedByEmail: 'reviewer@example.com',
+        resolvedByName: 'Reviewer',
+      }),
+    ];
+    const emit = vi.fn();
+    const superdoc = {
+      config: { isInternal: true, modules: {} },
+      isCollaborative: false,
+      emit,
+      user: { id: 'reviewer-1', email: 'reviewer@example.com', name: 'Reviewer' },
+    };
+    const editorState = {
+      tr: {
+        setMeta: vi.fn(function setMeta() {
+          return this;
+        }),
+      },
+    };
+    const editor = {
+      options: { documentId: 'doc-1' },
+      isDestroyed: false,
+      view: {
+        state: editorState,
+        isDestroyed: false,
+        dispatch: vi.fn(),
+      },
+      state: editorState,
+    };
+
+    for (const commentId of ['tc-first', 'tc-second']) {
+      store.handleTrackedChangeUpdate({
+        superdoc,
+        documentState: null,
+        broadcastChanges: false,
+        params: {
+          event: 'update',
+          changeId: commentId,
+          documentId: 'doc-1',
+          trackedChangeText: 'meanings',
+          trackedChangeType: 'both',
+          trackedChangeDisplayType: 'both',
+        },
+      });
+    }
+    expect(store.commentsList).toHaveLength(2);
+    expect(store.commentsList.every((comment) => comment.resolvedTime == null)).toBe(true);
+
+    emit.mockClear();
+    store.syncTrackedChangeComments({ superdoc, editor, broadcastChanges: true });
+
+    expect(store.commentsList).toHaveLength(1);
+    expect(store.commentsList[0].commentId).toBe('tc-first');
+    expect(store.commentsList[0].resolvedTime).toBe(resolvedAt);
+
+    const updateEvents = emit.mock.calls
+      .filter(([type]) => type === 'comments-update')
+      .map(([, event]) => event)
+      .filter((event) => event?.type === store.COMMENT_EVENTS.UPDATE);
+    expect(updateEvents).toHaveLength(1);
+    expect(updateEvents[0].comment.commentId).toBe('tc-first');
+    expect(updateEvents.some((event) => event.comment?.commentId === 'tc-second')).toBe(false);
+  });
+
+  for (const { label, sharedIdentity } of [
+    { label: 'imported id', sharedIdentity: { importedId: 'shared-imported' } },
+    { label: 'anchor key', sharedIdentity: { trackedChangeAnchorKey: 'tc::body::shared-anchor' } },
+    { label: 'position alias', sharedIdentity: { trackedChangePositionAliases: ['shared-position'] } },
+  ]) {
+    it(`compacts body tracked-change rows that share a ${label}`, () => {
+      store.commentsList = [
+        makeTrackedChangeRow({ commentId: 'tc-first', ...sharedIdentity }),
+        makeTrackedChangeRow({ commentId: 'tc-second', ...sharedIdentity }),
+      ];
+      const adapter = {
+        documentId: 'doc-1',
+        mapV2TrackedChangeToCommentParams: vi.fn(() => ({
+          event: 'add',
+          changeId: 'tc-first',
+          documentId: 'doc-1',
+          trackedChangeText: 'meanings',
+          trackedChangeType: 'both',
+          trackedChangeDisplayType: 'both',
+          ...sharedIdentity,
+        })),
+      };
+      store.setV2TrackedChangesAdapter(adapter);
+
+      store.reconcileTrackedChangesFromV2({
+        superdoc: { config: { isInternal: true }, emit: vi.fn() },
+        adapter,
+        documentId: 'doc-1',
+        items: [{ id: 'tc-first' }],
+        pruneStale: false,
+      });
+
+      expect(store.commentsList).toHaveLength(1);
+      expect(store.commentsList[0].trackedChangePositionAliases).toEqual(expect.arrayContaining(['tc-second']));
+    });
+  }
+
+  it.each(['accept', 'reject'])(
+    'removes only the compacted survivor on sidebar %s and leaves other rows',
+    async (decision) => {
+      store.commentsList = [
+        useComment(makeOpenRow({ commentId: 'ordinary-comment', commentText: 'keep' })),
+        makeTrackedChangeRow({ commentId: 'tc-first', importedId: 'shared-imported' }),
+        makeTrackedChangeRow({ commentId: 'tc-second', importedId: 'shared-imported' }),
+      ];
+      const hydrateAdapter = {
+        documentId: 'doc-1',
+        mapV2TrackedChangeToCommentParams: vi.fn(() => ({
+          event: 'add',
+          changeId: 'tc-first',
+          importedId: 'shared-imported',
+          documentId: 'doc-1',
+          trackedChangeText: 'meanings',
+          trackedChangeType: 'both',
+          trackedChangeDisplayType: 'both',
+        })),
+      };
+      store.setV2TrackedChangesAdapter(hydrateAdapter);
+      store.reconcileTrackedChangesFromV2({
+        superdoc: { config: { isInternal: true }, emit: vi.fn() },
+        adapter: hydrateAdapter,
+        documentId: 'doc-1',
+        items: [{ id: 'tc-first' }],
+        pruneStale: false,
+      });
+
+      const survivor = store.commentsList.find((comment) => comment.trackedChange);
+      expect(store.commentsList.map((comment) => comment.commentId)).toEqual(['ordinary-comment', 'tc-first']);
+      expect(survivor?.trackedChangePositionAliases).toEqual(expect.arrayContaining(['tc-second']));
+
+      const commentsAdapter = {
+        documentId: 'doc-1',
+        refresh: vi.fn(async () => ({ ok: true, items: [] })),
+        mapV2CommentToUseCommentInput: vi.fn((item) => item),
+      };
+      const trackedChangesAdapter = {
+        documentId: 'doc-1',
+        accept: vi.fn(async () => ({
+          ok: true,
+          receipt: { success: true },
+          decidedId: 'tc-first',
+          documentId: 'doc-1',
+        })),
+        reject: vi.fn(async () => ({
+          ok: true,
+          receipt: { success: true },
+          decidedId: 'tc-first',
+          documentId: 'doc-1',
+        })),
+        listTrackedChanges: vi.fn(async () => ({ ok: true, complete: true, items: [] })),
+        mapV2TrackedChangeToCommentParams: vi.fn(() => null),
+        clearActiveTrackedChangeTargetIfMatches: vi.fn(),
+      };
+      const superdoc = {
+        activeEditor: {
+          editorVersion: 2,
+          documentId: 'doc-1',
+          v2Comments: commentsAdapter,
+          v2TrackedChanges: trackedChangesAdapter,
+        },
+        emit: vi.fn(),
+      };
+      store.setV2CommentsAdapter(commentsAdapter);
+      store.setV2TrackedChangesAdapter(trackedChangesAdapter);
+
+      const result = await store.decideTrackedChangeFromSidebar({ superdoc, comment: survivor, decision });
+
+      expect(result).toMatchObject({ ok: true, success: true });
+      expect(trackedChangesAdapter[decision]).toHaveBeenCalledTimes(1);
+      expect(trackedChangesAdapter[decision]).toHaveBeenCalledWith(survivor);
+      expect(trackedChangesAdapter[decision === 'accept' ? 'reject' : 'accept']).not.toHaveBeenCalled();
+      expect(store.commentsList.map((comment) => comment.commentId)).toEqual(['ordinary-comment']);
+    },
+  );
 
   it('does not merge tracked-change rows from different stories when they share a position alias', async () => {
     const items = [
@@ -2757,6 +3298,109 @@ describe('comments-store getComment id resolution', () => {
     expect(resolved).toBe(realComment);
     expect(resolved.commentId).toBe('2');
     expect(resolved.trackedChange).not.toBe(true);
+  });
+});
+
+describe('comments-store cut comment invalidation', () => {
+  let store;
+  let superdoc;
+
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    const superdocStore = useSuperdocStore();
+    superdocStore.documents = [
+      { id: 'doc-1', type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' },
+    ];
+    store = useCommentsStore();
+    superdoc = { emit: vi.fn() };
+  });
+
+  it('drops the source comment and its replies when a cut receipt invalidates it', () => {
+    store.commentsList = [
+      useComment({ commentId: '0', fileId: 'doc-1', commentText: 'Source review comment' }),
+      useComment({
+        commentId: '1',
+        fileId: 'doc-1',
+        parentCommentId: '0',
+        commentText: 'Reply',
+      }),
+      makeTrackedChangeRow({ commentId: 'tc-1' }),
+    ];
+    store.activeComment = '0';
+
+    const result = store.dropCommentsFromMutationImpact({
+      superdoc,
+      documentId: 'doc-1',
+      removedIds: new Set(['0']),
+    });
+
+    expect(result.ok).toBe(true);
+    expect(store.commentsList.map((row) => row.commentId).sort()).toEqual(['tc-1']);
+    expect(store.activeComment).toBeNull();
+    expect(superdoc.emit).toHaveBeenCalledWith('comments-update', expect.objectContaining({ type: 'deleted' }));
+  });
+
+  it('does not drop tracked-change rows that share a numeric Word id', () => {
+    store.commentsList = [
+      useComment({ commentId: '0', fileId: 'doc-1', commentText: 'Source review comment' }),
+      makeTrackedChangeRow({ commentId: '0' }),
+    ];
+
+    store.dropCommentsFromMutationImpact({
+      superdoc,
+      documentId: 'doc-1',
+      removedIds: new Set(['0']),
+    });
+
+    expect(store.commentsList.map((row) => row.commentId)).toEqual(['0']);
+    expect(store.commentsList[0].trackedChange).toBe(true);
+  });
+
+  it('drops a sidebar row whose imported Word id was invalidated', () => {
+    store.commentsList = [
+      useComment({
+        commentId: 'uuid-comment',
+        importedId: '0',
+        fileId: 'doc-1',
+        commentText: 'Source review comment',
+      }),
+      useComment({
+        commentId: 'uuid-reply',
+        importedId: '1',
+        fileId: 'doc-1',
+        parentCommentId: 'uuid-comment',
+        commentText: 'Reply',
+      }),
+    ];
+    store.activeComment = 'uuid-comment';
+
+    const result = store.dropCommentsFromMutationImpact({
+      superdoc,
+      documentId: 'doc-1',
+      removedIds: new Set(['0']),
+    });
+
+    expect(result.ok).toBe(true);
+    expect(store.commentsList).toEqual([]);
+    expect(store.activeComment).toBeNull();
+  });
+
+  it('leaves a neighbouring comment in the sidebar when only one identity is invalidated', () => {
+    store.commentsList = [
+      useComment({ commentId: '0', fileId: 'doc-1', commentText: 'Source review comment' }),
+      useComment({ commentId: '1', fileId: 'doc-1', commentText: 'Neighbour review comment' }),
+    ];
+    store.activeComment = '0';
+
+    const result = store.dropCommentsFromMutationImpact({
+      superdoc,
+      documentId: 'doc-1',
+      removedIds: new Set(['0']),
+    });
+
+    expect(result.ok).toBe(true);
+    expect(store.commentsList.map((row) => row.commentId)).toEqual(['1']);
+    expect(store.activeComment).toBeNull();
   });
 });
 

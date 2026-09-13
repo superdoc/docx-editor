@@ -1,74 +1,80 @@
 ---
-title: Build tracked-change review controls
+title: Build a custom review panel
 navTitle: Track changes
-description: Render open changes, move reviewers to them, and await accept or reject decisions from a custom interface.
+description: Render open tracked changes and let reviewers navigate, accept, or reject each one.
 ---
 
-Use `ui.trackChanges` when your application owns the review panel. The handle provides the reactive change list, active change, document navigation, and review actions.
+Configure [built-in tracked changes](/editor/track-changes) when the standard review controls fit your workflow. Build a
+custom panel when your application needs to own the review queue, layout, or status messages.
 
-If SuperDoc should render the review surfaces instead, see [tracked changes](/editor/track-changes).
+This guide replaces only the review sidebar. Your application renders the queue and actions. SuperDoc keeps the queue
+synchronized with the marks in the DOCX.
 
-Complete [Custom UI controller setup](/editor/custom-ui/controller-setup) first. Use [Document API tracked changes](/document-api/tracked-changes) when code reviews known change IDs without an Editor.
+## Try the review workflow
 
-## Add the review panel
+The example keeps SuperDoc's toolbar and loads three changes across three short pages.
 
-Create a status message, change list, and Editor container:
+1. Use **Previous** and **Next** to move through the review queue.
+2. Choose **Show in document** on any row to return to that change.
+3. Accept or reject one change. Its row disappears and the open-change count decreases.
+
+<CustomTrackChangesDemo />
+
+The panel follows the same loop as the comments example: observe state, render application markup, run an action, and
+report its result.
+
+## Build the same panel
+
+Start from [Build your first custom control](/editor/custom-ui/controller-setup). Download the
+[custom review fixture](/fixtures/custom-track-changes-workflow.docx) to your app's `public` directory as
+`contract.docx`.
+
+For Vanilla, replace the contents of `<body>` in `index.html` with the toolbar, Editor, and panel mounts below:
 
 <include>../../../../snippets/editor/custom-tracked-review.html</include>
 
-Copy the [tracked-changes fixture](/fixtures/tracked-changes.docx) to your app's public directory as `contract.docx`, or use another DOCX with open changes.
+## Connect the panel
 
-## Bind review state and actions
+Replace the setup guide's Editor code:
 
-Read the Editor's controller, `superdoc.ui`, after the Editor is ready. Observe `ui.trackChanges` so the panel follows document mutations and selection changes.
+<FrameworkExampleTabs>
+  <FrameworkExample filename='src/main.ts' framework='Vanilla'>
+    <include>../../../../snippets/editor/custom-tracked-review.ts</include>
+  </FrameworkExample>
+  <FrameworkExample filename='src/App.tsx' framework='React'>
+    <include>../../../../snippets/editor/react-custom-tracked-review.tsx</include>
+  </FrameworkExample>
+</FrameworkExampleTabs>
 
-<include>../../../../snippets/editor/custom-tracked-review.ts</include>
+Both versions use one domain handle:
 
-The example keeps each responsibility on its public surface:
+- Set `ui.comments` to `false` to remove SuperDoc's comments and review sidebar without removing review data from the
+  DOCX.
+- Use `observe()` or `useSuperDocTrackChanges()` to keep the list and active change current.
+- Run `setActive()` with `scrollTo()`, or `navigatePrevious()` and `navigateNext()`, to move between document marks.
+- Run `acceptAsync()` or `rejectAsync()` with the row's `{ id, story }` and await the settled result. Keep the panel
+  pending until it resolves, then report success or the failure message.
 
-- `observe()` renders the current list and active change.
-- `setActive()` marks the change the application is showing.
-- `scrollTo()` moves the document canvas to that change.
-- `executeAsync()` waits for the accept or reject operation to settle.
+## Keep decisions synchronized
 
-## Step through the review sequence
+A decision can still fail after it is routed because the document is read-only, the change no longer exists, or the
+Editor's interaction policy blocks it. Awaiting the async form is what lets the panel clear its pending state and show
+that failure. The sync `accept()` and `reject()` return the routed result before the operation settles, so a panel that
+waits for the row to disappear can lock forever. See [Review tracked changes](/editor/track-changes) for modes and
+interaction policy.
 
-`setActive()` and `scrollTo()` are the right pair when the application already knows which row to show. When the reader is walking the document in order, use `ui.trackChanges.navigateNext()` and `navigatePrevious()` instead. Each one moves `activeId` to the adjacent change and awaits viewport navigation to it.
+Pass the row's `story` with its `id`. The same tracked-change id can appear in the body and in a footnote or header, and
+the story is what pins the decision to the occurrence the reviewer clicked.
 
-Traversal wraps. Stepping past the last change returns to the first, so there is no end of the list to detect and `{ success: false }` never means the reader finished the document.
+Accepting or rejecting changes updates the open document. It does not save the DOCX. Follow
+[Load and save documents](/editor/load-and-save-documents) when the review result must persist.
 
-Navigation reads the loaded change list, and it does not start that read. `observe()`, `getSnapshot()`, and `list()` do. Calling `navigateNext()` on a controller whose catalog has not settled finds no rows and returns `{ success: false }` even in a document full of changes, so gate the control on a ready slice instead of navigating and interpreting the failure:
+## Verify the panel
 
-```ts
-ui.trackChanges.observe(() => {
-  const changes = ui.trackChanges.getSnapshot();
-  nextButton.disabled = changes.status !== 'ready' || changes.total === 0;
-});
+Run the project. Move to a change on another page, then accept or reject it. The document should move to the selected
+mark. A successful decision should remove one row and decrease the count.
 
-nextButton.addEventListener('click', async () => {
-  const result = await ui.trackChanges.navigateNext();
-  if (!result.success && reviewStatus) {
-    reviewStatus.textContent = 'Could not move to the next change.';
-  }
-});
-```
+Use [Document API tracked changes](/document-api/tracked-changes) when application code reviews known change IDs without
+driving an Editor panel.
 
-Both resolve `{ success }`. Behind a ready, non-empty catalog, `{ success: false }` means a target that could not be resolved or a scroll the host could not route, and both roll the `activeId` move back. When the target resolves but cannot be made visible, `activeId` stays on the requested change and `success` is still false.
-
-Coming from v1, this replaces walking `editor.state` to find the next change yourself. `list()` reads the catalog and the navigate pair owns the traversal.
-
-## Await every decision
-
-Pass the change ID to `acceptChange` or `rejectChange`. An explicit ID lets a sidebar decide its own row without depending on the live Editor selection.
-
-Use `executeAsync()` when saving, navigation, or status UI depends on the decision. Inspect `false` and unsuccessful receipts before announcing success. The observed change list refreshes after a successful mutation.
-
-Bulk decisions use `acceptAllChanges` and `rejectAllChanges`. They can be unavailable when the host has not enabled bulk review. Keep per-change controls available as the predictable path.
-
-## Keep access enforcement outside the panel
-
-Viewing mode and client-side controls can prevent a normal interaction, but they are not an authorization boundary. Your application still owns trusted identity, document access, persistence, and collaboration authorization.
-
-Verify the workflow by accepting or rejecting one row, exporting the DOCX, and reopening it. The resolved change should be absent. Unresolved changes should remain reviewable.
-
-For the standard interface, use [Review tracked changes](/editor/track-changes). For the operation contract, use [Document API tracked changes](/document-api/tracked-changes).
+Return to the [Custom UI overview](/editor/custom-ui/overview) to choose another workflow.

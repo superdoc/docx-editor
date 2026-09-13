@@ -525,6 +525,29 @@ describe('text measurement utility', () => {
       expect(charOffsetToPm(block, line, 1, 0)).toBe(0);
       expect(charOffsetToPm(block, line, 3, 0)).toBe(2);
     });
+
+    it('clamps a multi-digit body note reference to its one-unit PM range', () => {
+      const block = createBlock([
+        {
+          kind: 'text',
+          text: '10',
+          fontFamily: 'Arial',
+          fontSize: 16,
+          pmStart: 20,
+          pmEnd: 21,
+          dataAttrs: { 'data-v2-note-ref': 'footnote:10' },
+        },
+      ]);
+      const line = baseLine({
+        fromRun: 0,
+        toRun: 0,
+        toChar: 2,
+      });
+
+      expect(charOffsetToPm(block, line, 0, 20)).toBe(20);
+      expect(charOffsetToPm(block, line, 1, 20)).toBe(21);
+      expect(charOffsetToPm(block, line, 2, 20)).toBe(21);
+    });
   });
 
   describe('countSpaces helper', () => {

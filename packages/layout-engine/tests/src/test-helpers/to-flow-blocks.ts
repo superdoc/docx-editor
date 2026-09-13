@@ -144,11 +144,24 @@ const collectInlineRuns = (nodes: PMNode[] | undefined, inheritedSdt?: SdtMetada
 
 const elementAttrs = (element: Record<string, unknown>): Record<string, unknown> => asRecord(element.attributes);
 
+/**
+ * Word ST_OnOff: a bare `<w:bidi/>` means ON, and only the explicit falsy spellings turn it off
+ * (ECMA-376 §22.9.2.7). Mirrors `parseOnOff` in the style engine.
+ */
+const ST_OFF = new Set(['0', 'false', 'off']);
+const readOnOff = (attrs: Record<string, unknown>): boolean => {
+  const raw = asString(attrs['w:val']);
+  return raw == null ? true : !ST_OFF.has(raw.trim().toLowerCase());
+};
+
 const readSectPr = (sectPr: unknown): Partial<SectionBreakBlock> => {
   const elements = Array.isArray(asRecord(sectPr).elements)
     ? (asRecord(sectPr).elements as Record<string, unknown>[])
     : [];
   const out: Partial<SectionBreakBlock> = {};
+  // `w:bidi` and `w:cols` are siblings in any order, so the direction is collected here and applied
+  // to the column layout after the loop.
+  let pageIsRtl = false;
 
   for (const element of elements) {
     const name = asString(element.name);
@@ -188,6 +201,11 @@ const readSectPr = (sectPr: unknown): Partial<SectionBreakBlock> => {
       continue;
     }
 
+    if (name === 'w:bidi') {
+      pageIsRtl = readOnOff(attrs);
+      continue;
+    }
+
     if (name === 'w:vAlign') {
       out.vAlign = asString(attrs['w:val']) as SectionBreakBlock['vAlign'];
       continue;
@@ -201,6 +219,14 @@ const readSectPr = (sectPr: unknown): Partial<SectionBreakBlock> => {
     if (name === 'w:footerReference') {
       out.footerRefs = { ...(out.footerRefs ?? {}), [asString(attrs['w:type']) ?? 'default']: asString(attrs['r:id']) };
     }
+  }
+
+  // Section `w:bidi` governs section-level chrome, and on the column axis it decides which side the
+  // FIRST column sits on (ECMA-376 §17.6.1). Only applied when the section actually declares
+  // columns: absent `w:cols` means a single column, which has no order to flip, and synthesising a
+  // layout here would make an unstyled section look like it carries explicit column properties.
+  if (pageIsRtl && out.columns) {
+    out.columns = { ...out.columns, direction: 'rtl' };
   }
 
   return out;

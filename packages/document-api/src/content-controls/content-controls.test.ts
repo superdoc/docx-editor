@@ -174,6 +174,25 @@ describe('target validation', () => {
     executeContentControlsGet(adapter, { target: { kind: 'inline', nodeType: 'sdt', nodeId: 'sdt-2' } });
     expect(adapter.get).toHaveBeenCalled();
   });
+
+  it('accepts a story-qualified target', () => {
+    const adapter = stubAdapter();
+    executeContentControlsGet(adapter, {
+      target: {
+        ...validTarget,
+        story: { kind: 'story', storyType: 'headerFooterPart', refId: 'rId7' },
+      },
+    });
+    expect(adapter.get).toHaveBeenCalled();
+  });
+
+  it('rejects a malformed target story', () => {
+    expect(() =>
+      executeContentControlsGet(stubAdapter(), {
+        target: { ...validTarget, story: { kind: 'story', storyType: 'headerFooterPart' } },
+      } as any),
+    ).toThrow(/target\.story must be a valid StoryLocator/);
+  });
 });
 
 // ---------------------------------------------------------------------------

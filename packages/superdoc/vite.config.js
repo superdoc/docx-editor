@@ -291,6 +291,7 @@ export default defineConfig(({ mode, command }) => {
           'public/ui': 'src/public/ui.ts',
           'public/ui-react': 'src/public/ui-react.ts',
           'public/ui-vue': 'src/public/ui-vue.ts',
+          'public/collaboration-worker': 'src/public/collaboration-worker.ts',
         },
         external: [
           ...(v2Resolution.mode === 'package' ? [/^@superdoc\/docx-engine(?:\/.*)?$/] : []),

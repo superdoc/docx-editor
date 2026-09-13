@@ -1,122 +1,71 @@
-import { useEffect, useRef, useState } from 'react';
-import { SuperDoc } from 'superdoc';
-import type { CommandExecutionResult } from 'superdoc/ui';
-import { SuperDocUIProvider, useSetSuperDoc, useSuperDocCommand, useSuperDocUI } from 'superdoc/ui/react';
-import 'superdoc/style.css';
+import { useState } from 'react';
+import { SuperDocEditor } from '@superdoc/react';
+import type { UIConfig } from 'superdoc';
+import { SuperDocUIProvider, useSetSuperDoc, useSuperDocCommand } from 'superdoc/ui/react';
+import '@superdoc/react/style.css';
 
-type ReportExecution = (label: string, result: CommandExecutionResult) => void;
+const editorUi = {
+  toolbar: { excludeItems: ['bold'] },
+} satisfies UIConfig;
 
-function describeExecution(label: string, result: CommandExecutionResult): string {
-  if (result === false) return `${label} is unavailable.`;
-  if (typeof result === 'object' && !result.success) return result.failure.message;
-  return `${label} updated.`;
-}
-
-export function App() {
+export default function App() {
   return (
     <SuperDocUIProvider>
-      <CustomToolbar />
+      <BoldControl />
       <Editor />
     </SuperDocUIProvider>
   );
 }
 
-function CustomToolbar() {
-  // Toggling Bold on and then off reports the same text twice. Storing the
-  // message alone would let React skip the second update, so the count keys a
-  // span *inside* the live region: the region element itself stays mounted (a
-  // region inserted already-populated is not reliably announced) while its
-  // content changes on every execution.
-  const [status, setStatus] = useState({ id: 0, message: 'Toolbar ready.' });
-  const reportExecution: ReportExecution = (label, result) =>
-    setStatus((previous) => ({ id: previous.id + 1, message: describeExecution(label, result) }));
+function BoldControl() {
+  const bold = useSuperDocCommand('bold');
+  const [pending, setPending] = useState(false);
+  const [status, setStatus] = useState({ id: 0, message: 'Select text to format it.' });
+
+  async function toggleBold() {
+    if (pending) return;
+    const message = bold.active ? 'Bold removed.' : 'Bold applied.';
+    setPending(true);
+    try {
+      const result = await bold.executeAsync();
+      const applied = result === true || (typeof result === 'object' && result.success);
+      setStatus((current) => ({ id: current.id + 1, message: applied ? message : 'Bold was not changed.' }));
+    } finally {
+      setPending(false);
+    }
+  }
 
   return (
     <>
       <div aria-label='Document controls' role='toolbar'>
-        <CommandButton id='undo' label='Undo' reportExecution={reportExecution} />
-        <CommandButton id='bold' label='Bold' reportExecution={reportExecution} toggle />
-        <DocumentModeSelect reportExecution={reportExecution} />
-        <CommandButton id='zoom-fit-width' label='Fit width' reportExecution={reportExecution} />
+        <button
+          aria-pressed={bold.active}
+          disabled={!bold.enabled || pending}
+          onClick={() => void toggleBold()}
+          onMouseDown={(event) => event.preventDefault()}
+          title={bold.reason ?? 'Toggle bold'}
+          type='button'
+        >
+          Bold
+        </button>
       </div>
-      <p aria-live='polite' role='status'>
+      <output aria-live='polite' role='status'>
         <span key={status.id}>{status.message}</span>
-      </p>
+      </output>
     </>
-  );
-}
-
-function CommandButton({
-  id,
-  label,
-  reportExecution,
-  toggle = false,
-}: {
-  id: string;
-  label: string;
-  reportExecution: ReportExecution;
-  toggle?: boolean;
-}) {
-  const ui = useSuperDocUI();
-  const state = useSuperDocCommand(id);
-
-  const execute = async () => {
-    if (!ui) return;
-    reportExecution(label, await ui.commands.executeAsync(id));
-  };
-
-  return (
-    <button
-      aria-pressed={toggle ? state.active : undefined}
-      disabled={!state.enabled}
-      onClick={() => void execute()}
-      title={state.reason ?? label}
-      type='button'
-    >
-      {label}
-    </button>
-  );
-}
-
-function DocumentModeSelect({ reportExecution }: { reportExecution: ReportExecution }) {
-  const ui = useSuperDocUI();
-  const state = useSuperDocCommand('document-mode');
-  const mode = typeof state.value === 'string' ? state.value : 'editing';
-
-  const setMode = async (value: string) => {
-    if (!ui) return;
-    reportExecution('Document mode', await ui.commands.executeAsync('document-mode', value));
-  };
-
-  return (
-    <select
-      aria-label='Document mode'
-      disabled={!state.enabled}
-      onChange={(event) => void setMode(event.currentTarget.value)}
-      value={mode}
-    >
-      <option value='editing'>Editing</option>
-      <option value='suggesting'>Suggesting</option>
-      <option value='viewing'>Viewing</option>
-    </select>
   );
 }
 
 function Editor() {
   const setSuperDoc = useSetSuperDoc();
-  const editorRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!editorRef.current) return;
-
-    const superdoc = new SuperDoc({
-      selector: editorRef.current,
-      document: '/contract.docx',
-      onReady: ({ superdoc: readySuperDoc }) => setSuperDoc(readySuperDoc),
-    });
-
-    return () => superdoc.destroy();
-  }, [setSuperDoc]);
-
-  return <div ref={editorRef} style={{ height: '70vh' }} />;
+  return (
+    <SuperDocEditor
+      document='/sample.docx'
+      onContentError={({ error }) => console.error('SuperDoc could not open the document.', error)}
+      onException={({ error }) => console.error('SuperDoc could not open the document.', error)}
+      onReady={({ superdoc }) => setSuperDoc(superdoc)}
+      ui={editorUi}
+    />
+  );
 }

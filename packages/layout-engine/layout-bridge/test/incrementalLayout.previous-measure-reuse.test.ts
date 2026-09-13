@@ -8,6 +8,20 @@ const makeParagraph = (id: string, text: string): FlowBlock => ({
   runs: [{ text, fontFamily: 'Arial', fontSize: 12 }],
 });
 
+const makeNoteReferenceParagraph = (text: string): FlowBlock => ({
+  kind: 'paragraph',
+  id: 'note-reference-paragraph',
+  runs: [
+    {
+      kind: 'text',
+      text,
+      fontFamily: 'Arial',
+      fontSize: 12,
+      dataAttrs: { 'data-v2-note-ref': 'footnote:42' },
+    },
+  ],
+});
+
 const makeSectionBreak = (id: string, left: number, right: number): SectionBreakBlock => ({
   kind: 'sectionBreak',
   id,
@@ -17,6 +31,80 @@ const makeSectionBreak = (id: string, left: number, right: number): SectionBreak
 describe('incrementalLayout previous-measure reuse', () => {
   beforeEach(() => {
     measureCache.clear();
+  });
+
+  it('reuses an equal-digit-count note marker only when the active face is proven tabular', async () => {
+    const options = {
+      pageSize: { w: 300, h: 400 },
+      margins: { top: 20, right: 20, bottom: 20, left: 20 },
+      columns: { count: 1, gap: 0 },
+    };
+    const measureBlock = vi.fn(async () => ({
+      kind: 'paragraph' as const,
+      lines: [],
+      totalHeight: 10,
+    }));
+    const fontContext = { fontSignature: 'tabular-face', resolvePhysical: (family: string) => family };
+    const fontCapabilities = { hasTabularDigits: () => true };
+    const previousBlocks = [makeNoteReferenceParagraph('1000')];
+    const firstPass = await incrementalLayout([], null, previousBlocks, options, measureBlock, undefined, undefined, {
+      fontContext,
+      fontCapabilities,
+    });
+    expect(measureBlock).toHaveBeenCalledTimes(1);
+    expect(measureCache.getSize()).toBe(1);
+    const firstConstraints = measureBlock.mock.calls[0]![1];
+    expect(
+      measureCache.get(
+        makeNoteReferenceParagraph('1001'),
+        firstConstraints.maxWidth,
+        firstConstraints.maxHeight,
+        fontContext.fontSignature,
+        fontCapabilities,
+      ),
+    ).toBeDefined();
+    measureBlock.mockClear();
+
+    await incrementalLayout(
+      previousBlocks,
+      firstPass.layout,
+      [makeNoteReferenceParagraph('1001')],
+      options,
+      measureBlock,
+      undefined,
+      firstPass.measures,
+      { fontContext, previousFontSignature: fontContext.fontSignature, fontCapabilities },
+    );
+
+    expect(measureBlock).not.toHaveBeenCalled();
+  });
+
+  it('remeasures note marker text without a measured digit capability', async () => {
+    const options = {
+      pageSize: { w: 300, h: 400 },
+      margins: { top: 20, right: 20, bottom: 20, left: 20 },
+      columns: { count: 1, gap: 0 },
+    };
+    const measureBlock = vi.fn(async () => ({
+      kind: 'paragraph' as const,
+      lines: [],
+      totalHeight: 10,
+    }));
+    const previousBlocks = [makeNoteReferenceParagraph('1000')];
+    const firstPass = await incrementalLayout([], null, previousBlocks, options, measureBlock);
+    measureBlock.mockClear();
+
+    await incrementalLayout(
+      previousBlocks,
+      firstPass.layout,
+      [makeNoteReferenceParagraph('1001')],
+      options,
+      measureBlock,
+      undefined,
+      firstPass.measures,
+    );
+
+    expect(measureBlock).toHaveBeenCalledTimes(1);
   });
 
   it('remeasures stable blocks when their section width changes even if global max constraints are unchanged', async () => {

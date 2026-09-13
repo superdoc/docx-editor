@@ -1,17 +1,17 @@
 # superdoc root export inventory (SD-3212 PR A0)
 
-Generated: 2026-08-28T22:06:13.918Z
+Generated: 2026-09-12T20:21:13.295Z
 Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 
 ## Counts
 
 | Source | Path | Count |
 |---|---|---|
-| types.import | `./dist/superdoc/src/public/index.d.ts` | 263 |
-| types.require | `./dist/superdoc/src/public/index.d.cts` | 263 |
+| types.import | `./dist/superdoc/src/public/index.d.ts` | 281 |
+| types.require | `./dist/superdoc/src/public/index.d.cts` | 281 |
 | import | `./dist/superdoc.es.js` | 10 |
 | require | `./dist/superdoc.cjs` | 10 |
-| **union** |  | **263** |
+| **union** |  | **281** |
 
 ## Divergences
 
@@ -19,7 +19,7 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 - types.require only (not in types.import): 0
 - ESM only (not in CJS): 0
 - CJS only (not in ESM): 0
-- typed but no runtime export (phantom risk): 253
+- typed but no runtime export (phantom risk): 271
 - runtime export but not typed (silent shadow on root): 0
 
 ### Type-only names (no runtime)
@@ -56,16 +56,23 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 - `ContextMenuSelectContext`
 - `ContextMenuSelectPayload`
 - `ContextMenuSelectReadiness`
+- `DiffApplyEligibility`
+- `DiffApplyEligibilityBlocker`
+- `DiffApplyEligibilityBlockerCode`
+- `DiffApplyModeEligibility`
 - `DiffApplyOperationReceipt`
 - `DiffApplyResult`
 - `DiffApplyReviewItem`
+- `DiffPayload`
 - `DirectSurfaceRequest`
 - `DocRange`
 - `Document`
 - `DocumentApi`
+- `DocumentCollaborationConfig`
 - `DocumentDataSource`
 - `DocumentMode`
 - `DocumentProtectionState`
+- `DocumentReplacementResult`
 - `DocumentSource`
 - `DocumentUploadSource`
 - `EditorSurface`
@@ -84,8 +91,10 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 - `FlowBlock`
 - `FlowMode`
 - `FontFamilyOption`
+- `FontResolutionRecord`
 - `FontsChangedPayload`
 - `FontsChangedSource`
+- `FontsConfig`
 - `FontsResolvedPayload`
 - `HyperlinkActivationContext`
 - `HyperlinkActivationHandler`
@@ -155,6 +164,7 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 - `SuperDocDisposableBag`
 - `SuperDocDocumentModeChangePayload`
 - `SuperDocEditorPayload`
+- `SuperDocExceptionCollaborationPayload`
 - `SuperDocExceptionDiagnosticPayload`
 - `SuperDocExceptionEditorPayload`
 - `SuperDocExceptionHyperlinkPayload`
@@ -219,6 +229,7 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 - `SuperDocVisualHandle`
 - `SuperDocVisualOptions`
 - `SuperDocVisualTarget`
+- `SuperDocWorkerFailureDetail`
 - `SuperDocZoomConfig`
 - `SuperDocZoomMode`
 - `SuperDocZoomPayload`
@@ -236,6 +247,10 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 - `TextAddress`
 - `TextSegment`
 - `TextTarget`
+- `ThemeColors`
+- `ThemeConfig`
+- `ThemeResult`
+- `ThemeVariableOverrides`
 - `ToolbarCommandId`
 - `ToolbarConfig`
 - `ToolbarCustomButton`
@@ -264,7 +279,10 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 - `TrackChangeAuthor`
 - `TrackChangeHighlightColors`
 - `TrackChangesAuthorColorsConfig`
+- `TrackChangesConfig`
+- `TrackChangesInteractionConfig`
 - `TrackChangesModuleConfig`
+- `TrackChangesReplacementMode`
 - `TrackChangesSemanticColorsConfig`
 - `TrackedChangeAddress`
 - `TrackedChangeSemanticColorKey`
@@ -289,8 +307,8 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 | `BlocksListResult` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `BookmarkAddress` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `BookmarkInfo` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
-| `BorrowedSuperDocUI` | ✓ | ✓ |   |   | 2 |   | 3 | 0 | 0 |
-| `BuiltInCommandId` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
+| `BorrowedSuperDocUI` | ✓ | ✓ |   |   | 2 |   | 1 | 0 | 0 |
+| `BuiltInCommandId` | ✓ | ✓ |   |   | 2 |   | 1 | 0 | 0 |
 | `CanPerformPermissionParams` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `CollaborationConfig` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `CommentAddress` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
@@ -300,7 +318,7 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 | `CommentsLayout` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `CommentsResponsiveConfig` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `CommentsType` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
-| `Config` | ✓ | ✓ |   |   | 28 |   | 7 | 3 | 0 |
+| `Config` | ✓ | ✓ |   |   | 34 |   | 14 | 3 | 0 |
 | `ContentControlActiveChangePayload` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `ContentControlClickPayload` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `ContentControlRef` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
@@ -315,39 +333,48 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 | `ContextMenuSelectContext` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `ContextMenuSelectPayload` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `ContextMenuSelectReadiness` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
-| `DOCX` | ✓ | ✓ | ✓ | ✓ | 1 |   | 301 | 55 | 0 |
+| `DOCX` | ✓ | ✓ | ✓ | ✓ | 1 |   | 383 | 73 | 0 |
+| `DiffApplyEligibility` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
+| `DiffApplyEligibilityBlocker` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
+| `DiffApplyEligibilityBlockerCode` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
+| `DiffApplyModeEligibility` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `DiffApplyOperationReceipt` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `DiffApplyResult` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `DiffApplyReviewItem` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
+| `DiffPayload` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `DirectSurfaceRequest` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `DocRange` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
-| `Document` | ✓ | ✓ |   |   | 3 |   | 101 | 9 | 0 |
-| `DocumentApi` | ✓ | ✓ |   |   | 3 |   | 2 | 0 | 0 |
+| `Document` | ✓ | ✓ |   |   | 3 |   | 100 | 18 | 0 |
+| `DocumentApi` | ✓ | ✓ |   |   | 4 |   | 2 | 0 | 0 |
+| `DocumentCollaborationConfig` | ✓ | ✓ |   |   | 2 |   | 7 | 0 | 0 |
 | `DocumentDataSource` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
-| `DocumentMode` | ✓ | ✓ |   |   | 3 |   | 1 | 2 | 0 |
+| `DocumentMode` | ✓ | ✓ |   |   | 4 |   | 1 | 2 | 0 |
 | `DocumentProtectionState` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
+| `DocumentReplacementResult` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `DocumentSource` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `DocumentUploadSource` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `EditorSurface` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `EditorTransactionEvent` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
-| `EditorUpdateEvent` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
+| `EditorUpdateEvent` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `EntityAddress` | ✓ | ✓ |   |   | 1 |   | 1 | 0 | 0 |
-| `ExportParams` | ✓ | ✓ |   |   | 5 |   | 0 | 0 | 0 |
+| `ExportParams` | ✓ | ✓ |   |   | 6 |   | 0 | 0 | 0 |
 | `ExportType` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `ExternalPopoverRenderContext` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `ExternalSurfaceRenderContext` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `FindReplaceConfig` | ✓ | ✓ |   |   | 3 |   | 0 | 0 | 0 |
 | `FindReplaceContext` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
-| `FindReplaceHandle` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
+| `FindReplaceHandle` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `FindReplaceRenderContext` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `FindReplaceResolution` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `FlowBlock` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `FlowMode` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `FontFamilyOption` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
+| `FontResolutionRecord` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `FontsChangedPayload` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `FontsChangedSource` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
+| `FontsConfig` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `FontsResolvedPayload` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
-| `HTML` | ✓ | ✓ | ✓ | ✓ | 1 |   | 51 | 0 | 0 |
+| `HTML` | ✓ | ✓ | ✓ | ✓ | 1 |   | 50 | 0 | 0 |
 | `HyperlinkActivationContext` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `HyperlinkActivationHandler` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `HyperlinkActivationResult` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
@@ -356,7 +383,7 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 | `HyperlinksConfig` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `IntentSurfaceRequest` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `InteractionConfig` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
-| `Layout` | ✓ | ✓ |   |   | 1 |   | 3 | 0 | 0 |
+| `Layout` | ✓ | ✓ |   |   | 2 |   | 3 | 0 | 0 |
 | `LayoutEngineOptions` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `LayoutFragment` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `LayoutMetrics` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
@@ -368,7 +395,7 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 | `LinkPopoverResolver` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `Modules` | ✓ | ✓ |   |   | 3 |   | 0 | 0 | 0 |
 | `NavigableAddress` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
-| `PDF` | ✓ | ✓ | ✓ | ✓ | 1 |   | 1 | 0 | 0 |
+| `PDF` | ✓ | ✓ | ✓ | ✓ | 1 |   | 3 | 0 | 0 |
 | `PasswordPromptAttemptResult` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `PasswordPromptConfig` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `PasswordPromptContext` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
@@ -390,7 +417,7 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 | `SelectionInfo` | ✓ | ✓ |   |   | 1 |   | 1 | 0 | 0 |
 | `StoryLocator` | ✓ | ✓ |   |   | 1 |   | 4 | 0 | 0 |
 | `StructuredDocumentSource` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
-| `SuperDoc` | ✓ | ✓ | ✓ | ✓ | 26 |   | 250 | 40 | 0 |
+| `SuperDoc` | ✓ | ✓ | ✓ | ✓ | 33 |   | 290 | 44 | 0 |
 | `SuperDocActiveEditorExtensions` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `SuperDocActiveEditorExtensionsCommands` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `SuperDocActiveEditorExtensionsDiagnostics` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
@@ -399,7 +426,7 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 | `SuperDocAnchorCollection` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `SuperDocAnchorStatus` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `SuperDocAnchorTarget` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
-| `SuperDocAwarenessUpdatePayload` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
+| `SuperDocAwarenessUpdatePayload` | ✓ | ✓ |   |   | 1 |   | 0 | 2 | 0 |
 | `SuperDocCharRange` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `SuperDocCommandApi` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `SuperDocCommandExecuteContext` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
@@ -418,10 +445,11 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 | `SuperDocDisposableBag` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `SuperDocDocumentModeChangePayload` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `SuperDocEditorPayload` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
+| `SuperDocExceptionCollaborationPayload` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `SuperDocExceptionDiagnosticPayload` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
-| `SuperDocExceptionEditorPayload` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
+| `SuperDocExceptionEditorPayload` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `SuperDocExceptionHyperlinkPayload` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
-| `SuperDocExceptionPayload` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
+| `SuperDocExceptionPayload` | ✓ | ✓ |   |   | 3 |   | 0 | 0 | 0 |
 | `SuperDocExceptionRestorePayload` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `SuperDocExceptionStorePayload` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `SuperDocExceptionToolbarPayload` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
@@ -463,7 +491,7 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 | `SuperDocPageMarginsChangePayload` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `SuperDocPaginationUpdatePayload` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `SuperDocPaintEvent` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
-| `SuperDocReadyPayload` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
+| `SuperDocReadyPayload` | ✓ | ✓ |   |   | 3 |   | 0 | 0 | 0 |
 | `SuperDocReceiptSuccess` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `SuperDocSaveEvent` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `SuperDocSelectionEvent` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
@@ -482,9 +510,10 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 | `SuperDocVisualHandle` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `SuperDocVisualOptions` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `SuperDocVisualTarget` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
+| `SuperDocWorkerFailureDetail` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `SuperDocZoomConfig` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `SuperDocZoomMode` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
-| `SuperDocZoomPayload` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
+| `SuperDocZoomPayload` | ✓ | ✓ |   |   | 2 |   | 2 | 0 | 0 |
 | `SuperDocZoomState` | ✓ | ✓ |   |   | 3 |   | 0 | 0 | 0 |
 | `SurfaceComponentProps` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `SurfaceFloatingPlacement` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
@@ -499,6 +528,10 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 | `TextAddress` | ✓ | ✓ |   |   | 1 |   | 9 | 0 | 0 |
 | `TextSegment` | ✓ | ✓ |   |   | 1 |   | 1 | 0 | 0 |
 | `TextTarget` | ✓ | ✓ |   |   | 1 |   | 13 | 0 | 0 |
+| `ThemeColors` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
+| `ThemeConfig` | ✓ | ✓ |   |   | 2 |   | 1 | 0 | 0 |
+| `ThemeResult` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
+| `ThemeVariableOverrides` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `ToolbarCommandId` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `ToolbarConfig` | ✓ | ✓ |   |   | 3 |   | 1 | 0 | 0 |
 | `ToolbarCustomButton` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
@@ -527,21 +560,24 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 | `TrackChangeAuthor` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `TrackChangeHighlightColors` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `TrackChangesAuthorColorsConfig` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
-| `TrackChangesModuleConfig` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
+| `TrackChangesConfig` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
+| `TrackChangesInteractionConfig` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
+| `TrackChangesModuleConfig` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
+| `TrackChangesReplacementMode` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `TrackChangesSemanticColorsConfig` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `TrackedChangeAddress` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `TrackedChangeSemanticColorKey` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `TrackedChangeSemanticColorResolverInput` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `UIConfig` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
-| `UpgradeToCollaborationOptions` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
+| `UpgradeToCollaborationOptions` | ✓ | ✓ |   |   | 3 |   | 0 | 0 | 0 |
 | `User` | ✓ | ✓ |   |   | 1 |   | 2 | 0 | 0 |
-| `V2CollaborationConfig` | ✓ | ✓ |   |   | 1 |   | 4 | 0 | 0 |
+| `V2CollaborationConfig` | ✓ | ✓ |   |   | 3 |   | 1 | 0 | 0 |
 | `ViewOptions` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `ViewingOptions` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `ViewingTrackedChangesMode` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `ViewingVisibilityConfig` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
-| `buildTheme` | ✓ | ✓ | ✓ | ✓ | 1 |   | 3 | 0 | 0 |
+| `buildTheme` | ✓ | ✓ | ✓ | ✓ | 2 |   | 3 | 0 | 0 |
 | `compareVersions` | ✓ | ✓ | ✓ | ✓ | 1 |   | 1 | 0 | 0 |
-| `createTheme` | ✓ | ✓ | ✓ | ✓ | 1 |   | 2 | 0 | 0 |
+| `createTheme` | ✓ | ✓ | ✓ | ✓ | 2 |   | 5 | 0 | 0 |
 | `defineSuperDocExtension` | ✓ | ✓ | ✓ | ✓ | 1 |   | 6 | 0 | 0 |
 | `getFileObject` | ✓ | ✓ | ✓ | ✓ | 1 |   | 1 | 0 | 0 |

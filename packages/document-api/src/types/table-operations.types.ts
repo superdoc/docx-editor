@@ -347,6 +347,22 @@ export interface TablesDistributeColumnsInput extends TableLocator {
   columnRange?: { start: number; end: number };
 }
 
+/**
+ * Column move destination. Unlike {@link TableRowMoveDestination}, there is
+ * no `target`/`nodeId` form — columns have no stable node-id address today
+ * (only a positional `columnIndex`), so a move destination is always
+ * expressed by index.
+ */
+export type TableColumnMoveDestination =
+  | { kind: 'first' }
+  | { kind: 'last' }
+  | { kind: 'before'; columnIndex: number }
+  | { kind: 'after'; columnIndex: number };
+
+export type TablesMoveColumnInput = TableScopedColumnLocator & {
+  destination: TableColumnMoveDestination;
+};
+
 // ---------------------------------------------------------------------------
 // Cell operations
 // ---------------------------------------------------------------------------
@@ -724,6 +740,8 @@ export interface TablesGetCellsInput extends TableLocator {
 
 /** Per-cell info with stable ref for write handoff. */
 export interface TableCellInfo {
+  /** First paragraph in this cell, when the engine exposes paragraph identities. */
+  firstParagraphNodeId?: string;
   /** Shorthand cell identifier: convenient for logging, Map keys, and display. */
   nodeId: string;
   /** Mutation-ready address: pass directly as `target` in follow-up cell operations. */

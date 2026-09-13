@@ -64,8 +64,7 @@ const _docxBlobs: Promise<Blob[]> = sd.exportEditorsToDOCX({ commentsType: 'exte
 void _docxBlobs;
 
 // ─── save ───────────────────────────────────────────────────────────
-// Awaits collaboration flush across all documents. Return tightened
-// from accidental Promise<void[]> to Promise<void>.
+// Awaits editor saves without returning serialized bytes.
 const _saveReturnOk: AssertEqual<ReturnType<SuperDoc['save']>, Promise<void>> = true;
 const _saved: Promise<void> = sd.save();
 void _saved;

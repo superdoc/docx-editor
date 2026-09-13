@@ -81,6 +81,69 @@ describe('Footnotes in columns', () => {
     expect(footnoteTwoFragment?.x).toBeCloseTo(columnTwoX, 2);
   });
 
+  it('places footnotes in the mirrored column of their reference in an RTL section', async () => {
+    // Footnote refs are assigned to a column by comparing the reference fragment's x against each
+    // column's far edge plus half its gap. "Far edge" is direction-relative: in an RTL section
+    // column 0 sits on the right and x DESCENDS with the index, so the left-to-right test matches
+    // column 0 for every fragment and collapses the whole page's notes into the first column's
+    // group — the left column's notes print under the right column and its own note area is empty.
+    const paragraphOne = makeParagraph('para-1', 'Column 1 text', 0);
+    const columnBreak: FlowBlock = { kind: 'columnBreak', id: 'col-break-1' };
+    const paragraphTwo = makeParagraph('para-2', 'Column 2 text', 40);
+
+    const footnoteOne = makeParagraph('footnote-1-0-paragraph', 'Footnote one', 0);
+    const footnoteTwo = makeParagraph('footnote-2-0-paragraph', 'Footnote two', 0);
+
+    const measureBlock = vi.fn(async (block: FlowBlock) => {
+      if (block.kind === 'columnBreak') {
+        return { kind: 'columnBreak' } as Measure;
+      }
+      const textLength = block.kind === 'paragraph' ? (block.runs?.[0]?.text?.length ?? 1) : 1;
+      const lineHeight = block.id.startsWith('footnote-') ? 10 : 18;
+      return makeMeasure(lineHeight, textLength);
+    });
+
+    const columns = { count: 2, gap: 20, direction: 'rtl' as const };
+    const margins = { top: 60, right: 60, bottom: 60, left: 60 };
+    const pageSize = { w: 600, h: 800 };
+
+    const result = await incrementalLayout(
+      [],
+      null,
+      [paragraphOne, columnBreak, paragraphTwo],
+      {
+        pageSize,
+        margins,
+        columns,
+        footnotes: {
+          refs: [
+            { id: '1', pos: 2 },
+            { id: '2', pos: 42 },
+          ],
+          blocksById: new Map([
+            ['1', [footnoteOne]],
+            ['2', [footnoteTwo]],
+          ]),
+        },
+      },
+      measureBlock,
+    );
+
+    const page = result.layout.pages[0];
+    const columnWidth = (pageSize.w - margins.left - margins.right - columns.gap) / columns.count;
+    // Mirrored: fill column 0 is the RIGHT one, fill column 1 the left.
+    const firstColumnX = margins.left + columnWidth + columns.gap;
+    const secondColumnX = margins.left;
+
+    const footnoteOneFragment = page.fragments.find((fragment) => fragment.blockId === footnoteOne.id);
+    const footnoteTwoFragment = page.fragments.find((fragment) => fragment.blockId === footnoteTwo.id);
+
+    expect(footnoteOneFragment?.x).toBeCloseTo(firstColumnX, 2);
+    expect(footnoteTwoFragment?.x).toBeCloseTo(secondColumnX, 2);
+    // The two notes must land in DIFFERENT columns; collapsing them into one is the failure mode.
+    expect(footnoteOneFragment?.x).not.toBeCloseTo(footnoteTwoFragment?.x ?? 0, 2);
+  });
+
   it('keeps footnotes in the owning column for wide overflow tables', async () => {
     const paragraphOne = makeParagraph('para-1', 'Column 1 text', 0);
     const columnBreak: FlowBlock = { kind: 'columnBreak', id: 'col-break-1' };

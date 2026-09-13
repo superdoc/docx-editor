@@ -4,6 +4,14 @@ labels:
   - "stage: triage"
   - "type: feature"
 body:
+  - type: markdown
+    attributes:
+      value: |
+        Community contributions start with issues. Pull requests are limited to repository collaborators.
+        [Read why and how to contribute](https://github.com/superdoc/docx-editor/blob/main/CONTRIBUTING.md).
+        Report suspected security vulnerabilities privately through [GitHub Security Advisories](https://github.com/superdoc/docx-editor/security/advisories/new), not in a public issue.
+        Remove confidential information from any files, screenshots, or logs you share.
+
   - type: textarea
     id: problem
     attributes:

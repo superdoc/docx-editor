@@ -1,228 +1,12 @@
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
-import { execFileSync } from 'node:child_process';
-import {
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  symlinkSync,
-  writeFileSync,
-} from 'node:fs';
-import { tmpdir } from 'node:os';
+import { readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import { gunzipSync, gzipSync } from 'node:zlib';
-
-import {
-  hashEngineTree,
-  observeEngineInputIdentity,
-  verifyPreparedEngine,
-  writeEngineProducerReceipt,
-} from '../engine-prepared-input.mjs';
-import {
-  materializeCiSuperdocBuildArtifact,
-  packCiSuperdocBuildArtifact,
-  runWithCiSuperdocMaterialization,
-  verifyCiSuperdocMaterialization,
-} from '../ci-superdoc-build-artifact.mjs';
+import { materializeCiSuperdocBuildArtifact, runWithCiSuperdocMaterialization, verifyCiSuperdocMaterialization } from '../ci-superdoc-build-artifact.mjs';
 import { writeEngineConsumerArtifactReceipt } from '../ci-docx-engine-artifact.mjs';
 import { artifactCanonicalSha256, createSuperDocArtifactStore } from '../superdoc-artifact-store.mjs';
-import { writePublicOutputReceipt } from '../../packages/superdoc/scripts/public-output-receipt.mjs';
-
-const packageEnvironment = { ...process.env, SUPERDOC_ENGINE_INPUT: 'prepared', SUPERDOC_V2_RUNTIME_MODE: 'package' };
-const fixtureRuntimeOutputSources = Object.freeze({
-  'leaf-document-compare': {
-    destination: 'document-compare/dist',
-    source: 'export const runtime = "document-compare";\n',
-  },
-  'leaf-editor-core': {
-    destination: 'editor-core/dist',
-    source: 'export const runtime = "editor-core";\n',
-  },
-  'leaf-collaboration-v2': {
-    destination: 'collaboration-v2/dist',
-    source: 'export const runtime = "collaboration-v2";\n',
-  },
-  'leaf-document-api-v2-adapter': {
-    destination: 'document-api-v2-adapter/dist',
-    source: 'export const runtime = "document-api-v2-adapter";\n',
-  },
-  'leaf-headless': {
-    destination: 'headless/dist',
-    source: 'export const runtime = "headless";\n',
-  },
-  'leaf-collaboration-upgrade': {
-    destination: 'collaboration-upgrade/dist',
-    source: 'export const runtime = "collaboration-upgrade";\n',
-  },
-});
-
-function sha256(value) {
-  return createHash('sha256').update(value).digest('hex');
-}
-
-function writeJson(filePath, value) {
-  mkdirSync(path.dirname(filePath), { recursive: true });
-  writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`);
-}
-
-function git(repoRoot, args) {
-  return execFileSync('git', ['-C', repoRoot, ...args], { encoding: 'utf8' }).trim();
-}
-
-function writeEngineSurface(root, source) {
-  mkdirSync(root, { recursive: true });
-  writeFileSync(path.join(root, 'docx-engine.es.js'), source);
-  writeJson(path.join(root, 'manifest.json'), {
-    schemaVersion: 1,
-    packageName: '@superdoc/docx-engine',
-    protection: { obfuscatedSetSha256: 'protected' },
-    files: [{ path: 'docx-engine.es.js', sha256: sha256(source) }],
-  });
-}
-
-function createFixture() {
-  const repoRoot = mkdtempSync(path.join(tmpdir(), 'ci-superdoc-artifact-'));
-  const workspaceRoot = path.join(repoRoot, 'superdoc', 'public');
-  const packageRoot = path.join(workspaceRoot, 'packages', 'superdoc');
-  const documentApiRoot = path.join(workspaceRoot, 'packages', 'document-api', 'dist');
-  const engineArtifactRoot = path.join(workspaceRoot, '.ci-docx-engine');
-  const v2Root = path.join(repoRoot, 'superdoc', 'v2');
-  const archivePath = path.join(workspaceRoot, 'superdoc-build-artifact.json.gz');
-
-  mkdirSync(path.join(v2Root, 'src'), { recursive: true });
-  mkdirSync(packageRoot, { recursive: true });
-  writeJson(path.join(v2Root, 'package.json'), { name: '@superdoc/docx-engine', version: '1.2.3' });
-  writeFileSync(path.join(v2Root, 'src', 'index.ts'), 'export const engineSource = true;\n');
-  writeJson(path.join(packageRoot, 'package.json'), {
-    name: 'superdoc',
-    version: '2.0.0',
-    dependencies: { '@superdoc/docx-engine': 'workspace:1.2.3' },
-  });
-  writeFileSync(path.join(packageRoot, 'source.js'), 'export const publicSource = true;\n');
-  writeFileSync(
-    path.join(workspaceRoot, '.gitignore'),
-    [
-      'packages/**/dist/',
-      'packages/**/dist-cdn/',
-      'packages/**/build-receipts/',
-      '.ci-docx-engine/',
-      '.ci-superdoc-artifact/',
-      '.tmp/',
-      '*.json.gz',
-    ].join('\n'),
-  );
-  writeFileSync(path.join(v2Root, '.gitignore'), 'dist/\ndist-cdn/\nbuild-receipts/\n.build-artifacts/\n');
-  git(repoRoot, ['init', '-q']);
-  git(repoRoot, ['config', 'user.email', 'test@example.com']);
-  git(repoRoot, ['config', 'user.name', 'CI Artifact Test']);
-  git(repoRoot, ['add', '.']);
-  git(repoRoot, ['commit', '-qm', 'fixture']);
-
-  writeEngineSurface(path.join(v2Root, 'dist'), 'export const engine = "npm";\n');
-  writeEngineSurface(path.join(v2Root, 'dist-cdn'), 'export const engine = "cdn";\n');
-  const inputIdentity = observeEngineInputIdentity({ v2Root, repoRoot });
-  const runtimeRoots = {};
-  const runtimeOutputs = {};
-  for (const [id, { destination, source }] of Object.entries(fixtureRuntimeOutputSources)) {
-    const root = path.join(v2Root, ...destination.split('/'));
-    mkdirSync(root, { recursive: true });
-    writeFileSync(path.join(root, 'index.js'), source);
-    const tree = hashEngineTree(root);
-    runtimeRoots[id] = root;
-    runtimeOutputs[id] = {
-      digest: tree.digest,
-      fileCount: tree.files.length,
-      sizeBytes: tree.sizeBytes,
-      destination,
-    };
-  }
-  const engineSurfaces = Object.fromEntries(
-    ['dist', 'dist-cdn'].map((surface) => {
-      const tree = hashEngineTree(path.join(v2Root, surface));
-      return [surface, { digest: tree.digest, fileCount: tree.files.length, sizeBytes: tree.sizeBytes }];
-    }),
-  );
-  const engineReceipt = writeEngineProducerReceipt({
-    v2Root,
-    receipt: {
-      engineVersion: '1.2.3',
-      inputIdentity,
-      protectionCache: { authoritativeForPublication: true },
-      surfaces: engineSurfaces,
-      runtimeOutputs,
-    },
-  }).receipt;
-
-  mkdirSync(path.join(packageRoot, 'dist'));
-  mkdirSync(path.join(packageRoot, 'dist-cdn'));
-  writeFileSync(path.join(packageRoot, 'dist', 'superdoc.es.js'), 'export const publicNpm = true;\n');
-  writeFileSync(path.join(packageRoot, 'dist-cdn', 'superdoc.js'), 'globalThis.SuperDoc = {};\n');
-  const publicReceipt = writePublicOutputReceipt({
-    packageRoot,
-    v2Root,
-    surfaces: ['npm', 'cdn'],
-    env: packageEnvironment,
-  }).receipt;
-
-  for (const relative of ['index.js', 'index.d.ts', 'types/index.js', 'types/index.d.ts']) {
-    mkdirSync(path.dirname(path.join(documentApiRoot, relative)), { recursive: true });
-    writeFileSync(path.join(documentApiRoot, relative), `// ${relative}\n`);
-  }
-  mkdirSync(engineArtifactRoot);
-  const engineArchive = path.join(engineArtifactRoot, 'superdoc-docx-engine-1.2.3.tgz');
-  writeFileSync(engineArchive, 'audited engine consumer tarball\n');
-  const verifiedEngine = verifyPreparedEngine({
-    v2Root,
-    expectedVersion: '1.2.3',
-    surfaces: ['dist', 'dist-cdn'],
-    currentInputIdentity: inputIdentity,
-  });
-  writeEngineConsumerArtifactReceipt({ root: engineArtifactRoot, engineArchive, verifiedEngine });
-
-  return {
-    archivePath,
-    documentApiRoot,
-    engineArtifactRoot,
-    engineReceipt,
-    packageRoot,
-    publicReceipt,
-    repoRoot,
-    runtimeRoots,
-    v2Root,
-    workspaceRoot,
-  };
-}
-
-function packFixture(fixture, options = {}) {
-  return packCiSuperdocBuildArtifact({
-    workspaceRoot: fixture.workspaceRoot,
-    packageRoot: fixture.packageRoot,
-    v2Root: fixture.v2Root,
-    documentApiRoot: fixture.documentApiRoot,
-    engineArtifactRoot: fixture.engineArtifactRoot,
-    archivePath: fixture.archivePath,
-    env: packageEnvironment,
-    ...options,
-  });
-}
-
-function replaceWithPreviousTrees(fixture) {
-  for (const destination of [
-    path.join(fixture.packageRoot, 'dist'),
-    path.join(fixture.packageRoot, 'dist-cdn'),
-    path.join(fixture.packageRoot, 'build-receipts'),
-    fixture.documentApiRoot,
-    fixture.engineArtifactRoot,
-    ...Object.values(fixture.runtimeRoots),
-    path.join(fixture.workspaceRoot, '.ci-superdoc-artifact'),
-  ]) {
-    rmSync(destination, { recursive: true, force: true });
-    mkdirSync(destination, { recursive: true });
-    writeFileSync(path.join(destination, 'previous.txt'), `previous ${path.basename(destination)}\n`);
-  }
-}
+import { createFixture, packFixture, replaceWithPreviousTrees, fixtureRuntimeOutputSources, git } from './fixtures/ci-superdoc-build-artifact.mjs';
 
 test('packs and transactionally materializes the complete receipt-bound build set', () => {
   const fixture = createFixture();
@@ -313,6 +97,27 @@ test('rejects a modified archive before touching any destination', () => {
   }
 });
 
+test('restores native artifacts in a sparse checkout without private source and rejects subsequent drift', () => {
+  const fixture = createFixture();
+  try {
+    const packed = packFixture(fixture);
+    replaceWithPreviousTrees(fixture);
+    git(fixture.repoRoot, ['update-index', '--skip-worktree', 'superdoc/v2/src/index.ts']);
+    rmSync(path.join(fixture.v2Root, 'src'), { recursive: true });
+    materializeCiSuperdocBuildArtifact({
+      workspaceRoot: fixture.workspaceRoot, v2Root: fixture.v2Root, archivePath: fixture.archivePath,
+    });
+    const verify = () => verifyCiSuperdocMaterialization({
+      workspaceRoot: fixture.workspaceRoot, v2Root: fixture.v2Root, expectedDigest: packed.manifest.digest,
+    });
+    assert.equal(verify().artifactDigest, packed.manifest.digest);
+    writeFileSync(path.join(fixture.runtimeRoots['native-runtime'], 'index.js'), 'unsealed replacement');
+    assert.throws(verify, /native-runtime|does not match/u);
+  } finally {
+    rmSync(fixture.repoRoot, { recursive: true, force: true });
+  }
+});
+
 test('rejects an archive that omits a producer-sealed runtime leaf before touching any destination', () => {
   const fixture = createFixture();
   try {
@@ -396,7 +201,7 @@ test('rolls every component back when promotion fails during or after the comple
   try {
     packFixture(fixture);
     replaceWithPreviousTrees(fixture);
-    for (const failurePoint of ['after-promote:leaf-editor-core', 'after-post-verify']) {
+    for (const failurePoint of ['after-promote:leaf-editor-core', 'after-promote:native-runtime', 'after-post-verify']) {
       assert.throws(
         () =>
           materializeCiSuperdocBuildArtifact({

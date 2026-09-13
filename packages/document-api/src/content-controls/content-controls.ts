@@ -10,6 +10,7 @@ import { DocumentApiValidationError } from '../errors.js';
 import { isRecord, isInteger } from '../validation-primitives.js';
 import { validateDocumentFragment } from '../validation/fragment-validator.js';
 import { isSelectionTarget } from '../validation/selection-target-validator.js';
+import { validateStoryLocator } from '../validation/story-validator.js';
 import { LOCK_MODES, CONTENT_CONTROL_TYPES, CONTENT_CONTROL_APPEARANCES } from './content-controls.types.js';
 import type { NodeKind } from '../types/base.js';
 import { NODE_KINDS } from '../types/base.js';
@@ -266,6 +267,7 @@ function validateCCTarget(target: unknown, operationName: string): asserts targe
       { field: 'target.nodeId', value: target.nodeId },
     );
   }
+  validateStoryLocator(target.story, `${operationName}.target.story`);
 }
 
 function validateCCMoveDestination(destination: unknown): void {
@@ -360,7 +362,9 @@ function validateContentPayload(input: { content?: unknown; format?: unknown }, 
       value: input.content,
     });
   }
-  validateContentFormat(input.format, 'format', operationName);
+  if (!(operationName === 'contentControls.replaceContent' && input.format === 'ooxml')) {
+    validateContentFormat(input.format, 'format', operationName);
+  }
 }
 
 function validateSymbol(value: unknown, field: string, operationName: string): void {

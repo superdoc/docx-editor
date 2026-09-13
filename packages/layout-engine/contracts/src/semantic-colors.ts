@@ -8,7 +8,7 @@
  * author can therefore receive different colors for different review roles,
  * which the author-identity path cannot express.
  *
- * Hosts configure these through `modules.trackChanges.semanticColors`.
+ * Hosts configure these through `trackChanges.semanticColors`.
  * SuperDoc composes those knobs into a single resolver and threads it into the
  * data-preparation pass so every tracked-change layer carries a paint-ready
  * `semanticColor`; DomPainter then only reads paint-ready metadata. Like the
@@ -178,8 +178,7 @@ export type TrackChangeSemanticColorResolver = (input: TrackedChangeSemanticColo
 
 /**
  * Host-facing semantic tracked-change color configuration. Mirrors the
- * (later) `modules.trackChanges.semanticColors` shape on the public `superdoc`
- * package.
+ * `trackChanges.semanticColors` shape on the public `superdoc` package.
  */
 export interface SemanticColorsConfig {
   /** When `false`, semantic colors are not applied. Defaults to enabled. */

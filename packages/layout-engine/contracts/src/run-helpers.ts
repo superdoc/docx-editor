@@ -9,6 +9,24 @@
 
 import type { FlowBlock, Line, Run, TextRun } from './index.js';
 
+export const NOTE_REFERENCE_MARKER_ATTR = 'data-v2-note-ref';
+export const NOTE_LABEL_MARKER_ATTR = 'data-v2-note-label';
+
+/** Body note markers paint text but occupy one source-coordinate unit. */
+export function isBodyNoteReferenceRun(run: Run): boolean {
+  return run.kind === 'text' && typeof run.dataAttrs?.[NOTE_REFERENCE_MARKER_ATTR] === 'string';
+}
+
+/** Synthetic note-band or appended-endnote label keyed to its source note. */
+export function isNoteLabelRun(run: Run): boolean {
+  return run.kind === 'text' && typeof run.dataAttrs?.[NOTE_LABEL_MARKER_ATTR] === 'string';
+}
+
+/** Numbered marker text whose measurement identity can use digit capabilities. */
+export function isNumberedNoteMarkerRun(run: Run): boolean {
+  return isBodyNoteReferenceRun(run) || isNoteLabelRun(run);
+}
+
 export function isEmptySdtPlaceholderRun(
   run: Run,
 ): run is TextRun & { visualPlaceholder: 'emptyInlineSdt' | 'emptyBlockSdt' } {
@@ -107,6 +125,12 @@ export function sliceRunsForLine(block: FlowBlock, line: Line): Run[] {
     if (isFirstRun || isLastRun) {
       const start = isFirstRun ? line.fromChar : 0;
       const end = isLastRun ? line.toChar : text.length;
+      if (isBodyNoteReferenceRun(run)) {
+        const slice = text.slice(start, end);
+        if (!slice) continue;
+        result.push(start === 0 && end === text.length ? run : { ...run, text: slice });
+        continue;
+      }
       const slice = text.slice(start, end);
       if (!slice) continue;
       const pmStart =

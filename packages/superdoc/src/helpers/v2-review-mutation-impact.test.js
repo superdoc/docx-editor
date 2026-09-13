@@ -1,9 +1,33 @@
-import { describe, expect, it } from 'vite-plus/test';
+import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
+import { createPinia, setActivePinia } from 'pinia';
 
 import SuperDocSource from '../SuperDoc.vue?raw';
-import { getV2TrackedChangeMutationImpact } from './v2-review-mutation-impact.js';
+import useComment from '../components/CommentsLayer/use-comment.js';
+import { useCommentsStore } from '../stores/comments-store.js';
+import { useSuperdocStore } from '../stores/superdoc-store.js';
+import {
+  applyV2CommentInvalidationFromMutation,
+  collectV2InvalidatedCommentIds,
+  getV2TrackedChangeMutationImpact,
+} from './v2-review-mutation-impact.js';
 
 const trackedChange = (entityId) => ({ kind: 'entity', entityType: 'trackedChange', entityId });
+const commentRef = (entityId) => ({ kind: 'entity', entityType: 'comment', entityId });
+
+function makeTrackedChangeRow(overrides = {}) {
+  const commentId = overrides.commentId ?? 'tc-old';
+  return useComment({
+    commentId,
+    fileId: 'doc-1',
+    trackedChange: true,
+    trackedChangeText: 'old tracked change',
+    trackedChangeType: 'insert',
+    trackedChangeDisplayType: 'insert',
+    trackedChangeAnchorKey: overrides.trackedChangeAnchorKey ?? `tc::body::${commentId}`,
+    commentText: '',
+    ...overrides,
+  });
+}
 
 describe('v2 review mutation impact', () => {
   it('classifies inserted and updated identities for targeted refresh', () => {
@@ -107,6 +131,7 @@ describe('v2 review mutation impact', () => {
 describe('mounted v2 review mutation wiring', () => {
   it('applies receipt-local effects and forwards every committed page window', () => {
     expect(SuperDocSource).toContain('commentsStore.reconcileTrackedChangeMutationFromV2?.({');
+    expect(SuperDocSource).toContain('applyV2CommentInvalidationFromMutation({');
     expect(SuperDocSource).not.toContain('createV2ReviewMutationReconciler');
     expect(SuperDocSource).toContain("armV2TrackedChangeRestampGeometryRetention('tracked-change-mutation')");
     expect(SuperDocSource).toContain("'render-epoch-handoff'");
@@ -170,5 +195,103 @@ describe('mounted v2 review mutation wiring', () => {
     expect(SuperDocSource).toContain(
       'Promise.resolve(reconciliation).then(settleReviewMutation, () => settleReviewMutation(null))',
     );
+  });
+});
+
+describe('v2 comment mutation invalidation', () => {
+  let store;
+  let superdoc;
+
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    const superdocStore = useSuperdocStore();
+    superdocStore.documents = [
+      { id: 'doc-1', type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' },
+    ];
+    store = useCommentsStore();
+    superdoc = { emit: vi.fn() };
+    store.commentsList = [
+      useComment({ commentId: '0', fileId: 'doc-1', commentText: 'Source review comment' }),
+      useComment({
+        commentId: 'reply-0',
+        fileId: 'doc-1',
+        parentCommentId: '0',
+        commentText: 'Reply',
+      }),
+      useComment({ commentId: 'history-id', fileId: 'doc-1', commentText: 'History comment' }),
+      useComment({ commentId: 'decoy', fileId: 'doc-1', commentText: 'Must not drop from the other payload field' }),
+      makeTrackedChangeRow({ commentId: '0' }),
+    ];
+  });
+
+  it('reads command receipts and history results, drops replies, and ignores non-comment refs', () => {
+    expect(
+      collectV2InvalidatedCommentIds({
+        type: 'mutation:committed',
+        origin: 'command',
+        receipt: { invalidatedRefs: [commentRef('0')] },
+        result: { invalidatedRefs: [commentRef('decoy')] },
+      }),
+    ).toEqual(new Set(['0']));
+    expect(
+      collectV2InvalidatedCommentIds({
+        type: 'mutation:committed',
+        origin: 'history',
+        receipt: { invalidatedRefs: [commentRef('decoy')] },
+        result: { invalidatedRefs: [commentRef('history-id')] },
+      }),
+    ).toEqual(new Set(['history-id']));
+    expect(
+      collectV2InvalidatedCommentIds({
+        type: 'mutation:committed',
+        origin: 'command',
+        receipt: { invalidatedRefs: [trackedChange('0'), { kind: 'block', nodeId: 'P1' }] },
+      }),
+    ).toEqual(new Set());
+
+    applyV2CommentInvalidationFromMutation({
+      event: {
+        type: 'mutation:committed',
+        origin: 'command',
+        receipt: { invalidatedRefs: [commentRef('0')] },
+        result: { invalidatedRefs: [commentRef('decoy')] },
+      },
+      commentsStore: store,
+      superdoc,
+      documentId: 'doc-1',
+    });
+    expect(store.commentsList.map((row) => row.commentId).sort()).toEqual(['0', 'decoy', 'history-id']);
+    expect(store.commentsList.find((row) => row.commentId === '0')?.trackedChange).toBe(true);
+    expect(superdoc.emit).toHaveBeenCalledWith('comments-update', expect.objectContaining({ type: 'deleted' }));
+
+    superdoc.emit.mockClear();
+    applyV2CommentInvalidationFromMutation({
+      event: {
+        type: 'mutation:committed',
+        origin: 'history',
+        receipt: { invalidatedRefs: [commentRef('decoy')] },
+        result: { invalidatedRefs: [commentRef('history-id')] },
+      },
+      commentsStore: store,
+      superdoc,
+      documentId: 'doc-1',
+    });
+    expect(store.commentsList.map((row) => row.commentId).sort()).toEqual(['0', 'decoy']);
+    expect(store.commentsList.find((row) => row.commentId === '0')?.trackedChange).toBe(true);
+    expect(superdoc.emit).toHaveBeenCalledWith('comments-update', expect.objectContaining({ type: 'deleted' }));
+
+    superdoc.emit.mockClear();
+    applyV2CommentInvalidationFromMutation({
+      event: {
+        type: 'mutation:committed',
+        origin: 'command',
+        receipt: { invalidatedRefs: [trackedChange('0'), { kind: 'block', nodeId: 'P1' }] },
+      },
+      commentsStore: store,
+      superdoc,
+      documentId: 'doc-1',
+    });
+    expect(store.commentsList.map((row) => row.commentId).sort()).toEqual(['0', 'decoy']);
+    expect(superdoc.emit).not.toHaveBeenCalled();
   });
 });

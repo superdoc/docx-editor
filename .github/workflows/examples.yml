@@ -42,6 +42,7 @@ jobs:
               - 'packages/document-api/**'
               - 'packages/react/**'
               - 'packages/superdoc/**'
+              - 'packages/sdk/**'
               - 'scripts/check-examples.mjs'
               - 'scripts/__tests__/check-examples.test.mjs'
               - 'scripts/check-go-links.mjs'
@@ -94,6 +95,10 @@ jobs:
       - name: Build React wrapper
         if: needs.detect.outputs.examples == 'true'
         run: pnpm --filter @superdoc/react run build
+
+      - name: Build SDK example dependencies
+        if: needs.detect.outputs.examples == 'true'
+        run: pnpm run generate:all && pnpm --filter @superdoc/sdk run build
 
       - name: Install Chromium
         if: needs.detect.outputs.examples == 'true'

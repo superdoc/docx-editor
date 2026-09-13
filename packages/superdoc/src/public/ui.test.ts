@@ -5037,6 +5037,8 @@ describe('public ui — track changes workflow parity (row 748)', () => {
     expect(decide).toHaveBeenCalledWith({ decision: 'accept', target: { kind: 'all' } });
     expect(ui.trackChanges.rejectAll()).toMatchObject({ success: true });
     expect(decide).toHaveBeenCalledWith({ decision: 'reject', target: { kind: 'all' } });
+    await expect(ui.trackChanges.acceptAllAsync()).resolves.toMatchObject({ success: true });
+    await expect(ui.trackChanges.rejectAllAsync()).resolves.toMatchObject({ success: true });
     await expect(ui.commands.executeAsync(BUILT_IN_COMMAND_IDS.acceptAllChanges)).resolves.toMatchObject({
       success: true,
     });
@@ -5044,6 +5046,82 @@ describe('public ui — track changes workflow parity (row 748)', () => {
       success: true,
     });
     expect(decide).toHaveBeenLastCalledWith({ decision: 'reject', target: { kind: 'all' } });
+  });
+
+  it('acceptAsync / rejectAsync wait for the tracked-change decision', async () => {
+    const story = { kind: 'story', storyType: 'footnote', noteId: 'fn-1' };
+    const decide = vi.fn(async () => ({ success: true }));
+    const { superdoc } = makeWorkflowSuperdoc({ trackChanges: { list: () => ({ items }), decide } });
+    const ui = createSuperDocUI({ superdoc });
+
+    await expect(ui.trackChanges.acceptAsync('tc-1')).resolves.toMatchObject({ success: true });
+    expect(decide).toHaveBeenCalledWith({ decision: 'accept', target: { kind: 'id', id: 'tc-1' } });
+
+    await expect(ui.trackChanges.rejectAsync({ id: 'tc-2', story })).resolves.toMatchObject({ success: true });
+    expect(decide).toHaveBeenCalledWith({ decision: 'reject', target: { kind: 'id', id: 'tc-2', story } });
+  });
+
+  it('acceptAsync / rejectAsync with an explicit id do not wait for a pending selection read', async () => {
+    const decide = vi.fn(async () => ({ success: true }));
+    const { superdoc } = makeWorkflowSuperdoc({
+      selectionInfo: new Promise(() => {}),
+      trackChanges: { list: () => ({ items }), decide },
+    });
+    const ui = createSuperDocUI({ superdoc });
+    expect(ui.state.selection.status).not.toBe('ready');
+
+    // The panel supplies the id, so the decision must settle even though the
+    // selection read never does.
+    const timeout = new Promise((resolve) => setTimeout(() => resolve('timed out'), 50));
+    await expect(Promise.race([ui.trackChanges.acceptAsync('tc-1'), timeout])).resolves.toMatchObject({
+      success: true,
+    });
+    expect(decide).toHaveBeenCalledWith({ decision: 'accept', target: { kind: 'id', id: 'tc-1' } });
+
+    await expect(Promise.race([ui.trackChanges.rejectAsync({ id: 'tc-2' }), timeout])).resolves.toMatchObject({
+      success: true,
+    });
+    expect(decide).toHaveBeenLastCalledWith({ decision: 'reject', target: { kind: 'id', id: 'tc-2' } });
+  });
+
+  it('acceptAsync / rejectAsync fail closed on an empty id instead of deciding the selected change', async () => {
+    const decide = vi.fn(async () => ({ success: true }));
+    const { superdoc } = makeWorkflowSuperdoc({
+      selectionInfo: {
+        empty: false,
+        target: WF_TARGET,
+        selectionTarget: WF_SELECTION_TARGET,
+        activeChangeIds: ['tc-1'],
+      },
+      trackChanges: { list: () => ({ items }), decide },
+    });
+    const ui = createSuperDocUI({ superdoc });
+
+    await expect(ui.trackChanges.acceptAsync('')).resolves.toBe(false);
+    await expect(ui.trackChanges.rejectAsync({ id: '' })).resolves.toBe(false);
+    expect(ui.trackChanges.accept('')).toBe(false);
+    expect(decide).not.toHaveBeenCalled();
+  });
+
+  it('async domain decisions bypass an application command registered under a built-in id', async () => {
+    const decide = vi.fn(async () => ({ success: true }));
+    const override = vi.fn(() => ({ success: true }));
+    const { superdoc } = makeWorkflowSuperdoc({
+      trackChanges: { list: () => ({ items }), decide, acceptAll: decide, rejectAll: decide },
+      host: { v2TrackedChanges: { bulkDecisions: true } },
+    });
+    const ui = createSuperDocUI({ superdoc });
+    ui.commands.register({ id: BUILT_IN_COMMAND_IDS.acceptChange, execute: override });
+    ui.commands.register({ id: BUILT_IN_COMMAND_IDS.acceptAllChanges, execute: override });
+
+    await expect(ui.trackChanges.acceptAsync('tc-1')).resolves.toMatchObject({ success: true });
+    expect(decide).toHaveBeenCalledWith({ decision: 'accept', target: { kind: 'id', id: 'tc-1' } });
+    await ui.trackChanges.acceptAllAsync();
+    expect(override).not.toHaveBeenCalled();
+
+    // The command registry still honours the override.
+    await ui.commands.executeAsync(BUILT_IN_COMMAND_IDS.acceptChange, 'tc-1');
+    expect(override).toHaveBeenCalledTimes(1);
   });
 
   it('acceptAll fails closed when generic decide exists without host bulk opt-in', async () => {
@@ -5056,6 +5134,7 @@ describe('public ui — track changes workflow parity (row 748)', () => {
       reason: SUPERDOC_UI_REASONS.bulkDecisionsDisabled,
     });
     expect(ui.trackChanges.acceptAll()).toBe(false);
+    await expect(ui.trackChanges.acceptAllAsync()).resolves.toBe(false);
     expect(decide).not.toHaveBeenCalled();
   });
 
@@ -5528,6 +5607,86 @@ describe('public ui — track changes workflow parity (row 748)', () => {
       { target: tailTarget, block: 'center', behavior: 'auto' },
       expect.any(Function),
     );
+  });
+
+  it('scrollTo honours a requested { id, story } when the id repeats across stories (IT-1250)', async () => {
+    const scrollTargetIntoView = vi.fn(async () => ({ success: true }));
+    const footnoteStory = { kind: 'story', storyType: 'footnote', noteId: '3' } as const;
+    const bodyTarget = { kind: 'text', segments: [{ blockId: 'P9', range: { start: 0, end: 4 } }] } as const;
+    const footnoteTarget = { kind: 'text', segments: [{ blockId: 'FN3', range: { start: 0, end: 4 } }] } as const;
+    const rows = [
+      {
+        id: 'tc-dup',
+        type: 'insert',
+        address: { kind: 'entity', entityType: 'trackedChange', entityId: 'tc-dup' },
+        target: bodyTarget,
+      },
+      {
+        id: 'tc-dup',
+        type: 'insert',
+        address: { kind: 'entity', entityType: 'trackedChange', entityId: 'tc-dup', story: footnoteStory },
+        target: footnoteTarget,
+      },
+    ];
+    const { superdoc } = makeWorkflowSuperdoc({
+      trackChanges: { list: () => ({ items: rows }) },
+      host: { scrollTargetIntoView },
+    });
+    const ui = createSuperDocUI({ superdoc });
+
+    // A bare id resolves the first occurrence, the body row.
+    expect(await ui.trackChanges.scrollTo('tc-dup')).toMatchObject({ ok: true });
+    expect(scrollTargetIntoView).toHaveBeenLastCalledWith(
+      expect.objectContaining({ target: bodyTarget }),
+      expect.any(Function),
+    );
+
+    // The row's story pins the footnote occurrence.
+    expect(await ui.trackChanges.scrollTo({ id: 'tc-dup', story: footnoteStory })).toMatchObject({ ok: true });
+    expect(scrollTargetIntoView).toHaveBeenLastCalledWith(
+      expect.objectContaining({ target: { ...footnoteTarget, story: footnoteStory } }),
+      expect.any(Function),
+    );
+
+    expect(await ui.trackChanges.scrollTo({ id: '', story: footnoteStory })).toMatchObject({ ok: false });
+  });
+
+  it('scrollTo pins an explicit body story even when a same-id non-body row is listed first (IT-1250)', async () => {
+    const scrollTargetIntoView = vi.fn(async () => ({ success: true }));
+    const bodyStory = { kind: 'story', storyType: 'body' } as const;
+    const footnoteStory = { kind: 'story', storyType: 'footnote', noteId: '4' } as const;
+    const bodyTarget = { kind: 'text', segments: [{ blockId: 'P10', range: { start: 0, end: 4 } }] } as const;
+    const footnoteTarget = { kind: 'text', segments: [{ blockId: 'FN4', range: { start: 0, end: 4 } }] } as const;
+    const rows = [
+      {
+        id: 'tc-dup2',
+        type: 'insert',
+        address: { kind: 'entity', entityType: 'trackedChange', entityId: 'tc-dup2', story: footnoteStory },
+        target: footnoteTarget,
+      },
+      {
+        id: 'tc-dup2',
+        type: 'insert',
+        address: { kind: 'entity', entityType: 'trackedChange', entityId: 'tc-dup2' },
+        target: bodyTarget,
+      },
+    ];
+    const { superdoc } = makeWorkflowSuperdoc({
+      trackChanges: { list: () => ({ items: rows }) },
+      host: { scrollTargetIntoView },
+    });
+    const ui = createSuperDocUI({ superdoc });
+
+    // The footnote row is first, so a bare id would reveal it. An explicit
+    // body story must still reveal the body occurrence, with no story threaded
+    // into the host call (body is the host default).
+    expect(await ui.trackChanges.scrollTo({ id: 'tc-dup2', story: bodyStory })).toMatchObject({ ok: true });
+    expect(scrollTargetIntoView).toHaveBeenLastCalledWith(
+      expect.objectContaining({ target: bodyTarget }),
+      expect.any(Function),
+    );
+    const lastTarget = scrollTargetIntoView.mock.calls.at(-1)?.[0]?.target;
+    expect(lastTarget).not.toHaveProperty('story');
   });
 
   it('scrollTo threads the matching row story into the scroll target (IT-1250)', async () => {
@@ -7264,13 +7423,319 @@ describe('public ui — document control parity (row 742)', () => {
     expect(setDocumentMode).toHaveBeenCalledWith('suggesting');
   });
 
+  it('tracks local V2 mutations until the current document changes', async () => {
+    const hostEventListeners: Array<(event: Record<string, unknown>) => void> = [];
+    const instanceEventListeners = new Map<string, (payload?: unknown) => void>();
+    const makeHost = () => ({
+      events: {
+        subscribe: (listener: (event: Record<string, unknown>) => void) => {
+          hostEventListeners.push(listener);
+          return () => undefined;
+        },
+      },
+    });
+    const doc = {
+      comments: { list: () => ({ items: [] }) },
+      trackChanges: { list: () => ({ items: [] }) },
+      selection: { current: () => null },
+    };
+    const firstHost = makeHost();
+    const exportFn = vi.fn(() => new Blob(['document']));
+    const superdoc = {
+      activeEditor: { doc, host: firstHost },
+      config: { documentMode: 'editing' },
+      export: exportFn,
+      on: vi.fn((event: string, listener: (payload?: unknown) => void) => {
+        instanceEventListeners.set(event, listener);
+      }),
+      off: vi.fn(),
+    };
+    const ui = createSuperDocUI({ superdoc });
+    const observedDirtyStates: boolean[] = [];
+    const stopObserving = ui.document.observe((documentState) => observedDirtyStates.push(documentState.dirty));
+
+    expect(ui.document.getSnapshot().dirty).toBe(false);
+
+    hostEventListeners.at(-1)?.({
+      type: 'collaboration:remote-changed',
+      changedStoryIds: ['main:/word/document.xml'],
+      changedPartUris: ['/word/document.xml'],
+    });
+    expect(ui.document.getSnapshot().dirty).toBe(false);
+
+    hostEventListeners.at(-1)?.({ type: 'mutation:committed', editableCommandKind: 'insert-text' });
+    expect(ui.document.getSnapshot().dirty).toBe(true);
+    expect(observedDirtyStates.at(-1)).toBe(true);
+
+    await ui.document.export({ exportType: ['docx'], triggerDownload: false });
+    expect(ui.document.getSnapshot().dirty).toBe(true);
+
+    instanceEventListeners.get('document-replaced')?.({ editor: superdoc.activeEditor, host: firstHost });
+    expect(ui.document.getSnapshot().dirty).toBe(false);
+    expect(observedDirtyStates.at(-1)).toBe(false);
+
+    hostEventListeners.at(-1)?.({ type: 'mutation:committed' });
+    expect(ui.document.getSnapshot().dirty).toBe(true);
+
+    const secondHost = makeHost();
+    superdoc.activeEditor = { doc, host: secondHost };
+    instanceEventListeners.get('active-editor-change')?.();
+    expect(ui.document.getSnapshot().dirty).toBe(false);
+
+    stopObserving();
+  });
+
+  it('keeps per-editor dirty state across active-editor switches', () => {
+    const listenersByHost = new Map<object, (event: Record<string, unknown>) => void>();
+    const instanceEventListeners = new Map<string, (payload?: unknown) => void>();
+    const makeHost = () => {
+      const host = {
+        events: {
+          subscribe: (listener: (event: Record<string, unknown>) => void) => {
+            listenersByHost.set(host, listener);
+            return () => undefined;
+          },
+        },
+      };
+      return host;
+    };
+    const doc = {
+      comments: { list: () => ({ items: [] }) },
+      trackChanges: { list: () => ({ items: [] }) },
+      selection: { current: () => null },
+    };
+    const hostA = makeHost();
+    const hostB = makeHost();
+    const editorA = { doc, host: hostA };
+    const editorB = { doc, host: hostB };
+    const superdoc = {
+      activeEditor: editorA as { doc: typeof doc; host: object },
+      config: { documentMode: 'editing' },
+      on: vi.fn((event: string, listener: (payload?: unknown) => void) => {
+        instanceEventListeners.set(event, listener);
+      }),
+      off: vi.fn(),
+    };
+    const ui = createSuperDocUI({ superdoc });
+    expect(ui.document.getSnapshot().dirty).toBe(false);
+
+    listenersByHost.get(hostA)?.({ type: 'document:mutated', source: 'input', revision: 1 });
+    expect(ui.document.getSnapshot().dirty).toBe(true);
+
+    superdoc.activeEditor = editorB;
+    instanceEventListeners.get('active-editor-change')?.();
+    expect(ui.document.getSnapshot().dirty).toBe(false);
+
+    superdoc.activeEditor = editorA;
+    instanceEventListeners.get('active-editor-change')?.();
+    expect(ui.document.getSnapshot().dirty).toBe(true);
+
+    // Exporting bytes is not persistence: the host's save event leaves A dirty.
+    listenersByHost.get(hostA)?.({ type: 'save:completed', saveId: 's1', byteLength: 10 });
+    expect(ui.document.getSnapshot().dirty).toBe(true);
+  });
+
+  it.each([
+    { initialRevision: 0, inactiveRevision: 1, readFails: false, expectedDirty: true },
+    { initialRevision: 1, inactiveRevision: 0, readFails: false, expectedDirty: false },
+    { initialRevision: 1, inactiveRevision: 0, readFails: true, expectedDirty: true },
+  ])(
+    'reconciles an inactive editor revision from $initialRevision to $inactiveRevision (readFails: $readFails)',
+    ({ initialRevision, inactiveRevision, readFails, expectedDirty }) => {
+      const instanceListeners = new Map<string, () => void>();
+      const makeHost = () => ({
+        revision: 0,
+        getLocalMutationRevision() {
+          return this.revision;
+        },
+        events: { subscribe: vi.fn(() => vi.fn()) },
+      });
+      const doc = {
+        comments: { list: () => ({ items: [] }) },
+        trackChanges: { list: () => ({ items: [] }) },
+        selection: { current: () => null },
+      };
+      const editorA = { doc, host: makeHost() };
+      const editorB = { doc, host: makeHost() };
+      editorA.host.revision = initialRevision;
+      const superdoc = {
+        activeEditor: editorA,
+        config: { documentMode: 'editing' },
+        on: vi.fn((name: string, listener: () => void) => instanceListeners.set(name, listener)),
+        off: vi.fn(),
+      };
+      const ui = createSuperDocUI({ superdoc });
+      expect(ui.document.getSnapshot().dirty).toBe(initialRevision > 0);
+      superdoc.activeEditor = editorB;
+      instanceListeners.get('active-editor-change')?.();
+      expect(editorA.host.events.subscribe.mock.results[0].value).toHaveBeenCalled();
+      editorA.host.revision = inactiveRevision;
+      if (readFails) {
+        vi.spyOn(editorA.host, 'getLocalMutationRevision').mockImplementation(() => {
+          throw new Error('Revision unavailable');
+        });
+      }
+      expect(ui.document.getSnapshot().dirty).toBe(false);
+      superdoc.activeEditor = editorA;
+      instanceListeners.get('active-editor-change')?.();
+      expect(ui.document.getSnapshot().dirty).toBe(expectedDirty);
+    },
+  );
+
+  it('clears dirty state when the host replaces the document from collaboration', () => {
+    const hostEventListeners: Array<(event: Record<string, unknown>) => void> = [];
+    const doc = {
+      comments: { list: () => ({ items: [] }) },
+      trackChanges: { list: () => ({ items: [] }) },
+      selection: { current: () => null },
+    };
+    let revision = 0;
+    const host = {
+      getLocalMutationRevision: () => revision,
+      events: {
+        subscribe: (listener: (event: Record<string, unknown>) => void) => {
+          hostEventListeners.push(listener);
+          return () => undefined;
+        },
+      },
+    };
+    const ui = createSuperDocUI({
+      superdoc: { activeEditor: { doc, host }, config: { documentMode: 'editing' }, on: vi.fn(), off: vi.fn() },
+    });
+    revision = 1;
+    hostEventListeners.at(-1)?.({ type: 'document:mutated', source: 'input', revision });
+    expect(ui.document.getSnapshot().dirty).toBe(true);
+
+    // The host reopened the remote document and reset its revision.
+    revision = 0;
+    hostEventListeners.at(-1)?.({
+      type: 'collaboration:document-replaced',
+      previousSource: { kind: 'remote' },
+      source: { kind: 'remote' },
+    });
+    expect(ui.document.getSnapshot().dirty).toBe(false);
+  });
+
+  it('seeds dirty state from a host that was edited before the controller existed', () => {
+    const doc = {
+      comments: { list: () => ({ items: [] }) },
+      trackChanges: { list: () => ({ items: [] }) },
+      selection: { current: () => null },
+    };
+    const host = {
+      getLocalMutationRevision: vi.fn(() => 3),
+      events: { subscribe: () => () => undefined },
+    };
+    const superdoc = {
+      activeEditor: { doc, host },
+      config: { documentMode: 'editing' },
+      on: vi.fn(),
+      off: vi.fn(),
+    };
+    const ui = createSuperDocUI({ superdoc });
+    expect(ui.document.getSnapshot().dirty).toBe(true);
+    expect(host.getLocalMutationRevision).toHaveBeenCalled();
+  });
+
+  it('marks non-receipt document mutations dirty through document:mutated', () => {
+    const hostEventListeners: Array<(event: Record<string, unknown>) => void> = [];
+    const doc = {
+      comments: { list: () => ({ items: [] }) },
+      trackChanges: { list: () => ({ items: [] }) },
+      selection: { current: () => null },
+    };
+    const host = {
+      getLocalMutationRevision: () => 0,
+      events: {
+        subscribe: (listener: (event: Record<string, unknown>) => void) => {
+          hostEventListeners.push(listener);
+          return () => undefined;
+        },
+      },
+    };
+    const ui = createSuperDocUI({
+      superdoc: { activeEditor: { doc, host }, config: { documentMode: 'editing' }, on: vi.fn(), off: vi.fn() },
+    });
+    expect(ui.document.getSnapshot().dirty).toBe(false);
+    // A `create.table` result never emits `mutation:committed`; the dedicated
+    // signal is the only thing that fires.
+    hostEventListeners.at(-1)?.({ type: 'document:mutated', source: 'facade', revision: 1 });
+    expect(ui.document.getSnapshot().dirty).toBe(true);
+  });
+
+  it('leaves the document clean for previews and no-op committed mutations', () => {
+    const mountUi = () => {
+      const hostEventListeners: Array<(event: Record<string, unknown>) => void> = [];
+      const doc = {
+        comments: { list: () => ({ items: [] }) },
+        trackChanges: { list: () => ({ items: [] }) },
+        selection: { current: () => null },
+      };
+      const host = {
+        getLocalMutationRevision: () => 0,
+        events: {
+          subscribe: (listener: (event: Record<string, unknown>) => void) => {
+            hostEventListeners.push(listener);
+            return () => undefined;
+          },
+        },
+      };
+      const ui = createSuperDocUI({
+        superdoc: { activeEditor: { doc, host }, config: { documentMode: 'editing' }, on: vi.fn(), off: vi.fn() },
+      });
+      return { ui, emit: (event: Record<string, unknown>) => hostEventListeners.at(-1)?.(event) };
+    };
+
+    // A dry-run preview emits `mutation:committed` with `dryRun: true`.
+    const preview = mountUi();
+    preview.emit({ type: 'mutation:committed', origin: 'command', dryRun: true, receipt: { success: true } });
+    expect(preview.ui.document.getSnapshot().dirty).toBe(false);
+
+    // Applying a list a range already has commits a synthetic `changed: false`
+    // receipt: the toolbar sees success, but no document bytes changed.
+    const noop = mountUi();
+    noop.emit({ type: 'mutation:committed', origin: 'command', receipt: { success: true, changed: false } });
+    expect(noop.ui.document.getSnapshot().dirty).toBe(false);
+
+    const statusNoop = mountUi();
+    statusNoop.emit({ type: 'mutation:committed', origin: 'command', receipt: { success: true, status: 'NO_OP' } });
+    expect(statusNoop.ui.document.getSnapshot().dirty).toBe(false);
+
+    const typedNoop = mountUi();
+    typedNoop.emit({ type: 'mutation:committed', origin: 'command', receipt: { success: true, noop: true } });
+    expect(typedNoop.ui.document.getSnapshot().dirty).toBe(false);
+
+    // A real committed mutation still marks the document dirty.
+    const edit = mountUi();
+    edit.emit({ type: 'mutation:committed', origin: 'command', receipt: { success: true } });
+    expect(edit.ui.document.getSnapshot().dirty).toBe(true);
+  });
+
+  it('preserves an editor-provided dirty state', () => {
+    const superdoc = makeDocControlSuperdoc();
+    Object.assign(superdoc.activeEditor, { isDirty: true });
+
+    const ui = createSuperDocUI({ superdoc });
+
+    expect(ui.document.getSnapshot().dirty).toBe(true);
+  });
+
   it('export resolves through superdoc.export', async () => {
-    const blob = { size: 42 };
+    const blob = new Blob([new Uint8Array([0x50, 0x4b, 0x03, 0x04])], {
+      type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    });
+    const params = { exportType: ['docx'], triggerDownload: false } as const;
     const exportFn = vi.fn(() => blob);
     const superdoc = makeDocControlSuperdoc({ instance: { export: exportFn } });
     const ui = createSuperDocUI({ superdoc });
-    await expect(ui.document.export({ exportType: ['docx'] })).resolves.toBe(blob);
-    expect(exportFn).toHaveBeenCalledWith({ exportType: ['docx'] });
+    const result = await ui.document.export(params);
+
+    expect(result).toBe(blob);
+    expect(result).toBeInstanceOf(Blob);
+    expect(result?.size).toBe(4);
+    expect(result?.type).toBe('application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    expect(exportFn).toHaveBeenCalledOnce();
+    expect(exportFn).toHaveBeenCalledWith(params);
   });
 
   it('replaceFile routes through the host replaceFile/loadDocument capability', async () => {
@@ -7291,6 +7756,10 @@ describe('public ui — document control parity (row 742)', () => {
     const ui = createSuperDocUI({ superdoc });
     expect(ui.document.export()).toBeUndefined();
     expect(ui.document.replaceFile(new Blob(['x']))).toBeUndefined();
+    expect(await ui.document.replaceDocument(new Blob(['x']))).toEqual({
+      ok: false,
+      reason: 'operation-unavailable',
+    });
   });
 });
 
@@ -12587,6 +13056,62 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
     expect(resolveHeaderFooterEditTarget).toHaveBeenCalledWith({ pageIndex: 3, kind: 'header' });
   });
 
+  it('preserves the active first-page header slot section when image size is implicit', async () => {
+    const image = vi.fn(() => ({ success: true }));
+    const story = { kind: 'story', storyType: 'headerFooterPart', refId: 'rId-header' } as const;
+    const resolveHeaderFooterEditTarget = vi.fn(({ kind }: { kind: 'header' | 'footer' }) =>
+      kind === 'header'
+        ? {
+            status: 'ready',
+            pageIndex: 3,
+            sectionIndex: 1,
+            sectionId: 'section-1',
+            renderedVariant: 'first',
+            slotVariant: 'first',
+            refId: 'rId-header',
+            renderEpoch: 1,
+          }
+        : { status: 'unavailable', reason: 'not-rendered' },
+    );
+    const superdoc = makeBlockSuperdoc(
+      { create: { image } },
+      {
+        selectionInfo: {
+          empty: true,
+          target: { kind: 'text', story, segments: [{ blockId: 'HF1', range: { start: 4, end: 4 } }] },
+          selectionTarget: null,
+          activeMarks: [] as string[],
+          activeCommentIds: [] as string[],
+          activeChangeIds: [] as string[],
+          text: '',
+        },
+        editorExtra: {
+          pageLayout: { getActiveRulerContext: () => ({ pageIndex: 3 }) },
+          host: { resolveHeaderFooterEditTarget },
+        },
+      },
+    );
+    const ui = createSuperDocUI({ superdoc });
+
+    expect(await ui.toolbar.execute('image', { src: 'data:image/png;base64,AAAA' })).toMatchObject({ success: true });
+    expect(image).toHaveBeenCalledWith({
+      src: 'data:image/png;base64,AAAA',
+      in: {
+        kind: 'story',
+        storyType: 'headerFooterSlot',
+        section: { kind: 'section', sectionId: 'section-1' },
+        headerFooterKind: 'header',
+        variant: 'first',
+      },
+      at: {
+        kind: 'inParagraph',
+        target: { kind: 'block', nodeType: 'paragraph', nodeId: 'HF1', story },
+        offset: 4,
+      },
+    });
+    expect(resolveHeaderFooterEditTarget).toHaveBeenCalledWith({ pageIndex: 3, kind: 'header' });
+  });
+
   it('preserves the physical story for image insertion without a collapsed caret', async () => {
     const image = vi.fn(() => ({ success: true }));
     const story = { kind: 'story', storyType: 'headerFooterPart', refId: 'rId-header' } as const;
@@ -13026,7 +13551,11 @@ describe('public ui — shared search surface (row 747 / search ownership)', () 
       includeDeletedText: false,
       regex: false,
     });
-    expect(slice).toMatchObject({ available: true, total: 2, activeIndex: 0, canReplace: true });
+    // A worker-backed query publishes no matches until its own result settles.
+    expect(slice).toMatchObject({ available: true, query: 'hello', total: 0, canReplace: false });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(ui.search.getSnapshot()).toMatchObject({ available: true, total: 2, activeIndex: 0, canReplace: true });
 
     expect(ui.search.next()).toEqual({ ok: true });
     expect(ui.search.getSnapshot().activeIndex).toBe(1);
@@ -13084,6 +13613,454 @@ describe('public ui — shared search surface (row 747 / search ownership)', () 
 
     expect(emitted.some((slice) => slice.total === 5)).toBe(false);
     expect(ui.search.getSnapshot()).toMatchObject({ query: 'abc', total: 1 });
+  });
+
+  it('does not carry the previous query matches into a new worker-backed query', async () => {
+    // With the worker fallback, `find()` returns before the query settles.
+    // The interim snapshot must not keep the old session's total/canReplace,
+    // or a panel could navigate or replace the old query's matches.
+    let resolveSecond: (value: unknown) => void = () => {};
+    const state = { query: '', total: 0, activeIndex: -1 };
+    const editSearch = {
+      query: vi.fn((input: { query: string }) => {
+        if (input.query === 'A') {
+          state.query = 'A';
+          state.total = 3;
+          state.activeIndex = 0;
+          return Promise.resolve({ status: 'ok', ...state });
+        }
+        return new Promise((resolve) => {
+          resolveSecond = resolve;
+        });
+      }),
+      next: vi.fn(async () => ({ status: 'ok', ...state })),
+      getState: vi.fn(() => ({ ...state })),
+    };
+    const editCommands = {
+      search: editSearch,
+      getSnapshot: vi.fn(() => ({
+        commands: { 'find.replace': { shippedStatus: 'supported', enabled: true, reason: null } },
+      })),
+    };
+    const ui = createSuperDocUI({ superdoc: makeSearchSuperdoc({ editCommands }) });
+
+    ui.search.find('A');
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(ui.search.getSnapshot()).toMatchObject({ query: 'A', total: 3, canReplace: true });
+
+    const interim = ui.search.find('B');
+    expect(interim).toMatchObject({ query: 'B', total: 0, activeIndex: -1, canReplace: false });
+    expect(ui.search.next()).toEqual({ ok: false, reason: SUPERDOC_UI_REASONS.operationUnavailable });
+    // Snapshot reads and fresh observers re-sync from the shell; they must not
+    // resurface A's session while B is still settling.
+    expect(ui.search.getSnapshot()).toMatchObject({ query: 'B', total: 0, canReplace: false });
+    const observed: Array<{ query: string; total: number }> = [];
+    const stop = ui.search.observe((snapshot) => observed.push({ query: snapshot.query, total: snapshot.total }));
+    stop();
+    expect(observed).toEqual([{ query: 'B', total: 0 }]);
+
+    state.query = 'B';
+    state.total = 1;
+    state.activeIndex = 0;
+    resolveSecond({ status: 'ok', ...state });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(ui.search.getSnapshot()).toMatchObject({ query: 'B', total: 1, canReplace: true });
+  });
+
+  it('does not carry the previous options into a same-query worker-backed search', async () => {
+    // Toggling Match case or Include pending deletions re-runs `find()` with
+    // the same query. The shell's state then shares the query but describes
+    // the old option set, so query equality is not proof it belongs to this
+    // call; the interim snapshot must still report no matches.
+    let resolveSecond: (value: unknown) => void = () => {};
+    // The production shell's getState() exposes only query, total,
+    // activeIndex, and canReplace, and does not change until the worker
+    // answers, so a same-query request looks identical to the old session.
+    const state = { query: 'Client', total: 8, activeIndex: 0 };
+    let calls = 0;
+    const editSearch = {
+      query: vi.fn(() => {
+        calls += 1;
+        if (calls === 1) return Promise.resolve({ status: 'ok', ...state });
+        return new Promise((resolve) => {
+          resolveSecond = resolve;
+        });
+      }),
+      next: vi.fn(async () => ({ status: 'ok', ...state })),
+      getState: vi.fn(() => ({ ...state })),
+    };
+    const editCommands = {
+      search: editSearch,
+      getSnapshot: vi.fn(() => ({
+        commands: { 'find.replace': { shippedStatus: 'supported', enabled: true, reason: null } },
+      })),
+    };
+    const ui = createSuperDocUI({ superdoc: makeSearchSuperdoc({ editCommands }) });
+
+    ui.search.find('Client');
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(ui.search.getSnapshot()).toMatchObject({ query: 'Client', total: 8, canReplace: true });
+
+    const interim = ui.search.find('Client', { caseSensitive: true });
+    expect(interim).toMatchObject({ query: 'Client', caseSensitive: true, total: 0, canReplace: false });
+    expect(ui.search.getSnapshot()).toMatchObject({ query: 'Client', total: 0, canReplace: false });
+    expect(ui.search.next()).toEqual({ ok: false, reason: SUPERDOC_UI_REASONS.operationUnavailable });
+
+    state.total = 7;
+    resolveSecond({ status: 'ok', ...state });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(ui.search.getSnapshot()).toMatchObject({ query: 'Client', total: 7, canReplace: true });
+  });
+
+  it('keeps a repeated query pending until its own worker result settles (A -> B -> A)', async () => {
+    // The shell still reports A's settled session while B and then A again are
+    // in flight. Remembering only the previous request would let the stale A
+    // snapshot pass as current; every promise-backed request must wait for
+    // its own result.
+    const pending: Array<(value: unknown) => void> = [];
+    const state = { query: '', total: 0, activeIndex: -1 };
+    let calls = 0;
+    const editSearch = {
+      query: vi.fn((input: { query: string }) => {
+        if (input.query === '') {
+          // Cancellation of an outstanding fallback; settles immediately.
+          return Promise.resolve({ status: 'ok', query: '', total: 0, activeIndex: -1 });
+        }
+        calls += 1;
+        if (calls === 1) {
+          state.query = input.query;
+          state.total = 4;
+          state.activeIndex = 0;
+          return Promise.resolve({ status: 'ok', ...state });
+        }
+        return new Promise((resolve) => pending.push(resolve));
+      }),
+      next: vi.fn(async () => ({ status: 'ok', ...state })),
+      getState: vi.fn(() => ({ ...state })),
+    };
+    const editCommands = {
+      search: editSearch,
+      getSnapshot: vi.fn(() => ({
+        commands: {
+          'find.replace': { shippedStatus: 'supported', enabled: true, reason: null },
+          'find.replaceAll': { shippedStatus: 'supported', enabled: true, reason: null },
+        },
+      })),
+    };
+    const ui = createSuperDocUI({ superdoc: makeSearchSuperdoc({ editCommands }) });
+
+    ui.search.find('A');
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(ui.search.getSnapshot()).toMatchObject({ query: 'A', total: 4, canReplace: true });
+
+    ui.search.find('B');
+    const again = ui.search.find('A', { caseSensitive: true });
+    expect(again).toMatchObject({ query: 'A', caseSensitive: true, total: 0, canReplace: false, canReplaceAll: false });
+    expect(ui.search.getSnapshot()).toMatchObject({ query: 'A', total: 0, canReplace: false });
+    expect(ui.search.next()).toEqual({ ok: false, reason: SUPERDOC_UI_REASONS.operationUnavailable });
+
+    // B's late answer is stale and ignored; A's own answer lands.
+    pending[0]?.({ status: 'ok', query: 'B', total: 9, activeIndex: 0 });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(ui.search.getSnapshot()).toMatchObject({ query: 'A', total: 0 });
+    state.total = 2;
+    pending[1]?.({ status: 'ok', ...state });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(ui.search.getSnapshot()).toMatchObject({ query: 'A', total: 2, canReplace: true, canReplaceAll: true });
+  });
+
+  it('does not advertise canReplaceAll for an empty host-backed session', async () => {
+    // The host derives `canReplace` from document mutability alone, so a
+    // session with no matches still reports it. Replace all is an action and
+    // needs matches.
+    const setSession = vi.fn(() => ({ query: 'zzz', matches: [], activeMatchIndex: -1, total: 0, canReplace: true }));
+    const getState = vi.fn(() => ({ query: 'zzz', matches: [], activeMatchIndex: -1, total: 0, canReplace: true }));
+    const ui = createSuperDocUI({
+      superdoc: makeSearchSuperdoc({
+        search: { setSession, next: vi.fn(), previous: vi.fn(), clear: vi.fn(), getState },
+      }),
+    });
+    expect(ui.search.find('zzz')).toMatchObject({ total: 0, canReplace: true, canReplaceAll: false });
+    expect(ui.search.getSnapshot()).toMatchObject({ total: 0, canReplace: true, canReplaceAll: false });
+  });
+
+  it('keeps a rejected worker-backed query authoritative over the shell session it did not replace', async () => {
+    // The shell rethrows on failure without replacing its stored session, so
+    // getState() still describes A. B's failed snapshot must win anyway.
+    const state = { query: '', total: 0, activeIndex: -1, canReplace: true };
+    const pending: Array<{ resolve: (value: unknown) => void; reject: (error: unknown) => void }> = [];
+    const editSearch = {
+      query: vi.fn((input: { query: string }) => {
+        if (input.query === '') return { status: 'ok', query: '', total: 0, activeIndex: -1 };
+        return new Promise((resolve, reject) => pending.push({ resolve, reject }));
+      }),
+      next: vi.fn(async () => ({ status: 'ok', ...state })),
+      getState: vi.fn(() => ({ ...state })),
+    };
+    const editCommands = {
+      search: editSearch,
+      getState: () => ({ 'find.replace': { enabled: true }, 'find.replaceAll': { enabled: true } }),
+      subscribe: () => () => {},
+    };
+    const ui = createSuperDocUI({ superdoc: makeSearchSuperdoc({ editCommands }) });
+    ui.search.find('A');
+    Object.assign(state, { query: 'A', total: 3, activeIndex: 0 });
+    pending[0]?.resolve({ status: 'ok', ...state });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(ui.search.getSnapshot()).toMatchObject({ query: 'A', total: 3, canReplace: true });
+
+    ui.search.find('B');
+    pending[1]?.reject(new Error('worker unavailable'));
+    await Promise.resolve();
+    await Promise.resolve();
+    const failed = { query: 'B', total: 0, canReplace: false, canReplaceAll: false, available: false };
+    expect(ui.search.getSnapshot()).toMatchObject(failed);
+    const observed = vi.fn();
+    ui.search.observe(observed);
+    expect(observed).toHaveBeenCalledTimes(1);
+    expect(observed.mock.calls[0]?.[0]).toMatchObject(failed);
+    // Navigation fails closed on the published no-match snapshot and never
+    // reaches the shell's stale A session.
+    expect(ui.search.next()).toEqual({ ok: false, reason: SUPERDOC_UI_REASONS.operationUnavailable });
+    expect(editSearch.next).not.toHaveBeenCalled();
+  });
+
+  it('clears an invalid-pattern reason together with the query', () => {
+    const empty = { query: '', matches: [], activeMatchIndex: -1, total: 0, canReplace: true };
+    let hostState: Record<string, unknown> = empty;
+    const ui = createSuperDocUI({
+      superdoc: makeSearchSuperdoc({
+        search: {
+          setSession: vi.fn((query: string) => {
+            hostState = {
+              ...empty,
+              query,
+              queryError: { code: 'invalid-pattern', message: 'Unterminated character class' },
+            };
+            return hostState;
+          }),
+          next: vi.fn(),
+          previous: vi.fn(),
+          clear: vi.fn(() => {
+            hostState = empty;
+          }),
+          getState: vi.fn(() => hostState),
+        },
+      }),
+    });
+    expect(ui.search.find('[', { regex: true })).toMatchObject({
+      reason: SUPERDOC_UI_REASONS.searchInvalidPattern,
+      available: true,
+    });
+    const observed = vi.fn();
+    ui.search.observe(observed);
+    observed.mockClear();
+    ui.search.clear();
+    expect(observed).toHaveBeenCalledTimes(1);
+    expect(observed.mock.calls[0]?.[0]).toMatchObject({ query: '', total: 0, available: true, reason: undefined });
+    expect(ui.search.getSnapshot().reason).toBeUndefined();
+  });
+
+  it('publishes a new worker-backed query without the previous session matches', async () => {
+    // Observers run inline. The first emit for B must not carry A's totals or
+    // replace capabilities, or a re-entrant observer could act on A's session.
+    const state = { query: '', total: 0, activeIndex: -1, canReplace: true };
+    const pending: Array<(value: unknown) => void> = [];
+    const editSearch = {
+      query: vi.fn((input: { query: string }) => {
+        if (input.query === '') return { status: 'ok', query: '', total: 0, activeIndex: -1 };
+        return new Promise((resolve) => pending.push(resolve));
+      }),
+      next: vi.fn(async () => ({ status: 'ok', ...state })),
+      getState: vi.fn(() => ({ ...state })),
+    };
+    const editCommands = {
+      search: editSearch,
+      getState: () => ({ 'find.replace': { enabled: true }, 'find.replaceAll': { enabled: true } }),
+      subscribe: () => () => {},
+    };
+    const ui = createSuperDocUI({ superdoc: makeSearchSuperdoc({ editCommands }) });
+    ui.search.find('A');
+    Object.assign(state, { query: 'A', total: 3, activeIndex: 0 });
+    pending[0]?.({ status: 'ok', ...state });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(ui.search.getSnapshot()).toMatchObject({ query: 'A', total: 3, canReplace: true, canReplaceAll: true });
+
+    const seen: Array<{ query: string; total: number; canReplace: boolean; canReplaceAll: boolean }> = [];
+    const reentrant: unknown[] = [];
+    ui.search.observe((snapshot) => {
+      seen.push({
+        query: snapshot.query,
+        total: snapshot.total,
+        canReplace: snapshot.canReplace,
+        canReplaceAll: snapshot.canReplaceAll,
+      });
+      if (snapshot.query === 'B') reentrant.push(ui.search.next());
+    });
+    seen.length = 0;
+    editSearch.next.mockClear();
+
+    ui.search.find('B');
+    expect(seen.every((entry) => entry.query === 'B')).toBe(true);
+    expect(seen[0]).toEqual({ query: 'B', total: 0, canReplace: false, canReplaceAll: false });
+    expect(reentrant[0]).toEqual({ ok: false, reason: SUPERDOC_UI_REASONS.operationUnavailable });
+    expect(editSearch.next).not.toHaveBeenCalled();
+  });
+
+  it('republishes replace capabilities to search subscribers on document-mode-change', () => {
+    // The host derives `canReplace` from the live document mode. Search has its
+    // own listener set, so a mode flip must republish it explicitly or React /
+    // Vue consumers keep offering Replace in viewing mode.
+    let mode: 'editing' | 'viewing' = 'editing';
+    const hostState = () => ({
+      query: 'hello',
+      matches: [{ length: 5 }, { length: 5 }],
+      activeMatchIndex: 0,
+      total: 2,
+      canReplace: mode === 'editing',
+    });
+    const handlers = new Map<string, () => void>();
+    const superdoc = makeSearchSuperdoc({
+      search: {
+        setSession: vi.fn(hostState),
+        next: vi.fn(),
+        previous: vi.fn(),
+        clear: vi.fn(),
+        getState: vi.fn(hostState),
+      },
+    });
+    superdoc.on = vi.fn((event: string, handler: () => void) => handlers.set(event, handler));
+    const ui = createSuperDocUI({ superdoc });
+    expect(ui.search.find('hello')).toMatchObject({ total: 2, canReplace: true, canReplaceAll: true });
+    const listener = vi.fn();
+    ui.search.subscribe(listener);
+    listener.mockClear();
+
+    mode = 'viewing';
+    superdoc.config.documentMode = 'viewing';
+    handlers.get('document-mode-change')?.();
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener.mock.calls[0]?.[0]).toMatchObject({
+      snapshot: { total: 2, canReplace: false, canReplaceAll: false },
+    });
+    expect(ui.search.getSnapshot()).toMatchObject({ total: 2, canReplace: false, canReplaceAll: false });
+
+    // An unrelated mode event with no capability change stays quiet.
+    handlers.get('document-mode-change')?.();
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    mode = 'editing';
+    superdoc.config.documentMode = 'editing';
+    handlers.get('document-mode-change')?.();
+    expect(listener).toHaveBeenCalledTimes(2);
+    expect(ui.search.getSnapshot()).toMatchObject({ total: 2, canReplace: true, canReplaceAll: true });
+  });
+
+  it('cancels an outstanding shell fallback when a newer query is answered by the host', async () => {
+    // Query A finds nothing inline, so the shell starts its Document API
+    // fallback. Query B is answered by the inline host synchronously and never
+    // reaches the shell, so nothing advances the shell's fallback generation
+    // unless find() does it. A's late result must not project onto the host.
+    let resolveFallback: (value: unknown) => void = () => {};
+    const hostState = {
+      query: '',
+      matches: [] as Array<{ length: number }>,
+      activeMatchIndex: -1,
+      total: 0,
+      canReplace: true,
+    };
+    const setSession = vi.fn((query: string) => {
+      hostState.query = query;
+      hostState.matches = query === 'B' ? [{ length: 1 }, { length: 1 }] : [];
+      hostState.total = hostState.matches.length;
+      hostState.activeMatchIndex = hostState.total > 0 ? 0 : -1;
+      return { ...hostState };
+    });
+    const getState = vi.fn(() => ({ ...hostState }));
+    const editSearch = {
+      query: vi.fn((input: { query: string }) => {
+        if (input.query === '') return { status: 'ok', query: '', total: 0, activeIndex: -1 };
+        return new Promise((resolve) => {
+          resolveFallback = resolve;
+        });
+      }),
+      getState: vi.fn(() => ({ query: 'A', total: 0, activeIndex: -1 })),
+    };
+    const editCommands = {
+      search: editSearch,
+      getSnapshot: vi.fn(() => ({
+        commands: {
+          'find.replace': { shippedStatus: 'supported', enabled: true, reason: null },
+          'find.replaceAll': { shippedStatus: 'supported', enabled: true, reason: null },
+        },
+      })),
+    };
+    const ui = createSuperDocUI({
+      superdoc: makeSearchSuperdoc({
+        search: { setSession, next: vi.fn(), previous: vi.fn(), clear: vi.fn(), getState },
+        editCommands,
+      }),
+    });
+
+    ui.search.find('A');
+    expect(editSearch.query).toHaveBeenCalledWith({
+      query: 'A',
+      caseSensitive: false,
+      includeDeletedText: false,
+      regex: false,
+    });
+
+    ui.search.find('B');
+    expect(ui.search.getSnapshot()).toMatchObject({ query: 'B', total: 2 });
+    // The outstanding A fallback was told to stand down before B ran.
+    expect(editSearch.query).toHaveBeenLastCalledWith({ query: '' });
+
+    resolveFallback({ status: 'ok', query: 'A', total: 5, activeIndex: 0 });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(ui.search.getSnapshot()).toMatchObject({ query: 'B', total: 2 });
+  });
+
+  it('reports canReplaceAll false and refuses replaceAll when the shell truncates the match set', async () => {
+    // The browser shell enumerates at most 1,000 matches. Beyond that it keeps
+    // `find.replace` enabled and disables `find.replaceAll` with
+    // `search-truncated`. Both must reach the snapshot separately, or a panel
+    // enables Replace all for an action that deterministically fails.
+    const state = { query: 'the', total: 1200, activeIndex: 0 };
+    const editSearch = {
+      query: vi.fn(async () => ({ status: 'ok', ...state })),
+      getState: vi.fn(() => ({ ...state })),
+      replace: vi.fn(async () => ({ status: 'committed', replaced: 1 })),
+      replaceAll: vi.fn(async () => ({ status: 'committed', replaced: 1200 })),
+    };
+    const editCommands = {
+      search: editSearch,
+      getSnapshot: vi.fn(() => ({
+        commands: {
+          'find.replace': { shippedStatus: 'supported', enabled: true, reason: null },
+          'find.replaceAll': { shippedStatus: 'supported', enabled: false, reason: 'search-truncated' },
+        },
+      })),
+    };
+    const ui = createSuperDocUI({ superdoc: makeSearchSuperdoc({ editCommands }) });
+
+    ui.search.find('the');
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(ui.search.getSnapshot()).toMatchObject({ total: 1200, canReplace: true, canReplaceAll: false });
+
+    await expect(Promise.resolve(ui.search.replace('a'))).resolves.toEqual({ ok: true });
+    expect(ui.search.replaceAll('a')).toEqual({ ok: false, reason: SUPERDOC_UI_REASONS.operationUnavailable });
+    expect(editSearch.replaceAll).not.toHaveBeenCalled();
   });
 
   it('resolves an async fallback replace with the settled outcome, not an immediate ok', async () => {
@@ -14071,6 +15048,53 @@ describe('public ui — async browser reads (read coordinator)', () => {
     };
     return { superdoc, notifySelection: () => notifySelection() };
   }
+
+  it('refreshes settled content-control observers for consecutive standalone document mutations', async () => {
+    const hostEvents: Array<(event: Record<string, unknown>) => void> = [];
+    let items = [ASYNC_CONTENT_CONTROL];
+    const listInRange = vi.fn(async () => ({ items }));
+    const { superdoc } = makeAsyncSuperdoc({ hostEvents, contentControls: { listInRange } });
+    const ui = createSuperDocUI({ superdoc });
+    const observed: string[][] = [];
+    const stop = ui.contentControls.observe((snapshot) => observed.push([...snapshot.activeIds]));
+    await flush();
+    expect(ui.contentControls.getSnapshot().activeIds).toEqual(['cc-1']);
+
+    for (const id of ['cc-2', 'cc-3']) {
+      items = [{ ...ASYNC_CONTENT_CONTROL, id }];
+      hostEvents.at(-1)?.({ type: 'document:mutated', source: 'facade', hasCommitEvent: false });
+      await flush();
+      expect(ui.contentControls.getSnapshot().activeIds).toEqual([id]);
+      expect(observed.at(-1)).toEqual([id]);
+      expect(ui.document.getSnapshot().dirty).toBe(true);
+    }
+    expect(listInRange).toHaveBeenCalledTimes(3);
+    stop();
+    ui.destroy();
+  });
+
+  it.each(['before', 'after'] as const)(
+    'does not refresh twice when document:mutated comes %s its commit event',
+    async (order) => {
+      const hostEvents: Array<(event: Record<string, unknown>) => void> = [];
+      const listInRange = vi.fn(async () => ({ items: [ASYNC_CONTENT_CONTROL] }));
+      const { superdoc } = makeAsyncSuperdoc({ hostEvents, contentControls: { listInRange } });
+      const ui = createSuperDocUI({ superdoc });
+      await flush();
+      const emitDocumentMutation = () =>
+        hostEvents.at(-1)?.({
+          type: 'document:mutated',
+          source: 'facade',
+          hasCommitEvent: true,
+        });
+      if (order === 'before') emitDocumentMutation();
+      hostEvents.at(-1)?.({ type: 'mutation:committed', receipt: { success: true } });
+      if (order === 'after') emitDocumentMutation();
+      await flush();
+      expect(listInRange).toHaveBeenCalledTimes(2);
+      ui.destroy();
+    },
+  );
 
   it('settles promise-returning selection/comments/trackChanges/contentControls into slices', async () => {
     const { superdoc } = makeAsyncSuperdoc();

@@ -325,6 +325,21 @@ describe('resolveAnchoredGraphicX', () => {
     });
   });
 
+  it('derives an omitted RTL content width from the page and margins', () => {
+    const rtlUnderfill = {
+      width: 100,
+      gap: 20,
+      count: 2,
+      equalWidth: false,
+      widths: [100, 100],
+      direction: 'rtl' as const,
+    };
+
+    expect(resolveAnchoredGraphicX({ alignH: 'left' }, 0, rtlUnderfill, objectWidth, margins, pageWidth)).toBe(
+      pageWidth - margins.right - rtlUnderfill.width,
+    );
+  });
+
   it.each([
     { relativeFrom: 'page' as const, pageNumber: 1, expected: 0 },
     { relativeFrom: 'margin' as const, pageNumber: 1, expected: 72 },

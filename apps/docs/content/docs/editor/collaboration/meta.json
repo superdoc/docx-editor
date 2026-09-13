@@ -1,5 +1,14 @@
 {
   "title": "Collaboration",
   "defaultOpen": false,
-  "pages": ["index", "run-a-server", "presence-and-awareness", "upgrade-a-document"]
+  "pages": [
+    "index",
+    "connect-two-editors",
+    "presence-and-awareness",
+    "initialize-a-document",
+    "save-and-restore-a-room",
+    "control-room-access",
+    "run-a-server",
+    "upgrade-a-document"
+  ]
 }

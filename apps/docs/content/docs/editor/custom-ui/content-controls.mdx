@@ -1,49 +1,106 @@
 ---
-title: Build a content-control panel
+title: Build a document field panel
 navTitle: Content controls
-description: List document fields, move people to them, and update text controls from application-owned UI.
+description: Observe document fields, navigate to each one, and update typed values from application UI.
 ---
 
-Content controls are structured fields stored in a DOCX. Use `superdoc.ui.contentControls` to keep an application-owned
-panel synchronized with the Editor. Use the Document API to change a control's content or properties.
+Built-in content-control chrome helps someone recognize and click a field in the document. Build a custom panel when
+your application needs to keep every field visible, move between them, or render a field-specific input.
 
-If SuperDoc should render the control chrome instead, see [Content controls](/editor/built-in-ui/content-controls).
+This guide replaces only the field panel. SuperDoc continues to render the toolbar, document, selection, and
+content-control chrome.
 
-Complete [Custom UI controller setup](/editor/custom-ui/controller-setup) first. This example expects `/contract.docx` to contain at least one plain-text content control.
+## Try the field workflow
 
-The [content controls example](https://go.superdoc.dev/examples/content-controls) provides a complete project and a synthetic DOCX containing one text control.
+The example loads a text field and a checkbox on two short pages.
 
-## Add the field panel
+1. Change **Client name**, then choose **Update**. The value changes in the document.
+2. Choose **Show in document** for **Review approved**. The Editor moves to the checkbox on page 2.
+3. Check **Approved**, then return to **Client name** with **Show in document**.
 
-Create a status message, field list, and Editor container:
+<CustomContentControlsDemo />
+
+The panel follows the same custom-UI loop as Comments and Track changes: observe Editor state, render application
+controls, run an action, and wait for the observed state to confirm the result.
+
+## Build the same panel
+
+Start from [Build your first custom control](/editor/custom-ui/controller-setup). Download the
+[two-page field fixture](/fixtures/custom-content-controls-workflow.docx) to your app's `public` directory as
+`contract.docx`.
+
+For Vanilla, replace the contents of `<body>` in `index.html` with the Editor and panel below:
 
 <include>../../../../snippets/editor/custom-content-controls.html</include>
 
-## Bind navigation and editing
+Replace the setup guide's Editor code:
 
-Read the Editor's controller, `superdoc.ui`, after the Editor and Document API are ready:
+<FrameworkExampleTabs>
+  <FrameworkExample filename='src/main.ts' framework='Vanilla'>
+    <include>../../../../snippets/editor/custom-content-controls.ts</include>
+  </FrameworkExample>
+  <FrameworkExample filename='src/App.tsx' framework='React'>
+    <include>../../../../snippets/editor/react-custom-content-controls.tsx</include>
+  </FrameworkExample>
+</FrameworkExampleTabs>
 
-<include>../../../../snippets/editor/custom-content-controls.ts</include>
+## Connect field state to typed mutations
 
-The example uses two public surfaces for different jobs:
+The panel uses two public surfaces with different jobs:
 
-- `ui.contentControls` observes the loaded list, reports controls at the current selection, focuses a known control, and keeps navigation aligned with the document canvas.
-- `doc.contentControls.text.setValue()` performs the document mutation and returns the receipt.
+- `ui.contentControls` supplies the observed field catalog, active field IDs, and `focus()` navigation.
+- `activeEditor.doc.contentControls` supplies type-specific document mutations. This example uses `text.setValue()` and
+  `checkbox.setState()`.
 
-Do not find controls by querying rendered DOM attributes. The list item contains the stable control ID, mutation target, type, lock mode, properties, and an optional selection target.
+Each catalog item carries its `controlType`, `lockMode`, properties, current value, and mutation target. Use those values
+instead of inspecting the rendered document DOM.
 
-## Check the control type before editing
+Keep every action disabled while a mutation is pending. A successful receipt confirms that the Document API accepted
+the mutation. Confirm the updated field value before clearing the draft and reporting success.
 
-`text.setValue()` applies to plain-text controls. Date, checkbox, choice-list, repeating-section, and rich-text controls have different operations and constraints. Branch on `controlType` and expose only actions that match the current control.
+In `superdoc@2.12.0`, the observed catalog can remain stale after a programmatic update. These examples read
+`contentControls.list()` after mutations and observer notifications, ignoring older responses. A failed refresh reports
+that the document changed but the panel could not refresh; it does not report the mutation as failed.
 
-Read `lockMode` before presenting an edit affordance, but still inspect the mutation receipt. The document can change between the list read and the update.
+## Highlight a field from your panel
 
-## Keep the panel reactive
+Use `highlight()` when a pointer enters a panel row, and `clearHighlight()` when it leaves:
 
-Call `list()` when opening the panel to request the catalog, then keep `observe()` active. The snapshot reports `pending`, `stale`, or `ready` state as the document loads and changes.
+```ts
+row.addEventListener('pointerenter', () => {
+  void ui.contentControls.highlight({ id: control.id });
+});
+row.addEventListener('pointerleave', () => ui.contentControls.clearHighlight());
+```
 
-`focus()` scrolls to the control and places the caret inside it when the host can resolve its selection target. It does not bypass a content lock or viewing mode. Focus is navigation. The later mutation still decides whether editing is allowed.
+The browser Editor highlights the control's text across paragraphs and table cells without moving focus, selection,
+or scroll. One highlight is active at a time. A successful request replaces it; a failed request preserves it.
+The result is `{ success: true }` or `{ success: false, reason }`. Unknown IDs, empty controls, and unavailable Editors
+fail explicitly. Offscreen text appears highlighted when its page mounts. Clearing cancels pending requests, and
+opening another document clears the highlight. This also works in viewing mode and does not change saved document content.
 
-Verify the workflow by updating one plain-text control, exporting the DOCX, and reopening it. The new value should remain attached to the same content control.
+The default background is yellow (`#ffff00`). Set a CSS variable on your Editor wrapper to override it:
 
-Continue with [Load and save documents](/editor/load-and-save-documents). Use the generated Document API reference for checkbox, date, choice-list, metadata, binding, and structural operations.
+```css
+.contract-editor {
+  --sd-content-controls-highlight-bg: #b9e8ff;
+}
+```
+
+No JavaScript color option is needed. Removing the variable restores the yellow default.
+
+## Render the field type you support
+
+This panel handles text fields and checkboxes. Date, choice, rich-text, and repeating controls have their own operations.
+Render an input only when its `controlType` matches an operation your panel implements. Disable content mutations for
+`contentLocked` and `sdtContentLocked` fields, and still inspect every mutation receipt.
+
+Use [Content controls](/editor/content-controls) to create template fields, fill repeated values, and choose lock modes.
+The [Document API reference](/document-api/reference/content-controls/) lists every content-control type and operation.
+
+## Verify the field panel
+
+Run the project. Move to the checkbox on page 2, change it, then return to the text field on page 1 and update its value.
+Each successful mutation should appear in both the document and the panel before its status changes from pending.
+
+Return to the [Custom UI overview](/editor/custom-ui/overview) to choose another workflow.

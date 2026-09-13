@@ -12,5 +12,7 @@ const editorConfig = {
 } satisfies Pick<SuperDocEditorProps, 'hyperlinks' | 'ui'>;
 
 export default function App() {
-  return <SuperDocEditor document='/sample.docx' hyperlinks={editorConfig.hyperlinks} ui={editorConfig.ui} />;
+  return (
+    <SuperDocEditor document='/hyperlinks-sample.docx' hyperlinks={editorConfig.hyperlinks} ui={editorConfig.ui} />
+  );
 }

@@ -290,6 +290,7 @@ function makeTablesAdapter(): TablesAdapter {
     setRowOptions: mutation,
     insertColumn: mutation,
     deleteColumn: mutation,
+    moveColumn: mutation,
     setColumnWidth: mutation,
     distributeColumns: mutation,
     insertCell: mutation,
@@ -3515,11 +3516,15 @@ describe('createDocumentApi', () => {
       const target = { kind: 'block' as const, nodeType: 'table' as const, nodeId: 't1' };
       expect(() => api.tables.insertColumn({ target, columnIndex: 0, position: 'after' })).not.toThrow();
       expect(() => api.tables.deleteColumn({ target, columnIndex: 0 })).not.toThrow();
+      expect(() => api.tables.moveColumn({ target, columnIndex: 0, destination: { kind: 'last' } })).not.toThrow();
     });
 
     it('accepts nodeId for column-locator operations', () => {
       const api = makeApi();
       expect(() => api.tables.insertColumn({ nodeId: 't1', columnIndex: 0, position: 'after' })).not.toThrow();
+      expect(() =>
+        api.tables.moveColumn({ nodeId: 't1', columnIndex: 0, destination: { kind: 'last' } }),
+      ).not.toThrow();
     });
 
     it('rejects both target + nodeId for column-locator operations', () => {
@@ -3528,6 +3533,21 @@ describe('createDocumentApi', () => {
       expect(() => api.tables.insertColumn({ target, nodeId: 't1', columnIndex: 0, position: 'after' } as any)).toThrow(
         /Cannot combine/,
       );
+      expect(() =>
+        api.tables.moveColumn({ target, nodeId: 't1', columnIndex: 0, destination: { kind: 'last' } } as any),
+      ).toThrow(/Cannot combine/);
+    });
+
+    it('returns CAPABILITY_UNAVAILABLE when legacy table adapters omit moveColumn', () => {
+      const tables = makeTablesAdapter();
+      delete tables.moveColumn;
+      const api = makeApi(tables);
+      const target = { kind: 'block' as const, nodeType: 'table' as const, nodeId: 't1' };
+
+      expect(api.tables.moveColumn({ target, columnIndex: 0, destination: { kind: 'last' } })).toMatchObject({
+        success: false,
+        failure: { code: 'CAPABILITY_UNAVAILABLE' },
+      });
     });
 
     // -- merge range locator (target/nodeId) --

@@ -15,6 +15,7 @@ import {
   resolveColumnLayout,
   resolveColumnMode,
   widthsEqual,
+  findColumnContaining,
 } from './column-layout.js';
 
 describe('widthsEqual', () => {
@@ -88,6 +89,7 @@ describe('normalizeColumnLayout', () => {
       gap: 0,
       widths: [480],
       width: 480,
+      contentWidth: 480,
     });
   });
 
@@ -97,6 +99,7 @@ describe('normalizeColumnLayout', () => {
       gap: 24,
       widths: [300, 300],
       width: 300,
+      contentWidth: 624,
     });
   });
 
@@ -109,6 +112,7 @@ describe('normalizeColumnLayout', () => {
       widths: [100, 200],
       equalWidth: false,
       width: 200,
+      contentWidth: 624,
     });
   });
 
@@ -123,6 +127,7 @@ describe('normalizeColumnLayout', () => {
       widths: [200, 400],
       equalWidth: false,
       width: 400,
+      contentWidth: 300,
     });
   });
 
@@ -133,6 +138,7 @@ describe('normalizeColumnLayout', () => {
       gap: 24,
       widths: [300, 300],
       width: 300,
+      contentWidth: 624,
     });
   });
 
@@ -143,6 +149,7 @@ describe('normalizeColumnLayout', () => {
       widths: [300, 300],
       equalWidth: true,
       width: 300,
+      contentWidth: 624,
     });
   });
 
@@ -155,6 +162,7 @@ describe('normalizeColumnLayout', () => {
       widths: [192, 384],
       equalWidth: false,
       width: 384,
+      contentWidth: 624,
     });
   });
 
@@ -163,6 +171,7 @@ describe('normalizeColumnLayout', () => {
       count: 1,
       gap: 0,
       width: 0,
+      contentWidth: 0,
     });
   });
 });
@@ -397,5 +406,289 @@ describe('columnRenderLayoutsEqual (SD-2629)', () => {
   it('handles missing inputs', () => {
     expect(columnRenderLayoutsEqual(undefined, undefined)).toBe(true);
     expect(columnRenderLayoutsEqual({ count: 2, gap: 24 }, undefined)).toBe(false);
+  });
+});
+
+describe('RTL section column order', () => {
+  /** A4 body: 602px of content, two equal columns, 48px gutter (720tw). */
+  const twoEqual = (direction?: 'ltr' | 'rtl'): ColumnLayout => ({
+    count: 2,
+    gap: 48,
+    ...(direction ? { direction } : {}),
+  });
+
+  it('puts the first column on the right without reordering indices', () => {
+    const ltr = getColumnGeometry(normalizeColumnLayout(twoEqual(), 602));
+    const rtl = getColumnGeometry(normalizeColumnLayout(twoEqual('rtl'), 602));
+
+    // Fill order is the index; only the painted x moves.
+    expect(ltr.map((col) => col.index)).toEqual([0, 1]);
+    expect(rtl.map((col) => col.index)).toEqual([0, 1]);
+    expect(ltr.map((col) => col.x)).toEqual([0, 325]);
+    expect(rtl.map((col) => col.x)).toEqual([325, 0]);
+    // Widths and the strip's total span are untouched by the mirror.
+    expect(rtl.map((col) => col.width)).toEqual(ltr.map((col) => col.width));
+    expect(Math.max(...rtl.map((col) => col.x + col.width))).toBe(602);
+  });
+
+  it('leaves an LTR layout exactly where it was', () => {
+    // The regression that matters most: every existing producer omits `direction`.
+    expect(getColumnGeometry(normalizeColumnLayout(twoEqual(), 602))).toEqual(
+      getColumnGeometry(normalizeColumnLayout({ count: 2, gap: 48 }, 602)),
+    );
+  });
+
+  it('is a no-op for a single column that fills the content area', () => {
+    const rtl = getColumnGeometry(normalizeColumnLayout({ count: 1, gap: 48, direction: 'rtl' }, 602));
+    expect(rtl).toEqual([{ index: 0, x: 0, width: 602, gapAfter: 0 }]);
+  });
+
+  it('pins a single underfilling explicit column to the RIGHT margin', () => {
+    // One column has no order to flip, but it still has a side. `<w:cols w:num="1" w:equalWidth="0">`
+    // with an authored width narrower than the body leaves slack, and in an RTL section that slack
+    // belongs on the left — the same axis rule the multi-column strip follows.
+    const rtl = getColumnGeometry(
+      normalizeColumnLayout({ count: 1, gap: 0, equalWidth: false, widths: [200], direction: 'rtl' }, 602),
+    );
+    expect(rtl).toEqual([{ index: 0, x: 402, width: 200, gapAfter: 0 }]);
+
+    // LTR keeps the slack on the right, as before.
+    const ltr = getColumnGeometry(normalizeColumnLayout({ count: 1, gap: 0, equalWidth: false, widths: [200] }, 602));
+    expect(ltr).toEqual([{ index: 0, x: 0, width: 200, gapAfter: 0 }]);
+  });
+
+  it('mirrors three columns with per-column gaps onto the right physical gutters', () => {
+    const columns: ColumnLayout = {
+      count: 3,
+      gap: 0,
+      equalWidth: false,
+      widths: [100, 150, 200],
+      gaps: [20, 40],
+      withSeparator: true,
+      direction: 'rtl',
+    };
+    const rtl = getColumnGeometry(normalizeColumnLayout(columns, 602));
+
+    // Fill order still runs 0,1,2; the strip is laid out right to left from the right margin.
+    expect(rtl.map((col) => col.index)).toEqual([0, 1, 2]);
+    expect(rtl.map((col) => col.x)).toEqual([502, 332, 92]);
+    // Column 0's right edge is the right margin, and each separator is the midpoint of the gutter
+    // between the columns it actually separates.
+    expect(rtl[0].x + rtl[0].width).toBe(602);
+    expect(getColumnSeparatorPositions(rtl, 0)).toEqual([492, 312]);
+    // Hit testing descends with the index and every column claims its own span.
+    expect(getColumnAtX(rtl, 550)).toBe(0);
+    expect(getColumnAtX(rtl, 400)).toBe(1);
+    expect(getColumnAtX(rtl, 150)).toBe(2);
+  });
+
+  it('clamps a negative per-column gap so an LTR layout cannot read as mirrored', () => {
+    // OOXML cannot express a negative gutter (`w:space` is unsigned), but a host-built layout can.
+    // Left unclamped, `gaps: [-100]` pulls column 1 back behind column 0 and the direction-aware
+    // consumers — which infer the axis from x monotonicity — would answer hit tests as if the
+    // upright layout were mirrored.
+    const ltr = getColumnGeometry(
+      normalizeColumnLayout({ count: 2, gap: 0, equalWidth: false, widths: [50, 50], gaps: [-100] }, 602),
+    );
+    expect(ltr.map((col) => col.x)).toEqual([0, 50]);
+    expect(getColumnAtX(ltr, 20)).toBe(0);
+    expect(getColumnAtX(ltr, 80)).toBe(1);
+  });
+
+  it('pins an underfilling explicit strip to the RIGHT margin, not the left', () => {
+    // Word does not scale authored widths to fill the content area, so two 192px columns in a 602px
+    // body leave 170px of slack. In LTR the slack falls on the right; mirrored, it must fall on the
+    // left. Mirroring about the strip's own span instead of the content area would leave the whole
+    // strip pinned left and merely swap the columns inside it — the document would still read as
+    // left-aligned, which is the bug this whole change exists to fix.
+    const columns: ColumnLayout = {
+      count: 2,
+      gap: 48,
+      equalWidth: false,
+      widths: [192, 192],
+      direction: 'rtl',
+    };
+    const rtl = getColumnGeometry(normalizeColumnLayout(columns, 602));
+
+    expect(rtl.map((col) => col.x)).toEqual([410, 170]);
+    // Column 0's right edge is the right margin; the slack is on the left.
+    expect(rtl[0].x + rtl[0].width).toBe(602);
+    expect(Math.min(...rtl.map((col) => col.x))).toBe(170);
+  });
+
+  it('lets an overfull explicit strip run past the LEFT margin', () => {
+    // The mirror image of the documented LTR overflow: authored widths are not scaled down either,
+    // so the strip runs off the far margin — which in RTL is the left one.
+    const columns: ColumnLayout = {
+      count: 2,
+      gap: 24,
+      equalWidth: false,
+      widths: [200, 400],
+      direction: 'rtl',
+    };
+    const rtl = getColumnGeometry(normalizeColumnLayout(columns, 300));
+
+    expect(rtl[0].x + rtl[0].width).toBe(300);
+    expect(rtl[1].x).toBe(-324);
+  });
+
+  it('mirrors the separator onto the same physical gutter', () => {
+    const columns: ColumnLayout = {
+      count: 2,
+      gap: 50,
+      equalWidth: false,
+      widths: [200, 352],
+      withSeparator: true,
+      direction: 'rtl',
+    };
+    const rtl = getColumnGeometry(normalizeColumnLayout(columns, 602));
+
+    // Column 1 (left) spans [0,352], column 0 (right) spans [402,602]; the gutter is 352..402
+    // and the separator sits at its midpoint.
+    expect(rtl[0]).toEqual({ index: 0, x: 402, width: 200, gapAfter: 50, separatorX: 377 });
+    expect(rtl[1]).toEqual({ index: 1, x: 0, width: 352, gapAfter: 0 });
+    expect(getColumnSeparatorPositions(rtl, 96)).toEqual([473]);
+  });
+
+  it('resolves a point to the column that visually contains it', () => {
+    const rtl = getColumnGeometry(normalizeColumnLayout(twoEqual('rtl'), 602));
+
+    // Right half is the FIRST column now; left half is the second.
+    expect(getColumnAtX(rtl, 400)).toBe(0);
+    expect(getColumnAtX(rtl, 100)).toBe(1);
+    // Edges stay inside their own column.
+    expect(getColumnAtX(rtl, 602)).toBe(0);
+    expect(getColumnAtX(rtl, 0)).toBe(1);
+    // A point in the gutter belongs to the column preceding it in fill order — the same rule the
+    // LTR branch applies, mirrored. This is what keeps a drag crossing the gutter from jumping.
+    expect(getColumnAtX(rtl, 300)).toBe(0);
+  });
+
+  it('resolves an RTL column boundary the same way containment does', () => {
+    // `w:space="0"` (ECMA-376 §17.6.3) makes adjacent columns share an edge, which is the one point
+    // hit testing and containment can be made to disagree about. Two columns over 602px mirror to
+    // column 0 at [301,602) and column 1 at [0,301), so 301 is column 0's leading edge and column
+    // 1's trailing one at the same time.
+    const flush = getColumnGeometry(normalizeColumnLayout({ count: 2, gap: 0, direction: 'rtl' }, 602));
+    expect(flush.map((col) => col.x)).toEqual([301, 0]);
+
+    // Half-open spans put a shared edge in the column that STARTS there, which in RTL is the earlier
+    // column in fill order. An inclusive mirrored bound handed it to column 1 instead, so every
+    // column boundary in a zero-gutter RTL section resolved one column too far — and disagreed with
+    // the containment the geometry places content by.
+    expect(findColumnContaining(flush, 301)).toBe(0);
+    expect(getColumnAtX(flush, 301)).toBe(0);
+    // A hair to the left is genuinely column 1's, in both resolvers.
+    expect(findColumnContaining(flush, 300.99)).toBe(1);
+    expect(getColumnAtX(flush, 300.99)).toBe(1);
+
+    // With a gutter the same bound over-claimed the point on a column's TRAILING edge, which is
+    // gutter and belongs to the column preceding it in fill order.
+    const gutter = getColumnGeometry(normalizeColumnLayout(twoEqual('rtl'), 602));
+    expect(gutter[1]).toEqual({ index: 1, x: 0, width: 277, gapAfter: 0 });
+    expect(findColumnContaining(gutter, 277)).toBeNull();
+    expect(getColumnAtX(gutter, 277)).toBe(0);
+    expect(getColumnAtX(gutter, 276.99)).toBe(1);
+  });
+
+  it('keeps LTR hit testing byte-identical', () => {
+    const ltr = getColumnGeometry(normalizeColumnLayout(twoEqual(), 602));
+    expect(getColumnAtX(ltr, 100)).toBe(0);
+    expect(getColumnAtX(ltr, 300)).toBe(0);
+    expect(getColumnAtX(ltr, 400)).toBe(1);
+  });
+
+  it('honors originX in both directions', () => {
+    const rtl = getColumnGeometry(normalizeColumnLayout(twoEqual('rtl'), 602));
+    expect(getColumnX(rtl, 0, 96)).toBe(421);
+    expect(getColumnX(rtl, 1, 96)).toBe(96);
+    expect(getColumnAtX(rtl, 500, 96)).toBe(0);
+    expect(getColumnAtX(rtl, 200, 96)).toBe(1);
+  });
+
+  it('carries direction through clone and normalize', () => {
+    expect(cloneColumnLayout(twoEqual('rtl')).direction).toBe('rtl');
+    expect(cloneColumnLayout(twoEqual()).direction).toBeUndefined();
+    expect(normalizeColumnLayout(twoEqual('rtl'), 602).direction).toBe('rtl');
+    expect(resolveColumnLayout(twoEqual('rtl')).direction).toBe('rtl');
+  });
+
+  it('treats direction as paint-significant in both equality checks', () => {
+    // A section that only flips direction must split regions and invalidate the cache; treating it
+    // as equal would leave the previous geometry painted.
+    expect(columnLayoutsEqual(twoEqual('rtl'), twoEqual('ltr'))).toBe(false);
+    expect(columnRenderLayoutsEqual(twoEqual('rtl'), twoEqual('ltr'))).toBe(false);
+    // Absent means ltr, so omitting it must not read as a change.
+    expect(columnLayoutsEqual(twoEqual(), twoEqual('ltr'))).toBe(true);
+    expect(columnRenderLayoutsEqual(twoEqual(), twoEqual('ltr'))).toBe(true);
+  });
+});
+
+describe('findColumnContaining', () => {
+  // 3 equal columns over 624px with a 24px gap: 192px columns at 0, 216, 432.
+  const ltr = getColumnGeometry(normalizeColumnLayout({ count: 3, gap: 24 }, 624));
+  const rtl = getColumnGeometry(normalizeColumnLayout({ count: 3, gap: 24, direction: 'rtl' }, 624));
+
+  it('resolves an x inside a column to that column, in both directions', () => {
+    expect(findColumnContaining(ltr, 10)).toBe(0);
+    expect(findColumnContaining(ltr, 300)).toBe(1);
+    expect(findColumnContaining(ltr, 500)).toBe(2);
+    // Mirrored: column 0 is the rightmost, so the same points answer in reverse.
+    expect(findColumnContaining(rtl, 10)).toBe(2);
+    expect(findColumnContaining(rtl, 300)).toBe(1);
+    expect(findColumnContaining(rtl, 500)).toBe(0);
+  });
+
+  it('answers null in a gutter instead of clamping to a neighbour', () => {
+    // The gap between column 0 and 1 runs 192..216 in LTR.
+    expect(findColumnContaining(ltr, 200)).toBeNull();
+    // getColumnAtX, which exists for hit testing, must still clamp there.
+    expect(getColumnAtX(ltr, 200)).toBe(0);
+  });
+
+  it('answers null outside the strip entirely, in both directions', () => {
+    expect(findColumnContaining(ltr, -50)).toBeNull();
+    expect(findColumnContaining(ltr, 700)).toBeNull();
+    expect(findColumnContaining(rtl, -50)).toBeNull();
+    expect(findColumnContaining(rtl, 700)).toBeNull();
+  });
+
+  it('identifies a fragment WIDER than its column by its origin', () => {
+    // An over-wide table is placed at its column's left edge and overflows rightward in BOTH
+    // directions. Its origin still names its column; its trailing edge does not, which is exactly
+    // why an edge comparison cannot answer this question.
+    const originOfLastColumn = rtl[2].x;
+    expect(findColumnContaining(rtl, originOfLastColumn)).toBe(2);
+    // The same fragment's right edge, 500px later, has left the column and reads as another one.
+    expect(findColumnContaining(rtl, originOfLastColumn + 500)).not.toBe(2);
+  });
+
+  it('gives a shared zero-gap boundary to the column that STARTS there', () => {
+    // `w:space="0"` makes adjacent columns share an endpoint, and that endpoint is exactly where
+    // the later column's content is placed. Inclusive spans would hand it to the column that ends
+    // there instead, and — because the scan runs in fill order — would do so in LTR but not in RTL,
+    // making the two directions disagree.
+    const zeroGap = getColumnGeometry(normalizeColumnLayout({ count: 2, gap: 0 }, 624));
+    expect(zeroGap.map((col) => col.x)).toEqual([0, 312]);
+    expect(findColumnContaining(zeroGap, 311.9)).toBe(0);
+    expect(findColumnContaining(zeroGap, 312)).toBe(1);
+
+    // The mirrored strip has to answer the same way about its own shared boundary.
+    const zeroGapRtl = getColumnGeometry(normalizeColumnLayout({ count: 2, gap: 0, direction: 'rtl' }, 624));
+    expect(zeroGapRtl.map((col) => col.x)).toEqual([312, 0]);
+    expect(findColumnContaining(zeroGapRtl, 312)).toBe(0);
+    expect(findColumnContaining(zeroGapRtl, 311.9)).toBe(1);
+  });
+
+  it('honors originX', () => {
+    expect(findColumnContaining(ltr, 106, 96)).toBe(0);
+    expect(findColumnContaining(ltr, 96 + 300, 96)).toBe(1);
+    expect(findColumnContaining(ltr, 0, 96)).toBeNull();
+  });
+
+  it('treats a single column as a column', () => {
+    const one = getColumnGeometry(normalizeColumnLayout({ count: 1, gap: 0 }, 624));
+    expect(findColumnContaining(one, 300)).toBe(0);
+    expect(findColumnContaining(one, 900)).toBeNull();
   });
 });

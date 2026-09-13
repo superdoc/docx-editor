@@ -21,6 +21,8 @@ export function useCommentSmallScreen({ commentsModuleConfig, superdocRoot, laye
 
   let commentsContainerResizeObserver = null;
   let compactMeasurementTarget = null;
+  let documentWidthResizeObserver = null;
+  let documentWidthTargets = [];
 
   // A measurement target is valid only if it can provide a meaningful width.
   // `display: contents` is skipped because it has no own box to measure.
@@ -94,8 +96,44 @@ export function useCommentSmallScreen({ commentsModuleConfig, superdocRoot, laye
     return 0;
   };
 
+  // `.superdoc__layers` sizes to its content by default, but while the v2
+  // loading overlay is present it's forced to fill the container (see
+  // V2DocumentLoadingOverlay.vue); `.superdoc__document` is 100% of it. That
+  // forced width goes away once the overlay unmounts, which is a resize of a
+  // descendant the container observer above never sees. Observe both
+  // directly so the compact-mode decision re-evaluates once the real page
+  // width settles, instead of only on an incidental container/window resize.
+  const ensureDocumentWidthObserver = () => {
+    const ResizeObserverClass = typeof window !== 'undefined' ? window.ResizeObserver : undefined;
+    if (typeof ResizeObserverClass === 'undefined') return;
+
+    const root = superdocRoot.value;
+    const documentElement = root?.querySelector?.(SUPERDOC_DOCUMENT_SELECTOR) ?? null;
+    const nextTargets = [layers.value, documentElement].filter(
+      (el, index, all) => el instanceof HTMLElement && all.indexOf(el) === index,
+    );
+
+    const sameTargets =
+      nextTargets.length === documentWidthTargets.length &&
+      nextTargets.every((el, index) => el === documentWidthTargets[index]);
+    if (sameTargets) return;
+
+    if (documentWidthResizeObserver) {
+      documentWidthResizeObserver.disconnect();
+      documentWidthResizeObserver = null;
+    }
+    documentWidthTargets = nextTargets;
+    if (!nextTargets.length) return;
+
+    documentWidthResizeObserver = new ResizeObserverClass(() => {
+      recalculateCompactCommentsMode();
+    });
+    nextTargets.forEach((el) => documentWidthResizeObserver.observe(el));
+  };
+
   // Measure actual document area width; fall back to layers/default when needed.
   const getMeasuredDocumentWidth = () => {
+    ensureDocumentWidthObserver();
     const root = superdocRoot.value;
     const documentElement = root?.querySelector?.(SUPERDOC_DOCUMENT_SELECTOR);
     const layersElement = layers.value;
@@ -153,6 +191,11 @@ export function useCommentSmallScreen({ commentsModuleConfig, superdocRoot, laye
       commentsContainerResizeObserver = null;
     }
     compactMeasurementTarget = null;
+    if (documentWidthResizeObserver) {
+      documentWidthResizeObserver.disconnect();
+      documentWidthResizeObserver = null;
+    }
+    documentWidthTargets = [];
   });
 
   return {

@@ -4,19 +4,51 @@ navTitle: Proofing
 description: Connect a spelling or grammar provider to SuperDoc.
 ---
 
-Proofing helps people catch spelling and grammar mistakes while they write, before those mistakes reach a reader. Word processors usually underline an issue so the writer can replace or ignore it without leaving the document.
+Proofing helps people catch spelling and grammar mistakes while they write. SuperDoc underlines the issues; a provider
+you choose checks the text and suggests replacements. It does not include a dictionary or grammar checker.
+
+## Try a correction
+
+Expand the Editor and type `teh` followed by a space. Right-click its underline and choose **the**. Type `teh` again
+and choose **Ignore** instead: the text stays unchanged, but the issue is dismissed for this editor session.
 
 <EditorDemo preset='proofing' title='Try proofing' />
 
 ## Enable proofing
 
-SuperDoc schedules checks, underlines issues, and handles Ignore and replacements. It does not include a dictionary or grammar checker, so you provide one:
+Keep the Editor, sample document, and export button from the [Quickstart](/editor/quickstart). Create
+`src/proofing-provider.ts` with this local provider:
 
 <include>../../../../snippets/editor/proofing-provider.ts</include>
 
-This provider flags only `teh`. For a complete local dictionary, see the [proofing example](https://go.superdoc.dev/examples/proofing).
+Import `proofing` into `src/main.ts` in Vanilla or `src/App.tsx` in React:
 
-SuperDoc sends text segments to the provider after edits. Return spelling, grammar, or style issues with zero-based UTF-16 offsets. Honor the request's `signal` so SuperDoc can cancel stale or timed-out checks.
+```ts
+import { proofing } from './proofing-provider';
+```
+
+Add `proofing` to your existing `new SuperDoc({ ... })` configuration, or pass `proofing={proofing}` to
+`SuperDocEditor`. Keep your existing readiness and cleanup handlers.
+
+This provider flags only the lowercase word `teh`, not every spelling mistake. Type `teh teh` and confirm that both
+words receive suggestions. It runs locally and needs no service credentials.
+
+## Connect a full checker
+
+Use the [proofing example](https://go.superdoc.dev/examples/proofing) for a local English dictionary. Grammar and style
+checking require a provider that detects those issue kinds; enabling proofing alone does not add them.
+
+SuperDoc sends text segments to the provider after edits. Return each issue with its `segmentId` and zero-based UTF-16
+offsets into that segment, with an exclusive `end`. Return suggestions in `replacements`; do not edit the document
+inside `check()`. Honor the request's `signal` so SuperDoc can cancel stale or timed-out checks.
+
+Report provider failures through `onProofingError`. A failed check does not mean the document has no mistakes.
+
+## Save corrected text
+
+Choose a replacement, export with the Quickstart's **Export DOCX** button, and reopen the file to check the corrected
+word. **Ignore** does not replace text or add a word to a persistent dictionary. Use `ignoredWords` if your application
+needs to supply its own saved list of words to skip.
 
 ## Configure proofing
 

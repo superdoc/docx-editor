@@ -1136,6 +1136,31 @@ describe('measureBlock', () => {
       expect(tabMeasure.lines[0].lineHeight).toBeGreaterThan(16);
     });
 
+    it('falls back safely when a structural tab has no text for embedded metric coverage', async () => {
+      const block: FlowBlock = {
+        kind: 'paragraph',
+        id: 'tab-without-text',
+        runs: [{ kind: 'tab', fontFamily: 'Embedded Structural', fontSize: 16 } as unknown as TabRun],
+        attrs: {},
+      };
+      const fallbackMeasure = expectParagraphMeasure(await measureBlock(block, 1000));
+      const resolvedTexts: string[] = [];
+
+      const embeddedMeasure = expectParagraphMeasure(
+        await measureBlock(block, 1000, {
+          fontSignature: 'embedded-structural:1',
+          resolvePhysical: () => '__embedded_structural',
+          resolveNaturalLineMultiplier: (_family, _face, text) => {
+            resolvedTexts.push(text);
+            return text.length > 0 ? 1.4 : undefined;
+          },
+        }),
+      );
+
+      expect(resolvedTexts).toEqual(['']);
+      expect(embeddedMeasure.lines[0].lineHeight).toBeCloseTo(fallbackMeasure.lines[0].lineHeight, 6);
+    });
+
     // SD-3347: line.tabWidths must be populated alongside run.width so the painter can read the
     // measured tab width even after FlowBlock re-projection creates fresh run objects
     // (cache hit → run.width never re-set → painter would fall back to 48px without tabWidths).
@@ -2510,6 +2535,25 @@ describe('measureBlock', () => {
 
       const measure = expectParagraphMeasure(await measureBlock(block, 400));
       expect(measure.lines[0].lineHeight).toBeCloseTo(20.16, 3);
+    });
+
+    it('uses deterministic metrics from the exact embedded face context', async () => {
+      const fontSize = 12;
+      const multiplier = 2581 / 2048;
+      const block: FlowBlock = {
+        kind: 'paragraph',
+        id: 'embedded-natural-line-pitch',
+        runs: [{ text: 'Embedded Helvetica Neue', fontFamily: 'Helvetica Neue', fontSize }],
+      };
+
+      const measure = expectParagraphMeasure(
+        await measureBlock(block, 400, {
+          fontSignature: 'embedded:1',
+          resolvePhysical: () => '__embedded_Helvetica_Neue',
+          resolveNaturalLineMultiplier: (_family, face) => (face.weight === '400' ? multiplier : undefined),
+        }),
+      );
+      expect(measure.lines[0].lineHeight).toBeCloseTo(fontSize * multiplier, 6);
     });
 
     it('bypasses 1.15 base with exact lineRule', async () => {

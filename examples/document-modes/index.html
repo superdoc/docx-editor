@@ -6,7 +6,10 @@
     <title>SuperDoc document modes</title>
   </head>
   <body>
-    <label>
+    <nav aria-label="Choose a workflow">
+      <a href="./">Document modes</a> · <a href="./?workflow=review">Review changes</a>
+    </nav>
+    <label id="mode-controls">
       Document mode
       <select id="document-mode" disabled>
         <option value="viewing">Viewing</option>
@@ -14,6 +17,18 @@
         <option value="suggesting">Suggesting</option>
       </select>
     </label>
+    <section id="review-controls" hidden>
+      <p>
+        Accept the existing proposal. Then type edits in two different paragraphs; reject one and leave the other
+        undecided.
+      </p>
+      <label
+        >Proposed change
+        <select id="review-change" disabled></select
+      ></label>
+      <button id="accept-change" type="button" disabled>Accept change</button>
+      <button id="reject-change" type="button" disabled>Reject change</button>
+    </section>
     <button id="export-docx" type="button" disabled>Export DOCX</button>
     <span id="status" role="status">Opening document...</span>
     <div id="editor"></div>

@@ -7,6 +7,7 @@ export type LayoutExecutionPhase =
   | 'layout-document:preflight-keep-next'
   | 'layout-document:block'
   | 'layout-document:table-fragment'
+  | 'layout-document:footnote-continuation'
   | 'layout-document:finalize-page'
   | 'layout-document:finalize-section'
   | 'page-token:prepare'

@@ -758,6 +758,15 @@ const FORMATTING_MARKS_STYLES = `
   top: 50%;
   transform: translate(-50%, -50%);
   color: var(--sd-formatting-mark-color, var(--sd-ui-action, currentColor));
+  /*
+   * A formatting mark is chrome, not document text, so it opts out of the two
+   * inherited properties a run with w:outline sets on itself: the emptied
+   * fill and the glyph stroke. Both inherit, and -webkit-text-fill-color
+   * beats color for the fill — without these, the dot inside an outlined run
+   * would render as a hairline ring, or as nothing at all.
+   */
+  -webkit-text-fill-color: currentColor;
+  -webkit-text-stroke: 0;
   font-size: 0.75em;
   line-height: 1;
   pointer-events: none;
@@ -775,6 +784,15 @@ const FORMATTING_MARKS_STYLES = `
   top: 50%;
   transform: translate(-50%, -50%);
   color: var(--sd-formatting-mark-color, var(--sd-ui-action, currentColor));
+  /*
+   * A formatting mark is chrome, not document text, so it opts out of the two
+   * inherited properties a run with w:outline sets on itself: the emptied
+   * fill and the glyph stroke. Both inherit, and -webkit-text-fill-color
+   * beats color for the fill — without these, the dot inside an outlined run
+   * would render as a hairline ring, or as nothing at all.
+   */
+  -webkit-text-fill-color: currentColor;
+  -webkit-text-stroke: 0;
   font-size: 0.75em;
   line-height: 1;
   pointer-events: none;

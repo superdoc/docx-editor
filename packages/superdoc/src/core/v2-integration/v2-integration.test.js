@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vite-plus/test';
+import { describe, it, expect, vi } from 'vite-plus/test';
 import {
   createDefaultV2Integration,
   loadDefaultV2Integration,
@@ -8,6 +8,24 @@ import {
   isSyntheticTrackedChangeCommentLaneItem,
   isV2SyntheticTrackedChangeRow,
 } from './v2-integration.js';
+
+// The WebKit caret-rect workaround is wired in here and nowhere else, so the
+// call is what the fix ships on. Mocked so the wiring itself is asserted rather
+// than the workaround's own behaviour, which its module tests cover.
+vi.mock('./webkit-collapsed-caret-rect.js', () => ({
+  installWebKitCollapsedCaretRectFix: vi.fn(() => null),
+}));
+
+describe('WebKit caret-rect workaround wiring', () => {
+  it('installs the workaround when the engine is loaded', async () => {
+    const { installWebKitCollapsedCaretRectFix } = await import('./webkit-collapsed-caret-rect.js');
+    installWebKitCollapsedCaretRectFix.mockClear();
+
+    await loadDefaultV2Integration();
+
+    expect(installWebKitCollapsedCaretRectFix).toHaveBeenCalledWith(window);
+  });
+});
 
 // V2 branch: the integration is the single DOCX Engine runtime. There is no
 // customer-provided integration and no v1 fallback selection.

@@ -41,6 +41,20 @@ function isMinimalWordLayout(value: unknown): value is MinimalWordLayout {
   return isMinimalWordLayoutShared(value);
 }
 
+/**
+ * Filler for the placeholder span painted on an empty line.
+ *
+ * The span carries PM positions; it is not meant to occupy space, so its filler
+ * must take no advance width. A non-breaking space takes one. The caret on an
+ * empty line is drawn at the placeholder's left edge, so that width pushes the
+ * caret off the start of the line: invisible on an LTR line, where the left edge
+ * is the line start, but visible on an RTL line, which starts at the right edge.
+ *
+ * A zero-width space keeps the span's font metrics, and with them the caret's
+ * height, while contributing no advance.
+ */
+const EMPTY_LINE_PLACEHOLDER = '\u200B';
+
 const applyStyles = (el: HTMLElement, styles: Partial<CSSStyleDeclaration>): void => {
   Object.entries(styles).forEach(([key, value]) => {
     if (value != null && value !== '' && key in el.style) {
@@ -541,7 +555,7 @@ export const renderLine = ({
     } else {
       span.style.fontSize = `${line.lineHeight}px`;
     }
-    span.innerHTML = '&nbsp;';
+    span.textContent = EMPTY_LINE_PLACEHOLDER;
     el.appendChild(span);
   }
 

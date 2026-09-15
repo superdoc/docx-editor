@@ -530,3 +530,51 @@ describe('renderLine inline boxes', () => {
     expect(cleared.textContent).toBe('beforeboxedafter');
   });
 });
+
+describe('renderLine empty-line placeholder', () => {
+  const emptyLine = (): Line => ({
+    fromRun: 0,
+    fromChar: 0,
+    toRun: 0,
+    toChar: 0,
+    width: 0,
+    maxWidth: 200,
+    ascent: 12,
+    descent: 4,
+    lineHeight: 18,
+    segments: [],
+  });
+
+  const emptyBlock = (attrs: ParagraphBlock['attrs'] = {}): ParagraphBlock => ({
+    kind: 'paragraph',
+    id: 'empty-block',
+    attrs,
+    runs: [{ kind: 'text', text: '', fontFamily: 'Arial', fontSize: 16, pmStart: 1, pmEnd: 1 }],
+  });
+
+  it('fills the placeholder with a zero-width space so it takes no advance', () => {
+    const lineEl = renderLine({
+      block: emptyBlock(),
+      line: emptyLine(),
+      context: { pageNumber: 1, totalPages: 1, section: 'body' },
+      runContext: makeRunContext(),
+    });
+
+    const placeholder = lineEl.querySelector<HTMLElement>('.superdoc-empty-run');
+    expect(placeholder?.textContent).toBe('\u200B');
+    expect(placeholder?.dataset.pmStart).toBe('1');
+    expect(placeholder?.dataset.pmEnd).toBe('1');
+  });
+
+  it('keeps the placeholder zero-advance on an RTL line', () => {
+    const lineEl = renderLine({
+      block: emptyBlock({ directionContext: { inlineDirection: 'rtl' } }),
+      line: emptyLine(),
+      context: { pageNumber: 1, totalPages: 1, section: 'body' },
+      runContext: makeRunContext(),
+    });
+
+    expect(lineEl.getAttribute('dir')).toBe('rtl');
+    expect(lineEl.querySelector('.superdoc-empty-run')?.textContent).toBe('\u200B');
+  });
+});

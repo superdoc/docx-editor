@@ -456,6 +456,13 @@ export const deriveBlockVersion = (block: FlowBlock): string => {
           textRun.underline?.style ?? '',
           textRun.underline?.color ?? '',
           textRun.strike ? 1 : 0,
+          // The Word 97-2003 effect flags and the double strikethrough: paint-only,
+          // but this version is what the painter reuses a fragment by.
+          textRun.doubleStrike ? 1 : 0,
+          textRun.outline ? 1 : 0,
+          textRun.shadow ? 1 : 0,
+          textRun.emboss ? 1 : 0,
+          textRun.imprint ? 1 : 0,
           textRun.highlight ?? '',
           textRun.letterSpacing != null ? textRun.letterSpacing : '',
           textRun.horizontalScale != null ? textRun.horizontalScale : '',

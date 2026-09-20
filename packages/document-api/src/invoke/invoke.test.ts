@@ -61,6 +61,12 @@ function makeAdapters() {
         },
       }),
     ),
+    resolve: mock((input) => ({
+      operationId: input.operationId,
+      available: { kind: 'supported' as const },
+      tracked: { kind: 'supported' as const },
+      dryRun: { kind: 'supported' as const },
+    })),
   };
   const commentsAdapter: CommentsAdapter = {
     add: mock(() => ({
@@ -343,12 +349,14 @@ function makeAdapters() {
 
   return {
     adapters,
+    capabilitiesAdapter,
     findAdapter,
     writeAdapter,
     commentsAdapter,
     trackChangesAdapter,
     htmlToFragmentAdapter,
     projectHtmlAdapter,
+    templatesAdapter,
   };
 }
 
@@ -373,6 +381,127 @@ describe('invoke', () => {
   });
 
   describe('representative parity (invoke matches direct method)', () => {
+    it('direct and dynamic calls enforce the same tracked capability decision before execution', () => {
+      const { adapters, capabilitiesAdapter, writeAdapter } = makeAdapters();
+      capabilitiesAdapter.resolve = mock((input) => ({
+        operationId: input.operationId,
+        available: { kind: 'supported' as const },
+        tracked: {
+          kind: 'unsupported' as const,
+          code: 'TRACKED_MODE_UNAVAILABLE' as const,
+          reason: 'Tracked mode is unavailable for this target.',
+        },
+        dryRun: { kind: 'supported' as const },
+      }));
+      const api = createDocumentApi(adapters);
+      const options = { changeMode: 'tracked' as const };
+
+      expect(api.insert({ value: 'direct' }, options)).toMatchObject({
+        success: false,
+        failure: { code: 'CAPABILITY_UNAVAILABLE' },
+      });
+      expect(api.invoke({ operationId: 'insert', input: { value: 'dynamic' }, options })).toMatchObject({
+        success: false,
+        failure: { code: 'CAPABILITY_UNAVAILABLE' },
+      });
+      expect(writeAdapter.write).not.toHaveBeenCalled();
+    });
+
+    it('does not apply tracked support to a direct-mode call', () => {
+      const { adapters, capabilitiesAdapter, writeAdapter } = makeAdapters();
+      capabilitiesAdapter.resolve = mock((input) => ({
+        operationId: input.operationId,
+        available: { kind: 'supported' as const },
+        tracked: {
+          kind: 'unsupported' as const,
+          code: 'TRACKED_MODE_UNAVAILABLE' as const,
+          reason: 'Tracked mode is unavailable for this target.',
+        },
+        dryRun: { kind: 'supported' as const },
+      }));
+      const api = createDocumentApi(adapters);
+
+      expect(api.insert({ value: 'direct' }).success).toBe(true);
+      expect(writeAdapter.write).toHaveBeenCalledTimes(1);
+    });
+
+    it('delegates conditional tracked decisions to the target-aware adapter preflight', () => {
+      const { adapters, capabilitiesAdapter, writeAdapter } = makeAdapters();
+      capabilitiesAdapter.resolve = mock((input) => ({
+        operationId: input.operationId,
+        available: { kind: 'supported' as const },
+        tracked: {
+          kind: 'requires-input' as const,
+          code: 'TARGET_CONTEXT_REQUIRED' as const,
+          reason: 'The adapter must inspect the concrete target.',
+        },
+        dryRun: { kind: 'supported' as const },
+      }));
+      const api = createDocumentApi(adapters);
+      const options = { changeMode: 'tracked' as const };
+
+      expect(api.insert({ value: 'direct' }, options).success).toBe(true);
+      expect(api.invoke({ operationId: 'insert', input: { value: 'dynamic' }, options })).toMatchObject({
+        success: true,
+      });
+      expect(writeAdapter.write).toHaveBeenCalledTimes(2);
+    });
+
+    it('enforces availability and dry-run decisions before calling an adapter', () => {
+      const { adapters, capabilitiesAdapter, findAdapter, writeAdapter } = makeAdapters();
+      capabilitiesAdapter.resolve = mock((input) => ({
+        operationId: input.operationId,
+        available:
+          input.operationId === 'find'
+            ? {
+                kind: 'unsupported' as const,
+                code: 'COLLABORATION_ACTIVE' as const,
+                reason: 'The read is unavailable in this session.',
+              }
+            : { kind: 'supported' as const },
+        tracked: { kind: 'supported' as const },
+        dryRun: {
+          kind: 'unsupported' as const,
+          code: 'DRY_RUN_UNAVAILABLE' as const,
+          reason: 'Dry-run mode is unavailable for this operation.',
+        },
+      }));
+      const api = createDocumentApi(adapters);
+
+      expect(() => api.find({ nodeType: 'paragraph' })).toThrow(
+        expect.objectContaining({ code: 'CAPABILITY_UNSUPPORTED' }),
+      );
+      expect(api.insert({ value: 'preview' }, { dryRun: true })).toMatchObject({
+        success: false,
+        failure: { code: 'CAPABILITY_UNAVAILABLE' },
+      });
+      expect(findAdapter.find).not.toHaveBeenCalled();
+      expect(writeAdapter.write).not.toHaveBeenCalled();
+    });
+
+    it('preserves async mutation receipts when preflight refuses an operation', async () => {
+      const { adapters, capabilitiesAdapter, templatesAdapter } = makeAdapters();
+      capabilitiesAdapter.resolve = mock((input) => ({
+        operationId: input.operationId,
+        available: { kind: 'supported' as const },
+        tracked: { kind: 'supported' as const },
+        dryRun: {
+          kind: 'unsupported' as const,
+          code: 'DRY_RUN_UNAVAILABLE' as const,
+          reason: 'Dry-run mode is unavailable for this operation.',
+        },
+      }));
+      const api = createDocumentApi(adapters);
+      const result = api.templates.apply({ source: { kind: 'base64', data: 'AAAA' } }, { dryRun: true });
+
+      expect(result).toBeInstanceOf(Promise);
+      await expect(result).resolves.toMatchObject({
+        success: false,
+        failure: { code: 'CAPABILITY_UNAVAILABLE' },
+      });
+      expect(templatesAdapter.apply).not.toHaveBeenCalled();
+    });
+
     it('find: invoke returns same result as direct call', () => {
       const { adapters } = makeAdapters();
       const api = createDocumentApi(adapters);
@@ -483,6 +612,13 @@ describe('invoke', () => {
       const direct = await api.capabilities.check(input);
       const invoked = await api.invoke({ operationId: 'capabilities.check', input });
       expect(invoked).toEqual(direct);
+    });
+
+    it('capabilities.resolve: invoke returns the same concrete decision as the direct member', () => {
+      const { adapters } = makeAdapters();
+      const api = createDocumentApi(adapters);
+      const input = { operationId: 'insert' as const, input: { value: 'hello' }, options: { changeMode: 'tracked' } };
+      expect(api.invoke({ operationId: 'capabilities.resolve', input })).toEqual(api.capabilities.resolve(input));
     });
 
     it('lists.get: invoke returns same result as direct call', () => {

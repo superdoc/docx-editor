@@ -10,21 +10,18 @@
  *
  * 1. **Here** (`operation-definitions.ts`): add an entry to `OPERATION_DEFINITIONS`
  *    with `memberPath`, `description`, `expectedResult`, `metadata`, `referenceDocPath`, and `referenceGroup`.
- * 2. **`operation-registry.ts`**: add a type entry (`input`, `options`, `output`).
- *    The bidirectional `Assert` checks will error until this is done.
- * 3. **`invoke.ts`** (`buildDispatchTable`): add a one-line dispatch entry calling
- *    the API method. `TypedDispatchTable` will error until this is done.
- * 4. **Implement**: the API method on `DocumentApi` + its adapter.
+ * 2. **Implement** the API method on `DocumentApiSurface` and its adapter.
  *
- * That's 4 touch points. The catalog, maps, and reference docs are derived
- * automatically. If you forget step 1 or 2, compile-time assertions fail.
- * If you forget step 3, the `TypedDispatchTable` mapped type errors.
- *
- * Import DAG: this file imports only from `metadata-types.ts` and
- * `../types/receipt.js`: no contract-internal circular deps.
+ * The invoke types and dispatch, catalog, maps, and reference docs derive from
+ * those two declarations. An invalid member path fails the contract build.
  */
 import type { ReceiptFailureCode } from '../types/receipt.js';
-import type { CommandStaticMetadata, OperationIdempotency, PreApplyThrowCode } from './metadata-types.js';
+import type {
+  CommandStaticMetadata,
+  OperationIdempotency,
+  OperationTrackedSupport,
+  PreApplyThrowCode,
+} from './metadata-types.js';
 import { INLINE_PROPERTY_REGISTRY, type InlineRunPatchKey } from '../format/inline-run-patch.js';
 // ---------------------------------------------------------------------------
 // Reference group key
@@ -81,11 +78,15 @@ export interface OperationDefinitionEntry {
   metadata: CommandStaticMetadata;
   referenceDocPath: string;
   referenceGroup: ReferenceGroupKey;
+  /** Whether this operation may run as an entry inside plan.execute. Defaults to true. */
+  batchable?: boolean;
   skipAsATool?: boolean;
   /** Which intent tool this operation belongs to (e.g. 'edit' → superdoc_edit). */
   intentGroup?: string;
   /** Action enum value within the intent group (e.g. 'insert', 'replace'). */
   intentAction?: string;
+  /** Stable transport aliases, keyed by external name and pointing to the canonical input field. */
+  inputAliases?: Readonly<Record<string, string>>;
 }
 // ---------------------------------------------------------------------------
 // Intent group metadata: tool-level names and descriptions
@@ -593,6 +594,7 @@ function readOperation(
     mutates: false,
     idempotency: options.idempotency ?? 'idempotent',
     supportsDryRun: false,
+    trackedSupport: 'never',
     supportsTrackedMode: false,
     possibleFailureCodes: options.possibleFailureCodes ?? NONE_FAILURES,
     throws: {
@@ -607,8 +609,7 @@ function readOperation(
 function mutationOperation(options: {
   idempotency: OperationIdempotency;
   supportsDryRun: boolean;
-  supportsTrackedMode: boolean;
-  supportsConditionalTrackedMode?: boolean;
+  trackedSupport: OperationTrackedSupport;
   possibleFailureCodes: readonly ReceiptFailureCode[];
   throws: readonly PreApplyThrowCode[];
   deterministicTargetResolution?: boolean;
@@ -621,8 +622,9 @@ function mutationOperation(options: {
     mutates: true,
     idempotency: options.idempotency,
     supportsDryRun: options.supportsDryRun,
-    supportsTrackedMode: options.supportsTrackedMode,
-    supportsConditionalTrackedMode: options.supportsConditionalTrackedMode,
+    trackedSupport: options.trackedSupport,
+    supportsTrackedMode: options.trackedSupport === 'always',
+    ...(options.trackedSupport === 'conditional' ? { supportsConditionalTrackedMode: true } : {}),
     possibleFailureCodes: options.possibleFailureCodes,
     throws: {
       preApply: options.throws,
@@ -726,6 +728,9 @@ const T_PERM_RANGE_MUTATION = [
   'CAPABILITY_UNAVAILABLE',
 ] as const;
 type FormatInlineAliasOperationId = `format.${InlineRunPatchKey}`;
+type FormatInlineAliasOperationDefinitions = {
+  [Key in InlineRunPatchKey as `format.${Key}`]: OperationDefinitionEntry & { memberPath: `format.${Key}` };
+};
 function camelToKebab(value: string): string {
   return value.replace(/[A-Z]/g, (char) => `-${char.toLowerCase()}`);
 }
@@ -741,30 +746,29 @@ function formatInlineAliasExpectedResult(key: InlineRunPatchKey): string {
   }
   return 'Returns a TextMutationReceipt confirming the inline run property patch was applied to the target range.';
 }
-const FORMAT_INLINE_ALIAS_OPERATION_DEFINITIONS: Record<FormatInlineAliasOperationId, OperationDefinitionEntry> =
-  Object.fromEntries(
-    INLINE_PROPERTY_REGISTRY.map((entry) => {
-      const operationId = `format.${entry.key}` as FormatInlineAliasOperationId;
-      const definition: OperationDefinitionEntry = {
-        memberPath: operationId,
-        description: formatInlineAliasDescription(entry.key),
-        expectedResult: formatInlineAliasExpectedResult(entry.key),
-        requiresDocumentContext: true,
-        metadata: mutationOperation({
-          idempotency: 'conditional',
-          supportsDryRun: true,
-          supportsTrackedMode: entry.tracked,
-          possibleFailureCodes: ['INVALID_TARGET'],
-          throws: [...T_NOT_FOUND_CAPABLE, 'INVALID_TARGET', 'INVALID_INPUT', ...T_STORY],
-          returnsReceipt: true,
-        }),
-        referenceDocPath: `format/${camelToKebab(entry.key)}.mdx`,
-        referenceGroup: 'format',
-        skipAsATool: true,
-      };
-      return [operationId, definition];
-    }),
-  ) as Record<FormatInlineAliasOperationId, OperationDefinitionEntry>;
+const FORMAT_INLINE_ALIAS_OPERATION_DEFINITIONS: FormatInlineAliasOperationDefinitions = Object.fromEntries(
+  INLINE_PROPERTY_REGISTRY.map((entry) => {
+    const operationId = `format.${entry.key}` as FormatInlineAliasOperationId;
+    const definition: OperationDefinitionEntry = {
+      memberPath: operationId,
+      description: formatInlineAliasDescription(entry.key),
+      expectedResult: formatInlineAliasExpectedResult(entry.key),
+      requiresDocumentContext: true,
+      metadata: mutationOperation({
+        idempotency: 'conditional',
+        supportsDryRun: true,
+        trackedSupport: entry.tracked ? 'always' : 'never',
+        possibleFailureCodes: ['INVALID_TARGET'],
+        throws: [...T_NOT_FOUND_CAPABLE, 'INVALID_TARGET', 'INVALID_INPUT', ...T_STORY],
+        returnsReceipt: true,
+      }),
+      referenceDocPath: `format/${camelToKebab(entry.key)}.mdx`,
+      referenceGroup: 'format',
+      skipAsATool: true,
+    };
+    return [operationId, definition];
+  }),
+) as FormatInlineAliasOperationDefinitions;
 // ---------------------------------------------------------------------------
 // Canonical definitions
 // ---------------------------------------------------------------------------
@@ -819,6 +823,7 @@ export const OPERATION_DEFINITIONS = {
     }),
     referenceDocPath: 'get-node-by-id.mdx',
     referenceGroup: 'core',
+    inputAliases: { id: 'nodeId' },
   },
   getText: {
     memberPath: 'getText',
@@ -870,6 +875,7 @@ export const OPERATION_DEFINITIONS = {
     }),
     referenceDocPath: 'project-markdown.mdx',
     referenceGroup: 'core',
+    batchable: false,
     intentGroup: 'get_content',
     intentAction: 'markdown_projection',
   },
@@ -884,6 +890,7 @@ export const OPERATION_DEFINITIONS = {
     }),
     referenceDocPath: 'project-html.mdx',
     referenceGroup: 'core',
+    batchable: false,
     intentGroup: 'get_content',
     intentAction: 'html_projection',
   },
@@ -939,7 +946,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP'],
       throws: ['CAPABILITY_UNAVAILABLE'],
       returnsReceipt: true,
@@ -962,7 +969,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: [
         'INVALID_TARGET',
         'NO_OP',
@@ -1016,7 +1023,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: [
         'INVALID_TARGET',
         'NO_OP',
@@ -1064,7 +1071,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['NO_OP'],
       throws: [...T_NOT_FOUND_CAPABLE, 'INVALID_TARGET', 'INVALID_INPUT', ...T_STORY],
       returnsReceipt: true,
@@ -1083,7 +1090,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['INVALID_TARGET', 'NO_OP'],
       throws: [...T_NOT_FOUND_CAPABLE, 'INVALID_TARGET', 'INVALID_INPUT', ...T_STORY],
       returnsReceipt: true,
@@ -1128,7 +1135,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: NONE_FAILURES,
       throws: [
         'TARGET_NOT_FOUND',
@@ -1156,7 +1163,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: NONE_FAILURES,
       throws: [
         'TARGET_NOT_FOUND',
@@ -1184,7 +1191,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: false,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: [
         'INVALID_TARGET',
         'TARGET_NOT_FOUND',
@@ -1209,7 +1216,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: false,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: [
         'INVALID_TARGET',
         'TARGET_NOT_FOUND',
@@ -1234,7 +1241,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: false,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: [
         'INVALID_TARGET',
         'TARGET_NOT_FOUND',
@@ -1256,7 +1263,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['INVALID_TARGET', 'NO_OP'],
       throws: [...T_NOT_FOUND_CAPABLE, 'INVALID_TARGET', 'INVALID_INPUT', ...T_STORY],
       returnsReceipt: true,
@@ -1276,7 +1283,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: NONE_FAILURES,
       throws: ['INVALID_TARGET', 'INVALID_INPUT', 'CAPABILITY_UNAVAILABLE', 'REVISION_MISMATCH'],
       historyUnsafe: true,
@@ -1305,7 +1312,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       // The adapter bridges runtime engine failures into receipt failures, so
       // possibleFailureCodes must list every code that can appear in a returned
       // { success: false, failure } receipt (see contract.test.ts parity test).
@@ -1324,6 +1331,7 @@ export const OPERATION_DEFINITIONS = {
     }),
     referenceDocPath: 'templates/apply.mdx',
     referenceGroup: 'templates',
+    batchable: false,
   },
   'create.paragraph': {
     memberPath: 'create.paragraph',
@@ -1333,7 +1341,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['INVALID_TARGET'],
       throws: [...T_NOT_FOUND_CAPABLE, 'INVALID_TARGET', 'AMBIGUOUS_TARGET', ...T_STORY],
     }),
@@ -1350,7 +1358,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['INVALID_TARGET'],
       throws: [...T_NOT_FOUND_CAPABLE, 'INVALID_TARGET', 'AMBIGUOUS_TARGET', ...T_STORY],
     }),
@@ -1367,7 +1375,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['INVALID_TARGET', 'CAPABILITY_UNAVAILABLE'],
       throws: T_SECTION_CREATE,
     }),
@@ -1408,7 +1416,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP', 'INVALID_TARGET', 'CAPABILITY_UNAVAILABLE'],
       throws: T_SECTION_MUTATION,
       historyUnsafe: true,
@@ -1425,7 +1433,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP', 'INVALID_TARGET', 'CAPABILITY_UNAVAILABLE'],
       throws: T_SECTION_MUTATION,
       historyUnsafe: true,
@@ -1442,7 +1450,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP', 'INVALID_TARGET', 'CAPABILITY_UNAVAILABLE'],
       throws: T_SECTION_MUTATION,
       historyUnsafe: true,
@@ -1459,7 +1467,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP', 'INVALID_TARGET', 'CAPABILITY_UNAVAILABLE'],
       throws: T_SECTION_MUTATION,
       historyUnsafe: true,
@@ -1475,7 +1483,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP', 'INVALID_TARGET', 'CAPABILITY_UNAVAILABLE'],
       throws: T_SECTION_MUTATION,
       historyUnsafe: true,
@@ -1491,7 +1499,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP', 'INVALID_TARGET', 'CAPABILITY_UNAVAILABLE'],
       throws: T_SECTION_MUTATION,
       historyUnsafe: true,
@@ -1507,7 +1515,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP', 'INVALID_TARGET', 'CAPABILITY_UNAVAILABLE'],
       throws: T_SECTION_MUTATION,
       historyUnsafe: true,
@@ -1523,7 +1531,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP', 'INVALID_TARGET', 'CAPABILITY_UNAVAILABLE'],
       throws: T_SECTION_MUTATION,
       historyUnsafe: true,
@@ -1540,7 +1548,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP', 'CAPABILITY_UNAVAILABLE'],
       throws: T_SECTION_SETTINGS_MUTATION,
       historyUnsafe: true,
@@ -1556,7 +1564,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP', 'INVALID_TARGET', 'CAPABILITY_UNAVAILABLE'],
       throws: T_SECTION_MUTATION,
       historyUnsafe: true,
@@ -1572,7 +1580,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP', 'INVALID_TARGET', 'CAPABILITY_UNAVAILABLE'],
       throws: T_SECTION_MUTATION,
       historyUnsafe: true,
@@ -1589,7 +1597,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP', 'INVALID_TARGET', 'CAPABILITY_UNAVAILABLE'],
       throws: T_SECTION_MUTATION,
       historyUnsafe: true,
@@ -1606,7 +1614,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP', 'INVALID_TARGET', 'CAPABILITY_UNAVAILABLE'],
       throws: T_SECTION_MUTATION,
       historyUnsafe: true,
@@ -1623,7 +1631,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP', 'INVALID_TARGET', 'CAPABILITY_UNAVAILABLE'],
       throws: T_SECTION_MUTATION,
       historyUnsafe: true,
@@ -1640,7 +1648,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP', 'INVALID_TARGET', 'CAPABILITY_UNAVAILABLE'],
       throws: T_SECTION_MUTATION,
       historyUnsafe: true,
@@ -1657,7 +1665,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP', 'INVALID_TARGET', 'CAPABILITY_UNAVAILABLE'],
       throws: T_SECTION_MUTATION,
       historyUnsafe: true,
@@ -1676,7 +1684,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['NO_OP', 'INVALID_INPUT', 'PRECONDITION_FAILED'],
       throws: T_PARAGRAPH_MUTATION,
     }),
@@ -1694,7 +1702,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['NO_OP', 'INVALID_INPUT', 'PRECONDITION_FAILED'],
       throws: T_PARAGRAPH_MUTATION,
     }),
@@ -1711,7 +1719,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['NO_OP'],
       throws: T_PARAGRAPH_MUTATION,
     }),
@@ -1728,7 +1736,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['NO_OP'],
       throws: T_PARAGRAPH_MUTATION,
     }),
@@ -1744,7 +1752,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['NO_OP'],
       throws: T_PARAGRAPH_MUTATION,
     }),
@@ -1761,7 +1769,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['NO_OP'],
       throws: T_PARAGRAPH_MUTATION,
     }),
@@ -1776,7 +1784,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['NO_OP'],
       throws: T_PARAGRAPH_MUTATION,
     }),
@@ -1793,7 +1801,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['NO_OP'],
       throws: T_PARAGRAPH_MUTATION,
     }),
@@ -1808,7 +1816,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['NO_OP'],
       throws: T_PARAGRAPH_MUTATION,
     }),
@@ -1825,7 +1833,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['NO_OP'],
       throws: T_PARAGRAPH_MUTATION,
     }),
@@ -1840,7 +1848,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['NO_OP'],
       throws: T_PARAGRAPH_MUTATION,
     }),
@@ -1855,7 +1863,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['NO_OP'],
       throws: T_PARAGRAPH_MUTATION,
     }),
@@ -1871,7 +1879,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['NO_OP'],
       throws: T_PARAGRAPH_MUTATION,
     }),
@@ -1888,7 +1896,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['NO_OP'],
       throws: T_PARAGRAPH_MUTATION,
     }),
@@ -1903,7 +1911,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['NO_OP'],
       throws: T_PARAGRAPH_MUTATION,
     }),
@@ -1918,7 +1926,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['NO_OP'],
       throws: T_PARAGRAPH_MUTATION,
     }),
@@ -1933,7 +1941,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['NO_OP'],
       throws: T_PARAGRAPH_MUTATION,
     }),
@@ -1948,7 +1956,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['NO_OP'],
       throws: T_PARAGRAPH_MUTATION,
     }),
@@ -1963,7 +1971,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['NO_OP'],
       throws: T_PARAGRAPH_MUTATION,
     }),
@@ -1978,7 +1986,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['NO_OP'],
       throws: T_PARAGRAPH_MUTATION,
     }),
@@ -1996,7 +2004,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP', 'CAPABILITY_UNAVAILABLE'],
       throws: T_PARAGRAPH_MUTATION,
     }),
@@ -2011,7 +2019,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['NO_OP'],
       throws: T_PARAGRAPH_MUTATION,
     }),
@@ -2028,7 +2036,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['NO_OP'],
       throws: T_PARAGRAPH_MUTATION,
     }),
@@ -2045,7 +2053,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP'],
       throws: T_PARAGRAPH_MUTATION,
     }),
@@ -2085,7 +2093,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['INVALID_TARGET'],
       throws: [...T_NOT_FOUND_CAPABLE, 'INVALID_TARGET'],
     }),
@@ -2103,7 +2111,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['INVALID_TARGET', 'LEVEL_OUT_OF_RANGE', 'INVALID_INPUT', 'NO_COMPATIBLE_PREVIOUS'],
       throws: [...T_NOT_FOUND_CAPABLE, 'INVALID_TARGET', 'INVALID_INPUT'],
     }),
@@ -2124,7 +2132,7 @@ export const OPERATION_DEFINITIONS = {
       // The v2 adapter authors tracked attach via
       // prepareTrackedListDefinitionMutation (pPrChange-backed numPr revision);
       // the catalog flag was lagging the adapter and blocked CLI-transport hosts.
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       // PRECONDITION_FAILED is reachable in tracked mode:
       // prepareTrackedListDefinitionMutation returns it when no author is
       // configured or the target paragraph carries a conflicting pPrChange.
@@ -2144,7 +2152,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['INVALID_TARGET'],
       throws: [...T_NOT_FOUND_CAPABLE, 'INVALID_TARGET'],
     }),
@@ -2165,7 +2173,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['INVALID_TARGET'],
       throws: [...T_NOT_FOUND_CAPABLE, 'INVALID_TARGET'],
     }),
@@ -2183,7 +2191,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['NO_OP', 'INVALID_TARGET', 'LEVEL_OUT_OF_RANGE'],
       throws: [...T_NOT_FOUND_CAPABLE, 'INVALID_TARGET'],
     }),
@@ -2200,7 +2208,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['NO_OP', 'INVALID_TARGET', 'LEVEL_OUT_OF_RANGE'],
       throws: [...T_NOT_FOUND_CAPABLE, 'INVALID_TARGET'],
     }),
@@ -2217,7 +2225,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: [
         'INVALID_TARGET',
         'NO_ADJACENT_SEQUENCE',
@@ -2249,7 +2257,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['INVALID_TARGET', 'NO_OP'],
       throws: [...T_NOT_FOUND_CAPABLE, 'INVALID_TARGET'],
     }),
@@ -2265,7 +2273,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['INVALID_TARGET', 'NO_ADJACENT_SEQUENCE', 'NO_OP'],
       throws: [...T_NOT_FOUND_CAPABLE, 'INVALID_TARGET'],
     }),
@@ -2283,7 +2291,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['INVALID_TARGET', 'NO_OP'],
       throws: [...T_NOT_FOUND_CAPABLE, 'INVALID_TARGET'],
     }),
@@ -2300,7 +2308,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['INVALID_TARGET', 'LEVEL_OUT_OF_RANGE', 'NO_OP'],
       throws: [...T_NOT_FOUND_CAPABLE, 'INVALID_TARGET'],
     }),
@@ -2318,7 +2326,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['INVALID_TARGET', 'NO_OP'],
       throws: [...T_NOT_FOUND_CAPABLE, 'INVALID_TARGET'],
     }),
@@ -2335,7 +2343,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       returnsReceipt: true,
       possibleFailureCodes: ['INVALID_TARGET', 'NO_COMPATIBLE_PREVIOUS', 'ALREADY_CONTINUOUS'],
       throws: [...T_NOT_FOUND_CAPABLE, 'INVALID_TARGET'],
@@ -2365,7 +2373,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['INVALID_TARGET', 'LEVEL_OUT_OF_RANGE'],
       throws: [...T_NOT_FOUND_CAPABLE, 'INVALID_TARGET'],
     }),
@@ -2380,7 +2388,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['INVALID_TARGET'],
       throws: [...T_NOT_FOUND_CAPABLE, 'INVALID_TARGET'],
     }),
@@ -2397,7 +2405,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP', 'INVALID_TARGET', 'LEVEL_OUT_OF_RANGE', 'INVALID_INPUT'],
       throws: [...T_NOT_FOUND_CAPABLE, 'INVALID_TARGET', 'INVALID_INPUT'],
     }),
@@ -2412,7 +2420,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP', 'INVALID_TARGET', 'LEVEL_OUT_OF_RANGE', 'INVALID_INPUT'],
       throws: [...T_NOT_FOUND_CAPABLE, 'INVALID_TARGET', 'INVALID_INPUT'],
     }),
@@ -2429,7 +2437,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP', 'INVALID_TARGET', 'INVALID_INPUT'],
       throws: [...T_NOT_FOUND_CAPABLE, 'INVALID_TARGET', 'INVALID_INPUT'],
     }),
@@ -2461,7 +2469,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP', 'INVALID_TARGET', 'LEVEL_OUT_OF_RANGE', 'LEVEL_NOT_FOUND'],
       throws: [...T_NOT_FOUND_CAPABLE, 'INVALID_TARGET'],
     }),
@@ -2476,7 +2484,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP', 'INVALID_TARGET', 'LEVEL_OUT_OF_RANGE', 'LEVEL_NOT_FOUND'],
       throws: [...T_NOT_FOUND_CAPABLE, 'INVALID_TARGET'],
     }),
@@ -2491,7 +2499,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: [
         'NO_OP',
         'INVALID_TARGET',
@@ -2513,7 +2521,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP', 'INVALID_TARGET', 'LEVEL_OUT_OF_RANGE', 'LEVEL_NOT_FOUND'],
       throws: [...T_NOT_FOUND_CAPABLE, 'INVALID_TARGET'],
     }),
@@ -2528,7 +2536,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP', 'INVALID_TARGET', 'LEVEL_OUT_OF_RANGE', 'LEVEL_NOT_FOUND', 'INVALID_INPUT'],
       throws: [...T_NOT_FOUND_CAPABLE, 'INVALID_TARGET', 'INVALID_INPUT'],
     }),
@@ -2543,7 +2551,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP', 'INVALID_TARGET', 'LEVEL_OUT_OF_RANGE', 'LEVEL_NOT_FOUND'],
       throws: [...T_NOT_FOUND_CAPABLE, 'INVALID_TARGET'],
     }),
@@ -2558,7 +2566,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP', 'INVALID_TARGET', 'LEVEL_OUT_OF_RANGE', 'LEVEL_NOT_FOUND'],
       throws: [...T_NOT_FOUND_CAPABLE, 'INVALID_TARGET'],
     }),
@@ -2573,7 +2581,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP', 'INVALID_TARGET', 'LEVEL_OUT_OF_RANGE'],
       throws: [...T_NOT_FOUND_CAPABLE, 'INVALID_TARGET'],
     }),
@@ -2604,7 +2612,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP', 'INVALID_TARGET', 'INVALID_INPUT', 'LEVEL_OUT_OF_RANGE'],
       throws: [...T_NOT_FOUND_CAPABLE, 'INVALID_TARGET', 'INVALID_INPUT'],
     }),
@@ -2620,7 +2628,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP', 'INVALID_TARGET', 'INVALID_INPUT'],
       throws: [...T_NOT_FOUND_CAPABLE, 'INVALID_TARGET', 'INVALID_INPUT'],
     }),
@@ -2636,7 +2644,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP', 'INVALID_TARGET', 'INVALID_INPUT', 'LEVEL_OUT_OF_RANGE', 'LEVEL_NOT_FOUND'],
       throws: [...T_NOT_FOUND_CAPABLE, 'INVALID_TARGET', 'INVALID_INPUT'],
     }),
@@ -2652,7 +2660,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP', 'INVALID_TARGET', 'INVALID_INPUT', 'LEVEL_OUT_OF_RANGE', 'LEVEL_NOT_FOUND'],
       throws: [...T_NOT_FOUND_CAPABLE, 'INVALID_TARGET'],
     }),
@@ -2668,7 +2676,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP', 'INVALID_TARGET', 'INVALID_INPUT', 'LEVEL_OUT_OF_RANGE', 'LEVEL_NOT_FOUND'],
       throws: [...T_NOT_FOUND_CAPABLE, 'INVALID_TARGET', 'INVALID_INPUT'],
     }),
@@ -2684,7 +2692,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP', 'INVALID_TARGET', 'INVALID_INPUT', 'LEVEL_OUT_OF_RANGE', 'LEVEL_NOT_FOUND'],
       throws: [...T_NOT_FOUND_CAPABLE, 'INVALID_TARGET', 'INVALID_INPUT'],
     }),
@@ -2718,7 +2726,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: false,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: [
         'INVALID_TARGET',
         'TARGET_NOT_FOUND',
@@ -2741,7 +2749,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: false,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['INVALID_TARGET', 'TARGET_NOT_FOUND', 'CAPABILITY_UNAVAILABLE', 'INVALID_CONTEXT'],
       throws: [...T_NOT_FOUND_CAPABLE, 'INVALID_TARGET'],
     }),
@@ -2758,7 +2766,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: false,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: [
         'INVALID_TARGET',
         'TARGET_NOT_FOUND',
@@ -2781,7 +2789,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: false,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['INVALID_TARGET', 'TARGET_NOT_FOUND', 'CAPABILITY_UNAVAILABLE', 'INVALID_CONTEXT'],
       throws: [...T_NOT_FOUND_CAPABLE, 'INVALID_TARGET'],
     }),
@@ -2798,7 +2806,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: false,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: [
         'INVALID_INPUT',
         'INVALID_TARGET',
@@ -2811,6 +2819,7 @@ export const OPERATION_DEFINITIONS = {
     }),
     referenceDocPath: 'comments/create.mdx',
     referenceGroup: 'comments',
+    inputAliases: { parentId: 'parentCommentId' },
     intentGroup: 'comment',
     intentAction: 'create',
   },
@@ -2824,7 +2833,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: false,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: [
         'INVALID_INPUT',
         'INVALID_TARGET',
@@ -2838,6 +2847,7 @@ export const OPERATION_DEFINITIONS = {
     }),
     referenceDocPath: 'comments/patch.mdx',
     referenceGroup: 'comments',
+    inputAliases: { id: 'commentId' },
     intentGroup: 'comment',
     intentAction: 'update',
   },
@@ -2850,13 +2860,14 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: false,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['TARGET_NOT_FOUND', 'CAPABILITY_UNAVAILABLE', 'NO_OP'],
       throws: T_NOT_FOUND_CAPABLE,
       returnsReceipt: true,
     }),
     referenceDocPath: 'comments/delete.mdx',
     referenceGroup: 'comments',
+    inputAliases: { id: 'commentId' },
     intentGroup: 'comment',
     intentAction: 'delete',
   },
@@ -2871,6 +2882,7 @@ export const OPERATION_DEFINITIONS = {
     }),
     referenceDocPath: 'comments/get.mdx',
     referenceGroup: 'comments',
+    inputAliases: { id: 'commentId' },
     intentGroup: 'comment',
     intentAction: 'get',
   },
@@ -2927,7 +2939,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: false,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: [
         'NO_OP',
         'INVALID_INPUT',
@@ -3027,7 +3039,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: false,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['INVALID_CONTEXT'],
       throws: [
         ...T_PLAN_ENGINE,
@@ -3055,13 +3067,14 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: false,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: [],
       throws: ['INVALID_INPUT', 'CAPABILITY_UNAVAILABLE'],
       deterministicTargetResolution: true,
     }),
     referenceDocPath: 'mutations/plan-execute.mdx',
     referenceGroup: 'mutations',
+    batchable: false,
     skipAsATool: true,
   },
   'capabilities.get': {
@@ -3093,6 +3106,20 @@ export const OPERATION_DEFINITIONS = {
     intentGroup: 'edit',
     intentAction: 'check_support',
   },
+  'capabilities.resolve': {
+    memberPath: 'capabilities.resolve',
+    description: 'Resolve availability, tracked-mode support, and dry-run support for one concrete operation request.',
+    expectedResult:
+      'Returns structured support decisions from the same runtime registration policy used by capability discovery.',
+    requiresDocumentContext: true,
+    metadata: readOperation({
+      idempotency: 'conditional',
+      throws: ['INVALID_INPUT', 'CAPABILITY_UNAVAILABLE'],
+    }),
+    referenceDocPath: 'capabilities/resolve.mdx',
+    referenceGroup: 'capabilities',
+    skipAsATool: true,
+  },
   // -------------------------------------------------------------------------
   // Create: table
   // -------------------------------------------------------------------------
@@ -3104,7 +3131,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['INVALID_TARGET'],
       throws: [...T_NOT_FOUND_COMMAND, 'INVALID_TARGET', 'AMBIGUOUS_TARGET'],
     }),
@@ -3124,7 +3151,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['INVALID_TARGET'],
       throws: T_NOT_FOUND_COMMAND,
     }),
@@ -3139,7 +3166,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['INVALID_TARGET', 'NO_OP'],
       throws: [...T_NOT_FOUND_COMMAND, 'INVALID_TARGET'],
     }),
@@ -3156,7 +3183,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['INVALID_TARGET', 'NO_OP'],
       throws: T_NOT_FOUND_COMMAND,
     }),
@@ -3172,7 +3199,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['INVALID_TARGET', 'NO_OP'],
       throws: T_NOT_FOUND_COMMAND,
     }),
@@ -3187,7 +3214,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['INVALID_TARGET'],
       throws: T_NOT_FOUND_COMMAND,
     }),
@@ -3202,7 +3229,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['INVALID_TARGET', 'NO_OP'],
       throws: T_NOT_FOUND_COMMAND,
     }),
@@ -3221,7 +3248,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['INVALID_TARGET', 'NO_OP'],
       throws: T_NOT_FOUND_COMMAND,
     }),
@@ -3242,7 +3269,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['INVALID_TARGET'],
       throws: [...T_NOT_FOUND_COMMAND, 'INVALID_TARGET'],
     }),
@@ -3259,7 +3286,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['INVALID_TARGET', 'NO_OP'],
       throws: [...T_NOT_FOUND_COMMAND, 'INVALID_TARGET'],
     }),
@@ -3277,7 +3304,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['INVALID_TARGET', 'NO_OP', 'CAPABILITY_UNAVAILABLE'],
       throws: [...T_NOT_FOUND_COMMAND, 'INVALID_TARGET'],
     }),
@@ -3294,7 +3321,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['INVALID_TARGET', 'NO_OP'],
       throws: T_NOT_FOUND_COMMAND,
     }),
@@ -3311,7 +3338,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['INVALID_TARGET', 'NO_OP'],
       throws: T_NOT_FOUND_COMMAND,
     }),
@@ -3326,7 +3353,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['INVALID_TARGET', 'NO_OP'],
       throws: T_NOT_FOUND_COMMAND,
     }),
@@ -3347,7 +3374,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['INVALID_TARGET'],
       throws: [...T_NOT_FOUND_COMMAND, 'INVALID_TARGET'],
     }),
@@ -3364,7 +3391,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['INVALID_TARGET', 'NO_OP'],
       throws: [...T_NOT_FOUND_COMMAND, 'INVALID_TARGET'],
     }),
@@ -3384,7 +3411,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: [
         'TARGET_NOT_FOUND',
         'INVALID_TARGET',
@@ -3407,7 +3434,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['INVALID_TARGET', 'NO_OP'],
       throws: T_NOT_FOUND_COMMAND,
     }),
@@ -3424,7 +3451,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['INVALID_TARGET', 'NO_OP'],
       throws: T_NOT_FOUND_COMMAND,
     }),
@@ -3442,7 +3469,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['INVALID_TARGET'],
       throws: [...T_NOT_FOUND_COMMAND, 'INVALID_TARGET'],
     }),
@@ -3457,7 +3484,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['INVALID_TARGET', 'NO_OP'],
       throws: [...T_NOT_FOUND_COMMAND, 'INVALID_TARGET'],
     }),
@@ -3472,7 +3499,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['INVALID_TARGET', 'NO_OP', 'INVALID_CONTEXT'],
       throws: [...T_NOT_FOUND_COMMAND, 'INVALID_CONTEXT'],
     }),
@@ -3489,7 +3516,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['INVALID_TARGET', 'NO_OP', 'INVALID_CONTEXT'],
       throws: [...T_NOT_FOUND_COMMAND, 'INVALID_CONTEXT'],
     }),
@@ -3506,7 +3533,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['INVALID_TARGET', 'INVALID_CONTEXT'],
       throws: [...T_NOT_FOUND_COMMAND, 'INVALID_CONTEXT'],
     }),
@@ -3524,7 +3551,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['INVALID_TARGET', 'NO_OP'],
       throws: T_NOT_FOUND_COMMAND,
     }),
@@ -3548,8 +3575,8 @@ export const OPERATION_DEFINITIONS = {
       supportsDryRun: true,
       // Cell text is authored as a structural replacement of the cell body, so
       // this operation cannot emit its own reviewable revision and must not
-      // advertise tracked support.
-      supportsTrackedMode: false,
+      // advertise unconditional tracked support.
+      trackedSupport: 'conditional',
       // It is nonetheless permitted for one target class: a cell whose row was
       // tracked-inserted by the same author. That row's `<w:ins>` already owns
       // the accept/reject fate of everything inside it, so filling the cell
@@ -3557,7 +3584,6 @@ export const OPERATION_DEFINITIONS = {
       // rejecting the row removes the text with it. Only the adapter can tell
       // whether a given cell qualifies, so transports must forward the tracked
       // call and let it decide instead of rejecting on metadata alone.
-      supportsConditionalTrackedMode: true,
       possibleFailureCodes: ['INVALID_TARGET', 'NO_OP'],
       throws: T_NOT_FOUND_COMMAND,
     }),
@@ -3577,7 +3603,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['INVALID_TARGET'],
       throws: T_NOT_FOUND_COMMAND,
     }),
@@ -3592,7 +3618,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['INVALID_TARGET', 'NO_OP'],
       throws: T_NOT_FOUND_COMMAND,
     }),
@@ -3611,7 +3637,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['INVALID_TARGET', 'NO_OP'],
       throws: T_NOT_FOUND_COMMAND,
     }),
@@ -3626,7 +3652,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['INVALID_TARGET', 'NO_OP'],
       throws: T_NOT_FOUND_COMMAND,
     }),
@@ -3641,7 +3667,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['INVALID_TARGET', 'NO_OP'],
       throws: T_NOT_FOUND_COMMAND,
     }),
@@ -3656,7 +3682,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['INVALID_TARGET', 'NO_OP'],
       throws: T_NOT_FOUND_COMMAND,
     }),
@@ -3671,7 +3697,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['INVALID_TARGET', 'NO_OP'],
       throws: T_NOT_FOUND_COMMAND,
     }),
@@ -3686,7 +3712,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['INVALID_TARGET', 'NO_OP'],
       throws: T_NOT_FOUND_COMMAND,
     }),
@@ -3701,7 +3727,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['INVALID_TARGET', 'NO_OP'],
       throws: T_NOT_FOUND_COMMAND,
     }),
@@ -3718,7 +3744,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['INVALID_TARGET', 'NO_OP'],
       throws: T_NOT_FOUND_COMMAND,
     }),
@@ -3733,7 +3759,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['INVALID_TARGET', 'NO_OP'],
       throws: T_NOT_FOUND_COMMAND,
     }),
@@ -3748,7 +3774,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['INVALID_TARGET', 'NO_OP'],
       throws: T_NOT_FOUND_COMMAND,
     }),
@@ -3763,7 +3789,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['INVALID_TARGET', 'NO_OP'],
       throws: T_NOT_FOUND_COMMAND,
     }),
@@ -3778,7 +3804,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['INVALID_TARGET', 'NO_OP'],
       throws: T_NOT_FOUND_COMMAND,
     }),
@@ -3801,7 +3827,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP', 'INVALID_TARGET', 'INVALID_INPUT'],
       throws: T_NOT_FOUND_COMMAND,
     }),
@@ -3818,7 +3844,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['INVALID_TARGET', 'INVALID_INPUT'],
       throws: T_NOT_FOUND_COMMAND,
     }),
@@ -3836,7 +3862,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP', 'INVALID_TARGET', 'INVALID_INPUT'],
       throws: T_NOT_FOUND_COMMAND,
     }),
@@ -3855,7 +3881,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['INVALID_TARGET'],
       throws: T_NOT_FOUND_COMMAND,
     }),
@@ -3919,7 +3945,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP', 'INVALID_INPUT'],
       throws: ['CAPABILITY_UNAVAILABLE', 'INVALID_INPUT'],
       historyUnsafe: true,
@@ -3935,7 +3961,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP'],
       throws: ['CAPABILITY_UNAVAILABLE'],
       historyUnsafe: true,
@@ -3954,7 +3980,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP', 'INVALID_INSERTION_CONTEXT'],
       throws: ['INVALID_TARGET', 'TARGET_NOT_FOUND', 'INVALID_INPUT', 'CAPABILITY_UNAVAILABLE'],
     }),
@@ -3995,7 +4021,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP'],
       throws: ['TARGET_NOT_FOUND', 'INVALID_TARGET', 'INVALID_INPUT', 'CAPABILITY_UNAVAILABLE'],
     }),
@@ -4011,7 +4037,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP', 'PAGE_NUMBERS_NOT_MATERIALIZED', 'CAPABILITY_UNAVAILABLE'],
       throws: ['TARGET_NOT_FOUND', 'INVALID_TARGET', 'CAPABILITY_UNAVAILABLE'],
     }),
@@ -4026,7 +4052,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP'],
       throws: ['TARGET_NOT_FOUND', 'INVALID_TARGET', 'CAPABILITY_UNAVAILABLE'],
     }),
@@ -4044,7 +4070,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP', 'INVALID_INSERTION_CONTEXT'],
       throws: ['TARGET_NOT_FOUND', 'INVALID_TARGET', 'INVALID_INPUT', 'CAPABILITY_UNAVAILABLE'],
     }),
@@ -4059,7 +4085,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP'],
       throws: ['TARGET_NOT_FOUND', 'INVALID_TARGET', 'CAPABILITY_UNAVAILABLE'],
     }),
@@ -4098,7 +4124,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP'],
       throws: ['TARGET_NOT_FOUND', 'INVALID_TARGET', 'INVALID_INPUT', 'CAPABILITY_UNAVAILABLE'],
     }),
@@ -4129,7 +4155,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: false,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: NONE_FAILURES,
       throws: ['CAPABILITY_UNAVAILABLE'],
     }),
@@ -4147,7 +4173,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: false,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: NONE_FAILURES,
       throws: ['CAPABILITY_UNAVAILABLE'],
     }),
@@ -4168,7 +4194,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['INVALID_TARGET', 'INVALID_INPUT'],
       throws: [...T_NOT_FOUND_COMMAND, 'INVALID_INPUT', ...T_STORY],
     }),
@@ -4208,7 +4234,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['NO_OP'],
       throws: T_IMAGE_COMMAND,
     }),
@@ -4225,7 +4251,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'conditional',
       possibleFailureCodes: ['INVALID_TARGET', 'NO_OP', 'CAPABILITY_UNAVAILABLE'],
       throws: T_IMAGE_COMMAND,
     }),
@@ -4240,7 +4266,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['NO_OP'],
       throws: T_IMAGE_COMMAND,
     }),
@@ -4255,7 +4281,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['NO_OP'],
       throws: T_IMAGE_COMMAND,
     }),
@@ -4270,7 +4296,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['NO_OP'],
       throws: [...T_IMAGE_COMMAND, 'INVALID_INPUT'],
     }),
@@ -4285,7 +4311,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['NO_OP'],
       throws: T_IMAGE_COMMAND,
     }),
@@ -4300,7 +4326,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['NO_OP'],
       throws: T_IMAGE_COMMAND,
     }),
@@ -4315,7 +4341,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['NO_OP'],
       throws: T_IMAGE_COMMAND,
     }),
@@ -4330,7 +4356,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['NO_OP'],
       throws: T_IMAGE_COMMAND,
     }),
@@ -4345,7 +4371,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['NO_OP'],
       throws: T_IMAGE_COMMAND,
     }),
@@ -4360,7 +4386,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['NO_OP'],
       throws: T_IMAGE_COMMAND,
     }),
@@ -4376,7 +4402,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['NO_OP'],
       throws: [...T_IMAGE_COMMAND, 'INVALID_INPUT'],
     }),
@@ -4391,7 +4417,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['NO_OP'],
       throws: [...T_IMAGE_COMMAND, 'INVALID_INPUT'],
     }),
@@ -4406,7 +4432,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['NO_OP'],
       throws: [...T_IMAGE_COMMAND, 'INVALID_INPUT'],
     }),
@@ -4421,7 +4447,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['NO_OP'],
       throws: [...T_IMAGE_COMMAND, 'INVALID_INPUT'],
     }),
@@ -4436,7 +4462,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['NO_OP'],
       throws: [...T_IMAGE_COMMAND, 'INVALID_INPUT'],
     }),
@@ -4451,7 +4477,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['NO_OP'],
       throws: T_IMAGE_COMMAND,
     }),
@@ -4467,7 +4493,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['NO_OP'],
       throws: [...T_IMAGE_COMMAND, 'INVALID_INPUT'],
     }),
@@ -4483,7 +4509,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['NO_OP'],
       throws: [...T_IMAGE_COMMAND, 'INVALID_INPUT'],
     }),
@@ -4498,7 +4524,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['NO_OP'],
       throws: [...T_IMAGE_COMMAND, 'INVALID_INPUT'],
     }),
@@ -4513,7 +4539,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['NO_OP'],
       throws: [...T_IMAGE_COMMAND, 'INVALID_INPUT'],
     }),
@@ -4528,7 +4554,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['NO_OP'],
       throws: [...T_IMAGE_COMMAND, 'INVALID_INPUT'],
     }),
@@ -4544,7 +4570,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP'],
       throws: [...T_IMAGE_COMMAND, 'INVALID_INPUT'],
     }),
@@ -4559,7 +4585,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['NO_OP'],
       throws: [...T_IMAGE_COMMAND, 'INVALID_INPUT'],
     }),
@@ -4574,7 +4600,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP'],
       throws: T_IMAGE_COMMAND,
     }),
@@ -4617,7 +4643,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       deterministicTargetResolution: true,
       possibleFailureCodes: ['NO_OP'],
       throws: [...T_NOT_FOUND_CAPABLE, 'INVALID_TARGET', 'INVALID_INPUT'],
@@ -4634,7 +4660,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       deterministicTargetResolution: true,
       possibleFailureCodes: ['NO_OP', 'INVALID_TARGET'],
       throws: [...T_NOT_FOUND_CAPABLE, 'INVALID_TARGET', 'INVALID_INPUT'],
@@ -4651,7 +4677,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       deterministicTargetResolution: true,
       possibleFailureCodes: ['NO_OP'],
       throws: [...T_NOT_FOUND_CAPABLE, 'INVALID_TARGET', 'INVALID_INPUT'],
@@ -4669,7 +4695,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       deterministicTargetResolution: true,
       possibleFailureCodes: ['NO_OP'],
       throws: [...T_NOT_FOUND_CAPABLE, 'INVALID_TARGET', 'INVALID_INPUT'],
@@ -4723,7 +4749,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP', 'INVALID_TARGET', 'CAPABILITY_UNAVAILABLE'],
       throws: T_HEADER_FOOTER_MUTATION,
       historyUnsafe: true,
@@ -4739,7 +4765,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP'],
       throws: T_HEADER_FOOTER_MUTATION,
       historyUnsafe: true,
@@ -4756,7 +4782,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP', 'INVALID_TARGET', 'CAPABILITY_UNAVAILABLE'],
       throws: T_HEADER_FOOTER_MUTATION,
       historyUnsafe: true,
@@ -4784,7 +4810,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['INVALID_TARGET'],
       throws: ['INVALID_TARGET', 'INVALID_INPUT', 'CAPABILITY_UNAVAILABLE', 'INTERNAL_ERROR'],
       historyUnsafe: true,
@@ -4801,7 +4827,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['INVALID_TARGET'],
       throws: ['TARGET_NOT_FOUND', 'INVALID_TARGET', 'INVALID_INPUT', 'CAPABILITY_UNAVAILABLE', 'INTERNAL_ERROR'],
       historyUnsafe: true,
@@ -4832,7 +4858,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['INVALID_TARGET', 'PRECONDITION_FAILED'],
       throws: ['INVALID_INPUT', 'INVALID_TARGET', 'CAPABILITY_UNAVAILABLE', 'INTERNAL_ERROR'],
     }),
@@ -4849,7 +4875,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['TARGET_NOT_FOUND', 'PRECONDITION_FAILED'],
       throws: ['INVALID_INPUT', 'INVALID_TARGET', 'CAPABILITY_UNAVAILABLE', 'INTERNAL_ERROR'],
     }),
@@ -4864,7 +4890,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['TARGET_NOT_FOUND', 'PRECONDITION_FAILED'],
       throws: ['INVALID_INPUT', 'INVALID_TARGET', 'CAPABILITY_UNAVAILABLE', 'INTERNAL_ERROR'],
     }),
@@ -4884,7 +4910,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['INVALID_TARGET', 'NO_OP'],
       throws: T_CC_MUTATION,
     }),
@@ -4962,7 +4988,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP'],
       throws: T_CC_MUTATION,
     }),
@@ -4977,7 +5003,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP'],
       throws: T_CC_MUTATION,
     }),
@@ -4992,7 +5018,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP'],
       throws: T_CC_MUTATION,
     }),
@@ -5007,7 +5033,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP'],
       throws: T_CC_MUTATION,
     }),
@@ -5024,7 +5050,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['NO_OP', 'CAPABILITY_UNAVAILABLE'],
       throws: T_CC_MUTATION,
     }),
@@ -5039,7 +5065,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP'],
       throws: T_CC_MUTATION,
     }),
@@ -5054,7 +5080,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP'],
       throws: T_CC_MUTATION,
     }),
@@ -5070,7 +5096,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP'],
       throws: T_CC_TYPED,
     }),
@@ -5094,7 +5120,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: ['NO_OP'],
       throws: T_CC_MUTATION,
     }),
@@ -5109,7 +5135,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP'],
       throws: T_CC_MUTATION,
     }),
@@ -5124,7 +5150,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP'],
       throws: T_CC_MUTATION,
     }),
@@ -5139,7 +5165,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP'],
       throws: T_CC_MUTATION,
     }),
@@ -5154,7 +5180,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP'],
       throws: T_CC_MUTATION,
     }),
@@ -5169,7 +5195,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP'],
       throws: T_CC_MUTATION,
     }),
@@ -5194,7 +5220,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP'],
       throws: T_CC_MUTATION,
     }),
@@ -5209,7 +5235,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP'],
       throws: T_CC_MUTATION,
     }),
@@ -5233,7 +5259,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP'],
       throws: T_CC_RAW,
     }),
@@ -5257,7 +5283,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP'],
       throws: T_CC_RAW,
     }),
@@ -5272,7 +5298,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP'],
       throws: T_CC_RAW,
     }),
@@ -5288,7 +5314,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP'],
       throws: T_CC_TYPED,
     }),
@@ -5303,7 +5329,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP'],
       throws: T_CC_TYPED,
     }),
@@ -5318,7 +5344,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP'],
       throws: T_CC_TYPED,
     }),
@@ -5333,7 +5359,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP'],
       throws: T_CC_TYPED,
     }),
@@ -5348,7 +5374,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP'],
       throws: T_CC_TYPED,
     }),
@@ -5363,7 +5389,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP'],
       throws: T_CC_TYPED,
     }),
@@ -5378,7 +5404,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP'],
       throws: T_CC_TYPED,
     }),
@@ -5393,7 +5419,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP'],
       throws: T_CC_TYPED,
     }),
@@ -5408,7 +5434,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP'],
       throws: T_CC_TYPED,
     }),
@@ -5432,7 +5458,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP'],
       throws: T_CC_TYPED,
     }),
@@ -5447,7 +5473,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP'],
       throws: T_CC_TYPED,
     }),
@@ -5462,7 +5488,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP'],
       throws: T_CC_TYPED,
     }),
@@ -5486,7 +5512,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP'],
       throws: T_CC_TYPED,
     }),
@@ -5501,7 +5527,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP'],
       throws: T_CC_TYPED,
     }),
@@ -5526,7 +5552,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP'],
       throws: T_CC_TYPED,
     }),
@@ -5541,7 +5567,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP'],
       throws: T_CC_TYPED,
     }),
@@ -5556,7 +5582,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP'],
       throws: T_CC_TYPED,
     }),
@@ -5571,7 +5597,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP'],
       throws: T_CC_TYPED,
     }),
@@ -5586,7 +5612,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP'],
       throws: T_CC_TYPED,
     }),
@@ -5601,7 +5627,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: [],
       throws: T_CC_MUTATION,
     }),
@@ -5616,7 +5642,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP'],
       throws: T_CC_TYPED,
     }),
@@ -5656,7 +5682,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: NONE_FAILURES,
       throws: T_REF_INSERT,
     }),
@@ -5672,7 +5698,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: NONE_FAILURES,
       throws: T_REF_MUTATION,
     }),
@@ -5687,7 +5713,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: NONE_FAILURES,
       throws: T_REF_MUTATION_REMOVE,
     }),
@@ -5728,7 +5754,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: FOOTNOTE_MUTATION_FAILURES,
       throws: T_REF_INSERT,
     }),
@@ -5744,7 +5770,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: FOOTNOTE_MUTATION_FAILURES,
       throws: T_REF_MUTATION,
     }),
@@ -5759,7 +5785,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: NONE_FAILURES,
       throws: T_REF_MUTATION_REMOVE,
     }),
@@ -5774,7 +5800,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: NONE_FAILURES,
       throws: T_REF_MUTATION,
     }),
@@ -5813,7 +5839,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: [
         'INVALID_INPUT',
         'INVALID_TARGET',
@@ -5878,7 +5904,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['CAPABILITY_UNAVAILABLE'],
       throws: T_REF_INSERT,
     }),
@@ -5893,7 +5919,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['CAPABILITY_UNAVAILABLE'],
       throws: T_REF_MUTATION,
     }),
@@ -5908,7 +5934,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: NONE_FAILURES,
       throws: T_REF_MUTATION_REMOVE,
     }),
@@ -5949,7 +5975,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: NONE_FAILURES,
       throws: T_REF_INSERT,
     }),
@@ -5964,7 +5990,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: NONE_FAILURES,
       throws: T_REF_MUTATION,
     }),
@@ -5979,7 +6005,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: NONE_FAILURES,
       throws: T_REF_MUTATION,
     }),
@@ -5994,7 +6020,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: NONE_FAILURES,
       throws: T_REF_MUTATION_REMOVE,
     }),
@@ -6035,7 +6061,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: NONE_FAILURES,
       throws: T_REF_INSERT,
     }),
@@ -6050,7 +6076,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: NONE_FAILURES,
       throws: T_REF_MUTATION,
     }),
@@ -6065,7 +6091,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: NONE_FAILURES,
       throws: T_REF_MUTATION_REMOVE,
     }),
@@ -6106,7 +6132,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: NONE_FAILURES,
       throws: T_REF_INSERT,
     }),
@@ -6122,7 +6148,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP'],
       throws: T_REF_MUTATION,
     }),
@@ -6137,7 +6163,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: NONE_FAILURES,
       throws: T_REF_MUTATION_REMOVE,
     }),
@@ -6152,7 +6178,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: NONE_FAILURES,
       throws: T_REF_MUTATION,
     }),
@@ -6193,7 +6219,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: NONE_FAILURES,
       throws: T_REF_INSERT,
     }),
@@ -6208,7 +6234,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: NONE_FAILURES,
       throws: T_REF_MUTATION,
     }),
@@ -6223,7 +6249,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: NONE_FAILURES,
       throws: T_REF_MUTATION_REMOVE,
     }),
@@ -6264,7 +6290,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: NONE_FAILURES,
       throws: T_REF_INSERT,
     }),
@@ -6279,7 +6305,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: NONE_FAILURES,
       throws: T_REF_MUTATION,
     }),
@@ -6294,7 +6320,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: NONE_FAILURES,
       throws: T_REF_MUTATION_REMOVE,
     }),
@@ -6335,7 +6361,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: NONE_FAILURES,
       throws: T_REF_INSERT,
     }),
@@ -6350,7 +6376,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: NONE_FAILURES,
       throws: T_REF_MUTATION,
     }),
@@ -6365,7 +6391,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: NONE_FAILURES,
       throws: T_REF_MUTATION_REMOVE,
     }),
@@ -6395,7 +6421,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: NONE_FAILURES,
       throws: T_REF_INSERT,
     }),
@@ -6410,7 +6436,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: NONE_FAILURES,
       throws: T_REF_MUTATION,
     }),
@@ -6425,7 +6451,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: NONE_FAILURES,
       throws: T_REF_MUTATION,
     }),
@@ -6440,7 +6466,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: NONE_FAILURES,
       throws: T_REF_MUTATION_REMOVE,
     }),
@@ -6481,7 +6507,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: NONE_FAILURES,
       throws: T_REF_INSERT,
     }),
@@ -6496,7 +6522,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: NONE_FAILURES,
       throws: T_REF_MUTATION,
     }),
@@ -6511,7 +6537,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: NONE_FAILURES,
       throws: T_REF_MUTATION,
     }),
@@ -6526,7 +6552,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: NONE_FAILURES,
       throws: T_REF_MUTATION_REMOVE,
     }),
@@ -6567,7 +6593,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: NONE_FAILURES,
       throws: T_REF_INSERT,
     }),
@@ -6582,7 +6608,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: NONE_FAILURES,
       throws: T_REF_MUTATION,
     }),
@@ -6597,7 +6623,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: NONE_FAILURES,
       throws: T_REF_MUTATION_REMOVE,
     }),
@@ -6653,7 +6679,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: false,
-      supportsTrackedMode: true,
+      trackedSupport: 'always',
       possibleFailureCodes: NONE_FAILURES,
       throws: ['INVALID_INPUT', 'CAPABILITY_UNSUPPORTED', 'PRECONDITION_FAILED', 'CAPABILITY_UNAVAILABLE'],
       historyUnsafe: true,
@@ -6707,7 +6733,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP'],
       throws: T_PROTECTION_MUTATION,
     }),
@@ -6724,7 +6750,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP'],
       throws: T_PROTECTION_MUTATION,
     }),
@@ -6766,7 +6792,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: NONE_FAILURES,
       throws: T_PERM_RANGE_MUTATION,
     }),
@@ -6783,7 +6809,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: NONE_FAILURES,
       throws: T_PERM_RANGE_MUTATION,
     }),
@@ -6800,7 +6826,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: NONE_FAILURES,
       throws: T_PERM_RANGE_MUTATION,
     }),
@@ -6847,7 +6873,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['INVALID_INPUT'],
       throws: T_REF_INSERT,
     }),
@@ -6865,7 +6891,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['TARGET_NOT_FOUND', 'INVALID_INPUT'],
       throws: T_REF_MUTATION,
     }),
@@ -6882,7 +6908,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['TARGET_NOT_FOUND'],
       throws: T_REF_MUTATION_REMOVE,
     }),
@@ -6904,7 +6930,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['TARGET_NOT_FOUND', 'INVALID_TARGET', 'INVALID_INPUT'],
       throws: [...T_REF_INSERT, 'REVISION_MISMATCH'],
     }),
@@ -6944,7 +6970,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['TARGET_NOT_FOUND', 'INVALID_INPUT'],
       throws: [...T_REF_MUTATION, 'REVISION_MISMATCH'],
     }),
@@ -6960,7 +6986,7 @@ export const OPERATION_DEFINITIONS = {
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
-      supportsTrackedMode: false,
+      trackedSupport: 'never',
       possibleFailureCodes: ['TARGET_NOT_FOUND'],
       throws: [...T_REF_MUTATION_REMOVE, 'REVISION_MISMATCH'],
     }),

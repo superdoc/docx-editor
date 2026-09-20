@@ -4218,40 +4218,10 @@ test('the sidebar section picker matches the root navigation sections', async ()
   assert.deepEqual([...linkedSections].sort(), [...rootSections].sort());
 });
 
-test('the agent example allows exactly the tracked-capable actions', async () => {
-  // The example refuses edits that cannot record a suggestion. That allowlist
-  // is a copy of which actions accept `changeMode`, so it has to be pinned to
-  // the SDK or it will silently drift into permitting untracked edits.
-  const actionsSource = await readFile(
-    new URL('../../../packages/sdk/langs/node/src/agent/actions.ts', import.meta.url),
-    'utf8',
-  );
-  const actionArgs = actionsSource.match(/export const ACTION_ARGS[^=]*=\s*\{([\s\S]*?)\n\};/u)?.[1] ?? '';
-  const hints = actionsSource.match(/export const ACTION_HINTS[^=]*=\s*\{([\s\S]*?)\n\};/u)?.[1] ?? '';
-  // Declaring changeMode alone does not establish tracked support when the
-  // action's contract explicitly documents refusal.
-  const directOnly = new Set(
-    [...hints.matchAll(/\n {2}([a-z0-9_]+):\s*'((?:[^'\\]|\\.)*)'/gu)]
-      .filter(([, , hint]) => /direct-only|tracked["']?\s*(?:mode\s*)?fails|cannot be tracked/iu.test(hint))
-      .map(([, name]) => name),
-  );
-  const supported = new Set(
-    [...actionArgs.matchAll(/\n {2}([a-z0-9_]+):\s*\[([\s\S]*?)\],/gu)]
-      .filter(([, name, args]) => args.includes('changeMode') && !directOnly.has(name))
-      .map(([, name]) => name),
-  );
-
+test('the agent example derives tracked support from the SDK action authority', async () => {
   const example = await readFile(new URL('../snippets/agents/agent-loop.mjs', import.meta.url), 'utf8');
-  const declared = new Set(
-    [
-      ...(example.match(/const TRACKED_CAPABLE_ACTIONS = new Set\(\[([\s\S]*?)\]\)/u)?.[1] ?? '').matchAll(
-        /'([a-z0-9_]+)'/gu,
-      ),
-    ].map(([, name]) => name),
-  );
-
-  assert.ok(supported.size > 0, 'no changeMode-capable actions found in the SDK');
-  assert.deepEqual([...declared].sort(), [...supported].sort());
+  assert.match(example, /getActionDispositions\(\)/u);
+  assert.doesNotMatch(example, /const TRACKED_CAPABLE_ACTIONS = new Set\(\[/u);
 });
 
 test('MDX components and demo presets use the supported authoring vocabulary', async () => {

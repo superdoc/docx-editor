@@ -9,6 +9,7 @@ import { OPERATION_IDS, PRE_APPLY_THROW_CODES, isValidOperationIdFormat } from '
 import { Z_ORDER_RELATIVE_HEIGHT_MAX, Z_ORDER_RELATIVE_HEIGHT_MIN } from '../images/z-order.js';
 import type { TemplatesApplyFailureCode } from '../templates/index.js';
 import type { ReceiptFailureCode } from '../types/index.js';
+import { CAPABILITY_REASON_CODES } from '../capabilities/capabilities.js';
 
 const TRACK_CHANGES_DECIDE_RECEIPT_FAILURE_CODES = [
   'NO_OP',
@@ -100,6 +101,15 @@ function expectBroadSDFragmentSchema(schema: ContractTestSchemaShape | undefined
 }
 
 describe('document-api contract catalog', () => {
+  it('derives legacy tracked booleans from the canonical support level', () => {
+    for (const operationId of OPERATION_IDS) {
+      const metadata = OPERATION_DEFINITIONS[operationId].metadata;
+      expect(['always', 'conditional', 'never']).toContain(metadata.trackedSupport);
+      expect(metadata.supportsTrackedMode).toBe(metadata.trackedSupport === 'always');
+      expect(metadata.supportsConditionalTrackedMode === true).toBe(metadata.trackedSupport === 'conditional');
+    }
+  });
+
   it('advertises tracked create.contentControl support for its bounded supported shapes', () => {
     expect(OPERATION_DEFINITIONS['create.contentControl'].metadata.supportsTrackedMode).toBe(true);
   });
@@ -1234,6 +1244,17 @@ describe('document-api contract catalog', () => {
 
     expect(capabilitiesOutput.properties?.global?.properties).toHaveProperty('history');
     expect(capabilitiesOutput.properties?.global?.required).toContain('history');
+  });
+
+  it('derives structured capability reason codes from the public reason vocabulary', () => {
+    const output = buildInternalContractSchemas().operations['capabilities.resolve'].output as {
+      properties?: {
+        tracked?: {
+          oneOf?: Array<{ properties?: { code?: { enum?: string[] } } }>;
+        };
+      };
+    };
+    expect(output.properties?.tracked?.oneOf?.[1]?.properties?.code?.enum).toEqual([...CAPABILITY_REASON_CODES]);
   });
 
   it('narrows table operation address schemas to table-specific refs', () => {

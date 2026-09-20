@@ -1,6 +1,7 @@
 import type {
   BrowserDocumentApi,
   DocumentApi,
+  OperationCapabilityResolveResult,
   RichContentInsertInput,
   SDHtmlMarkdownSupportCheckResult,
 } from 'superdoc/ui';
@@ -43,4 +44,17 @@ const browserCheck: ReturnType<BrowserDocumentApi['capabilities']['check']> = br
   input: { reviewMode: 'final' },
 });
 
-void [checkThenApply, browserCheck];
+const trackedResolution: OperationCapabilityResolveResult = doc.capabilities.resolve({
+  operationId: 'images.move',
+  input: {
+    target: { kind: 'image', nodeId: 'image-1' },
+    destination: { kind: 'placement', at: 'document_end' },
+  },
+  options: { changeMode: 'tracked' },
+});
+if (trackedResolution.tracked.kind === 'requires-input') {
+  const reasonCode: 'TARGET_CONTEXT_REQUIRED' = trackedResolution.tracked.code;
+  void reasonCode;
+}
+
+void [checkThenApply, browserCheck, trackedResolution];

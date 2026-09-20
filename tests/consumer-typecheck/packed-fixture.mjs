@@ -17,24 +17,30 @@ export function installPackedSuperdocFixture({ fixtureRoot, superdocTarball, eng
       ...(fontsTarball ? { '@superdoc/fonts': `file:${fontsTarball}` } : {}),
     };
     writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
-    if (engineTarball) {
-      if (existsSync(workspacePath)) {
-        throw new Error(`Packed fixture workspace already exists: ${workspacePath}`);
-      }
-      // pnpm 11 reads overrides only from pnpm-workspace.yaml. A local
-      // workspace keeps the sealed engine override isolated from the repo.
-      writeFileSync(
-        workspacePath,
-        `packages:\n  - "."\noverrides:\n  "@superdoc/docx-engine": ${JSON.stringify(`file:${engineTarball}`)}\n`,
-      );
-      workspaceCreated = true;
+    if (existsSync(workspacePath)) {
+      throw new Error(`Packed fixture workspace already exists: ${workspacePath}`);
     }
+
+    // Keep the fixture isolated from repository overrides while allowing the
+    // freshly published engine version that the packed SuperDoc artifact pins.
+    // pnpm 11 reads both settings only from pnpm-workspace.yaml.
+    const workspace = [
+      'packages:',
+      '  - "."',
+      'minimumReleaseAgeExclude:',
+      '  - "@superdoc/docx-engine"',
+      ...(engineTarball
+        ? ['overrides:', `  "@superdoc/docx-engine": ${JSON.stringify(`file:${engineTarball}`)}`]
+        : []),
+      '',
+    ].join('\n');
+    writeFileSync(workspacePath, workspace);
+    workspaceCreated = true;
 
     execFileSync(
       'pnpm',
       [
         'install',
-        ...(engineTarball ? [] : ['--ignore-workspace']),
         '--ignore-scripts',
         '--no-frozen-lockfile',
         '--no-lockfile',

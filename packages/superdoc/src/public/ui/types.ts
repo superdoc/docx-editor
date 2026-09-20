@@ -45,6 +45,7 @@ export type {
   ContentControlsListResult,
   ContentControlInfo,
   RichContentInsertInput,
+  OperationCapabilityResolveResult,
   SDHtmlMarkdownSupportCheckResult,
   PictureWatermarkInput,
   TextWatermark,

@@ -177,6 +177,7 @@ export function buildAgentArtifacts(): GeneratedFile[] {
         {
           memberPath: operation.memberPath,
           mutates: operation.metadata.mutates,
+          trackedSupport: operation.metadata.trackedSupport,
           supportsTrackedMode: operation.metadata.supportsTrackedMode,
           supportsDryRun: operation.metadata.supportsDryRun,
           // SD-3247: async operations resolve a Promise; downstream automation

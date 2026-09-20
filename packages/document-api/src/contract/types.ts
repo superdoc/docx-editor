@@ -1,6 +1,8 @@
 export {
   OPERATION_IDEMPOTENCY_VALUES,
   type OperationIdempotency,
+  OPERATION_TRACKED_SUPPORT_VALUES,
+  type OperationTrackedSupport,
   PRE_APPLY_THROW_CODES,
   type PreApplyThrowCode,
   type CommandThrowPolicy,

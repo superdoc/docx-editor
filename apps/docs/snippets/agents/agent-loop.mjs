@@ -1,5 +1,5 @@
 import { resolve } from 'node:path';
-import { createSuperDocClient, createAgentToolkit } from '@superdoc/sdk';
+import { createSuperDocClient, createAgentToolkit, getActionDispositions } from '@superdoc/sdk';
 
 const MAX_TURNS = 16;
 
@@ -15,45 +15,13 @@ const ADVERTISED_TOOLS = new Set(['superdoc_inspect', 'superdoc_perform_action']
 // deliberately absent: it neither needs a change mode nor counts as a mutation.
 const MUTATING_TOOLS = new Set(['superdoc_perform_action']);
 
-// `superdoc_perform_action` advertises `changeMode` once for every action, but
-// only the actions whose argument contract includes it can record a suggestion.
-// Keep this allowlist aligned with that contract so an unsupported action cannot
-// silently produce an untracked edit.
-const TRACKED_CAPABLE_ACTIONS = new Set([
-  'add_hyperlink',
-  'add_list_items',
-  'append_list',
-  'apply_letter_spacing',
-  'apply_style',
-  'attach_numbering',
-  'convert_list',
-  'create_table',
-  'delete_blocks',
-  'delete_table',
-  'delete_table_column',
-  'delete_table_row',
-  'delete_text',
-  'fill_placeholders',
-  'format_paragraph',
-  'format_text',
-  'insert_heading',
-  'insert_page_break',
-  'insert_paragraphs',
-  'insert_table_column',
-  'insert_table_row',
-  'insert_toc',
-  'move_range',
-  'move_table',
-  'move_text',
-  'normalize_body_font_size',
-  'replace_text',
-  'rewrite_block',
-  'set_font_family',
-  'set_paragraph_spacing',
-  'split_list',
-  'split_table',
-  'style_table',
-]);
+// The shared perform-action schema exposes changeMode even for direct actions.
+// Use the executable SDK disposition so this guard cannot approve an untracked edit.
+const TRACKED_CAPABLE_ACTIONS = new Set(
+  Object.entries(getActionDispositions())
+    .filter(([, disposition]) => disposition === 'tracked')
+    .map(([action]) => action),
+);
 
 /**
  * One model turn, in OpenAI's Chat Completions shape.

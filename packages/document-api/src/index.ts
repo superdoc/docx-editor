@@ -393,14 +393,18 @@ import type { SelectionMutationAdapter } from './selection-mutation.js';
 import {
   executeCapabilities,
   executeCapabilitiesCheck,
+  executeCapabilitiesResolve,
   type CapabilitiesAdapter,
   type DocumentApiCapabilities,
+  type OperationCapabilityResolveInput,
+  type OperationCapabilityResolveResult,
 } from './capabilities/capabilities.js';
 import type {
   SDHtmlMarkdownSupportCheckInput,
   SDHtmlMarkdownSupportCheckResult,
 } from './capabilities/html-markdown-support.js';
 import type { OperationId } from './contract/types.js';
+import { OPERATION_DEFINITIONS, OPERATION_IDS } from './contract/operation-definitions.js';
 import type { DynamicInvokeRequest, InvokeRequest, InvokeResult } from './contract/operation-registry.js';
 import { buildDispatchTable } from './invoke/invoke.js';
 import { createPlanApi, type PlanApi, type PlanExecuteResult } from './plan/plan.js';
@@ -1819,6 +1823,7 @@ export interface CapabilitiesApi {
   (): DocumentApiCapabilities;
   get(): DocumentApiCapabilities;
   check(input: SDHtmlMarkdownSupportCheckInput): Promise<SDHtmlMarkdownSupportCheckResult>;
+  resolve(input: OperationCapabilityResolveInput): OperationCapabilityResolveResult;
 }
 export interface QueryApi {
   /** Accepts canonical nested input or a selector shorthand normalized to `{ select: ... }` internally. */
@@ -1844,7 +1849,7 @@ export interface MutationsAdapter {
 /**
  * The Document API interface for querying and inspecting document nodes.
  */
-export interface DocumentApi {
+export interface DocumentApiSurface {
   /**
    * Read the full document as an SDDocument structure.
    * @param input - Get input with optional read options.
@@ -2084,6 +2089,10 @@ export interface DocumentApi {
    * Callable directly (`capabilities()`) or via `.get()`.
    */
   capabilities: CapabilitiesApi;
+}
+
+/** Complete Document API surface, including typed dynamic invocation. */
+export interface DocumentApi extends DocumentApiSurface {
   /**
    * Dynamically dispatch any operation by its operation ID.
    *
@@ -2289,6 +2298,74 @@ const ADAPTER_GATED_PREFIXES = [
   'export',
   'watermarks',
 ] as const;
+
+function assertCapabilityDecision(
+  operationId: OperationId,
+  capability: 'available' | 'tracked' | 'dryRun',
+  decision: OperationCapabilityResolveResult[typeof capability],
+): void {
+  if (decision.kind === 'supported') return;
+  const code = decision.code === 'COLLABORATION_ACTIVE' ? 'CAPABILITY_UNSUPPORTED' : 'CAPABILITY_UNAVAILABLE';
+  throw new DocumentApiValidationError(code, decision.reason, {
+    operation: operationId,
+    capability,
+    ...(decision.code ? { reasonCode: decision.code } : {}),
+  });
+}
+
+function capabilityFailureResult(
+  operationId: OperationId,
+  capability: 'tracked' | 'dryRun',
+  decision: Exclude<OperationCapabilityResolveResult[typeof capability], { kind: 'supported' }>,
+): unknown {
+  const result = {
+    success: false,
+    failure: {
+      code: 'CAPABILITY_UNAVAILABLE',
+      message: decision.reason,
+      details: {
+        operation: operationId,
+        capability,
+        ...(decision.code ? { reasonCode: decision.code } : {}),
+      },
+    },
+  };
+  return operationId === 'templates.apply' ? Promise.resolve(result) : result;
+}
+
+function installCapabilityPreflight(api: DocumentApi, adapter: CapabilitiesAdapter): void {
+  if (!adapter.resolve) return;
+
+  for (const operationId of OPERATION_IDS) {
+    if (operationId.startsWith('capabilities.')) continue;
+    const path = OPERATION_DEFINITIONS[operationId].memberPath.split('.');
+    const member = path.pop();
+    if (!member) continue;
+
+    let parent: Record<string, unknown> = api as unknown as Record<string, unknown>;
+    for (const segment of path) {
+      parent = parent[segment] as Record<string, unknown>;
+    }
+    const execute = parent[member];
+    if (typeof execute !== 'function') continue;
+
+    parent[member] = function capabilityGuardedOperation(input: unknown, options?: unknown): unknown {
+      const resolution = adapter.resolve!({ operationId, input, options });
+      assertCapabilityDecision(operationId, 'available', resolution.available);
+      if (options && typeof options === 'object') {
+        const mutationOptions = options as { changeMode?: unknown; dryRun?: unknown };
+        if (mutationOptions.changeMode === 'tracked' && resolution.tracked.kind === 'unsupported') {
+          return capabilityFailureResult(operationId, 'tracked', resolution.tracked);
+        }
+        if (mutationOptions.dryRun === true && resolution.dryRun.kind === 'unsupported') {
+          return capabilityFailureResult(operationId, 'dryRun', resolution.dryRun);
+        }
+      }
+      return execute.call(this, input, options);
+    };
+  }
+}
+
 export function createDocumentApi(adapters: DocumentApiAdapters): DocumentApi {
   const rawCapFn = () => executeCapabilities(adapters.capabilities);
   const capFn = (): DocumentApiCapabilities => {
@@ -2311,6 +2388,7 @@ export function createDocumentApi(adapters: DocumentApiAdapters): DocumentApi {
   const capabilities: CapabilitiesApi = Object.assign(capFn, {
     get: capFn,
     check: (input: SDHtmlMarkdownSupportCheckInput) => executeCapabilitiesCheck(adapters.capabilities, input),
+    resolve: (input: OperationCapabilityResolveInput) => executeCapabilitiesResolve(adapters.capabilities, input),
   });
   const inlineAliasApi = buildFormatInlineAliasApi(adapters.selectionMutation);
   const api: DocumentApi = {
@@ -3820,6 +3898,7 @@ export function createDocumentApi(adapters: DocumentApiAdapters): DocumentApi {
       return handler(request.input, request.options);
     },
   };
+  installCapabilityPreflight(api, adapters.capabilities);
   const dispatch = buildDispatchTable(api);
   return api;
 }

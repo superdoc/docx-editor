@@ -17,6 +17,8 @@
 // and text-offset projections are ported verbatim below.
 
 import { DocumentApiValidationError } from '../errors.js';
+import { OPERATION_BATCHABLE_MAP } from '../contract/command-catalog.js';
+import { isOperationId } from '../contract/types.js';
 
 export interface PlanCaptureRefMarker {
   kind: 'capture-ref';
@@ -93,13 +95,6 @@ export interface PlanApi<TExecuteResult = PlanExecuteResult> {
 
 type DynamicInvoke = (operationId: string, input: unknown, options: unknown) => unknown;
 type AsyncDynamicInvoke = (operationId: string, input: unknown, options: unknown) => PromiseLike<unknown>;
-
-const PLAN_EXECUTE_UNSUPPORTED_OPERATION_IDS = new Set<string>([
-  'plan.execute',
-  'templates.apply',
-  'projectHtml',
-  'projectMarkdown',
-]);
 
 function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
   return (
@@ -406,7 +401,7 @@ function validatePlanExecuteInput(input: PlanExecuteInput): void {
         { entryIndex },
       );
     }
-    if (PLAN_EXECUTE_UNSUPPORTED_OPERATION_IDS.has(operationId)) {
+    if (isOperationId(operationId) && !OPERATION_BATCHABLE_MAP[operationId]) {
       throw new DocumentApiValidationError(
         'CAPABILITY_UNAVAILABLE',
         `plan.execute does not support batching "${operationId}". Run it stepwise outside the plan.`,

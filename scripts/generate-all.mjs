@@ -6,7 +6,7 @@
  * Phases (run in order; 1-3 are sequential, 4 is independent):
  *   1. docapi:sync             → packages/document-api/generated/**
  *   2. cli:export-sdk-contract → apps/cli/generated/sdk-contract.json
- *   3. sdk codegen             → packages/sdk/langs/{node,python}/…/generated/** + packages/sdk/tools/*.json
+ *   3. sdk codegen             → generated clients, tool catalogs, and native-binary embeddings
  *   4. @superdoc/fonts generate → packages/fonts/src/{asset-urls,bundled-families}.ts (from font-system)
  *
  * Before generation, gitignored output directories are cleaned to prevent stale file accumulation.
@@ -68,6 +68,8 @@ async function clean() {
     rm(path.join(REPO_ROOT, 'packages/document-api/generated'), { recursive: true, force: true }),
     rm(path.join(REPO_ROOT, 'apps/cli/generated'), { recursive: true, force: true }),
     rm(path.join(REPO_ROOT, 'packages/sdk/langs/node/src/generated'), { recursive: true, force: true }),
+    rm(path.join(REPO_ROOT, 'packages/sdk/langs/node/src/embedded-prompts.generated.ts'), { force: true }),
+    rm(path.join(REPO_ROOT, 'packages/sdk/langs/node/src/embedded-tools.generated.ts'), { force: true }),
     rm(path.join(REPO_ROOT, 'packages/sdk/langs/python/superdoc/generated'), { recursive: true, force: true }),
     cleanJsonFiles(path.join(REPO_ROOT, 'packages/sdk/tools')),
   ]);
@@ -90,6 +92,8 @@ async function main() {
   // Phase 3: SDK codegen (Node + Python clients + tool catalogs)
   console.log('\n--- Phase 3: sdk codegen ---');
   await run('node', [path.join(REPO_ROOT, 'packages/sdk/codegen/src/generate-all.mjs')]);
+  await run('node', [path.join(REPO_ROOT, 'packages/sdk/langs/node/scripts/embed-prompts.mjs')]);
+  await run('node', [path.join(REPO_ROOT, 'packages/sdk/langs/node/scripts/embed-tools.mjs')]);
 
   // Phase 4: @superdoc/fonts derived sources: bundled asset URLs (from the asset dir) plus curatable
   // family names (from font-system offerings). Kept out of the package's build/prepare lifecycle so a

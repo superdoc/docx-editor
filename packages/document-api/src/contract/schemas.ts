@@ -16,6 +16,7 @@ import {
 import { buildPatchSchema, buildStateSchema } from '../styles/index.js';
 import { Z_ORDER_RELATIVE_HEIGHT_MAX, Z_ORDER_RELATIVE_HEIGHT_MIN } from '../images/z-order.js';
 import { SD_EXPORT_MODES } from '../export/export.types.js';
+import { CAPABILITY_REASON_CODES } from '../capabilities/capabilities.js';
 import {
   SD_CONVERSION_CONSTRUCTS,
   SD_CONVERSION_DIAGNOSTIC_CODES,
@@ -2539,18 +2540,27 @@ const historyActionCollaborationSchema: JsonSchema = objectSchema(
   ['mode'],
 );
 const capabilityReasonCodeSchema: JsonSchema = {
-  enum: [
-    'COMMAND_UNAVAILABLE',
-    'HELPER_UNAVAILABLE',
-    'OPERATION_UNAVAILABLE',
-    'TRACKED_MODE_UNAVAILABLE',
-    'DRY_RUN_UNAVAILABLE',
-    'NAMESPACE_UNAVAILABLE',
-    'STYLES_PART_MISSING',
-    'COLLABORATION_ACTIVE',
-  ],
+  enum: [...CAPABILITY_REASON_CODES],
 };
 const capabilityReasonsSchema = arraySchema(capabilityReasonCodeSchema);
+const capabilitySupportDecisionSchema: JsonSchema = {
+  oneOf: [
+    objectSchema({ kind: { const: 'supported' } }, ['kind']),
+    objectSchema({ kind: { const: 'unsupported' }, code: capabilityReasonCodeSchema, reason: { type: 'string' } }, [
+      'kind',
+      'code',
+      'reason',
+    ]),
+    objectSchema(
+      {
+        kind: { const: 'requires-input' },
+        code: { const: 'TARGET_CONTEXT_REQUIRED' },
+        reason: { type: 'string' },
+      },
+      ['kind', 'code', 'reason'],
+    ),
+  ],
+};
 const capabilityFlagSchema = objectSchema(
   {
     enabled: { type: 'boolean' },
@@ -7666,6 +7676,25 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
   'capabilities.check': {
     input: supportCheckInputSchema,
     output: supportCheckOutputSchema,
+  },
+  'capabilities.resolve': {
+    input: objectSchema(
+      {
+        operationId: { enum: [...OPERATION_IDS] },
+        input: {},
+        options: {},
+      },
+      ['operationId'],
+    ),
+    output: objectSchema(
+      {
+        operationId: { enum: [...OPERATION_IDS] },
+        available: capabilitySupportDecisionSchema,
+        tracked: capabilitySupportDecisionSchema,
+        dryRun: capabilitySupportDecisionSchema,
+      },
+      ['operationId', 'available', 'tracked', 'dryRun'],
+    ),
   },
   // --- create.table ---
   'create.table': {

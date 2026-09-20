@@ -1,4 +1,5 @@
 import type { OperationId } from '../contract/types.js';
+import type { OperationTrackedSupport } from '../contract/metadata-types.js';
 import type { InlinePropertyStorage, InlinePropertyType, InlineRunPatchKey } from '../format/inline-run-patch.js';
 import type { SDHtmlMarkdownSupportCheckInput, SDHtmlMarkdownSupportCheckResult } from './html-markdown-support.js';
 import { validateSDHtmlMarkdownSupportCheckInput } from './html-markdown-support.js';
@@ -13,6 +14,8 @@ export const CAPABILITY_REASON_CODES = [
   'NAMESPACE_UNAVAILABLE',
   'STYLES_PART_MISSING',
   'COLLABORATION_ACTIVE',
+  'TARGET_CONTEXT_REQUIRED',
+  'TARGET_UNSUPPORTED',
 ] as const;
 
 export type CapabilityReasonCode = (typeof CAPABILITY_REASON_CODES)[number];
@@ -30,8 +33,31 @@ export type CapabilityFlag = {
 export interface OperationRuntimeCapability {
   available: boolean;
   tracked: boolean;
+  /**
+   * Detailed tracked-mode support. `tracked` remains true only for `always`
+   * so existing callers keep a conservative, backward-compatible boolean.
+   */
+  trackedSupport?: OperationTrackedSupport;
   dryRun: boolean;
   reasons?: CapabilityReasonCode[];
+}
+
+export type CapabilitySupportDecision =
+  | { kind: 'supported' }
+  | { kind: 'unsupported'; code: CapabilityReasonCode; reason: string }
+  | { kind: 'requires-input'; code: 'TARGET_CONTEXT_REQUIRED'; reason: string };
+
+export interface OperationCapabilityResolveInput {
+  operationId: OperationId;
+  input?: unknown;
+  options?: unknown;
+}
+
+export interface OperationCapabilityResolveResult {
+  operationId: OperationId;
+  available: CapabilitySupportDecision;
+  tracked: CapabilitySupportDecision;
+  dryRun: CapabilitySupportDecision;
 }
 
 export type OperationCapabilities = Record<OperationId, OperationRuntimeCapability>;
@@ -95,6 +121,7 @@ export interface DocumentApiCapabilities {
 export interface CapabilitiesAdapter {
   get(): DocumentApiCapabilities;
   check?(input: SDHtmlMarkdownSupportCheckInput): Promise<SDHtmlMarkdownSupportCheckResult>;
+  resolve?(input: OperationCapabilityResolveInput): OperationCapabilityResolveResult;
 }
 
 /**
@@ -120,4 +147,18 @@ export function executeCapabilitiesCheck(
     );
   }
   return adapter.check(input);
+}
+
+export function executeCapabilitiesResolve(
+  adapter: CapabilitiesAdapter,
+  input: OperationCapabilityResolveInput,
+): OperationCapabilityResolveResult {
+  if (!adapter.resolve) {
+    throw new DocumentApiValidationError(
+      'CAPABILITY_UNAVAILABLE',
+      'capabilities.resolve is not available. The host engine has not provided an adapter for this capability.',
+      { operation: 'capabilities.resolve', operationId: input.operationId },
+    );
+  }
+  return adapter.resolve(input);
 }

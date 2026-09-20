@@ -4,6 +4,7 @@ export type ReferenceMetadata = {
   mutates: boolean;
   idempotency: 'idempotent' | 'conditional' | 'non-idempotent';
   supportsDryRun: boolean;
+  trackedSupport?: 'always' | 'conditional' | 'never';
   supportsTrackedMode: boolean;
   /**
    * Set when tracked mode is permitted for some targets but cannot be promised

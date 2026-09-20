@@ -10,6 +10,9 @@ import type { ReceiptFailureCode } from '../types/receipt.js';
 export const OPERATION_IDEMPOTENCY_VALUES = ['idempotent', 'conditional', 'non-idempotent'] as const;
 export type OperationIdempotency = (typeof OPERATION_IDEMPOTENCY_VALUES)[number];
 
+export const OPERATION_TRACKED_SUPPORT_VALUES = ['always', 'conditional', 'never'] as const;
+export type OperationTrackedSupport = (typeof OPERATION_TRACKED_SUPPORT_VALUES)[number];
+
 export const PRE_APPLY_THROW_CODES = [
   'TARGET_NOT_FOUND',
   'CAPABILITY_UNAVAILABLE',
@@ -59,6 +62,9 @@ export interface CommandStaticMetadata {
   mutates: boolean;
   idempotency: OperationIdempotency;
   supportsDryRun: boolean;
+  /** Canonical tracked-mode eligibility. Legacy boolean fields below are derived from this value. */
+  trackedSupport: OperationTrackedSupport;
+  /** @deprecated Use `trackedSupport === 'always'`. */
   supportsTrackedMode: boolean;
   /**
    * Tracked mode is permitted for *some* targets of this operation but cannot
@@ -77,6 +83,7 @@ export interface CommandStaticMetadata {
    * Without this, an adapter-level contextual allowance is unreachable from
    * any transport that gates on the contract (see `tables.setCellText`).
    */
+  /** @deprecated Use `trackedSupport === 'conditional'`. */
   supportsConditionalTrackedMode?: boolean;
   possibleFailureCodes: readonly ReceiptFailureCode[];
   throws: CommandThrowPolicy;

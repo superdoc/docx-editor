@@ -57,6 +57,7 @@
     "/document-api/reference/capabilities/",
     "/document-api/reference/capabilities/check/",
     "/document-api/reference/capabilities/get/",
+    "/document-api/reference/capabilities/resolve/",
     "/document-api/reference/captions/",
     "/document-api/reference/captions/configure/",
     "/document-api/reference/captions/get/",

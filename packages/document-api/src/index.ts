@@ -1903,7 +1903,7 @@ export interface DocumentApi {
   /**
    * Clear all document body content, leaving a single empty paragraph.
    */
-  clearContent(input: ClearContentInput, options?: RevisionGuardOptions): Receipt;
+  clearContent(input: ClearContentInput, options?: MutationOptions): Receipt;
   /**
    * Comment operations.
    */
@@ -2353,7 +2353,7 @@ export function createDocumentApi(adapters: DocumentApiAdapters): DocumentApi {
     extract(input: ExtractInput): ExtractResult {
       return executeExtract(adapters.extract, input);
     },
-    clearContent(input: ClearContentInput, options?: RevisionGuardOptions): Receipt {
+    clearContent(input: ClearContentInput, options?: MutationOptions): Receipt {
       return executeClearContent(adapters.clearContent, input, options);
     },
     comments: {

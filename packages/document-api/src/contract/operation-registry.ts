@@ -622,7 +622,7 @@ export interface OperationRegistry extends FormatInlineAliasOperationRegistry {
   info: { input: InfoInput; options: never; output: DocumentInfo };
   extract: { input: ExtractInput; options: never; output: ExtractResult };
   // --- Singleton mutations ---
-  clearContent: { input: ClearContentInput; options: RevisionGuardOptions; output: Receipt };
+  clearContent: { input: ClearContentInput; options: MutationOptions; output: Receipt };
   insert: { input: InsertInput; options: RichContentMutationOptions; output: SDMutationReceipt };
   replace: { input: ReplaceInput; options: RichContentMutationOptions; output: SDMutationReceipt };
   delete: { input: DeleteInput; options: MutationOptions; output: TextMutationReceipt };

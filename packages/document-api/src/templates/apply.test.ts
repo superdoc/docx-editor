@@ -38,6 +38,14 @@ function makeAdapter(): TemplatesAdapter & {
 }
 
 describe('executeTemplatesApply contract', () => {
+  it('rejects tracked requests before normalization can discard the mode', () => {
+    const adapter = makeAdapter();
+    const input: TemplatesApplyInput = { source: { kind: 'path', path: '/tmp/template.docx' } };
+    const options = { changeMode: 'tracked' } as unknown as Parameters<typeof executeTemplatesApply>[2];
+    expect(() => executeTemplatesApply(adapter, input, options)).toThrow('does not support tracked changes');
+    expect(adapter.apply).not.toHaveBeenCalled();
+  });
+
   it('routes a valid path source to the adapter and resolves a receipt asynchronously', async () => {
     const adapter = makeAdapter();
     const input: TemplatesApplyInput = { source: { kind: 'path', path: '/tmp/template.docx' } };

@@ -3227,7 +3227,10 @@ const hyperlinkReadPropertiesSchema: JsonSchema = objectSchema({
   docLocation: { type: 'string' },
   tooltip: { type: 'string' },
   target: { type: 'string' },
-  rel: { type: 'string' },
+  rel: {
+    type: 'string',
+    description: 'Browser relationship tokens for the current editing session. Not restored from DOCX.',
+  },
 });
 const hyperlinkDestinationSchema: JsonSchema = objectSchema({
   href: { type: 'string' },
@@ -3239,7 +3242,11 @@ const hyperlinkSpecSchema: JsonSchema = objectSchema(
     destination: hyperlinkDestinationSchema,
     tooltip: { type: 'string' },
     target: { type: 'string' },
-    rel: { type: 'string' },
+    rel: {
+      type: 'string',
+      description:
+        'Browser relationship tokens kept for the current editing session; not persisted in DOCX or reviewed by Word.',
+    },
   },
   ['destination'],
 );
@@ -3249,7 +3256,11 @@ const hyperlinkPatchSchema: JsonSchema = objectSchema({
   docLocation: { oneOf: [{ type: 'string' }, { type: 'null' }] },
   tooltip: { oneOf: [{ type: 'string' }, { type: 'null' }] },
   target: { oneOf: [{ type: 'string' }, { type: 'null' }] },
-  rel: { oneOf: [{ type: 'string' }, { type: 'null' }] },
+  rel: {
+    oneOf: [{ type: 'string' }, { type: 'null' }],
+    description:
+      'Session-only browser relationship tokens. Null or an empty string clears them; omission preserves them. Changes are undoable but do not create Word revisions.',
+  },
 });
 const hyperlinkDomainSchema: JsonSchema = objectSchema(
   {

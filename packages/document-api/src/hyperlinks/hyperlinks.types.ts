@@ -47,7 +47,7 @@ export interface HyperlinkSpec {
   tooltip?: string;
   /** Link target frame (_blank, _self, etc.). */
   target?: string;
-  /** Relationship attribute string. */
+  /** Browser relationship tokens kept for the current editing session; not persisted in DOCX or reviewed by Word. */
   rel?: string;
 }
 
@@ -63,6 +63,7 @@ export interface HyperlinkPatch {
   docLocation?: string | null;
   tooltip?: string | null;
   target?: string | null;
+  /** Session-only browser relationship tokens. Null or an empty string clears them; omission preserves them. */
   rel?: string | null;
 }
 
@@ -70,13 +71,14 @@ export interface HyperlinkPatch {
 // Read types
 // ---------------------------------------------------------------------------
 
-/** All readable hyperlink properties: faithfully reports document state. */
+/** Native hyperlink properties and browser metadata for the current editing session. */
 export interface HyperlinkReadProperties {
   href?: string;
   anchor?: string;
   docLocation?: string;
   tooltip?: string;
   target?: string;
+  /** Browser relationship tokens for this session. A fresh DOCX open does not restore them. */
   rel?: string;
 }
 

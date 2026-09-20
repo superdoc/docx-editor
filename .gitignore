@@ -86,6 +86,8 @@ packages/document-api/generated/
 packages/document-api/.generated-internal/
 apps/cli/generated/
 packages/sdk/langs/node/src/generated/
+packages/sdk/langs/node/src/embedded-prompts.generated.ts
+packages/sdk/langs/node/src/embedded-tools.generated.ts
 packages/sdk/langs/python/superdoc/generated/
 packages/sdk/tools/*.json
 

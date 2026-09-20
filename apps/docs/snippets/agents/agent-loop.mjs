@@ -15,19 +15,16 @@ const ADVERTISED_TOOLS = new Set(['superdoc_inspect', 'superdoc_perform_action']
 // deliberately absent: it neither needs a change mode nor counts as a mutation.
 const MUTATING_TOOLS = new Set(['superdoc_perform_action']);
 
-// `superdoc_perform_action` advertises `changeMode` once for every action,
-// but only some of them honor it — the rest ignore the argument and edit
-// directly. Passing `changeMode: 'tracked'` to one of those looks compliant and
-// silently produces an untracked edit, so this workflow allows only the actions
-// that actually record a suggestion.
-//
-// `move_range` declares `changeMode` but is direct-only today: its own action
-// hint says tracked mode fails without mutating, because a block-range deletion
-// cannot be tracked. Allowing it would guarantee a failed run, so it is out.
+// `superdoc_perform_action` advertises `changeMode` once for every action, but
+// only the actions whose argument contract includes it can record a suggestion.
+// Keep this allowlist aligned with that contract so an unsupported action cannot
+// silently produce an untracked edit.
 const TRACKED_CAPABLE_ACTIONS = new Set([
+  'add_hyperlink',
   'add_list_items',
   'append_list',
   'apply_letter_spacing',
+  'apply_style',
   'attach_numbering',
   'convert_list',
   'create_table',
@@ -40,16 +37,22 @@ const TRACKED_CAPABLE_ACTIONS = new Set([
   'format_paragraph',
   'format_text',
   'insert_heading',
+  'insert_page_break',
   'insert_paragraphs',
   'insert_table_column',
   'insert_table_row',
   'insert_toc',
+  'move_range',
+  'move_table',
   'move_text',
   'normalize_body_font_size',
   'replace_text',
   'rewrite_block',
   'set_font_family',
+  'set_paragraph_spacing',
+  'split_list',
   'split_table',
+  'style_table',
 ]);
 
 /**

@@ -15,9 +15,8 @@ const CHANGE_MODE_VALUES: ReadonlySet<string> = new Set<ChangeMode>(['direct', '
  * Shared semantic validation for the `changeMode` mutation option.
  *
  * Error-code policy (v2-tracked-change-decision-error-contract plan, WS3):
- *   - A `changeMode` value of the wrong *type* is a malformed shape and is left
- *     to upstream structural/schema validation (which surfaces
- *     `VALIDATION_ERROR`). This validator does not touch non-string values.
+ *   - A `changeMode` value of the wrong type is a malformed shape and surfaces
+ *     `VALIDATION_ERROR`, including dynamic calls without upstream schema validation.
  *   - A `changeMode` *string* outside the accepted enum is a semantic option
  *     error and fails closed with `INVALID_INPUT`, not the generic
  *     `VALIDATION_ERROR`. This keeps semantic option failures distinct from
@@ -25,7 +24,13 @@ const CHANGE_MODE_VALUES: ReadonlySet<string> = new Set<ChangeMode>(['direct', '
  *     `changeMode`.
  */
 export function validateChangeMode(value: unknown): void {
-  if (value === undefined || typeof value !== 'string') return;
+  if (value === undefined) return;
+  if (typeof value !== 'string') {
+    throw new DocumentApiValidationError('VALIDATION_ERROR', 'changeMode must be a string.', {
+      field: 'changeMode',
+      value,
+    });
+  }
   if (CHANGE_MODE_VALUES.has(value)) return;
   throw new DocumentApiValidationError('INVALID_INPUT', `changeMode must be one of: direct, tracked. Got "${value}".`, {
     field: 'changeMode',

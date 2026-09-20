@@ -66,7 +66,7 @@ Actions that insert content take a `placement`:
 
 ## changeMode
 
-Actions that accept `changeMode` record the edit as a tracked change when it is `"tracked"` and edit directly otherwise. The tool schema advertises the argument once for the whole tool, so the table below is the only place that says which actions honor it. Passing it to an action marked **No** looks compliant and produces a direct edit. `move_range` declares the argument but does not support tracked mode, and rejects the request rather than applying an untracked edit.
+Actions that accept `changeMode` record the edit as a tracked change when it is `"tracked"` and edit directly otherwise. The tool schema advertises the argument once for the whole tool, so the table below is the place that says which actions honor it. Actions marked **No** do not accept `changeMode` because they manage comments, review decisions, or local undo history rather than creating tracked document edits.
 
 The [safety guide](/agents/operate/safety) explains why a loop that promises reviewable output must enforce this allowlist in code.
 
@@ -87,7 +87,7 @@ Arguments marked `?` are optional. Styled text arguments (`texts`, `cellTexts`, 
 | `create_table`      | `rows`, `columns`, `cellTexts?`, `placement?`                     | Yes     | In tracked mode the whole insertion is one tracked change                                                          |
 | `rewrite_block`     | `selector`, `text`                                                | Yes     | Replaces a block's text and preserves the run pattern over the unchanged prefix and suffix                         |
 | `fill_placeholders` | `values[]` and/or `fields[{ label?, value }]`                     | Yes     |                                                                                                                    |
-| `move_range`        | `fromText`, `toText?`, `afterText` or `beforeText`                | Refused | Moves a block range or a visual section identified by text. Ranges containing tables, lists, or images are refused |
+| `move_range`        | `fromText`, `toText?`, `afterText` or `beforeText`                | Yes     | Moves a block range or a visual section identified by text. Ranges containing tables, lists, or images are refused |
 
 ### Lists and numbering
 
@@ -96,7 +96,7 @@ Arguments marked `?` are optional. Styled text arguments (`texts`, `cellTexts`, 
 | `convert_list`     | `kind`, then `listOrdinal?` or `anchorText?`, or `fromMarker` + `toMarker`, or `fromText` + `toText` | Yes     | Converts lists, clause ranges, or plain paragraphs to a list in place                  |
 | `attach_numbering` | `anchorText` or `nodeId`, `likeMarker`                                                               | Yes     | Numbers a block in the same scheme and level as the sibling rendering `likeMarker`     |
 | `add_list_items`   | `anchorText` or `listOrdinal`, `entries[]` or `items[]`                                              | Yes     | Adds into an existing list and reuses its numbering. `level` is relative to the anchor |
-| `split_list`       | `anchorText`, `restartNumbering?`                                                                    | No      | Splits one list into two at an item                                                    |
+| `split_list`       | `anchorText`, `restartNumbering?`                                                                    | Yes     | Splits one list into two at an item                                                    |
 
 ### History
 
@@ -134,9 +134,9 @@ Exclude both when a person must make the final decision. [Safety](/agents/operat
 | Action                     | Arguments                                                                                                                                        | Tracked | Notes                                                          |
 | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------- | -------------------------------------------------------------- |
 | `format_text`              | `targetText`, `targetTexts[]`, or `selector`; `bold?`, `italic?`, `underline?`, `strike?`, `highlight?`, `color?`, `fontSize?`, `caseSensitive?` | Yes     | Applies to every occurrence of the target text                 |
-| `apply_style`              | `selector`, then one of `styleId`, `headingLevel`, or `likeText`                                                                                 | No      | `likeText` copies another block's style and effective look     |
+| `apply_style`              | `selector`, then one of `styleId`, `headingLevel`, or `likeText`                                                                                 | Yes     | `likeText` copies another block's style and effective look     |
 | `format_paragraph`         | `selector`, `alignment`                                                                                                                          | Yes     | Tracked mode records the former alignment as a property change |
-| `set_paragraph_spacing`    | `selector`, `lineSpacing?`, `spaceBefore?`, `spaceAfter?`                                                                                        | No      |                                                                |
+| `set_paragraph_spacing`    | `selector`, `lineSpacing?`, `spaceBefore?`, `spaceAfter?`                                                                                        | Yes     |                                                                |
 | `normalize_body_font_size` | `fontSize`                                                                                                                                       | Yes     | Whole-body font size                                           |
 | `set_font_family`          | `fontFamily`, `selector?` or `targetText`/`targetTexts[]?`, `caseSensitive?`                                                                     | Yes     | Omit every target to set the whole body typeface               |
 | `apply_letter_spacing`     | `selector`, `letterSpacing`                                                                                                                      | Yes     |                                                                |
@@ -145,16 +145,16 @@ Exclude both when a person must make the final decision. [Safety](/agents/operat
 
 | Action              | Arguments                 | Tracked | Notes                                                                    |
 | ------------------- | ------------------------- | ------- | ------------------------------------------------------------------------ |
-| `insert_page_break` | `selector`                | No      | Sets a page break before the block instead of inserting empty paragraphs |
-| `add_hyperlink`     | `text`, `url`, `tooltip?` | No      | Turns existing text into a link                                          |
+| `insert_page_break` | `selector`                | Yes     | Sets a page break before the block instead of inserting empty paragraphs |
+| `add_hyperlink`     | `text`, `url`, `tooltip?` | Yes     | Turns existing text into a link                                          |
 | `insert_toc`        | `title?`, `placement?`    | Yes     |                                                                          |
 
 ### Tables
 
 | Action                | Arguments                                                                   | Tracked | Notes                                                        |
 | --------------------- | --------------------------------------------------------------------------- | ------- | ------------------------------------------------------------ |
-| `style_table`         | `tableOrdinal?`, `accentColor?`                                             | No      | Accent header, bold first column, banded rows                |
-| `move_table`          | `tableOrdinal?`, `placement`                                                | No      | Moves the whole table with its content in one call           |
+| `style_table`         | `tableOrdinal?`, `accentColor?`                                             | Yes     | Accent header, bold first column, banded rows                |
+| `move_table`          | `tableOrdinal?`, `placement`                                                | Yes     | Moves the whole table with its content in one call           |
 | `delete_table`        | `tableOrdinal?`                                                             | Yes     |                                                              |
 | `insert_table_row`    | `tableOrdinal?`, `rowIndex?`, `position?`, `cellTexts?`, `dryRun?`          | Yes     | `dryRun: true` reports success without changing the document |
 | `insert_table_column` | `tableOrdinal?`, `columnIndex?`, `position?`, `headerText?` or `cellTexts?` | Yes     |                                                              |

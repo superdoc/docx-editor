@@ -176,6 +176,9 @@ export interface TemplatesApi {
 }
 
 function normalizeOptions(options?: TemplatesApplyOptions): NormalizedTemplatesApplyOptions {
+  if (options && 'changeMode' in options && options.changeMode === 'tracked') {
+    throw new DocumentApiValidationError('CAPABILITY_UNAVAILABLE', 'templates.apply does not support tracked changes.');
+  }
   return {
     dryRun: options?.dryRun ?? false,
     expectedRevision: options?.expectedRevision === undefined ? undefined : String(options.expectedRevision),

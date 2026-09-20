@@ -4,6 +4,11 @@ declare const api: DocumentApi;
 declare const result: DiffApplyResult;
 
 const returned: DiffApplyResult = api.diff.apply({ diff: {} as never }, { changeMode: 'tracked' });
+const guarded: DiffApplyResult = api.diff.apply(
+  { diff: {} as never },
+  { changeMode: 'tracked', expectedRevision: '42' },
+);
+void guarded.operationReceipts;
 const receipt: DiffApplyOperationReceipt | undefined = returned.operationReceipts[0];
 const item: DiffApplyReviewItem | undefined = receipt?.reviewItems[0];
 

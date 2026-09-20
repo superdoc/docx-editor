@@ -24,15 +24,24 @@ describe('validateChangeMode', () => {
     expect((caught as DocumentApiValidationError).details?.field).toBe('changeMode');
   });
 
-  it('leaves malformed (non-string) values to upstream structural validation', () => {
-    // A non-string value is a malformed shape (VALIDATION_ERROR territory),
-    // not a semantic option error — this validator does not claim it.
-    expect(() => validateChangeMode(123)).not.toThrow();
-    expect(() => validateChangeMode(null)).not.toThrow();
+  it('rejects malformed values even when a dynamic caller bypasses structural validation', () => {
+    for (const value of [123, null, false, {}, []]) {
+      try {
+        validateChangeMode(value);
+        throw new Error('Expected malformed changeMode to be rejected.');
+      } catch (error) {
+        expect(error).toBeInstanceOf(DocumentApiValidationError);
+        expect((error as DocumentApiValidationError).code).toBe('VALIDATION_ERROR');
+        expect((error as DocumentApiValidationError).details?.field).toBe('changeMode');
+      }
+    }
   });
 });
 
 describe('normalizeMutationOptions', () => {
+  it('rejects null instead of defaulting it to a direct edit', () => {
+    expect(() => normalizeMutationOptions({ changeMode: null as never })).toThrow(DocumentApiValidationError);
+  });
   it('rejects an unsupported changeMode with INVALID_INPUT', () => {
     expect(() => normalizeMutationOptions({ changeMode: 'banana' as never })).toThrow(DocumentApiValidationError);
   });

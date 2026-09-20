@@ -46,3 +46,15 @@ applied.postSnapshot?.counts?.paragraphs satisfies number | undefined;
 applied.executedOperations?.[0]?.operationId satisfies string | undefined;
 applied.verification?.[0]?.passed satisfies boolean | undefined;
 applied.status satisfies 'ok' | 'partial' | 'failed' | 'aborted';
+
+const trackedAction: Promise<unknown> = dispatchSuperDocTool(
+  document,
+  'superdoc_perform_action',
+  {
+    action: 'apply_style',
+    selector: { kind: 'nodeId', nodeId: 'body' },
+    headingLevel: 2,
+  },
+  { preset: 'core', changeMode: 'tracked' },
+);
+void trackedAction;

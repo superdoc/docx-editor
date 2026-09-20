@@ -158,4 +158,6 @@ export type DiffChangeMode = 'direct' | 'tracked';
 /** Options for `diff.apply`. Omitted `changeMode` applies story content directly. */
 export interface DiffApplyOptions {
   changeMode?: DiffChangeMode;
+  /** Requires the current document revision; a mismatch fails before any diff operation applies. */
+  expectedRevision?: string;
 }

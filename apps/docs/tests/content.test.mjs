@@ -4228,8 +4228,8 @@ test('the agent example allows exactly the tracked-capable actions', async () =>
   );
   const actionArgs = actionsSource.match(/export const ACTION_ARGS[^=]*=\s*\{([\s\S]*?)\n\};/u)?.[1] ?? '';
   const hints = actionsSource.match(/export const ACTION_HINTS[^=]*=\s*\{([\s\S]*?)\n\};/u)?.[1] ?? '';
-  // An action can declare changeMode and still refuse to honor it. move_range
-  // is the current example: its hint says tracked mode fails without mutating.
+  // Declaring changeMode alone does not establish tracked support when the
+  // action's contract explicitly documents refusal.
   const directOnly = new Set(
     [...hints.matchAll(/\n {2}([a-z0-9_]+):\s*'((?:[^'\\]|\\.)*)'/gu)]
       .filter(([, , hint]) => /direct-only|tracked["']?\s*(?:mode\s*)?fails|cannot be tracked/iu.test(hint))

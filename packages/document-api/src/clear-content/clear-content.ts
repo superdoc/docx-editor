@@ -1,5 +1,5 @@
 import type { Receipt } from '../types/receipt.js';
-import type { RevisionGuardOptions } from '../write/write.js';
+import type { MutationOptions } from '../write/write.js';
 
 export type ClearContentInput = Record<string, never>;
 
@@ -10,25 +10,21 @@ export interface ClearContentAdapter {
   /**
    * Clear the document body, replacing all content with a single empty paragraph.
    */
-  clearContent(input: ClearContentInput, options?: RevisionGuardOptions): Receipt;
+  clearContent(input: ClearContentInput, options?: MutationOptions): Receipt;
 }
 
 /**
  * Execute a clearContent operation through the provided adapter.
  *
- * clearContent is a destructive reset: tracked mode and dry run are not
- * meaningful, so this accepts {@link RevisionGuardOptions} rather than
- * `MutationOptions`.
- *
  * @param adapter - Engine-specific clear-content adapter.
  * @param input - Canonical clear-content input (empty object).
- * @param options - Optional revision guard options.
+ * @param options - Optional change mode, preview and revision guard options.
  * @returns A Receipt indicating success or NO_OP if already empty.
  */
 export function executeClearContent(
   adapter: ClearContentAdapter,
   input: ClearContentInput,
-  options?: RevisionGuardOptions,
+  options?: MutationOptions,
 ): Receipt {
   return adapter.clearContent(input, options);
 }

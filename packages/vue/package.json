@@ -1,6 +1,6 @@
 {
   "name": "@superdoc/vue",
-  "version": "2.0.0-next.15",
+  "version": "2.0.0-next.16",
   "description": "Vue 3 wrapper for the SuperDoc browser editor",
   "type": "module",
   "main": "./dist/index.cjs",

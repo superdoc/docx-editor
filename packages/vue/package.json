@@ -38,7 +38,7 @@
   ],
   "license": "AGPL-3.0",
   "peerDependencies": {
-    "superdoc": ">=2.0.0-0 <3 || 2.16.1-next.4",
+    "superdoc": ">=2.0.0-0 <3 || 2.16.1-next.5",
     "vue": "^3.5.11"
   },
   "devDependencies": {

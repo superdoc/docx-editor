@@ -3,6 +3,29 @@ import { DOCX, PDF } from '@superdoc/common';
 import { resolveV2CollaborationTarget, redactCollaborationUrl } from './resolve-v2-collaboration-target.ts';
 
 describe('resolveV2CollaborationTarget', () => {
+  it.each([
+    { providerType: 'y-websocket', documentId: 'room', serverUrl: 'wss://example.com' },
+    { providerType: 'hocuspocus', documentId: 'room', serverUrl: 'wss://example.com' },
+    { providerType: 'liveblocks', documentId: 'room', publicApiKey: 'pk_live_123' },
+    { providerType: 'extension', adapterId: 'custom', documentId: 'room' },
+  ])('preserves syncTimeoutMs for $providerType', (collaboration) => {
+    const result = resolveV2CollaborationTarget({
+      collaboration: { ...collaboration, syncTimeoutMs: 45_000 },
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.target.syncTimeoutMs).toBe(45_000);
+  });
+
+  it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY, 2_147_483_648])(
+    'rejects invalid syncTimeoutMs %s',
+    (syncTimeoutMs) => {
+      const result = resolveV2CollaborationTarget({
+        collaboration: { documentId: 'room', serverUrl: 'wss://example.com', syncTimeoutMs },
+      });
+      expect(result).toMatchObject({ ok: false, reason: 'invalid-sync-timeout' });
+    },
+  );
+
   for (const collaboration of [
     { providerType: 'y-websocket', documentId: 'room', serverUrl: 'wss://example.com' },
     { providerType: 'hocuspocus', documentId: 'room', serverUrl: 'wss://example.com', token: 'token' },

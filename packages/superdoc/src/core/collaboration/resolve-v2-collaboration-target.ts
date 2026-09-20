@@ -33,6 +33,7 @@ export type V2CollaborationUnsupportedReason =
   | 'invalid-auth-endpoint'
   | 'invalid-adapter-id'
   | 'invalid-provider-options'
+  | 'invalid-sync-timeout'
   | 'missing-auth'
   | 'mixed-auth'
   | 'unsupported-document-type'
@@ -66,6 +67,8 @@ export interface NormalizedV2CollaborationTarget {
   adapterId?: string;
   /** Structured-clone-safe options interpreted by the registered adapter. */
   providerOptions?: unknown;
+  /** Maximum initial synchronization wait in milliseconds. */
+  syncTimeoutMs?: number;
   /** Explicit room operation; join is the default at the untrusted input boundary. */
   roomMode: 'join' | 'create';
 }
@@ -188,6 +191,19 @@ function normalizeParams(value: unknown): Record<string, string> | undefined {
 function normalizeRoomMode(value: unknown): 'join' | 'create' | null {
   if (value === undefined) return 'join';
   return value === 'join' || value === 'create' ? value : null;
+}
+
+function normalizeSyncTimeoutMs(value: unknown): number | null | undefined {
+  if (value === undefined) return undefined;
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 && value <= 2_147_483_647 ? value : null;
+}
+
+function withSyncTimeout(
+  resolution: V2CollaborationTargetResolution,
+  syncTimeoutMs: number | undefined,
+): V2CollaborationTargetResolution {
+  if (!resolution.ok || syncTimeoutMs === undefined) return resolution;
+  return { ok: true, target: { ...resolution.target, syncTimeoutMs } };
 }
 
 function invalidRoomMode(): V2CollaborationTargetResolution {
@@ -463,20 +479,30 @@ export function resolveV2CollaborationTarget(
     };
   }
 
+  const syncTimeoutMs = normalizeSyncTimeoutMs(candidate.syncTimeoutMs);
+  if (syncTimeoutMs === null) {
+    return {
+      ok: false,
+      reason: 'invalid-sync-timeout',
+      message:
+        'SuperDoc v2 collaboration syncTimeoutMs must be a finite positive number within the JavaScript timer range.',
+    };
+  }
+
   const providerType = readProviderType(candidate);
 
   // No providerType → backward-compatible implicit y-websocket target.
   if (providerType === null || providerType === 'y-websocket') {
-    return resolveWebsocketFamily('y-websocket', candidate);
+    return withSyncTimeout(resolveWebsocketFamily('y-websocket', candidate), syncTimeoutMs);
   }
   if (providerType === 'hocuspocus') {
-    return resolveWebsocketFamily('hocuspocus', candidate);
+    return withSyncTimeout(resolveWebsocketFamily('hocuspocus', candidate), syncTimeoutMs);
   }
   if (providerType === 'liveblocks') {
-    return resolveLiveblocksFamily(candidate, authEndpointBaseUrl);
+    return withSyncTimeout(resolveLiveblocksFamily(candidate, authEndpointBaseUrl), syncTimeoutMs);
   }
   if (providerType === 'extension') {
-    return resolveProviderExtension(candidate);
+    return withSyncTimeout(resolveProviderExtension(candidate), syncTimeoutMs);
   }
 
   // Any other providerType (e.g. "memory", "superdoc", or an unknown family) is

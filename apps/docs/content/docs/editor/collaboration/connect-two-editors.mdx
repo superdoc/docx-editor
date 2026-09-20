@@ -64,6 +64,7 @@ const collaboration = {
   documentId: 'example-room',
   serverUrl: 'ws://127.0.0.1:1234',
   roomMode: 'join',
+  syncTimeoutMs: 45_000,
 } satisfies DocumentCollaborationConfig;
 
 const superdoc = new SuperDoc({
@@ -80,6 +81,7 @@ Provide an `#editor` element and serve your DOCX at `/sample.docx`. Use these se
 | `providerType` and `serverUrl` | Connect to the Hocuspocus server you started.                                |
 | `documentId`                   | Put both editors in the same room.                                           |
 | `roomMode`                     | Create the room once, then join it. Alex uses `'create'`; Sam uses `'join'`. |
+| `syncTimeoutMs`                | Limit the initial sync wait. It defaults to 30,000 milliseconds.             |
 
 The `mode` and `user` URL parameters belong to this example, not SuperDoc. The app reads them to choose the room operation and display name.
 

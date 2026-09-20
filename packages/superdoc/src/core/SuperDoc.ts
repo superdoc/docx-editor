@@ -2202,12 +2202,14 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
   }
 
   #toV2CollaborationConfig(target: NormalizedV2CollaborationTarget): V2CollaborationConfig {
+    const syncTimeoutOption = target.syncTimeoutMs === undefined ? {} : { syncTimeoutMs: target.syncTimeoutMs };
     if (target.providerFamily === 'extension') {
       return {
         providerType: 'extension',
         adapterId: target.adapterId as string,
         documentId: target.documentId,
         roomMode: target.roomMode,
+        ...syncTimeoutOption,
         ...(target.providerOptions !== undefined ? { providerOptions: target.providerOptions } : {}),
         ...(target.token ? { token: target.token } : {}),
       };
@@ -2217,6 +2219,7 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
         providerType: 'liveblocks',
         documentId: target.documentId,
         roomMode: target.roomMode,
+        ...syncTimeoutOption,
         ...(target.publicApiKey ? { publicApiKey: target.publicApiKey } : {}),
         ...(target.authEndpoint ? { authEndpoint: target.authEndpoint } : {}),
       };
@@ -2226,6 +2229,7 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
         providerType: 'hocuspocus',
         documentId: target.documentId,
         roomMode: target.roomMode,
+        ...syncTimeoutOption,
         ...(target.serverUrl ? { serverUrl: target.serverUrl } : {}),
         ...(target.params ? { params: target.params } : {}),
         ...(target.token ? { token: target.token } : {}),
@@ -2235,6 +2239,7 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
       providerType: 'y-websocket',
       documentId: target.documentId,
       roomMode: target.roomMode,
+      ...syncTimeoutOption,
       ...(target.serverUrl ? { serverUrl: target.serverUrl } : {}),
       ...(target.params ? { params: target.params } : {}),
     };

@@ -696,6 +696,8 @@ export interface V2YWebsocketCollaborationConfig {
    * an auth token). Values are strings.
    */
   params?: Record<string, string> | null;
+  /** Maximum initial synchronization wait in milliseconds. Defaults to 30,000. */
+  syncTimeoutMs?: number;
   /** Explicit room operation. Defaults to `'join'`; `'create'` never joins an existing room. */
   roomMode?: 'join' | 'create';
 }
@@ -713,6 +715,8 @@ export interface V2HocuspocusCollaborationConfig {
   params?: Record<string, string> | null;
   /** Static auth token or resolver invoked for every Hocuspocus connection. */
   token?: string | (() => string | Promise<string>);
+  /** Maximum initial synchronization wait in milliseconds. Defaults to 30,000. */
+  syncTimeoutMs?: number;
   /** Explicit room operation. Defaults to `'join'`; `'create'` never joins an existing room. */
   roomMode?: 'join' | 'create';
 }
@@ -737,6 +741,8 @@ export interface V2LiveblocksCollaborationConfig {
    * page; non-browser SDK/CLI callers must use an absolute HTTP(S) URL.
    */
   authEndpoint?: string;
+  /** Maximum initial synchronization wait in milliseconds. Defaults to 30,000. */
+  syncTimeoutMs?: number;
   /** Explicit room operation. Defaults to `'join'`; `'create'` never joins an existing room. */
   roomMode?: 'join' | 'create';
 }
@@ -752,6 +758,8 @@ export interface V2ProviderExtensionCollaborationConfig {
   providerOptions?: unknown;
   /** Optional host-owned credential resolver available to the adapter. */
   token?: string | (() => string | Promise<string>);
+  /** Maximum initial synchronization wait in milliseconds. Defaults to 30,000. */
+  syncTimeoutMs?: number;
   /** Explicit room operation. Defaults to `'join'`; `'create'` never joins an existing room. */
   roomMode?: 'join' | 'create';
 }

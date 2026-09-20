@@ -12,6 +12,7 @@ const collaboration = {
   documentId: 'agreement',
   serverUrl: 'wss://collaboration.example.com',
   roomMode: 'join',
+  syncTimeoutMs: 45_000,
 } satisfies DocumentCollaborationConfig;
 
 const config = {

@@ -444,6 +444,7 @@ const publishWithMirror = ({
   tag = 'latest',
   expectedVersion,
   platformPackages = [],
+  dryRun = false,
   onTarballs,
   effects = defaultEffects,
   logger = console,
@@ -506,6 +507,17 @@ const publishWithMirror = ({
 
     if (onTarballs) {
       onTarballs({ canonicalTarball, mirrorTarball, version: canonical.version });
+    }
+
+    if (dryRun) {
+      for (const tarball of [canonicalTarball, mirrorTarball]) {
+        effects.run('npm', ['publish', tarball, '--dry-run', '--access', 'public', '--tag', tag, '--registry', defaultRegistry()], rootDir);
+      }
+      return {
+        version: canonical.version,
+        canonical: { name: canonical.name, published: false },
+        mirror: { name: mirrorName, published: false },
+      };
     }
 
     const canonicalResult = publishTarball({

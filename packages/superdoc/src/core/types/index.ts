@@ -4728,7 +4728,7 @@ export interface Config {
   proofing?: ProofingConfig;
   /**
    * Font system configuration. The reviewed fallback pack ships in the optional
-   * `@superdoc-dev/fonts` package: pass `superdocFonts` (bundler) or the `SuperDocFonts`
+   * `@superdoc/fonts` package: pass `superdocFonts` (bundler) or the `SuperDocFonts`
    * global from its `superdoc-fonts.min.js` browser build (CDN). To self-host, set
    * `fonts.assetBaseUrl` (e.g. `/fonts/` or a CDN URL) or `fonts.resolveAssetUrl` for
    * signed/versioned hosting. Core ships no document families, so with none configured the

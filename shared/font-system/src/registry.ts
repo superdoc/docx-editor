@@ -13,7 +13,7 @@ import { BUNDLED_MANIFEST } from './bundled-manifest';
 /**
  * Physical family NAMES SuperDoc ships as bundled substitutes (Carlito, Liberation Sans, ...). When a
  * face under one of these fails to load, it is almost always the bundled `.woff2` not being served - a
- * setup problem with one clear fix - so we route it to the actionable "install @superdoc-dev/fonts / set
+ * setup problem with one clear fix - so we route it to the actionable "install @superdoc/fonts / set
  * assetBaseUrl" warning. This is a NAME match, not true provenance: a customer `fonts.add` face that
  * happens to be named e.g. "Carlito" would route here too. That collision is rare and the guidance is
  * still reasonable, so the simpler name check is preferred over threading a provenance flag through
@@ -662,8 +662,8 @@ export class FontRegistry {
     console.warn(
       `[superdoc] Bundled fallback fonts failed to load (e.g. "${family}"). Text will render with ` +
         `system fallbacks, so some fonts may look unchanged on machines that lack them. Fix one of:\n` +
-        `  - install @superdoc-dev/fonts and pass it:\n` +
-        `      import { superdocFonts } from '@superdoc-dev/fonts';\n` +
+        `  - install @superdoc/fonts and pass it:\n` +
+        `      import { superdocFonts } from '@superdoc/fonts';\n` +
         `      new SuperDoc({ /* ... */ fonts: superdocFonts });\n` +
         `  - or set fonts.assetBaseUrl / fonts.resolveAssetUrl to where the bundled .woff2 are served.\n` +
         `Docs: https://docs.superdoc.dev/getting-started/fonts`,

@@ -8,11 +8,7 @@
 // legacy name, so every step that repairs or verifies a fonts release has to
 // know which side of that boundary a version falls on.
 //
-// This is the single source of that rule. The manual workflow
-// resume-fonts-release.cjs reads it via the CLI below. The v2 copy of
-// release-fonts.yml that also used it is gone; Orbit main keeps its own. It
-// from here. A second copy in a workflow would be a hardcoded version string
-// nothing keeps in sync with this one.
+// The stable planner, publisher and resume-fonts-release.cjs share this boundary.
 //
 export const FONTS_NPM_PACKAGES = ['@superdoc/fonts', '@superdoc-dev/fonts'];
 export const FONTS_LEGACY_NPM_PACKAGES = ['@superdoc-dev/fonts'];

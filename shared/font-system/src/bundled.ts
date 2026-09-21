@@ -131,7 +131,7 @@ export function installBundledSubstitutes(registry: FontRegistry, options: Insta
   if (candidate != null && typeof candidate !== 'function') {
     console.warn(
       '[superdoc] fonts.resolveAssetUrl must be a function (context) => string; ignoring it and ' +
-        'falling back to fonts.assetBaseUrl. Prefer @superdoc-dev/fonts, which wires it correctly.',
+        'falling back to fonts.assetBaseUrl. Prefer @superdoc/fonts, which wires it correctly.',
     );
   }
   for (const family of BUNDLED_MANIFEST) {

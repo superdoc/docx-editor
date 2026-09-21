@@ -1,72 +1,13 @@
 # Releasing @superdoc/fonts
 
-> **This checkout cannot release fonts.** The public `release-fonts.yml`
-> workflow was deleted from the V2 tree before the export cutover, so there is
-> no release path here — automated or manual. Its absence is expected and is not
-> a CI failure.
->
-> The fonts train runs from Orbit `main`, which keeps its own copy of the
-> workflow and remains the owner of both `@superdoc/fonts` and the deprecated
-> `@superdoc-dev/fonts` mirror. See `scripts/superdoc-release-ownership.mjs` in
-> Orbit for the recorded owner and recovery path.
->
-> The rest of this document describes how that Orbit-`main`-owned release
-> behaves. It is kept because the packaging rules, the bootstrap history, and
-> the two-name publishing model still govern what ships — but nothing below can
-> be initiated from this repository.
+Orbit's root `stable-release-pipeline.yml` owns stable fonts releases, and `next-release.yml` owns prereleases from `main`. Maintainers dispatch it against `stable`; the default is a dry run. Eligible font-package or shared font-system changes select an independent version from the `fonts-v${version}` history using the pipeline's conventional-commit rules. The `fonts` toggle controls publication, and `fonts-version` can override the calculated stable version for recovery.
 
-`@superdoc/fonts` is wired into semantic-release on the branch that owns it:
+The planner stamps `packages/fonts/package.json`. Versions must be `0.x.y` for stable or `0.x.y-next.N` for next, with a base above `0.2.0`, the last legacy-only release recorded in `scripts/fonts-release-scope.mjs`. The canonical scope can be absent on its first publication; authentication and transport errors still fail planning. The next pipeline plans fonts independently on its scheduled tick. A manual dispatch can force fonts with the `fonts` toggle; `skip_prerelease_count` advances past a burned version. Planning respects both live channels so a prerelease cannot regress behind the latest stable release.
 
-- pushes to `main` there publish prereleases on the `next` dist-tag
-- stable releases are cut by the maintainers, not from this repository
-- tags use `fonts-v${version}`
+The fonts job checks family-list drift and unit tests, builds the package, and packs the canonical tarball. The existing mirror publisher derives `@superdoc-dev/fonts` from those same bytes, changing only package identity. Both tarballs pass the artifact audit. An isolated consumer install checks the ESM, type and browser entry points, all bundled font files and licenses, and browser font loading with a published SuperDoc release before publication.
 
-## Bootstrap history
+Dry runs exercise those checks and npm's dry-run publish for both names without uploading, retagging or deprecating anything. Real runs publish both names on the channel selected by the version (`latest` or `next`), deprecate the mirror version, and write the `fonts-v` tag and matching channel note only after successful publication.
 
-Automated releases require both a `fonts-v0.1.0` tag and a published `0.1.0`, and
-the owning workflow checks for them before running semantic-release. A tag
-without the npm package would make semantic-release believe `0.1.0` shipped when
-consumers cannot install it.
+For a partial publish, rerun the failed fonts publish job from the same workflow run and stamped commit. The stable pipeline also accepts the same explicit version with fonts selected. Existing registry artifacts must match the rebuilt tarballs before the publisher can complete the pair. If source changed, cut a new version instead. No public-repository workflow publishes fonts separately.
 
-Both already exist. `0.1.0` predates the move to `@superdoc/fonts`, so it was
-published under the legacy name and that gate still checks
-`@superdoc-dev/fonts@0.1.0`. It proves the release history is intact, not that
-the canonical package is present; do not repoint it at a `@superdoc/fonts`
-version that never existed. `@superdoc/fonts` has in fact never been published —
-`scripts/fonts-release-scope.mjs` holds the version boundary that decides which
-names a given release ships under.
-
-There is nothing to bootstrap again. If a future package needs the same
-treatment, publish the npm package and push the git tag together.
-
-## Automated releases (from the owning branch)
-
-semantic-release owns every version after the bootstrap, and the owning workflow
-verifies both bootstrap artifacts before it runs. Changes under
-`packages/fonts/**`, `shared/**`, or `pnpm-workspace.yaml` can trigger the
-package release **there**; pushing those paths in this checkout releases
-nothing. The publish helper (`scripts/publish-fonts.cjs`, still present here)
-rebuilds the package before publishing so `dist/` and `assets/` are present in
-the npm tarball.
-
-Each release publishes two names from one build: the canonical `@superdoc/fonts`
-and a deprecated `@superdoc-dev/fonts` compatibility mirror for consumers who
-installed before the scope change. The mirror version is deprecated immediately
-after it publishes, because `npm deprecate` only marks versions that exist when
-it runs.
-
-To inspect what a release would ship:
-
-```bash
-cd packages/fonts
-npm pack --dry-run
-```
-
-Expect `dist/*`, `src/*`, `assets/LICENSES.md`, license texts, and the bundled `.woff2` assets.
-
-## Keeping in sync with `superdoc`
-
-The font set is owned by SuperDoc core (`shared/font-system`). This package ships the binaries and
-bundler URLs for that set. When core adds, removes, or renames bundled font assets, the package needs
-a release so installed `superdoc` and `@superdoc/fonts` stay aligned — which now has to be requested
-from the Orbit `main` train rather than cut from here.
+The font binaries and license texts originate in `shared/font-system/assets`. Keep the font pack aligned with that source when adding or changing families. Consumers install `@superdoc/fonts`; see the package README for loading and migration guidance.

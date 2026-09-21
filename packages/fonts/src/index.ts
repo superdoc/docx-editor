@@ -45,7 +45,7 @@ export type { BundledFontFamilyName } from './bundled-families.js';
  * Pass as SuperDoc's `fonts.resolveAssetUrl` so the reviewed fallback pack loads from THIS
  * package's emitted assets, with no manual copy step and no `assetBaseUrl`:
  *
- *     import { resolveBundledFontAssetUrl } from '@superdoc-dev/fonts';
+ *     import { resolveBundledFontAssetUrl } from '@superdoc/fonts';
  *     new SuperDoc({ selector: '#editor', document, fonts: { resolveAssetUrl: resolveBundledFontAssetUrl } });
  *
  * Throws on an unknown file, which signals a version mismatch between `@superdoc/fonts` and
@@ -78,7 +78,7 @@ export const superdocFonts: SuperDocFontsConfig = {
 /**
  * Build a curated `fonts` config: the bundled pack, narrowed to the families you choose.
  *
- *     import { createSuperDocFonts } from '@superdoc-dev/fonts';
+ *     import { createSuperDocFonts } from '@superdoc/fonts';
  *     new SuperDoc({
  *       selector: '#editor',
  *       document,

@@ -4595,7 +4595,9 @@ test('the font resolution explorer keeps render providers separate from DOCX exp
   // the subscription the fidelity checklist below depends on.
   assert.match(page, /Change only the `documentFonts` value in the file you already have/u);
   assert.match(page, /including the `observeDocumentFonts` wiring from the previous section/u);
-  assert.doesNotMatch(page, /@superdoc\/fonts/u);
+  assert.match(page, /npm install @superdoc\/fonts/u);
+  assert.match(page, /fonts: superdocFonts/u);
+  assert.match(page, /@superdoc-dev\/fonts/u);
 });
 
 test('Document API calls in code examples match the generated contract', async () => {

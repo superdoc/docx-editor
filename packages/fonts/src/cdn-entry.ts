@@ -7,7 +7,7 @@
  * `<script>` tag works with no bundler:
  *
  *     <script src="https://cdn.jsdelivr.net/npm/superdoc@next/dist-cdn/superdoc.min.js"></script>
- *     <script src="https://cdn.jsdelivr.net/npm/@superdoc-dev/fonts/dist/superdoc-fonts.min.js"></script>
+ *     <script src="https://cdn.jsdelivr.net/npm/@superdoc/fonts/dist/superdoc-fonts.min.js"></script>
  *     <script>
  *       new SuperDoc({ selector: '#editor', document: 'contract.docx', fonts: SuperDocFonts.superdocFonts });
  *     </script>

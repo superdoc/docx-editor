@@ -4,7 +4,7 @@
 // `@superdoc/fonts` and a deprecated `@superdoc-dev/fonts` compatibility mirror
 // for consumers who installed before the scope change.
 //
-// The mirror is temporary and remains until the compatibility name is retired.
+// Keep the mirror for consumers that have not migrated their imports yet.
 
 const { execFileSync } = require('node:child_process');
 const path = require('node:path');
@@ -152,7 +152,7 @@ const buildFontsPackage = (logger = console) => {
   // nothing exits 0 and builds nothing, so a workspace rename would turn this
   // into a silent no-op and the publish would go on to audit and upload
   // whatever stale or missing dist happened to be in the checkout. Matches the
-  // same flag Orbit main's release-fonts.yml uses on its Build fonts step.
+  // stable pipeline must fail before it can audit or upload a stale artifact.
   run('pnpm', ['--filter', CANONICAL_PACKAGE_NAME, '--fail-if-no-match', 'build']);
 };
 
@@ -160,6 +160,8 @@ const publishFontsPackage = ({
   distTag = 'latest',
   version,
   build = true,
+  dryRun = false,
+  onTarballs,
   logger = console,
 } = {}) => {
   if (build) {
@@ -175,6 +177,7 @@ const publishFontsPackage = ({
     // driven by a release tag, or semantic-release itself) pass it here so the
     // packed tarball is checked against it before anything uploads.
     expectedVersion: version,
+    dryRun,
     logger,
     // Audit the exact tarballs that will upload. Publishing a directory would
     // let npm rebuild them afterwards, so anything verified here could differ
@@ -182,6 +185,7 @@ const publishFontsPackage = ({
     onTarballs: ({ canonicalTarball, mirrorTarball }) => {
       assertOnlyKnownViolations(canonicalTarball, CANONICAL_PACKAGE_NAME, logger);
       assertOnlyKnownViolations(mirrorTarball, LEGACY_PACKAGE_NAME, logger);
+      onTarballs?.({ canonicalTarball, mirrorTarball, version });
     },
   });
 };

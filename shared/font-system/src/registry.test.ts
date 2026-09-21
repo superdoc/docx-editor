@@ -492,7 +492,7 @@ describe('bundled-substitute load-failure warning', () => {
     expect(result.status).toBe('failed');
     const warnings = bundledWarnings();
     expect(warnings).toHaveLength(1);
-    expect(warnings[0]).toContain('@superdoc-dev/fonts');
+    expect(warnings[0]).toContain('@superdoc/fonts');
     expect(warnings[0]).toContain('fonts.assetBaseUrl');
   });
 

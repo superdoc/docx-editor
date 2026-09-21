@@ -618,6 +618,32 @@ const runPublishWithMirror = ({
   }
 };
 
+test('dry runs audit both tarballs without publishing, retagging or deprecating', () => {
+  for (const published of [new Set(), new Set(['@superdoc/fonts@0.3.0', '@superdoc-dev/fonts@0.3.0'])]) {
+    let audited = false;
+    const { result, calls } = runPublishWithMirror({
+      manifest: { name: '@superdoc/fonts', version: '0.3.0' },
+      published,
+      overrides: {
+        dryRun: true,
+        expectedVersion: '0.3.0',
+        tag: 'latest',
+        onTarballs: ({ canonicalTarball, mirrorTarball }) => {
+          assert.ok(readFileSync(canonicalTarball).length);
+          assert.ok(readFileSync(mirrorTarball).length);
+          audited = true;
+        },
+      },
+    });
+    assert.equal(audited, true);
+    assert.equal(result.canonical.published, false);
+    assert.equal(result.mirror.published, false);
+    assert.equal(calls.filter((call) => call[1] === 'publish').length, 2);
+    assert.ok(calls.filter((call) => call[1] === 'publish').every((call) => call.includes('--dry-run')));
+    assert.ok(calls.every((call) => !['deprecate', 'dist-tag'].includes(call[1])));
+  }
+});
+
 const fontsManifest = { name: '@superdoc/fonts', version: '0.2.0' };
 
 test('canonical publishes before the mirror, and the mirror is deprecated last', () => {

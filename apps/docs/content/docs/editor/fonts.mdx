@@ -34,6 +34,55 @@ the original DOCX font name, but different glyph widths can change line and page
 
 The font names shown in the built-in toolbar are choices, not font files bundled with `superdoc`.
 
+## Load the optional substitute pack
+
+Install the font pack to supply known substitutes such as Carlito for Calibri, Caladea for Cambria, and Liberation
+Serif for Times New Roman:
+
+```sh
+npm install @superdoc/fonts
+```
+
+Add the pack to your existing Editor configuration. Your bundler serves the package's WOFF2 files; SuperDoc loads the
+faces needed by the document.
+
+<FrameworkExampleTabs>
+  <FrameworkExample filename='src/main.ts' framework='Vanilla'>
+    ```ts
+    import { SuperDoc } from 'superdoc';
+    import 'superdoc/style.css';
+    import { superdocFonts } from '@superdoc/fonts';
+
+    new SuperDoc({
+      selector: '#editor',
+      document: '/sample.docx',
+      fonts: superdocFonts,
+    });
+    ```
+
+  </FrameworkExample>
+  <FrameworkExample filename='src/App.tsx' framework='React'>
+    ```tsx
+    import { SuperDocEditor } from '@superdoc/react';
+    import '@superdoc/react/style.css';
+    import { superdocFonts } from '@superdoc/fonts';
+
+    export default function App() {
+      return <SuperDocEditor document='/sample.docx' fonts={superdocFonts} />;
+    }
+    ```
+
+  </FrameworkExample>
+</FrameworkExampleTabs>
+
+The pack contains substitutes, not proprietary Microsoft font files, and does not cover every family. It does not
+guarantee identical Word rendering. The Quickstart's Aptos families still need an appropriate provider; continue below
+to host licensed files or configure a mapping. Check font reports and compare line and page breaks for your documents.
+
+If you use `@superdoc-dev/fonts`, uninstall it, install `@superdoc/fonts`, and update imports and any CDN paths to the
+new name. The `superdocFonts`, `createSuperDocFonts`, and `resolveBundledFontAssetUrl` exports keep the same usage.
+New stable releases retain the old name as a deprecated compatibility mirror. Avoid loading both packs.
+
 ## See the resolution path
 
 Compare what happens to the Aptos body text in the Quickstart document. The DOCX name stays the same while the available

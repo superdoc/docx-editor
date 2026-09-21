@@ -151,16 +151,16 @@ Exclude both when a person must make the final decision. [Safety](/agents/operat
 
 ### Tables
 
-| Action                | Arguments                                                                   | Tracked | Notes                                                        |
-| --------------------- | --------------------------------------------------------------------------- | ------- | ------------------------------------------------------------ |
-| `style_table`         | `tableOrdinal?`, `accentColor?`                                             | Yes     | Accent header, bold first column, banded rows                |
-| `move_table`          | `tableOrdinal?`, `placement`                                                | Yes     | Moves the whole table with its content in one call           |
-| `delete_table`        | `tableOrdinal?`                                                             | Yes     |                                                              |
-| `insert_table_row`    | `tableOrdinal?`, `rowIndex?`, `position?`, `cellTexts?`, `dryRun?`          | Yes     | `dryRun: true` reports success without changing the document |
-| `insert_table_column` | `tableOrdinal?`, `columnIndex?`, `position?`, `headerText?` or `cellTexts?` | Yes     |                                                              |
-| `delete_table_row`    | `tableOrdinal?`, `rowIndex`                                                 | Yes     |                                                              |
-| `delete_table_column` | `tableOrdinal?`, `columnIndex`                                              | Yes     |                                                              |
-| `split_table`         | `tableOrdinal?`, `rowIndex`, `separatorText?`                               | Yes     |                                                              |
+| Action                | Arguments                                                                   | Tracked | Notes                                              |
+| --------------------- | --------------------------------------------------------------------------- | ------- | -------------------------------------------------- |
+| `style_table`         | `tableOrdinal?`, `accentColor?`                                             | Yes     | Accent header, bold first column, banded rows      |
+| `move_table`          | `tableOrdinal?`, `placement`                                                | Yes     | Moves the whole table with its content in one call |
+| `delete_table`        | `tableOrdinal?`                                                             | Yes     |                                                    |
+| `insert_table_row`    | `tableOrdinal?`, `rowIndex?`, `position?`, `cellTexts?`                     | Yes     |                                                    |
+| `insert_table_column` | `tableOrdinal?`, `columnIndex?`, `position?`, `headerText?` or `cellTexts?` | Yes     |                                                    |
+| `delete_table_row`    | `tableOrdinal?`, `rowIndex`                                                 | Yes     |                                                    |
+| `delete_table_column` | `tableOrdinal?`, `columnIndex`                                              | Yes     |                                                    |
+| `split_table`         | `tableOrdinal?`, `rowIndex`, `separatorText?`                               | Yes     |                                                    |
 
 `tableOrdinal` is 1-based. Omit it only when the document contains exactly one table; with several tables the action cannot resolve a target and fails. `rowIndex` and `columnIndex` are 0-based, unlike every ordinal, so `rowIndex: 0` is the first row. The `tableCell` selector uses the same 0-based row and column indices.
 

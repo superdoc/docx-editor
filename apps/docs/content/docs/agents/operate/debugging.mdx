@@ -97,7 +97,7 @@ For a full trace during development, set `SUPERDOC_SDK_DEBUG_TRACE=1`. The SDK a
 | Same failing action repeats until the turn cap | The model cannot read the failure                                             | Return errors as tool results, not exceptions, and include `errors[].message`        |
 | Edit landed directly when tracked was asked    | `changeMode` omitted, or the action ignores it                                | Enforce the allowlist from the [action reference](/agents/build/actions#changemode)  |
 | `partial` receipts on batch actions            | Some targets matched and some did not                                         | Read `editsApplied` and `editsSkipped`, then retry only the skipped targets          |
-| Output file identical to input                 | The model decided the work was done, or every action was a dry run            | Count mutations by comparing revisions, and refuse to save when there are none       |
+| Output file identical to input                 | The model decided the work was done, or every action resolved to a no-op      | Count mutations by comparing revisions, and refuse to save when there are none       |
 | Works in a script, fails in the server         | The runtime was bundled away or blocked                                       | See the runtime section above                                                        |
 
 ## Next

@@ -14,7 +14,7 @@ The argument is optional and defaults to a direct edit, so asking for tracked mo
 
 Check the action too. Not every action honors `changeMode` — `apply_style`, `set_paragraph_spacing`, and `insert_page_break` ignore it and always edit directly, while `move_range` declares it but rejects a tracked request rather than applying an untracked edit. The tool schema accepts the argument in every case. An allowlist of tracked-capable actions is the only reliable guard; without one, a run that promised reviewable suggestions can quietly rewrite the document.
 
-Treat a successful receipt as a claim, not proof. Actions that support `dryRun` report success while applying nothing, so compare the receipt's before and after revisions when you need to know a change actually landed.
+Treat a successful receipt as a claim, not proof. An action whose target matched nothing still reports `ok`, so compare the receipt's before and after revisions when you need to know a change actually landed. There is no preview mode to fall back on: no action simulates a mutation, and the surface refuses `dryRun` rather than accepting it and editing anyway. When you want an edit a person can look at before it is final, make it with `changeMode: 'tracked'`.
 
 Direct edits are appropriate for mechanical work: normalizing fonts, fixing spacing, filling known placeholders. Reserve them for cases where being wrong is cheap.
 

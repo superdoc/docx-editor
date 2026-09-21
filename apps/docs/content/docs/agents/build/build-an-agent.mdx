@@ -177,7 +177,7 @@ Two things close that gap, and both belong in your application rather than in th
 
 Reach for the second only when a workflow has to assert completeness without a reviewer.
 
-A successful receipt is not proof of a change either. Some actions accept `dryRun: true` and report success while explicitly applying nothing, so the example counts a mutation only when the receipt's before and after revisions differ.
+A successful receipt is not proof of a change either. An action whose target matched nothing, or one that resolved to a no-op, still reports `ok`, so the example counts a mutation only when the receipt's before and after revisions differ.
 
 Returning a failed dispatch to the model as a receipt, instead of throwing, is what lets it correct a malformed argument on the next turn.
 

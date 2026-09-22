@@ -368,7 +368,7 @@ function* computeKeepNextChainSteps(
  * Calculates the total height needed to keep a keepNext chain together on the same page.
  *
  * This function computes the combined height of all paragraphs in a keepNext chain,
- * plus the first line of the anchor paragraph. This height is used to determine
+ * plus the minimum valid start of the anchor paragraph. This height is used to determine
  * whether the entire chain can fit on the current page or needs to move to the next.
  *
  * The calculation accounts for:
@@ -376,7 +376,7 @@ function* computeKeepNextChainSteps(
  * - Inter-paragraph spacing with OOXML spacing collapse rules (max of after/before)
  * - Contextual spacing suppression when adjacent paragraphs share the same style
  * - Effective spacing before the first chain member (considering page state)
- * - First line height of the anchor paragraph (optimization per SD-1282)
+ * - Minimum valid starting lines of the anchor paragraph (SD-1282, SD-5117)
  *
  * Spacing rules per OOXML spec:
  * - Adjacent paragraph spacing collapses to max(paragraph1.after, paragraph2.before)
@@ -410,7 +410,6 @@ function calculateChainHeight(
   blocks: FlowBlock[],
   measures: Measure[],
   state: PageState,
-  protectAnchorLines = false,
 ): number {
   let totalHeight = 0;
 
@@ -475,9 +474,8 @@ function calculateChainHeight(
     prevContextualSpacing = contextualSpacing;
   }
 
-  // Phase 2: Add the anchor paragraph's contribution (first line height only)
+  // Phase 2: Add the anchor paragraph's minimum valid start.
   // The "anchor" is the paragraph after the chain that we must keep with.
-  // We only need space for its first line to start - not its full height.
   if (chain.anchorIndex !== -1) {
     const anchorBlock = blocks[chain.anchorIndex];
     const anchorMeasure = measures[chain.anchorIndex];
@@ -498,19 +496,12 @@ function calculateChainHeight(
         const effectiveAnchorSpacingBefore = anchorSuppressBefore ? 0 : anchorSpacingBefore;
         const interParagraphSpacing = Math.max(effectiveSpacingAfterPrev, effectiveAnchorSpacingBefore);
 
-        // Optimization (SD-1282): Only require space for anchor's first line, not full height.
-        // This prevents excessive page breaks while still honoring the keepNext contract.
-        // keepLines is an explicit paragraph-level indivisibility contract. A
-        // keepNext predecessor therefore needs room for the whole anchor even
-        // when the coupled note flow has no demand on those lines. Widow-line
-        // protection remains coupled-note-specific so ordinary keepNext
-        // pagination keeps its established first-line behavior.
-        const requiredLines =
-          anchorBlock.attrs?.keepLines === true
-            ? anchorMeasure.lines.length
-            : protectAnchorLines
-              ? keptAnchorLineCount(anchorBlock, anchorMeasure)
-              : 1;
+        // The chain must reserve the same minimum paragraph start that layout
+        // will accept: all lines for keepLines, one when widow control is
+        // disabled, and the widow-valid minimum otherwise. Reserving only one
+        // line can leave the keepNext paragraph behind when the anchor's widow
+        // rules subsequently move that line to the next page (SD-5117).
+        const requiredLines = keptAnchorLineCount(anchorBlock, anchorMeasure);
         const firstLineHeight = anchorMeasure.lines
           .slice(0, requiredLines)
           .reduce((sum, line) => sum + line.lineHeight, 0);
@@ -3168,7 +3159,7 @@ function* layoutDocumentSteps(
            * keepNext Chain-Aware Page Break Logic
            *
            * Word treats consecutive paragraphs with keepNext=true as an indivisible unit.
-           * If the entire chain (plus the first line of the anchor paragraph) doesn't fit
+           * If the entire chain (plus the anchor paragraph's minimum valid start) doesn't fit
            * on the current page, the whole chain moves to the next page.
            *
            * Three cases:
@@ -3185,7 +3176,6 @@ function* layoutDocumentSteps(
             // Case 2: Chain starter - evaluate entire chain height
             let state = paginator.ensurePage();
             const groupAnchors: FootnoteAnchorRef[] = [];
-            let protectAnchorLines = false;
             if (options.footnotePageFlow) {
               for (const memberIndex of chain.memberIndices) {
                 groupAnchors.push(...getFootnoteAnchorsForBlockId(blocks[memberIndex].id));
@@ -3199,7 +3189,6 @@ function* layoutDocumentSteps(
                     entry.runOrdinal == null ? null : findLineIndexForRunOrdinal(anchorMeasure.lines, entry.runOrdinal);
                   if (line != null && line < lineCount) {
                     groupAnchors.push(entry);
-                    protectAnchorLines = true;
                   }
                 }
               }
@@ -3233,7 +3222,7 @@ function* layoutDocumentSteps(
               Number.isFinite(state.trailingSpacing) && state.trailingSpacing > 0 ? state.trailingSpacing : 0;
             const effectiveAvailableHeight = prevSuppressAfter ? availableHeight + prevTrailing : availableHeight;
 
-            const chainHeight = calculateChainHeight(chain, blocks, measures, state, protectAnchorLines);
+            const chainHeight = calculateChainHeight(chain, blocks, measures, state);
 
             // Calculate page content height to check if chain fits on a blank page
             const blankBottom = options.footnotePageFlow
@@ -3247,18 +3236,12 @@ function* layoutDocumentSteps(
               : state.contentBottom;
             const pageContentHeight = blankBottom - state.topMargin;
             const blankChainHeight = options.footnotePageFlow
-              ? calculateChainHeight(
-                  chain,
-                  blocks,
-                  measures,
-                  {
-                    ...state,
-                    trailingSpacing: 0,
-                    lastParagraphStyleId: undefined,
-                    lastParagraphContextualSpacing: false,
-                  },
-                  protectAnchorLines,
-                )
+              ? calculateChainHeight(chain, blocks, measures, {
+                  ...state,
+                  trailingSpacing: 0,
+                  lastParagraphStyleId: undefined,
+                  lastParagraphContextualSpacing: false,
+                })
               : chainHeight;
             const chainFitsOnBlankPage = blankChainHeight <= pageContentHeight;
 

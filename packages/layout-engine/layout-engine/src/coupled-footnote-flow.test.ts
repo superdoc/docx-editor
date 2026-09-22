@@ -118,7 +118,7 @@ describe('coupled body and footnote page flow', () => {
       footnotePageFlow: flow,
     });
 
-    expect(pagesForBlock(legacy, 'heading')).toEqual([0]);
+    expect(pagesForBlock(legacy, 'heading')).toEqual([1]);
     expect(pagesForBlock(coupled, 'heading')).toEqual(pagesForBlock(legacy, 'heading'));
     expect(pagesForBlock(coupled, 'anchor')).toEqual(pagesForBlock(legacy, 'anchor'));
   });

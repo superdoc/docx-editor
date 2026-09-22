@@ -9177,7 +9177,7 @@ describe('requirePageBoundary edge cases', () => {
       expect(pageContainsBlock(layout.pages[0], 'c2anchor')).toBe(true);
     });
 
-    it('uses first line height of anchor in chain calculation', () => {
+    it('keeps a widow-disabled anchor first line with its keepNext heading', () => {
       // Anchor has multiple lines but only first line should be considered
       const heading: FlowBlock = {
         kind: 'paragraph',
@@ -9216,6 +9216,93 @@ describe('requirePageBoundary edge cases', () => {
       // Heading and body should start on same page (chain fits using first line optimization)
       expect(pageContainsBlock(layout.pages[0], 'heading')).toBe(true);
       expect(pageContainsBlock(layout.pages[0], 'body')).toBe(true);
+      expect(pageContainsBlock(layout.pages[1], 'body')).toBe(true);
+    });
+
+    it('moves a keepNext heading when widow control moves the following paragraph', () => {
+      const filler: FlowBlock = {
+        kind: 'paragraph',
+        id: 'filler',
+        runs: [{ text: 'Filler content', fontFamily: 'Arial', fontSize: 12 }],
+        attrs: {},
+      };
+      const heading: FlowBlock = {
+        kind: 'paragraph',
+        id: 'heading',
+        runs: [{ text: 'Heading', fontFamily: 'Arial', fontSize: 24 }],
+        attrs: { keepNext: true },
+      };
+      const body: FlowBlock = {
+        kind: 'paragraph',
+        id: 'body',
+        runs: [{ text: 'Body with three lines', fontFamily: 'Arial', fontSize: 12 }],
+        attrs: {},
+      };
+
+      const fillerMeasure: ParagraphMeasure = {
+        kind: 'paragraph',
+        lines: [makeLine(45)],
+        totalHeight: 45,
+      };
+      const headingMeasure: ParagraphMeasure = {
+        kind: 'paragraph',
+        lines: [makeLine(30)],
+        totalHeight: 30,
+      };
+      const bodyMeasure: ParagraphMeasure = {
+        kind: 'paragraph',
+        lines: [makeLine(20), makeLine(20), makeLine(20)],
+        totalHeight: 60,
+      };
+      const options: LayoutOptions = {
+        pageSize: { w: 400, h: 160 },
+        margins: { top: 30, right: 30, bottom: 30, left: 30 },
+      };
+
+      const layout = layoutDocument([filler, heading, body], [fillerMeasure, headingMeasure, bodyMeasure], options);
+
+      expect(pageContainsBlock(layout.pages[0], 'filler')).toBe(true);
+      expect(pageContainsBlock(layout.pages[0], 'heading')).toBe(false);
+      expect(pageContainsBlock(layout.pages[1], 'heading')).toBe(true);
+      expect(pageContainsBlock(layout.pages[1], 'body')).toBe(true);
+    });
+
+    it('moves a keepNext heading with a keepLines anchor that does not fit', () => {
+      const filler: FlowBlock = {
+        kind: 'paragraph',
+        id: 'filler',
+        runs: [{ text: 'Filler content', fontFamily: 'Arial', fontSize: 12 }],
+        attrs: {},
+      };
+      const heading: FlowBlock = {
+        kind: 'paragraph',
+        id: 'heading',
+        runs: [{ text: 'Heading', fontFamily: 'Arial', fontSize: 24 }],
+        attrs: { keepNext: true },
+      };
+      const body: FlowBlock = {
+        kind: 'paragraph',
+        id: 'body',
+        runs: [{ text: 'Body with three lines', fontFamily: 'Arial', fontSize: 12 }],
+        attrs: { keepLines: true },
+      };
+      const measures: ParagraphMeasure[] = [
+        { kind: 'paragraph', lines: [makeLine(45)], totalHeight: 45 },
+        { kind: 'paragraph', lines: [makeLine(30)], totalHeight: 30 },
+        { kind: 'paragraph', lines: [makeLine(20), makeLine(20), makeLine(20)], totalHeight: 60 },
+      ];
+      const options: LayoutOptions = {
+        pageSize: { w: 400, h: 160 },
+        margins: { top: 30, right: 30, bottom: 30, left: 30 },
+      };
+
+      const layout = layoutDocument([filler, heading, body], measures, options);
+
+      expect(pageContainsBlock(layout.pages[0], 'filler')).toBe(true);
+      expect(pageContainsBlock(layout.pages[0], 'heading')).toBe(false);
+      expect(pageContainsBlock(layout.pages[0], 'body')).toBe(false);
+      expect(pageContainsBlock(layout.pages[1], 'heading')).toBe(true);
+      expect(pageContainsBlock(layout.pages[1], 'body')).toBe(true);
     });
 
     it('uses first ROW height (not full table) for a splittable table anchor so the chain starts and the table splits (SD-3345)', () => {

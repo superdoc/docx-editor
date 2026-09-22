@@ -145,6 +145,16 @@ export type SDPasteInline =
       inlines: readonly SDPasteLeafInline[];
       tooltip?: string;
       sourcePath?: readonly (string | number)[];
+    }
+  | {
+      kind: 'footnoteRef';
+      noteId: string;
+      sourcePath?: readonly (string | number)[];
+    }
+  | {
+      kind: 'endnoteRef';
+      noteId: string;
+      sourcePath?: readonly (string | number)[];
     };
 
 export interface SDPasteParagraphBlock {

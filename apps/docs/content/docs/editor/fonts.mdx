@@ -79,6 +79,13 @@ The pack contains substitutes, not proprietary Microsoft font files, and does no
 guarantee identical Word rendering. The Quickstart's Aptos families still need an appropriate provider; continue below
 to host licensed files or configure a mapping. Check font reports and compare line and page breaks for your documents.
 
+To load only selected substitutes, import `createSuperDocFonts` from the same package and use logical Word family names:
+`createSuperDocFonts({ include: ['Calibri', 'Cambria'] })`.
+
+For a plain-script integration, load the version-pinned `dist/superdoc-fonts.min.js` browser build and pass
+`SuperDocFonts.superdocFonts`. When self-hosting, keep the package's `assets` directory beside `dist` so its relative
+font URLs resolve. Use one loading path per page.
+
 If you use `@superdoc-dev/fonts`, uninstall it, install `@superdoc/fonts`, and update imports and any CDN paths to the
 new name. The `superdocFonts`, `createSuperDocFonts`, and `resolveBundledFontAssetUrl` exports keep the same usage.
 New stable releases retain the old name as a deprecated compatibility mirror. Avoid loading both packs.
@@ -119,6 +126,11 @@ target device, map it to a face you can provide rather than registering a licens
 
 A font loaded by your application's `@font-face` CSS can also be available to the browser. Prefer `fonts.families` for
 document fonts so SuperDoc knows which source and face descriptors to load before it measures the document.
+
+Registering a family supplies its files; it does not add an unused family to the font picker. To let users apply a new
+family, add `{ value: 'Brand Sans', label: 'Brand Sans', previewFamily: 'Brand Sans' }` to `ui.toolbar.fontOptions` and
+keep the matching `fonts.families` entry. This configured list owns the dropdown, so include every choice you want to
+offer. See [Configure the built-in toolbar](/editor/built-in-ui/configure-the-toolbar).
 
 SuperDoc registers these providers at startup and loads required faces before measuring when it can. A missing or blocked
 asset still allows the document to open, but the report identifies the fallback.

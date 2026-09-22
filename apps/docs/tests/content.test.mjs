@@ -4597,6 +4597,11 @@ test('the font resolution explorer keeps render providers separate from DOCX exp
   assert.match(page, /including the `observeDocumentFonts` wiring from the previous section/u);
   assert.match(page, /npm install @superdoc\/fonts/u);
   assert.match(page, /fonts: superdocFonts/u);
+  assert.match(page, /createSuperDocFonts\(\{ include: \['Calibri', 'Cambria'\] \}\)/u);
+  assert.match(page, /keep the package's `assets` directory beside `dist`/u);
+  assert.match(page, /SuperDocFonts\.superdocFonts/u);
+  assert.match(page, /`ui\.toolbar\.fontOptions`/u);
+  assert.match(page, /Configure the built-in toolbar/u);
   assert.match(page, /@superdoc-dev\/fonts/u);
 });
 

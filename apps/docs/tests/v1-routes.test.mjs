@@ -67,6 +67,17 @@ test('every URL the V1 archive answers has exactly one disposition', async () =>
   assert.deepEqual(problems, []);
 });
 
+test('routes the migrated V1 fonts guide to its V2 replacement', async () => {
+  const dispositions = parseDispositions(await readConfig('v1-dispositions.json'));
+
+  assert.deepEqual(dispositions.get('/getting-started/fonts'), {
+    source: '/getting-started/fonts',
+    kind: 'v2',
+    destination: '/editor/fonts/',
+    reason: undefined,
+  });
+});
+
 test('reports a released-package link that no rule would answer', async () => {
   const [manifest, dispositionConfig, routeManifest] = await Promise.all([
     readV1Manifest(),

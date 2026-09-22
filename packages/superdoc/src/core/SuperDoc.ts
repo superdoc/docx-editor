@@ -40,6 +40,7 @@ import { DEFAULT_SUPERDOC_USER as DEFAULT_USER, normalizeSuperDocUser } from './
 import { normalizeUiConfig } from './config/normalize-ui-config.js';
 import { normalizeInteractionConfig } from './config/normalize-interaction-config.js';
 import { normalizeSurfacesConfig } from './config/normalize-surfaces-config.js';
+import { warnForMissingDocumentFonts } from './helpers/font-diagnostics.js';
 import { normalizeCommentsUiConfig } from '../helpers/comment-small-screen.js';
 import { EditorRuntimeRegistry } from './editor-runtime/editor-runtime-registry.js';
 import type { EditorRuntimeFocusOptions } from './editor-runtime/types.js';
@@ -2675,6 +2676,8 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
   /** Editors whose `fonts-changed` we already relay, so a repeated create wires once. */
   #fontsRelayEditors = new WeakSet<Editor>();
 
+  #warnedMissingFonts = new WeakMap<ActiveEditor, Set<string>>();
+
   /**
    * Relay an editor's authoritative `fonts-changed` up to the SuperDoc surface, so
    * `superdoc.on('fonts-changed')` / `onFontsChanged` fire without the legacy
@@ -2690,7 +2693,7 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
     if (this.#fontsRelayEditors.has(editor)) return;
     this.#fontsRelayEditors.add(editor);
     editor.on('fonts-changed', (payload: FontsChangedPayload) => {
-      if (this.#fontReportSurfaces(editor)) this.#deliverFontsChanged(payload);
+      if (this.#fontReportSurfaces(editor)) this.#deliverFontsChanged(editor, payload);
     });
     // Replay the editor's already-emitted report once on wire (a fast or swapped document may
     // have emitted before this relay subscribed), under the SAME active-editor rule as the
@@ -2699,7 +2702,7 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
       (editor as { documentRenderer?: DocumentRendererRuntime | null; [key: string]: unknown }).documentRenderer ??
       ((editor as Record<string, unknown>)['presentation' + 'Editor'] as DocumentRendererRuntime | null | undefined);
     const cached = renderer?.getLastFontsChangedPayload?.();
-    if (cached && this.#fontReportSurfaces(editor)) this.#deliverFontsChanged(cached);
+    if (cached && this.#fontReportSurfaces(editor)) this.#deliverFontsChanged(editor, cached);
   }
 
   /**
@@ -2718,8 +2721,16 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
   #lastFontsChangedPayload: FontsChangedPayload | null = null;
 
   /** Cache then emit a font report, so a later `onReport` subscriber gets the current one. */
-  #deliverFontsChanged(payload: FontsChangedPayload): void {
+  #deliverFontsChanged(editor: ActiveEditor, payload: FontsChangedPayload): void {
     this.#lastFontsChangedPayload = payload;
+    if (editor.editorVersion === 2) {
+      let warnedFonts = this.#warnedMissingFonts.get(editor);
+      if (!warnedFonts) {
+        warnedFonts = new Set();
+        this.#warnedMissingFonts.set(editor, warnedFonts);
+      }
+      warnForMissingDocumentFonts(payload.missingFonts, warnedFonts);
+    }
     this.emit('fonts-changed', payload);
   }
 
@@ -2878,10 +2889,10 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
   #wireV2FontsRelay(facade: ActiveEditor | null) {
     this.#teardownV2FontsRelay();
     const runtime = getActiveFontRuntime(facade);
-    if (!runtime?.onChanged) return;
+    if (!facade || !runtime?.onChanged) return;
     const current = runtime.getLastFontsChangedPayload?.();
-    if (current) this.#deliverFontsChanged(current);
-    this.#v2FontsUnsub = runtime.onChanged((payload) => this.#deliverFontsChanged(payload));
+    if (current) this.#deliverFontsChanged(facade, current);
+    this.#v2FontsUnsub = runtime.onChanged((payload) => this.#deliverFontsChanged(facade, payload));
   }
 
   /**

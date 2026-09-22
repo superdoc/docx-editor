@@ -38,6 +38,22 @@ function attachFontRuntime(instance: InstanceType<typeof SuperDoc>) {
   return map;
 }
 
+function attachFontRelay(instance: InstanceType<typeof SuperDoc>, editorVersion = 2) {
+  let relay: ((payload: { missingFonts?: string[] }) => void) | undefined;
+  const editor = {
+    editorVersion,
+    on: vi.fn((event: string, callback: typeof relay) => {
+      if (event === 'fonts-changed') relay = callback;
+    }),
+    documentRenderer: { getLastFontsChangedPayload: () => null },
+  } as never;
+  instance.activeEditor = editor;
+  Reflect.set(instance, 'superdocStore', { documents: [] });
+  instance.broadcastEditorCreate(editor);
+  Reflect.deleteProperty(instance, 'superdocStore');
+  return (payload: { missingFonts?: string[] }) => relay?.(payload);
+}
+
 afterEach(() => {
   for (const instance of instances.splice(0)) instance.destroy();
   document.body.innerHTML = '';
@@ -64,5 +80,28 @@ describe('SuperDoc fonts API', () => {
 
     expect(map).toHaveBeenCalledOnce();
     expect(map).toHaveBeenCalledWith(mappings);
+  });
+
+  it('warns once for missing v2 fonts on localhost and links to the guide', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const instance = createInstance();
+    const report = attachFontRelay(instance);
+
+    report({ missingFonts: ['Aptos'] });
+    report({ missingFonts: ['Aptos'] });
+
+    expect(warn).toHaveBeenCalledOnce();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('Missing document font: "Aptos"'));
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('https://docs.superdoc.dev/editor/fonts/'));
+  });
+
+  it('does not emit the v2 warning for legacy editor reports', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const instance = createInstance();
+    const report = attachFontRelay(instance, 1);
+
+    report({ missingFonts: ['Aptos'] });
+
+    expect(warn).not.toHaveBeenCalled();
   });
 });

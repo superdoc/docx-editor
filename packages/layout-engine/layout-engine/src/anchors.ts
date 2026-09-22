@@ -190,6 +190,32 @@ export function collectPreRegisteredAnchors(blocks: FlowBlock[], measures: Measu
   return drainAnchorSteps(collectPreRegisteredAnchorsSteps(blocks, measures));
 }
 
+/** Collect page- or margin-relative floating tables before paragraph layout. */
+export function* collectPreRegisteredTablesSteps(
+  blocks: FlowBlock[],
+  measures: Measure[],
+  checkpointEveryBlocks: number | null = null,
+): Generator<LayoutWorkCheckpoint, AnchoredTable[], void> {
+  const result: AnchoredTable[] = [];
+  const len = Math.min(blocks.length, measures.length);
+
+  for (let i = 0; i < len; i += 1) {
+    if (checkpointEveryBlocks != null && i % checkpointEveryBlocks === 0) {
+      yield { index: i, total: len };
+    }
+    const block = blocks[i];
+    const measure = measures[i];
+    if (block.kind !== 'table' || measure?.kind !== 'table') continue;
+
+    const table = block as TableBlock;
+    if (table.anchor?.isAnchored && isPageRelativeAnchor(table)) {
+      result.push({ block: table, measure: measure as TableMeasure });
+    }
+  }
+
+  return result;
+}
+
 /**
  * Collect anchored drawings (images/drawings) mapped to their anchor paragraph index.
  * Map of paragraph block index -> anchored images/drawings associated with that paragraph.

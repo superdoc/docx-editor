@@ -40,6 +40,7 @@ import {
   isPositionedParagraphFrame,
 } from '@superdoc/contracts';
 import { createAnchoredTableFragment, isAnchoredTableFullWidth } from './layout-table.js';
+import { clampPageRelativeFloatingTableY } from './floating-table-anchor.js';
 import type { AnchoredTable } from './anchors.js';
 
 /** Points → CSS pixels (96 dpi / 72 pt-per-inch). */
@@ -470,6 +471,7 @@ export type ParagraphAnchorsContext = {
   columnWidth: number;
   pageWidth: number;
   pageMargins: PageMargins;
+  pagePositionedTableFitHeight?: number;
   // Carries the resolved column layout through to resolveAnchoredGraphicX, direction included: a
   // column-relative anchor in an RTL section resolves against the mirrored geometry.
   columns: ColumnLayoutForAnchor;
@@ -831,14 +833,22 @@ export function layoutParagraphBlock(ctx: ParagraphLayoutContext, anchors?: Para
     let nextStackY = Number.NEGATIVE_INFINITY;
     for (const entry of entries) {
       if (anchors!.placedAnchoredIds.has(entry.block.id)) continue;
-      const totalWidth = entry.measure.totalWidth ?? 0;
-      if (isAnchoredTableFullWidth(entry.block, entry.measure, columnWidthForTable)) {
-        continue;
-      }
-
       const state = ensurePage();
       const contentTop = state.topMargin;
       const contentBottom = state.contentBottom;
+      const totalWidth = entry.measure.totalWidth ?? 0;
+      if (
+        isAnchoredTableFullWidth(
+          entry.block,
+          entry.measure,
+          columnWidthForTable,
+          anchors!.pagePositionedTableFitHeight ??
+            contentBottom + (state.page.margins?.bottom ?? anchors!.pageMargins.bottom ?? 0),
+        )
+      ) {
+        continue;
+      }
+
       const layoutOffsetV = entry.layoutOffsetV;
       const firstLineHeight = measure.lines?.[0]?.lineHeight || measure.totalHeight || 0;
       const wrapType = entry.block.wrap?.type ?? 'None';
@@ -857,12 +867,13 @@ export function layoutParagraphBlock(ctx: ParagraphLayoutContext, anchors?: Para
         objectHeight: entry.measure.totalHeight ?? 0,
         contentTop,
         contentBottom,
-        pageBottomMargin: anchors!.pageMargins.bottom ?? 0,
+        pageBottomMargin: state.page.margins?.bottom ?? anchors!.pageMargins.bottom ?? 0,
         anchorParagraphY: paragraphContentStartY,
         firstLineHeight,
         pageNumber: state.page.number,
       });
-      const anchorY = wrapType === 'None' ? resolvedAnchorY : Math.max(resolvedAnchorY, nextStackY);
+      const stackedAnchorY = wrapType === 'None' ? resolvedAnchorY : Math.max(resolvedAnchorY, nextStackY);
+      const anchorY = clampPageRelativeFloatingTableY(entry.block, stackedAnchorY);
 
       floatManager.registerTable(entry.block, entry.measure, anchorY, state.columnIndex, state.page.number);
 

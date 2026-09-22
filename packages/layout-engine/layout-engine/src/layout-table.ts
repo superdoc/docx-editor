@@ -28,6 +28,7 @@ export type TableLayoutContext = {
   block: TableBlock;
   measure: TableMeasure;
   columnWidth: number;
+  pagePositionedTableFitHeight?: number;
   ensurePage: () => PageState;
   advanceColumn: (state: PageState) => PageState;
   columnX: (state: PageState, columnIndex?: number) => number;
@@ -1425,6 +1426,7 @@ export function* layoutTableBlockSteps({
   block,
   measure,
   columnWidth,
+  pagePositionedTableFitHeight,
   ensurePage,
   advanceColumn,
   columnX,
@@ -1436,7 +1438,9 @@ export function* layoutTableBlockSteps({
   // don't create overlap or extra pages.
   let treatAsInline = false;
   if (block.anchor?.isAnchored) {
-    treatAsInline = isAnchoredTableFullWidth(block, measure, columnWidth);
+    const state = ensurePage();
+    const pageHeight = pagePositionedTableFitHeight ?? state.contentBottom + (state.page.margins?.bottom ?? 0);
+    treatAsInline = isAnchoredTableFullWidth(block, measure, columnWidth, pageHeight);
     if (!treatAsInline) {
       return;
     }

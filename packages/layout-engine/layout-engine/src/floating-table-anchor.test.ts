@@ -81,6 +81,21 @@ describe('floating-table-anchor', () => {
       expect(isAnchoredTableFullWidth(block, measure, 468)).toBe(false);
     });
 
+    it('keeps page-bottom-aligned 100% tables on the floating path', () => {
+      const block = makeFloatingTable('bottom-pct', 0, { type: 'Square' });
+      block.anchor = { isAnchored: true, vRelativeFrom: 'page', alignV: 'bottom' };
+      block.attrs = { tableWidth: { width: 5000, type: 'pct' } };
+      const measure = {
+        kind: 'table',
+        rows: [],
+        columnWidths: [640],
+        totalWidth: 640,
+        totalHeight: 100,
+      } as TableMeasure;
+
+      expect(isAnchoredTableFullWidth(block, measure, 672)).toBe(false);
+    });
+
     it('treats 100% pct tableWidth as full width when measured width is under the ratio threshold', () => {
       const block = makeFloatingTable('exhibit-pct', 0, { type: 'Square' });
       block.attrs = { tableWidth: { width: 5000, type: 'pct' } };
@@ -516,6 +531,26 @@ describe('floating-table-anchor', () => {
       );
 
       expect(resolution).toEqual({ paragraphIndex: 1, offsetV: -12, lineScopedOnAnchor: false });
+    });
+
+    it('uses the preceding paragraph text bottom for a negative text-relative page-positioned table', () => {
+      const table = makeFloatingTable('field', -12);
+      table.anchor = { ...table.anchor!, hRelativeFrom: 'page' };
+      table.wrap = { type: 'Square' };
+      const blocks: FlowBlock[] = [
+        { kind: 'paragraph', id: 'before-table', runs: [{ text: 'Anchor candidate before table' }] },
+        table,
+        { kind: 'paragraph', id: 'after-table', runs: [{ text: 'Anchor candidate after table' }] },
+      ];
+      const measures: Measure[] = [
+        makeParaMeasure(17),
+        { kind: 'table', rows: [], columnWidths: [100], totalWidth: 100, totalHeight: 14 } as TableMeasure,
+        makeParaMeasure(17),
+      ];
+
+      const resolution = resolveFloatingTableAnchorResolution(blocks, measures, blocks.length, 1, table, new Map());
+
+      expect(resolution).toEqual({ paragraphIndex: 0, offsetV: 5, lineScopedOnAnchor: false });
     });
   });
 });

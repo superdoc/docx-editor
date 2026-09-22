@@ -17,10 +17,19 @@ export type FloatingTableAnchorResolution = {
 export const ANCHORED_TABLE_FULL_WIDTH_RATIO = 0.99;
 
 /**
+ * Word pins page-relative floating tables to the physical page instead of
+ * allowing a negative tblpY to clip the table above the page canvas.
+ */
+export function clampPageRelativeFloatingTableY(block: TableBlock, y: number): number {
+  return block.anchor?.vRelativeFrom === 'page' ? Math.max(0, y) : y;
+}
+
+/**
  * Floating tables in FlowBlock order do not carry Word's anchor-paragraph pointer.
  * When {@link TableBlock.attrs.anchorParagraphId} is set at import time, that wins.
- * Otherwise a paragraph-relative table anchors to the next regular paragraph, matching
- * OOXML's requirement that the following paragraph is the table's anchor.
+ * Otherwise a paragraph-relative table anchors to the next regular paragraph. Negative
+ * text-relative offsets (vertAnchor="text" with negative tblpY) use the preceding
+ * paragraph's text bottom as their vertical reference.
  */
 
 function runText(run: Run): string {
@@ -128,8 +137,19 @@ function measureRoundingSlack(columnCount: number): number {
  * True when an anchored table should paginate inline instead of as one float fragment.
  * Uses tbl width, flow-affecting wrap distances from w:tblpPr, and table indent — not a fixed px fudge factor.
  */
-export function isAnchoredTableFullWidth(block: TableBlock, measure: TableMeasure, columnWidth: number): boolean {
+export function isAnchoredTableFullWidth(
+  block: TableBlock,
+  measure: TableMeasure,
+  columnWidth: number,
+  pageHeight?: number,
+): boolean {
   if (columnWidth <= 0) return false;
+  if (block.anchor?.vRelativeFrom === 'page' && block.anchor.alignV && block.anchor.alignV !== 'inline') {
+    if (pageHeight != null && measure.totalHeight != null && measure.totalHeight > pageHeight) {
+      return true;
+    }
+    return false;
+  }
 
   const totalWidth = measure.totalWidth ?? 0;
   const indent = getTableIndentPx(block.attrs);
@@ -180,6 +200,20 @@ export function* resolveFloatingTableAnchorResolutionSteps(
   if (vRelativeFrom !== 'paragraph') {
     const fallback = yield* findNearestParagraphIndexSteps(blocks, len, tableIndex, checkpointEveryBlocks);
     return fallback == null ? null : { paragraphIndex: fallback, offsetV, lineScopedOnAnchor: false };
+  }
+
+  const usesPrecedingTextBottom = tableBlock.anchor?.offsetV != null && tableBlock.anchor.offsetV < 0;
+  if (usesPrecedingTextBottom) {
+    const previousParagraphIndex = yield* findPreviousParagraphIndexSteps(blocks, tableIndex, checkpointEveryBlocks);
+    if (previousParagraphIndex != null) {
+      const previousMeasure = measures[previousParagraphIndex];
+      const textBottomOffset = previousMeasure?.kind === 'paragraph' ? previousMeasure.totalHeight : 0;
+      return {
+        paragraphIndex: previousParagraphIndex,
+        offsetV: offsetV + textBottomOffset,
+        lineScopedOnAnchor: false,
+      };
+    }
   }
 
   const paragraphIndex =

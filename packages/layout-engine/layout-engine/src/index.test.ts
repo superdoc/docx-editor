@@ -985,6 +985,175 @@ describe('layoutDocument', () => {
     ]);
   });
 
+  it('registers page-relative Square tables before earlier paragraphs', () => {
+    const firstParagraph: FlowBlock = { kind: 'paragraph', id: 'before-table-anchor', runs: [] };
+    const anchorParagraph: FlowBlock = { kind: 'paragraph', id: 'table-anchor', runs: [] };
+    const tableBlock = makeTableBlock('page-table', 1, {
+      anchor: { isAnchored: true, hRelativeFrom: 'page', vRelativeFrom: 'page', offsetH: 400, offsetV: 0 },
+      wrap: { type: 'Square', wrapText: 'left', distLeft: 12 },
+    });
+    const paragraphMeasure = makeMeasure([20]);
+    const tableMeasure = makeTableMeasure([160], [80]);
+    const remeasureParagraph = mock(() => paragraphMeasure);
+
+    layoutDocument([firstParagraph, anchorParagraph, tableBlock], [paragraphMeasure, paragraphMeasure, tableMeasure], {
+      ...DEFAULT_OPTIONS,
+      remeasureParagraph,
+    });
+
+    expect(remeasureParagraph.mock.calls[0]?.[3]?.[0]).toEqual([
+      { offsetX: 0, width: 400 - DEFAULT_OPTIONS.margins!.left - 12 },
+    ]);
+  });
+
+  it('places a page-bottom-aligned 100% floating table at the page bottom', () => {
+    const tableBlock = makeTableBlock('bottom-pct-table', 1, {
+      anchor: {
+        isAnchored: true,
+        hRelativeFrom: 'column',
+        vRelativeFrom: 'page',
+        alignV: 'bottom',
+      },
+      wrap: { type: 'Square' },
+    });
+    tableBlock.attrs = { tableWidth: { width: 5000, type: 'pct' } };
+    const tableMeasure = makeTableMeasure([500], [100]);
+    const anchorBlock: FlowBlock = { kind: 'paragraph', id: 'bottom-pct-anchor', runs: [] };
+    const anchorMeasure = makeMeasure([20]);
+
+    const layout = layoutDocument([anchorBlock, tableBlock], [anchorMeasure, tableMeasure], DEFAULT_OPTIONS);
+    const tableFragment = layout.pages[0]?.fragments.find(
+      (fragment) => fragment.kind === 'table' && fragment.blockId === tableBlock.id,
+    ) as TableFragment | undefined;
+
+    expect(tableFragment?.y).toBe(DEFAULT_OPTIONS.pageSize!.h - tableMeasure.totalHeight!);
+  });
+
+  it('keeps a negative page-relative floating table on the physical page', () => {
+    const tableBlock = makeTableBlock('page-negative-offset-table', 1, {
+      anchor: {
+        isAnchored: true,
+        hRelativeFrom: 'page',
+        vRelativeFrom: 'page',
+        offsetH: 400,
+        offsetV: -93.33333333333333,
+      },
+      wrap: { type: 'Square', wrapText: 'bothSides' },
+    });
+    const tableMeasure = makeTableMeasure([160], [80]);
+    const anchorBlock: FlowBlock = { kind: 'paragraph', id: 'page-negative-offset-anchor', runs: [] };
+    const anchorMeasure = makeMeasure([20]);
+
+    const layout = layoutDocument([anchorBlock, tableBlock], [anchorMeasure, tableMeasure], DEFAULT_OPTIONS);
+    const tableFragment = layout.pages[0]?.fragments.find(
+      (fragment) => fragment.kind === 'table' && fragment.blockId === tableBlock.id,
+    ) as TableFragment | undefined;
+
+    expect(tableFragment?.y).toBe(0);
+  });
+
+  it('preserves a negative paragraph-relative floating table offset', () => {
+    const tableBlock = makeTableBlock('text-negative-offset-table', 1, {
+      anchor: {
+        isAnchored: true,
+        hRelativeFrom: 'page',
+        vRelativeFrom: 'paragraph',
+        offsetH: 400,
+        offsetV: -93.33333333333333,
+      },
+      wrap: { type: 'Square', wrapText: 'bothSides' },
+    });
+    const tableMeasure = makeTableMeasure([160], [80]);
+    const anchorBlock: FlowBlock = { kind: 'paragraph', id: 'text-negative-offset-anchor', runs: [] };
+    const anchorMeasure = makeMeasure([20]);
+
+    const layout = layoutDocument([anchorBlock, tableBlock], [anchorMeasure, tableMeasure], DEFAULT_OPTIONS);
+    const tableFragment = layout.pages[0]?.fragments.find(
+      (fragment) => fragment.kind === 'table' && fragment.blockId === tableBlock.id,
+    ) as TableFragment | undefined;
+
+    expect(tableFragment?.y).toBeCloseTo(DEFAULT_OPTIONS.margins!.top + anchorMeasure.totalHeight - 93.33333333333333);
+  });
+
+  it('paginates an oversized page-bottom-aligned 100% table', () => {
+    const tableBlock = makeTableBlock('tall-bottom-pct-table', 3, {
+      anchor: {
+        isAnchored: true,
+        hRelativeFrom: 'column',
+        vRelativeFrom: 'page',
+        alignV: 'bottom',
+      },
+      wrap: { type: 'Square' },
+    });
+    tableBlock.attrs = { tableWidth: { width: 5000, type: 'pct' } };
+    const tableMeasure = makeTableMeasure([500], [500, 500, 500]);
+    const anchorBlock: FlowBlock = { kind: 'paragraph', id: 'tall-bottom-pct-anchor', runs: [] };
+    const anchorMeasure = makeMeasure([20]);
+
+    const layout = layoutDocument([anchorBlock, tableBlock], [anchorMeasure, tableMeasure], DEFAULT_OPTIONS);
+    const tableFragments = layout.pages.flatMap((page) =>
+      page.fragments.filter((fragment) => fragment.kind === 'table' && fragment.blockId === tableBlock.id),
+    ) as TableFragment[];
+
+    expect(tableFragments).toHaveLength(3);
+    expect(tableFragments.map((fragment) => [fragment.fromRow, fragment.toRow])).toEqual([
+      [0, 1],
+      [1, 2],
+      [2, 3],
+    ]);
+  });
+
+  it('lays out an oversized page-bottom-aligned table when footnotes reserve page space', () => {
+    const tableBlock = makeTableBlock('footnote-reserved-bottom-table', 3, {
+      anchor: {
+        isAnchored: true,
+        hRelativeFrom: 'column',
+        vRelativeFrom: 'page',
+        alignV: 'bottom',
+      },
+      wrap: { type: 'Square' },
+    });
+    tableBlock.attrs = { tableWidth: { width: 5000, type: 'pct' } };
+    const tableMeasure = makeTableMeasure([500], [260, 260, 260]);
+    const anchorBlock: FlowBlock = { kind: 'paragraph', id: 'footnote-reserved-bottom-anchor', runs: [] };
+    const anchorMeasure = makeMeasure([20]);
+
+    const layout = layoutDocument([anchorBlock, tableBlock], [anchorMeasure, tableMeasure], {
+      ...DEFAULT_OPTIONS,
+      footnoteReservedByPageIndex: [100, 100],
+    });
+    const tableFragments = layout.pages.flatMap((page) =>
+      page.fragments.filter((fragment) => fragment.kind === 'table' && fragment.blockId === tableBlock.id),
+    ) as TableFragment[];
+
+    expect(tableFragments.map((fragment) => [fragment.fromRow, fragment.toRow])).toEqual([[0, 3]]);
+    expect(tableFragments.map((fragment) => fragment.y)).toEqual([20]);
+  });
+
+  it('keeps the horizontal page alignment for oversized floating table fragments', () => {
+    const tableBlock = makeTableBlock('tall-right-page-table', 3, {
+      anchor: {
+        isAnchored: true,
+        hRelativeFrom: 'page',
+        alignH: 'right',
+        vRelativeFrom: 'page',
+        alignV: 'bottom',
+      },
+      wrap: { type: 'Square' },
+    });
+    const tableMeasure = makeTableMeasure([100], [500, 500, 500]);
+    const anchorBlock: FlowBlock = { kind: 'paragraph', id: 'tall-right-page-anchor', runs: [] };
+    const anchorMeasure = makeMeasure([20]);
+
+    const layout = layoutDocument([anchorBlock, tableBlock], [anchorMeasure, tableMeasure], DEFAULT_OPTIONS);
+    const tableFragments = layout.pages.flatMap((page) =>
+      page.fragments.filter((fragment) => fragment.kind === 'table' && fragment.blockId === tableBlock.id),
+    ) as TableFragment[];
+
+    expect(tableFragments).toHaveLength(3);
+    expect(tableFragments.every((fragment) => fragment.x === 500)).toBe(true);
+  });
+
   it('uses the shared logical alignment contract for anchored table fragments', () => {
     const tableBlock = makeTableBlock('logical-table', 1, {
       anchor: {
@@ -1531,6 +1700,28 @@ describe('layoutDocument', () => {
     expect(fragment).toBeTruthy();
     expect(fragment?.x).toBe(120);
     expect(fragment?.y).toBe(DEFAULT_OPTIONS.margins!.top + 15);
+  });
+
+  it('preserves page-relative horizontal alignment for a paragraphless page-bottom table', () => {
+    const tableBlock = makeTableBlock('paragraphless-page-right-table', 1, {
+      anchor: {
+        isAnchored: true,
+        hRelativeFrom: 'page',
+        vRelativeFrom: 'page',
+        alignH: 'right',
+        alignV: 'bottom',
+      },
+      wrap: { type: 'Square' },
+    });
+    tableBlock.attrs = { tableWidth: { width: 5000, type: 'pct' } };
+    const tableMeasure = makeTableMeasure([500], [100]);
+
+    const layout = layoutDocument([tableBlock], [tableMeasure], DEFAULT_OPTIONS);
+    const fragment = layout.pages[0]?.fragments.find(
+      (candidate) => candidate.kind === 'table' && candidate.blockId === tableBlock.id,
+    ) as TableFragment | undefined;
+
+    expect(fragment).toMatchObject({ x: 100, y: 700 });
   });
 
   it('renders paragraphless anchored drawings and floating tables on the same fallback page', () => {
@@ -5559,6 +5750,49 @@ describe('layoutHeaderFooter', () => {
       kind: 'table',
       x: constraints.pageWidth - 100,
       y: constraints.margins.footer - 40,
+    });
+  });
+
+  it('keeps a tall page-bottom footer table on the physical-page float path', () => {
+    const tableBlock = makeTableBlock('tall-floating-footer-table', 1, {
+      anchor: {
+        isAnchored: true,
+        hRelativeFrom: 'page',
+        vRelativeFrom: 'page',
+        alignH: 'right',
+        alignV: 'bottom',
+      },
+      wrap: { type: 'Square' },
+    });
+    const carrierBlock: FlowBlock = {
+      kind: 'paragraph',
+      id: 'tall-footer-carrier',
+      runs: [{ text: '', fontFamily: 'Arial', fontSize: 12 }],
+    };
+    const tableMeasure = makeTableMeasure([100], [500]);
+    const carrierMeasure = makeMeasure([15]);
+    const constraints = {
+      width: 300,
+      height: 400,
+      pageWidth: 500,
+      pageHeight: 600,
+      margins: { left: 100, right: 100, top: 80, bottom: 80, footer: 40 },
+    };
+
+    const layout = layoutHeaderFooter(
+      [tableBlock, carrierBlock],
+      [tableMeasure, carrierMeasure],
+      constraints,
+      'footer',
+    );
+    const fragment = layout.pages[0]?.fragments.find((candidate) => candidate.blockId === tableBlock.id);
+
+    expect(layout.height).toBeCloseTo(15);
+    expect(fragment).toMatchObject({
+      kind: 'table',
+      isAnchored: true,
+      x: constraints.pageWidth - 100,
+      y: constraints.margins.footer - 500,
     });
   });
 

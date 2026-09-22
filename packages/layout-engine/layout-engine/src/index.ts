@@ -45,6 +45,7 @@ import {
   resolveColumnCount,
   resolveColumnLayout,
   resolveAnchoredGraphicY,
+  resolveAnchoredGraphicX,
   createHeaderFooterResolutionIndex,
   selectHeaderFooterVariantForPage,
   isPagePositionedParagraphFrame,
@@ -85,8 +86,10 @@ import {
   collectAnchoredDrawingsSteps,
   collectAnchoredTablesSteps,
   collectPreRegisteredAnchorsSteps,
+  collectPreRegisteredTablesSteps,
   isPageRelativeAnchor,
 } from './anchors.js';
+import { clampPageRelativeFloatingTableY } from './floating-table-anchor.js';
 import { normalizeFragmentsForRegion } from './normalize-header-footer-fragments.js';
 import { createPaginator, isPaginationEarlyStop, type PageState, type ConstraintBoundary } from './paginator.js';
 import { formatPageNumber } from './pageNumbering.js';
@@ -564,6 +567,8 @@ export type LayoutOptions = {
   ) => ParagraphMeasure;
   /** @internal Positioned paragraph frames that render without advancing the story cursor. */
   nonFlowPositionedParagraphFrameIds?: ReadonlySet<string>;
+  /** @internal Physical page height used for page-relative tables laid out on a synthetic region canvas. */
+  pagePositionedTableFitHeight?: number;
   sectionMetadata?: SectionMetadata[];
   /**
    * Extra bottom margin per page index (0-based) reserved for non-body content
@@ -2420,6 +2425,10 @@ function* layoutDocumentSteps(
     collectPreRegisteredAnchorsSteps(blocks, measures, checkpointEveryBlocks),
     'layout-document:preflight-anchor',
   );
+  const preRegisteredTables = yield* mapLayoutWorkCheckpoints(
+    collectPreRegisteredTablesSteps(blocks, measures, checkpointEveryBlocks),
+    'layout-document:preflight-anchor',
+  );
 
   type PreRegisteredPosition = {
     anchorX: number;
@@ -2654,6 +2663,15 @@ function* layoutDocumentSteps(
 
     // Store pre-computed position for later use when creating the fragment.
     preRegisteredPositions.set(entry.block.id, { anchorX, anchorY });
+  }
+
+  for (const entry of preRegisteredTables) {
+    const state = paginator.ensurePage();
+    const anchorY = clampPageRelativeFloatingTableY(
+      entry.block,
+      resolveParagraphlessAnchoredTableY(entry.block, entry.measure, state),
+    );
+    floatManager.registerTable(entry.block, entry.measure, anchorY, state.columnIndex, state.page.number);
   }
 
   // Pre-compute keepNext chains for correct pagination grouping.
@@ -3429,6 +3447,7 @@ function* layoutDocumentSteps(
                     left: activeLeftMargin,
                     right: activeRightMargin,
                   },
+                  pagePositionedTableFitHeight: options.pagePositionedTableFitHeight,
                   columns: getCurrentColumns(),
                   placedAnchoredIds,
                 }
@@ -3675,13 +3694,38 @@ function* layoutDocumentSteps(
               ? requestedTableResume.cursor
               : undefined;
           if (resumeCursor) tableResumeConsumed = true;
+          const physicalPageHeight = (state: PageState): number =>
+            state.contentBottom + (state.page.margins?.bottom ?? 0);
+          const keepAnchoredTableX =
+            block.anchor?.isAnchored === true &&
+            block.anchor.vRelativeFrom === 'page' &&
+            block.anchor.alignV != null &&
+            block.anchor.alignV !== 'inline' &&
+            measure.totalHeight != null;
+          const tableColumnX = keepAnchoredTableX
+            ? (state: PageState): number => {
+                if (measure.totalHeight! <= physicalPageHeight(state)) return columnX(state);
+                const pageWidth = state.page.size?.w ?? activePageSize.w;
+                const pageMargins = state.page.margins;
+                return resolveAnchoredGraphicX(
+                  block.anchor!,
+                  state.columnIndex,
+                  getNormalizedColumnsForState(state),
+                  measure.totalWidth ?? 0,
+                  { left: pageMargins?.left ?? activeLeftMargin, right: pageMargins?.right ?? activeRightMargin },
+                  pageWidth,
+                  { pageNumber: state.page.number },
+                );
+              }
+            : columnX;
           const tableSteps = layoutTableBlockSteps({
             block: block as TableBlock,
             measure: measure as TableMeasure,
             columnWidth: getCurrentColumnWidth(),
+            pagePositionedTableFitHeight: options.pagePositionedTableFitHeight,
             ensurePage: paginator.ensurePage,
             advanceColumn: paginator.advanceColumn,
-            columnX,
+            columnX: tableColumnX,
             ...(resumeCursor ? { resumeCursor } : {}),
             onFragmentStart: (state, cursor) => captureTableResumeCheckpoint(block.id, state, cursor),
           });
@@ -3893,14 +3937,33 @@ function* layoutDocumentSteps(
     for (const { block: tableBlock, measure: tableMeasure } of paragraphlessAnchoredTables) {
       const columnWidthForTable = getCurrentColumnWidth();
       const totalWidth = tableMeasure.totalWidth ?? 0;
-      const shouldFlowInline = isAnchoredTableFullWidth(tableBlock, tableMeasure, columnWidthForTable);
+      const pageHeight =
+        options.pagePositionedTableFitHeight ??
+        state.contentBottom + (state.page.margins?.bottom ?? activeBottomMargin);
+      const shouldFlowInline = isAnchoredTableFullWidth(tableBlock, tableMeasure, columnWidthForTable, pageHeight);
 
       if (shouldFlowInline) {
         continue;
       }
 
-      const anchorY = resolveParagraphlessAnchoredTableY(tableBlock, tableMeasure, state);
-      const anchorX = tableBlock.anchor?.offsetH ?? columnX(state);
+      const anchorY = clampPageRelativeFloatingTableY(
+        tableBlock,
+        resolveParagraphlessAnchoredTableY(tableBlock, tableMeasure, state),
+      );
+      const anchorX = tableBlock.anchor
+        ? resolveAnchoredGraphicX(
+            tableBlock.anchor,
+            state.columnIndex,
+            getNormalizedColumnsForState(state),
+            totalWidth,
+            {
+              left: state.page.margins?.left ?? activeLeftMargin,
+              right: state.page.margins?.right ?? activeRightMargin,
+            },
+            state.page.size?.w ?? activePageSize.w,
+            { pageNumber: state.page.number },
+          )
+        : columnX(state);
 
       floatManager.registerTable(tableBlock, tableMeasure, anchorY, state.columnIndex, state.page.number);
       state.page.fragments.push(createAnchoredTableFragment(tableBlock, tableMeasure, anchorX, anchorY));
@@ -5010,6 +5073,11 @@ function prepareHeaderFooterLayout(
     allowSectionBreakOnlyPageFallback: false,
     remeasureParagraph,
     nonFlowPositionedParagraphFrameIds,
+    ...(typeof constraints.pageHeight === 'number' &&
+    Number.isFinite(constraints.pageHeight) &&
+    constraints.pageHeight > 0
+      ? { pagePositionedTableFitHeight: constraints.pageHeight }
+      : {}),
   };
   const renderDiagnosticOwner = (
     constraints as HeaderFooterConstraints & {

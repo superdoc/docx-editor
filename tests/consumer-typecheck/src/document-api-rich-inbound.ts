@@ -111,7 +111,13 @@ if (parsedClipboard.success) {
       for (const run of block.runs) {
         const commentIds: readonly string[] | undefined = run.commentIds;
         const trackedInsertion: boolean | undefined = run.trackedInsertion;
-        void [commentIds, trackedInsertion];
+        const complexScriptMarks: [boolean | undefined, boolean | undefined, number | undefined] = [
+          run.marks?.boldCs,
+          run.marks?.italicCs,
+          run.marks?.fontSizeCsPt,
+        ];
+        const textTransformMarks: [boolean | undefined, boolean | undefined] = [run.marks?.caps, run.marks?.smallCaps];
+        void [commentIds, trackedInsertion, complexScriptMarks, textTransformMarks];
       }
       for (const inline of block.inlines ?? []) {
         if (inline.kind === 'hyperlink') void inline.target;

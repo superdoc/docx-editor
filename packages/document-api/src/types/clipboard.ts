@@ -66,6 +66,16 @@ export interface ClipboardParseOptions {
 }
 
 export interface SDPasteRunMarks {
+  /** Complex-script bold state. */
+  boldCs?: boolean;
+  /** Complex-script italic state. */
+  italicCs?: boolean;
+  /** All-caps text transform. */
+  caps?: boolean;
+  /** Small-caps text transform. */
+  smallCaps?: boolean;
+  /** Complex-script font size in points. */
+  fontSizeCsPt?: number;
   bold?: boolean;
   italic?: boolean;
   underline?: boolean;

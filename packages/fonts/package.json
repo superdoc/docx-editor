@@ -1,6 +1,6 @@
 {
   "name": "@superdoc/fonts",
-  "version": "0.3.0-next.1",
+  "version": "0.3.1-next.1",
   "description": "Optional bundled metric-compatible font substitutes for SuperDoc, shipped as bundler-resolvable assets.",
   "type": "module",
   "license": "SEE LICENSE IN assets/LICENSES.md",

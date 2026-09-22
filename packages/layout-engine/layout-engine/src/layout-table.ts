@@ -323,7 +323,7 @@ function generateColumnBoundaries(measure: TableMeasure, effectiveWidths?: numbe
  * - The row is a repeated header on a continuation fragment (resize originals only)
  *
  * @param measure - Table measurement containing row heights
- * @param block - Table block (used for rowSpan inspection)
+ * @param block - Table block (used for content height inspection)
  * @param fromRow - Starting body row index (inclusive)
  * @param toRow - Ending body row index (exclusive)
  * @param repeatHeaderCount - Number of repeated header rows on this fragment
@@ -337,6 +337,7 @@ function generateRowBoundaries(
   toRow: number,
   repeatHeaderCount: number,
   cellSpacingPx: number,
+  blockedBoundaries: Uint8Array,
   partialRow?: PartialRowInfo | null,
 ): TableRowBoundary[] {
   const boundaries: TableRowBoundary[] = [];
@@ -350,30 +351,6 @@ function generateRowBoundaries(
   }
   for (let r = fromRow; r < toRow && r < measure.rows.length; r++) {
     renderedRows.push({ rowIndex: r, isRepeatedHeader: false });
-  }
-
-  // Build a set of ABSOLUTE row indices whose bottom boundary is blocked by rowspan cells.
-  // A boundary after absolute row N is blocked if any cell's rowSpan crosses it.
-  //
-  // We must scan ALL table rows, not just renderedRows, because a rowspan that
-  // starts before fromRow can extend into this fragment's rendered range.
-  // Example: row 1 has rowSpan=4, fragment renders rows 3-5. The boundary after
-  // row 3 is blocked because the span from row 1 crosses it.
-  const blockedBoundaries = new Set<number>();
-  for (let r = 0; r < measure.rows.length; r++) {
-    const rowMeasure = measure.rows[r];
-    if (!rowMeasure) continue;
-
-    for (const cellMeasure of rowMeasure.cells) {
-      const rowSpan = cellMeasure.rowSpan ?? 1;
-      if (rowSpan <= 1) continue;
-
-      // This cell spans from row r to r + rowSpan - 1.
-      // Block boundaries after rows r through r + rowSpan - 2.
-      for (let boundaryRow = r; boundaryRow < r + rowSpan - 1; boundaryRow++) {
-        blockedBoundaries.add(boundaryRow);
-      }
-    }
   }
 
   let yPosition = cellSpacingPx;
@@ -390,7 +367,7 @@ function generateRowBoundaries(
     // A boundary is resizable unless:
     // 1. It's a repeated header on a continuation fragment
     // 2. A rowspan crosses this boundary (blockedBoundaries)
-    const resizable = !isRepeatedHeader && !isPartial && !blockedBoundaries.has(rowIndex);
+    const resizable = !isRepeatedHeader && !isPartial && blockedBoundaries[rowIndex] !== 1;
 
     boundaries.push({
       index: rowIndex,
@@ -1298,6 +1275,41 @@ function findSplitPoint(
   return { endRow: block.rows.length, partialRow: null };
 }
 
+function createFragmentMetadataGenerator(measure: TableMeasure, block: TableBlock) {
+  // Keep span coverage local to one pagination pass: a merge can begin before
+  // this fragment, and a later pass may reuse a measure after its rows change.
+  const blockedBoundaries = new Uint8Array(measure.rows.length);
+  let spanEnd = 0;
+  for (let rowIndex = 0; rowIndex < measure.rows.length; rowIndex += 1) {
+    for (const cell of measure.rows[rowIndex]?.cells ?? []) {
+      const rowSpan = cell.rowSpan ?? 1;
+      if (rowSpan > 1) spanEnd = Math.max(spanEnd, rowIndex + rowSpan - 1);
+    }
+    if (rowIndex < spanEnd) blockedBoundaries[rowIndex] = 1;
+  }
+
+  return (
+    fromRow: number,
+    toRow: number,
+    repeatHeaderCount: number,
+    effectiveWidths?: number[],
+    partialRow?: PartialRowInfo | null,
+  ): TableFragmentMetadata => ({
+    columnBoundaries: generateColumnBoundaries(measure, effectiveWidths),
+    rowBoundaries: generateRowBoundaries(
+      measure,
+      block,
+      fromRow,
+      toRow,
+      repeatHeaderCount,
+      measure.cellSpacingPx ?? 0,
+      blockedBoundaries,
+      partialRow,
+    ),
+    coordinateSystem: 'fragment',
+  });
+}
+
 /**
  * Generate fragment metadata for a table fragment.
  *
@@ -1320,12 +1332,13 @@ export function generateFragmentMetadata(
   effectiveWidths?: number[],
   partialRow?: PartialRowInfo | null,
 ): TableFragmentMetadata {
-  const cellSpacingPx = measure.cellSpacingPx ?? 0;
-  return {
-    columnBoundaries: generateColumnBoundaries(measure, effectiveWidths),
-    rowBoundaries: generateRowBoundaries(measure, block, fromRow, toRow, repeatHeaderCount, cellSpacingPx, partialRow),
-    coordinateSystem: 'fragment',
-  };
+  return createFragmentMetadataGenerator(measure, block)(
+    fromRow,
+    toRow,
+    repeatHeaderCount,
+    effectiveWidths,
+    partialRow,
+  );
 }
 
 /**
@@ -1438,6 +1451,8 @@ export function* layoutTableBlockSteps({
     return;
   }
 
+  const generateMetadata = createFragmentMetadataGenerator(measure, block);
+
   // 2. Count header rows. A header row's cell may vertically merge (rowSpan)
   // past the declared header rows; the effective count extends to cover the
   // full merge so the repeated header's height/paint loop stay consistent
@@ -1527,7 +1542,7 @@ export function* layoutTableBlockSteps({
     const { x, width } = resolveTableFrame(baseX, columnWidth, baseWidth, block.attrs);
     const columnWidths = rescaleColumnWidths(measure.columnWidths, measure.totalWidth, width);
 
-    const metadata = generateFragmentMetadata(measure, block, 0, 0, 0, columnWidths);
+    const metadata = generateMetadata(0, 0, 0, columnWidths);
 
     const fragment: TableFragment = {
       kind: 'table',
@@ -1720,15 +1735,7 @@ export function* layoutTableBlockSteps({
           continuesOnNext: hasRemainingLinesAfterContinuation || rowIndex + 1 < block.rows.length,
           repeatHeaderCount,
           partialRow: continuationPartialRow,
-          metadata: generateFragmentMetadata(
-            measure,
-            block,
-            rowIndex,
-            rowIndex + 1,
-            repeatHeaderCount,
-            scaledWidths,
-            continuationPartialRow,
-          ),
+          metadata: generateMetadata(rowIndex, rowIndex + 1, repeatHeaderCount, scaledWidths, continuationPartialRow),
           columnWidths: scaledWidths,
           sourceAnchor: block.sourceAnchor,
         };
@@ -1844,15 +1851,7 @@ export function* layoutTableBlockSteps({
         continuesOnNext: !forcedPartialRow.isLastPart || forcedEndRow < block.rows.length,
         repeatHeaderCount,
         partialRow: forcedPartialRow,
-        metadata: generateFragmentMetadata(
-          measure,
-          block,
-          bodyStartRow,
-          forcedEndRow,
-          repeatHeaderCount,
-          scaledWidths,
-          forcedPartialRow,
-        ),
+        metadata: generateMetadata(bodyStartRow, forcedEndRow, repeatHeaderCount, scaledWidths, forcedPartialRow),
         columnWidths: scaledWidths,
         sourceAnchor: block.sourceAnchor,
       };
@@ -1898,15 +1897,7 @@ export function* layoutTableBlockSteps({
       continuesOnNext: endRow < block.rows.length || (partialRow ? !partialRow.isLastPart : false),
       repeatHeaderCount,
       partialRow: partialRow || undefined,
-      metadata: generateFragmentMetadata(
-        measure,
-        block,
-        bodyStartRow,
-        endRow,
-        repeatHeaderCount,
-        scaledWidths,
-        partialRow,
-      ),
+      metadata: generateMetadata(bodyStartRow, endRow, repeatHeaderCount, scaledWidths, partialRow),
       columnWidths: scaledWidths,
       sourceAnchor: block.sourceAnchor,
     };

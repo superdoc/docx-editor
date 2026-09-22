@@ -306,21 +306,48 @@ const hashNumber = (seed: number, value: number | undefined | null): number => {
 // sourceAnchorSignature
 // ---------------------------------------------------------------------------
 
-const stableSerializeEvidenceValue = (value: unknown): string => {
+type StableSerializationProof = { immutable: boolean };
+
+function isFrozenSerializationContainer(value: object): boolean {
+  try {
+    if (!Object.isFrozen(value)) return false;
+    const array = Array.isArray(value);
+    const prototype = Object.getPrototypeOf(value);
+    if (array ? prototype !== Array.prototype : prototype !== Object.prototype && prototype !== null) return false;
+    const keys = Reflect.ownKeys(value);
+    if (array && keys.length !== value.length + 1) return false;
+    return keys.every((key) => {
+      if (typeof key !== 'string') return false;
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (!descriptor || !('value' in descriptor)) return false;
+      if (array && key === 'length') return true;
+      if (array && (!/^(?:0|[1-9]\d*)$/.test(key) || Number(key) >= value.length)) return false;
+      return descriptor.enumerable === true;
+    });
+  } catch {
+    return false;
+  }
+}
+
+const stableSerializeEvidenceValue = (value: unknown, proof?: StableSerializationProof): string => {
+  if (proof?.immutable) {
+    if (value != null && typeof value === 'object') proof.immutable = isFrozenSerializationContainer(value);
+    else if (typeof value === 'function' || typeof value === 'symbol') proof.immutable = false;
+  }
   if (value === undefined) return '';
   if (value === null) return 'null';
   if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
     return JSON.stringify(value);
   }
   if (Array.isArray(value)) {
-    return `[${value.map((item) => stableSerializeEvidenceValue(item)).join(',')}]`;
+    return `[${value.map((item) => stableSerializeEvidenceValue(item, proof)).join(',')}]`;
   }
   if (typeof value === 'object') {
     const record = value as Record<string, unknown>;
     return `{${Object.keys(record)
       .sort()
       .filter((key) => record[key] !== undefined)
-      .map((key) => `${JSON.stringify(key)}:${stableSerializeEvidenceValue(record[key])}`)
+      .map((key) => `${JSON.stringify(key)}:${stableSerializeEvidenceValue(record[key], proof)}`)
       .join(',')}}`;
   }
   return JSON.stringify(String(value));
@@ -667,7 +694,19 @@ export const deriveBlockVersion = (block: FlowBlock): string => {
 const tableBlockStructureVersionCache = new WeakMap<TableBlock, string>();
 const tableMeasureStructureVersionCache = new WeakMap<TableMeasure, string>();
 
-const hashStableValue = (seed: number, value: unknown): number => hashString(seed, stableSerializeEvidenceValue(value));
+const stableValueHashes = new WeakMap<object, { seed: number; hash: number }>();
+
+const hashStableValue = (seed: number, value: unknown): number => {
+  if (value == null || typeof value !== 'object') return hashString(seed, stableSerializeEvidenceValue(value));
+  const cached = stableValueHashes.get(value);
+  if (cached?.seed === seed) return cached.hash;
+  const proof: StableSerializationProof = { immutable: true };
+  const hash = hashString(seed, stableSerializeEvidenceValue(value, proof));
+  // One scalar transition per immutable owner preserves the exact FNV stream
+  // without retaining serialized strings or an accumulating history of seeds.
+  if (proof.immutable) stableValueHashes.set(value, { seed, hash });
+  return hash;
+};
 
 const hashMeasurementNumber = (seed: number, value: number | undefined): number =>
   hashString(seed, value == null || !Number.isFinite(value) ? '' : String(value));

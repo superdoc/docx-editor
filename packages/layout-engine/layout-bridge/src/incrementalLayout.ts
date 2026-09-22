@@ -2638,53 +2638,6 @@ export async function incrementalLayout(
   // builds the content map.
   const CONTENT_ADOPTION_MISS_THRESHOLD = 4;
 
-  const measurementEquivalentChangedBlockIds = new Set<string>();
-  if (fontCapabilities && dirty.changedBlockIds.length > 0) {
-    const indexedBlocksAreUnique = effectiveMeasureReuseProof?.dependencyProof?.blockIdsUnique === true;
-    const readChangedBlock = (
-      blocks: readonly FlowBlock[],
-      indexById: ReadonlyMap<string, number> | null | undefined,
-      blockId: string,
-    ): FlowBlock | null => {
-      if (indexedBlocksAreUnique && indexById) {
-        const index = indexById.get(blockId);
-        const block = index == null ? undefined : blocks[index];
-        return block?.id === blockId ? block : null;
-      }
-      let match: FlowBlock | null = null;
-      for (const block of blocks) {
-        if (block.id !== blockId) continue;
-        if (match) return null;
-        match = block;
-      }
-      return match;
-    };
-    for (const blockId of dirty.changedBlockIds) {
-      const previousBlock = readChangedBlock(
-        previousBlocks,
-        effectiveMeasureReuseProof?.previousBlockIndexById,
-        blockId,
-      );
-      const nextBlock = readChangedBlock(nextBlocks, effectiveMeasureReuseProof?.currentBlockIndexById, blockId);
-      if (
-        previousBlock &&
-        nextBlock &&
-        hashMeasureContent(previousBlock, fontCapabilities) === hashMeasureContent(nextBlock, fontCapabilities)
-      ) {
-        measurementEquivalentChangedBlockIds.add(blockId);
-      }
-    }
-  }
-  const invalidatedMeasureBlockIds = [
-    ...new Set([
-      ...dirty.changedBlockIds.filter((blockId) => !measurementEquivalentChangedBlockIds.has(blockId)),
-      ...dirty.deletedBlockIds,
-    ]),
-  ];
-  if (invalidatedMeasureBlockIds.length > 0) {
-    measureCache.invalidate(invalidatedMeasureBlockIds);
-  }
-
   const provedDirtyMeasurePacket =
     (effectiveMeasureReuseProof?.dependencyProof?.profile === 'single-section-local-text' ||
       effectiveMeasureReuseProof?.dependencyProof?.profile === 'document-start-local-text' ||
@@ -2768,9 +2721,66 @@ export async function incrementalLayout(
       ? new Map(previousBlocks.map((block, index) => [block.id, previousPerSectionConstraints![index]]))
       : null;
 
+  const provedDirtyMeasure = provedDirtyMeasureCandidate && canReusePreviousMeasures ? provedDirtyMeasurePacket : null;
+  const measurementEquivalentChangedBlockIds = new Set<string>();
+  if (fontCapabilities && dirty.changedBlockIds.length > 0) {
+    const indexedBlocksAreUnique = effectiveMeasureReuseProof?.dependencyProof?.blockIdsUnique === true;
+    const readChangedBlock = (
+      blocks: readonly FlowBlock[],
+      indexById: ReadonlyMap<string, number> | null | undefined,
+      blockId: string,
+    ): FlowBlock | null => {
+      if (indexedBlocksAreUnique && indexById) {
+        const index = indexById.get(blockId);
+        const block = index == null ? undefined : blocks[index];
+        return block?.id === blockId ? block : null;
+      }
+      let match: FlowBlock | null = null;
+      for (const block of blocks) {
+        if (block.id !== blockId) continue;
+        if (match) return null;
+        match = block;
+      }
+      return match;
+    };
+    for (const blockId of dirty.changedBlockIds) {
+      const previousBlock = readChangedBlock(
+        previousBlocks,
+        effectiveMeasureReuseProof?.previousBlockIndexById,
+        blockId,
+      );
+      const nextBlock = readChangedBlock(nextBlocks, effectiveMeasureReuseProof?.currentBlockIndexById, blockId);
+      // Proved dirty tables are measured unconditionally below. Comparing
+      // their content cannot avoid that work; invalidate conservatively and
+      // hash once after measurement, preserving mutable callback inputs.
+      if (provedDirtyMeasure && previousBlock?.kind === 'table' && nextBlock?.kind === 'table') continue;
+      if (
+        previousBlock &&
+        nextBlock &&
+        hashMeasureContent(previousBlock, fontCapabilities) === hashMeasureContent(nextBlock, fontCapabilities)
+      ) {
+        measurementEquivalentChangedBlockIds.add(blockId);
+      }
+    }
+  }
+  const invalidatedMeasureBlockIds = [
+    ...new Set([
+      ...dirty.changedBlockIds.filter((blockId) => !measurementEquivalentChangedBlockIds.has(blockId)),
+      ...dirty.deletedBlockIds,
+    ]),
+  ];
+  if (invalidatedMeasureBlockIds.length > 0) {
+    measureCache.invalidate(invalidatedMeasureBlockIds);
+  }
+
   const measureStart = performance.now();
   const inputPreparationMs = measureStart - bridgeStartedAt;
   let measures: Measure[] = [];
+  let completeMeasureRoot: PersistentMeasureNode | null = null;
+  const appendMeasure = (measure: Measure): void => {
+    completeMeasureRoot = insertPersistentMeasureSeed(completeMeasureRoot, measures.length, measure);
+    measures.push(measure);
+  };
   let cacheHits = 0;
   let cacheMisses = 0;
   let reusedMeasures = 0;
@@ -2819,7 +2829,6 @@ export async function incrementalLayout(
     );
   };
 
-  const provedDirtyMeasure = provedDirtyMeasureCandidate && canReusePreviousMeasures ? provedDirtyMeasurePacket : null;
   const yieldEveryBlocks = Math.max(1, Math.floor(execution?.yieldEveryBlocks ?? 32));
   const checkpointMeasurement = (blockIndex: number, totalBlocks: number): Promise<void> | null => {
     throwIfLayoutExecutionAborted(layoutExecution);
@@ -2868,7 +2877,17 @@ export async function incrementalLayout(
       };
       observeMeasureConstraints?.(block, constraints);
       const measureBlockStart = performance.now();
-      const measurement = await measureBlock(block, constraints);
+      const previousBlockIndex = effectiveMeasureReuseProof?.previousBlockIndexById?.get(blockId) ?? blockIndex;
+      const previousBlock = previousBlocks[previousBlockIndex];
+      const previousMeasure = previousMeasures![previousBlockIndex];
+      const measurementConstraints =
+        block.kind === 'table' &&
+        previousBlock?.kind === 'table' &&
+        previousBlock.id === block.id &&
+        previousMeasure?.kind === 'table'
+          ? { ...constraints, retainedTable: { block: previousBlock, measure: previousMeasure } }
+          : constraints;
+      const measurement = await measureBlock(block, measurementConstraints);
       actualMeasureTime += performance.now() - measureBlockStart;
       bodyBlocksMeasuredByKind[block.kind] += 1;
       const cacheWriteStart = performance.now();
@@ -2916,7 +2935,7 @@ export async function incrementalLayout(
       const block = nextBlocks[blockIndex];
       blocksByKind[block.kind] += 1;
       if (block.kind === 'sectionBreak') {
-        measures.push({ kind: 'sectionBreak' });
+        appendMeasure({ kind: 'sectionBreak' });
         continue;
       }
 
@@ -2935,7 +2954,7 @@ export async function incrementalLayout(
           previousBlockConstraints?.maxHeight === blockMeasureHeight
         ) {
           hydrateTabRunWidthsFromMeasure(block, previousMeasure);
-          measures.push(previousMeasure);
+          appendMeasure(previousMeasure);
           reusedMeasures++;
           continue;
         }
@@ -2957,7 +2976,7 @@ export async function incrementalLayout(
 
       if (cached) {
         hydrateTabRunWidthsFromMeasure(block, cached);
-        measures.push(cached);
+        appendMeasure(cached);
         cacheHits++;
         continue;
       }
@@ -2984,7 +3003,7 @@ export async function incrementalLayout(
           measureCache.setPrepared(measureCacheKey, block.id, adopted);
           cacheWriteTime += performance.now() - cacheWriteStart;
           bodyMeasureCacheWrites += 1;
-          measures.push(adopted);
+          appendMeasure(adopted);
           reusedMeasures++;
           continue;
         }
@@ -3003,9 +3022,10 @@ export async function incrementalLayout(
       measureCache.setPrepared(measureCacheKey, block.id, measurement);
       cacheWriteTime += performance.now() - cacheWriteStart;
       bodyMeasureCacheWrites += 1;
-      measures.push(measurement);
+      appendMeasure(measurement);
       cacheMisses++;
     }
+    measures = trackMeasureArray(measures, completeMeasureRoot);
   }
   const measureEnd = performance.now();
   const totalMeasureTime = measureEnd - measureStart;
@@ -6391,7 +6411,7 @@ export async function incrementalLayout(
   return {
     layout: exposedLayout,
     blocks: currentBlocks,
-    measures: currentMeasures,
+    measures: trackMeasureArray(currentMeasures),
     dirty,
     headers,
     footers,
@@ -6561,26 +6581,135 @@ interface PersistentMeasureNode {
   value?: Measure;
 }
 
-const persistentMeasureOverlays = new WeakMap<
-  object,
-  {
-    base: Measure[];
-    root: PersistentMeasureNode | null;
+const persistentMeasureOverlays = new WeakMap<object, { root: PersistentMeasureNode | null; valid: boolean }>();
+
+function measureArrayIndex(property: PropertyKey): number | null {
+  if (typeof property !== 'string' || !/^(?:0|[1-9]\d*)$/.test(property)) return null;
+  const index = Number(property);
+  return index < 0xffffffff ? index : null;
+}
+
+function indexMeasureArray(measures: Measure[]): PersistentMeasureNode | null {
+  let root: PersistentMeasureNode | null = null;
+  for (let index = 0; index < measures.length; index += 1) {
+    if (index in measures) root = insertPersistentMeasureSeed(root, index, measures[index]!);
   }
->();
+  return root;
+}
+
+function trackMeasureArray(measures: Measure[], root?: PersistentMeasureNode | null): Measure[] {
+  if (persistentMeasureOverlays.has(measures)) return measures;
+  const state = { root: root === undefined ? indexMeasureArray(measures) : root, valid: true };
+  // Cold results remain writable. Track their writes so a successor can capture
+  // only the current tree, without retaining this array or its replaced values.
+  const proxy = new Proxy(measures, {
+    defineProperty(target, property, descriptor) {
+      const previousLength = target.length;
+      if (!Reflect.defineProperty(target, property, descriptor)) {
+        state.valid = false;
+        return false;
+      }
+      if (!state.valid) return true;
+      const index = measureArrayIndex(property);
+      if (index !== null) {
+        const current = Reflect.getOwnPropertyDescriptor(target, property)!;
+        if ('value' in current) state.root = setPersistentMeasureValue(state.root, index, current.value, 31);
+        else state.valid = false;
+      } else if (property === 'length' && target.length < previousLength) {
+        state.root = trimPersistentMeasureValues(state.root, target.length, 31, 0);
+      }
+      return true;
+    },
+    deleteProperty(target, property) {
+      if (!Reflect.deleteProperty(target, property)) return false;
+      const index = measureArrayIndex(property);
+      if (state.valid && index !== null) state.root = deletePersistentMeasureValue(state.root, index, 31);
+      return true;
+    },
+  });
+  persistentMeasureOverlays.set(proxy, state);
+  return proxy;
+}
 
 function createMeasureOverlay(previous: Measure[], overrides: ReadonlyMap<number, Measure>): Measure[] {
   const prior = persistentMeasureOverlays.get(previous);
-  const base = prior?.base ?? previous;
-  let root = prior?.root ?? null;
+  let root = prior?.valid ? prior.root : indexMeasureArray(previous);
   for (const [index, value] of overrides) root = setPersistentMeasureValue(root, index, value, 31);
-  const proxy = new Proxy(base, {
+  return createImmutableMeasureArray(root, previous.length);
+}
+
+function createImmutableMeasureArray(root: PersistentMeasureNode | null, length: number): Measure[] {
+  const target = new Array<Measure>(length);
+  const proxy = new Proxy(target, {
     get(target, property, receiver) {
-      if (typeof property === 'string' && /^(?:0|[1-9]\d*)$/.test(property)) {
-        const replacement = getPersistentMeasureValue(root, Number(property), 31);
+      const index = measureArrayIndex(property);
+      if (index !== null) {
+        const replacement = getPersistentMeasureValue(root, index, 31);
         if (replacement.found) return replacement.value;
       }
       return Reflect.get(target, property, receiver);
+    },
+    has(target, property) {
+      const index = measureArrayIndex(property);
+      return (index !== null && getPersistentMeasureValue(root, index, 31).found) || Reflect.has(target, property);
+    },
+    ownKeys(target) {
+      if (!Reflect.isExtensible(target)) return Reflect.ownKeys(target);
+      const keys: string[] = [];
+      for (let index = 0; index < length; index += 1) {
+        if (getPersistentMeasureValue(root, index, 31).found) keys.push(String(index));
+      }
+      return [...keys, ...Reflect.ownKeys(target).filter((key) => measureArrayIndex(key) === null)];
+    },
+    getOwnPropertyDescriptor(target, property) {
+      const actual = Reflect.getOwnPropertyDescriptor(target, property);
+      if (actual) return actual;
+      const index = measureArrayIndex(property);
+      const current = index === null ? null : getPersistentMeasureValue(root, index, 31);
+      return current?.found
+        ? { configurable: true, enumerable: true, writable: false, value: current.value }
+        : undefined;
+    },
+    preventExtensions(target) {
+      // Proxy invariants require actual own properties when a caller freezes a
+      // snapshot. Materialize current references only, never a previous plane.
+      for (let index = 0; index < length; index += 1) {
+        const current = getPersistentMeasureValue(root, index, 31);
+        if (current.found && !Reflect.getOwnPropertyDescriptor(target, String(index))) {
+          Reflect.defineProperty(target, String(index), {
+            configurable: true,
+            enumerable: true,
+            writable: false,
+            value: current.value,
+          });
+        }
+      }
+      return Reflect.preventExtensions(target);
+    },
+    defineProperty(target, property, descriptor) {
+      const index = measureArrayIndex(property);
+      if (index !== null) {
+        const current = getPersistentMeasureValue(root, index, 31);
+        if (
+          !current.found ||
+          'get' in descriptor ||
+          'set' in descriptor ||
+          ('value' in descriptor && descriptor.value !== current.value)
+        )
+          return false;
+        if (!Reflect.getOwnPropertyDescriptor(target, property)) {
+          return Reflect.defineProperty(target, property, {
+            configurable: true,
+            enumerable: true,
+            writable: false,
+            value: current.value,
+            ...descriptor,
+          });
+        }
+      } else if (property === 'length' && 'value' in descriptor && descriptor.value !== length) {
+        return false;
+      }
+      return Reflect.defineProperty(target, property, descriptor);
     },
     set() {
       throw new Error('retained measure overlays are immutable');
@@ -6589,8 +6718,34 @@ function createMeasureOverlay(previous: Measure[], overrides: ReadonlyMap<number
       throw new Error('retained measure overlays are immutable');
     },
   });
-  persistentMeasureOverlays.set(proxy, { base, root });
+  persistentMeasureOverlays.set(proxy, { root, valid: true });
   return proxy;
+}
+
+function deletePersistentMeasureValue(
+  node: PersistentMeasureNode | null,
+  index: number,
+  bit: number,
+): PersistentMeasureNode | null {
+  if (!node || bit < 0) return null;
+  const branch = Math.floor(index / 2 ** bit) % 2;
+  return branch === 0
+    ? { ...node, zero: deletePersistentMeasureValue(node.zero ?? null, index, bit - 1) ?? undefined }
+    : { ...node, one: deletePersistentMeasureValue(node.one ?? null, index, bit - 1) ?? undefined };
+}
+
+function trimPersistentMeasureValues(
+  node: PersistentMeasureNode | null,
+  length: number,
+  bit: number,
+  start: number,
+): PersistentMeasureNode | null {
+  if (!node || start >= length) return null;
+  if (start + 2 ** (bit + 1) <= length) return node;
+  return {
+    zero: trimPersistentMeasureValues(node.zero ?? null, length, bit - 1, start) ?? undefined,
+    one: trimPersistentMeasureValues(node.one ?? null, length, bit - 1, start + 2 ** bit) ?? undefined,
+  };
 }
 
 function setPersistentMeasureValue(
@@ -6604,6 +6759,24 @@ function setPersistentMeasureValue(
   return branch === 0
     ? { ...node, zero: setPersistentMeasureValue(node?.zero ?? null, index, value, bit - 1) }
     : { ...node, one: setPersistentMeasureValue(node?.one ?? null, index, value, bit - 1) };
+}
+
+// Seed unpublished trees without path-copying every prefix. Once a root is
+// shared by returned snapshots, writes use setPersistentMeasureValue instead.
+function insertPersistentMeasureSeed(
+  root: PersistentMeasureNode | null,
+  index: number,
+  value: Measure,
+): PersistentMeasureNode {
+  const result = root ?? {};
+  let node = result;
+  for (let bit = 31; bit >= 0; bit -= 1) {
+    const branch = Math.floor(index / 2 ** bit) % 2 === 0 ? 'zero' : 'one';
+    node = node[branch] ??= {};
+  }
+  node.hasValue = true;
+  node.value = value;
+  return result;
 }
 
 function getPersistentMeasureValue(

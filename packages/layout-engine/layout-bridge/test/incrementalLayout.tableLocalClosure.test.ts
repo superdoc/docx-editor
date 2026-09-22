@@ -283,6 +283,48 @@ function applyCellEdit(blocks: FlowBlock[], rowIndex: number): { next: FlowBlock
 describe('incrementalLayout table-local closure (plan 12)', () => {
   beforeEach(() => clearIncrementalModuleState());
 
+  it.each([false, true])(
+    'offers the aligned retained table only with unchanged fonts (changed=%s)',
+    async (fontChanged) => {
+      const previousBlocks = documentBlocks(['cell-r0', 'cell-r1', 'cell-r2']);
+      const previous = await incrementalLayout([], null, previousBlocks, OPTIONS, measureBlock);
+      previous.layout.layoutEpoch = 1;
+      const { next: nextBlocks, editPmEnd } = applyCellEdit(previousBlocks, 1);
+      const reuse = buildTableReuse(previousBlocks, nextBlocks, previous.layout, editPmEnd, true);
+      reuse.previousBlockIndexById = new Map(previousBlocks.map((block, index) => [block.id, index]));
+      reuse.provedDirtyMeasureConstraints = new Map([['table-mid', { maxWidth: 220, maxHeight: 120 }]]);
+      let retained: unknown;
+
+      const result = await incrementalLayout(
+        previousBlocks,
+        previous.layout,
+        nextBlocks,
+        OPTIONS,
+        (block, constraints) => {
+          if (block.kind === 'table') retained = Reflect.get(constraints, 'retainedTable');
+          return measureBlock(block);
+        },
+        undefined,
+        previous.measures,
+        {
+          fontContext: { fontSignature: fontChanged ? 'next' : 'previous', resolvePhysical: (family) => family },
+          previousFontSignature: 'previous',
+        },
+        undefined,
+        reuse,
+      );
+
+      if (fontChanged) {
+        expect(retained).toBeUndefined();
+      } else {
+        expect(result.measureReuse?.mode).toBe('proved-dirty-only');
+        expect(retained).toEqual({ block: previousBlocks[TABLE_INDEX], measure: previous.measures[TABLE_INDEX] });
+        expect(Reflect.get(retained as object, 'block')).toBe(previousBlocks[TABLE_INDEX]);
+        expect(Reflect.get(retained as object, 'measure')).toBe(previous.measures[TABLE_INDEX]);
+      }
+    },
+  );
+
   it('keeps a same-geometry cell edit bounded and cold-exact with the tables class admitted', async () => {
     // 7-char base text stays one wrapped line after the '!' append (8 chars).
     const previousBlocks = documentBlocks(['cell-r0', 'cell-r1', 'cell-r2']);

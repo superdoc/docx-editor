@@ -145,6 +145,17 @@ import {
   measureTableCellBlocks,
   type TableCellBlockMeasureCacheOutcome,
 } from './table-cell-block-measure-cache.js';
+import {
+  createTableMeasurementOwner,
+  clearRetainedTableMeasurements,
+  createTableRowMeasurementOwner,
+  certifyTableMeasurementCell,
+  prepareTableMeasurementCell,
+  finishTableRowMeasurementOwner,
+  readRetainedTableMeasurement,
+  recordTableMeasurementOwner,
+  type RetainedTableMeasurement,
+} from './retained-table-measurement.js';
 import { computeAutoFitColumnWidths } from './autofit-columns.js';
 import { buildAutoFitWorkingGridInput, type WorkingTableGridInput } from './autofit-normalize.js';
 import { computeFixedTableColumnWidths } from './fixed-table-columns.js';
@@ -196,6 +207,7 @@ export function clearTextMeasurementCaches(): void {
   clearFontMetricsCache();
   clearTableAutoFitMeasurementCaches();
   clearTableCellBlockMeasureCache();
+  clearRetainedTableMeasurements();
   // Drop the persistent measuring canvas. A 2D context caches its font resolution: once it
   // measured a family while the font was absent (falling back), it keeps using the fallback
   // even after the font loads. A fresh context re-resolves to the now-available font.
@@ -432,6 +444,8 @@ export interface TableMeasurementTraceContext {
 export type MeasureConstraints = {
   maxWidth: number;
   maxHeight?: number;
+  /** Prior table geometry from this measurement runtime, paired with its immutable input. */
+  retainedTable?: RetainedTableMeasurement;
   tableMeasurementTrace?: TableMeasurementTraceContext;
   /** Word uses the legacy font-size floor for empty header/footer story lines. */
   emptyParagraphLineMetrics?: 'body' | 'headerFooter';
@@ -4668,7 +4682,7 @@ function createMutableTableMeasurementObservation(): MutableTableMeasurementObse
       TableMeasurementPhase,
       number
     >,
-    cellBlockCache: { 'exact-hit': 0, 'adopted-hit': 0, miss: 0 },
+    cellBlockCache: { 'exact-hit': 0, 'adopted-hit': 0, 'retained-hit': 0, miss: 0 },
     autoFitCellMetricCache: { hits: 0, misses: 0 },
     autoFitTableResultCache: { hits: 0, misses: 0 },
   };
@@ -4715,6 +4729,8 @@ async function measureTableBlock(
     fallbackStack: measurementConfig.fonts.fallbackStack,
     fontSignature: fontContext.fontSignature,
   });
+  const measurementOwner = createTableMeasurementOwner(block, fontContext, measurementRuntimeSignature);
+  const retainedTable = readRetainedTableMeasurement(constraints.retainedTable, measurementOwner);
   const workingInput = recordTableMeasurementPhase(tableObservation, 'grid-normalization', () =>
     buildAutoFitWorkingGridInput(block, { maxWidth }),
   );
@@ -4762,14 +4778,23 @@ async function measureTableBlock(
   const spanConstraints: Array<{ startRow: number; rowSpan: number; requiredHeight: number }> = [];
   const rowAssemblyStartedAt = tableMeasurementNow();
   const cellMeasurementBeforeRows = tableObservation.phases['cell-block-measurement'];
+  let cellsSinceCheckpoint = 0;
   for (let rowIndex = 0; rowIndex < block.rows.length; rowIndex++) {
     const row = block.rows[rowIndex];
+    const rowMeasurementOwner = createTableRowMeasurementOwner(measurementOwner, rowIndex);
     const normalizedRow = workingInput.rows[rowIndex];
     const cellMeasures: TableCellMeasure[] = [];
     let gridColIndex = 0; // Track position in the grid
 
     for (let cellIndex = 0; cellIndex < row.cells.length; cellIndex++) {
+      // Cached cell blocks bypass measureBlock and its execution checkpoint.
+      if (++cellsSinceCheckpoint >= 32) {
+        cellsSinceCheckpoint = 0;
+        const checkpoint = measurementCheckpointIfDue(fontContext);
+        if (checkpoint) await checkpoint;
+      }
       const cell = row.cells[cellIndex];
+      prepareTableMeasurementCell(rowMeasurementOwner, cellIndex);
       const colspan = cell.colSpan ?? 1;
       const rowspan = cell.rowSpan ?? 1;
       const normalizedCell = normalizedRow?.cells?.[cellIndex];
@@ -4877,6 +4902,11 @@ async function measureTableBlock(
       }> = [];
 
       const cellBlocks = (cell.blocks ?? (cell.paragraph ? [cell.paragraph] : [])) as FlowBlock[];
+      const previousCell = retainedTable?.block.rows[rowIndex]?.cells[cellIndex];
+      const previousCellMeasure = retainedTable?.measure.rows[rowIndex]?.cells[cellIndex];
+      const previousBlocks = previousCell?.blocks ?? (previousCell?.paragraph ? [previousCell.paragraph] : []);
+      const previousMeasures =
+        previousCellMeasure?.blocks ?? (previousCellMeasure?.paragraph ? [previousCellMeasure.paragraph] : []);
       const nestedTrace = constraints.tableMeasurementTrace
         ? { ...constraints.tableMeasurementTrace, depth: constraints.tableMeasurementTrace.depth + 1 }
         : undefined;
@@ -4886,10 +4916,18 @@ async function measureTableBlock(
           contentWidth,
           fontContext,
           measurementRuntimeSignature,
-          (nestedBlock, nestedConstraints) => {
+          (nestedBlock, nestedConstraints, blockIndex) => {
             const recursiveConstraints = nestedTrace
               ? { ...nestedConstraints, tableMeasurementTrace: nestedTrace }
               : { ...nestedConstraints };
+            const previousBlock = previousBlocks[blockIndex];
+            const previousMeasure = previousMeasures[blockIndex];
+            if (nestedBlock.kind === 'table' && previousBlock?.kind === 'table' && previousMeasure?.kind === 'table') {
+              (recursiveConstraints as MeasureConstraints).retainedTable = {
+                block: previousBlock,
+                measure: previousMeasure,
+              };
+            }
             if (typeof renderDiagnosticOwner === 'function') {
               Object.defineProperty(recursiveConstraints, V2_RENDER_DIAGNOSTIC_MEASUREMENT_OWNER, {
                 configurable: true,
@@ -4903,8 +4941,20 @@ async function measureTableBlock(
             tableObservation.cellBlockCache[outcome] += 1;
           },
           nestedTrace?.cacheIdentity === 'content',
+          retainedTable
+            ? (nestedBlock, blockIndex) => {
+                const previousMeasure = previousMeasures[blockIndex];
+                return nestedBlock.kind === 'paragraph' &&
+                  previousBlocks[blockIndex] === nestedBlock &&
+                  previousMeasure?.kind === 'paragraph' &&
+                  previousMeasure.measuredAtMaxWidth === contentWidth
+                  ? previousMeasure
+                  : undefined;
+              }
+            : undefined,
         ),
       );
+      certifyTableMeasurementCell(rowMeasurementOwner);
 
       for (let blockIndex = 0; blockIndex < cellBlocks.length; blockIndex++) {
         const block = cellBlocks[blockIndex];
@@ -5001,6 +5051,7 @@ async function measureTableBlock(
       }
     }
 
+    finishTableRowMeasurementOwner(measurementOwner, rowMeasurementOwner);
     rows.push({ cells: cellMeasures, height: 0 });
   }
   const rowAssemblyWallMs = tableMeasurementNow() - rowAssemblyStartedAt;
@@ -5107,6 +5158,7 @@ async function measureTableBlock(
     autoFitCellMetricCache: tableObservation.autoFitCellMetricCache,
     autoFitTableResultCache: tableObservation.autoFitTableResultCache,
   });
+  recordTableMeasurementOwner(measure, measurementOwner);
   return measure;
 }
 

@@ -127,6 +127,71 @@ function createMockTableMeasure(
 
 describe('layoutTableBlock', () => {
   describe('metadata generation', () => {
+    it('keeps row-span inspection proportional to the table across many page fragments', () => {
+      const rowCount = 200;
+      const block = createMockTableBlock(rowCount);
+      const measure = createMockTableMeasure([100, 100], Array(rowCount).fill(20));
+      let spanReads = 0;
+      measure.rows.forEach((row) => {
+        row.cells.forEach((cell) => {
+          Object.defineProperty(cell, 'rowSpan', {
+            get: () => {
+              spanReads += 1;
+              return 1;
+            },
+          });
+        });
+      });
+      const fragments: TableFragment[] = [];
+      const createPage = () => ({ page: { fragments }, columnIndex: 0, cursorY: 0, contentBottom: 100 });
+
+      layoutTableBlock({
+        block,
+        measure,
+        columnWidth: 200,
+        ensurePage: createPage,
+        advanceColumn: createPage,
+        columnX: () => 0,
+      });
+
+      expect(fragments).toHaveLength(40);
+      const boundaries = fragments.flatMap((fragment) => fragment.metadata?.rowBoundaries ?? []);
+      expect(boundaries.map((boundary) => boundary.index)).toEqual(Array.from({ length: rowCount }, (_, row) => row));
+      expect(boundaries.every((boundary) => boundary.resizable)).toBe(true);
+      expect(spanReads).toBeLessThanOrEqual(rowCount * 2 * 2);
+    });
+
+    it('refreshes crossing merge boundaries when the same measured table is laid out again', () => {
+      const block = createMockTableBlock(15);
+      const measure = createMockTableMeasure([100, 100], Array(15).fill(20));
+      measure.rows[0].cells[0].rowSpan = 8;
+      measure.rows[3].cells[1].rowSpan = 10;
+      const paginate = () => {
+        const fragments: TableFragment[] = [];
+        const createPage = () => ({ page: { fragments }, columnIndex: 0, cursorY: 0, contentBottom: 100 });
+        layoutTableBlock({
+          block,
+          measure,
+          columnWidth: 200,
+          ensurePage: createPage,
+          advanceColumn: createPage,
+          columnX: () => 0,
+        });
+        return fragments.flatMap((fragment) => fragment.metadata?.rowBoundaries ?? []);
+      };
+
+      const merged = paginate();
+      measure.rows[0].cells[0].rowSpan = 1;
+      measure.rows[3].cells[1].rowSpan = 1;
+      const unmerged = paginate();
+
+      expect(merged.filter((boundary) => !boundary.resizable).map((boundary) => boundary.index)).toEqual(
+        Array.from({ length: 12 }, (_, row) => row),
+      );
+      expect(merged.filter((boundary) => boundary.resizable).map((boundary) => boundary.index)).toEqual([12, 13, 14]);
+      expect(unmerged.every((boundary) => boundary.resizable)).toBe(true);
+    });
+
     it('should generate column boundary metadata for tables', () => {
       const block = createMockTableBlock(2);
       const measure = createMockTableMeasure([100, 150, 200], [20, 25]);

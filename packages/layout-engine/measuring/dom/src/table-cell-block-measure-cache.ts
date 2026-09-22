@@ -15,9 +15,13 @@ import { serializeMeasurementInput } from './measurement-input-key.js';
 
 const TABLE_CELL_BLOCK_MEASURE_CACHE_SIZE = 5_000;
 
-type CellBlockMeasurer = (block: FlowBlock, constraints: { maxWidth: number; maxHeight: number }) => Promise<Measure>;
+type CellBlockMeasurer = (
+  block: FlowBlock,
+  constraints: { maxWidth: number; maxHeight: number },
+  blockIndex: number,
+) => Promise<Measure>;
 
-export type TableCellBlockMeasureCacheOutcome = 'exact-hit' | 'adopted-hit' | 'miss';
+export type TableCellBlockMeasureCacheOutcome = 'exact-hit' | 'adopted-hit' | 'retained-hit' | 'miss';
 
 class LruCache<T> {
   private readonly entries = new Map<string, T>();
@@ -67,9 +71,17 @@ export async function measureTableCellBlocks(
   measureBlock: CellBlockMeasurer,
   observeCacheOutcome?: (outcome: TableCellBlockMeasureCacheOutcome) => void,
   identityNeutralCache = false,
+  retainedParagraphMeasure?: (block: FlowBlock, blockIndex: number) => ParagraphMeasure | undefined,
 ): Promise<Measure[]> {
   const measured: Measure[] = [];
-  for (const block of blocks) {
+  for (let blockIndex = 0; blockIndex < blocks.length; blockIndex++) {
+    const block = blocks[blockIndex]!;
+    const retained = retainedParagraphMeasure?.(block, blockIndex);
+    if (retained) {
+      observeCacheOutcome?.('retained-hit');
+      measured.push(retained);
+      continue;
+    }
     const contentKey = serializeMeasurementInput(
       {
         block,
@@ -100,7 +112,7 @@ export async function measureTableCellBlocks(
     }
 
     observeCacheOutcome?.('miss');
-    const next = await measureBlock(block, { maxWidth: contentWidth, maxHeight: Infinity });
+    const next = await measureBlock(block, { maxWidth: contentWidth, maxHeight: Infinity }, blockIndex);
     exactBlockMeasureCache.set(exactKey, next);
     latestBlockMeasureByContent.set(contentKey, { width: contentWidth, measure: next });
     measured.push(next);

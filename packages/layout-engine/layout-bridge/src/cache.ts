@@ -23,6 +23,7 @@ import { hasTrackedChange, resolveTrackedChangesEnabled } from './tracked-change
 import { hashParagraphBorders, hashTableBorders, hashCellBorders } from './paragraph-hash-utils.js';
 import { hashRunVisualMarks } from './run-visual-marks.js';
 import { noteMarkerMeasureKey } from './note-marker-measure-key.js';
+import { Utf16Sha256 } from './utf16-sha256.js';
 
 /**
  * Comment annotation structure attached to runs.
@@ -165,118 +166,145 @@ const hashImageLikeBlock = (
   ].join(':');
 };
 
-/**
- * Hashes a list block by folding in each marker and paragraph item.
- *
- * @param block - The list block to hash
- * @returns A deterministic list hash fragment
- */
-const hashListBlock = (block: ListBlock, capabilities?: FontMeasureCapabilities): string => {
-  return block.items
-    .map((item) => `${item.id}:${item.marker.text}:${hashRuns(item.paragraph, capabilities)}`)
-    .join('|');
+const writeListBlock = (block: ListBlock, write: HashWriter, capabilities?: FontMeasureCapabilities): void => {
+  for (let index = 0; index < block.items.length; index += 1) {
+    if (index > 0) write('|');
+    if (!(index in block.items)) continue;
+    const item = block.items[index]!;
+    write(item.id);
+    write(':');
+    write(item.marker.text);
+    write(':');
+    write(hashRuns(item.paragraph, capabilities));
+  }
 };
 
-/**
- * Hashes a drawing block using the fields that affect its rendered footprint.
- *
- * @param block - The drawing block to hash
- * @returns A deterministic drawing hash fragment
- */
-const hashDrawingBlock = (block: DrawingBlock, capabilities?: FontMeasureCapabilities): string => {
+const writeDrawingBlock = (block: DrawingBlock, write: HashWriter, capabilities?: FontMeasureCapabilities): void => {
   if (block.drawingKind === 'image') {
-    return `drawing:image:${hashImageLikeBlock(block)}`;
+    write(`drawing:image:${hashImageLikeBlock(block)}`);
+    return;
   }
 
   if (block.drawingKind === 'vectorShape') {
-    return [
-      'drawing:vector',
-      hashDrawingGeometry(block.geometry),
-      block.shapeKind ?? '',
-      JSON.stringify(block.fillColor ?? null),
-      JSON.stringify(block.strokeColor ?? null),
-      block.strokeWidth ?? '',
-      JSON.stringify(block.customGeometry ?? null),
-      JSON.stringify(block.lineEnds ?? null),
-      JSON.stringify(block.effectExtent ?? null),
-      JSON.stringify(block.textContent ?? null),
-      block.textAlign ?? '',
-      block.textVerticalAlign ?? '',
-      JSON.stringify(block.textInsets ?? null),
-    ].join(':');
+    write(
+      [
+        'drawing:vector',
+        hashDrawingGeometry(block.geometry),
+        block.shapeKind ?? '',
+        JSON.stringify(block.fillColor ?? null),
+        JSON.stringify(block.strokeColor ?? null),
+        block.strokeWidth ?? '',
+        JSON.stringify(block.customGeometry ?? null),
+        JSON.stringify(block.lineEnds ?? null),
+        JSON.stringify(block.effectExtent ?? null),
+        JSON.stringify(block.textContent ?? null),
+        block.textAlign ?? '',
+        block.textVerticalAlign ?? '',
+        JSON.stringify(block.textInsets ?? null),
+      ].join(':'),
+    );
+    return;
   }
 
   if (block.drawingKind === 'textboxShape') {
-    return [
-      'drawing:textbox',
-      hashDrawingGeometry(block.geometry),
-      block.shapeKind ?? '',
-      JSON.stringify(block.fillColor ?? null),
-      JSON.stringify(block.strokeColor ?? null),
-      block.strokeWidth ?? '',
-      JSON.stringify(block.customGeometry ?? null),
-      JSON.stringify(block.lineEnds ?? null),
-      JSON.stringify(block.effectExtent ?? null),
-      JSON.stringify(block.textContent ?? null),
-      block.textAlign ?? '',
-      block.textVerticalAlign ?? '',
-      JSON.stringify(block.textInsets ?? null),
-      block.contentBlocks.map((contentBlock) => `${contentBlock.id}:${hashRuns(contentBlock, capabilities)}`).join('|'),
-    ].join(':');
+    write(
+      [
+        'drawing:textbox',
+        hashDrawingGeometry(block.geometry),
+        block.shapeKind ?? '',
+        JSON.stringify(block.fillColor ?? null),
+        JSON.stringify(block.strokeColor ?? null),
+        block.strokeWidth ?? '',
+        JSON.stringify(block.customGeometry ?? null),
+        JSON.stringify(block.lineEnds ?? null),
+        JSON.stringify(block.effectExtent ?? null),
+        JSON.stringify(block.textContent ?? null),
+        block.textAlign ?? '',
+        block.textVerticalAlign ?? '',
+        JSON.stringify(block.textInsets ?? null),
+      ].join(':'),
+    );
+    write(':');
+    for (let index = 0; index < block.contentBlocks.length; index += 1) {
+      if (index > 0) write('|');
+      if (!(index in block.contentBlocks)) continue;
+      const contentBlock = block.contentBlocks[index]!;
+      write(contentBlock.id);
+      write(':');
+      writeLegacyBlockHash(contentBlock, write, capabilities);
+    }
+    return;
   }
 
   if (block.drawingKind === 'shapeGroup') {
-    return [
-      'drawing:shapeGroup',
-      hashDrawingGeometry(block.geometry),
-      JSON.stringify(block.groupTransform ?? null),
-      JSON.stringify(block.shapes),
-      block.size?.width ?? '',
-      block.size?.height ?? '',
-    ].join(':');
+    write(
+      [
+        'drawing:shapeGroup',
+        hashDrawingGeometry(block.geometry),
+        JSON.stringify(block.groupTransform ?? null),
+        JSON.stringify(block.shapes),
+        block.size?.width ?? '',
+        block.size?.height ?? '',
+      ].join(':'),
+    );
+    return;
   }
 
-  return [
-    'drawing:chart',
-    hashDrawingGeometry(block.geometry),
-    block.chartData?.chartType ?? '',
-    block.chartData?.subType ?? '',
-    JSON.stringify(block.chartData?.series ?? []),
-    block.chartRelId ?? '',
-  ].join(':');
+  write(
+    [
+      'drawing:chart',
+      hashDrawingGeometry(block.geometry),
+      block.chartData?.chartType ?? '',
+      block.chartData?.subType ?? '',
+      JSON.stringify(block.chartData?.series ?? []),
+      block.chartRelId ?? '',
+    ].join(':'),
+  );
+};
+
+const hashDrawingBlock = (block: DrawingBlock, capabilities?: FontMeasureCapabilities): string => {
+  const chunks: string[] = [];
+  writeDrawingBlock(block, (chunk) => chunks.push(chunk), capabilities);
+  return chunks.join('');
 };
 
 /**
- * Hashes a non-paragraph block embedded inside a table cell.
- *
  * The renderer versions these blocks through `deriveBlockVersion()`. The
  * measure cache must follow the same policy so parent-table repainting and
  * remeasurement stay aligned when nested tables, images, or drawings change.
- *
- * @param block - The non-paragraph cell block
- * @returns A deterministic hash fragment for the block
  */
-const hashNonParagraphCellBlock = (
+const writeNonParagraphCellBlock = (
   block: Exclude<FlowBlock, ParagraphBlock>,
+  write: HashWriter,
   capabilities?: FontMeasureCapabilities,
-): string => {
+): void => {
   if (block.kind === 'table') {
-    return `table:${hashRuns(block, capabilities)}`;
+    write('table:');
+    writeTableHash(block, write, capabilities);
+  } else if (block.kind === 'image') {
+    write(`image:${hashImageLikeBlock(block)}`);
+  } else if (block.kind === 'drawing') {
+    writeDrawingBlock(block, write, capabilities);
+  } else if (block.kind === 'list') {
+    write('list:');
+    writeListBlock(block, write, capabilities);
+  } else {
+    write(`${block.kind}:${block.id}`);
   }
+};
 
-  if (block.kind === 'image') {
-    return `image:${hashImageLikeBlock(block)}`;
+// Embedded tables must contribute their original stream, rather than nesting a
+// digest into the parent stream and changing its serialization contract.
+const writeLegacyBlockHash = (block: FlowBlock, write: HashWriter, capabilities?: FontMeasureCapabilities): void => {
+  if (block.kind === 'table') {
+    writeTableHash(block, write, capabilities);
+  } else if (block.kind === 'drawing') {
+    write(block.id);
+    write(':');
+    writeDrawingBlock(block, write, capabilities);
+  } else {
+    write(hashRuns(block, capabilities));
   }
-
-  if (block.kind === 'drawing') {
-    return hashDrawingBlock(block, capabilities);
-  }
-
-  if (block.kind === 'list') {
-    return `list:${hashListBlock(block, capabilities)}`;
-  }
-
-  return `${block.kind}:${block.id}`;
 };
 
 /**
@@ -306,225 +334,246 @@ const hashNonParagraphCellBlock = (
 export const hashMeasureContent = (block: FlowBlock, capabilities?: FontMeasureCapabilities): string =>
   hashRuns(block, capabilities);
 
+type HashWriter = (value: string) => void;
+
+// Stream the existing serialization without retaining one string per cell or
+// joining the complete table. Nested tables share the writer and its bounded state.
+const writeTableHash = (tableBlock: TableBlock, write: HashWriter, capabilities?: FontMeasureCapabilities): void => {
+  write(tableBlock.id);
+  write(':table:');
+  let hasContent = false;
+  const append = (...chunks: string[]): void => {
+    if (hasContent) write('|');
+    hasContent = true;
+    for (const chunk of chunks) write(chunk);
+  };
+
+  // Safety: Check that rows array exists before iterating
+  if (!tableBlock.rows) {
+    return;
+  }
+
+  for (const row of tableBlock.rows) {
+    // Safety: Check that cells array exists before iterating
+    if (!row.cells) {
+      continue;
+    }
+    if (row.attrs?.trackedChange) {
+      append(`rtc:${trackedChangeMetaSignature(row.attrs.trackedChange)}`);
+    }
+    // Explicit row height (w:trHeight) drives row geometry. Like columnWidths
+    // it lives on the block, not in a hashed border/text field, so a pure
+    // row-height drag (setRowHeight) would otherwise yield an identical hash,
+    // hit the shared header/footer measure cache, and not paint until an
+    // unrelated edit. Round to absorb sub-pixel float jitter.
+    if (row.attrs?.rowHeight) {
+      const rh = row.attrs.rowHeight;
+      append(`rh:${Math.round(rh.value)}:${rh.rule ?? 'auto'}`);
+    }
+
+    for (const cell of row.cells) {
+      // Include cell-level attributes that affect rendering (borders, padding, etc.)
+      // This ensures cache invalidation when cell formatting changes (e.g., remove borders).
+      if (cell.attrs) {
+        const cellAttrs = cell.attrs as TableCellAttrs;
+        const cellAttrParts: string[] = [];
+        if (cellAttrs.borders) {
+          cellAttrParts.push(`cb:${hashCellBorders(cellAttrs.borders)}`);
+        }
+        if (cellAttrs.padding) {
+          const p = cellAttrs.padding;
+          cellAttrParts.push(`cp:${p.top ?? 0}:${p.right ?? 0}:${p.bottom ?? 0}:${p.left ?? 0}`);
+        }
+        if (cellAttrs.verticalAlign) {
+          cellAttrParts.push(`va:${cellAttrs.verticalAlign}`);
+        }
+        if (cellAttrs.background) {
+          cellAttrParts.push(`bg:${cellAttrs.background}`);
+        }
+        if (cellAttrs.trackedChange) {
+          cellAttrParts.push(`tc:${trackedChangeMetaSignature(cellAttrs.trackedChange)}`);
+        }
+        if (cellAttrParts.length > 0) {
+          append(`ca:${cellAttrParts.join(':')}`);
+        }
+      }
+
+      // Support both new multi-block cells and legacy single paragraph cells
+      const cellBlocks = getTableCellBlocks(cell);
+
+      for (const cellBlock of cellBlocks) {
+        if (cellBlock.kind !== 'paragraph') {
+          append('nb:');
+          writeNonParagraphCellBlock(cellBlock, write, capabilities);
+          continue;
+        }
+
+        const paragraphBlock = cellBlock;
+
+        // Safety: Check that runs array exists before iterating
+        if (!paragraphBlock.runs) {
+          continue;
+        }
+
+        for (const run of paragraphBlock.runs) {
+          // Inline image / math runs carry dimensions that drive the cell's
+          // content height (and therefore an auto-height row's geometry).
+          // Mirror the non-table paragraph path below so resizing an in-cell
+          // inline image invalidates the table measure cache; otherwise the
+          // hash is identical to the pre-resize hash and the row keeps its
+          // stale cached height until an unrelated edit perturbs the key.
+          if (run.kind === 'image') {
+            const imgRun = run as ImageRun;
+            append(`img:${imgRun.src.slice(0, 50)}:${imgRun.width}x${imgRun.height}`);
+            continue;
+          }
+          if (run.kind === 'math') {
+            append('math:', run.textContent, `:${run.width}:${run.height}`);
+            continue;
+          }
+
+          // Text is used verbatim without normalization - whitespace affects measurements
+          // (Fix for PR #1551: previously /\s+/g normalization caused cache collisions)
+          const text =
+            isNumberedNoteMarkerRun(run) && 'text' in run
+              ? noteMarkerMeasureKey(run as TextRun, capabilities)
+              : 'text' in run && typeof run.text === 'string'
+                ? run.text
+                : '';
+
+          const marks = hashRunVisualMarks(run);
+
+          append(text, ':', marks);
+          if (hasTrackedChange(run)) {
+            write(`|tc:${trackedChangeMetaSignature(run.trackedChange)}`);
+          }
+          if (hasComments(run)) {
+            write('|cm:');
+            for (let index = 0; index < run.comments.length; index += 1) {
+              if (index > 0) write('|');
+              if (!(index in run.comments)) continue;
+              const comment = run.comments[index]!;
+              write(comment.commentId ?? '');
+              write(comment.internal ? ':1' : ':0');
+            }
+          }
+        }
+
+        // Include paragraph-level attributes that affect layout/rendering in hash.
+        // This ensures cache invalidation when paragraph formatting changes
+        // (alignment, spacing, line height, indent, etc.) without text changes.
+        // Fixes toolbar commands not updating for text inside tables.
+        if (paragraphBlock.attrs) {
+          const attrs = paragraphBlock.attrs as ParagraphAttrs;
+          const parts: string[] = [];
+
+          // Alignment
+          if (attrs.alignment) parts.push(`al:${attrs.alignment}`);
+
+          // Spacing (includes line height)
+          if (attrs.spacing) {
+            const s = attrs.spacing;
+            if (s.before !== undefined) parts.push(`sb:${s.before}`);
+            if (s.after !== undefined) parts.push(`sa:${s.after}`);
+            if (s.line !== undefined) parts.push(`sl:${s.line}`);
+            if (s.lineRule) parts.push(`sr:${s.lineRule}`);
+          }
+
+          // Indentation
+          if (attrs.indent) {
+            const ind = attrs.indent;
+            if (ind.left !== undefined) parts.push(`il:${ind.left}`);
+            if (ind.right !== undefined) parts.push(`ir:${ind.right}`);
+            if (ind.firstLine !== undefined) parts.push(`if:${ind.firstLine}`);
+            if (ind.hanging !== undefined) parts.push(`ih:${ind.hanging}`);
+          }
+
+          // Borders
+          if (attrs.borders) {
+            parts.push(`br:${hashParagraphBorders(attrs.borders)}`);
+          }
+
+          // Shading
+          if (attrs.shading) {
+            const sh = attrs.shading;
+            if (sh.fill) parts.push(`shf:${sh.fill}`);
+            if (sh.color) parts.push(`shc:${sh.color}`);
+          }
+
+          // Direction
+          const cellDir = getParagraphInlineDirection(attrs);
+          if (cellDir) parts.push(`dir:${cellDir}`);
+
+          if (parts.length > 0) {
+            append(`pa:${parts.join(':')}`);
+          }
+        }
+        if (paragraphBlock.inlineBoxes?.length) {
+          append('ib:');
+          for (let index = 0; index < paragraphBlock.inlineBoxes.length; index += 1) {
+            if (index > 0) write(';');
+            if (!(index in paragraphBlock.inlineBoxes)) continue;
+            write(inlineBoxKey(paragraphBlock.inlineBoxes[index]!));
+          }
+        }
+      }
+    }
+  }
+  // Include table-level attributes that affect rendering (borders, etc.)
+  // This ensures cache invalidation when table formatting changes (e.g., remove borders).
+  let tableAttrsKey = '';
+  if (tableBlock.attrs) {
+    const tblAttrs = tableBlock.attrs as TableAttrs;
+    const tableAttrParts: string[] = [];
+    if (tblAttrs.borders) {
+      tableAttrParts.push(`tb:${hashTableBorders(tblAttrs.borders)}`);
+    }
+    if (tblAttrs.borderCollapse) {
+      tableAttrParts.push(`bc:${tblAttrs.borderCollapse}`);
+    }
+    if (tblAttrs.cellSpacing !== undefined) {
+      const cs = tblAttrs.cellSpacing;
+      const csKey =
+        typeof cs === 'number'
+          ? `cs:n:${cs}`
+          : `cs:${(cs as { value?: number; type?: string }).value ?? 0}:${(cs as { value?: number; type?: string }).type ?? 'px'}`;
+      tableAttrParts.push(csKey);
+    }
+    if (tableAttrParts.length > 0) {
+      tableAttrsKey = `|ta:${tableAttrParts.join(':')}`;
+    }
+  }
+
+  // Column widths drive table geometry but live on the block, not block.attrs.
+  // Without them in the key, a pure column-width resize (which changes no
+  // border/text/attr) yields an identical hash, so the shared header/footer
+  // measure cache returns a stale TableMeasure and the resize only appears
+  // after an unrelated edit (e.g. typing) perturbs the hash. Round to absorb
+  // sub-pixel float jitter between the resolver path (unrounded twips*px) and
+  // the readTableColumnWidthsPx fallback (Math.round).
+  write(tableAttrsKey);
+  if (tableBlock.columnWidths?.length) {
+    write('|cw:');
+    for (let index = 0; index < tableBlock.columnWidths.length; index += 1) {
+      if (index > 0) write(',');
+      if (!(index in tableBlock.columnWidths)) continue;
+      write(String(Math.round(tableBlock.columnWidths[index]!)));
+    }
+  }
+};
+
 const hashRuns = (block: FlowBlock, capabilities?: FontMeasureCapabilities): string => {
-  // FIX: For table blocks and paragraphs, include content AND formatting properties in hash.
-  // Formatting properties that affect measurement: fontSize, fontFamily, bold, italic, color.
-  // This ensures cache invalidation when text OR formatting changes.
-  // Previously tables only included text content, causing stale measurements when changing formatting.
   if (block.kind === 'table') {
-    const tableBlock = block as TableBlock;
-    const cellHashes: string[] = [];
-
-    // Safety: Check that rows array exists before iterating
-    if (!tableBlock.rows) {
-      return `${block.id}:table:`;
-    }
-
-    for (const row of tableBlock.rows) {
-      // Safety: Check that cells array exists before iterating
-      if (!row.cells) {
-        continue;
-      }
-      if (row.attrs?.trackedChange) {
-        cellHashes.push(`rtc:${trackedChangeMetaSignature(row.attrs.trackedChange)}`);
-      }
-      // Explicit row height (w:trHeight) drives row geometry. Like columnWidths
-      // it lives on the block, not in a hashed border/text field, so a pure
-      // row-height drag (setRowHeight) would otherwise yield an identical hash,
-      // hit the shared header/footer measure cache, and not paint until an
-      // unrelated edit. Round to absorb sub-pixel float jitter.
-      if (row.attrs?.rowHeight) {
-        const rh = row.attrs.rowHeight;
-        cellHashes.push(`rh:${Math.round(rh.value)}:${rh.rule ?? 'auto'}`);
-      }
-
-      for (const cell of row.cells) {
-        // Include cell-level attributes that affect rendering (borders, padding, etc.)
-        // This ensures cache invalidation when cell formatting changes (e.g., remove borders).
-        if (cell.attrs) {
-          const cellAttrs = cell.attrs as TableCellAttrs;
-          const cellAttrParts: string[] = [];
-          if (cellAttrs.borders) {
-            cellAttrParts.push(`cb:${hashCellBorders(cellAttrs.borders)}`);
-          }
-          if (cellAttrs.padding) {
-            const p = cellAttrs.padding;
-            cellAttrParts.push(`cp:${p.top ?? 0}:${p.right ?? 0}:${p.bottom ?? 0}:${p.left ?? 0}`);
-          }
-          if (cellAttrs.verticalAlign) {
-            cellAttrParts.push(`va:${cellAttrs.verticalAlign}`);
-          }
-          if (cellAttrs.background) {
-            cellAttrParts.push(`bg:${cellAttrs.background}`);
-          }
-          if (cellAttrs.trackedChange) {
-            cellAttrParts.push(`tc:${trackedChangeMetaSignature(cellAttrs.trackedChange)}`);
-          }
-          if (cellAttrParts.length > 0) {
-            cellHashes.push(`ca:${cellAttrParts.join(':')}`);
-          }
-        }
-
-        // Support both new multi-block cells and legacy single paragraph cells
-        const cellBlocks = getTableCellBlocks(cell);
-
-        for (const cellBlock of cellBlocks) {
-          if (cellBlock.kind !== 'paragraph') {
-            cellHashes.push(`nb:${hashNonParagraphCellBlock(cellBlock, capabilities)}`);
-            continue;
-          }
-
-          const paragraphBlock = cellBlock;
-
-          // Safety: Check that runs array exists before iterating
-          if (!paragraphBlock.runs) {
-            continue;
-          }
-
-          for (const run of paragraphBlock.runs) {
-            // Inline image / math runs carry dimensions that drive the cell's
-            // content height (and therefore an auto-height row's geometry).
-            // Mirror the non-table paragraph path below so resizing an in-cell
-            // inline image invalidates the table measure cache; otherwise the
-            // hash is identical to the pre-resize hash and the row keeps its
-            // stale cached height until an unrelated edit perturbs the key.
-            if (run.kind === 'image') {
-              const imgRun = run as ImageRun;
-              cellHashes.push(`img:${imgRun.src.slice(0, 50)}:${imgRun.width}x${imgRun.height}`);
-              continue;
-            }
-            if (run.kind === 'math') {
-              cellHashes.push(`math:${run.textContent}:${run.width}:${run.height}`);
-              continue;
-            }
-
-            // Text is used verbatim without normalization - whitespace affects measurements
-            // (Fix for PR #1551: previously /\s+/g normalization caused cache collisions)
-            const text =
-              isNumberedNoteMarkerRun(run) && 'text' in run
-                ? noteMarkerMeasureKey(run as TextRun, capabilities)
-                : 'text' in run && typeof run.text === 'string'
-                  ? run.text
-                  : '';
-
-            const marks = hashRunVisualMarks(run);
-
-            // Use type guard to safely access comment metadata
-            const commentHash = hasComments(run)
-              ? run.comments.map((c) => `${c.commentId ?? ''}:${c.internal ? '1' : '0'}`).join('|')
-              : '';
-
-            // Include tracked change metadata in hash
-            let trackedKey = '';
-            if (hasTrackedChange(run)) {
-              trackedKey = `|tc:${trackedChangeMetaSignature(run.trackedChange)}`;
-            }
-
-            const commentKey = commentHash ? `|cm:${commentHash}` : '';
-            cellHashes.push(`${text}:${marks}${trackedKey}${commentKey}`);
-          }
-
-          // Include paragraph-level attributes that affect layout/rendering in hash.
-          // This ensures cache invalidation when paragraph formatting changes
-          // (alignment, spacing, line height, indent, etc.) without text changes.
-          // Fixes toolbar commands not updating for text inside tables.
-          if (paragraphBlock.attrs) {
-            const attrs = paragraphBlock.attrs as ParagraphAttrs;
-            const parts: string[] = [];
-
-            // Alignment
-            if (attrs.alignment) parts.push(`al:${attrs.alignment}`);
-
-            // Spacing (includes line height)
-            if (attrs.spacing) {
-              const s = attrs.spacing;
-              if (s.before !== undefined) parts.push(`sb:${s.before}`);
-              if (s.after !== undefined) parts.push(`sa:${s.after}`);
-              if (s.line !== undefined) parts.push(`sl:${s.line}`);
-              if (s.lineRule) parts.push(`sr:${s.lineRule}`);
-            }
-
-            // Indentation
-            if (attrs.indent) {
-              const ind = attrs.indent;
-              if (ind.left !== undefined) parts.push(`il:${ind.left}`);
-              if (ind.right !== undefined) parts.push(`ir:${ind.right}`);
-              if (ind.firstLine !== undefined) parts.push(`if:${ind.firstLine}`);
-              if (ind.hanging !== undefined) parts.push(`ih:${ind.hanging}`);
-            }
-
-            // Borders
-            if (attrs.borders) {
-              parts.push(`br:${hashParagraphBorders(attrs.borders)}`);
-            }
-
-            // Shading
-            if (attrs.shading) {
-              const sh = attrs.shading;
-              if (sh.fill) parts.push(`shf:${sh.fill}`);
-              if (sh.color) parts.push(`shc:${sh.color}`);
-            }
-
-            // Direction
-            const cellDir = getParagraphInlineDirection(attrs);
-            if (cellDir) parts.push(`dir:${cellDir}`);
-
-            if (parts.length > 0) {
-              cellHashes.push(`pa:${parts.join(':')}`);
-            }
-          }
-          if (paragraphBlock.inlineBoxes?.length) {
-            cellHashes.push(`ib:${paragraphBlock.inlineBoxes.map(inlineBoxKey).join(';')}`);
-          }
-        }
-      }
-    }
-    // Include table-level attributes that affect rendering (borders, etc.)
-    // This ensures cache invalidation when table formatting changes (e.g., remove borders).
-    let tableAttrsKey = '';
-    if (tableBlock.attrs) {
-      const tblAttrs = tableBlock.attrs as TableAttrs;
-      const tableAttrParts: string[] = [];
-      if (tblAttrs.borders) {
-        tableAttrParts.push(`tb:${hashTableBorders(tblAttrs.borders)}`);
-      }
-      if (tblAttrs.borderCollapse) {
-        tableAttrParts.push(`bc:${tblAttrs.borderCollapse}`);
-      }
-      if (tblAttrs.cellSpacing !== undefined) {
-        const cs = tblAttrs.cellSpacing;
-        const csKey =
-          typeof cs === 'number'
-            ? `cs:n:${cs}`
-            : `cs:${(cs as { value?: number; type?: string }).value ?? 0}:${(cs as { value?: number; type?: string }).type ?? 'px'}`;
-        tableAttrParts.push(csKey);
-      }
-      if (tableAttrParts.length > 0) {
-        tableAttrsKey = `|ta:${tableAttrParts.join(':')}`;
-      }
-    }
-
-    // Column widths drive table geometry but live on the block, not block.attrs.
-    // Without them in the key, a pure column-width resize (which changes no
-    // border/text/attr) yields an identical hash, so the shared header/footer
-    // measure cache returns a stale TableMeasure and the resize only appears
-    // after an unrelated edit (e.g. typing) perturbs the hash. Round to absorb
-    // sub-pixel float jitter between the resolver path (unrounded twips*px) and
-    // the readTableColumnWidthsPx fallback (Math.round).
-    let columnWidthsKey = '';
-    if (tableBlock.columnWidths?.length) {
-      columnWidthsKey = `|cw:${tableBlock.columnWidths.map((w) => Math.round(w)).join(',')}`;
-    }
-
-    const contentHash = cellHashes.join('|');
-    return `${block.id}:table:${contentHash}${tableAttrsKey}${columnWidthsKey}`;
+    const digest = new Utf16Sha256();
+    writeTableHash(block, (chunk) => digest.write(chunk), capabilities);
+    return `table-sha256:${digest.digestHex()}`;
   }
 
   // Top-level drawings keep stable block ids across property-only mutations
   // (for example a textbox resize). Their geometry and visual payload must be
   // part of the shared measure-cache key; keying only by id reuses the old
   // DrawingMeasure after canonical OOXML has already changed. Table-cell
-  // drawings take the same hash through hashNonParagraphCellBlock above.
+  // drawings take the same hash through writeNonParagraphCellBlock above.
   if (block.kind === 'drawing') return `${block.id}:${hashDrawingBlock(block, capabilities)}`;
 
   // Top-level images retain their block ids across source and geometry

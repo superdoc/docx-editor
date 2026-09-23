@@ -64,6 +64,14 @@ console.log({
 
 The list searches the document body by default. Pass `in: 'all'` when the workflow must include supported headers, footers, footnotes, and endnotes.
 
+### Quote a replacement safely
+
+A tracked replacement is one logical change with two sides, and the API always keeps them in separate fields. A `trackChanges.list` entry carries `insertedText` (the new text) and `deletedText` (the struck text). `trackChanges.get({ id })` returns the full `TrackChangeInfo`, which adds `replacement.inserted.excerpt` and `replacement.deleted.excerpt` for grouped replacements. None of these fields ever contains the other side.
+
+Both shapes also carry a flat `excerpt`. It is a single preview string, not a pair: for a grouped replacement it is the inserted text, falling back to the deleted text when there is no inserted side. Read it to label a change in a list; read the side-specific fields when you need to know what the change did.
+
+If a consumer sees the struck text and the inserted text run together in one string, it is reading a text projection, not the change. A `redline` projection deliberately renders both sides in sequence, deleted then inserted, because that is what a redline is. To quote what a change did, read the side you want from the entry; to quote what the document now says, project with `reviewMode: 'final'`.
+
 ## Read final, original, or redline output
 
 Use `projectHtml()` or `projectMarkdown()` when a workflow needs a serialized review view rather than the tracked-change

@@ -56,6 +56,80 @@ Saving to a separate path leaves the source session dirty by design. After the o
 
 For the contract behind each step, read the [Document API mental model](/document-api/mental-model).
 
+## Reuse one client across many operations
+
+One `SuperDocClient` owns one SuperDoc host process. `connect()` starts that process once. Every `open()` adds a document session inside the same process, and every method on a document handle is one request to it. The SDK never starts a process per operation.
+
+A client created per operation pays the whole cold path every time: process start, engine load, and for a collaboration document the room connect and initial sync. That cost is the same for a read, a search, or a comment, so it dominates any workflow that issues many small operations. Hoist the client and the open out of the per-operation path:
+
+```js
+import { createSuperDocClient } from '@superdoc/sdk';
+
+// Once per service, or once per collaboration room you serve.
+const client = createSuperDocClient({ user: { name: 'AI Assistant', email: 'agent@example.com' } });
+await client.connect();
+const document = await client.open({
+  doc: 'contract-123',
+  collaboration: { providerType: 'hocuspocus', url: 'wss://collaboration.example.com', documentId: 'contract-123' },
+});
+
+// Many times per agent turn. Each call reuses the open session.
+const info = await document.info();
+const matches = await document.query.match({ select: { type: 'text', pattern: 'termination' }, require: 'all' });
+
+// When the room or the service shuts down.
+await document.close();
+await client.dispose();
+```
+
+What that lifetime means in practice:
+
+- **A handle is a session.** Open a document once and keep the handle for as long as the workflow needs it. One client can hold several open documents; each handle is its own session.
+- **One host runs one request at a time.** Operations on the same client queue. For parallel throughput across documents, run a small pool of clients and lease one per in-flight workflow. A client's `requestTimeoutMs` is fixed when its host starts; individual calls can still pass their own `timeoutMs`.
+- **Restart is automatic, sessions are not.** If the host process exits, the next request starts a new one and every previously open handle is gone; reopen the document. Unsaved changes do not survive that: on the default host the session rehydrates from its on-disk context and loses whatever the last autosave had not yet written, and on the standalone document host the client refuses further requests with `HOST_DISCONNECTED` instead. Neither is a substitute for saving at a point you choose.
+- **Refs expire, node ids do not.** A `query.match` ref is bound to the revision that produced it and stops resolving after any mutation. Block `nodeId` values stay stable across edits, so target follow-up work with `{ kind: 'block', nodeType, nodeId }` and re-run `query.match` only when you need a text range.
+
+Typical cost of each lifecycle for a 53-operation agent turn on a mid-sized document:
+
+| Lifecycle                                | Median per call | Whole turn |
+| ---------------------------------------- | --------------- | ---------- |
+| New client per operation                 | ~460 ms         | ~24 s      |
+| One client, open and close per operation | ~140 ms         | ~8 s       |
+| One client, one open document            | ~40 ms          | ~3 s       |
+
+### Batch many operations into one request
+
+Two document-level batches collapse several operations into one request:
+
+- `document.mutations.apply(plan)` commits several text or formatting steps as one atomic transaction. Selector targets re-resolve before each step, so you do not re-search between them. See [Mutation plans](/document-api/mutation-plans).
+- `document.plan.execute({ entries })` runs a list of arbitrary operations in one request. Each entry is its own transaction, so a failure partway through keeps the earlier entries committed. Later entries can reference earlier results through `captureAs` and `capture-ref` markers.
+
+For example, anchor a batch of comments in a single request instead of one request per comment:
+
+```js
+const result = await document.plan.execute({
+  entries: reviewNotes.map(({ quote, note }) => ({
+    operationId: 'comments.create',
+    input: { target: { text: quote }, text: note },
+  })),
+});
+
+// plan.execute reports a failed entry in `failure` rather than throwing. An
+// ignored result is an ignored batch: it stops at the first hard failure, so
+// later entries never ran.
+if (result.failure) {
+  const { entryIndex, operationId, message } = result.failure;
+  throw new Error(`comment batch stopped at entry ${entryIndex} (${operationId}): ${message}`);
+}
+```
+
+<Callout variant='warning' title='Tracked-change ids need the per-call path'>
+  A `{ kind: 'trackedChange', trackedChangeId }` comment target does not resolve inside a `plan.execute` entry on the
+  default CLI-backed host. `trackChanges.list` returns host-stable ids, and the translation back to engine ids runs as a
+  hook on the top-level `comments.create` call, which plan entries bypass. Anchor comments to tracked changes with
+  individual `document.comments.create` calls instead.
+</Callout>
+
 ## Open a token-authenticated collaboration document
 
 Pass a Hocuspocus or y-websocket token in the options for that document's open request:

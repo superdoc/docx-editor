@@ -21,6 +21,8 @@ Start with the [local two-editor example](/editor/collaboration/connect-two-edit
 
 In the example, open `http://localhost:5173/?mode=create&user=Alex`. Alex's editor imports the sample DOCX into a new room and shows `Connected.` when it is ready.
 
+For a browser `create` open with a built-in provider, `collaboration-ready` waits until an independent provider connection can receive the complete seed and validate the room. If that does not happen within `syncTimeoutMs` (30 seconds by default), the open reports an error instead of readiness. This confirms shared-room visibility for a fresh peer, not durable storage on your server. Keep the creator connected until your server has retained the room for later joins. Provider extensions retain their existing local-readiness behavior on `create`; do not use their `collaboration-ready` callback as a shared-room handoff signal.
+
 With the [preview configuration API](/editor/collaboration/connect-two-editors#configure-your-application), put the connection in the document's `collaboration` field. These are the creator's settings:
 
 ```ts

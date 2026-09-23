@@ -4283,32 +4283,6 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
   }
 
   /**
-   * Clean up collaboration resources owned only by a removed document.
-   *
-   * Shared instance-level providers/ydocs stay alive; `destroy()` remains the
-   * one place that tears down shell-wide collaboration state.
-   */
-  #cleanupRemovedDocumentCollaboration(
-    removedDocument: RuntimeDocument,
-    remainingDocuments: readonly RuntimeDocument[],
-  ) {
-    const removedProvider = removedDocument.provider;
-    if (
-      removedProvider &&
-      removedProvider !== this.provider &&
-      !remainingDocuments.some((doc) => doc.provider === removedProvider)
-    ) {
-      removedProvider.disconnect?.();
-      removedProvider.destroy?.();
-    }
-
-    const removedYDoc = removedDocument.ydoc;
-    if (removedYDoc && removedYDoc !== this.ydoc && !remainingDocuments.some((doc) => doc.ydoc === removedYDoc)) {
-      removedYDoc.destroy?.();
-    }
-  }
-
-  /**
    * Clean up collaboration resources (providers, ydocs, sockets)
    */
   #cleanupCollaboration() {
@@ -4334,12 +4308,6 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
     this.ydoc?.destroy();
     this.provider?.disconnect?.();
     this.provider?.destroy?.();
-
-    cfg.documents.forEach((doc: RuntimeDocument) => {
-      doc.provider?.disconnect?.();
-      doc.provider?.destroy?.();
-      doc.ydoc?.destroy();
-    });
   }
 
   // ---------------------------------------------------------------------------
@@ -4390,8 +4358,6 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
 
     const removedDocument = store.removeDocument(normalizedDocumentId);
     if (!removedDocument) return false;
-
-    this.#cleanupRemovedDocumentCollaboration(removedDocument, store.documents);
 
     await nextTick();
     return true;

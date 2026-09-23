@@ -1282,7 +1282,7 @@ const onV2EditorReady = (payload) => {
   proxy.$superdoc.broadcastEditorCreate(facade);
   installV2CommandShortcutBinding({ documentId, bindEditShortcuts });
   installV2SessionShortcutBinding({ documentId, bindSessionShortcuts, documentApi });
-  if (resolveDocumentV2Collaboration(getDocument(documentId)).state === 'valid') {
+  if (collaborationProvider && resolveDocumentV2Collaboration(getDocument(documentId)).state === 'valid') {
     onEditorCollaborationReady({ editor: facade });
   }
   // ui-phase4-002: flip the reactive readiness signal so the ruler template

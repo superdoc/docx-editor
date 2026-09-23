@@ -3354,6 +3354,66 @@ describe('DomPainter', () => {
     expect(wrapper.textContent).toContain('controlled text');
   });
 
+  it('repaints inline control metadata when the document changes but text and native id do not (SD-3306)', () => {
+    const block = (alias: string, tag: string, id = '501'): FlowBlock => ({
+      kind: 'paragraph',
+      id: 'inline-sc-para',
+      attrs: {},
+      runs: [
+        {
+          text: 'Client',
+          fontFamily: 'Arial',
+          fontSize: 16,
+          pmStart: 0,
+          pmEnd: 6,
+          sdt: { type: 'structuredContent', scope: 'inline', id, alias, tag },
+        },
+      ],
+    });
+    const measure: Measure = {
+      kind: 'paragraph',
+      lines: [{ fromRun: 0, fromChar: 0, toRun: 0, toChar: 6, width: 60, ascent: 12, descent: 4, lineHeight: 20 }],
+      totalHeight: 20,
+    };
+    const layout: Layout = {
+      pageSize: { w: 612, h: 792 },
+      pages: [
+        {
+          number: 1,
+          fragments: [
+            {
+              kind: 'para',
+              blockId: 'inline-sc-para',
+              fromLine: 0,
+              toLine: 1,
+              x: 30,
+              y: 40,
+              width: 552,
+              pmStart: 0,
+              pmEnd: 6,
+            },
+          ],
+        },
+      ],
+    };
+    const painter = createTestPainter({ blocks: [block('Document A', 'client-a')], measures: [measure] });
+    painter.paint(layout, mount);
+    const current = () => mount.querySelector('.superdoc-structured-content-inline') as HTMLElement;
+    expect(current().dataset.sdtTag).toBe('client-a');
+    expect(current().querySelector('.superdoc-structured-content-inline__label')?.textContent).toBe('Document A');
+
+    painter.setData([block('Document B', 'client-b')], [measure]);
+    painter.paint(layout, mount);
+    expect(current().dataset.sdtId).toBe('501');
+    expect(current().dataset.sdtTag).toBe('client-b');
+    expect(current().querySelector('.superdoc-structured-content-inline__label')?.textContent).toBe('Document B');
+
+    painter.setData([block('Document C', 'client-c', '502')], [measure]);
+    painter.paint(layout, mount);
+    expect(current().dataset.sdtId).toBe('502');
+    expect(current().querySelector('.superdoc-structured-content-inline__label')?.textContent).toBe('Document C');
+  });
+
   it('marks inline structuredContent wrappers that contain inline images', () => {
     const block: FlowBlock = {
       kind: 'paragraph',

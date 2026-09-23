@@ -492,6 +492,7 @@ export const deriveBlockVersion = (block: FlowBlock): string => {
           textRun.pageNumberFieldFormat ? JSON.stringify(textRun.pageNumberFieldFormat) : '',
           trackedVersion,
           textRunLinkVersion(textRun.link),
+          getSdtMetadataVersion(textRun.sdt),
           textRun.comments
             ?.map((comment) =>
               [

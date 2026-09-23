@@ -128,6 +128,32 @@ describe('deriveBlockVersion - nested SDT containers', () => {
   });
 });
 
+describe('deriveBlockVersion - inline content-control presentation', () => {
+  const paragraph = (sdt?: TextRun['sdt']): ParagraphBlock => ({
+    kind: 'paragraph',
+    id: 'inline-control',
+    attrs: {},
+    runs: [{ kind: 'text', text: 'Client', fontFamily: 'Arial', fontSize: 16, ...(sdt ? { sdt } : {}) }],
+  });
+  const metadata = {
+    type: 'structuredContent' as const,
+    scope: 'inline' as const,
+    id: '1002',
+    alias: 'Document A',
+    tag: 'client-a',
+    appearance: 'boundingBox' as const,
+  };
+
+  it('invalidates paint reuse for creation and each mutable inline metadata field', () => {
+    const initial = deriveBlockVersion(paragraph(metadata));
+    expect(initial).not.toBe(deriveBlockVersion(paragraph()));
+    expect(initial).not.toBe(deriveBlockVersion(paragraph({ ...metadata, alias: 'Document B' })));
+    expect(initial).not.toBe(deriveBlockVersion(paragraph({ ...metadata, tag: 'client-b' })));
+    expect(initial).not.toBe(deriveBlockVersion(paragraph({ ...metadata, appearance: 'hidden' })));
+    expect(initial).toBe(deriveBlockVersion(paragraph({ ...metadata })));
+  });
+});
+
 describe('deriveBlockVersion - text run hyperlinks', () => {
   const makeParagraph = (link?: TextRun['link']): ParagraphBlock => ({
     kind: 'paragraph',

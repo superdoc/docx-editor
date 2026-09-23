@@ -490,7 +490,7 @@ export const renderTableRow = (deps: TableRowRenderDependencies): void => {
   // override paint with the table borders unchanged (no behavior change).
   const rowBorderOverride = row?.attrs?.borders;
   const effectiveTableBorders: TableBorders | undefined = rowBorderOverride
-    ? { ...(tableBorders ?? {}), ...rowBorderOverride }
+    ? { ...tableBorders, ...rowBorderOverride }
     : tableBorders;
 
   // When the NEXT row carries a tblPrEx override that suppresses its shared horizontal edge
@@ -502,7 +502,7 @@ export const renderTableRow = (deps: TableRowRenderDependencies): void => {
   // (SD-3028)
   const nextRowBorderOverride = nextRow?.attrs?.borders;
   const nextRowEffectiveInsideH = nextRowBorderOverride
-    ? ({ ...(tableBorders ?? {}), ...nextRowBorderOverride } as TableBorders).insideH
+    ? ({ ...tableBorders, ...nextRowBorderOverride } as TableBorders).insideH
     : undefined;
   const nextRowSuppressesSharedTop =
     nextRowBorderOverride !== undefined && !isPresentBorder(borderValueToSpec(nextRowEffectiveInsideH));
@@ -751,6 +751,12 @@ export const renderTableRow = (deps: TableRowRenderDependencies): void => {
       resolvePhysical,
     });
     cellElement.setAttribute(TABLE_ROW_ROLE_ATTRIBUTE, rowRole);
+    if (
+      !finalBorders ||
+      ![finalBorders.top, finalBorders.right, finalBorders.bottom, finalBorders.left].some(isPresentBorder)
+    ) {
+      cellElement.dataset.sdBorderlessCell = '';
+    }
 
     // Paint the structural row-level tracked change onto each cell element of
     // the row (no <tr> exists in the painted DOM), reusing the inline helpers.

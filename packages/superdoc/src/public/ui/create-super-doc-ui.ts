@@ -8339,6 +8339,19 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     const doc = getDoc();
     const linksApi = doc?.hyperlinks as LooseRecord | undefined;
     if (!linksApi) return false;
+    // SD-4816 §5: wrap/insert/patch/remove-by-address route through the
+    // trusted host hyperlink command instead of the raw, customer-reachable
+    // Document API facade (`linksApi`), so the toolbar's "Insert Link" button
+    // is correctly actor-tagged 'human' — same fix as useContextMenu.ts's
+    // context-menu hyperlink actions. `linksApi` stays in use for reads
+    // (`resolveCurrentHyperlink`) and for the separate storyId+hyperlinkNodeId
+    // addressing scheme below (`requestedHyperlinkTarget`/`updateTarget`),
+    // which is a different caller contract this fix does not cover.
+    const hyperlinkHost = getHost();
+    const hyperlinkHandles = typeof hyperlinkHost?.getHandles === 'function' ? hyperlinkHost.getHandles() : null;
+    const trustedLinksApi = (hyperlinkHandles?.editing as LooseRecord | undefined)?.hyperlinks as
+      | LooseRecord
+      | undefined;
     const record = readLinkPayloadRecord(payload);
     const href = readLinkPayloadHref(payload);
     const payloadTarget = readLinkPayloadTarget(payload);
@@ -8367,7 +8380,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     }
     // Active link + explicit null href → unwrap.
     if (existing && href === null) {
-      const remove = linksApi.remove as AnyFn | undefined;
+      const remove = trustedLinksApi?.remove as AnyFn | undefined;
       if (typeof remove !== 'function') return false;
       try {
         return callEditorMutation('hyperlinks.remove', remove, { target: existing.address, mode: 'unwrap' });
@@ -8377,7 +8390,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     }
     // Active link + new href → patch target, optionally replacing display text atomically when requested.
     if ((existing || requestedHyperlinkTarget) && typeof href === 'string' && href.trim() !== '') {
-      const patch = linksApi.patch as AnyFn | undefined;
+      const patch = trustedLinksApi?.patch as AnyFn | undefined;
       const updateTarget = linksApi.updateTarget as AnyFn | undefined;
       const canPatchExisting = !hasRequestedHyperlinkTarget && existing && typeof patch === 'function';
       const canUpdateRequested = hasRequestedHyperlinkTarget && typeof updateTarget === 'function';
@@ -8492,7 +8505,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     // No active link + range selection + href → wrap the selected text.
     if (typeof href === 'string' && href.trim() !== '') {
       const normalizedHref = href.trim();
-      const wrap = linksApi.wrap as AnyFn | undefined;
+      const wrap = trustedLinksApi?.wrap as AnyFn | undefined;
       const textTargets = textAddressesFromTarget(payloadTarget);
       const wrapTargets = textTargets.length > 0 ? textTargets : selectionTextAddresses(state.selection);
       if (wrapTargets.length > 0) {
@@ -8506,7 +8519,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
           return false;
         }
       }
-      const insert = linksApi.insert as AnyFn | undefined;
+      const insert = trustedLinksApi?.insert as AnyFn | undefined;
       const text = readLinkPayloadText(payload, normalizedHref);
       if (typeof insert !== 'function' || text.trim() === '') return false;
       const target =
@@ -8587,8 +8600,19 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       if (typeof record.alt === 'string') input.alt = record.alt;
       if (typeof record.title === 'string') input.title = record.title;
       if (record.size && typeof record.size === 'object') input.size = record.size;
+      // SD-4816 §5: route through the trusted host image command instead of
+      // the raw, customer-reachable Document API facade (`op`), so the
+      // toolbar image picker is correctly actor-tagged 'human' — same fix as
+      // `executeLinkCommand`'s hyperlink routing. Drag-drop/paste already
+      // goes through a separate, already-trusted v2-host path.
+      const imageHost = getHost();
+      const imageHandles = typeof imageHost?.getHandles === 'function' ? imageHost.getHandles() : null;
+      const trustedImageCommands = (imageHandles?.editing as LooseRecord | undefined)?.images as
+        | LooseRecord
+        | undefined;
+      if (typeof trustedImageCommands?.create !== 'function') return false;
       try {
-        return callEditorMutation(descriptor.docRoute!, op, input);
+        return callEditorMutation(descriptor.docRoute!, trustedImageCommands.create as AnyFn, input);
       } catch {
         return false;
       }

@@ -9112,7 +9112,15 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
 
   function makeBlockSuperdoc(
     docExtra: Record<string, unknown>,
-    opts: { selectionInfo?: unknown; mode?: string; editorExtra?: Record<string, unknown> } = {},
+    opts: {
+      selectionInfo?: unknown;
+      mode?: string;
+      editorExtra?: Record<string, unknown>;
+      /** SD-4816: skip auto-mirroring `docExtra.hyperlinks` onto `host.getHandles().editing.hyperlinks`. */
+      noHyperlinkHostMirror?: boolean;
+      /** SD-4816: skip auto-mirroring `docExtra.create.image` onto `host.getHandles().editing.images`. */
+      noImageHostMirror?: boolean;
+    } = {},
   ) {
     const selectionInfo =
       'selectionInfo' in opts
@@ -9126,6 +9134,39 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
             activeChangeIds: [] as string[],
             text: 'hello',
           };
+    // SD-4816 §5: `link`'s wrap/insert/patch and `image`'s create now route
+    // through the trusted `host.getHandles().editing.hyperlinks`/`.images`
+    // surfaces, not the raw `doc.hyperlinks`/`doc.create.image` facade —
+    // mirror whatever `docExtra.hyperlinks`/`docExtra.create.image` a test
+    // provides onto those host surfaces too, so existing link/image tests
+    // (which only set up the facade-shaped `docExtra`) keep working against
+    // the new call sites.
+    const existingHost = (opts.editorExtra as { host?: Record<string, unknown> } | undefined)?.host;
+    const createExtra = docExtra.create as { image?: unknown } | undefined;
+    const mirrorHyperlinks = Boolean(docExtra.hyperlinks) && !opts.noHyperlinkHostMirror;
+    const mirrorImages = Boolean(createExtra?.image) && !opts.noImageHostMirror;
+    const hostExtra =
+      mirrorHyperlinks || mirrorImages
+        ? {
+            host: {
+              ...existingHost,
+              getHandles: () => {
+                const base =
+                  typeof existingHost?.getHandles === 'function'
+                    ? (existingHost.getHandles as () => Record<string, unknown>)()
+                    : {};
+                return {
+                  ...base,
+                  editing: {
+                    ...(base.editing as Record<string, unknown> | undefined),
+                    ...(mirrorHyperlinks ? { hyperlinks: docExtra.hyperlinks } : {}),
+                    ...(mirrorImages ? { images: { create: createExtra?.image } } : {}),
+                  },
+                };
+              },
+            },
+          }
+        : {};
     return {
       activeEditor: {
         doc: {
@@ -9136,6 +9177,7 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
           ...docExtra,
         },
         ...(opts.editorExtra ?? {}),
+        ...hostExtra,
       },
       config: { documentMode: opts.mode ?? 'editing' },
       on: vi.fn(),
@@ -12204,6 +12246,20 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
     });
   });
 
+  it('SD-4816: link does not fall back to the raw facade when the trusted host handle is absent', async () => {
+    const facadeWrap = vi.fn(() => ({ success: true }));
+    const superdoc = makeBlockSuperdoc(
+      { hyperlinks: { wrap: facadeWrap, list: vi.fn(() => ({ items: [] })), patch: vi.fn(), remove: vi.fn() } },
+      { noHyperlinkHostMirror: true },
+    );
+    const ui = createSuperDocUI({ superdoc });
+    // The old bug: executeLinkCommand read `doc.hyperlinks` directly, so the
+    // toolbar's "Insert Link" button would have silently succeeded via the
+    // raw, customer-reachable facade even without a trusted host handle.
+    expect(await ui.toolbar.execute('link', 'https://example.com')).toBe(false);
+    expect(facadeWrap).not.toHaveBeenCalled();
+  });
+
   it('link wraps the selected text through hyperlinks.wrap when there is no active link', async () => {
     const wrap = vi.fn(() => ({ success: true }));
     const list = vi.fn(() => ({ items: [] }));
@@ -13036,6 +13092,18 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
         at: { kind: 'after', target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P1' } },
       }),
     );
+  });
+
+  it('SD-4816: image does not fall back to the raw facade when the trusted host handle is absent', async () => {
+    const facadeImage = vi.fn(() => ({ success: true }));
+    const superdoc = makeBlockSuperdoc({ create: { image: facadeImage } }, { noImageHostMirror: true });
+    const ui = createSuperDocUI({ superdoc });
+    // The old bug: executeCreateCommand's image branch read `doc.create.image`
+    // directly, so the toolbar's image picker would have silently succeeded
+    // via the raw, customer-reachable facade even without a trusted host
+    // handle.
+    expect(await ui.toolbar.execute('image', { src: 'data:image/png;base64,AAAA' })).toBe(false);
+    expect(facadeImage).not.toHaveBeenCalled();
   });
 
   it.each([

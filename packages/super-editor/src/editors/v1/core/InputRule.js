@@ -33,6 +33,7 @@ import {
   applySuperdocClipboardMedia,
 } from './helpers/superdocClipboardSlice.js';
 import { annotateFragmentDomWithClipboardData } from './helpers/clipboardFragmentAnnotate.js';
+import { generateRandomSigned32BitIntStrId } from './helpers/generateDocxRandomId.js';
 
 /** Heuristic: clipboard HTML from SuperDoc copy (slice attrs, list/section metadata). */
 export function isSuperdocOriginClipboardHtml(html) {
@@ -467,6 +468,8 @@ export function handleHtmlPaste(html, editor, source) {
   if (!dispatch) {
     return false;
   }
+
+  doc = doc.copy(reidentifyPastedContentControls(doc.content, state.doc));
 
   // Check if we're pasting into an existing paragraph
   // Need to check ancestors since cursor might be inside a run node within a paragraph
@@ -919,12 +922,13 @@ function handleSuperdocSlicePaste(sliceData, editor, view, embeddedBodySectPr = 
 
   if (!slice.content.size) return false;
 
-  const stripped = stripSuperdocSliceBlockIdentities(slice.content);
-  const cleanContent = remapPastedListNumberingInFragment(stripped, editor);
-  const cleanSlice = new Slice(cleanContent, slice.openStart, slice.openEnd);
-
   const { dispatch, state } = view;
   if (!dispatch) return false;
+
+  const stripped = stripSuperdocSliceBlockIdentities(slice.content);
+  const reidentified = reidentifyPastedContentControls(stripped, state.doc);
+  const cleanContent = remapPastedListNumberingInFragment(reidentified, editor);
+  const cleanSlice = new Slice(cleanContent, slice.openStart, slice.openEnd);
 
   const tr = state.tr.replaceSelection(cleanSlice);
   tr.setMeta('superdocSlicePaste', true);
@@ -985,4 +989,47 @@ function stripSuperdocSliceBlockIdentities(fragment) {
   });
 
   return Fragment.fromArray(children);
+}
+
+function reidentifyPastedContentControls(fragment, document) {
+  const usedIds = new Set();
+  let collectedDocumentIds = false;
+
+  const nextId = () => {
+    if (!collectedDocumentIds) {
+      document.descendants((node) => {
+        if (node.type.name === 'structuredContent' || node.type.name === 'structuredContentBlock') {
+          if (node.attrs.id != null) usedIds.add(String(node.attrs.id));
+        }
+      });
+      collectedDocumentIds = true;
+    }
+    let candidate = generateRandomSigned32BitIntStrId();
+    while (usedIds.has(candidate)) {
+      candidate = String((Number(candidate) + 1) % 2147483647);
+    }
+    usedIds.add(candidate);
+    return candidate;
+  };
+
+  const remap = (content) => {
+    const children = [];
+    let changed = false;
+    content.forEach((node) => {
+      const nextContent = node.childCount ? remap(node.content) : node.content;
+      const isControl = node.type.name === 'structuredContent' || node.type.name === 'structuredContentBlock';
+      if (isControl) {
+        children.push(node.type.create({ ...node.attrs, id: nextId() }, nextContent, node.marks));
+        changed = true;
+      } else if (nextContent !== node.content) {
+        children.push(node.copy(nextContent));
+        changed = true;
+      } else {
+        children.push(node);
+      }
+    });
+    return changed ? Fragment.fromArray(children) : content;
+  };
+
+  return remap(fragment);
 }

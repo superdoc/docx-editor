@@ -267,6 +267,8 @@ export interface CreateImageSuccessResult {
   success: true;
   image: ImageAddress;
   trackedChangeRefs?: ReceiptInsert[];
+  /** Commit id for the insertion, including its alt text when that was set in the same call. */
+  txId?: string;
 }
 
 export interface CreateImageFailureResult {

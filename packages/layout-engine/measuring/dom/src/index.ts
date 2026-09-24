@@ -3045,6 +3045,27 @@ async function measureParagraphBlock(
       // Clear any previous tab group when we encounter a new tab
       activeTabGroup = null;
       pendingLeader = null;
+      const positioned = (run as TabRun).positionedTab;
+      if (positioned && currentLine?.segments?.length) {
+        const lineIndent = lines.length === 0 ? firstLineTabIndent : indentLeft;
+        const boundary = positioned.relativeTo === 'margin' ? maxWidth : currentLine.maxWidth + lineIndent;
+        const target =
+          positioned.alignment === 'start'
+            ? lineIndent
+            : positioned.alignment === 'center'
+              ? positioned.relativeTo === 'margin'
+                ? boundary / 2
+                : lineIndent + (boundary - lineIndent) / 2
+              : boundary;
+        if (target < currentLine.width + lineIndent - TAB_EPSILON) {
+          trimTrailingWrapSpaces(currentLine);
+          lines.push(closeLineWithMetrics(currentLine));
+          currentLine = null;
+          tabStopCursor = 0;
+          pendingTabAlignment = null;
+          lastAppliedTabAlign = null;
+        }
+      }
 
       // Initialize line if needed
       if (!currentLine) {
@@ -3095,20 +3116,38 @@ async function measureParagraphBlock(
       // greedy already finds the correct stop and the heuristic over-fires.
       // Only force the heuristic when greedy would land on a `source:default`
       // stop — which is precisely the SD-2447 condition.
-      const greedy = getNextTabStopPx(absCurrentX, tabStops, tabStopCursor);
-      const greedyOnDefault = greedy.stop?.source === 'default';
-      const forcedAlignment = greedyOnDefault ? getAlignmentStopForOrdinal(resolvedTabIndex, runIndex) : null;
-      if (forcedAlignment && forcedAlignment.stop.pos > absCurrentX + TAB_EPSILON) {
-        stop = forcedAlignment.stop;
-        target = forcedAlignment.stop.pos;
-        tabStopCursor = forcedAlignment.index + 1;
+      if (positioned) {
+        const boundary = positioned.relativeTo === 'margin' ? maxWidth : currentLine.maxWidth + effectiveIndent;
+        target =
+          positioned.alignment === 'start'
+            ? effectiveIndent
+            : positioned.alignment === 'center'
+              ? positioned.relativeTo === 'margin'
+                ? boundary / 2
+                : effectiveIndent + (boundary - effectiveIndent) / 2
+              : boundary;
+        stop = {
+          pos: target,
+          val: positioned.alignment,
+          leader: (run as TabRun).leader ?? undefined,
+          source: 'explicit',
+        };
       } else {
-        target = greedy.target;
-        tabStopCursor = greedy.nextIndex;
-        stop = greedy.stop;
+        const greedy = getNextTabStopPx(absCurrentX, tabStops, tabStopCursor);
+        const greedyOnDefault = greedy.stop?.source === 'default';
+        const forcedAlignment = greedyOnDefault ? getAlignmentStopForOrdinal(resolvedTabIndex, runIndex) : null;
+        if (forcedAlignment && forcedAlignment.stop.pos > absCurrentX + TAB_EPSILON) {
+          stop = forcedAlignment.stop;
+          target = forcedAlignment.stop.pos;
+          tabStopCursor = forcedAlignment.index + 1;
+        } else {
+          target = greedy.target;
+          tabStopCursor = greedy.nextIndex;
+          stop = greedy.stop;
+        }
       }
-      const maxAbsWidth = currentLine.maxWidth + effectiveIndent;
-      const clampedTarget = Math.min(target, maxAbsWidth);
+      const maxAbsWidth: number = currentLine.maxWidth + effectiveIndent;
+      const clampedTarget: number = positioned ? target : Math.min(target, maxAbsWidth);
       const tabAdvance = Math.max(0, clampedTarget - absCurrentX);
       currentLine.width = roundValue(currentLine.width + tabAdvance);
       if (stop?.source === 'explicit') {
@@ -3161,7 +3200,7 @@ async function measureParagraphBlock(
 
           if (groupMeasure.totalWidth > 0) {
             // Calculate the aligned starting X position based on total group width
-            const relativeTarget = clampedTarget - effectiveIndent;
+            const relativeTarget: number = clampedTarget - effectiveIndent;
             let groupStartX: number;
             if (stop.val === 'end') {
               // Right-align: position so right edge of group is at tab stop

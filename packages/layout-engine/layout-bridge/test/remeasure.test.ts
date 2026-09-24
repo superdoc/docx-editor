@@ -21,6 +21,62 @@ import {
 import { LIST_MARKER_GAP } from '@superdoc/common/layout-constants';
 import { remeasureParagraph } from '../src/remeasure.ts';
 
+describe('positioned tab remeasurement', () => {
+  it('starts a new line when a centered positioned tab falls behind its label', () => {
+    const block: ParagraphBlock = {
+      kind: 'paragraph',
+      id: 'positioned-overrun',
+      runs: [
+        { text: 'AAAAAAAAAAAA', fontFamily: 'Arial', fontSize: 16 },
+        { kind: 'tab', text: '\t', positionedTab: { relativeTo: 'margin', alignment: 'center' }, leader: 'dot' },
+        { text: '12', fontFamily: 'Arial', fontSize: 16 },
+      ],
+    };
+
+    const measure = remeasureParagraph(block, 200);
+    expect(measure.lines).toHaveLength(2);
+    expect(measure.lines[0].toRun).toBe(0);
+    expect(measure.lines[1].fromRun).toBe(1);
+    expect(measure.lines[1].leaders?.[0]?.style).toBe('dot');
+  });
+
+  it('centers an indent-relative tab between the paragraph indents', () => {
+    const block: ParagraphBlock = {
+      kind: 'paragraph',
+      id: 'positioned-indent-center',
+      runs: [
+        { text: 'A', fontFamily: 'Arial', fontSize: 16 },
+        { kind: 'tab', text: '\t', positionedTab: { relativeTo: 'indent', alignment: 'center' }, leader: 'dot' },
+        { text: '12', fontFamily: 'Arial', fontSize: 16 },
+      ],
+      attrs: { indent: { left: 30, right: 40 } },
+    };
+
+    const measure = remeasureParagraph(block, 240);
+    expect(measure.lines).toHaveLength(1);
+    const pageNumber = measure.lines[0].segments?.find((segment) => segment.runIndex === 2);
+    expect((pageNumber?.x ?? 0) + 30 + (pageNumber?.width ?? 0) / 2).toBeCloseTo(115, 0);
+  });
+
+  it('keeps a right-aligned page number on the same narrow line as its label', () => {
+    const block: ParagraphBlock = {
+      kind: 'paragraph',
+      id: 'positioned-toc-entry',
+      runs: [
+        { text: 'Long chapter name', fontFamily: 'Arial', fontSize: 16 },
+        { kind: 'tab', text: '\t', positionedTab: { relativeTo: 'margin', alignment: 'end' }, leader: 'dot' },
+        { text: '12', fontFamily: 'Arial', fontSize: 16 },
+      ],
+    };
+
+    const measure = remeasureParagraph(block, 200);
+    expect(measure.lines).toHaveLength(1);
+    expect(measure.lines[0].leaders?.[0]?.style).toBe('dot');
+    expect(measure.lines[0].leaders?.[0]?.to).toBeGreaterThan(170);
+    expect(measure.lines[0].segments?.find((segment) => segment.runIndex === 2)?.x).toBeGreaterThan(170);
+  });
+});
+
 describe('inline box fast remeasurement', () => {
   it('drops inline boxes with a named fail-closed diagnostic', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});

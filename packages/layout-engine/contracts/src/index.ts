@@ -675,6 +675,10 @@ export type TextRun = RunMarks & {
 export type TabRun = RunMarks & {
   kind: 'tab';
   text: '\t';
+  positionedTab?: {
+    relativeTo: 'margin' | 'indent';
+    alignment: 'start' | 'center' | 'end';
+  };
   /**
    * Font of the tab, inherited from the paragraph's resolved run properties. A tab has
    * no glyphs, but its font drives the line height (so a tab-only line matches a text

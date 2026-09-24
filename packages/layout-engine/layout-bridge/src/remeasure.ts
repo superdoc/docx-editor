@@ -1016,6 +1016,7 @@ const applyTabLayoutToLines = (
   decimalSeparator: string,
   indentLeft: number,
   firstLineTabOffset: number,
+  marginWidth: number,
 ): void => {
   const totalTabRuns = runs.reduce((count, run) => (run.kind === 'tab' && !isVanishedRun(run) ? count + 1 : count), 0);
   const alignmentTabStopsPx = tabStops
@@ -1109,22 +1110,41 @@ const applyTabLayoutToLines = (
       // Mirror of measuring/dom: only force the SD-2447 heuristic when greedy
       // would land on a `source:default` stop (synthetic 0.5" grid). Explicit
       // start stops should win greedy.
-      const greedy = getNextTabStopPx(absCurrentX, tabStops, tabStopCursor);
-      const greedyOnDefault = greedy.stop?.source === 'default';
-      const forcedAlignment =
-        greedyOnDefault && typeof tabOrdinal === 'number' && Number.isFinite(tabOrdinal)
-          ? getAlignmentStopForOrdinal(tabOrdinal, tabRunIdx)
-          : null;
-      if (forcedAlignment && forcedAlignment.stop.pos > absCurrentX + TAB_EPSILON) {
-        stop = forcedAlignment.stop;
-        target = forcedAlignment.stop.pos;
-        tabStopCursor = forcedAlignment.index + 1;
+      const positioned = run?.kind === 'tab' ? (run as TabRun).positionedTab : undefined;
+      if (positioned) {
+        const boundary = positioned.relativeTo === 'margin' ? marginWidth : maxAbsWidth;
+        target =
+          positioned.alignment === 'start'
+            ? effectiveIndent
+            : positioned.alignment === 'center'
+              ? positioned.relativeTo === 'margin'
+                ? boundary / 2
+                : effectiveIndent + (boundary - effectiveIndent) / 2
+              : boundary;
+        stop = {
+          pos: target,
+          val: positioned.alignment,
+          leader: (run as TabRun).leader ?? undefined,
+          source: 'explicit',
+        };
       } else {
-        stop = greedy.stop;
-        target = greedy.target;
-        tabStopCursor = greedy.nextIndex;
+        const greedy = getNextTabStopPx(absCurrentX, tabStops, tabStopCursor);
+        const greedyOnDefault = greedy.stop?.source === 'default';
+        const forcedAlignment =
+          greedyOnDefault && typeof tabOrdinal === 'number' && Number.isFinite(tabOrdinal)
+            ? getAlignmentStopForOrdinal(tabOrdinal, tabRunIdx)
+            : null;
+        if (forcedAlignment && forcedAlignment.stop.pos > absCurrentX + TAB_EPSILON) {
+          stop = forcedAlignment.stop;
+          target = forcedAlignment.stop.pos;
+          tabStopCursor = forcedAlignment.index + 1;
+        } else {
+          stop = greedy.stop;
+          target = greedy.target;
+          tabStopCursor = greedy.nextIndex;
+        }
       }
-      const clampedTarget = Number.isFinite(maxAbsWidth) ? Math.min(target, maxAbsWidth) : target;
+      const clampedTarget = positioned || !Number.isFinite(maxAbsWidth) ? target : Math.min(target, maxAbsWidth);
       const relativeTarget = clampedTarget - effectiveIndent;
       const stopVal = stop?.val ?? 'start';
       const shouldCompensateNegativeLeft =
@@ -1860,10 +1880,31 @@ export function remeasureParagraph(
       }
       if (run.kind === 'tab') {
         const absCurrentX = width + effectiveIndent;
-        const { target, nextIndex, stop } = getNextTabStopPx(absCurrentX, tabStops, tabStopCursor);
+        const positioned = (run as TabRun).positionedTab;
+        const boundary = positioned?.relativeTo === 'margin' ? maxWidth : effectiveMaxWidth + effectiveIndent;
+        const positionedTarget =
+          positioned?.alignment === 'start'
+            ? effectiveIndent
+            : positioned?.alignment === 'center'
+              ? positioned.relativeTo === 'margin'
+                ? boundary / 2
+                : effectiveIndent + (boundary - effectiveIndent) / 2
+              : boundary;
+        if (positioned && positionedTarget < absCurrentX - TAB_EPSILON && width > 0) {
+          didBreakInThisLine = true;
+          break;
+        }
+        const resolved = positioned
+          ? {
+              target: positionedTarget,
+              nextIndex: tabStopCursor,
+              stop: { pos: positionedTarget, val: positioned.alignment, source: 'explicit' as const },
+            }
+          : getNextTabStopPx(absCurrentX, tabStops, tabStopCursor);
+        const { target, nextIndex, stop } = resolved;
         if (stop?.source === 'explicit') hasAuthoredTabStop = true;
         const maxAbsWidth = effectiveMaxWidth + effectiveIndent;
-        const clampedTarget = Math.min(target, maxAbsWidth);
+        const clampedTarget = positioned ? target : Math.min(target, maxAbsWidth);
         const tabAdvance = Math.max(0, clampedTarget - absCurrentX);
         width += tabAdvance;
         tabStopCursor = nextIndex;
@@ -2213,7 +2254,7 @@ export function remeasureParagraph(
     regions.some((region) => Number.isFinite(region.offsetX) && Math.abs(region.offsetX) > 0.01),
   );
   if (hasTabRun || hasTextTab || hasLineRegionOffsets) {
-    applyTabLayoutToLines(lines, runs, tabStops, decimalSeparator, indentLeft, firstLineTabOffset);
+    applyTabLayoutToLines(lines, runs, tabStops, decimalSeparator, indentLeft, firstLineTabOffset, maxWidth);
   }
 
   if (hasLineRegionOffsets) {

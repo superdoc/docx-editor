@@ -3495,6 +3495,68 @@ describe('measureBlock', () => {
       }
     });
 
+    it('starts a new line when a centered positioned tab falls behind its label', async () => {
+      const block: FlowBlock = {
+        kind: 'paragraph',
+        id: 'positioned-overrun',
+        runs: [
+          { text: 'AAAAAAAAAAAA', fontFamily: 'Arial', fontSize: 16 },
+          { kind: 'tab', text: '\t', positionedTab: { relativeTo: 'margin', alignment: 'center' }, leader: 'dot' },
+          { text: '12', fontFamily: 'Arial', fontSize: 16 },
+        ],
+      };
+
+      const measure = expectParagraphMeasure(await measureBlock(block, 200));
+      expect(measure.lines).toHaveLength(2);
+      expect(extractLineText(block, measure.lines[0])).toBe('AAAAAAAAAAAA');
+      expect(extractLineText(block, measure.lines[1])).toBe('\t12');
+      expect(measure.lines[1].leaders?.[0]?.style).toBe('dot');
+    });
+
+    it('centers an indent-relative tab between the paragraph indents', async () => {
+      const block: FlowBlock = {
+        kind: 'paragraph',
+        id: 'positioned-indent-center',
+        runs: [
+          { text: 'A', fontFamily: 'Arial', fontSize: 16 },
+          { kind: 'tab', text: '\t', positionedTab: { relativeTo: 'indent', alignment: 'center' }, leader: 'dot' },
+          { text: '12', fontFamily: 'Arial', fontSize: 16 },
+        ],
+        attrs: { indent: { left: 30, right: 40 } },
+      };
+
+      const measure = expectParagraphMeasure(await measureBlock(block, 240));
+      expect(measure.lines).toHaveLength(1);
+      const pageNumber = measure.lines[0].segments?.find((segment) => segment.runIndex === 2);
+      expect((pageNumber?.x ?? 0) + 30 + (pageNumber?.width ?? 0) / 2).toBeCloseTo(115, 0);
+    });
+
+    it.each(['margin', 'indent'] as const)(
+      'resolves right-aligned positioned tabs relative to %s',
+      async (relativeTo) => {
+        const block: FlowBlock = {
+          kind: 'paragraph',
+          id: `positioned-${relativeTo}`,
+          runs: [
+            { text: 'Chapter', fontFamily: 'Arial', fontSize: 16 },
+            { kind: 'tab', text: '\t', positionedTab: { relativeTo, alignment: 'end' }, leader: 'dot' },
+            { text: '12', fontFamily: 'Arial', fontSize: 16 },
+          ],
+          attrs: { indent: { left: 30, right: 40 } },
+        };
+        const measure = expectParagraphMeasure(await measureBlock(block, 240));
+        expect(measure.lines).toHaveLength(1);
+        const line = measure.lines[0];
+        expect(line.leaders?.[0]?.style).toBe('dot');
+        const pageNumber = line.segments?.find((segment) => segment.runIndex === 2);
+        expect(pageNumber?.x).toBeDefined();
+        expect((pageNumber?.x ?? 0) + 30 + (pageNumber?.width ?? 0)).toBeCloseTo(
+          relativeTo === 'margin' ? 240 : 200,
+          0,
+        );
+      },
+    );
+
     it('aligns trailing tabs to explicit right stops with dot leaders (TOC regression)', async () => {
       const rightStopTwips = 10593;
       const rightStopPx = rightStopTwips * (96 / 1440); // ~706px

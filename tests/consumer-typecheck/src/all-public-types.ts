@@ -186,6 +186,7 @@ import type {
   SuperDocCommandStateContext,
   SuperDocCommentsListChangePayload,
   SuperDocCommentsUpdatePayload,
+  SuperDocCollaborationUpgradeError,
   SuperDocContentErrorPayload,
   SuperDocDecoration,
   SuperDocDecorationApi,
@@ -298,6 +299,7 @@ import type {
   SurfacesConfig,
   UIConfig,
   UpgradeToCollaborationOptions,
+  UpgradeToCollaborationResult,
   User,
   ViewOptions,
   ViewingOptions,
@@ -486,6 +488,7 @@ const _real_SuperDocExceptionHyperlinkPayload: AssertNotAny<SuperDocExceptionHyp
 const _real_SuperDocExceptionToolbarPayload: AssertNotAny<SuperDocExceptionToolbarPayload> = true;
 const _real_SuperDocExceptionPayload: AssertNotAny<SuperDocExceptionPayload> = true;
 const _real_SuperDocExceptionCollaborationPayload: AssertNotAny<SuperDocExceptionCollaborationPayload> = true;
+const _real_SuperDocCollaborationUpgradeError: AssertNotAny<SuperDocCollaborationUpgradeError> = true;
 const _real_SuperDocExceptionRestorePayload: AssertNotAny<SuperDocExceptionRestorePayload> = true;
 const _real_SuperDocExceptionStorePayload: AssertNotAny<SuperDocExceptionStorePayload> = true;
 const _real_SuperDocExtension: AssertNotAny<SuperDocExtension> = true;
@@ -581,6 +584,7 @@ const _real_InteractionConfig: AssertNotAny<InteractionConfig> = true;
 const _real_SurfacesConfig: AssertNotAny<SurfacesConfig> = true;
 const _real_UIConfig: AssertNotAny<UIConfig> = true;
 const _real_UpgradeToCollaborationOptions: AssertNotAny<UpgradeToCollaborationOptions> = true;
+const _real_UpgradeToCollaborationResult: AssertNotAny<UpgradeToCollaborationResult> = true;
 const _real_User: AssertNotAny<User> = true;
 const _real_ViewOptions: AssertNotAny<ViewOptions> = true;
 const _real_ViewingOptions: AssertNotAny<ViewingOptions> = true;

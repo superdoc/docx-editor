@@ -1270,6 +1270,17 @@ export interface UpgradeToCollaborationOptions {
   provider?: CollaborationProvider;
 }
 
+/** Confirmed identities of the room and local document attached by a successful upgrade. */
+export interface UpgradeToCollaborationResult {
+  roomId: string;
+  documentId: string;
+}
+
+/** Machine-readable failures returned by a create-and-upgrade attempt. */
+export interface SuperDocCollaborationUpgradeError extends Error {
+  code: 'collaboration-v2-room-already-exists' | 'collaboration-upgrade-target-conflict';
+}
+
 /** Context passed to a hyperlink activation handler. */
 export interface HyperlinkActivationContext {
   /** The editor instance. */

@@ -1,14 +1,14 @@
 {
   "generatedAt": "2026-09-02T00:00:00.000Z",
   "summary": {
-    "total": 289,
+    "total": 291,
     "byBucket": {
       "legacy-root": 3,
-      "supported-root": 286
+      "supported-root": 288
     },
     "byConfidence": {
       "high": 241,
-      "medium": 48
+      "medium": 50
     }
   },
   "rows": [
@@ -1287,6 +1287,17 @@
       "inDcts": true,
       "inEsm": true,
       "inCjs": true
+    },
+    {
+      "name": "SuperDocCollaborationUpgradeError",
+      "bucket": "supported-root",
+      "rationale": "Customer-facing error-code type for room creation conflicts and competing upgrades.",
+      "confidence": "medium",
+      "source": "collab",
+      "inDts": true,
+      "inDcts": true,
+      "inEsm": false,
+      "inCjs": false
     },
     {
       "name": "SuperDocActiveEditorExtensions",
@@ -3010,6 +3021,17 @@
       "rationale": "Customer-facing core API type or runtime export. Type-reachable through documented config / callback / event / method surfaces; runtime exports are documented utilities.",
       "confidence": "medium",
       "source": "core",
+      "inDts": true,
+      "inDcts": true,
+      "inEsm": false,
+      "inCjs": false
+    },
+    {
+      "name": "UpgradeToCollaborationResult",
+      "bucket": "supported-root",
+      "rationale": "Customer-facing confirmed room and document identity returned by upgradeToCollaboration().",
+      "confidence": "medium",
+      "source": "collab",
       "inDts": true,
       "inDcts": true,
       "inEsm": false,

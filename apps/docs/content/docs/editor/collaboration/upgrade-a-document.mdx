@@ -15,7 +15,7 @@ session. Replace the example server address with your configured provider. The t
 `contract-123`; this snippet does not provide a server or sign-in flow.
 
 ```ts
-await superdoc.upgradeToCollaboration({
+const { roomId, documentId } = await superdoc.upgradeToCollaboration({
   collaboration: {
     providerType: 'hocuspocus',
     documentId: 'contract-123',
@@ -26,9 +26,9 @@ await superdoc.upgradeToCollaboration({
 });
 ```
 
-The promise resolves when the collaborative runtime is ready. The same Editor instance stays mounted, so application controls and lifecycle ownership remain in place.
+The promise returns the attached `roomId` and local `documentId` when the collaborative runtime is ready. The same Editor instance stays mounted, so application controls and lifecycle ownership remain in place. Concurrent requests for the same target await the same outcome; a different target fails with `code: 'collaboration-upgrade-target-conflict'` without changing the pending upgrade.
 
-The operation supports one DOCX and a new v2 room. It does not join an existing room or merge the local document with remote content. If the target already exists, stop and let the application choose a different room or reopen the document with `roomMode: 'join'`.
+The operation supports one DOCX and a new v2 room. It does not join an existing room or merge the local document with remote content. If the target already exists, the rejected promise carries `code: 'collaboration-v2-room-already-exists'`; stop and let the application choose a different room or reopen the document with `roomMode: 'join'`. The local document remains available after rejection.
 
 <Callout variant='success' title='Verification target'>
   After the upgrade resolves, open a second Editor that joins the new room. An edit in either Editor should appear in

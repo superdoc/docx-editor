@@ -1,17 +1,17 @@
 # superdoc root export inventory (SD-3212 PR A0)
 
-Generated: 2026-09-15T01:28:36.493Z
+Generated: 2026-09-23T20:57:16.057Z
 Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 
 ## Counts
 
 | Source | Path | Count |
 |---|---|---|
-| types.import | `./dist/superdoc/src/public/index.d.ts` | 286 |
-| types.require | `./dist/superdoc/src/public/index.d.cts` | 286 |
+| types.import | `./dist/superdoc/src/public/index.d.ts` | 288 |
+| types.require | `./dist/superdoc/src/public/index.d.cts` | 288 |
 | import | `./dist/superdoc.es.js` | 10 |
 | require | `./dist/superdoc.cjs` | 10 |
-| **union** |  | **286** |
+| **union** |  | **288** |
 
 ## Divergences
 
@@ -19,7 +19,7 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 - types.require only (not in types.import): 0
 - ESM only (not in CJS): 0
 - CJS only (not in ESM): 0
-- typed but no runtime export (phantom risk): 276
+- typed but no runtime export (phantom risk): 278
 - runtime export but not typed (silent shadow on root): 0
 
 ### Type-only names (no runtime)
@@ -151,6 +151,7 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 - `SuperDocAnchorTarget`
 - `SuperDocAwarenessUpdatePayload`
 - `SuperDocCharRange`
+- `SuperDocCollaborationUpgradeError`
 - `SuperDocCommandApi`
 - `SuperDocCommandExecuteContext`
 - `SuperDocCommandState`
@@ -294,6 +295,7 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 - `TrackedChangeSemanticColorResolverInput`
 - `UIConfig`
 - `UpgradeToCollaborationOptions`
+- `UpgradeToCollaborationResult`
 - `User`
 - `V2CollaborationConfig`
 - `ViewOptions`
@@ -338,7 +340,7 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 | `ContextMenuSelectContext` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `ContextMenuSelectPayload` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `ContextMenuSelectReadiness` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
-| `DOCX` | ✓ | ✓ | ✓ | ✓ | 1 |   | 383 | 73 | 0 |
+| `DOCX` | ✓ | ✓ | ✓ | ✓ | 1 |   | 378 | 73 | 0 |
 | `DiagnosticsConfig` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `DiffApplyEligibility` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `DiffApplyEligibilityBlocker` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
@@ -350,7 +352,7 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 | `DiffPayload` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `DirectSurfaceRequest` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `DocRange` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
-| `Document` | ✓ | ✓ |   |   | 3 |   | 100 | 18 | 0 |
+| `Document` | ✓ | ✓ |   |   | 3 |   | 96 | 18 | 0 |
 | `DocumentApi` | ✓ | ✓ |   |   | 4 |   | 2 | 0 | 0 |
 | `DocumentCollaborationConfig` | ✓ | ✓ |   |   | 2 |   | 7 | 0 | 0 |
 | `DocumentDataSource` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
@@ -380,7 +382,7 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 | `FontsChangedSource` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `FontsConfig` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `FontsResolvedPayload` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
-| `HTML` | ✓ | ✓ | ✓ | ✓ | 1 |   | 50 | 0 | 0 |
+| `HTML` | ✓ | ✓ | ✓ | ✓ | 1 |   | 45 | 0 | 0 |
 | `HyperlinkActivationContext` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `HyperlinkActivationHandler` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `HyperlinkActivationResult` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
@@ -423,10 +425,10 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 | `SearchMatch` | ✓ | ✓ |   |   | 3 |   | 0 | 0 | 0 |
 | `SearchStrings` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `SelectionHandle` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
-| `SelectionInfo` | ✓ | ✓ |   |   | 1 |   | 1 | 0 | 0 |
-| `StoryLocator` | ✓ | ✓ |   |   | 1 |   | 4 | 0 | 0 |
+| `SelectionInfo` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
+| `StoryLocator` | ✓ | ✓ |   |   | 1 |   | 2 | 0 | 0 |
 | `StructuredDocumentSource` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
-| `SuperDoc` | ✓ | ✓ | ✓ | ✓ | 34 |   | 291 | 44 | 0 |
+| `SuperDoc` | ✓ | ✓ | ✓ | ✓ | 34 |   | 296 | 44 | 0 |
 | `SuperDocActiveEditorExtensions` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `SuperDocActiveEditorExtensionsCommands` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `SuperDocActiveEditorExtensionsDiagnostics` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
@@ -437,6 +439,7 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 | `SuperDocAnchorTarget` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `SuperDocAwarenessUpdatePayload` | ✓ | ✓ |   |   | 1 |   | 0 | 2 | 0 |
 | `SuperDocCharRange` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
+| `SuperDocCollaborationUpgradeError` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `SuperDocCommandApi` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `SuperDocCommandExecuteContext` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `SuperDocCommandState` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
@@ -535,9 +538,9 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 | `SurfaceResolver` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `SurfacesConfig` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `SurfacesModuleConfig` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
-| `TextAddress` | ✓ | ✓ |   |   | 1 |   | 9 | 0 | 0 |
+| `TextAddress` | ✓ | ✓ |   |   | 1 |   | 7 | 0 | 0 |
 | `TextSegment` | ✓ | ✓ |   |   | 1 |   | 1 | 0 | 0 |
-| `TextTarget` | ✓ | ✓ |   |   | 1 |   | 13 | 0 | 0 |
+| `TextTarget` | ✓ | ✓ |   |   | 1 |   | 11 | 0 | 0 |
 | `ThemeColors` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `ThemeConfig` | ✓ | ✓ |   |   | 2 |   | 1 | 0 | 0 |
 | `ThemeResult` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
@@ -580,6 +583,7 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 | `TrackedChangeSemanticColorResolverInput` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `UIConfig` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `UpgradeToCollaborationOptions` | ✓ | ✓ |   |   | 3 |   | 0 | 0 | 0 |
+| `UpgradeToCollaborationResult` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `User` | ✓ | ✓ |   |   | 1 |   | 2 | 0 | 0 |
 | `V2CollaborationConfig` | ✓ | ✓ |   |   | 3 |   | 1 | 0 | 0 |
 | `ViewOptions` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |

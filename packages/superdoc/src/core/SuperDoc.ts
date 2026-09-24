@@ -326,6 +326,7 @@ import type {
   SurfaceHandle,
   SurfaceRequest,
   UpgradeToCollaborationOptions,
+  UpgradeToCollaborationResult,
   User,
   V2AuthoringFacade,
   V2CollaborationConfig,
@@ -715,6 +716,8 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
   #diagnostics!: SuperDocDiagnostics;
 
   #isUpgrading = false;
+  #pendingUpgrade: { target: NormalizedV2CollaborationTarget; promise: Promise<UpgradeToCollaborationResult> } | null =
+    null;
 
   /** Aborts an in-flight upgrade (sync wait or ready wait). */
   #abortUpgrade: (() => void) | null = null;
@@ -2124,30 +2127,100 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
    * - A supported v2 single-doc `v2Collaboration` target
    * - Create-and-upgrade only (no merge semantics)
    *
-   * @returns Resolves once the collaborative runtime is ready
+   * @returns The attached room and document once the collaborative runtime is ready
    */
-  async upgradeToCollaboration(options: UpgradeToCollaborationOptions): Promise<void> {
+  async upgradeToCollaboration(options: UpgradeToCollaborationOptions): Promise<UpgradeToCollaborationResult> {
+    if (this.#pendingUpgrade) {
+      const { target } = this.#resolveCollaborationUpgradeTarget(options);
+      if (this.#sameUpgradeTarget(target, this.#pendingUpgrade.target)) return this.#pendingUpgrade.promise;
+      throw Object.assign(new Error('SuperDoc: a different collaboration target is already upgrading'), {
+        code: 'collaboration-upgrade-target-conflict' as const,
+      });
+    }
     const { target } = this.#validateUpgradePrerequisites(options);
     this.#isUpgrading = true;
-
-    try {
-      const localSource = await this.#captureCurrentDocxSourceForUpgrade();
-      const rollback = this.#snapshotV2UpgradeState();
-      const lockSeed = this.#snapshotV2LockSeed();
-      this.#assertNotDestroyed();
+    const operation = (async (): Promise<UpgradeToCollaborationResult> => {
       try {
-        this.#pendingV2LockSeed = lockSeed;
-        const promotion = await this.#promoteSingleDocumentToV2Collaboration(target, localSource);
-        this.#finalizeSingleDocumentV2Collaboration(promotion, target);
-        this.#pendingV2LockSeed = null;
-      } catch (err) {
-        this.#rollbackV2UpgradeState(rollback);
-        throw err;
+        const localSource = await this.#captureCurrentDocxSourceForUpgrade();
+        const rollback = this.#snapshotV2UpgradeState();
+        const lockSeed = this.#snapshotV2LockSeed();
+        this.#assertNotDestroyed();
+        try {
+          this.#pendingV2LockSeed = lockSeed;
+          const promotion = await this.#promoteSingleDocumentToV2Collaboration(target, localSource);
+          this.#finalizeSingleDocumentV2Collaboration(promotion, target);
+          this.#pendingV2LockSeed = null;
+          const attachedDocumentId = (this.activeEditor as ActiveEditor | null)?.options?.documentId;
+          const attachedRoomId = promotion.configDoc.v2Collaboration?.documentId;
+          if (
+            typeof attachedDocumentId !== 'string' ||
+            attachedDocumentId !== promotion.configDoc.id ||
+            typeof attachedRoomId !== 'string' ||
+            attachedRoomId !== target.documentId
+          ) {
+            throw new Error('SuperDoc: collaboration upgrade did not attach the expected room and document');
+          }
+          return { roomId: attachedRoomId, documentId: attachedDocumentId };
+        } catch (err) {
+          this.#rollbackV2UpgradeState(rollback);
+          throw err;
+        }
+      } finally {
+        this.#abortUpgrade = null;
+        this.#isUpgrading = false;
+        this.#pendingUpgrade = null;
       }
-    } finally {
-      this.#abortUpgrade = null;
-      this.#isUpgrading = false;
-    }
+    })();
+    this.#pendingUpgrade = { target, promise: operation };
+    return operation;
+  }
+
+  #sameUpgradeTarget(left: NormalizedV2CollaborationTarget, right: NormalizedV2CollaborationTarget): boolean {
+    if (left.token !== right.token) return false;
+    const seen = new WeakMap<object, object>();
+    const sameValue = (first: unknown, second: unknown): boolean => {
+      if (Object.is(first, second)) return true;
+      if (!first || !second || typeof first !== 'object' || typeof second !== 'object') return false;
+      if (Object.getPrototypeOf(first) !== Object.getPrototypeOf(second)) return false;
+      if (seen.has(first)) return seen.get(first) === second;
+      seen.set(first, second);
+      if (first instanceof Date && second instanceof Date) return first.getTime() === second.getTime();
+      if (first instanceof RegExp && second instanceof RegExp)
+        return first.source === second.source && first.flags === second.flags;
+      if (first instanceof ArrayBuffer && second instanceof ArrayBuffer) {
+        return sameValue(Array.from(new Uint8Array(first)), Array.from(new Uint8Array(second)));
+      }
+      if (ArrayBuffer.isView(first) && ArrayBuffer.isView(second)) {
+        return (
+          first.constructor === second.constructor &&
+          sameValue(
+            Array.from(new Uint8Array(first.buffer, first.byteOffset, first.byteLength)),
+            Array.from(new Uint8Array(second.buffer, second.byteOffset, second.byteLength)),
+          )
+        );
+      }
+      if (first instanceof Map && second instanceof Map) {
+        return first.size === second.size && sameValue(Array.from(first.entries()), Array.from(second.entries()));
+      }
+      if (first instanceof Set && second instanceof Set) {
+        return first.size === second.size && sameValue(Array.from(first.values()), Array.from(second.values()));
+      }
+      if (Array.isArray(first) && Array.isArray(second)) {
+        return first.length === second.length && first.every((value, index) => sameValue(value, second[index]));
+      }
+      if (Object.getPrototypeOf(first) !== Object.prototype && Object.getPrototypeOf(first) !== null) return false;
+      const keys = Object.keys(first).sort();
+      const otherKeys = Object.keys(second).sort();
+      return (
+        keys.length === otherKeys.length &&
+        keys.every(
+          (key, index) =>
+            key === otherKeys[index] &&
+            sameValue((first as Record<string, unknown>)[key], (second as Record<string, unknown>)[key]),
+        )
+      );
+    };
+    return sameValue({ ...left, token: undefined }, { ...right, token: undefined });
   }
 
   #snapshotV2LockSeed(): V2LockSeed {
@@ -2604,6 +2677,12 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
     if (typeof mountedDocumentId !== 'string' || mountedDocumentId.length === 0) {
       throw new Error('SuperDoc: source document is missing its mounted document identity');
     }
+    return this.#resolveCollaborationUpgradeTarget(options);
+  }
+
+  #resolveCollaborationUpgradeTarget(options: UpgradeToCollaborationOptions): ValidatedV2UpgradePrerequisites {
+    const cfg = this.config;
+    const configDoc = cfg.documents.find((doc: RuntimeDocument) => doc.type === DOCX) as RuntimeDocument;
     const collaborationModule = cfg.modules?.collaboration as
       | (CollaborationConfig & { v2?: unknown; v2Collaboration?: unknown })
       | undefined;
@@ -2631,7 +2710,7 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
     if (!resolution.ok) {
       throw new Error(`SuperDoc: upgradeToCollaboration() ${resolution.reason}: ${resolution.message}`);
     }
-    return { target: resolution.target };
+    return { target: { ...resolution.target, roomMode: 'create' } };
   }
 
   #unwrapMaybeRef<T = unknown>(value: T): T | unknown {

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-15T01:28:36.493Z",
+  "generatedAt": "2026-09-23T20:57:16.057Z",
   "ticket": "SD-3212 PR A0",
   "package": "superdoc",
   "rootExport": {
@@ -149,6 +149,7 @@
         "SuperDocCollaborationConnectionChangePayload",
         "SuperDocCollaborationConnectionKind",
         "SuperDocCollaborationConnectionState",
+        "SuperDocCollaborationUpgradeError",
         "SuperDocCommandApi",
         "SuperDocCommandExecuteContext",
         "SuperDocCommandState",
@@ -292,6 +293,7 @@
         "TrackedChangeSemanticColorResolverInput",
         "UIConfig",
         "UpgradeToCollaborationOptions",
+        "UpgradeToCollaborationResult",
         "User",
         "V2CollaborationConfig",
         "ViewOptions",
@@ -444,6 +446,7 @@
         "SuperDocCollaborationConnectionChangePayload",
         "SuperDocCollaborationConnectionKind",
         "SuperDocCollaborationConnectionState",
+        "SuperDocCollaborationUpgradeError",
         "SuperDocCommandApi",
         "SuperDocCommandExecuteContext",
         "SuperDocCommandState",
@@ -587,6 +590,7 @@
         "TrackedChangeSemanticColorResolverInput",
         "UIConfig",
         "UpgradeToCollaborationOptions",
+        "UpgradeToCollaborationResult",
         "User",
         "V2CollaborationConfig",
         "ViewOptions",
@@ -635,11 +639,11 @@
     }
   },
   "counts": {
-    "types.import": 289,
-    "types.require": 289,
+    "types.import": 291,
+    "types.require": 291,
     "import": 10,
     "require": 10,
-    "union": 289
+    "union": 291
   },
   "divergences": {
     "typesImportVsRequire": {
@@ -782,6 +786,7 @@
         "SuperDocCollaborationConnectionChangePayload",
         "SuperDocCollaborationConnectionKind",
         "SuperDocCollaborationConnectionState",
+        "SuperDocCollaborationUpgradeError",
         "SuperDocCommandApi",
         "SuperDocCommandExecuteContext",
         "SuperDocCommandState",
@@ -925,6 +930,7 @@
         "TrackedChangeSemanticColorResolverInput",
         "UIConfig",
         "UpgradeToCollaborationOptions",
+        "UpgradeToCollaborationResult",
         "User",
         "V2CollaborationConfig",
         "ViewOptions",

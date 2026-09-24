@@ -232,6 +232,8 @@ export type { InteractionConfig } from '../core/types/index.js';
 export type { SurfacesConfig } from '../core/types/index.js';
 export type { UIConfig } from '../core/types/index.js';
 export type { UpgradeToCollaborationOptions } from '../core/types/index.js';
+export type { UpgradeToCollaborationResult } from '../core/types/index.js';
+export type { SuperDocCollaborationUpgradeError } from '../core/types/index.js';
 export type { V2CollaborationConfig } from '../core/types/index.js';
 export type { User } from '../core/types/index.js';
 export type { ViewOptions } from '../core/types/index.js';

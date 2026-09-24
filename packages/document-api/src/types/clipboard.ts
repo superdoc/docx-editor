@@ -147,8 +147,30 @@ export type SDPasteLeafInline =
       sourcePath?: readonly (string | number)[];
     };
 
+export interface SDPasteSdtInline {
+  kind: 'sdt';
+  controlType: 'text' | 'richText';
+  tag?: string;
+  alias?: string;
+  lockMode?: 'unlocked' | 'sdtLocked' | 'contentLocked' | 'sdtContentLocked';
+  multiline?: boolean;
+  sourcePath?: readonly (string | number)[];
+  inlines: readonly (SDPasteLeafInline | SDPasteSdtInline)[];
+}
+
+export interface SDPasteBlockSdt {
+  /** Clipboard-local wrapper identity shared by adjacent paragraphs. */
+  sourceId: string;
+  controlType: 'text' | 'richText';
+  tag?: string;
+  alias?: string;
+  lockMode?: 'unlocked' | 'sdtLocked' | 'contentLocked' | 'sdtContentLocked';
+  multiline?: boolean;
+}
+
 export type SDPasteInline =
   | SDPasteLeafInline
+  | SDPasteSdtInline
   | {
       kind: 'hyperlink';
       target: { kind: 'external'; url: string } | { kind: 'anchor'; anchor: string };
@@ -212,6 +234,8 @@ export interface SDPasteParagraphBlock {
    * paste anchor's paragraph, independent of whether they carry formatting.
    */
   complete?: boolean;
+  /** Outermost-first complete block content-control ancestry. */
+  blockSdts?: readonly SDPasteBlockSdt[];
   /** Transient conversion identity used to map mutation effects back to source nodes. */
   sourcePath?: readonly (string | number)[];
 }

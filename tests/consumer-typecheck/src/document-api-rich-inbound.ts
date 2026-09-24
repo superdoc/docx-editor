@@ -1,4 +1,30 @@
 import type { BrowserDocumentApi, DocumentApi } from 'superdoc/ui';
+type PasteFragment = NonNullable<Parameters<DocumentApi['clipboard']['insert']>[0]['fragment']>;
+type PasteParagraph = Extract<PasteFragment['blocks'][number], { kind: 'paragraph' }>;
+type SDPasteBlockSdt = NonNullable<PasteParagraph['blockSdts']>[number];
+type SDPasteInline = NonNullable<PasteParagraph['inlines']>[number];
+
+const blockControl: SDPasteBlockSdt = { sourceId: '1', controlType: 'richText', tag: 'section', lockMode: 'sdtLocked' };
+const inlineControl: SDPasteInline = {
+  kind: 'sdt',
+  controlType: 'text',
+  tag: 'answer',
+  multiline: true,
+  inlines: [{ kind: 'text', text: 'value' }],
+};
+const blockControlId: string = blockControl.sourceId;
+const inlineControlChildren: readonly SDPasteInline[] | undefined =
+  inlineControl.kind === 'sdt' ? inlineControl.inlines : undefined;
+const copiedControlField = (copy: ReturnType<DocumentApi['clipboard']['serializeSelection']>) => {
+  const block = copy.plan.fragment.blocks[0];
+  if (block?.kind === 'paragraph') {
+    const lockMode: SDPasteBlockSdt['lockMode'] = block.blockSdts?.[0]?.lockMode;
+    const firstInline = block.inlines?.[0];
+    const multiline: boolean | undefined = firstInline?.kind === 'sdt' ? firstInline.multiline : undefined;
+    void [lockMode, multiline];
+  }
+};
+void [blockControlId, inlineControlChildren, copiedControlField];
 
 declare const doc: DocumentApi;
 declare const browserDoc: BrowserDocumentApi;

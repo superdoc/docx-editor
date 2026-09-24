@@ -146,6 +146,9 @@
         "SuperDocAnchorTarget",
         "SuperDocAwarenessUpdatePayload",
         "SuperDocCharRange",
+        "SuperDocCollaborationConnectionChangePayload",
+        "SuperDocCollaborationConnectionKind",
+        "SuperDocCollaborationConnectionState",
         "SuperDocCommandApi",
         "SuperDocCommandExecuteContext",
         "SuperDocCommandState",
@@ -438,6 +441,9 @@
         "SuperDocAnchorTarget",
         "SuperDocAwarenessUpdatePayload",
         "SuperDocCharRange",
+        "SuperDocCollaborationConnectionChangePayload",
+        "SuperDocCollaborationConnectionKind",
+        "SuperDocCollaborationConnectionState",
         "SuperDocCommandApi",
         "SuperDocCommandExecuteContext",
         "SuperDocCommandState",
@@ -629,11 +635,11 @@
     }
   },
   "counts": {
-    "types.import": 286,
-    "types.require": 286,
+    "types.import": 289,
+    "types.require": 289,
     "import": 10,
     "require": 10,
-    "union": 286
+    "union": 289
   },
   "divergences": {
     "typesImportVsRequire": {
@@ -773,6 +779,9 @@
         "SuperDocAnchorTarget",
         "SuperDocAwarenessUpdatePayload",
         "SuperDocCharRange",
+        "SuperDocCollaborationConnectionChangePayload",
+        "SuperDocCollaborationConnectionKind",
+        "SuperDocCollaborationConnectionState",
         "SuperDocCommandApi",
         "SuperDocCommandExecuteContext",
         "SuperDocCommandState",

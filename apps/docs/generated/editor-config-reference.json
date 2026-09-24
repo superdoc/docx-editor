@@ -306,6 +306,14 @@
       "group": "other"
     },
     {
+      "name": "onCollaborationConnectionChange",
+      "type": "(params: {\n  documentId: string;\n  state: \"connecting\" | \"synced\" | \"degraded\" | \"failed\";\n  previousState: null | \"connecting\" | \"synced\" | \"degraded\" | \"failed\";\n  kind: \"failed\" | \"initial\" | \"lost\" | \"reconnecting\" | \"recovered\";\n  detail: null | string;\n  superdoc: SuperDocClass;\n}) => void",
+      "typeName": "(params: SuperDocCollaborationConnectionChangePayload) => void",
+      "required": false,
+      "description": "Callback when the v2 collaboration connection is lost, retries, recovers, or fails.",
+      "group": "other"
+    },
+    {
       "name": "onEditorUpdate",
       "type": "(params: {\n  editor?: Editor;\n  sourceEditor?: Editor;\n  surface: \"body\" | \"header\" | \"footer\";\n  headerId: null | string;\n  sectionType: null | string;\n}) => void",
       "typeName": "(params: EditorUpdateEvent) => void",

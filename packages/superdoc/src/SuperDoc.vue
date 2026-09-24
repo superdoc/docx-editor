@@ -847,6 +847,7 @@ const onV2EditorReady = (payload) => {
     pageFurniture,
     presence,
     lock,
+    connection,
     collaborationProvider,
     fonts,
     replaceFile,
@@ -1235,6 +1236,9 @@ const onV2EditorReady = (payload) => {
     // v2 collaboration lock metadata facade. Backed by the same single-doc
     // collaborative root Y.Doc as document content/presence.
     lock: lock ?? null,
+    // SD-4997: v2 collaboration transport state (lost / reconnecting / recovered),
+    // bridged to the public `collaboration-connection-change` event.
+    connection: connection ?? null,
     provider: collaborationProvider ?? null,
     // Read-only review sidecar facet. The snapshot contains only rows from the
     // currently committed page window; custom UI consumes it without starting

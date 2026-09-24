@@ -177,6 +177,9 @@ import type {
   SuperDocAnchorTarget,
   SuperDocAwarenessUpdatePayload,
   SuperDocCharRange,
+  SuperDocCollaborationConnectionChangePayload,
+  SuperDocCollaborationConnectionKind,
+  SuperDocCollaborationConnectionState,
   SuperDocCommandApi,
   SuperDocCommandExecuteContext,
   SuperDocCommandState,
@@ -457,6 +460,9 @@ const _real_SuperDocAnchorStatus: AssertNotAny<SuperDocAnchorStatus> = true;
 const _real_SuperDocAnchorTarget: AssertNotAny<SuperDocAnchorTarget> = true;
 const _real_SuperDocAwarenessUpdatePayload: AssertNotAny<SuperDocAwarenessUpdatePayload> = true;
 const _real_SuperDocCharRange: AssertNotAny<SuperDocCharRange> = true;
+const _real_SuperDocCollaborationConnectionChangePayload: AssertNotAny<SuperDocCollaborationConnectionChangePayload> = true;
+const _real_SuperDocCollaborationConnectionKind: AssertNotAny<SuperDocCollaborationConnectionKind> = true;
+const _real_SuperDocCollaborationConnectionState: AssertNotAny<SuperDocCollaborationConnectionState> = true;
 const _real_SuperDocCommandApi: AssertNotAny<SuperDocCommandApi> = true;
 const _real_SuperDocCommandExecuteContext: AssertNotAny<SuperDocCommandExecuteContext> = true;
 const _real_SuperDocCommandState: AssertNotAny<SuperDocCommandState> = true;

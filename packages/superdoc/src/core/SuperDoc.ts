@@ -308,6 +308,9 @@ import type {
   SuperDocFontsApi,
   SuperDocFormattingMarksChangePayload,
   SuperDocLockedPayload,
+  SuperDocCollaborationConnectionChangePayload,
+  SuperDocCollaborationConnectionKind,
+  SuperDocCollaborationConnectionState,
   SuperDocMeasurementUnit,
   SuperDocMeasurementUnitChangePayload,
   SuperDocPageMarginsChangePayload,
@@ -446,6 +449,11 @@ type V2ActiveEditorFacade = {
     getSnapshot?: () => V2AwarenessSnapshotLike;
     subscribe?: (listener: (snapshot: V2AwarenessSnapshotLike) => void) => () => void;
   } | null;
+  connection?: {
+    documentId: string;
+    getSnapshot?: () => V2ConnectionSnapshotLike | null;
+    subscribe?: (listener: (snapshot: V2ConnectionSnapshotLike) => void) => () => void;
+  } | null;
   lock?: {
     getSnapshot?: () => { isLocked?: boolean; lockedBy?: Record<string, unknown> | null };
     setLocked?: (isLocked: boolean, lockedBy?: Record<string, unknown> | null) => void;
@@ -492,6 +500,25 @@ type V2LockSeed = {
   isLocked: boolean;
   lockedBy: User | null;
 };
+
+type V2ConnectionSnapshotLike = { state: SuperDocCollaborationConnectionState; detail?: string | null };
+
+function deriveCollaborationConnectionKind(
+  snapshot: V2ConnectionSnapshotLike,
+  hasSyncedBefore: boolean,
+): SuperDocCollaborationConnectionKind {
+  switch (snapshot.state) {
+    case 'failed':
+      return 'failed';
+    case 'degraded':
+      return snapshot.detail === 'reconnecting' ? 'reconnecting' : 'lost';
+    case 'synced':
+      return hasSyncedBefore ? 'recovered' : 'initial';
+    case 'connecting':
+    default:
+      return hasSyncedBefore ? 'reconnecting' : 'initial';
+  }
+}
 
 function isV2ActiveEditorFacade(editor: unknown): editor is V2ActiveEditorFacade {
   return Boolean(editor && typeof editor === 'object' && (editor as { editorVersion?: unknown }).editorVersion === 2);
@@ -651,6 +678,7 @@ interface SuperDocEventMap {
   'collaboration-ready': [SuperDocEditorPayload];
   'awareness-update': [SuperDocAwarenessUpdatePayload];
   locked: [SuperDocLockedPayload];
+  'collaboration-connection-change': [SuperDocCollaborationConnectionChangePayload];
   'whiteboard:init': [SuperDocWhiteboardPayload];
   'whiteboard:ready': [SuperDocWhiteboardPayload];
   'whiteboard:change': [WhiteboardData];
@@ -701,6 +729,15 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
 
   /** Unsubscribe handle for the v2 root-doc lock observer. */
   #v2LockUnsub: (() => void) | null = null;
+
+  /** Unsubscribe handle for the v2 collaboration connection observer. */
+  #v2ConnectionUnsub: (() => void) | null = null;
+
+  /** Latest `collaboration-connection-change` payload, for late readers. */
+  #v2ConnectionState: SuperDocCollaborationConnectionChangePayload | null = null;
+
+  /** Whether the current collaboration room has completed a sync at least once. */
+  #v2ConnectionHasSynced = false;
 
   /** Lock state captured before a local → v2 collaboration promotion remount. */
   #pendingV2LockSeed: V2LockSeed | null = null;
@@ -1440,6 +1477,7 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
       event === 'ready' ||
       event === 'active-editor-change' ||
       event === 'collaboration-ready' ||
+      event === 'collaboration-connection-change' ||
       event === 'locked'
     ) {
       recordInteraction(this, event, () => args[0]);
@@ -1804,6 +1842,7 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
     this.#onConfig('pdf:document-ready', this.config.onPdfDocumentReady);
     this.#onConfig('sidebar-toggle', this.config.onSidebarToggle);
     this.#onConfig('collaboration-ready', this.config.onCollaborationReady);
+    this.#onConfig('collaboration-connection-change', this.config.onCollaborationConnectionChange);
     this.on('collaboration-ready', (payload) => this.#startV2CollaborationEventBridge(payload?.editor ?? null));
     this.#onConfig('editor-update', this.config.onEditorUpdate);
     this.#onConfig('tracked-changes:bulk-decision', this.config.onTrackedChangesBulkDecision);
@@ -1925,6 +1964,14 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
       }
       this.#v2LockUnsub = null;
     }
+    if (this.#v2ConnectionUnsub) {
+      try {
+        this.#v2ConnectionUnsub();
+      } catch {
+        /* ignore */
+      }
+      this.#v2ConnectionUnsub = null;
+    }
   }
 
   #startV2CollaborationEventBridge(editor: unknown) {
@@ -1932,6 +1979,51 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
     if (!isV2ActiveEditorFacade(editor)) return;
     this.#startV2AwarenessBridge(editor);
     this.#startV2LockBridge(editor);
+    this.#startV2ConnectionBridge(editor);
+  }
+
+  #startV2ConnectionBridge(editor: V2ActiveEditorFacade) {
+    const connection = editor.connection;
+    if (!connection || typeof connection.subscribe !== 'function') return;
+    const { documentId } = connection;
+    // A new room starts a fresh history; the same room keeps it across remounts
+    // so a recovery after a document replace is still reported as `recovered`.
+    if (this.#v2ConnectionState?.documentId !== documentId) {
+      this.#v2ConnectionState = null;
+      this.#v2ConnectionHasSynced = false;
+    }
+    const publish = (snapshot: V2ConnectionSnapshotLike) => {
+      if (this.#destroyed) return;
+      const previous = this.#v2ConnectionState;
+      if (previous && previous.state === snapshot.state && previous.detail === (snapshot.detail ?? null)) return;
+      const payload: SuperDocCollaborationConnectionChangePayload = {
+        documentId,
+        state: snapshot.state,
+        previousState: previous?.state ?? null,
+        kind: deriveCollaborationConnectionKind(snapshot, this.#v2ConnectionHasSynced),
+        detail: snapshot.detail ?? null,
+        superdoc: this,
+      };
+      this.#v2ConnectionState = payload;
+      if (snapshot.state === 'synced') this.#v2ConnectionHasSynced = true;
+      this.emit('collaboration-connection-change', payload);
+    };
+    try {
+      const initialSnapshot = connection.getSnapshot?.();
+      if (initialSnapshot) publish(initialSnapshot);
+      this.#v2ConnectionUnsub = connection.subscribe(publish);
+    } catch (err) {
+      console.warn('[SuperDoc] v2 connection bridge failed to subscribe', err);
+    }
+  }
+
+  /**
+   * Latest v2 collaboration connection change, or `null` when no v2
+   * collaboration session has reported one. Same payload as the
+   * `collaboration-connection-change` event.
+   */
+  getCollaborationConnectionState(): SuperDocCollaborationConnectionChangePayload | null {
+    return this.#v2ConnectionState;
   }
 
   #startV2AwarenessBridge(editor: V2ActiveEditorFacade) {

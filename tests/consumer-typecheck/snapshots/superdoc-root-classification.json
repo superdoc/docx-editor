@@ -1,13 +1,13 @@
 {
   "generatedAt": "2026-09-02T00:00:00.000Z",
   "summary": {
-    "total": 286,
+    "total": 289,
     "byBucket": {
       "legacy-root": 3,
-      "supported-root": 283
+      "supported-root": 286
     },
     "byConfidence": {
-      "high": 238,
+      "high": 241,
       "medium": 48
     }
   },
@@ -1391,6 +1391,39 @@
       "name": "SuperDocCharRange",
       "bucket": "supported-root",
       "rationale": "v2 SuperDoc extension authoring API (defineSuperDocExtension contract). Customer-facing public type exported from src/public/index.ts; reachable through Config.extensions and the activeEditor.extensions facet.",
+      "confidence": "high",
+      "source": "core",
+      "inDts": true,
+      "inDcts": true,
+      "inEsm": false,
+      "inCjs": false
+    },
+    {
+      "name": "SuperDocCollaborationConnectionChangePayload",
+      "bucket": "supported-root",
+      "rationale": "Payload emitted with the collaboration-connection-change event and passed to Config.onCollaborationConnectionChange; also returned by getCollaborationConnectionState() (SD-4997).",
+      "confidence": "high",
+      "source": "core",
+      "inDts": true,
+      "inDcts": true,
+      "inEsm": false,
+      "inCjs": false
+    },
+    {
+      "name": "SuperDocCollaborationConnectionKind",
+      "bucket": "supported-root",
+      "rationale": "Loss/recovery classification (initial | lost | reconnecting | recovered | failed) carried on SuperDocCollaborationConnectionChangePayload.kind (SD-4997).",
+      "confidence": "high",
+      "source": "core",
+      "inDts": true,
+      "inDcts": true,
+      "inEsm": false,
+      "inCjs": false
+    },
+    {
+      "name": "SuperDocCollaborationConnectionState",
+      "bucket": "supported-root",
+      "rationale": "Consumer-facing v2 collaboration transport state (connecting | synced | degraded | failed) on SuperDocCollaborationConnectionChangePayload.state/previousState (SD-4997).",
       "confidence": "high",
       "source": "core",
       "inDts": true,

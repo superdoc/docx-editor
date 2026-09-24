@@ -3158,6 +3158,35 @@ export interface SuperDocLockedPayload {
   lockedBy: User | null;
 }
 
+/** Collaboration transport state reported by `collaboration-connection-change`. */
+export type SuperDocCollaborationConnectionState = 'connecting' | 'synced' | 'degraded' | 'failed';
+
+/**
+ * What a `collaboration-connection-change` means for the session:
+ * - `initial`: opening, before the first sync completes (or the first sync itself)
+ * - `lost`: the transport dropped after the room had synced
+ * - `reconnecting`: the provider is retrying while the connection is degraded
+ * - `recovered`: the connection re-synced after an outage
+ * - `failed`: terminal transport or auth failure
+ */
+export type SuperDocCollaborationConnectionKind = 'initial' | 'lost' | 'reconnecting' | 'recovered' | 'failed';
+
+/**
+ * Payload emitted with the `collaboration-connection-change` event and passed to
+ * `Config.onCollaborationConnectionChange`. Emitted for v2 collaboration sessions
+ * when the real provider transport changes state.
+ */
+export interface SuperDocCollaborationConnectionChangePayload {
+  /** Collaboration document id (`v2Collaboration.documentId`) for the affected room. */
+  documentId: string;
+  state: SuperDocCollaborationConnectionState;
+  previousState: SuperDocCollaborationConnectionState | null;
+  kind: SuperDocCollaborationConnectionKind;
+  /** Extra transport detail, e.g. `reconnecting` or `transport-disconnected`. */
+  detail: string | null;
+  superdoc: SuperDoc;
+}
+
 /**
  * Payload emitted with the `awareness-update` event and passed to
  * `Config.onAwarenessUpdate`. Field set differs from older inline
@@ -4529,6 +4558,8 @@ export interface Config {
   onSidebarToggle?: (isOpened: boolean) => void;
   /** Callback when collaboration is ready. Receives a wrapper carrying the editor. */
   onCollaborationReady?: (params: SuperDocEditorPayload) => void;
+  /** Callback when the v2 collaboration connection is lost, retries, recovers, or fails. */
+  onCollaborationConnectionChange?: (params: SuperDocCollaborationConnectionChangePayload) => void;
   /** Callback when document is updated. */
   onEditorUpdate?: (params: EditorUpdateEvent) => void;
   /** Callback after an Accept All or Reject All tracked-change decision. */

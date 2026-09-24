@@ -153,6 +153,9 @@ import {
   prepareTableMeasurementCell,
   finishTableRowMeasurementOwner,
   readRetainedTableMeasurement,
+  prepareRetainedTableRows,
+  readRetainedTableRow,
+  recordTableRowGeometry,
   recordTableMeasurementOwner,
   type RetainedTableMeasurement,
 } from './retained-table-measurement.js';
@@ -4741,6 +4744,7 @@ async function measureTableBlock(
     tableObservation,
     constraints.tableMeasurementTrace,
   );
+  const retainedRows = prepareRetainedTableRows(retainedTable, measurementOwner, maxWidth, columnWidths);
 
   // Derive grid column count from computed columnWidths (handles both explicit tblGrid and fallback cases)
   const gridColumnCount = columnWidths.length;
@@ -4781,6 +4785,20 @@ async function measureTableBlock(
   let cellsSinceCheckpoint = 0;
   for (let rowIndex = 0; rowIndex < block.rows.length; rowIndex++) {
     const row = block.rows[rowIndex];
+    const retainedRow = readRetainedTableRow(retainedRows, measurementOwner, rowIndex);
+    if (retainedRow) {
+      cellsSinceCheckpoint += row.cells.length;
+      if (cellsSinceCheckpoint >= 32) {
+        cellsSinceCheckpoint = 0;
+        const checkpoint = measurementCheckpointIfDue(fontContext);
+        if (checkpoint) await checkpoint;
+      }
+      rows.push(retainedRow.measure);
+      rowBaseHeights[rowIndex] = retainedRow.geometry.baseHeight;
+      rowAuthoredHeightPadding[rowIndex] = retainedRow.geometry.authoredPadding;
+      rowAuthoredHeightChrome[rowIndex] = retainedRow.geometry.authoredChrome;
+      continue;
+    }
     const rowMeasurementOwner = createTableRowMeasurementOwner(measurementOwner, rowIndex);
     const normalizedRow = workingInput.rows[rowIndex];
     const cellMeasures: TableCellMeasure[] = [];
@@ -5052,7 +5070,15 @@ async function measureTableBlock(
     }
 
     finishTableRowMeasurementOwner(measurementOwner, rowMeasurementOwner);
-    rows.push({ cells: cellMeasures, height: 0 });
+    const rowMeasure = { cells: cellMeasures, height: 0 };
+    recordTableRowGeometry(
+      rowMeasurementOwner,
+      rowMeasure,
+      rowBaseHeights[rowIndex],
+      rowAuthoredHeightPadding[rowIndex],
+      rowAuthoredHeightChrome[rowIndex],
+    );
+    rows.push(rowMeasure);
   }
   const rowAssemblyWallMs = tableMeasurementNow() - rowAssemblyStartedAt;
   const cellMeasurementInsideRows = tableObservation.phases['cell-block-measurement'] - cellMeasurementBeforeRows;
@@ -5098,7 +5124,10 @@ async function measureTableBlock(
   });
 
   for (let i = 0; i < rows.length; i++) {
-    rows[i].height = Math.max(0, rowHeights[i]);
+    const height = Math.max(0, rowHeights[i]);
+    if (rows[i] === retainedRows?.measure.rows[i]) {
+      if (rows[i].height !== height) rows[i] = { ...rows[i], height };
+    } else rows[i].height = height;
   }
 
   const contentHeight = rowHeights.reduce((sum, h) => sum + h, 0);
@@ -5158,7 +5187,7 @@ async function measureTableBlock(
     autoFitCellMetricCache: tableObservation.autoFitCellMetricCache,
     autoFitTableResultCache: tableObservation.autoFitTableResultCache,
   });
-  recordTableMeasurementOwner(measure, measurementOwner);
+  recordTableMeasurementOwner(measure, measurementOwner, maxWidth);
   return measure;
 }
 

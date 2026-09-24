@@ -1,4 +1,4 @@
-import type { TableBlock, TableMeasure } from '@superdoc/contracts';
+import type { TableBlock, TableMeasure, TableRowMeasure } from '@superdoc/contracts';
 import type { FontMeasureContext } from '@superdoc/font-system';
 import { getSurfaceMeasurementRuntime, type SurfaceMeasurementRuntimeState } from './measurement-runtime-context.js';
 
@@ -11,6 +11,7 @@ type TableMeasurementOwner = {
   measurementRuntimeSignature: string;
   immutable: boolean;
   rowsCertified: number;
+  rowsReusable: boolean;
 };
 
 type TableRowMeasurementOwner = {
@@ -19,6 +20,7 @@ type TableRowMeasurementOwner = {
   cellsCertified: number;
   alreadyCertified: boolean;
   pendingCell?: object;
+  reusable: boolean;
 };
 
 type CompletedTableMeasurementOwner = {
@@ -26,11 +28,47 @@ type CompletedTableMeasurementOwner = {
   runtimeIdentity: object;
   fontSignature: string;
   measurementRuntimeSignature: string;
+  maxWidth: number;
+  columnWidths: readonly number[];
+  rowsReusable: boolean;
+};
+
+type RetainedRowGeometry = {
+  sourceIdentity: object;
+  baseHeight: number;
+  authoredPadding: number;
+  authoredChrome: number;
 };
 
 let measurementOwners = new WeakMap<TableMeasure, CompletedTableMeasurementOwner>();
 const measurementIdentities = new WeakMap<object, object>();
-const immutableData = new WeakSet<object>();
+const immutableData = createImmutableDataProofCache();
+const reusableSourceRows = new WeakSet<object>();
+const retainedRowGeometry = new WeakMap<TableRowMeasure, RetainedRowGeometry>();
+
+function createImmutableDataProofCache() {
+  // Large grids certify millions of objects. Bound each backing allocation and
+  // total shortcuts; eviction requires inspection again, never assumed safety.
+  const segments = [new WeakSet<object>()];
+  let writes = 0;
+  return {
+    has(value: object): boolean {
+      for (let index = segments.length - 1; index >= 0; index--) {
+        if (segments[index]!.has(value)) return true;
+      }
+      return false;
+    },
+    add(value: object): void {
+      if (writes === 131072) {
+        if (segments.length === 8) segments.shift();
+        segments.push(new WeakSet<object>());
+        writes = 0;
+      }
+      segments[segments.length - 1]!.add(value);
+      writes++;
+    },
+  };
+}
 
 function measurementIdentity(value: object): object {
   let identity = measurementIdentities.get(value);
@@ -121,6 +159,7 @@ export function createTableMeasurementOwner(
     measurementRuntimeSignature,
     immutable: isImmutableContainerExcept(block, 'rows') && isFrozenArray(block.rows),
     rowsCertified: 0,
+    rowsReusable: hasStandardObjectPrototype(),
   };
 }
 
@@ -138,13 +177,19 @@ export function createTableRowMeasurementOwner(
       (alreadyCertified || (isImmutableContainerExcept(row, 'cells') && isFrozenArray(row.cells))),
     cellsCertified: 0,
     alreadyCertified,
+    reusable: true,
   };
 }
 
 export function prepareTableMeasurementCell(owner: TableRowMeasurementOwner | null, cellIndex: number): void {
   if (!owner?.immutable) return;
-  if (owner.alreadyCertified) return;
   const cell = owner.row.cells[cellIndex]!;
+  owner.reusable &&=
+    (cell.rowSpan ?? 1) === 1 &&
+    cell.paragraph == null &&
+    Array.isArray(cell.blocks) &&
+    cell.blocks.every((block) => block.kind === 'paragraph');
+  if (owner.alreadyCertified) return;
   const state = immutableArrayEntry(owner.row.cells, cellIndex, cell) ? inspectImmutableData(cell, true) : 'mutable';
   owner.immutable = state !== 'mutable';
   owner.pendingCell = state === 'pending-table' ? cell : undefined;
@@ -170,7 +215,135 @@ export function finishTableRowMeasurementOwner(
   }
   immutableData.add(row.row.cells);
   immutableData.add(row.row);
+  if (row.reusable) reusableSourceRows.add(row.row);
+  owner.rowsReusable &&= row.reusable;
   owner.rowsCertified += 1;
+}
+
+// Only a changed row's topology is needed before assembly. Content immutability
+// is still certified by the normal cooperative cell measurement walk.
+function hasFrozenPlainPrototype(value: object): boolean {
+  const prototype = Object.getPrototypeOf(value);
+  return Object.isFrozen(value) && (prototype === Object.prototype || prototype === null);
+}
+
+function hasFrozenReusableTopology(row: TableBlock['rows'][number]): boolean {
+  if (!hasFrozenPlainPrototype(row)) return false;
+  const cellsDescriptor = Object.getOwnPropertyDescriptor(row, 'cells');
+  const cells = cellsDescriptor && 'value' in cellsDescriptor ? cellsDescriptor.value : null;
+  if (!isFrozenArray(cells) || cells.length > 256) return false;
+  for (let index = 0; index < cells.length; index++) {
+    const cell = Object.getOwnPropertyDescriptor(cells, index)?.value;
+    if (!cell || !hasFrozenPlainPrototype(cell)) return false;
+    const span = Object.getOwnPropertyDescriptor(cell, 'rowSpan');
+    const legacy = Object.getOwnPropertyDescriptor(cell, 'paragraph');
+    const blocksDescriptor = Object.getOwnPropertyDescriptor(cell, 'blocks');
+    if (
+      (span && (!('value' in span) || (span.value ?? 1) !== 1)) ||
+      (legacy && (!('value' in legacy) || legacy.value != null))
+    )
+      return false;
+    const blocks = blocksDescriptor && 'value' in blocksDescriptor ? blocksDescriptor.value : null;
+    if (!isFrozenArray(blocks) || blocks.length > 32) return false;
+    for (let blockIndex = 0; blockIndex < blocks.length; blockIndex++) {
+      const block = Object.getOwnPropertyDescriptor(blocks, blockIndex)?.value;
+      if (
+        !block ||
+        !hasFrozenPlainPrototype(block) ||
+        Object.getOwnPropertyDescriptor(block, 'kind')?.value !== 'paragraph'
+      )
+        return false;
+    }
+  }
+  return true;
+}
+
+const standardObjectPrototypeKeys = new Set<PropertyKey>([
+  'constructor',
+  '__defineGetter__',
+  '__defineSetter__',
+  'hasOwnProperty',
+  '__lookupGetter__',
+  '__lookupSetter__',
+  'isPrototypeOf',
+  'propertyIsEnumerable',
+  'toString',
+  'valueOf',
+  '__proto__',
+  'toLocaleString',
+]);
+
+function hasStandardObjectPrototype(): boolean {
+  return Reflect.ownKeys(Object.prototype).every((key) => standardObjectPrototypeKeys.has(key));
+}
+
+export function prepareRetainedTableRows(
+  retained: RetainedTableMeasurement | undefined,
+  owner: TableMeasurementOwner | null,
+  maxWidth: number,
+  columnWidths: readonly number[],
+): RetainedTableMeasurement | undefined {
+  // Frozen source objects can still inherit mutable geometry from a polluted prototype.
+  if (!retained || !owner?.immutable || !hasStandardObjectPrototype()) return undefined;
+  const previous = measurementOwners.get(retained.measure);
+  const block = owner.block;
+  if (
+    !previous?.rowsReusable ||
+    block.attrs?.tableLayout !== 'fixed' ||
+    block.attrs !== retained.block.attrs ||
+    block.columnWidths !== retained.block.columnWidths ||
+    block.rows.length !== retained.block.rows.length ||
+    maxWidth !== previous.maxWidth ||
+    columnWidths.length !== previous.columnWidths.length ||
+    columnWidths.some((width, index) => !Number.isFinite(width) || width !== previous.columnWidths[index])
+  )
+    return undefined;
+  let changedRow: TableBlock['rows'][number] | undefined;
+  for (let index = 0; index < block.rows.length; index++) {
+    const row = block.rows[index]!;
+    if (!immutableArrayEntry(block.rows, index, row)) return undefined;
+    if (reusableSourceRows.has(row)) continue;
+    if (changedRow) return undefined;
+    changedRow = row;
+  }
+  if (changedRow && !hasFrozenReusableTopology(changedRow)) return undefined;
+  return retained;
+}
+
+export function readRetainedTableRow(
+  retained: RetainedTableMeasurement | undefined,
+  owner: TableMeasurementOwner | null,
+  rowIndex: number,
+): { measure: TableRowMeasure; geometry: RetainedRowGeometry } | undefined {
+  if (!retained || !owner?.immutable) return undefined;
+  const row = owner.block.rows[rowIndex]!;
+  if (
+    row !== retained.block.rows[rowIndex] ||
+    !reusableSourceRows.has(row) ||
+    (rowIndex > 0 && owner.block.rows[rowIndex - 1] !== retained.block.rows[rowIndex - 1])
+  )
+    return undefined;
+  const measure = retained.measure.rows[rowIndex];
+  const geometry = measure && retainedRowGeometry.get(measure);
+  if (!geometry || geometry.sourceIdentity !== measurementIdentities.get(row)) return undefined;
+  owner.rowsCertified += 1;
+  return { measure, geometry };
+}
+
+export function recordTableRowGeometry(
+  owner: TableRowMeasurementOwner | null,
+  measure: TableRowMeasure,
+  baseHeight: number,
+  authoredPadding: number,
+  authoredChrome: number,
+): void {
+  if (!owner?.immutable || !owner.reusable || owner.cellsCertified !== owner.row.cells.length) return;
+  retainedRowGeometry.set(measure, {
+    sourceIdentity: measurementIdentity(owner.row),
+    baseHeight,
+    authoredPadding,
+    authoredChrome,
+  });
 }
 
 export function readRetainedTableMeasurement(
@@ -188,7 +361,11 @@ export function readRetainedTableMeasurement(
     : undefined;
 }
 
-export function recordTableMeasurementOwner(measure: TableMeasure, owner: TableMeasurementOwner | null): void {
+export function recordTableMeasurementOwner(
+  measure: TableMeasure,
+  owner: TableMeasurementOwner | null,
+  maxWidth: number,
+): void {
   if (owner?.immutable && owner.rowsCertified === owner.block.rows.length) {
     immutableData.add(owner.block.rows);
     immutableData.add(owner.block);
@@ -199,6 +376,9 @@ export function recordTableMeasurementOwner(measure: TableMeasure, owner: TableM
       runtimeIdentity: measurementIdentity(owner.runtime),
       fontSignature: owner.fontSignature,
       measurementRuntimeSignature: owner.measurementRuntimeSignature,
+      maxWidth,
+      columnWidths: measure.columnWidths.slice(),
+      rowsReusable: owner.rowsReusable && hasStandardObjectPrototype(),
     });
   }
 }

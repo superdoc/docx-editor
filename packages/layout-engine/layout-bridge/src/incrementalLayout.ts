@@ -2890,18 +2890,23 @@ export async function incrementalLayout(
       const measurement = await measureBlock(block, measurementConstraints);
       actualMeasureTime += performance.now() - measureBlockStart;
       bodyBlocksMeasuredByKind[block.kind] += 1;
-      const cacheWriteStart = performance.now();
-      measureCache.set(
-        block,
-        constraints.maxWidth,
-        constraints.maxHeight,
-        measurement,
-        fontSignature,
-        fontCapabilities,
-      );
-      cacheWriteTime += performance.now() - cacheWriteStart;
-      bodyMeasureCacheWrites += 1;
-      bodyMeasureCacheKeyComputations += 1;
+      // AIDEV-NOTE: Proved dirty tables are measured on every edit and retained in the
+      // measure overlay. Admitting them to the global cache hashes the entire table
+      // for an entry that the next dirty-owner invalidation removes before lookup.
+      if (block.kind !== 'table') {
+        const cacheWriteStart = performance.now();
+        measureCache.set(
+          block,
+          constraints.maxWidth,
+          constraints.maxHeight,
+          measurement,
+          fontSignature,
+          fontCapabilities,
+        );
+        cacheWriteTime += performance.now() - cacheWriteStart;
+        bodyMeasureCacheWrites += 1;
+        bodyMeasureCacheKeyComputations += 1;
+      }
       overrides.set(blockIndex, measurement);
       cacheMisses += 1;
     }

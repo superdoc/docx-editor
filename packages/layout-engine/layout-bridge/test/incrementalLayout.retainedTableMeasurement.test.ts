@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { expect, it, vi } from 'vite-plus/test';
-import type { FlowBlock, ParagraphBlock, TableBlock } from '@superdoc/contracts';
+import { expect, it } from 'vite-plus/test';
+import type { FlowBlock, ParagraphBlock, TableBlock, TableMeasure } from '@superdoc/contracts';
 import { createDomMeasurementRuntime, type TableMeasurementObservation } from '@superdoc/measuring-dom';
 import { computeDirtyRegions } from '../src/diff.js';
 import { clearIncrementalModuleState, incrementalLayout, type IncrementalMeasureReuseProof } from '../src/index.js';
@@ -16,7 +16,7 @@ function freezeData<T>(value: T): T {
   return value;
 }
 
-it('carries retained cell measurements through the bridge to the surface runtime', async () => {
+it('carries retained row and cell measurements through the bridge to the surface runtime', async () => {
   clearIncrementalModuleState();
   const runtime = createDomMeasurementRuntime();
   const coldRuntime = createDomMeasurementRuntime();
@@ -129,7 +129,15 @@ it('carries retained cell measurements through the bridge to the surface runtime
     editPass.finish();
 
     expect(result.measureReuse?.mode).toBe('proved-dirty-only');
-    expect(observation?.cellBlockCache).toMatchObject({ 'retained-hit': 5, miss: 1 });
+    expect(observation?.cellBlockCache.miss).toBe(1);
+    const previousTable = initial.measures[0] as TableMeasure;
+    const currentTable = result.measures[0] as TableMeasure;
+    expect(currentTable.rows[2]).not.toBe(previousTable.rows[2]);
+    for (const row of [0, 1, 4, 5]) {
+      expect(currentTable.rows[row]).toBe(previousTable.rows[row]);
+    }
+    // The following row may refresh border context while retaining its unchanged paragraph geometry.
+    expect(currentTable.rows[3]!.cells[0]!.blocks![0]).toBe(previousTable.rows[3]!.cells[0]!.blocks![0]);
 
     clearIncrementalModuleState();
     const coldPass = coldRuntime.beginPass(fonts);
@@ -146,64 +154,61 @@ it('carries retained cell measurements through the bridge to the surface runtime
   }
 });
 
-it.each(['unchanged inputs', 'changed width', 'replaced block', 'mutated child', 'changed font'] as const)(
-  'hashes the measured table after the callback with %s',
+it.each([
+  'unchanged inputs',
+  'changed width',
+  'replaced block',
+  'mutated child',
+  'changed font',
+  'missing proof',
+] as const)(
+  'preserves current table measurement and cold parity without redundant admission for %s',
   async (scenario) => {
     clearIncrementalModuleState();
     const runtime = createDomMeasurementRuntime();
+    const coldRuntime = createDomMeasurementRuntime();
     const fonts = { fontSignature: 'prepared-table-v1', resolvePhysical: (family: string) => family };
     const fontCapabilities = { hasTabularDigits: () => false };
     const options = {
       pageSize: { w: 240, h: 140 },
       margins: { top: 10, right: 10, bottom: 10, left: 10 },
     };
+    let observePostMeasure = false;
+    let postMeasureRowReads = 0;
     const table = (text: string): TableBlock => ({
       kind: 'table',
       id: 'prepared-table',
       attrs: { tableLayout: 'fixed' },
       columnWidths: [200],
-      rows: Array.from({ length: 6 }, (_, row) => ({
-        id: `row-${row}`,
-        cells: [
-          {
-            id: `cell-${row}`,
-            blocks: [
-              {
-                kind: 'paragraph',
-                id: `paragraph-${row}`,
-                runs: [{ text: row === 2 ? text : `Cell ${row}`, fontFamily: 'Arial', fontSize: 12 }],
-              },
-            ],
+      rows: new Proxy(
+        Array.from({ length: 6 }, (_, row) => ({
+          id: `row-${row}`,
+          cells: [
+            {
+              id: `cell-${row}`,
+              blocks: [
+                {
+                  kind: 'paragraph' as const,
+                  id: `paragraph-${row}`,
+                  runs: [{ text: row === 2 ? text : `Cell ${row}`, fontFamily: 'Arial', fontSize: 12 }],
+                },
+              ],
+            },
+          ],
+        })),
+        {
+          get(rows, property, receiver) {
+            if (observePostMeasure && typeof property === 'string' && /^(0|[1-9]\d*)$/.test(property)) {
+              postMeasureRowReads += 1;
+            }
+            return Reflect.get(rows, property, receiver);
           },
-        ],
-      })),
+        },
+      ),
     });
     const original = table('Before');
     const edited = table('After');
     const replacement = table('Replacement');
-    let observeTraversal = false;
-    let currentKeyTraversals = 0;
-    let previousKeyTraversals = 0;
-    original.rows = new Proxy(original.rows, {
-      get(rows, key, receiver) {
-        if (key === Symbol.iterator)
-          return function* () {
-            if (observeTraversal) previousKeyTraversals += 1;
-            yield* rows;
-          };
-        return Reflect.get(rows, key, receiver);
-      },
-    });
-    edited.rows = new Proxy(edited.rows, {
-      get(rows, key, receiver) {
-        if (key === Symbol.iterator)
-          return function* () {
-            if (observeTraversal) currentKeyTraversals += 1;
-            yield* rows;
-          };
-        return Reflect.get(rows, key, receiver);
-      },
-    });
     const nextBlocks: FlowBlock[] = [edited];
     const constraints = { maxWidth: 220, maxHeight: 120 };
     const proof: IncrementalMeasureReuseProof = {
@@ -223,15 +228,6 @@ it.each(['unchanged inputs', 'changed width', 'replaced block', 'mutated child',
       currentBlockIndexById: new Map([['prepared-table', 0]]),
       provedDirtyMeasureConstraints: new Map([['prepared-table', constraints]]),
     };
-    let keyTraversalsAtInsertion = -1;
-    const setPrepared = measureCache.setPrepared;
-    const observation = vi.spyOn(measureCache, 'setPrepared').mockImplementation(function (key, blockId, value) {
-      if (observeTraversal && blockId === edited.id) {
-        keyTraversalsAtInsertion = currentKeyTraversals;
-        observeTraversal = false;
-      }
-      return setPrepared.call(this, key, blockId, value);
-    });
     try {
       const initialPass = runtime.beginPass(fonts);
       const initial = await incrementalLayout(
@@ -245,32 +241,35 @@ it.each(['unchanged inputs', 'changed width', 'replaced block', 'mutated child',
         { fontContext: fonts, fontCapabilities },
       );
       initialPass.finish();
+      expect(measureCache.get(original, 220, 120, fonts.fontSignature, fontCapabilities)).toBe(initial.measures[0]);
+
       const currentFonts = scenario === 'changed font' ? { ...fonts, fontSignature: 'prepared-table-v2' } : fonts;
       const editPass = runtime.beginPass(currentFonts);
       let changed = false;
-      const measure = vi.fn(async (block, measuredConstraints) => {
-        observeTraversal = false;
-        try {
-          return await editPass.measureBlock(block, measuredConstraints);
-        } finally {
-          observeTraversal = true;
-        }
-      });
-      observeTraversal = true;
+      let measuredCount = 0;
+      let returnedMeasurement: Awaited<ReturnType<typeof editPass.measureBlock>> | undefined;
       const result = await incrementalLayout(
         [original],
         initial.layout,
         nextBlocks,
         options,
-        measure,
+        async (block, measuredConstraints) => {
+          measuredCount += 1;
+          returnedMeasurement = await editPass.measureBlock(block, measuredConstraints);
+          observePostMeasure = true;
+          return returnedMeasurement;
+        },
         undefined,
         initial.measures,
         { fontContext: currentFonts, previousFontSignature: fonts.fontSignature, fontCapabilities },
         undefined,
         undefined,
-        proof,
+        scenario === 'missing proof' ? undefined : proof,
         {
           checkpointIfDue: (checkpoint) => {
+            // The existing phase checkpoint ends the cache-admission interval;
+            // subsequent pagination is allowed to read the current table rows.
+            if (checkpoint == null) observePostMeasure = false;
             if (!changed && checkpoint?.phase === 'measure:block') {
               changed = true;
               if (scenario === 'changed width') constraints.maxWidth = 180;
@@ -284,34 +283,80 @@ it.each(['unchanged inputs', 'changed width', 'replaced block', 'mutated child',
         },
       );
       editPass.finish();
-      observeTraversal = false;
-      expect(measure).toHaveBeenCalledTimes(1);
-      const measuredBlock = nextBlocks[0]!;
-      expect(
-        measureCache.get(
-          measuredBlock,
-          constraints.maxWidth,
-          constraints.maxHeight,
-          currentFonts.fontSignature,
-          fontCapabilities,
-        ),
-      ).toBe(result.measures[0]);
-      if (scenario === 'unchanged inputs') {
+      observePostMeasure = false;
+      expect(measuredCount).toBe(1);
+      expect(result.measures[0]).toBe(returnedMeasurement);
+      expect(postMeasureRowReads).toBe(0);
+
+      const usesProof = scenario !== 'changed font' && scenario !== 'missing proof';
+      if (usesProof) {
         expect(result.measureReuse?.mode).toBe('proved-dirty-only');
-        expect(keyTraversalsAtInsertion).toBe(1);
-        expect(previousKeyTraversals).toBe(0);
-      } else if (scenario === 'changed width') {
-        expect(measureCache.get(edited, 220, 120, fonts.fontSignature, fontCapabilities)).toBeUndefined();
-      } else if (scenario === 'replaced block') {
-        expect(measureCache.get(edited, 220, 120, fonts.fontSignature, fontCapabilities)).toBeUndefined();
-      } else if (scenario === 'mutated child') {
-        expect(measureCache.get(table('After'), 220, 120, fonts.fontSignature, fontCapabilities)).toBeUndefined();
+        expect(result.bridgeTiming.counters.bodyMeasureCacheWrites).toBe(0);
+        expect(result.bridgeTiming.counters.bodyMeasureCacheKeyComputations).toBe(0);
+        expect(
+          measureCache.get(
+            nextBlocks[0],
+            constraints.maxWidth,
+            constraints.maxHeight,
+            currentFonts.fontSignature,
+            fontCapabilities,
+          ),
+        ).toBeUndefined();
       } else {
+        expect(result.measureReuse?.mode).not.toBe('proved-dirty-only');
+        expect(result.bridgeTiming.counters.bodyMeasureCacheWrites).toBe(1);
+        expect(measureCache.get(nextBlocks[0], 220, 120, currentFonts.fontSignature, fontCapabilities)).toBe(
+          result.measures[0],
+        );
+      }
+      if (scenario !== 'unchanged inputs' && scenario !== 'missing proof') {
         expect(measureCache.get(edited, 220, 120, fonts.fontSignature, fontCapabilities)).toBeUndefined();
       }
+
+      if (scenario === 'unchanged inputs') {
+        const fallbackPass = runtime.beginPass(currentFonts);
+        let fallbackMeasurements = 0;
+        const fallback = await incrementalLayout(
+          [nextBlocks[0]!],
+          result.layout,
+          nextBlocks,
+          options,
+          (block, fallbackConstraints) => {
+            fallbackMeasurements += 1;
+            return fallbackPass.measureBlock(block, fallbackConstraints);
+          },
+          undefined,
+          undefined,
+          { fontContext: currentFonts, fontCapabilities },
+        );
+        fallbackPass.finish();
+        expect(fallbackMeasurements).toBe(1);
+        expect(fallback.measures).toEqual(result.measures);
+        expect(fallback.layout).toEqual(result.layout);
+        expect(measureCache.get(nextBlocks[0], 220, 120, currentFonts.fontSignature, fontCapabilities)).toBe(
+          fallback.measures[0],
+        );
+      }
+
+      clearIncrementalModuleState();
+      const coldPass = coldRuntime.beginPass(currentFonts);
+      const cold = await incrementalLayout(
+        [],
+        null,
+        nextBlocks,
+        options,
+        (block, coldConstraints) => coldPass.measureBlock(block, { ...coldConstraints, ...constraints }),
+        undefined,
+        undefined,
+        { fontContext: currentFonts, fontCapabilities },
+      );
+      coldPass.finish();
+      expect(result.measures).toEqual(cold.measures);
+      expect(result.layout).toEqual(cold.layout);
     } finally {
-      observation.mockRestore();
+      observePostMeasure = false;
       runtime.dispose();
+      coldRuntime.dispose();
       clearIncrementalModuleState();
     }
   },

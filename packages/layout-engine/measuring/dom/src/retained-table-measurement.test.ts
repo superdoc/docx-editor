@@ -146,7 +146,8 @@ describe('retained table paragraph measurement', () => {
 
       const firstEdit = await measure(runtime, edited, { block: original, measure: initial.measure });
       expect(firstEdit.observation.cellBlockCache.miss).toBe(1);
-      expect(firstEdit.observation.cellBlockCache).toMatchObject({ 'retained-hit': 5019 });
+      expect(firstEdit.observation.cellBlockCache).toMatchObject({ 'retained-hit': 39 });
+      expect(firstEdit.measure.rows[0]).toBe(initial.measure.rows[0]);
       expect(firstEdit.measure.rows[0]!.cells[0]!.blocks![0]).toBe(initial.measure.rows[0]!.cells[0]!.blocks![0]);
       expect(firstEdit.measure.rows[123]!.cells[0]!.blocks![0]).not.toBe(
         initial.measure.rows[123]!.cells[0]!.blocks![0],
@@ -158,7 +159,8 @@ describe('retained table paragraph measurement', () => {
       clearTableCellBlockMeasureCache();
       const secondEdit = await measure(runtime, editedAgain, { block: edited, measure: firstEdit.measure });
       expect(secondEdit.observation.cellBlockCache.miss).toBe(1);
-      expect(secondEdit.observation.cellBlockCache).toMatchObject({ 'retained-hit': 5019 });
+      expect(secondEdit.observation.cellBlockCache).toMatchObject({ 'retained-hit': 39 });
+      expect(secondEdit.measure.rows[0]).toBe(firstEdit.measure.rows[0]);
       clearTableCellBlockMeasureCache();
       expect(secondEdit.measure).toEqual((await measure(coldRuntime, editedAgain)).measure);
     } finally {
@@ -323,7 +325,8 @@ describe('retained table paragraph measurement', () => {
         pass.finish();
       }
       const continued = await measure(runtime, original, { block: original, measure: initial.measure }, 192);
-      expect(continued.observation.cellBlockCache).toMatchObject({ 'retained-hit': 256, miss: 0 });
+      expect(continued.observation.cellBlockCache).toMatchObject({ 'retained-hit': 0, miss: 0 });
+      expect(continued.measure.rows[0]).toBe(initial.measure.rows[0]);
       expect(continued.measure).toEqual(initial.measure);
     } finally {
       runtime.dispose();

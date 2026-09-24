@@ -179,6 +179,21 @@ describe('document-api contract catalog', () => {
     expect(output.properties?.blocks?.items?.properties?.tabCount).toMatchObject({ type: 'integer', minimum: 0 });
   });
 
+  it('accepts tracked definition-replay blockers in diff payloads across compare and apply', () => {
+    const operations = buildInternalContractSchemas().operations;
+    const compareOutput = operations['diff.compare'].output as ContractTestSchemaShape;
+    const applyInput = operations['diff.apply'].input as ContractTestSchemaShape;
+    const compareCodes =
+      compareOutput.properties?.applyEligibility?.properties?.tracked?.properties?.blockers?.items?.properties?.code
+        ?.enum;
+    const applyCodes =
+      applyInput.properties?.diff?.properties?.applyEligibility?.properties?.tracked?.properties?.blockers?.items
+        ?.properties?.code?.enum;
+
+    expect(compareCodes).toContain('definition-replay-tracked-unsupported');
+    expect(applyCodes).toEqual(compareCodes);
+  });
+
   it('keeps catalog key coverage in lockstep with operation ids', () => {
     const catalogKeys = Object.keys(COMMAND_CATALOG).sort();
     const operationIds = [...OPERATION_IDS].sort();

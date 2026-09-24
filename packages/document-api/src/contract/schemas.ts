@@ -4123,6 +4123,7 @@ const diffApplyEligibilityBlockerSchema: JsonSchema = objectSchema(
         'comment-anchor-marker-semantics-unsafe',
         'styles-replay-unsafe',
         'numbering-replay-unsafe',
+        'definition-replay-tracked-unsupported',
         'section-reference-replay-unsafe',
         'structural-paragraph-unsupported',
       ],

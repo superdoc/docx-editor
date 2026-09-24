@@ -174,6 +174,11 @@ describe('document-api contract catalog', () => {
     expect(output.required).toContain('reviewMode');
   });
 
+  it('publishes complete-text tab counts for blocks.list consumers', () => {
+    const output = buildInternalContractSchemas().operations['blocks.list'].output as ContractTestSchemaShape;
+    expect(output.properties?.blocks?.items?.properties?.tabCount).toMatchObject({ type: 'integer', minimum: 0 });
+  });
+
   it('keeps catalog key coverage in lockstep with operation ids', () => {
     const catalogKeys = Object.keys(COMMAND_CATALOG).sort();
     const operationIds = [...OPERATION_IDS].sort();

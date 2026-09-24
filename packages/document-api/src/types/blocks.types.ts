@@ -20,6 +20,8 @@ export interface BlockListEntry {
   textPreview: string | null;
   /** Full flattened block text when requested via BlocksListInput.includeText. */
   text?: string | null;
+  /** Count of U+0009 tabs in complete flattened paragraph text, including tabs outside textPreview. */
+  tabCount?: number;
   isEmpty: boolean;
   /** Named paragraph style ID (e.g. 'Normal', 'Heading1'). */
   styleId?: string | null;

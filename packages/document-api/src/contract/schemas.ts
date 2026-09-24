@@ -4722,6 +4722,11 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
                 oneOf: [{ type: 'string' }, { type: 'null' }],
                 description: 'Full flattened block text when requested with includeText.',
               },
+              tabCount: {
+                type: 'integer',
+                minimum: 0,
+                description: 'Tabs in complete paragraph text, even beyond the preview.',
+              },
               isEmpty: { type: 'boolean' },
               styleId: { oneOf: [{ type: 'string' }, { type: 'null' }], description: 'Named paragraph style.' },
               fontFamily: { type: 'string', description: 'Font family from first text run.' },

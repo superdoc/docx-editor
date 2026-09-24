@@ -30,6 +30,7 @@ applied.preSnapshot?.counts?.blocks satisfies number | undefined;
 verified.postSnapshot?.revision satisfies string | undefined;
 const blocks = await document.blocks.list({ nodeIds: ['body'], textSearch: { terms: ['Alpha'], match: 'any' } });
 blocks.total satisfies number;
+blocks.blocks[0]?.tabCount satisfies number | undefined;
 const cells = await document.tables.getCells({ nodeId: 'table' });
 cells.cells[0]?.firstParagraphNodeId satisfies string | undefined;
 // @ts-expect-error Evidence policy is a closed set.

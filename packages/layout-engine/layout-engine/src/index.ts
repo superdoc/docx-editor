@@ -1906,7 +1906,9 @@ function* layoutDocumentSteps(
     if (options.footnotePageFlow) return 0;
     const reserves = options.footnoteReservedByPageIndex;
     const reserve = Array.isArray(reserves) ? reserves[pageIndex] : 0;
-    return typeof reserve === 'number' && Number.isFinite(reserve) && reserve > 0 ? reserve : 0;
+    if (typeof reserve !== 'number' || !Number.isFinite(reserve) || reserve <= 0) return 0;
+    const pageCapacity = activePageSize.h - activeTopMargin - activeBottomMargin - MIN_BODY_CONTENT_HEIGHT;
+    return Math.min(reserve, Math.max(0, pageCapacity));
   };
 
   const completedFootnotePages = new WeakSet<Page>();
@@ -1928,7 +1930,9 @@ function* layoutDocumentSteps(
       const pageIndex = Math.max(0, pageCount - 1);
       return activeBottomMargin + readFootnoteReserveForPageIndex(pageIndex);
     },
-    getFootnoteReserveForPage: (pageIndex: number) => readFootnoteReserveForPageIndex(pageIndex),
+    getFootnoteReserveForPage: Array.isArray(options.footnoteReservedByPageIndex)
+      ? (pageIndex: number) => readFootnoteReserveForPageIndex(pageIndex)
+      : undefined,
     getActiveHeaderDistance: () => activeHeaderDistance,
     getActiveFooterDistance: () => activeFooterDistance,
     getActivePageSize: () => activePageSize,

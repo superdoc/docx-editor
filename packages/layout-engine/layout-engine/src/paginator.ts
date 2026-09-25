@@ -200,8 +200,10 @@ export function createPaginator(opts: PaginatorOptions) {
 
     const pageIndex = pages.length;
     const pageFootnoteReserve = opts.getFootnoteReserveForPage?.(pageIndex) ?? 0;
+    const page = opts.createPage(pageIndex + 1 + (opts.pageNumberOffset ?? 0), pageMargins, pageSizeOverride);
+    if (opts.getFootnoteReserveForPage) page.footnoteReserved = pageFootnoteReserve;
     const state: PageState = {
-      page: opts.createPage(pageIndex + 1 + (opts.pageNumberOffset ?? 0), pageMargins, pageSizeOverride),
+      page,
       cursorY: topMargin,
       columnIndex: 0,
       topMargin,

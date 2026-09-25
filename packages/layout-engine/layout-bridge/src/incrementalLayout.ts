@@ -1847,7 +1847,8 @@ const computeMaxFootnoteReserve = (layoutForPages: Layout, pageIndex: number, ba
   const pageSize = page.size ?? layoutForPages.pageSize ?? DEFAULT_PAGE_SIZE;
   const topMargin = normalizeMargin(page.margins?.top, DEFAULT_MARGINS.top);
   const bottomWithReserve = normalizeMargin(page.margins?.bottom, DEFAULT_MARGINS.bottom);
-  const baseReserveSafe = Number.isFinite(baseReserve) ? Math.max(0, baseReserve) : 0;
+  const appliedReserve = page.footnoteReserved ?? baseReserve;
+  const baseReserveSafe = Number.isFinite(appliedReserve) ? Math.max(0, appliedReserve) : 0;
   const bottomMargin = Math.max(0, bottomWithReserve - baseReserveSafe);
   // SD-2656: in the bodyMaxY-anchored band architecture, the actual band
   // capacity is `pageH - bottomMargin - bodyMaxY`. Using this as the planner's
@@ -4432,7 +4433,10 @@ export async function incrementalLayout(
                 .sort((left, right) => left - right);
         for (const pageIndex of pageIndexes) {
           const page = layoutForPages.pages[pageIndex];
-          const nextFootnoteReserved = Math.max(0, reservesByPageIndex[pageIndex] ?? plan.reserves[pageIndex] ?? 0);
+          const nextFootnoteReserved = Math.max(
+            0,
+            page.footnoteReserved ?? reservesByPageIndex[pageIndex] ?? plan.reserves[pageIndex] ?? 0,
+          );
           if (page.footnoteReserved !== nextFootnoteReserved) page.footnoteReserved = nextFootnoteReserved;
           // SD-2656 Phase 0: attach the per-page ledger. Combine the planner
           // draft with the applied body reserve we just stamped. This is the
@@ -5763,7 +5767,13 @@ export async function incrementalLayout(
             for (let pageIndex = 0; pageIndex < pageCount; pageIndex += 1) {
               const draft = plan.ledgersByPage.get(pageIndex);
               if (!draft) continue;
-              const appliedBodyReservePx = Math.max(0, appliedReserves[pageIndex] ?? plan.reserves[pageIndex] ?? 0);
+              const appliedBodyReservePx = Math.max(
+                0,
+                layout.pages[pageIndex]?.footnoteReserved ??
+                  appliedReserves[pageIndex] ??
+                  plan.reserves[pageIndex] ??
+                  0,
+              );
               ledgers.push({
                 pageIndex,
                 anchorIds: draft.anchorIds,
@@ -5795,9 +5805,8 @@ export async function incrementalLayout(
             const pageSize = page.size ?? referenceLayout.pageSize ?? DEFAULT_PAGE_SIZE;
             const topMargin = normalizeMargin(page.margins?.top, DEFAULT_MARGINS.top);
             const bottomWithReserve = normalizeMargin(page.margins?.bottom, DEFAULT_MARGINS.bottom);
-            const currentReserve = Number.isFinite(referenceReserves[pageIndex])
-              ? Math.max(0, referenceReserves[pageIndex])
-              : 0;
+            const appliedReserve = page.footnoteReserved ?? referenceReserves[pageIndex];
+            const currentReserve = Number.isFinite(appliedReserve) ? Math.max(0, appliedReserve) : 0;
             const physicalBottomMargin = Math.max(0, bottomWithReserve - currentReserve);
             const physicalContentHeight = pageSize.h - topMargin - physicalBottomMargin;
             if (!Number.isFinite(physicalContentHeight)) return requested;

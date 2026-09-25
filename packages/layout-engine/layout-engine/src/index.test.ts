@@ -354,6 +354,49 @@ describe('layoutDocument', () => {
     ).toThrow(/non-positive content area/);
   });
 
+  it('keeps an oversized footnote reserve on a shorter landscape page from hiding later sections', () => {
+    const blocks: FlowBlock[] = [
+      { kind: 'paragraph', id: 'landscape-first', runs: [] },
+      { kind: 'paragraph', id: 'landscape-second', runs: [] },
+      {
+        kind: 'sectionBreak',
+        id: 'portrait-section',
+        type: 'nextPage',
+        pageSize: { w: 400, h: 600 },
+        margins: { top: 50, right: 50, bottom: 50, left: 50 },
+      },
+      { kind: 'paragraph', id: 'portrait-body', runs: [] },
+    ];
+    const measures: Measure[] = [
+      makeMeasure(Array(15).fill(20)),
+      makeMeasure([20]),
+      { kind: 'sectionBreak' },
+      makeMeasure([20]),
+    ];
+    const options: LayoutOptions = {
+      pageSize: { w: 600, h: 400 },
+      margins: { top: 50, right: 50, bottom: 50, left: 50 },
+    };
+    const control = layoutDocument(blocks, measures, options);
+    expect(control.pages.flatMap((page) => page.fragments.map((fragment) => fragment.blockId))).toContain(
+      'landscape-second',
+    );
+    expect(control.pages.flatMap((page) => page.fragments.map((fragment) => fragment.blockId))).toContain(
+      'portrait-body',
+    );
+
+    const layout = layoutDocument(blocks, measures, {
+      ...options,
+      footnoteReservedByPageIndex: [0, 350, 0],
+    });
+    const visibleBlocks = layout.pages.flatMap((page) => page.fragments.map((fragment) => fragment.blockId));
+    expect(visibleBlocks).toContain('landscape-second');
+    expect(visibleBlocks).toContain('portrait-body');
+    for (const page of layout.pages) {
+      expect((page.margins?.top ?? 0) + (page.margins?.bottom ?? 0)).toBeLessThan(page.size?.h ?? 400);
+    }
+  });
+
   it('clamps header-inflated margins so oversized header content does not crash body layout', () => {
     const layout = layoutDocument([block], [makeMeasure([1])], {
       pageSize: { w: 720, h: 540 },

@@ -51,7 +51,7 @@ describe('paintInlineBoxes', () => {
     const first = appendTextLeaf(line, 'abc', 10);
     const second = appendTextLeaf(line, 'def', 13);
 
-    paintInlineBoxes([makeBox()], line, false);
+    paintInlineBoxes([makeBox()], line);
 
     expect(line.textContent).toBe('abcdef');
     expect(line.querySelectorAll('.superdoc-text-run')).toHaveLength(2);
@@ -60,17 +60,17 @@ describe('paintInlineBoxes', () => {
     expect(first.getAttribute('data-superdoc-inline-box-from')).toBeNull();
     expect(first.getAttribute('data-superdoc-inline-box-id')).toBe('provider:box-1');
     expect(second.getAttribute('data-superdoc-inline-box-id')).toBe('provider:box-1');
-    expect(first.style.paddingLeft).toBe('3px');
-    expect(first.style.paddingRight).toBe('0px');
-    expect(second.style.paddingLeft).toBe('0px');
-    expect(second.style.paddingRight).toBe('4px');
+    expect(first.style.paddingInlineStart).toBe('3px');
+    expect(first.style.paddingInlineEnd).toBe('0px');
+    expect(second.style.paddingInlineStart).toBe('0px');
+    expect(second.style.paddingInlineEnd).toBe('4px');
     expect(first.style.boxSizing).toBe('border-box');
     expect(first.style.height).toBe('26px');
     expect(first.style.lineHeight).toBe('20px');
-    expect(first.style.marginLeft).toBe('5px');
-    expect(second.style.marginRight).toBe('6px');
-    expect(first.style.borderLeft).toContain('1px dashed');
-    expect(second.style.borderRight).toContain('1px dashed');
+    expect(first.style.marginInlineStart).toBe('5px');
+    expect(second.style.marginInlineEnd).toBe('6px');
+    expect(first.style.borderInlineStart).toContain('1px dashed');
+    expect(second.style.borderInlineEnd).toContain('1px dashed');
     expect(first.style.backgroundColor).not.toBe('');
     expect(first.classList.contains('citation-pill')).toBe(true);
     expect(first.classList.contains('selected')).toBe(true);
@@ -85,7 +85,7 @@ describe('paintInlineBoxes', () => {
     const leaf = appendTextLeaf(line, 'boxed', 0);
     leaf.style.lineHeight = '17px';
 
-    paintInlineBoxes([makeBox({ from: 0, to: 5 })], line, false);
+    paintInlineBoxes([makeBox({ from: 0, to: 5 })], line);
 
     expect(leaf.style.height).toBe('26px');
     expect(leaf.style.lineHeight).toBe('17px');
@@ -96,21 +96,51 @@ describe('paintInlineBoxes', () => {
     const leaf = appendTextLeaf(line, 'boxed', 0);
     const id = '"><img src=x onerror=alert(1)>';
 
-    paintInlineBoxes([makeBox({ id, from: 0, to: 5 })], line, false);
+    paintInlineBoxes([makeBox({ id, from: 0, to: 5 })], line);
 
     expect(leaf.getAttribute('data-superdoc-inline-box-id')).toBe(id);
     expect(line.querySelector('img')).toBeNull();
   });
 
-  it('fails closed for RTL lines', () => {
+  it('paints an RTL line, and writes the same logical edges as an LTR one', () => {
+    // The painter used to bail on RTL because it wrote physical left/right
+    // edges. Logical edges make the two calls identical: the browser resolves
+    // `inline-start` against the line's own direction, which the renderer
+    // already sets (`el.dir`).
+    const rtl = document.createElement('div');
+    rtl.dir = 'rtl';
+    const rtlLeaf = appendTextLeaf(rtl, 'boxed', 0);
+    const ltr = document.createElement('div');
+    const ltrLeaf = appendTextLeaf(ltr, 'boxed', 0);
+
+    paintInlineBoxes([makeBox({ from: 0, to: 5 })], rtl);
+    paintInlineBoxes([makeBox({ from: 0, to: 5 })], ltr);
+
+    expect(rtlLeaf.getAttribute('data-superdoc-inline-box-id')).toBe('provider:box-1');
+    expect(rtlLeaf.style.paddingInlineStart).toBe('3px');
+    expect(rtlLeaf.style.paddingInlineEnd).toBe('4px');
+    expect(rtlLeaf.getAttribute('style')).toBe(ltrLeaf.getAttribute('style'));
+  });
+
+  it('never writes a physical inline edge — those are what broke RTL', () => {
+    // A guard, not a duplicate: reintroducing `paddingLeft` anywhere in
+    // `applyInlineBoxStyle` would keep every other assertion green while
+    // silently pinning the box to the wrong side of an RTL line.
     const line = document.createElement('div');
     const leaf = appendTextLeaf(line, 'boxed', 0);
 
-    paintInlineBoxes([makeBox({ from: 0, to: 5 })], line, true);
+    paintInlineBoxes([makeBox({ from: 0, to: 5 })], line);
 
-    expect(leaf.getAttribute('data-superdoc-inline-box-id')).toBeNull();
-    expect(leaf.getAttribute('data-superdoc-inline-box-from')).toBeNull();
-    expect(leaf.getAttribute('style')).toBeNull();
+    for (const property of [
+      'padding-left',
+      'padding-right',
+      'margin-left',
+      'margin-right',
+      'border-left',
+      'border-right',
+    ]) {
+      expect(leaf.getAttribute('style')).not.toContain(property);
+    }
   });
 
   it('preserves canonical run color and highlight when the box does not override them', () => {
@@ -124,7 +154,7 @@ describe('paintInlineBoxes', () => {
       style: { ...makeBox().style, color: undefined, backgroundColor: undefined },
     });
 
-    paintInlineBoxes([box], line, false);
+    paintInlineBoxes([box], line);
 
     expect(leaf.style.color).toBe('#ff0000');
     expect(leaf.style.backgroundColor).toBe('yellow');

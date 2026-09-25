@@ -468,8 +468,8 @@ describe('renderLine inline boxes', () => {
     expect(leaves).toHaveLength(3);
     expect(boxed?.getAttribute('data-superdoc-inline-box-id')).toBe('provider:box');
     expect(boxed?.style.position).toBe(expectedPosition);
-    expect(boxed?.style.paddingLeft).toBe('2px');
-    expect(boxed?.style.paddingRight).toBe('2px');
+    expect(boxed?.style.paddingInlineStart).toBe('2px');
+    expect(boxed?.style.paddingInlineEnd).toBe('2px');
     expect(boxed?.dataset.pmStart).toBe('26');
     expect(boxed?.dataset.pmEnd).toBe('31');
     expect(boxed?.getAttribute('data-superdoc-inline-box-from')).toBeNull();

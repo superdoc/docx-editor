@@ -1112,8 +1112,9 @@ const SDT_CONTAINER_STYLES = `
   background-color: transparent;
 }
 
-.superdoc-structured-content-inline[data-empty='true']:not([data-appearance='hidden']) {
-  border-color: var(--sd-content-controls-inline-border, #629be7);
+/* Word does not show placeholder text on an emptied inline control. */
+.superdoc-structured-content-inline[data-empty='true'] .superdoc-empty-sdt-placeholder::before {
+  content: none;
 }
 
 .superdoc-empty-sdt-placeholder {

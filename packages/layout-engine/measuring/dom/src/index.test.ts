@@ -2035,7 +2035,7 @@ describe('measureBlock', () => {
       });
     });
 
-    it('measures empty inline SDT placeholders using the visible placeholder text width', async () => {
+    it('measures an emptied inline SDT as zero width with no placeholder text', async () => {
       const block: FlowBlock = {
         kind: 'paragraph',
         id: 'empty-inline-sdt',
@@ -2058,10 +2058,35 @@ describe('measureBlock', () => {
 
       expect(measure.lines).toHaveLength(1);
       expect(measure.lines[0]).toMatchObject({ fromRun: 0, fromChar: 0, toRun: 0, toChar: 0 });
-      expect(measure.lines[0].width).toBeGreaterThan(8);
+      expect(measure.lines[0].width).toBe(0);
       expect(measure.lines[0].segments).toHaveLength(1);
-      expect(measure.lines[0].segments[0]).toMatchObject({ runIndex: 0, fromChar: 0, toChar: 0 });
-      expect(measure.lines[0].segments[0].width).toBe(measure.lines[0].width);
+      expect(measure.lines[0].segments[0]).toMatchObject({ runIndex: 0, fromChar: 0, toChar: 0, width: 0 });
+    });
+
+    it('measures an emptied sdtLocked control as zero width until the caret re-enters', async () => {
+      const block: FlowBlock = {
+        kind: 'paragraph',
+        id: 'empty-sdt-locked',
+        runs: [
+          {
+            kind: 'text',
+            text: '',
+            fontFamily: 'Arial',
+            fontSize: 16,
+            pmStart: 10,
+            pmEnd: 10,
+            visualPlaceholder: 'emptyInlineSdt',
+            sdt: { type: 'structuredContent', scope: 'inline', id: 'sdt-locked', lockMode: 'sdtLocked' },
+          },
+        ],
+        attrs: {},
+      };
+
+      const measure = expectParagraphMeasure(await measureBlock(block, 1000));
+
+      expect(measure.lines).toHaveLength(1);
+      expect(measure.lines[0].width).toBe(0);
+      expect(measure.lines[0].segments?.[0]?.width).toBe(0);
     });
 
     it('applies textTransform when measuring empty SDT placeholder text', async () => {
@@ -2084,8 +2109,8 @@ describe('measureBlock', () => {
             fontFamily: 'Arial',
             fontSize: 16,
             textTransform: 'uppercase',
-            visualPlaceholder: 'emptyInlineSdt',
-            sdt: { type: 'structuredContent', scope: 'inline', id: 'sdt-empty-uppercase' },
+            visualPlaceholder: 'emptyBlockSdt',
+            sdt: { type: 'structuredContent', scope: 'block', id: 'sdt-empty-uppercase' },
           },
         ],
         attrs: {},

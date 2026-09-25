@@ -3582,7 +3582,8 @@ async function measureParagraphBlock(
       const fallbackPlaceholderWidth =
         placeholderText.length * textRun.fontSize * 0.45 * getRunHorizontalScale(textRun);
       const placeholderWidth =
-        textRun.sdt?.type === 'structuredContent' && textRun.sdt.appearance === 'hidden'
+        textRun.visualPlaceholder === 'emptyInlineSdt' ||
+        (textRun.sdt?.type === 'structuredContent' && textRun.sdt.appearance === 'hidden')
           ? 0
           : measuredPlaceholderWidth > 0
             ? measuredPlaceholderWidth

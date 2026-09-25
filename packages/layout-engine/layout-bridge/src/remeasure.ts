@@ -233,6 +233,7 @@ function fontString(run: Run): string {
  */
 function runText(run: Run): string {
   if (isEmptySdtPlaceholderRun(run)) {
+    if (run.visualPlaceholder === 'emptyInlineSdt') return '';
     return run.sdt?.type === 'structuredContent' && run.sdt.appearance === 'hidden' ? '' : EMPTY_SDT_PLACEHOLDER_TEXT;
   }
 

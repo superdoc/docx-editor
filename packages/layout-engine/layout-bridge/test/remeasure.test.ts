@@ -472,6 +472,38 @@ describe('remeasureParagraph', () => {
       expect(computeLinePmRange(block, measure.lines[0])).toEqual({ pmStart: 12, pmEnd: 12 });
     });
 
+    it('measures an emptied unlocked inline placeholder as zero width', () => {
+      const block = createBlock([
+        textRun('', {
+          kind: 'text',
+          visualPlaceholder: 'emptyInlineSdt',
+          sdt: { type: 'structuredContent', scope: 'inline', id: 'empty-unlocked', lockMode: 'unlocked' },
+          pmStart: 4,
+          pmEnd: 4,
+        }),
+      ]);
+      const measure = remeasureParagraph(block, 500);
+
+      expect(measure.lines).toHaveLength(1);
+      expect(measure.lines[0].width).toBe(0);
+    });
+
+    it('measures an emptied sdtLocked placeholder as zero width', () => {
+      const block = createBlock([
+        textRun('', {
+          kind: 'text',
+          visualPlaceholder: 'emptyInlineSdt',
+          sdt: { type: 'structuredContent', scope: 'inline', id: 'empty-locked', lockMode: 'sdtLocked' },
+          pmStart: 4,
+          pmEnd: 4,
+        }),
+      ]);
+      const measure = remeasureParagraph(block, 500);
+
+      expect(measure.lines).toHaveLength(1);
+      expect(measure.lines[0].width).toBe(0);
+    });
+
     it('keeps a visible empty SDT placeholder atomic when it is wider than the line', () => {
       const block = createBlock([
         textRun('', {

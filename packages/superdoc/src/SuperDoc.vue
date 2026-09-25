@@ -2075,7 +2075,9 @@ const getV2EditorFailureMessage = (reason) => {
     case 'collaboration-v2-room-already-exists':
       return 'SuperDoc v2 was asked to create a collaboration room that already exists. Use roomMode: "join" to open it.';
     case 'collaboration-v2-room-initializing':
-      return 'The SuperDoc v2 collaboration room is still initializing. Join mode did not modify it.';
+      return 'The SuperDoc v2 collaboration room has not completed initialization. This open attempt did not modify it.';
+    case 'collaboration-v2-room-bootstrap-stalled':
+      return 'The SuperDoc v2 collaboration room bootstrap appears stalled. This open attempt did not modify it. Preserve the room data if a create retry cannot recover it.';
     case 'collaboration-open-intent-invalid':
       return 'SuperDoc v2 received an invalid collaboration room mode. No provider was connected.';
     case 'collaboration-config-invalid':
@@ -2121,6 +2123,7 @@ const onV2EditorFailed = (payload) => {
     reason === 'collaboration-v2-room-missing' ||
     reason === 'collaboration-v2-room-already-exists' ||
     reason === 'collaboration-v2-room-initializing' ||
+    reason === 'collaboration-v2-room-bootstrap-stalled' ||
     reason === 'collaboration-open-intent-invalid' ||
     reason === 'collaboration-config-invalid'
   ) {

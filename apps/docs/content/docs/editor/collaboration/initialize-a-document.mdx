@@ -17,6 +17,16 @@ Start with the [local two-editor example](/editor/collaboration/connect-two-edit
 
 `create` is not “open or create.” It fails if the room already exists. `join` does not initialize a missing room from the supplied file.
 
+### Recover an interrupted initialization
+
+A `create` attempt can stop after writing only part of a room. A later `join` may report that initialization is still in progress or has stalled. Do not treat that result as permission for several browsers or workers to retry `create` together. SuperDoc can refuse a partial room without writing to it, but the collaboration provider does not give SuperDoc an exclusive, server-authorized initializer.
+
+If your application retries automatically, reserve **one initializer per document and source revision** in your backend. Give it a server-verified room and attempt number. Your collaboration server must admit initialization writes only from that attempt, including writes sent during the connection's initial synchronization. Before assigning a replacement attempt, stop or reject writes from the previous attempt, including connections that were already open, and drain any writes already in flight. Expiring a timer or checking a credential only when a connection opens is not enough. Keep other editors out until the room is ready.
+
+Retry the existing room only if SuperDoc accepts it as resumable. If it cannot be resumed, leave the partial room intact. For a room that was **never published to editors**, your application may use its retained source DOCX to initialize a **new room ID**. Point editors at the new room only after a fresh peer can join and your server confirms that the room state has been stored. If the old room may contain edits, or its stored state is uncertain, recover from authoritative room storage instead; never silently replace those edits with an older DOCX.
+
+This is application and provider coordination, not a built-in cross-provider recovery guarantee. See the [server initialization checklist](/editor/collaboration/run-a-server#coordinate-initialization-and-retries) before enabling automatic retries. `collaboration-ready` confirms fresh-peer visibility for built-in browser providers, **not** durable storage; provider extensions retain their existing local-readiness behavior.
+
 ## 1. Create the room from a DOCX
 
 In the example, open `http://localhost:5173/?mode=create&user=Alex`. Alex's editor imports the sample DOCX into a new room and shows `Connected.` when it is ready.

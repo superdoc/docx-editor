@@ -51,6 +51,17 @@ The minimal server deliberately has no authentication or durable storage. Before
 
 [Initialize a shared document](/editor/collaboration/initialize-a-document) explains who imports the DOCX, when to create or join, and how browser and backend initialization differ. The Hocuspocus server transports and stores shared state; it does not import the DOCX itself.
 
+### Coordinate initialization and retries
+
+If initialization stops partway through, do not let multiple clients independently retry `create`. For automatic recovery, your server needs an authoritative, durable record of the document's source revision, current room ID, initialization state, and attempt number. Use it to:
+
+1. Reserve one initializer for a document and source revision; give only that attempt permission to write the initializing room. A second request waits rather than becoming another creator.
+2. Check the current attempt when admitting **every incoming document write**, including synchronization writes. On takeover, prevent and drain writes from the old attempt before allowing the new one. A connection-time authentication check alone cannot revoke an already-connected creator. If you run several server instances, they must use one authoritative room owner or a shared, atomic admission boundary.
+3. Let the sole replacement attempt retry the existing room only when it is safe to resume. Otherwise leave the partial room untouched. If it was never available to editors and you retained the source DOCX, initialize a new, unpublished room ID. If edits or storage state are uncertain, stop and recover the authoritative state instead of resetting from the DOCX.
+4. Publish the document-to-room mapping and admit editors only after a fresh connection validates the completed room **and** the server confirms durable storage. Test simultaneous retries, a delayed old creator, a disconnect during seeding, restart and restore, and an existing room with edits against your chosen provider.
+
+The local example's optional access check validates an identity and room **at connection time**; it does not reserve an initializer or fence later writes. Its optional file storage is also a development example, not a coordinated recovery service. Provider hooks differ: test the write-admission boundary with your provider before relying on this pattern in production.
+
 ### Persist the room separately from DOCX files
 
 [Save and restore a room](/editor/collaboration/save-and-restore-a-room) shows how to store binary Yjs state, restart the server, and reopen with edits intact. It also explains why DOCX exports and presence are separate from room storage.

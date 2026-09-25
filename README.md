@@ -65,7 +65,7 @@ steps.
 - **One Document API.** Query, target, change, and inspect receipts in the
   browser or through the
   [Node.js SDK](https://www.npmjs.com/package/@superdoc/sdk),
-  [Python SDK](https://github.com/superdoc/docx-editor/tree/main/packages/sdk/langs/python),
+  [Python SDK](https://docs.superdoc.dev/agents/automation/python-sdk/),
   [CLI](https://www.npmjs.com/package/@superdoc/cli), and
   [MCP server](https://www.npmjs.com/package/@superdoc/mcp).
 - **Agent-ready operations.** Agents use supported document operations instead

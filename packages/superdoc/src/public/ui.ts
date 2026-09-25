@@ -155,6 +155,7 @@ export type {
   TrackChangesListResult,
   ContentControlsListResult,
   ContentControlInfo,
+  ContentControlTarget,
   RichContentInsertInput,
   OperationCapabilityResolveResult,
   SDHtmlMarkdownSupportCheckResult,

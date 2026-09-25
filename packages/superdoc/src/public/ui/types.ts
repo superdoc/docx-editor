@@ -44,6 +44,7 @@ export type {
   TrackChangesListResult,
   ContentControlsListResult,
   ContentControlInfo,
+  ContentControlTarget,
   RichContentInsertInput,
   OperationCapabilityResolveResult,
   SDHtmlMarkdownSupportCheckResult,
@@ -98,6 +99,7 @@ import type {
   Receipt,
   ReceiptFailureCode,
   ContentControlInfo,
+  ContentControlTarget,
   StyleCatalogItem,
   StyleCatalogDiagnostic,
   StyleCatalogSourceStatus,
@@ -970,6 +972,14 @@ export interface SelectionHandle extends SnapshotSubscribable<SelectionSlice> {
    * Fails closed with a stable reason when the host cannot honor the target.
    */
   apply(target: SelectionTarget): WorkflowActionResult;
+  /**
+   * Place the browser caret before or after a live inline content control.
+   * Placement does not edit the document or create an undo entry.
+   */
+  placeAroundContentControl(input: {
+    target: ContentControlTarget & { kind: 'inline' };
+    edge: 'before' | 'after';
+  }): Promise<WorkflowActionResult>;
   /** Resolve a painted anchor rect for the current selection, when available. */
   getAnchorRect(input?: { placement?: 'start' | 'end' | 'center' }): ViewportRect | null;
   /**

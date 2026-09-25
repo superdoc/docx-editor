@@ -26,6 +26,7 @@ import type {
   StyleCatalogItem,
   StylesGetCatalogResult,
   ContentControlInfo,
+  ContentControlTarget,
   CommentAnchorCapture,
   WorkflowActionResult,
   WorkflowScrollResult,
@@ -187,6 +188,28 @@ void metadata.scrollIntoView({ id: 'cite-001' });
 const selection: SelectionHandle = ui.selection;
 const _selectionCurrent: AssertEqual<ReturnType<SelectionHandle['current']>, SelectionInfo | null> = true;
 const _getRects: AssertEqual<ReturnType<SelectionHandle['getRects']>, readonly ViewportRect[]> = true;
+const _placeAroundContentControlInput: AssertEqual<
+  Parameters<SelectionHandle['placeAroundContentControl']>,
+  [input: { target: ContentControlTarget & { kind: 'inline' }; edge: 'before' | 'after' }]
+> = true;
+const _placeAroundContentControlResult: AssertEqual<
+  ReturnType<SelectionHandle['placeAroundContentControl']>,
+  Promise<WorkflowActionResult>
+> = true;
+void selection.placeAroundContentControl({
+  target: { kind: 'inline', nodeType: 'sdt', nodeId: 'token' },
+  edge: 'after',
+});
+void selection.placeAroundContentControl({
+  // @ts-expect-error Outside caret placement only addresses an inline control.
+  target: { kind: 'block', nodeType: 'sdt', nodeId: 'token' },
+  edge: 'after',
+});
+void selection.placeAroundContentControl({
+  target: { kind: 'inline', nodeType: 'sdt', nodeId: 'token' },
+  // @ts-expect-error Only before and after are valid edges.
+  edge: 'middle',
+});
 void selection.current();
 void selection.getRects();
 void selection.getRects({ relativeTo: undefined as unknown as HTMLElement });

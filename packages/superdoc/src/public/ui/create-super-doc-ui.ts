@@ -9653,6 +9653,21 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
         return { ok: false, reason: SUPERDOC_UI_REASONS.hostCapabilityUnavailable };
       }
     },
+    placeAroundContentControl: async (input) => {
+      if (!getEditor()) return { ok: false, reason: SUPERDOC_UI_REASONS.notReady };
+      const resolved = getSelectionApplyHelper();
+      if (!('helper' in resolved)) return { ok: false, reason: resolved.reason };
+      if (typeof resolved.helper.placeAroundContentControl !== 'function') {
+        return { ok: false, reason: SUPERDOC_UI_REASONS.hostCapabilityUnavailable };
+      }
+      try {
+        const result = await resolved.helper.placeAroundContentControl(input);
+        recompute();
+        return normalizeHostSelectionApplyResult(result);
+      } catch {
+        return { ok: false, reason: SUPERDOC_UI_REASONS.targetUnresolved };
+      }
+    },
     getAnchorRect: (input?: { placement?: 'start' | 'end' | 'center' }): ViewportRect | null => {
       // Prefer the v2 painted/edit-geometry selection rect from the host so the
       // anchor matches the painted layout (not the offscreen ProseMirror DOM).

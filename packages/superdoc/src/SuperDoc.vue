@@ -1,5 +1,6 @@
 <script setup>
 import { recordInteraction } from './internal/diagnostics/interaction-history.js';
+import { executeFirstPartyCommandAsync, registerFirstPartyCommandMutation } from './public/ui/create-super-doc-ui.js';
 import '@superdoc/common/styles/common-styles.css';
 import { superdocIcons } from './icons.js';
 //prettier-ignore
@@ -555,7 +556,7 @@ const installV2CommandShortcutBinding = ({ documentId, bindEditShortcuts }) => {
       executeAsync: (commandId, payload) => {
         const ui = getSuperDocUI();
         if (!ui) return Promise.resolve(UNAVAILABLE_COMMAND_RESULT);
-        return ui.commands.executeAsync(commandId, payload);
+        return executeFirstPartyCommandAsync(ui, commandId, payload);
       },
       // Fail closed: a shortcut must never read as enabled when the shell has
       // outlived its SuperDoc instance.
@@ -830,6 +831,7 @@ const onV2EditorReady = (payload) => {
   clearV2MutationRejectionNotifications(payload.documentId ?? null);
   const {
     host,
+    firstPartyCommandMutation,
     mount,
     documentId,
     capabilities,
@@ -1284,6 +1286,9 @@ const onV2EditorReady = (payload) => {
     if (doc) doc.provider = provider;
   }
   proxy.$superdoc.broadcastEditorCreate(facade);
+  if (host && firstPartyCommandMutation) {
+    registerFirstPartyCommandMutation(proxy.$superdoc, host, firstPartyCommandMutation);
+  }
   installV2CommandShortcutBinding({ documentId, bindEditShortcuts });
   installV2SessionShortcutBinding({ documentId, bindSessionShortcuts, documentApi });
   if (collaborationProvider && resolveDocumentV2Collaboration(getDocument(documentId)).state === 'valid') {

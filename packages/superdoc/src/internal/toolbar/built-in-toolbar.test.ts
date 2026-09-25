@@ -71,7 +71,31 @@ function makeHost(overrides: Record<string, unknown> = {}) {
   return host;
 }
 
-function makeFocusableHost() {
+function makeCommandDoc(extra: Record<string, unknown>) {
+  const selectionTarget = {
+    kind: 'selection',
+    start: { kind: 'text', blockId: 'P1', offset: 0 },
+    end: { kind: 'text', blockId: 'P1', offset: 3 },
+  };
+  return {
+    comments: { list: () => ({ items: [] }) },
+    trackChanges: { list: () => ({ items: [] }) },
+    selection: {
+      current: () => ({
+        empty: false,
+        target: { kind: 'text', segments: [{ blockId: 'P1', range: { start: 0, end: 3 } }] },
+        selectionTarget,
+        activeMarks: [],
+        activeCommentIds: [],
+        activeChangeIds: [],
+        text: 'one',
+      }),
+    },
+    ...extra,
+  };
+}
+
+function makeFocusableHost(docExtra: Record<string, unknown> = {}) {
   const editorSurface = document.createElement('div');
   editorSurface.setAttribute('role', 'textbox');
   editorSurface.setAttribute('aria-label', 'SuperDoc body (v2)');
@@ -79,7 +103,11 @@ function makeFocusableHost() {
   document.body.append(editorSurface);
 
   const focus = vi.fn(() => editorSurface.focus());
-  const activeEditor = { id: 'editor-1', focus };
+  const activeEditor = {
+    id: 'editor-1',
+    focus,
+    ...(Object.keys(docExtra).length > 0 ? { doc: makeCommandDoc(docExtra) } : {}),
+  };
   return { editorSurface, focus, host: makeHost({ activeEditor, focus }) };
 }
 
@@ -763,21 +791,18 @@ describe('BuiltInToolbar', () => {
     toolbar.destroy();
   });
 
-  it('routes built-in commands through executeAsync and refreshes after settlement', async () => {
-    const toolbar = new BuiltInToolbar({ superdoc: makeHost() });
-    const execute = vi.fn();
-    const executeAsync = vi.fn(() => Promise.resolve({ success: true }));
-    toolbar.ui.commands.execute = execute;
-    toolbar.ui.commands.executeAsync = executeAsync;
+  it('runs a built-in command and refreshes after settlement', async () => {
+    const bold = vi.fn(() => ({ success: true }));
+    const toolbar = new BuiltInToolbar({
+      superdoc: makeHost({ activeEditor: { doc: makeCommandDoc({ format: { bold } }) } }),
+    });
     const updateToolbarState = vi.spyOn(toolbar, 'updateToolbarState');
 
     toolbar.emitCommand({ item: toolbar.getToolbarItemByName('bold') });
 
-    expect(executeAsync).toHaveBeenCalledWith('bold');
-    expect(execute).not.toHaveBeenCalled();
     const callsAfterEmit = updateToolbarState.mock.calls.length;
-    await Promise.resolve();
-    expect(updateToolbarState.mock.calls.length).toBeGreaterThan(callsAfterEmit);
+    await vi.waitFor(() => expect(bold).toHaveBeenCalled());
+    await vi.waitFor(() => expect(updateToolbarState.mock.calls.length).toBeGreaterThan(callsAfterEmit));
     toolbar.destroy();
   });
 
@@ -843,15 +868,14 @@ describe('BuiltInToolbar', () => {
   it('returns focus to the V2 editor after selecting an alignment', async () => {
     const toolbarContainer = document.createElement('div');
     document.body.append(toolbarContainer);
-    const { editorSurface, focus, host } = makeFocusableHost();
+    const setAlignment = vi.fn(() => ({ success: true }));
+    const { editorSurface, focus, host } = makeFocusableHost({ format: { paragraph: { setAlignment } } });
     const toolbar = new BuiltInToolbar({
       superdoc: host,
       selector: toolbarContainer,
       groups: { center: ['textAlign'] },
       hideButtons: false,
     });
-    const executeAsync = vi.fn(() => Promise.resolve(true));
-    toolbar.ui.commands.executeAsync = executeAsync;
     toolbar.getToolbarItemByName('textAlign')!.disabled.value = false;
     await nextTick();
 
@@ -867,7 +891,12 @@ describe('BuiltInToolbar', () => {
     centerOption?.click();
     await nextTick();
 
-    expect(executeAsync).toHaveBeenCalledWith('text-align', 'center');
+    await vi.waitFor(() =>
+      expect(setAlignment).toHaveBeenCalledWith({
+        target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P1' },
+        alignment: 'center',
+      }),
+    );
     expect(toolbar.getToolbarItemByName('textAlign')?.expand.value).toBe(false);
     expect(focus).toHaveBeenCalled();
     expect(document.activeElement).toBe(editorSurface);
@@ -877,15 +906,14 @@ describe('BuiltInToolbar', () => {
   it('returns focus to the V2 editor after selecting a line height', async () => {
     const toolbarContainer = document.createElement('div');
     document.body.append(toolbarContainer);
-    const { editorSurface, focus, host } = makeFocusableHost();
+    const setSpacing = vi.fn(() => ({ success: true }));
+    const { editorSurface, focus, host } = makeFocusableHost({ format: { paragraph: { setSpacing } } });
     const toolbar = new BuiltInToolbar({
       superdoc: host,
       selector: toolbarContainer,
       groups: { center: ['lineHeight'] },
       hideButtons: false,
     });
-    const executeAsync = vi.fn(() => Promise.resolve(true));
-    toolbar.ui.commands.executeAsync = executeAsync;
     toolbar.getToolbarItemByName('lineHeight')!.disabled.value = false;
     await nextTick();
 
@@ -903,7 +931,13 @@ describe('BuiltInToolbar', () => {
     option?.click();
     await nextTick();
 
-    expect(executeAsync).toHaveBeenCalledWith('line-height', 1.15);
+    await vi.waitFor(() =>
+      expect(setSpacing).toHaveBeenCalledWith({
+        target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P1' },
+        line: 276,
+        lineRule: 'auto',
+      }),
+    );
     expect(toolbar.getToolbarItemByName('lineHeight')?.expand.value).toBe(false);
     expect(focus).toHaveBeenCalled();
     expect(document.activeElement).toBe(editorSurface);
@@ -1126,12 +1160,11 @@ describe('BuiltInToolbar', () => {
     toolbar.destroy();
   });
 
-  it('routes a selected linked-style catalogue item through the linked-style command as a style id', () => {
-    const toolbar = new BuiltInToolbar({ superdoc: makeHost() });
-    const execute = vi.fn();
-    const executeAsync = vi.fn(() => Promise.resolve(true));
-    toolbar.ui.commands.execute = execute;
-    toolbar.ui.commands.executeAsync = executeAsync;
+  it('routes a selected linked-style catalogue item through the linked-style command as a style id', async () => {
+    const setStyle = vi.fn(() => ({ success: true }));
+    const toolbar = new BuiltInToolbar({
+      superdoc: makeHost({ activeEditor: { doc: makeCommandDoc({ styles: { paragraph: { setStyle } } }) } }),
+    });
     let activeStyleId: string | null = 'Heading1';
     toolbar.ui.styles.getQuickGallery = () => [{ id: 'Heading1', name: 'Heading 1' }];
     toolbar.ui.styles.getActiveParagraphStyle = () => ({
@@ -1157,8 +1190,12 @@ describe('BuiltInToolbar', () => {
     expect(props.selectedOption).toBe('Heading1');
     props.onSelect?.({ id: 'Heading1', name: 'Heading 1' });
 
-    expect(executeAsync).toHaveBeenCalledWith('linked-style', 'Heading1');
-    expect(execute).not.toHaveBeenCalled();
+    await vi.waitFor(() =>
+      expect(setStyle).toHaveBeenCalledWith({
+        target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P1' },
+        styleId: 'Heading1',
+      }),
+    );
 
     activeStyleId = null;
     const mixedVNode = option.render();

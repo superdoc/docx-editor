@@ -122,6 +122,39 @@ import { INLINE_PROPERTY_BY_KEY, type InlineRunPatchKey } from '@superdoc/docume
 type AnyFn = (...args: any[]) => any;
 type LooseRecord = Record<string, any>;
 
+type FirstPartyCommandMutation = {
+  supports: (memberPath: string) => boolean;
+  run: (memberPath: string, args: readonly unknown[]) => unknown;
+  runListApply: (input: unknown) => Promise<boolean>;
+};
+
+const firstPartyCommandMutations = new WeakMap<object, WeakMap<object, FirstPartyCommandMutation>>();
+const firstPartyCommandExecutors = new WeakMap<
+  object,
+  (id: string, payload?: unknown) => Promise<CommandExecutionResult>
+>();
+
+export function registerFirstPartyCommandMutation(
+  superdoc: object,
+  host: object,
+  mutation: FirstPartyCommandMutation,
+): void {
+  let hosts = firstPartyCommandMutations.get(superdoc);
+  if (!hosts) {
+    hosts = new WeakMap();
+    firstPartyCommandMutations.set(superdoc, hosts);
+  }
+  hosts.set(host, mutation);
+}
+
+export function executeFirstPartyCommandAsync(
+  ui: Pick<SuperDocUI, 'commands'>,
+  id: string,
+  payload?: unknown,
+): Promise<CommandExecutionResult> {
+  return firstPartyCommandExecutors.get(ui)?.(id, payload) ?? ui.commands.executeAsync(id, payload);
+}
+
 type WorkerMessageBenchContext = {
   token: object;
   commandId: string;
@@ -2123,6 +2156,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     keyboardSelecting: false,
   };
   let painterCaptureEpoch = 0;
+  let painterCommandDoc: LooseRecord | null = null;
   const painterModeListeners = new Set<(mode: FormatPainterMode) => void>();
   // Projected inline values frozen at the last settled, non-empty selection recompute,
   // paired with the selection key they were computed for. captureFormatPainter uses
@@ -2173,8 +2207,11 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     contextAt,
   };
 
+  let firstPartyCommandDoc: LooseRecord | null | undefined;
+
   /** Read the live browser Document API facade (or null). */
   const getDoc = (): LooseRecord | null => {
+    if (firstPartyCommandDoc !== undefined) return firstPartyCommandDoc;
     const editor = getEditor();
     const doc = editor?.doc;
     return doc && typeof doc === 'object' ? (doc as LooseRecord) : null;
@@ -2213,6 +2250,33 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     const editor = getEditor();
     const host = editor?.host;
     return host && typeof host === 'object' ? (host as LooseRecord) : null;
+  };
+
+  const createFirstPartyCommandDoc = (): LooseRecord | null => {
+    const editor = getEditor();
+    const doc = editor?.doc as LooseRecord | null;
+    if (editor?.editorVersion !== 2) return doc;
+    const host = getHost();
+    const mutation = host ? firstPartyCommandMutations.get(superdoc)?.get(host) : null;
+    if (!doc || !host || !mutation) return null;
+    const wrap = (source: LooseRecord, prefix: string): LooseRecord =>
+      new Proxy(source, {
+        get(target, key, receiver) {
+          const value = Reflect.get(target, key, receiver);
+          if (typeof key !== 'string') return value;
+          const memberPath = prefix ? `${prefix}.${key}` : key;
+          if (typeof value === 'function' && mutation.supports(memberPath)) {
+            return (...args: unknown[]) => {
+              if (getEditor() !== editor || getHost() !== host || editor.doc !== doc) return false;
+              return mutation.run(memberPath, args);
+            };
+          }
+          return value && (typeof value === 'object' || typeof value === 'function')
+            ? wrap(value as LooseRecord, memberPath)
+            : value;
+        },
+      });
+    return wrap(doc, '');
   };
 
   const resolveActiveHeaderFooterSlot = (story: LooseRecord): LooseRecord | null => {
@@ -7505,7 +7569,13 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     const editCommands = getEditCommands();
     const lists = editCommands?.lists as LooseRecord | undefined;
     const apply = lists?.apply;
-    if (typeof apply !== 'function') return false;
+    const host = getHost();
+    const firstPartyMutation =
+      firstPartyCommandDoc !== undefined && getEditor()?.editorVersion === 2 && host
+        ? firstPartyCommandMutations.get(superdoc)?.get(host)
+        : null;
+    if (firstPartyCommandDoc !== undefined && getEditor()?.editorVersion === 2 && !firstPartyMutation) return false;
+    if (!firstPartyMutation && typeof apply !== 'function') return false;
     // The style dropdowns emit a bare style-key string (e.g. 'upper-roman');
     // the public command surface also accepts an options object. Normalize both
     // into { behavior?, preset?, continuity? }. The command id owns `kind`.
@@ -7520,7 +7590,9 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     if (preset !== undefined) input.preset = preset;
     if (continuity !== undefined) input.continuity = continuity;
     try {
-      return settleCommandExecution(apply.call(lists, input));
+      return settleCommandExecution(
+        firstPartyMutation ? firstPartyMutation.runListApply(input) : apply.call(lists, input),
+      );
     } catch {
       return false;
     }
@@ -8339,19 +8411,11 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     const doc = getDoc();
     const linksApi = doc?.hyperlinks as LooseRecord | undefined;
     if (!linksApi) return false;
-    // SD-4816 §5: wrap/insert/patch/remove-by-address route through the
-    // trusted host hyperlink command instead of the raw, customer-reachable
-    // Document API facade (`linksApi`), so the toolbar's "Insert Link" button
-    // is correctly actor-tagged 'human' — same fix as useContextMenu.ts's
-    // context-menu hyperlink actions. `linksApi` stays in use for reads
-    // (`resolveCurrentHyperlink`) and for the separate storyId+hyperlinkNodeId
-    // addressing scheme below (`requestedHyperlinkTarget`/`updateTarget`),
-    // which is a different caller contract this fix does not cover.
     const hyperlinkHost = getHost();
     const hyperlinkHandles = typeof hyperlinkHost?.getHandles === 'function' ? hyperlinkHost.getHandles() : null;
-    const trustedLinksApi = (hyperlinkHandles?.editing as LooseRecord | undefined)?.hyperlinks as
-      | LooseRecord
-      | undefined;
+    const trustedLinksApi = firstPartyCommandDoc
+      ? ((hyperlinkHandles?.editing as LooseRecord | undefined)?.hyperlinks as LooseRecord | undefined)
+      : linksApi;
     const record = readLinkPayloadRecord(payload);
     const href = readLinkPayloadHref(payload);
     const payloadTarget = readLinkPayloadTarget(payload);
@@ -8600,19 +8664,15 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       if (typeof record.alt === 'string') input.alt = record.alt;
       if (typeof record.title === 'string') input.title = record.title;
       if (record.size && typeof record.size === 'object') input.size = record.size;
-      // SD-4816 §5: route through the trusted host image command instead of
-      // the raw, customer-reachable Document API facade (`op`), so the
-      // toolbar image picker is correctly actor-tagged 'human' — same fix as
-      // `executeLinkCommand`'s hyperlink routing. Drag-drop/paste already
-      // goes through a separate, already-trusted v2-host path.
       const imageHost = getHost();
       const imageHandles = typeof imageHost?.getHandles === 'function' ? imageHost.getHandles() : null;
-      const trustedImageCommands = (imageHandles?.editing as LooseRecord | undefined)?.images as
-        | LooseRecord
-        | undefined;
-      if (typeof trustedImageCommands?.create !== 'function') return false;
+      const trustedImageCommands = firstPartyCommandDoc
+        ? ((imageHandles?.editing as LooseRecord | undefined)?.images as LooseRecord | undefined)
+        : null;
+      const create = firstPartyCommandDoc ? trustedImageCommands?.create : op;
+      if (typeof create !== 'function') return false;
       try {
-        return callEditorMutation(descriptor.docRoute!, trustedImageCommands.create as AnyFn, input);
+        return callEditorMutation(descriptor.docRoute!, create as AnyFn, input);
       } catch {
         return false;
       }
@@ -8626,6 +8686,17 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     } catch {
       return false;
     }
+  };
+
+  const tableInsertionCommands = (): LooseRecord | null => {
+    if (firstPartyCommandDoc === null) return null;
+    const host = getHost();
+    if (!host) return null;
+    if (firstPartyCommandDoc !== undefined) {
+      const handles = typeof host.getHandles === 'function' ? host.getHandles() : null;
+      return (handles?.editing as LooseRecord | undefined)?.tables ?? null;
+    }
+    return typeof host.getCodeTableEditingCommands === 'function' ? host.getCodeTableEditingCommands() : null;
   };
 
   /**
@@ -8644,18 +8715,14 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     if (!input) return false;
     try {
       if (spec.action === 'insert-row-before' || spec.action === 'insert-row-after') {
-        const host = getHost();
-        const handles = typeof host?.getHandles === 'function' ? host.getHandles() : null;
-        const tableCommands = (handles?.editing as LooseRecord | undefined)?.tables as LooseRecord | undefined;
+        const tableCommands = tableInsertionCommands();
         if (typeof tableCommands?.insertRow !== 'function') return false;
         const options = editorMutationOptionsForRoute(descriptor.docRoute!);
         if (options && options.success === false) return options;
         return options ? tableCommands.insertRow(input, options) : tableCommands.insertRow(input);
       }
       if (spec.action === 'insert-column-before' || spec.action === 'insert-column-after') {
-        const host = getHost();
-        const handles = typeof host?.getHandles === 'function' ? host.getHandles() : null;
-        const tableCommands = (handles?.editing as LooseRecord | undefined)?.tables as LooseRecord | undefined;
+        const tableCommands = tableInsertionCommands();
         if (typeof tableCommands?.insertColumn !== 'function') return false;
         const options = editorMutationOptionsForRoute(descriptor.docRoute!);
         if (options && options.success === false) return options;
@@ -8825,9 +8892,15 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       let releaseScheduledMutation: (() => void) | null = null;
       try {
         const commandEditor = getEditor();
+        const commandDocSource = commandEditor?.doc;
         const commandMode = readDocumentMode();
         const mutate = () => {
-          if (getEditor() !== commandEditor || getDoc() !== doc || readDocumentMode() !== commandMode) return false;
+          if (
+            getEditor() !== commandEditor ||
+            commandEditor?.doc !== commandDocSource ||
+            readDocumentMode() !== commandMode
+          )
+            return false;
           return callInlineFormatMutation(route, op, input);
         };
         const selectionSignature = selectionInlineValueSignature(state.selection) ?? selectionKey(state.selection);
@@ -8892,17 +8965,26 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
   // Format-painter state machine
   // ---------------------------------------------------------------------------
 
-  const executeCommand = (id: string, payload?: unknown, context?: ViewportContext): CommandExecutionResult => {
+  const runCommand = (
+    id: string,
+    payload: unknown,
+    context: ViewportContext | undefined,
+    firstParty: boolean,
+  ): CommandExecutionResult => {
     const actionId = beginInteraction(superdoc, 'command:started', () => ({
       commandId: id,
       selection: state.selection,
     }));
     let result: CommandExecutionResult;
+    const previousCommandDoc = firstPartyCommandDoc;
+    firstPartyCommandDoc = firstParty && !customCommands.has(id) ? createFirstPartyCommandDoc() : undefined;
     try {
       result = executeCommandInternal(id, payload, context);
     } catch (error) {
       recordInteraction(superdoc, 'command:settled', () => ({ actionId, commandId: id, outcome: 'threw' }));
       throw error;
+    } finally {
+      firstPartyCommandDoc = previousCommandDoc;
     }
     const settled = (value: CommandExecutionResult) =>
       recordInteraction(superdoc, 'command:settled', () => ({
@@ -8923,8 +9005,12 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     return result;
   };
 
+  const executeCommand = (id: string, payload?: unknown, context?: ViewportContext): CommandExecutionResult =>
+    runCommand(id, payload, context, false);
+
   const exitFormatPainter = (): void => {
     painterCaptureEpoch += 1;
+    painterCommandDoc = null;
     painter = {
       mode: 'idle',
       snapshot: null,
@@ -8938,6 +9024,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
   };
 
   const executeCopyFormat = async (): Promise<boolean> => {
+    const commandDoc = firstPartyCommandDoc ?? null;
     // Toolbar state is optimistic, but format-painter capture must snapshot the
     // authoritative source formatting. An async toolbar command may still be
     // preparing its selection before the mutation scheduler becomes active, so
@@ -8988,6 +9075,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       sourceSelectionKey: selectionKey(captureSlice),
       lastClickAt: now,
     };
+    painterCommandDoc = commandDoc;
 
     for (const cb of painterModeListeners) cb(painter.mode);
     recompute();
@@ -9261,7 +9349,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       return;
     }
 
-    const doc = getDoc();
+    const doc = painterCommandDoc ?? getDoc();
     if (!doc) return;
 
     const targetSelection = selectionSliceFromInfo(selection, 'ready');
@@ -9381,19 +9469,20 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     recompute();
   };
 
-  const executeCommandAsync = (
+  const runCommandAsync = (
     id: string,
-    payload?: unknown,
-    context?: ViewportContext,
+    payload: unknown,
+    context: ViewportContext | undefined,
+    firstParty: boolean,
   ): Promise<CommandExecutionResult> => {
     const prepared = prepareCommandSelectionAsync(id, payload);
     const settlement = prepared
       ? prepared.then(() => {
-          executeCommand(id, payload, context);
+          runCommand(id, payload, context, firstParty);
           return lastCommandSettlement;
         })
       : (() => {
-          executeCommand(id, payload, context);
+          runCommand(id, payload, context, firstParty);
           return lastCommandSettlement;
         })();
     if (getCommandDescriptor(id)?.inline?.kind === 'toggle') {
@@ -9401,6 +9490,13 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     }
     return settlement;
   };
+  const executeCommandAsync = (
+    id: string,
+    payload?: unknown,
+    context?: ViewportContext,
+  ): Promise<CommandExecutionResult> => runCommandAsync(id, payload, context, false);
+  const executeFirstPartyCommandAsync = (id: string, payload?: unknown): Promise<CommandExecutionResult> =>
+    runCommandAsync(id, payload, undefined, true);
 
   const makeCommandHandle = <Id extends string>(id: Id): CommandHandle<Id> => ({
     id,
@@ -10510,6 +10606,15 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     if (permissionIds.length > 0 && trackedChangeDecisionPermissionReason(kind, permissionIds)) return false;
     const bulkBlocked = bulkTrackDecisionBlockedReason({ kind, scope: isAllTarget ? 'all' : 'id' }, tcApi);
     if (bulkBlocked) return false;
+    if (firstPartyCommandDoc) {
+      const host = getHost();
+      const handles = safeCall<LooseRecord | null>(
+        typeof host?.getHandles === 'function' ? () => host.getHandles() : undefined,
+        null,
+      );
+      const decide = (handles?.trackChanges as LooseRecord | undefined)?.decide;
+      return typeof decide === 'function' ? decide({ decision: kind, target }) : false;
+    }
     const legacyName = isAllTarget ? `${kind}All` : kind;
     // A story-scoped per-id decision MUST go through `decide`: the legacy
     // `tcApi[kind](id)` method takes only a bare id and would silently drop the
@@ -12190,6 +12295,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     // before teardown still reaches its listeners and calls back into UI that
     // has already unmounted.
     painterCaptureEpoch += 1;
+    painterCommandDoc = null;
     painterModeListeners.clear();
     // In-flight search work outlives this call the same way a painter capture
     // does; moving the token is what stops its continuation from publishing.
@@ -12256,6 +12362,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     destroy,
   };
   controllerRef = controller;
+  firstPartyCommandExecutors.set(controller, executeFirstPartyCommandAsync);
   return controller;
 }
 

@@ -436,8 +436,12 @@ describe('superdoc.ui — sole owner', () => {
   }
 
   it('is the only module that constructs a controller', () => {
-    const importers = [...sourceModules()]
-      .filter(([, source]) => /from '[^']*create-super-doc-ui\.js'/.test(source))
+    const constructors = [...sourceModules()]
+      .filter(
+        ([path, source]) =>
+          path !== 'public/ui/create-super-doc-ui.ts' &&
+          source.split('\n').some((line) => !/^\s*(?:\/\/|\*)/.test(line) && /\bcreateSuperDocUI\s*\(/.test(line)),
+      )
       .map(([path]) => path)
       .sort();
 
@@ -447,7 +451,7 @@ describe('superdoc.ui — sole owner', () => {
     // host whose optional `ui` is absent, and own what they build. Nothing else
     // may construct one: a controller built elsewhere would diverge from the
     // state the built-in surfaces read.
-    expect(importers).toEqual(['core/SuperDoc.ts', 'public/ui.ts', 'public/ui/react.ts', 'public/ui/vue.ts']);
+    expect(constructors).toEqual(['core/SuperDoc.ts', 'public/ui/react.ts', 'public/ui/vue.ts']);
   });
 
   it('is the only module that destroys a controller', () => {

@@ -23,6 +23,7 @@
  * `headless-toolbar*` subpath is reintroduced.
  */
 import { EventEmitter } from 'eventemitter3';
+import { executeFirstPartyCommandAsync } from '../../public/ui/create-super-doc-ui.js';
 import { createApp, shallowRef } from 'vue';
 import { vClickOutside } from '@superdoc/common';
 
@@ -65,8 +66,11 @@ function executeCommand(ui, commandId, argument, options = {}) {
   if (typeof ui.commands.has === 'function' && !ui.commands.has(commandId)) return false;
   const execute = typeof ui.commands.executeAsync === 'function' ? ui.commands.executeAsync : ui.commands.execute;
   if (typeof execute !== 'function') return false;
-  const result =
-    argument === undefined ? execute.call(ui.commands, commandId) : execute.call(ui.commands, commandId, argument);
+  const result = options.firstParty
+    ? executeFirstPartyCommandAsync(ui, commandId, argument)
+    : argument === undefined
+      ? execute.call(ui.commands, commandId)
+      : execute.call(ui.commands, commandId, argument);
   const reportFailure = (settled) => {
     if (!options.reportUnhandled || settled !== false) return;
     options.onError?.(
@@ -911,6 +915,7 @@ export class BuiltInToolbar extends EventEmitter {
     const name = item?.name?.value;
     if (!name) return false;
     const callbacks = {
+      firstParty: true,
       onSettled: () => this.updateToolbarState(),
       onError: (error) => this.#emitCommandException(error, name),
     };
@@ -960,6 +965,7 @@ export class BuiltInToolbar extends EventEmitter {
             'image',
             { src },
             {
+              firstParty: true,
               onSettled: () => this.updateToolbarState(),
               onError: (error) => this.#emitCommandException(error, 'image'),
             },

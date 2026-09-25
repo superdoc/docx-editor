@@ -1,5 +1,6 @@
 import { afterEach, describe, it, expect, vi } from 'vite-plus/test';
 import { BUILT_IN_COMMAND_IDS, createSuperDocUI, shallowEqual } from './ui.js';
+import { executeFirstPartyCommandAsync, registerFirstPartyCommandMutation } from './ui/create-super-doc-ui.js';
 import { SUPERDOC_UI_REASONS } from './ui/reasons.js';
 import { COMMAND_CATALOG, ALL_BUILT_IN_COMMAND_IDS } from './ui/commands.js';
 import { LIST_PRESET_IDS } from '@superdoc/document-api';
@@ -12246,18 +12247,26 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
     });
   });
 
-  it('SD-4816: link does not fall back to the raw facade when the trusted host handle is absent', async () => {
+  it('SD-4816: public link calls remain available while first-party link calls fail closed without a host handle', async () => {
     const facadeWrap = vi.fn(() => ({ success: true }));
+    const host = { getHandles: () => ({ editing: {} }) };
     const superdoc = makeBlockSuperdoc(
       { hyperlinks: { wrap: facadeWrap, list: vi.fn(() => ({ items: [] })), patch: vi.fn(), remove: vi.fn() } },
-      { noHyperlinkHostMirror: true },
+      { noHyperlinkHostMirror: true, editorExtra: { editorVersion: 2, host } },
     );
     const ui = createSuperDocUI({ superdoc });
-    // The old bug: executeLinkCommand read `doc.hyperlinks` directly, so the
-    // toolbar's "Insert Link" button would have silently succeeded via the
-    // raw, customer-reachable facade even without a trusted host handle.
-    expect(await ui.toolbar.execute('link', 'https://example.com')).toBe(false);
+    const trustedRun = vi.fn();
+    registerFirstPartyCommandMutation(superdoc, host, {
+      supports: (memberPath) => memberPath === 'hyperlinks.wrap',
+      run: trustedRun,
+      runListApply: async () => false,
+    });
+    expect(await ui.toolbar.execute('link', 'https://example.com')).toMatchObject({ success: true });
+    expect(facadeWrap).toHaveBeenCalled();
+    facadeWrap.mockClear();
+    expect(await executeFirstPartyCommandAsync(ui, 'link', 'https://example.com')).toBe(false);
     expect(facadeWrap).not.toHaveBeenCalled();
+    expect(trustedRun).not.toHaveBeenCalled();
   });
 
   it('link wraps the selected text through hyperlinks.wrap when there is no active link', async () => {
@@ -13094,16 +13103,27 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
     );
   });
 
-  it('SD-4816: image does not fall back to the raw facade when the trusted host handle is absent', async () => {
+  it('SD-4816: public image calls remain available while first-party image calls fail closed without a host handle', async () => {
     const facadeImage = vi.fn(() => ({ success: true }));
-    const superdoc = makeBlockSuperdoc({ create: { image: facadeImage } }, { noImageHostMirror: true });
+    const host = { getHandles: () => ({ editing: {} }) };
+    const superdoc = makeBlockSuperdoc(
+      { create: { image: facadeImage } },
+      { noImageHostMirror: true, editorExtra: { editorVersion: 2, host } },
+    );
     const ui = createSuperDocUI({ superdoc });
-    // The old bug: executeCreateCommand's image branch read `doc.create.image`
-    // directly, so the toolbar's image picker would have silently succeeded
-    // via the raw, customer-reachable facade even without a trusted host
-    // handle.
-    expect(await ui.toolbar.execute('image', { src: 'data:image/png;base64,AAAA' })).toBe(false);
+    const trustedRun = vi.fn();
+    registerFirstPartyCommandMutation(superdoc, host, {
+      supports: (memberPath) => memberPath === 'create.image',
+      run: trustedRun,
+      runListApply: async () => false,
+    });
+    const payload = { src: 'data:image/png;base64,AAAA' };
+    expect(await ui.toolbar.execute('image', payload)).toMatchObject({ success: true });
+    expect(facadeImage).toHaveBeenCalled();
+    facadeImage.mockClear();
+    expect(await executeFirstPartyCommandAsync(ui, 'image', payload)).toBe(false);
     expect(facadeImage).not.toHaveBeenCalled();
+    expect(trustedRun).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -13422,8 +13442,9 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
         editorExtra: {
           host: {
             getTableContext,
-            getHandles: () => ({
-              editing: { tables: { insertRow: insertRowCommand, insertColumn: insertColumnCommand } },
+            getCodeTableEditingCommands: () => ({
+              insertRow: insertRowCommand,
+              insertColumn: insertColumnCommand,
             }),
           },
         },
@@ -13461,6 +13482,54 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
     expect(setBorders).toHaveBeenCalledWith({ nodeId: 'TBL1', mode: 'applyTo', applyTo: 'all', border: null });
     expect(await ui.toolbar.execute('table-delete')).toMatchObject({ success: true });
     expect(deleteTable).toHaveBeenCalledWith({ nodeId: 'TBL1' });
+  });
+
+  it('does not insert a table row through the raw facade when selection-aware host commands are unavailable', async () => {
+    const insertRow = vi.fn(() => ({ success: true }));
+    const superdoc = makeBlockSuperdoc(
+      { tables: { insertRow } },
+      {
+        editorExtra: {
+          host: {
+            getTableContext: () => ({
+              inTable: true,
+              table: { nodeId: 'TBL1', rows: 2, columns: 2 },
+              row: { index: 0 },
+              column: { index: 0 },
+              cell: { nodeId: 'CELL-0-0' },
+            }),
+          },
+        },
+      },
+    );
+    const ui = createSuperDocUI({ superdoc });
+
+    expect(await ui.toolbar.execute('table-add-row-after')).toBe(false);
+    expect(insertRow).not.toHaveBeenCalled();
+  });
+
+  it('does not run a first-party table insertion through the code route when its trusted bridge is absent', async () => {
+    const codeInsertRow = vi.fn(() => ({ success: true }));
+    const humanInsertRow = vi.fn(() => ({ success: true }));
+    const host = {
+      getTableContext: () => ({
+        inTable: true,
+        table: { nodeId: 'TBL1', rows: 2, columns: 2 },
+        row: { index: 0 },
+        column: { index: 0 },
+        cell: { nodeId: 'CELL-0-0' },
+      }),
+      getCodeTableEditingCommands: () => ({ insertRow: codeInsertRow }),
+      getHandles: () => ({ editing: { tables: { insertRow: humanInsertRow } } }),
+    };
+    const superdoc = makeBlockSuperdoc({ tables: { insertRow: vi.fn() } }, { editorExtra: { editorVersion: 2, host } });
+    const ui = createSuperDocUI({ superdoc });
+
+    expect(await executeFirstPartyCommandAsync(ui, 'table-add-row-after')).toBe(false);
+    expect(codeInsertRow).not.toHaveBeenCalled();
+    expect(humanInsertRow).not.toHaveBeenCalled();
+    expect(await ui.toolbar.execute('table-add-row-after')).toMatchObject({ success: true });
+    expect(codeInsertRow).toHaveBeenCalledOnce();
   });
 
   it('treats a multi-cell table selection as mergeable but not splittable', async () => {
@@ -13541,8 +13610,9 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
         editorExtra: {
           host: {
             getTableContext,
-            getHandles: () => ({
-              editing: { tables: { insertRow: insertRowCommand, insertColumn: insertColumnCommand } },
+            getCodeTableEditingCommands: () => ({
+              insertRow: insertRowCommand,
+              insertColumn: insertColumnCommand,
             }),
           },
         },

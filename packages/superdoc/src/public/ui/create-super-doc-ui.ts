@@ -637,6 +637,8 @@ function layoutStoryDatasetToStoryLocator(raw: unknown): unknown {
     case 'header':
     case 'footer':
       return decoded.id ? { kind: 'story', storyType: 'headerFooterPart', refId: decoded.id } : undefined;
+    case 'textbox':
+      return decoded.id ? { kind: 'story', storyType: 'textbox', textboxId: decoded.id } : undefined;
     default:
       return undefined;
   }
@@ -11009,10 +11011,22 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     const hits: ViewportEntityHit[] = [];
     for (const hit of rawHits) {
       if (hit.type !== 'trackedChange') {
-        const key = `${hit.type}:${hit.id}`;
+        const layoutStory = hit.type === 'contentControl' ? layoutStoryDatasetToStoryLocator(hit.story) : undefined;
+        const story =
+          hit.type === 'contentControl'
+            ? isTextboxStory(layoutStory)
+              ? layoutStory
+              : (storyKeyToStoryLocator(hit.storyKey) ?? layoutStory)
+            : undefined;
+        const key = `${hit.type}:${hit.id}:${JSON.stringify(story ?? null)}`;
         if (seen.has(key)) continue;
         seen.add(key);
-        hits.push(hit);
+        if (hit.type === 'contentControl') {
+          const { storyKey: _storyKey, story: _paintedStory, ...publicHit } = hit;
+          hits.push(story ? { ...publicHit, story } : publicHit);
+        } else {
+          hits.push(hit);
+        }
         continue;
       }
       // The DOM walk attaches the raw painted story strings; map them to the

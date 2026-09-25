@@ -490,11 +490,9 @@ export interface ViewportEntityHit {
   tag?: string;
   scope?: 'block' | 'inline';
   /**
-   * Painted story locator for a tracked-change hit. Meaningful only for
-   * `type: 'trackedChange'`; absent for body-only content and for comment,
-   * content-control, and citation hits. Lets point hit-testing disambiguate a tracked-change
-   * id that repeats across stories (body, footnote, header/footer, textbox) by
-   * resolving to the occurrence actually under the point.
+   * Painted story locator for a tracked-change or content-control hit.
+   * Absent for body-only content and comment or citation hits. Disambiguates
+   * an id reused in another document story from the occurrence under the point.
    */
   story?: unknown;
 }

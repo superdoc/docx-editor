@@ -38,6 +38,12 @@ void built;
 // painted entities alongside SuperDoc's built-in kinds.
 const customEntityHit: ViewportEntityHit = { type: 'integrationEntity', id: 'custom-1' };
 void customEntityHit;
+const textboxControlHit: ViewportEntityHit = {
+  type: 'contentControl',
+  id: '7',
+  story: { kind: 'story', storyType: 'textbox', textboxId: 'tb-1' },
+};
+void textboxControlHit;
 
 // The active editor satisfies the editor-shaped contract the same way.
 declare const activeEditor: NonNullable<typeof instance.activeEditor>;

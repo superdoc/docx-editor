@@ -82,9 +82,12 @@ export function collectEntityHitsFromChain(start: Element | null, stopAt?: Eleme
   // walk reaches the nearest enclosing container. The raw (encoded) string is
   // attached here; the controller decodes it (keeps this leaf dependency-light).
   let pendingStory: CollectedEntityHit[] = [];
+  let nearestStoryKey: string | null = null;
+  let nearestLayoutStory: string | null = null;
   let el: Element | null = start;
   while (el) {
     const node = el as { getAttribute(name: string): string | null };
+    nearestStoryKey ??= node.getAttribute('data-story-key');
     const trackChangeIds = getTrackChangeIds(node);
     // The run/marker element carries the real owning story in `data-story-key`
     // (the layout-story container can fall back to `body` for footnote/endnote
@@ -102,6 +105,7 @@ export function collectEntityHitsFromChain(start: Element | null, stopAt?: Eleme
       }
     }
     const layoutStory = node.getAttribute('data-layout-story');
+    nearestLayoutStory ??= layoutStory;
     if (layoutStory && pendingStory.length > 0) {
       // This is the nearest story container for every tracked-change hit
       // gathered below it; stamp it and stop tracking those hits.
@@ -143,6 +147,9 @@ export function collectEntityHitsFromChain(start: Element | null, stopAt?: Eleme
         const scopeAttr = node.getAttribute('data-sdt-scope');
         const tag = node.getAttribute('data-sdt-tag');
         const hit: ViewportEntityHit = { type: 'contentControl', id: sdtId };
+        if (nearestStoryKey) (hit as CollectedEntityHit).storyKey = nearestStoryKey;
+        if (nearestLayoutStory) hit.story = nearestLayoutStory;
+        else pendingStory.push(hit);
         if (scopeAttr === 'block' || scopeAttr === 'inline') hit.scope = scopeAttr;
         if (tag) hit.tag = tag;
         hits.push(hit);

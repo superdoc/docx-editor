@@ -83,6 +83,96 @@ function makeHitStub(
 }
 
 describe('viewport.entityAt / trackChanges.getAt — point hit-testing', () => {
+  it('reports the painted non-body story for a content-control hit with a colliding body id', () => {
+    const hit = document.createElement('span');
+    hit.setAttribute('data-sdt-type', 'structuredContent');
+    hit.setAttribute('data-sdt-id', '7');
+    hit.setAttribute('data-sdt-tag', 'meta-body');
+    hit.setAttribute('data-story-key', 'fn:fn-1');
+    const wrapper = document.createElement('div');
+    wrapper.setAttribute('data-layout-story', 'body');
+    wrapper.appendChild(hit);
+    const { superdoc } = makeHitStub(wrapper, []);
+    const ui = createSuperDocUI({ superdoc });
+    withElementFromPoint(hit, () => {
+      const expected = [
+        {
+          type: 'contentControl',
+          id: '7',
+          tag: 'meta-body',
+          story: { kind: 'story', storyType: 'footnote', noteId: 'fn-1' },
+        },
+      ];
+      expect(ui.viewport.entityAt({ x: 10, y: 20 })).toEqual(expected);
+      expect(ui.viewport.contextAt({ x: 10, y: 20 }).entities).toEqual(expected);
+    });
+    ui.destroy();
+  });
+
+  it('uses a child run story key when the enclosing control is in a note band', () => {
+    const control = document.createElement('span');
+    control.setAttribute('data-sdt-type', 'structuredContent');
+    control.setAttribute('data-sdt-id', '7');
+    const run = document.createElement('span');
+    run.setAttribute('data-story-key', 'en:note-2');
+    control.appendChild(run);
+    const band = document.createElement('div');
+    band.setAttribute('data-layout-story', 'body');
+    band.appendChild(control);
+    const { superdoc } = makeHitStub(band, []);
+    const ui = createSuperDocUI({ superdoc });
+    withElementFromPoint(run, () => {
+      expect(ui.viewport.entityAt({ x: 10, y: 20 })).toEqual([
+        { type: 'contentControl', id: '7', story: { kind: 'story', storyType: 'endnote', noteId: 'note-2' } },
+      ]);
+    });
+    ui.destroy();
+  });
+
+  it('preserves the painted textbox story for a control id reused in the body', () => {
+    const control = document.createElement('span');
+    control.setAttribute('data-sdt-type', 'structuredContent');
+    control.setAttribute('data-sdt-id', '7');
+    const textboxLine = document.createElement('div');
+    textboxLine.setAttribute('data-layout-story', 'textbox:tb-1');
+    textboxLine.appendChild(control);
+    const { superdoc } = makeHitStub(textboxLine, []);
+    const ui = createSuperDocUI({ superdoc });
+
+    withElementFromPoint(control, () => {
+      expect(ui.viewport.entityAt({ x: 10, y: 20 })).toEqual([
+        { type: 'contentControl', id: '7', story: { kind: 'story', storyType: 'textbox', textboxId: 'tb-1' } },
+      ]);
+    });
+
+    ui.destroy();
+  });
+
+  it('uses the inner textbox line story for a block control painted outside that line', () => {
+    const run = document.createElement('span');
+    run.setAttribute('data-story-key', 'hf:part:header1');
+    const textboxLine = document.createElement('div');
+    textboxLine.setAttribute('data-layout-story', 'textbox:tb-1');
+    textboxLine.appendChild(run);
+    const control = document.createElement('div');
+    control.setAttribute('data-sdt-type', 'structuredContent');
+    control.setAttribute('data-sdt-id', '7');
+    control.appendChild(textboxLine);
+    const header = document.createElement('div');
+    header.setAttribute('data-layout-story', 'header:header1');
+    header.appendChild(control);
+    const { superdoc } = makeHitStub(header, []);
+    const ui = createSuperDocUI({ superdoc });
+
+    withElementFromPoint(run, () => {
+      expect(ui.viewport.entityAt({ x: 10, y: 20 })).toEqual([
+        { type: 'contentControl', id: '7', story: { kind: 'story', storyType: 'textbox', textboxId: 'tb-1' } },
+      ]);
+    });
+
+    ui.destroy();
+  });
+
   it('resolves and deduplicates citation identity without changing enclosing entity order', () => {
     const hit = document.createElement('span');
     hit.setAttribute('data-citation-id', 'header%3A%2Fword%2Fheader1.xml|CITE0001#7');

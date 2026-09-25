@@ -280,6 +280,8 @@ export interface SDPasteTableRow {
  */
 export interface SDPasteTableBlock {
   kind: 'table';
+  /** Direct between-cell spacing in points (not cell padding). */
+  cellSpacingPt?: number;
   rows: readonly SDPasteTableRow[];
   sourcePath?: readonly (string | number)[];
 }

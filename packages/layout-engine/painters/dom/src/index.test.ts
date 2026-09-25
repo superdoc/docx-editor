@@ -2669,7 +2669,7 @@ describe('DomPainter', () => {
     painter.paint(emptyLayout, mount);
 
     const line = mount.querySelector('.superdoc-line');
-    expect(line?.textContent).toBe('\u00A0');
+    expect(line?.textContent).toBe('\u200B');
   });
 
   it('paints empty-line caret targets with the insertion run typography', () => {

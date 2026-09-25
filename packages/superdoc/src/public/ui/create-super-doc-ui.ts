@@ -11328,18 +11328,27 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
 
   const metadataResolveKey = (id: string): string => `metadata:resolve:${id}`;
 
+  const metadataResolutionToken = (): string => {
+    const host = getHost();
+    const localRevision =
+      typeof host?.getLocalMutationRevision === 'function'
+        ? safeCall<unknown>(() => host.getLocalMutationRevision(), null)
+        : null;
+    return `${contentToken()}|local:${typeof localRevision === 'number' ? localRevision : 'unknown'}`;
+  };
+
   /** Resolve a metadata id to its SelectionTarget, or null when unresolved. */
   const resolveMetadataTarget = (id: string): unknown | null => {
     const doc = getDoc();
     const metaApi = doc?.metadata as LooseRecord | undefined;
     if (!metaApi || typeof metaApi.resolve !== 'function') return null;
-    const { value } = readAsync<unknown>(
+    const { value, status } = readAsync<unknown>(
       metadataResolveKey(id),
-      contentToken(),
+      metadataResolutionToken(),
       () => metaApi.resolve({ id }),
       readMetadataResolvedTarget,
     );
-    return value;
+    return status === 'ready' ? value : null;
   };
 
   const resolveMetadataTargetAsync = async (id: string): Promise<unknown | null> => {
@@ -11347,9 +11356,9 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     const metaApi = doc?.metadata as LooseRecord | undefined;
     if (!metaApi || typeof metaApi.resolve !== 'function') return null;
     try {
-      const token = contentToken();
+      const token = metadataResolutionToken();
       const resolved = await Promise.resolve(metaApi.resolve({ id }));
-      if (token !== contentToken()) return null;
+      if (token !== metadataResolutionToken()) return null;
       const target = readMetadataResolvedTarget(resolved);
       asyncReads.set(metadataResolveKey(id), {
         token,

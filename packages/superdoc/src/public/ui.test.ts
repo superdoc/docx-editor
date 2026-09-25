@@ -2314,6 +2314,7 @@ describe('public ui — viewport + metadata geometry', () => {
       getTargetRects?: (input: unknown) => unknown;
       scrollTargetIntoView?: (input: unknown) => unknown;
       resolve?: (input: { id: string }) => unknown;
+      getLocalMutationRevision?: () => number;
       omitHost?: boolean;
       omitMetadata?: boolean;
     } = {},
@@ -2332,7 +2333,13 @@ describe('public ui — viewport + metadata geometry', () => {
     const resolve = vi.fn(opts.resolve ?? ((input: { id: string }) => ({ id: input.id, target: META_TARGET })));
     const host = opts.omitHost
       ? undefined
-      : { getTargetRects, scrollTargetIntoView, observeGeometry, getHandles: () => ({ editing: null }) };
+      : {
+          getTargetRects,
+          scrollTargetIntoView,
+          observeGeometry,
+          getHandles: () => ({ editing: null }),
+          getLocalMutationRevision: opts.getLocalMutationRevision,
+        };
     const doc: Record<string, unknown> = {
       comments: { list: () => ({ items: [] }) },
       trackChanges: { list: () => ({ items: [] }) },
@@ -2428,6 +2435,33 @@ describe('public ui — viewport + metadata geometry', () => {
     expect(resolve).toHaveBeenCalledWith({ id: 'cite-001' });
     expect(getTargetRects).toHaveBeenCalledWith({ target: META_TARGET });
     expect(result.success).toBe(true);
+  });
+
+  it('metadata.getRect does not paint cached geometry after a local metadata removal', async () => {
+    let revision = 0;
+    let present = true;
+    const { superdoc, getTargetRects } = makeGeometrySuperdoc({
+      getLocalMutationRevision: () => revision,
+      resolve: () => Promise.resolve(present ? { target: META_TARGET } : null),
+    });
+    const ui = createSuperDocUI({ superdoc });
+    expect(ui.metadata.getRect({ id: 'cite-001' }).found).toBe(false);
+    await Promise.resolve();
+    expect(ui.metadata.getRect({ id: 'cite-001' }).found).toBe(true);
+    present = false;
+    revision += 1;
+    getTargetRects.mockClear();
+
+    expect(ui.metadata.getRect({ id: 'cite-001' })).toMatchObject({ found: false, reason: 'unresolved' });
+    expect(getTargetRects).not.toHaveBeenCalled();
+
+    await Promise.resolve();
+    expect(ui.metadata.getRect({ id: 'cite-001' })).toMatchObject({ found: false, reason: 'unresolved' });
+    present = true;
+    revision += 1;
+    expect(ui.metadata.getRect({ id: 'cite-001' })).toMatchObject({ found: false, reason: 'unresolved' });
+    await Promise.resolve();
+    expect(ui.metadata.getRect({ id: 'cite-001' }).found).toBe(true);
   });
 
   it('metadata.scrollIntoView resolves the id and delegates to host.scrollTargetIntoView', async () => {

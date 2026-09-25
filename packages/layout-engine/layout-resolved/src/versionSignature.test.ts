@@ -98,6 +98,42 @@ describe('deriveBlockVersion - horizontal scale', () => {
   });
 });
 
+describe('deriveBlockVersion - Word 97-2003 run effects', () => {
+  const makeParagraph = (mark?: 'doubleStrike' | 'outline' | 'shadow' | 'emboss' | 'imprint'): FlowBlock => ({
+    kind: 'paragraph',
+    id: 'effect-paragraph',
+    attrs: {},
+    runs: [
+      {
+        text: 'Styled',
+        fontFamily: 'Arial',
+        fontSize: 16,
+        ...(mark ? { [mark]: true } : {}),
+      } as TextRun,
+    ],
+  });
+
+  /**
+   * This version is what the painter reuses a fragment by. These flags are
+   * paint-only, which is exactly why they are easy to leave out — and leaving
+   * them out means applying one changes the file and not the page, the very
+   * symptom they were added to fix.
+   */
+  it('invalidates the block version for each effect flag', () => {
+    for (const mark of ['doubleStrike', 'outline', 'shadow', 'emboss', 'imprint'] as const) {
+      expect(deriveBlockVersion(makeParagraph(mark))).not.toBe(deriveBlockVersion(makeParagraph()));
+    }
+  });
+
+  it('gives each flag its own version — two effects are not one state', () => {
+    const versions = (['outline', 'shadow', 'emboss', 'imprint'] as const).map((mark) =>
+      deriveBlockVersion(makeParagraph(mark)),
+    );
+
+    expect(new Set(versions).size).toBe(versions.length);
+  });
+});
+
 describe('deriveBlockVersion - nested SDT containers', () => {
   const childSdt = {
     type: 'structuredContent',

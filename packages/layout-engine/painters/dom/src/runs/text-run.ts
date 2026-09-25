@@ -38,6 +38,134 @@ const DEFAULT_SUBSCRIPT_LOWER_RATIO = 0.14;
  */
 export const underlineThicknessPx = (fontSize: number): number => Math.max(1, Math.round(fontSize / 14));
 
+/**
+ * Stroke weight for `w:outline`, scaled to font size.
+ *
+ * Word draws the legacy outline as a hairline around the glyph, not as the
+ * authored-width stroke `w14:textOutline` carries. The divisor keeps it hairline
+ * at body sizes and lets it grow with display type; the floor keeps it visible
+ * on a low-density screen, where a sub-half-pixel stroke rounds away to nothing.
+ */
+const outlineStrokePx = (fontSize: number): number => Math.max(0.5, Math.round((fontSize / 24) * 100) / 100);
+
+/**
+ * Offset for the `w:shadow` / `w:emboss` / `w:imprint` shading, scaled to font size.
+ *
+ * One device pixel at body size, matching the offset Word draws, and growing
+ * with the glyph so a heading does not carry a shadow that reads as a fringe.
+ */
+const effectOffsetPx = (fontSize: number): number => Math.max(1, Math.round(fontSize / 16));
+
+/** Highlight side of the emboss/imprint pair. */
+const EFFECT_LIGHT = 'rgba(255, 255, 255, 0.85)';
+/** Shaded side of the emboss/imprint pair, and the color of a legacy drop shadow. */
+const EFFECT_DARK = 'rgba(0, 0, 0, 0.45)';
+
+/**
+ * The Word 97-2003 run effects: `w:outline`, `w:shadow`, `w:emboss`, `w:imprint`.
+ *
+ * These predate the `w14:` effect family and Word still honours them — they are
+ * exactly what the Font dialog's "Effects" group writes, so a document can carry
+ * them with no `w14:` counterpart anywhere. Word draws them inside its typography
+ * engine, so CSS can only approximate; that is the same trade `applyTextEffects`
+ * already makes for `w14:glow`, and it is stated rather than hidden:
+ *
+ * - **outline** is faithful — a hairline stroke with the fill removed is what
+ *   Word draws, and `-webkit-text-stroke` draws exactly that.
+ * - **shadow** is a hard-edged offset copy, as in Word; the blur Word applies at
+ *   large sizes is not reproduced.
+ * - **emboss / imprint** keep the authored glyph color and add a light edge on
+ *   one side and a dark edge on the other, the direction being what separates
+ *   the two. Word instead paints the glyph itself near the page color and lets
+ *   the edges carry the shape. Doing that here would need the resolved page
+ *   background, which paint does not have — and guessing it wrong turns the
+ *   text invisible. Legibility wins over the last of the fidelity.
+ *
+ * Paint-only: no metric changes, so a run that gains an effect does not reflow.
+ * Called **after** `applyTextEffects`, so this function sees what the authored
+ * `w14:` effects already wrote and can compose with them or stand aside — see
+ * the two comments inside.
+ */
+const applyLegacyRunEffects = (element: HTMLElement, run: TextRun): void => {
+  /*
+   * The newer `w14:textOutline` / `w14:textFill` are the authored form of the
+   * same intent, so the legacy flag steps aside for them explicitly rather than
+   * being overwritten by declaration order — order would have left this
+   * function's empty fill behind on a run whose `w14:textOutline` carries no
+   * fill of its own, turning an authored outline into a hollow glyph.
+   *
+   * The test is **what `applyTextEffects` actually wrote**, not whether the
+   * object exists. `applyTextEffects` paints a stroke only for an outline that
+   * has a solid fill and a positive width, so
+   * `<w14:textOutline w14:w="0"><w14:noFill/></w14:textOutline>` — what Word
+   * writes for "no outline" — is a present object that paints nothing. Standing
+   * aside for it would leave the run with no stroke and no legacy fallback:
+   * blank space, which is the failure this whole change exists to remove.
+   */
+  // `Boolean(...)` and not `!== ''`: an unset property reads back as `''` in a
+  // browser but as `undefined` in a DOM that does not implement the prefixed
+  // property, and both mean "nothing was painted".
+  const authoredOutline = Boolean(element.style.webkitTextStroke) || run.textEffects?.fill !== undefined;
+  if (run.outline && !authoredOutline) {
+    /*
+     * `-webkit-text-fill-color`, and deliberately **not** `color`.
+     *
+     * The stroke is `currentColor`, and `currentColor` resolves against the
+     * element's own `color`. Emptying the glyph through `color: transparent`
+     * would take the stroke with it, and a run carrying `<w:outline/>` with
+     * Automatic color — which is exactly what Word's Font dialog writes — would
+     * paint nothing at all. `-webkit-text-fill-color` empties only the fill and
+     * leaves `color` intact for the stroke to read.
+     */
+    element.style.webkitTextStroke = `${outlineStrokePx(run.fontSize)}px currentColor`;
+    element.style.webkitTextFillColor = 'transparent';
+  }
+
+  const offset = effectOffsetPx(run.fontSize);
+  const shadows: string[] = [];
+  /*
+   * `w14:shadow` is the authored form of this same drop shadow, so the legacy
+   * flag steps aside for it — exactly as the outline does above. Emboss and
+   * imprint have no `w14:` counterpart at all and are not drop shadows, so they
+   * keep composing with whatever `applyTextEffects` wrote.
+   */
+  if (run.shadow && run.textEffects?.shadow == null) shadows.push(`${offset}px ${offset}px 0 ${EFFECT_DARK}`);
+  if (run.emboss)
+    shadows.push(`-${offset}px -${offset}px 0 ${EFFECT_LIGHT}`, `${offset}px ${offset}px 0 ${EFFECT_DARK}`);
+  if (run.imprint)
+    shadows.push(`${offset}px ${offset}px 0 ${EFFECT_LIGHT}`, `-${offset}px -${offset}px 0 ${EFFECT_DARK}`);
+  if (shadows.length > 0) {
+    /*
+     * Appended, not assigned: `w14:glow` is a different effect from an embossed
+     * edge and the two compose as two shadow layers, exactly as glow and
+     * `w14:shadow` already do inside `applyTextEffects`. Assigning here would
+     * make a glow silently erase the emboss on the same run.
+     */
+    const authored = element.style.textShadow;
+    element.style.textShadow = authored ? `${authored}, ${shadows.join(', ')}` : shadows.join(', ');
+  }
+};
+
+/**
+ * The strike a run's own element should carry, and its line style.
+ *
+ * Shared because `render-line.ts` re-derives the decoration after painting on
+ * the paths where an underline is lifted onto a line overlay — and a second
+ * copy of the rule there would drift from this one. It already had: reading the
+ * line off `strike` alone left a run carrying only `w:dstrike` undecorated on
+ * exactly those lines.
+ *
+ * The style is `double` whenever the element itself carries no underline. On the
+ * overlay paths that is always true — the underline was moved off the run — so a
+ * run that is both underlined and double-struck gets a genuine double strike
+ * there, while on an ordinary line CSS's single `text-decoration-style` forces
+ * the underline's style to win and the strike stays single.
+ */
+export const runStrikeDecoration = (run: TextRun): { line: 'line-through' | 'none'; style?: 'double' } => {
+  if (!run.strike && !run.doubleStrike) return { line: 'none' };
+  return run.doubleStrike && !run.underline ? { line: 'line-through', style: 'double' } : { line: 'line-through' };
+};
+
 const hasVerticalPositioning = (run: TextRun): boolean =>
   normalizeBaselineShift(run.baselineShift) != null || run.vertAlign === 'superscript' || run.vertAlign === 'subscript';
 
@@ -153,6 +281,7 @@ export const applyRunStyles = (
     element.style.textTransform = run.textTransform;
   }
   applyTextEffects(element, run.textEffects);
+  applyLegacyRunEffects(element, run);
 
   // Apply text decorations from the run. Even for links, inline decorations should reflect
   // the document styling (tests assert underline presence on anchors).
@@ -170,11 +299,27 @@ export const applyRunStyles = (
       element.style.textDecorationColor = u.color;
     }
   }
-  if (run.strike) {
+  // `doubleStrike` stands on its own: it is a separate `RunMarks` field and a
+  // separately settable run attribute, so a run that carries only `w:dstrike`
+  // still has a strikethrough to draw.
+  if (run.strike || run.doubleStrike) {
     decorations.push('line-through');
   }
   if (decorations.length > 0) {
     element.style.textDecorationLine = decorations.join(' ');
+    /*
+     * `w:dstrike` is two lines rather than one. CSS carries a single
+     * `text-decoration-style` for the whole decoration set, so a run that is
+     * both underlined and double-struck can keep only one of the two: the
+     * underline already claimed it above, and it claimed it from an authored
+     * value (`w:u/@w:val`), while `w:dstrike` has no style to lose. So the
+     * underline keeps its style and the strike stays single — a visible
+     * shortfall on a rare combination, rather than a wrong underline on a
+     * common one.
+     */
+    if (run.doubleStrike && !run.underline) {
+      element.style.textDecorationStyle = 'double';
+    }
   }
 };
 

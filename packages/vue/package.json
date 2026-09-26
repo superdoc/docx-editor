@@ -1,6 +1,6 @@
 {
   "name": "@superdoc/vue",
-  "version": "2.0.1-next.21",
+  "version": "2.0.1-next.22",
   "description": "Vue 3 wrapper for the SuperDoc browser editor",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -38,7 +38,7 @@
   ],
   "license": "AGPL-3.0",
   "peerDependencies": {
-    "superdoc": ">=2.0.0-0 <3 || 2.18.1-next.4",
+    "superdoc": ">=2.0.0-0 <3 || 2.18.1-next.5",
     "vue": "^3.5.11"
   },
   "devDependencies": {

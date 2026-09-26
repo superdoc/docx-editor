@@ -1,5 +1,5 @@
 <script setup>
-import { computed, unref } from 'vue';
+import { computed, ref, unref } from 'vue';
 import ToolbarButton from './ToolbarButton.vue';
 import ButtonGroup from './ButtonGroup.vue';
 import ToolbarDropdown from './ToolbarDropdown.vue';
@@ -22,6 +22,7 @@ const props = defineProps({
   },
 });
 
+const dropdown = ref(null);
 const isOverflowMenuOpened = computed(() => props.toolbarItem.expand.value);
 const hasOpenDropdown = computed(() =>
   props.overflowItems.some((item) => item.type === 'dropdown' && unref(item.expand)),
@@ -42,12 +43,18 @@ const setOverflowMenuOpen = (open) => {
 };
 
 const handleCommand = ({ item, argument, option }) => {
+  if (item.name.value === 'watermark') {
+    // The dialog must restore a mounted trigger after the overflow item disappears.
+    emit('close');
+    dropdown.value?.focusTrigger();
+  }
   emit('command', { item, argument, option });
 };
 </script>
 
 <template>
   <ToolbarDropdown
+    ref="dropdown"
     class="overflow-menu"
     :close-on-escape="!hasOpenDropdown"
     :has-open-child="hasOpenDropdown"
@@ -59,7 +66,7 @@ const handleCommand = ({ item, argument, option }) => {
     :menu-props="() => ({ role: 'group', class: ['overflow-menu_items', 'sd-toolbar-overflow-menu'] })"
   >
     <template #trigger>
-      <ToolbarButton :toolbar-item="overflowToolbarItem" />
+      <ToolbarButton :toolbar-item="overflowToolbarItem" :allow-enter-propagation="true" />
     </template>
     <template #menu>
       <ButtonGroup

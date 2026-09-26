@@ -9,6 +9,26 @@ import { describe, expect, it } from 'vite-plus/test';
 import { BUILT_IN_SURFACES, normalizeUiConfig } from './normalize-ui-config.js';
 
 describe('normalizeUiConfig', () => {
+  it('normalizes opt-in Watermark composition, icon and text overrides', () => {
+    const options = normalizeUiConfig({
+      ui: {
+        toolbar: {
+          items: { right: ['watermark'] },
+          includeItems: ['watermark'],
+          icons: { watermark: '<svg />' },
+          strings: { watermark: 'Document watermark' },
+        },
+      },
+    }).toolbar.options;
+    expect(options.showWatermarkButton).toBe(true);
+    expect(options.groups).toEqual({ right: ['watermark'] });
+    expect(options.icons.watermark).toBe('<svg />');
+    expect(options.texts.watermark).toBe('Document watermark');
+    expect(
+      normalizeUiConfig({ ui: { toolbar: { includeItems: ['watermark'] } } }).toolbar.options.showWatermarkButton,
+    ).toBe(true);
+    expect(normalizeUiConfig({ ui: { toolbar: true } }).toolbar.options.showWatermarkButton).toBe(false);
+  });
   describe('omitted ui preserves the historical profile', () => {
     it('renders comments, the context menu, and content-control chrome', () => {
       const ui = normalizeUiConfig({});

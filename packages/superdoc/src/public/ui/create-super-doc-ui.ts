@@ -14,6 +14,7 @@ import { beginInteraction, recordInteraction } from '../../internal/diagnostics/
  */
 
 import { shallowEqual } from './equality.js';
+import { createWatermarkController } from './watermark-controller.js';
 import { sdRunPropsToInlineRunPatch, selectionKey } from './format-painter-helpers.js';
 import { getV2TrackedChangeMutationImpact } from '../../helpers/v2-review-mutation-impact.js';
 import { isV2EditableTextMutationEvent } from '../../helpers/v2-typing-mutation-event.js';
@@ -12241,6 +12242,16 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       computeActiveParagraphStyle(state.selection, getStyleCatalog().cache).style,
   };
 
+  const watermark = createWatermarkController({
+    getEditor: getEditor as Parameters<typeof createWatermarkController>[0]['getEditor'],
+    getMode: readDocumentMode,
+    getFonts: () => fonts.getFamilyOptions(),
+    getContainer: () => superdoc.element ?? null,
+    openSurface: typeof superdoc.openSurface === 'function' ? (request) => superdoc.openSurface(request) : null,
+  });
+  documentResetHooks.push(watermark.close);
+  documentModeChangeHooks.push(watermark.close);
+
   // -- scopes ---------------------------------------------------------------
   const createScope = (): SuperDocUIScope => {
     const scopeUnsubs: Array<() => void> = [];
@@ -12264,6 +12275,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
 
   const destroy = (): void => {
     if (disposed) return;
+    watermark.destroy();
     clearContentControlHighlight();
     disposed = true;
     releaseSharedUiTrackedChangesCatalog(uiTrackedChangesCatalogHost, uiTrackedChangesCatalogState);
@@ -12360,6 +12372,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     tables,
     search,
     contextMenu,
+    watermark,
     styles,
     // Every entry point is disposal-guarded. This handle is the one place a
     // destroyed controller could still call back into application code:

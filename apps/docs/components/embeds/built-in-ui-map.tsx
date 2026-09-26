@@ -67,6 +67,12 @@ export function BuiltInUiMap() {
 
           <div className='sd-builtin-map-body'>
             <div className='sd-builtin-map-canvas'>
+              {selected === 'watermarks' ? (
+                <div className={`${regionClass(selected, 'watermarks', 'float')} sd-builtin-map-loading`}>
+                  <strong>Watermark</strong>
+                  <span>Text · Picture · Scope</span>
+                </div>
+              ) : null}
               {selected === 'loading' ? (
                 <div className={`${regionClass(selected, 'loading', 'float')} sd-builtin-map-loading`}>
                   <span className='sd-builtin-map-loading-title' />

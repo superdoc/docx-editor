@@ -94,9 +94,10 @@ function handleKeydown(event) {
 }
 
 function handleBackdropClick(event) {
-  if (event.target === event.currentTarget && props.surface.request.closeOnBackdrop !== false) {
-    emit('close');
-  }
+  if (event.target !== event.currentTarget) return;
+  // Mousedown must not steal focus from the dialog or its restored opener.
+  event.preventDefault();
+  if (props.surface.request.closeOnBackdrop !== false) emit('close');
 }
 
 // ---------------------------------------------------------------------------
@@ -199,23 +200,27 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .sd-surface-dialog-backdrop {
-  position: absolute;
+  position: fixed;
   inset: 0;
-  z-index: calc(var(--sd-ui-surface-z-index, 100) + 1);
+  z-index: var(--sd-ui-dialog-z-index, 2147483001);
+  box-sizing: border-box;
+  padding: 16px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--sd-ui-dialog-backdrop);
+  background: var(--sd-ui-dialog-backdrop, rgba(18, 24, 38, 0.32));
 }
 
 .sd-surface-dialog {
+  box-sizing: border-box;
+  min-width: 0;
   background: var(--sd-ui-surface-bg);
   border: 1px solid var(--sd-ui-surface-border);
   border-radius: var(--sd-ui-surface-radius);
   box-shadow: var(--sd-ui-surface-shadow);
   max-width: var(--sd-ui-dialog-max-width, 480px);
   width: 100%;
-  max-height: 90%;
+  max-height: 100%;
   overflow-y: auto;
   outline: none;
   font-family: var(--sd-ui-font-family);
@@ -231,5 +236,91 @@ onBeforeUnmount(() => {
 
 .sd-surface-dialog__content {
   padding: var(--sd-ui-surface-content-padding);
+}
+
+/* Built-in dialogs share chrome while their components own fields and actions. */
+.sd-surface-dialog:has(.sd-dialog-content) {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.sd-surface-dialog__content:has(> .sd-dialog-content) {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 0;
+}
+.sd-surface-dialog :deep(.sd-dialog-content) {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: calc(100dvh - 34px);
+}
+.sd-surface-dialog :deep(.sd-dialog-header) {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--sd-ui-surface-border, #e4e7ec);
+}
+.sd-surface-dialog :deep(.sd-dialog-header h2) {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+.sd-surface-dialog :deep(.sd-dialog-close) {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--sd-ui-text-muted, #525866);
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+.sd-surface-dialog :deep(.sd-dialog-close:hover) {
+  background: var(--sd-ui-hover-bg, #f2f4f7);
+}
+.sd-surface-dialog :deep(.sd-dialog-footer) {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--sd-ui-surface-border, #eaecf0);
+  background: var(--sd-ui-surface-bg, #fff);
+}
+.sd-surface-dialog :deep(.sd-dialog-footer button) {
+  min-width: 72px;
+  min-height: 32px;
+  padding: 7px 12px;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.sd-surface-dialog :deep(.sd-dialog-secondary) {
+  border: 1px solid var(--sd-ui-surface-border, #cfd4dc);
+  background: var(--sd-ui-surface-bg, #fff);
+  color: var(--sd-ui-text, #344054);
+}
+.sd-surface-dialog :deep(.sd-dialog-primary) {
+  border: 1px solid var(--sd-ui-action, #3367d6);
+  background: var(--sd-ui-action, #3367d6);
+  color: var(--sd-ui-action-text, #fff);
+}
+.sd-surface-dialog :deep(.sd-dialog-footer button:disabled) {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 </style>

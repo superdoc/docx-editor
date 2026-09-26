@@ -1,0 +1,78 @@
+---
+title: Configure document watermarks
+navTitle: Watermarks
+description: Open a Word-style dialog from the toolbar or your application to inspect, add, replace, or remove text and picture watermarks.
+---
+
+The Watermark dialog lets people configure text or picture watermarks in the browser Editor. Add its button to the built-in
+toolbar with `ui.toolbar.includeItems: ['watermark']`. The page icon sits with the document insertion controls and moves
+into the toolbar's overflow menu when space is limited. It is optional and does not appear in the default toolbar.
+
+## Add a Watermark button
+
+These standalone examples use `public/sample.docx` from the [Quickstart](/editor/quickstart). Replace `src/main.ts`
+or `src/App.tsx` to enable the built-in Watermark button:
+
+<FrameworkExampleTabs>
+  <FrameworkExample filename='src/main.ts' framework='Vanilla'>
+    <include>../../../../snippets/editor/built-in-watermarks.ts</include>
+  </FrameworkExample>
+  <FrameworkExample filename='src/App.tsx' framework='React'>
+    <include>../../../../snippets/editor/react-built-in-watermarks.tsx</include>
+  </FrameworkExample>
+</FrameworkExampleTabs>
+
+For Vanilla, replace the contents of `<body>` in `index.html` with:
+
+<include>../../../../snippets/editor/built-in-watermarks.html</include>
+
+For a custom application entry point, call `superdoc.ui.watermark.open()`.
+
+`open()` returns `{ ok, reason? }` for opening the dialog. It does not report whether a watermark was applied.
+Call `superdoc.ui.watermark.close()` to dismiss the dialog from application code. Calling `close()` again is safe.
+
+## Try the workflow
+
+1. Choose **Watermark**, then **Text**. Enter `DRAFT` and change its transparency or orientation.
+2. Inspect the preview. Choose **Cancel** and confirm that the document has not changed.
+3. Reopen, configure the text again, and choose **Apply watermark**. The dialog closes after a successful change.
+4. Reopen and choose **Picture**. Select a local PNG or JPEG, adjust the scale, and apply it.
+5. Reopen, select **No watermark** (or **Remove selected** for multiple copies), and choose **Remove watermark**. Use the Editor's Undo action to restore it.
+
+The preview uses a sample page with the selected page geometry. It is not a screenshot of the document's body.
+Draft changes stay in the dialog until Apply. Closing after Apply has started does not cancel the pending operation.
+
+## Configure text and pictures
+
+Text controls include the text, font, automatic or explicit point size, bold, italic, color, transparency, and horizontal
+or diagonal orientation. Presets change the text without replacing the other settings.
+
+Picture controls include image replacement, Auto or 50%, 100%, 150%, 200%, and 500% scaling, aspect-ratio preservation,
+washout, and transparency. Washout lightens the picture's colors; transparency controls visibility. Settings edits retain
+an existing embedded picture without requiring another upload.
+
+Imported custom placement and dimensions are retained. The dialog identifies custom settings rather than showing a
+preset that would misrepresent them. Choosing an orientation or scale deliberately replaces the corresponding custom setting.
+
+## Choose the scope
+
+Use **Apply to** for the entire document or a section, and **Page type** for all applicable headers or a default, first,
+or even-page header. Review the impact sentence before applying. Section-scoped edits preserve the surrounding sections
+and other header content.
+
+A document can store several watermarks, including copies in first and even-page headers that are not currently visible.
+The selection list identifies each watermark's locations. Select the watermarks to edit, or choose **Add watermark**;
+the dialog does not silently replace every stored watermark.
+
+## Handle document changes
+
+If the document changes while the draft is open, Apply rejects the stale revision instead of overwriting newer content.
+The dialog keeps the draft visible. **Review latest state** reloads the current watermarks and replaces the draft, so copy
+any text you want to keep before reloading.
+
+Read-only documents can be inspected where the runtime supports it. Mutation controls are disabled when edits are not
+allowed, including unsupported Suggesting operations. Application permissions still belong to your integration.
+
+Applied watermarks become document content. Follow [Load and save](/editor/load-and-save-documents) to persist the DOCX.
+Use the [Document API watermark reference](/document-api/reference/watermarks) for programmatic browser or headless
+operations. The dialog itself is a browser Editor feature.

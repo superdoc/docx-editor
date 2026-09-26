@@ -209,6 +209,14 @@ export const BUILT_IN_TOOLBAR_CATALOG: readonly BuiltInToolbarItemEntry[] = [
   // --- insert --------------------------------------------------------------
   { name: 'link', commandId: 'link', instanceMethod: null, disposition: 'controller-routed', group: 'center' },
   { name: 'image', commandId: 'image', instanceMethod: null, disposition: 'controller-routed', group: 'center' },
+  {
+    name: 'watermark',
+    commandId: null,
+    instanceMethod: 'ui.watermark.open',
+    disposition: 'host-routed',
+    group: 'center',
+    note: 'opens the shared Watermark dialog through superdoc.ui.watermark.open; the workflow owns scope, edit permissions, and apply',
+  },
   // v1 `table` → v2 `table-insert`.
   { name: 'table', commandId: 'table-insert', instanceMethod: null, disposition: 'controller-routed', group: 'center' },
   {

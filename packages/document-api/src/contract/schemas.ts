@@ -1083,6 +1083,29 @@ const pictureWatermarkInputSchema = objectSchema(
   },
   ['kind', 'src'],
 );
+const retainedPictureWatermarkInputSchema = objectSchema(
+  {
+    ...(pictureWatermarkInputSchema.properties as Record<string, JsonSchema>),
+    src: { not: {} },
+    source: objectSchema({ kind: { const: 'existing' }, watermarkId: { type: 'string', minLength: 1 } }, [
+      'kind',
+      'watermarkId',
+    ]),
+  },
+  ['kind', 'source'],
+);
+const watermarksApplyTargetSchema: JsonSchema = {
+  oneOf: [
+    objectSchema({ kind: { const: 'document' } }, ['kind']),
+    objectSchema(
+      {
+        kind: { const: 'headerFooterSlots' },
+        slots: { ...arraySchema(watermarkSlotTargetSchema), minItems: 1, uniqueItems: true },
+      },
+      ['kind', 'slots'],
+    ),
+  ],
+};
 const pictureWatermarkInfoSchema = objectSchema(
   {
     kind: { const: 'picture' },
@@ -1117,6 +1140,21 @@ const watermarkInfoSchema = objectSchema(
     watermark: { oneOf: [textWatermarkSchema, pictureWatermarkInfoSchema] },
   },
   ['watermarkId', 'owner', 'effectiveIn', 'watermark'],
+);
+const watermarksApplySuccessSchema = objectSchema(
+  {
+    success: { const: true },
+    watermarks: arraySchema(watermarkInfoSchema),
+    affectedSlots: arraySchema(watermarkSlotTargetSchema),
+    preservedSlots: arraySchema(watermarkSlotTargetSchema),
+    evaluatedRevision: { type: 'string' },
+    dryRun: { const: true },
+  },
+  ['success', 'watermarks', 'affectedSlots', 'preservedSlots', 'evaluatedRevision'],
+);
+const watermarksApplyFailureSchema = objectSchema(
+  { success: { const: false }, failure: receiptFailureSchemaFor('watermarks.apply') },
+  ['success', 'failure'],
 );
 const inlineNodeAddressSchema = ref('InlineNodeAddress');
 const nodeAddressSchema = ref('NodeAddress');
@@ -9489,6 +9527,42 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
   // =========================================================================
   // watermarks.*
   // =========================================================================
+  'watermarks.apply': {
+    input: {
+      oneOf: [
+        objectSchema(
+          {
+            target: watermarksApplyTargetSchema,
+            action: { const: 'insert' },
+            watermark: { oneOf: [textWatermarkSchema, pictureWatermarkInputSchema] },
+          },
+          ['target', 'action', 'watermark'],
+        ),
+        objectSchema(
+          {
+            target: watermarksApplyTargetSchema,
+            action: { const: 'replace' },
+            watermarkIds: { type: 'array', items: { type: 'string', minLength: 1 }, minItems: 1, uniqueItems: true },
+            watermark: {
+              oneOf: [textWatermarkSchema, pictureWatermarkInputSchema, retainedPictureWatermarkInputSchema],
+            },
+          },
+          ['target', 'action', 'watermarkIds', 'watermark'],
+        ),
+        objectSchema(
+          {
+            target: watermarksApplyTargetSchema,
+            action: { const: 'remove' },
+            watermarkIds: { type: 'array', items: { type: 'string', minLength: 1 }, minItems: 1, uniqueItems: true },
+          },
+          ['target', 'action', 'watermarkIds'],
+        ),
+      ],
+    },
+    output: { oneOf: [watermarksApplySuccessSchema, watermarksApplyFailureSchema] },
+    success: watermarksApplySuccessSchema,
+    failure: watermarksApplyFailureSchema,
+  },
   'watermarks.list': {
     input: objectSchema({
       target: watermarkTargetSchema,

@@ -49,6 +49,10 @@ export interface PictureWatermarkInput {
   placement?: WatermarkPlacement;
 }
 
+export interface RetainedPictureWatermarkInput extends Omit<PictureWatermarkInput, 'src'> {
+  source: { kind: 'existing'; watermarkId: string };
+}
+
 export interface PictureWatermarkInfo {
   kind: 'picture';
   mediaPartPath: string;
@@ -122,3 +126,29 @@ export interface WatermarkRemoveSuccess {
 }
 
 export type WatermarkRemoveResult = WatermarkRemoveSuccess | AdapterMutationFailure;
+
+/** An explicit destination whose surrounding inherited header scopes are preserved. */
+export type WatermarksApplyTarget =
+  | DocumentWatermarkTarget
+  | { kind: 'headerFooterSlots'; slots: HeaderFooterSlotAddress[] };
+
+export type WatermarksApplyInput =
+  | { target: WatermarksApplyTarget; action: 'insert'; watermark: WatermarkInput }
+  | {
+      target: WatermarksApplyTarget;
+      action: 'replace';
+      watermarkIds: string[];
+      watermark: WatermarkInput | RetainedPictureWatermarkInput;
+    }
+  | { target: WatermarksApplyTarget; action: 'remove'; watermarkIds: string[] };
+
+export interface WatermarksApplySuccess {
+  success: true;
+  watermarks: WatermarkInfo[];
+  affectedSlots: HeaderFooterSlotAddress[];
+  preservedSlots: HeaderFooterSlotAddress[];
+  evaluatedRevision: string;
+  dryRun?: true;
+}
+
+export type WatermarksApplyResult = WatermarksApplySuccess | AdapterMutationFailure;

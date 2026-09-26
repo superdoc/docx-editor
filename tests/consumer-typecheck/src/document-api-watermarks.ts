@@ -1,4 +1,13 @@
-import type { DocumentApi, PictureWatermarkInput, TextWatermark, WatermarkInfo, WatermarkTarget } from 'superdoc/ui';
+import type {
+  DocumentApi,
+  PictureWatermarkInput,
+  TextWatermark,
+  WatermarkInfo,
+  WatermarkTarget,
+  WatermarksApplyInput,
+  WatermarksApplyResult,
+  RetainedPictureWatermarkInput,
+} from 'superdoc/ui';
 
 declare const doc: DocumentApi;
 declare const target: WatermarkTarget;
@@ -47,3 +56,26 @@ if (inserted.success) {
 }
 
 void listed;
+
+const retained: RetainedPictureWatermarkInput = {
+  kind: 'picture',
+  source: { kind: 'existing', watermarkId: 'retained' },
+  washout: true,
+};
+const applyInput: WatermarksApplyInput = {
+  action: 'replace',
+  target: { kind: 'document' },
+  watermarkIds: ['retained'],
+  watermark: retained,
+};
+const applied: WatermarksApplyResult = doc.watermarks.apply(applyInput, { expectedRevision: '1', dryRun: true });
+if (applied.success) {
+  const revision: string = applied.evaluatedRevision;
+  const resulting: WatermarkInfo[] = applied.watermarks;
+  void revision;
+  void resulting;
+  applied.affectedSlots.forEach((slot) => slot.section.sectionId);
+  applied.preservedSlots.forEach((slot) => slot.variant);
+}
+// @ts-expect-error Replacement requires explicit watermark identities.
+doc.watermarks.apply({ action: 'replace', target: { kind: 'document' }, watermark: text });

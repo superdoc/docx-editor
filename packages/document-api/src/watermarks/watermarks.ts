@@ -2,6 +2,9 @@ import { DocumentApiValidationError } from '../errors.js';
 import { normalizeMutationOptions, type MutationOptions } from '../write/write.js';
 import type {
   PictureWatermarkInput,
+  RetainedPictureWatermarkInput,
+  WatermarksApplyInput,
+  WatermarksApplyResult,
   TextWatermark,
   WatermarkAddress,
   WatermarkInput,
@@ -20,6 +23,7 @@ export * from './watermarks.types.js';
 
 export interface WatermarksApi {
   list(query?: WatermarksListQuery): WatermarksListResult;
+  apply(input: WatermarksApplyInput, options?: MutationOptions): WatermarksApplyResult;
   insert(input: WatermarksInsertInput, options?: MutationOptions): WatermarkMutationResult;
   replace(input: WatermarksReplaceInput, options?: MutationOptions): WatermarkMutationResult;
   remove(input: WatermarksRemoveInput, options?: MutationOptions): WatermarkRemoveResult;
@@ -117,7 +121,7 @@ function validatePictureWatermark(value: PictureWatermarkInput, operation: strin
   if (value.heightPt !== undefined) assertFinite(value.heightPt, `${operation}.watermark.heightPt`, true);
 }
 
-function validateWatermark(value: unknown, operation: string): asserts value is WatermarkInput {
+export function validateWatermarkInput(value: unknown, operation: string): asserts value is WatermarkInput {
   if (!value || typeof value !== 'object') invalid(`${operation}.watermark is required.`);
   const watermark = value as WatermarkInput;
   if (watermark.kind === 'text') validateTextWatermark(watermark, operation);
@@ -148,7 +152,7 @@ export function executeWatermarksInsert(
   options?: MutationOptions,
 ): WatermarkMutationResult {
   validateTarget(input.target, 'watermarks.insert');
-  validateWatermark(input.watermark, 'watermarks.insert');
+  validateWatermarkInput(input.watermark, 'watermarks.insert');
   return adapter.insert(input, normalizeMutationOptions(options));
 }
 
@@ -158,7 +162,7 @@ export function executeWatermarksReplace(
   options?: MutationOptions,
 ): WatermarkMutationResult {
   validateAddress(input.target, 'watermarks.replace');
-  validateWatermark(input.watermark, 'watermarks.replace');
+  validateWatermarkInput(input.watermark, 'watermarks.replace');
   return adapter.replace(input, normalizeMutationOptions(options));
 }
 
@@ -169,4 +173,60 @@ export function executeWatermarksRemove(
 ): WatermarkRemoveResult {
   validateAddress(input.target, 'watermarks.remove');
   return adapter.remove(input, normalizeMutationOptions(options));
+}
+
+export function executeWatermarksApply(
+  adapter: WatermarksAdapter,
+  input: WatermarksApplyInput,
+  options?: MutationOptions,
+): WatermarksApplyResult {
+  const operation = 'watermarks.apply';
+  if (!input || typeof input !== 'object') invalid(`${operation} input is required.`);
+  const target = input.target;
+  if (target?.kind === 'headerFooterSlots') {
+    if (!Array.isArray(target.slots) || target.slots.length === 0) {
+      invalid(`${operation}.target.slots must contain at least one header slot.`);
+    }
+    const keys = new Set<string>();
+    for (const slot of target.slots) {
+      validateTarget(slot, operation);
+      if (slot.kind !== 'headerFooterSlot') invalid(`${operation}.target.slots must contain header slots.`);
+      const key = `${slot.section.sectionId}:${slot.variant}`;
+      if (keys.has(key)) invalid(`${operation}.target.slots must be unique.`);
+      keys.add(key);
+    }
+  } else {
+    validateTarget(target, operation);
+    if (target.kind !== 'document') invalid(`${operation}.target must address the document or headerFooterSlots.`);
+  }
+  if (!['insert', 'replace', 'remove'].includes(input.action)) invalid(`${operation}.action is invalid.`);
+  if (input.action !== 'insert') {
+    if (
+      !Array.isArray(input.watermarkIds) ||
+      input.watermarkIds.length === 0 ||
+      input.watermarkIds.some((id) => typeof id !== 'string' || id.length === 0) ||
+      new Set(input.watermarkIds).size !== input.watermarkIds.length
+    ) {
+      invalid(`${operation}.watermarkIds must contain unique, non-empty identities.`);
+    }
+  }
+  if (input.action !== 'remove') {
+    const watermark = input.watermark;
+    if (watermark?.kind === 'picture' && 'source' in watermark) {
+      const retained = watermark as RetainedPictureWatermarkInput;
+      if (
+        input.action !== 'replace' ||
+        'src' in retained ||
+        retained.source?.kind !== 'existing' ||
+        typeof retained.source.watermarkId !== 'string' ||
+        retained.source.watermarkId.length === 0
+      ) {
+        invalid(`${operation}.watermark.source must identify an existing picture for replacement.`);
+      }
+      validateWatermarkInput({ ...retained, src: 'retained' }, operation);
+    } else {
+      validateWatermarkInput(watermark, operation);
+    }
+  }
+  return adapter.apply(input, normalizeMutationOptions(options));
 }

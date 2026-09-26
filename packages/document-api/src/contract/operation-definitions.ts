@@ -4839,6 +4839,33 @@ export const OPERATION_DEFINITIONS = {
   // =========================================================================
   // watermarks.*
   // =========================================================================
+  'watermarks.apply': {
+    memberPath: 'watermarks.apply',
+    description: v2BackedOnlyDescription(
+      'Atomically insert, replace, or remove selected watermarks in explicit scopes while preserving surrounding headers.',
+    ),
+    expectedResult:
+      'Returns the resulting watermarks, changed header slots, preserved boundaries, and evaluated revision.',
+    requiresDocumentContext: true,
+    metadata: mutationOperation({
+      idempotency: 'conditional',
+      supportsDryRun: true,
+      trackedSupport: 'never',
+      possibleFailureCodes: [
+        'TARGET_NOT_FOUND',
+        'INVALID_TARGET',
+        'INVALID_INPUT',
+        'PRECONDITION_FAILED',
+        'CAPABILITY_UNAVAILABLE',
+        'REVISION_MISMATCH',
+        'PERMISSION_DENIED',
+        'INTERNAL_ERROR',
+      ],
+      throws: ['INVALID_INPUT', 'INVALID_TARGET', 'CAPABILITY_UNAVAILABLE', 'INTERNAL_ERROR'],
+    }),
+    referenceDocPath: 'watermarks/apply.mdx',
+    referenceGroup: 'watermarks',
+  },
   'watermarks.list': {
     memberPath: 'watermarks.list',
     description: v2BackedOnlyDescription(

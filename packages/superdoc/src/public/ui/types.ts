@@ -49,9 +49,14 @@ export type {
   OperationCapabilityResolveResult,
   SDHtmlMarkdownSupportCheckResult,
   PictureWatermarkInput,
+  RetainedPictureWatermarkInput,
   TextWatermark,
   WatermarkInfo,
   WatermarkTarget,
+  WatermarksApplyInput,
+  WatermarksApplyResult,
+  WatermarksApplySuccess,
+  WatermarksApplyTarget,
 } from '@superdoc/document-api';
 
 // Public style-catalogue shapes (`styles.getCatalog`) re-surfaced through
@@ -1539,6 +1544,14 @@ export interface ContextMenuHandle {
   contextAt(input: { x: number; y: number }): ViewportContext;
 }
 
+/** Runtime control for the built-in watermark dialog. */
+export interface WatermarkHandle {
+  /** Open the dialog for the active document, or return an unavailable reason. */
+  open(): WorkflowActionResult;
+  /** Dismiss the dialog. Already submitted changes continue to completion. */
+  close(): void;
+}
+
 // ---------------------------------------------------------------------------
 // Host-like structural contracts (duck-typed)
 // ---------------------------------------------------------------------------
@@ -1705,6 +1718,8 @@ export interface SuperDocUI {
   readonly search: SearchController;
   /** Built-in context menu runtime control. */
   readonly contextMenu: ContextMenuHandle;
+  /** Built-in watermark dialog runtime control. */
+  readonly watermark: WatermarkHandle;
   /** Styles surface (read-only catalogue + active paragraph style). */
   readonly styles: StylesHandle;
   /** Format-painter surface (DOM listener coordination). */

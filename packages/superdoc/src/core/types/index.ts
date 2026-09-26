@@ -3767,6 +3767,7 @@ export type ToolbarItemId =
   | 'link'
   | 'image'
   | 'table-of-contents'
+  | 'watermark'
   | 'table'
   | 'table-actions'
   | 'text-align'
@@ -3785,7 +3786,7 @@ export type ToolbarItemId =
   | 'document-mode';
 
 /** Controls that `includeItems` can add to the default toolbar. */
-export type ToolbarOptionalItemId = 'formatting-marks' | 'table-of-contents';
+export type ToolbarOptionalItemId = 'formatting-marks' | 'table-of-contents' | 'watermark';
 
 /** Slots whose built-in toolbar icon can be replaced. */
 export type ToolbarIconId =
@@ -3799,6 +3800,7 @@ export type ToolbarIconId =
   | 'link'
   | 'image'
   | 'table-of-contents'
+  | 'watermark'
   | 'align-left'
   | 'align-right'
   | 'align-center'
@@ -3852,6 +3854,7 @@ export type ToolbarStringId =
   | 'link'
   | 'image'
   | 'table-of-contents'
+  | 'watermark'
   | 'table'
   | 'table-actions'
   | 'insert-row-before'

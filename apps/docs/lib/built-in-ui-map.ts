@@ -3,6 +3,7 @@ export type BuiltInUiSurfaceId =
   | 'comments'
   | 'search'
   | 'hyperlinks'
+  | 'watermarks'
   | 'context-menu'
   | 'content-controls'
   | 'ruler'
@@ -64,6 +65,18 @@ export const builtInUiSurfaces = [
     href: '/editor/built-in-ui/hyperlinks',
     initialBehavior: [{ kind: 'text', value: 'Edit in Editing or Suggesting mode. Navigate in Viewing mode.' }],
     description: 'Keep the mode-aware behavior, suppress activation, or render a custom action.',
+  },
+  {
+    id: 'watermarks',
+    slug: 'watermarks',
+    label: 'Watermarks',
+    href: '/editor/built-in-ui/watermarks',
+    initialBehavior: [
+      { kind: 'text', value: 'Your application opens the dialog with ' },
+      { kind: 'code', value: 'superdoc.ui.watermark.open()' },
+      { kind: 'text', value: '. No default toolbar button is added.' },
+    ],
+    description: 'Preview and configure text or picture watermarks with an explicit document or section scope.',
   },
   {
     id: 'context-menu',

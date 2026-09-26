@@ -37,6 +37,7 @@ export { executeSelectionCurrent } from './selection/selection.js';
 export type { HeaderFootersAdapter, HeaderFootersApi } from './header-footers/header-footers.js';
 export * from './header-footers/header-footers.types.js';
 export type { WatermarksAdapter, WatermarksApi } from './watermarks/watermarks.js';
+export { validateWatermarkInput } from './watermarks/watermarks.js';
 export * from './watermarks/watermarks.types.js';
 export type { ClearContentAdapter, ClearContentInput } from './clear-content/clear-content.js';
 export type {
@@ -559,6 +560,8 @@ import {
 import type {
   WatermarksAdapter,
   WatermarksApi,
+  WatermarksApplyInput,
+  WatermarksApplyResult,
   WatermarksInsertInput,
   WatermarksListQuery,
   WatermarksListResult,
@@ -568,6 +571,7 @@ import type {
   WatermarkRemoveResult,
 } from './watermarks/watermarks.js';
 import {
+  executeWatermarksApply,
   executeWatermarksInsert,
   executeWatermarksList,
   executeWatermarksRemove,
@@ -3339,6 +3343,9 @@ export function createDocumentApi(adapters: DocumentApiAdapters): DocumentApi {
       },
     },
     watermarks: {
+      apply(input: WatermarksApplyInput, options?: MutationOptions): WatermarksApplyResult {
+        return executeWatermarksApply(requireAdapter(adapters.watermarks, 'watermarks'), input, options);
+      },
       list(query?: WatermarksListQuery): WatermarksListResult {
         return executeWatermarksList(requireAdapter(adapters.watermarks, 'watermarks'), query);
       },

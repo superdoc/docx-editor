@@ -331,6 +331,8 @@ const focusTrigger = () => {
   trigger.focus();
 };
 
+defineExpose({ focusTrigger });
+
 const handleKeyDown = (event) => {
   if (!isOpen.value) return;
 

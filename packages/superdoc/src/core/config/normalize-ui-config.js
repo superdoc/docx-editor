@@ -307,6 +307,7 @@ function addCustomItemRegions(regions, customItems) {
 }
 
 const TOOLBAR_OPTIONAL_ITEM_REGIONS = Object.freeze({
+  watermark: 'center',
   'formatting-marks': 'right',
   'table-of-contents': 'center',
 });
@@ -452,6 +453,7 @@ function normalizeToolbarOptions(options) {
       includeItems === null && !itemIds.has('table-of-contents')
         ? options.showTableOfContentsButton
         : itemIds.has('table-of-contents') || includeItems?.has('table-of-contents'),
+    showWatermarkButton: itemIds.has('watermark') || includeItems?.has('watermark') || false,
   });
 }
 

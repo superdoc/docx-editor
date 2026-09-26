@@ -113,6 +113,8 @@ const handleOuterEnter = (event) => {
 };
 
 const onEnterKeydown = (event) => {
+  // Opening a dialog can focus a native button before Enter's default action runs.
+  event.preventDefault();
   if (!props.allowEnterPropagation) event.stopPropagation();
   handleOuterEnter(event);
 };

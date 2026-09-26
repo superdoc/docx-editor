@@ -81,6 +81,8 @@ export { sanitizeUrl, linkMetrics, applyRunDataAttributes } from './runs/index.j
 
 export { applySquareWrapExclusionsToLines } from './utils/anchor-helpers';
 export { buildImagePmSelector, buildInlineImagePmSelector } from './images/image-selectors.js';
+export { buildImageGeometryTransform } from './images/image-fragment.js';
+export { buildImageFilters, resolveImageOpacity } from './runs/image-run.js';
 
 // Story-aware, content-free position-coverage validation (painter-scoped).
 export { createPositionValidationCollector, PositionValidationCollector } from './pm-position-validation.js';

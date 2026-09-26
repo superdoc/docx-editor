@@ -517,6 +517,16 @@ export const makeDefaultItems = ({
     },
   });
 
+  const watermark = useToolbarItem({
+    type: 'button',
+    name: 'watermark',
+    icon: toolbarIcons.watermark,
+    tooltip: toolbarTexts.watermark,
+    allowWithoutEditor: true,
+    disabled: true,
+    attributes: { ariaLabel: toolbarTexts.watermark },
+  });
+
   // table
   const tableItem = useToolbarItem({
     type: 'dropdown',
@@ -1264,6 +1274,7 @@ export const makeDefaultItems = ({
     link,
     image,
     ...(shouldIncludeTableOfContents ? [tableOfContents] : []),
+    ...(superToolbar.config?.showWatermarkButton || configuredItemNames?.has('watermark') ? [watermark] : []),
     tableItem,
     tableActionsItem,
     makeSeparator(),

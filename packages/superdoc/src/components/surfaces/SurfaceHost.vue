@@ -5,10 +5,9 @@
  * Reads the SurfaceManager's reactive state (activeDialog / activeFloating)
  * and renders the appropriate surface shell for each slot.
  *
- * Uses position:fixed with bounds dynamically computed as the intersection
- * of .superdoc__layers (the document viewport) with the browser viewport.
- * This keeps dialogs centered and floating surfaces pinned to the visible
- * area regardless of document scroll position.
+ * Floating surfaces are clipped to the visible document viewport. Modal
+ * dialogs are siblings of that clipped host so their backdrop covers the
+ * browser viewport, including toolbars and surrounding application content.
  *
  * Floating Escape and outside-pointer-down handling live here (document-level)
  * because floating surfaces are non-modal — focus can be anywhere in the
@@ -289,16 +288,15 @@ function handleDialogClose() {
     <div v-if="hasAnySurface" ref="hostRef" class="sd-surface-host" :style="hostStyle">
       <!-- Floating renders below dialog in DOM order and z-index -->
       <SurfaceFloating v-if="floating" :key="floating.id" :surface="floating" ref="floatingRef" />
-
-      <!-- Dialog always renders above floating -->
-      <SurfaceDialog
-        v-if="dialog"
-        :key="dialog.id"
-        :surface="dialog"
-        :scroll-lock-target="geometryTarget"
-        @close="handleDialogClose"
-      />
     </div>
+
+    <SurfaceDialog
+      v-if="dialog"
+      :key="dialog.id"
+      :surface="dialog"
+      :scroll-lock-target="geometryTarget"
+      @close="handleDialogClose"
+    />
   </Teleport>
 </template>
 

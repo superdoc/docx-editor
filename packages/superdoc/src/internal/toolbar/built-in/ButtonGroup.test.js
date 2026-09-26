@@ -53,7 +53,7 @@ const mountGroup = (toolbarItems) => {
   return wrapper;
 };
 
-const mountOverflowGroup = (attachTo = document.body) => {
+const mountOverflowGroup = (attachTo = document.body, additionalItems = []) => {
   const overflow = useToolbarItem({
     type: 'overflow',
     name: 'overflow',
@@ -77,7 +77,7 @@ const mountOverflowGroup = (attachTo = document.body) => {
     options: [{ label: '125%', key: 1.25, props: { 'data-item': 'btn-zoom-option' } }],
   });
   const toolbarItems = [overflow];
-  const overflowItems = [bold, zoom];
+  const overflowItems = [bold, zoom, ...additionalItems];
   const emitCommand = vi.fn();
 
   wrapper = mount(ButtonGroup, {
@@ -99,6 +99,23 @@ afterEach(() => {
   wrapper = null;
   Object.defineProperty(document, 'fullscreenElement', { configurable: true, value: null });
   document.body.innerHTML = '';
+});
+
+describe('ButtonGroup button activation', () => {
+  it('consumes Enter when opening a surface so its newly focused button is not activated', () => {
+    const item = useToolbarItem({
+      type: 'button',
+      name: 'watermark',
+      defaultLabel: 'Watermark',
+      attributes: { ariaLabel: 'Watermark' },
+    });
+    mountGroup([item]);
+    const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+    wrapper.get('[aria-label="Watermark"]').element.dispatchEvent(event);
+
+    expect(wrapper.emitted('command')).toEqual([[{ item }]]);
+    expect(event.defaultPrevented).toBe(true);
+  });
 });
 
 describe('ButtonGroup font-family combobox wiring', () => {
@@ -166,6 +183,32 @@ describe('ButtonGroup font-family combobox wiring', () => {
 });
 
 describe('ButtonGroup overflow menu', () => {
+  it('closes overflow and focuses its durable trigger before opening the Watermark dialog', async () => {
+    const watermark = useToolbarItem({
+      type: 'button',
+      name: 'watermark',
+      defaultLabel: 'Watermark',
+      attributes: { ariaLabel: 'Watermark' },
+    });
+    const { emitCommand } = mountOverflowGroup(document.body, [watermark]);
+    const trigger = wrapper.get('[aria-label="Overflow items"]');
+    await trigger.trigger('click');
+    await nextTick();
+    const button = document.body.querySelector('[aria-label="Watermark"]');
+    button.focus();
+    let focusAtCommand;
+    emitCommand.mockImplementation(() => {
+      focusAtCommand = document.activeElement;
+    });
+
+    button.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    await nextTick();
+
+    expect(emitCommand).toHaveBeenCalledOnce();
+    expect(focusAtCommand).toBe(trigger.element);
+    expect(document.body.querySelector('.sd-toolbar-overflow-menu')).toBeNull();
+  });
+
   it('keeps pointer actions from taking focus away from the editor', async () => {
     const editor = document.createElement('div');
     editor.tabIndex = -1;
@@ -266,7 +309,7 @@ describe('ButtonGroup overflow menu', () => {
     const { emitCommand } = mountOverflowGroup();
     const trigger = wrapper.get('[aria-label="Overflow items"]');
 
-    await wrapper.get('.sd-toolbar-item-ctn').trigger('keydown', { key: 'Enter' });
+    await trigger.trigger('keydown', { key: 'Enter' });
     await nextTick();
     const bold = document.body.querySelector('[aria-label="Bold"]');
     expect(bold).not.toBeNull();

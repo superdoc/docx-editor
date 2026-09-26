@@ -12,6 +12,7 @@ export const toolbarTexts = {
   link: 'Link',
   image: 'Image',
   tableOfContents: 'Table of contents',
+  watermark: 'Watermark',
   table: 'Insert table',
   tableActions: 'Table options',
   addRowBefore: 'Insert row above',

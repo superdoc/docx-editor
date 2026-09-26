@@ -117,6 +117,89 @@ afterEach(() => {
 });
 
 describe('BuiltInToolbar', () => {
+  it('leaves Watermark out of the default toolbar and includes it when requested', () => {
+    const host = makeHost();
+    const defaultToolbar = new BuiltInToolbar({ superdoc: host });
+    expect(defaultToolbar.getToolbarItemByName('watermark')).toBeUndefined();
+    const normalized = normalizeUiConfig({ ui: { toolbar: { includeItems: ['watermark'] } } }).toolbar;
+    const toolbar = new BuiltInToolbar({ superdoc: host, ...normalized.options });
+    expect(toolbar.getToolbarItemByName('watermark')).toBeTruthy();
+    defaultToolbar.destroy();
+    toolbar.destroy();
+  });
+
+  it.each(['editing', 'suggesting', 'viewing'])(
+    'opens the existing watermark workflow from the %s toolbar',
+    async (documentMode) => {
+      const host = makeHost({ config: { documentMode } });
+      const open = vi.spyOn(host.ui.watermark, 'open').mockReturnValue({ ok: true });
+      const toolbarContainer = document.createElement('div');
+      document.body.append(toolbarContainer);
+      const normalized = normalizeUiConfig({
+        ui: { toolbar: { items: { center: ['watermark'] }, overflow: 'visible' } },
+      }).toolbar;
+      const toolbar = new BuiltInToolbar({ superdoc: host, selector: toolbarContainer, ...normalized.options });
+      await nextTick();
+      const item = toolbar.getToolbarItemByName('watermark');
+      expect(item?.disabled.value).toBe(false);
+      const button = toolbarContainer.querySelector<HTMLElement>('[aria-label="Watermark"]');
+      expect(button).not.toBeNull();
+      button!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      expect(open).toHaveBeenCalledOnce();
+      expect(item.tooltip.value).toBe('Watermark');
+      toolbar.destroy();
+    },
+  );
+
+  it('disables Watermark before a document is ready', () => {
+    const host = makeHost({ activeEditor: null });
+    const normalized = normalizeUiConfig({ ui: { toolbar: { includeItems: ['watermark'] } } }).toolbar;
+    const toolbar = new BuiltInToolbar({ superdoc: host, ...normalized.options });
+    expect(toolbar.getToolbarItemByName('watermark')?.disabled.value).toBe(true);
+    toolbar.destroy();
+  });
+
+  it.each([true, false])(
+    'enables the overflow trigger only when its Watermark child is available (ready=%s)',
+    (ready) => {
+      const host = makeHost({ activeEditor: ready ? { id: 'editor-1' } : null, config: { documentMode: 'viewing' } });
+      const toolbarContainer = document.createElement('div');
+      Object.defineProperty(toolbarContainer, 'offsetWidth', { configurable: true, value: 50 });
+      document.body.append(toolbarContainer);
+      const normalized = normalizeUiConfig({
+        ui: { toolbar: { items: { center: ['watermark'] }, responsiveTo: 'container' } },
+      }).toolbar;
+      const toolbar = new BuiltInToolbar({ superdoc: host, selector: toolbarContainer, ...normalized.options });
+
+      toolbar.snapshot = { commands: { 'document-mode': { value: 'viewing' } } };
+      toolbar.updateToolbarState();
+
+      expect(toolbar.overflowItems.map((item) => item.name.value)).toEqual(['watermark']);
+      expect(toolbar.getToolbarItemByName('watermark')?.disabled.value).toBe(!ready);
+      expect(toolbar.getToolbarItemByName('overflow')?.disabled.value).toBe(!ready);
+      toolbar.destroy();
+    },
+  );
+
+  it('moves Watermark into ordinary overflow and honors explicit exclusion', () => {
+    const host = makeHost();
+    const toolbarContainer = document.createElement('div');
+    Object.defineProperty(toolbarContainer, 'offsetWidth', { configurable: true, value: 50 });
+    document.body.append(toolbarContainer);
+    const normalized = normalizeUiConfig({
+      ui: { toolbar: { items: { center: ['watermark'] }, responsiveTo: 'container' } },
+    }).toolbar;
+    const toolbar = new BuiltInToolbar({ superdoc: host, selector: toolbarContainer, ...normalized.options });
+    expect(toolbar.overflowItems.map((item) => item.name.value)).toContain('watermark');
+    toolbar.destroy();
+    const excluded = normalizeUiConfig({
+      ui: { toolbar: { includeItems: ['watermark'], excludeItems: ['watermark'] } },
+    }).toolbar;
+    const excludedToolbar = new BuiltInToolbar({ superdoc: host, ...excluded.options });
+    expect(excludedToolbar.getToolbarItemByName('watermark')).toBeUndefined();
+    excludedToolbar.destroy();
+  });
+
   it('treats a groups array as group ordering instead of button composition', async () => {
     const toolbarContainer = document.createElement('div');
     document.body.append(toolbarContainer);

@@ -175,6 +175,7 @@ export class BuiltInToolbar extends EventEmitter {
     customButtons: [],
     showFormattingMarksButton: false,
     showTableOfContentsButton: false,
+    showWatermarkButton: false,
   };
 
   toolbarItems = [];
@@ -650,6 +651,9 @@ export class BuiltInToolbar extends EventEmitter {
   }
 
   #canRunHostAction(name) {
+    if (name === 'watermark') {
+      return this.ui?.document?.getSnapshot?.().ready === true && typeof this.ui?.watermark?.open === 'function';
+    }
     if (name === 'ruler') return typeof this.superdoc?.toggleRuler === 'function';
     if (name === 'formattingMarks') {
       return (
@@ -861,6 +865,9 @@ export class BuiltInToolbar extends EventEmitter {
       });
     }
 
+    const overflow = this.getToolbarItemByName('overflow');
+    overflow?.setDisabled(!this.overflowItems.some((item) => item.type !== 'separator' && !item.disabled.value));
+
     const copyFormatItem = this.getToolbarItemByName('copyFormat');
     if (copyFormatItem) {
       if (this.snapshot?.copyFormatActive) copyFormatItem.activate();
@@ -884,6 +891,12 @@ export class BuiltInToolbar extends EventEmitter {
 
   #runHostAction(name, argument) {
     const superdoc = this.superdoc;
+    if (name === 'watermark') {
+      if (!this.#canRunHostAction(name)) return false;
+      const result = this.ui.watermark.open();
+      if (!result.ok) throw new Error(`[superdoc toolbar] Watermark dialog unavailable: ${result.reason}`);
+      return true;
+    }
     if (name === 'ruler') {
       if (typeof superdoc?.toggleRuler === 'function') {
         superdoc.toggleRuler();

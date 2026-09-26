@@ -44,6 +44,7 @@ const itemIds = {
   link: true,
   image: true,
   'table-of-contents': true,
+  watermark: true,
   table: true,
   'table-actions': true,
   'text-align': true,

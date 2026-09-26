@@ -100,6 +100,22 @@ describe('SurfaceHost', () => {
     expect(wrapper.find('.sd-surface-dialog-backdrop').exists()).toBe(true);
   });
 
+  it.each([true, false])('prevents backdrop focus loss with closeOnBackdrop=%s', async (closeOnBackdrop) => {
+    const surface = createSurface();
+    surface.request.closeOnBackdrop = closeOnBackdrop;
+    manager.activeDialog.value = surface;
+    const wrapper = mountHost(manager);
+    await nextTick();
+
+    const event = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+    wrapper.find('.sd-surface-dialog-backdrop').element.dispatchEvent(event);
+    await nextTick();
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(!closeOnBackdrop);
+    wrapper.unmount();
+  });
+
   it('renders a floating when activeFloating is set', async () => {
     manager.activeFloating.value = createSurface({
       id: 'float-1',

@@ -7,6 +7,9 @@ description: Open temporary application UI over the Editor and handle every way 
 Use a surface when your application needs temporary UI over the Editor. Choose a dialog when the user must respond
 before returning to the document. Choose a floating surface when the document should remain usable.
 
+For text and picture watermarks, use the [built-in Watermark dialog](/editor/built-in-ui/watermarks). Your application
+opens it without constructing a custom surface or adding a default toolbar control.
+
 ## Try both surface modes
 
 1. Open **confirmation**. Continue submits it. Cancel, Escape, or the backdrop closes it.
@@ -58,11 +61,12 @@ Invalid requests throw synchronously. Normal lifecycle outcomes resolve `handle.
 
 ## Use the interaction defaults deliberately
 
-Dialogs trap focus, restore it when they close, and close on Escape or backdrop clicks by default. Floating surfaces
-default to the top-right, focus their first control, close on Escape, and stay open after outside pointer events.
+Dialogs cover the browser viewport with a backdrop, trap focus, restore it when they close, and close on Escape or
+backdrop clicks by default. Floating surfaces stay within the visible Editor viewport, default to the top-right, focus
+their first control, close on Escape, and stay open after outside pointer events.
 
-The dialog's trap covers keystrokes inside its own backdrop. Controls your application renders outside the Editor
-viewport are not part of it, so moving focus to one takes the reader out of the dialog and Escape stops closing it.
+The dialog's trap covers keystrokes inside its own backdrop. Controls your application renders outside the dialog
+backdrop are not part of it, so moving focus to one takes the reader out of the dialog and Escape stops closing it.
 While a dialog is open, make the rest of your interface unreachable — `inert` on the surrounding region is enough — and
 do not rely on the trap alone to contain focus.
 

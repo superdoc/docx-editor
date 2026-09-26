@@ -1,5 +1,14 @@
 <script setup>
-import { ref, getCurrentInstance, onMounted, onActivated, onDeactivated, onBeforeUnmount, computed } from 'vue';
+import {
+  ref,
+  getCurrentInstance,
+  onMounted,
+  onActivated,
+  onDeactivated,
+  onBeforeUnmount,
+  computed,
+  nextTick,
+} from 'vue';
 import { throttle } from './helpers.js';
 import ButtonGroup from './ButtonGroup.vue';
 import { preventEditorFocusTransfer } from './toolbar-focus-helpers.js';
@@ -16,10 +25,12 @@ const { proxy } = getCurrentInstance();
 const emit = defineEmits(['command', 'toggle', 'select']);
 
 let toolbarKey = ref(1);
+const toolbarRoot = ref(null);
 const toolbarStateVersion = ref(0);
 const compactSideGroups = ref(false);
 let containerResizeObserver = null;
 let pendingSelectionCapture = null;
+let renderedWidth = proxy.$toolbar.getAvailableWidth();
 
 /**
  * Computed property that determines the font-family to use for toolbar UI surfaces.
@@ -54,10 +65,47 @@ const updateCompactSideGroups = () => {
 // `handleFindShortcut`), so the toolbar no longer opens its legacy search
 // dropdown on that shortcut. The dropdown remains available via its button.
 
+const captureFocusedControl = () => {
+  const root = toolbarRoot.value;
+  const ownerDocument = root?.ownerDocument;
+  const focused = ownerDocument?.activeElement;
+  if (!root?.contains(focused)) return null;
+  const control =
+    focused.closest('[data-sd-part="toolbar-item"]') ?? focused.querySelector('[data-sd-part="toolbar-item"]');
+  if (!control || (focused !== control && !focused.contains(control))) return null;
+  const itemId = control.querySelector('[data-item]')?.getAttribute('data-item');
+  if (!itemId) return null;
+  return () => {
+    const currentRoot = toolbarRoot.value;
+    if (!currentRoot?.isConnected || focused.isConnected || ownerDocument.activeElement !== ownerDocument.body) return;
+    const markers = [...currentRoot.querySelectorAll('[data-item]')];
+    for (const id of [itemId, 'btn-overflow']) {
+      const target = markers
+        .find((marker) => marker.getAttribute('data-item') === id)
+        ?.closest('[data-sd-part="toolbar-item"]');
+      if (target && target.getAttribute('aria-disabled') !== 'true') {
+        target.focus({ preventScroll: true });
+        return;
+      }
+    }
+  };
+};
+
+const renderToolbar = async (restoreFocus) => {
+  toolbarKey.value += 1;
+  await nextTick();
+  restoreFocus?.();
+};
+
 const onWindowResized = async () => {
+  const width = proxy.$toolbar.getAvailableWidth();
+  // Window and container notifications can describe the same layout. Remounting twice detaches dialog openers.
+  if (width === renderedWidth) return;
+  renderedWidth = width;
+  const restoreFocus = captureFocusedControl();
   await proxy.$toolbar.onToolbarResize();
   updateCompactSideGroups();
-  toolbarKey.value += 1;
+  await renderToolbar(restoreFocus);
 };
 const onResizeThrottled = throttle(onWindowResized, 300);
 
@@ -68,7 +116,10 @@ const onResizeThrottled = throttle(onWindowResized, 300);
  * SuperToolbar emits `toolbar-items-changed` on rebuild; bumping the key re-reads the new items into the DOM.
  */
 const onToolbarItemsChanged = () => {
-  toolbarKey.value += 1;
+  const restoreFocus = captureFocusedControl();
+  renderedWidth = proxy.$toolbar.getAvailableWidth();
+  updateCompactSideGroups();
+  void renderToolbar(restoreFocus);
 };
 
 const onToolbarStateChanged = () => {
@@ -76,6 +127,7 @@ const onToolbarStateChanged = () => {
 };
 
 function teardownListeners() {
+  onResizeThrottled.cancel();
   window.removeEventListener('resize', onResizeThrottled);
   proxy.$toolbar.off?.('toolbar-items-changed', onToolbarItemsChanged);
   proxy.$toolbar.off?.('toolbar-state-change', onToolbarStateChanged);
@@ -144,6 +196,7 @@ const handleToolbarMousedown = (e) => {
 <template>
   <div
     class="superdoc-toolbar"
+    ref="toolbarRoot"
     :key="toolbarKey"
     role="toolbar"
     aria-label="Toolbar"

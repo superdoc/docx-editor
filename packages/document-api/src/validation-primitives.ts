@@ -91,16 +91,35 @@ export function assertNoUnknownFields(
   input: Record<string, unknown>,
   allowlist: ReadonlySet<string>,
   operationName: string,
+  misplacedOptionExamples?: ReadonlyMap<string, string> | string,
 ): void {
   for (const key of Object.keys(input)) {
     if (!allowlist.has(key)) {
+      const optionExample =
+        typeof misplacedOptionExamples === 'string'
+          ? standardMutationOptionExample(misplacedOptionExamples, key)
+          : misplacedOptionExamples?.get(key);
+      const guidance = optionExample
+        ? ` Pass "${key}" in the second options argument, for example: ${optionExample}.`
+        : '';
       throw new DocumentApiValidationError(
         'INVALID_INPUT',
-        `Unknown field "${key}" on ${operationName} input. Allowed fields: ${[...allowlist].join(', ')}.`,
+        `Unknown field "${key}" on ${operationName} input. Allowed fields: ${[...allowlist].join(', ')}.${guidance}`,
         { field: key },
       );
     }
   }
+}
+
+const MUTATION_OPTION_VALUES = new Map([
+  ['changeMode', '"tracked"'],
+  ['dryRun', 'true'],
+]);
+
+function standardMutationOptionExample(methodName: string, field: string): string | undefined {
+  const value = MUTATION_OPTION_VALUES.get(field);
+  if (!value) return undefined;
+  return `${methodName}(input, { ${field}: ${value} })`;
 }
 
 const NESTING_POLICY_ALLOWED_KEYS: ReadonlySet<string> = new Set(['tables']);

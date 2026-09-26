@@ -113,6 +113,12 @@ describe('executeBlocksDelete', () => {
         expect(error).toBeInstanceOf(DocumentApiValidationError);
         expect((error as DocumentApiValidationError).code).toBe('INVALID_INPUT');
         expect((error as DocumentApiValidationError).message).toContain(`Unknown field "${field}"`);
+        if (field === 'changeMode' || field === 'dryRun') {
+          expect((error as DocumentApiValidationError).message).toContain('second options argument');
+          expect((error as DocumentApiValidationError).message).toContain('doc.blocks.delete(');
+        } else {
+          expect((error as DocumentApiValidationError).message).not.toContain('second options argument');
+        }
       }
       expect(adapter.delete).not.toHaveBeenCalled();
     });

@@ -49,6 +49,14 @@ import {
   ALIGNMENT_POLICIES,
 } from './paragraphs.types.js';
 
+function assertNoUnknownParagraphFields(
+  input: Record<string, unknown>,
+  allowlist: ReadonlySet<string>,
+  operationName: string,
+): void {
+  assertNoUnknownFields(input, allowlist, operationName, `doc.${operationName}`);
+}
+
 // Re-export types
 export type {
   ParagraphTarget,
@@ -414,7 +422,7 @@ const CLEAR_DIRECTION_KEYS = new Set(['target']);
 
 function validateSetStyle(input: unknown): asserts input is ParagraphsSetStyleInput {
   assertParagraphTarget(input, 'styles.paragraph.setStyle');
-  assertNoUnknownFields(input as Record<string, unknown>, SET_STYLE_KEYS, 'styles.paragraph.setStyle');
+  assertNoUnknownParagraphFields(input as Record<string, unknown>, SET_STYLE_KEYS, 'styles.paragraph.setStyle');
   const record = input as Record<string, unknown>;
   if ((record.styleId === undefined) === (record.role === undefined)) {
     throw new DocumentApiValidationError(
@@ -449,18 +457,18 @@ function assertParagraphSemanticStyleRole(value: unknown): asserts value is Para
 
 function validateSetStyleRef(input: unknown): asserts input is ParagraphsSetStyleRefInput {
   assertParagraphTarget(input, 'styles.paragraph.setStyleRef');
-  assertNoUnknownFields(input as Record<string, unknown>, SET_STYLE_REF_KEYS, 'styles.paragraph.setStyleRef');
+  assertNoUnknownParagraphFields(input as Record<string, unknown>, SET_STYLE_REF_KEYS, 'styles.paragraph.setStyleRef');
   assertNonEmptyString((input as Record<string, unknown>).styleId, 'styleId', 'styles.paragraph.setStyleRef');
 }
 
 function validateClearStyle(input: unknown): asserts input is ParagraphsClearStyleInput {
   assertParagraphTarget(input, 'styles.paragraph.clearStyle');
-  assertNoUnknownFields(input as Record<string, unknown>, CLEAR_STYLE_KEYS, 'styles.paragraph.clearStyle');
+  assertNoUnknownParagraphFields(input as Record<string, unknown>, CLEAR_STYLE_KEYS, 'styles.paragraph.clearStyle');
 }
 
 function validateResetDirectFormatting(input: unknown): asserts input is ParagraphsResetDirectFormattingInput {
   assertParagraphTarget(input, 'format.paragraph.resetDirectFormatting');
-  assertNoUnknownFields(
+  assertNoUnknownParagraphFields(
     input as Record<string, unknown>,
     RESET_DIRECT_FORMATTING_KEYS,
     'format.paragraph.resetDirectFormatting',
@@ -469,7 +477,7 @@ function validateResetDirectFormatting(input: unknown): asserts input is Paragra
 
 function validateSetAlignment(input: unknown): asserts input is ParagraphsSetAlignmentInput {
   assertParagraphTarget(input, 'format.paragraph.setAlignment');
-  assertNoUnknownFields(input as Record<string, unknown>, SET_ALIGNMENT_KEYS, 'format.paragraph.setAlignment');
+  assertNoUnknownParagraphFields(input as Record<string, unknown>, SET_ALIGNMENT_KEYS, 'format.paragraph.setAlignment');
   const rec = input as Record<string, unknown>;
   if (rec.alignment === undefined) {
     throw new DocumentApiValidationError('INVALID_INPUT', 'format.paragraph.setAlignment requires an alignment field.');
@@ -479,13 +487,17 @@ function validateSetAlignment(input: unknown): asserts input is ParagraphsSetAli
 
 function validateClearAlignment(input: unknown): asserts input is ParagraphsClearAlignmentInput {
   assertParagraphTarget(input, 'format.paragraph.clearAlignment');
-  assertNoUnknownFields(input as Record<string, unknown>, CLEAR_ALIGNMENT_KEYS, 'format.paragraph.clearAlignment');
+  assertNoUnknownParagraphFields(
+    input as Record<string, unknown>,
+    CLEAR_ALIGNMENT_KEYS,
+    'format.paragraph.clearAlignment',
+  );
 }
 
 function validateSetIndentation(input: unknown): asserts input is ParagraphsSetIndentationInput {
   const op = 'format.paragraph.setIndentation';
   assertParagraphTarget(input, op);
-  assertNoUnknownFields(input as Record<string, unknown>, SET_INDENTATION_KEYS, op);
+  assertNoUnknownParagraphFields(input as Record<string, unknown>, SET_INDENTATION_KEYS, op);
   const rec = input as Record<string, unknown>;
   assertNotEmptyPatch(rec, ['left', 'right', 'firstLine', 'hanging'], op);
 
@@ -503,13 +515,17 @@ function validateSetIndentation(input: unknown): asserts input is ParagraphsSetI
 
 function validateClearIndentation(input: unknown): asserts input is ParagraphsClearIndentationInput {
   assertParagraphTarget(input, 'format.paragraph.clearIndentation');
-  assertNoUnknownFields(input as Record<string, unknown>, CLEAR_INDENTATION_KEYS, 'format.paragraph.clearIndentation');
+  assertNoUnknownParagraphFields(
+    input as Record<string, unknown>,
+    CLEAR_INDENTATION_KEYS,
+    'format.paragraph.clearIndentation',
+  );
 }
 
 function validateSetSpacing(input: unknown): asserts input is ParagraphsSetSpacingInput {
   const op = 'format.paragraph.setSpacing';
   assertParagraphTarget(input, op);
-  assertNoUnknownFields(input as Record<string, unknown>, SET_SPACING_KEYS, op);
+  assertNoUnknownParagraphFields(input as Record<string, unknown>, SET_SPACING_KEYS, op);
   const rec = input as Record<string, unknown>;
   assertNotEmptyPatch(rec, ['before', 'after', 'line', 'lineRule'], op);
 
@@ -528,13 +544,13 @@ function validateSetSpacing(input: unknown): asserts input is ParagraphsSetSpaci
 
 function validateClearSpacing(input: unknown): asserts input is ParagraphsClearSpacingInput {
   assertParagraphTarget(input, 'format.paragraph.clearSpacing');
-  assertNoUnknownFields(input as Record<string, unknown>, CLEAR_SPACING_KEYS, 'format.paragraph.clearSpacing');
+  assertNoUnknownParagraphFields(input as Record<string, unknown>, CLEAR_SPACING_KEYS, 'format.paragraph.clearSpacing');
 }
 
 function validateSetKeepOptions(input: unknown): asserts input is ParagraphsSetKeepOptionsInput {
   const op = 'format.paragraph.setKeepOptions';
   assertParagraphTarget(input, op);
-  assertNoUnknownFields(input as Record<string, unknown>, SET_KEEP_OPTIONS_KEYS, op);
+  assertNoUnknownParagraphFields(input as Record<string, unknown>, SET_KEEP_OPTIONS_KEYS, op);
   const rec = input as Record<string, unknown>;
   assertNotEmptyPatch(rec, ['keepNext', 'keepLines', 'widowControl'], op);
 
@@ -546,7 +562,7 @@ function validateSetKeepOptions(input: unknown): asserts input is ParagraphsSetK
 function validateSetOutlineLevel(input: unknown): asserts input is ParagraphsSetOutlineLevelInput {
   const op = 'format.paragraph.setOutlineLevel';
   assertParagraphTarget(input, op);
-  assertNoUnknownFields(input as Record<string, unknown>, SET_OUTLINE_LEVEL_KEYS, op);
+  assertNoUnknownParagraphFields(input as Record<string, unknown>, SET_OUTLINE_LEVEL_KEYS, op);
   const rec = input as Record<string, unknown>;
   if (rec.outlineLevel === undefined) {
     throw new DocumentApiValidationError('INVALID_INPUT', `${op} requires an outlineLevel field.`);
@@ -570,7 +586,7 @@ function validateSetOutlineLevel(input: unknown): asserts input is ParagraphsSet
 function validateSetFlowOptions(input: unknown): asserts input is ParagraphsSetFlowOptionsInput {
   const op = 'format.paragraph.setFlowOptions';
   assertParagraphTarget(input, op);
-  assertNoUnknownFields(input as Record<string, unknown>, SET_FLOW_OPTIONS_KEYS, op);
+  assertNoUnknownParagraphFields(input as Record<string, unknown>, SET_FLOW_OPTIONS_KEYS, op);
   const rec = input as Record<string, unknown>;
   assertNotEmptyPatch(
     rec,
@@ -598,7 +614,7 @@ function validateSetFlowOptions(input: unknown): asserts input is ParagraphsSetF
 function validateSetTabStop(input: unknown): asserts input is ParagraphsSetTabStopInput {
   const op = 'format.paragraph.setTabStop';
   assertParagraphTarget(input, op);
-  assertNoUnknownFields(input as Record<string, unknown>, SET_TAB_STOP_KEYS, op);
+  assertNoUnknownParagraphFields(input as Record<string, unknown>, SET_TAB_STOP_KEYS, op);
   const rec = input as Record<string, unknown>;
 
   if (rec.position === undefined) {
@@ -619,7 +635,7 @@ function validateSetTabStop(input: unknown): asserts input is ParagraphsSetTabSt
 function validateClearTabStop(input: unknown): asserts input is ParagraphsClearTabStopInput {
   const op = 'format.paragraph.clearTabStop';
   assertParagraphTarget(input, op);
-  assertNoUnknownFields(input as Record<string, unknown>, CLEAR_TAB_STOP_KEYS, op);
+  assertNoUnknownParagraphFields(input as Record<string, unknown>, CLEAR_TAB_STOP_KEYS, op);
   const rec = input as Record<string, unknown>;
   if (rec.position === undefined) {
     throw new DocumentApiValidationError('INVALID_INPUT', `${op} requires a position field.`);
@@ -629,7 +645,7 @@ function validateClearTabStop(input: unknown): asserts input is ParagraphsClearT
 
 function validateClearAllTabStops(input: unknown): asserts input is ParagraphsClearAllTabStopsInput {
   assertParagraphTarget(input, 'format.paragraph.clearAllTabStops');
-  assertNoUnknownFields(
+  assertNoUnknownParagraphFields(
     input as Record<string, unknown>,
     CLEAR_ALL_TAB_STOPS_KEYS,
     'format.paragraph.clearAllTabStops',
@@ -639,7 +655,7 @@ function validateClearAllTabStops(input: unknown): asserts input is ParagraphsCl
 function validateSetBorder(input: unknown): asserts input is ParagraphsSetBorderInput {
   const op = 'format.paragraph.setBorder';
   assertParagraphTarget(input, op);
-  assertNoUnknownFields(input as Record<string, unknown>, SET_BORDER_KEYS, op);
+  assertNoUnknownParagraphFields(input as Record<string, unknown>, SET_BORDER_KEYS, op);
   const rec = input as Record<string, unknown>;
 
   if (rec.side === undefined) {
@@ -660,7 +676,7 @@ function validateSetBorder(input: unknown): asserts input is ParagraphsSetBorder
 function validateClearBorder(input: unknown): asserts input is ParagraphsClearBorderInput {
   const op = 'format.paragraph.clearBorder';
   assertParagraphTarget(input, op);
-  assertNoUnknownFields(input as Record<string, unknown>, CLEAR_BORDER_KEYS, op);
+  assertNoUnknownParagraphFields(input as Record<string, unknown>, CLEAR_BORDER_KEYS, op);
   const rec = input as Record<string, unknown>;
   if (rec.side === undefined) {
     throw new DocumentApiValidationError('INVALID_INPUT', `${op} requires a side field.`);
@@ -671,7 +687,7 @@ function validateClearBorder(input: unknown): asserts input is ParagraphsClearBo
 function validateSetShading(input: unknown): asserts input is ParagraphsSetShadingInput {
   const op = 'format.paragraph.setShading';
   assertParagraphTarget(input, op);
-  assertNoUnknownFields(input as Record<string, unknown>, SET_SHADING_KEYS, op);
+  assertNoUnknownParagraphFields(input as Record<string, unknown>, SET_SHADING_KEYS, op);
   const rec = input as Record<string, unknown>;
   assertNotEmptyPatch(rec, ['fill', 'color', 'pattern'], op);
 
@@ -682,7 +698,7 @@ function validateSetShading(input: unknown): asserts input is ParagraphsSetShadi
 
 function validateClearShading(input: unknown): asserts input is ParagraphsClearShadingInput {
   assertParagraphTarget(input, 'format.paragraph.clearShading');
-  assertNoUnknownFields(input as Record<string, unknown>, CLEAR_SHADING_KEYS, 'format.paragraph.clearShading');
+  assertNoUnknownParagraphFields(input as Record<string, unknown>, CLEAR_SHADING_KEYS, 'format.paragraph.clearShading');
 }
 
 function validateMarkRunColorRef(value: unknown, fieldName: string, operation: string): void {
@@ -841,7 +857,7 @@ function validateMarkRunPropValue(key: string, value: unknown, operation: string
 function validateSetMarkRunProps(input: unknown): asserts input is ParagraphsSetMarkRunPropsInput {
   const op = 'format.paragraph.setMarkRunProps';
   assertParagraphTarget(input, op);
-  assertNoUnknownFields(input as Record<string, unknown>, SET_MARK_RUN_PROPS_KEYS, op);
+  assertNoUnknownParagraphFields(input as Record<string, unknown>, SET_MARK_RUN_PROPS_KEYS, op);
   const rec = input as Record<string, unknown>;
   if (rec.markRunProps === undefined) {
     throw new DocumentApiValidationError('INVALID_INPUT', `${op} requires a markRunProps field.`);
@@ -868,7 +884,7 @@ function validateSetMarkRunProps(input: unknown): asserts input is ParagraphsSet
 function validateSetDirection(input: unknown): asserts input is ParagraphsSetDirectionInput {
   const op = 'format.paragraph.setDirection';
   assertParagraphTarget(input, op);
-  assertNoUnknownFields(input as Record<string, unknown>, SET_DIRECTION_KEYS, op);
+  assertNoUnknownParagraphFields(input as Record<string, unknown>, SET_DIRECTION_KEYS, op);
   const rec = input as Record<string, unknown>;
   if (rec.direction === undefined) {
     throw new DocumentApiValidationError('INVALID_INPUT', `${op} requires a direction field.`);
@@ -881,13 +897,17 @@ function validateSetDirection(input: unknown): asserts input is ParagraphsSetDir
 
 function validateClearDirection(input: unknown): asserts input is ParagraphsClearDirectionInput {
   assertParagraphTarget(input, 'format.paragraph.clearDirection');
-  assertNoUnknownFields(input as Record<string, unknown>, CLEAR_DIRECTION_KEYS, 'format.paragraph.clearDirection');
+  assertNoUnknownParagraphFields(
+    input as Record<string, unknown>,
+    CLEAR_DIRECTION_KEYS,
+    'format.paragraph.clearDirection',
+  );
 }
 
 function validateSetNumbering(input: unknown): asserts input is ParagraphsSetNumberingInput {
   const op = 'format.paragraph.setNumbering';
   assertParagraphTarget(input, op);
-  assertNoUnknownFields(input as Record<string, unknown>, SET_NUMBERING_KEYS, op);
+  assertNoUnknownParagraphFields(input as Record<string, unknown>, SET_NUMBERING_KEYS, op);
   const rec = input as Record<string, unknown>;
   if (rec.numId === undefined) {
     throw new DocumentApiValidationError('INVALID_INPUT', `${op} requires a numId field.`);

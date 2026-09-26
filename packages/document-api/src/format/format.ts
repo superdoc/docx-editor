@@ -155,7 +155,7 @@ function validateStyleApplyInput(input: unknown): asserts input is StyleApplyInp
     throw new DocumentApiValidationError('INVALID_INPUT', 'format.apply input must be a non-null object.');
   }
 
-  assertNoUnknownFields(input, STYLE_APPLY_INPUT_ALLOWED_KEYS, 'format.apply');
+  assertNoUnknownFields(input, STYLE_APPLY_INPUT_ALLOWED_KEYS, 'format.apply', 'doc.format.apply');
   validateStoryLocator(input.in, 'in');
   validateTargetLocator(input, 'format.apply');
 
@@ -209,7 +209,7 @@ function validateInlineAliasInput<K extends InlineRunPatchKey>(
 ): asserts input is FormatInlineAliasInput<K> {
   const operation = `format.${key}`;
   const candidate = isRecord(input) ? input : {};
-  assertNoUnknownFields(candidate, INLINE_ALIAS_INPUT_ALLOWED_KEYS, operation);
+  assertNoUnknownFields(candidate, INLINE_ALIAS_INPUT_ALLOWED_KEYS, operation, `doc.${operation}`);
   validateStoryLocator(candidate.in, 'in');
   validateTargetLocator(candidate, operation);
 }

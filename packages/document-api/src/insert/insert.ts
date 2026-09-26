@@ -84,6 +84,10 @@ export function isRichContentInsertInput(input: InsertInput): input is RichConte
 
 const TEXT_INSERT_ALLOWED_KEYS = new Set(['value', 'type', 'target', 'ref', 'in', 'placement']);
 const STRUCTURAL_INSERT_ALLOWED_KEYS = new Set(['content', 'target', 'placement', 'nestingPolicy', 'in']);
+const MISPLACED_INSERT_OPTION_EXAMPLES = new Map([
+  ['changeMode', 'doc.insert({ value: "text" }, { changeMode: "tracked" })'],
+  ['dryRun', 'doc.insert({ value: "text" }, { dryRun: true })'],
+]);
 const VALID_INSERT_TYPES: ReadonlySet<string> = new Set(['text', 'markdown', 'html']);
 
 // ---------------------------------------------------------------------------
@@ -164,7 +168,7 @@ function validateTextInsertInput(input: Record<string, unknown>): void {
     );
   }
 
-  assertNoUnknownFields(input, TEXT_INSERT_ALLOWED_KEYS, 'insert');
+  assertNoUnknownFields(input, TEXT_INSERT_ALLOWED_KEYS, 'insert', MISPLACED_INSERT_OPTION_EXAMPLES);
 
   // Validate placement value when provided for markdown/html
   if (isRichContent && 'placement' in input && input.placement !== undefined) {
@@ -241,7 +245,7 @@ function validateStructuralInsertInput(input: Record<string, unknown>): void {
     );
   }
 
-  assertNoUnknownFields(input, STRUCTURAL_INSERT_ALLOWED_KEYS, 'insert');
+  assertNoUnknownFields(input, STRUCTURAL_INSERT_ALLOWED_KEYS, 'insert', MISPLACED_INSERT_OPTION_EXAMPLES);
 
   const { target, content, placement, nestingPolicy } = input;
 

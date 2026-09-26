@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vite-plus/test';
 import { executeInsert, type InsertInput } from './insert.js';
 import type { SelectionMutationAdapter } from '../selection-mutation.js';
 import type { WriteAdapter } from '../write/write.js';
+import { DocumentApiValidationError } from '../errors.js';
 
 // ---------------------------------------------------------------------------
 // Stub adapters — validation runs before any adapter method is called, so
@@ -131,6 +132,41 @@ describe('executeInsert: value validation', () => {
 describe('executeInsert: unknown fields', () => {
   it('rejects unknown fields on text input', () => {
     expect(() => exec({ value: 'hello', bogus: true })).toThrow('bogus');
+  });
+
+  it.each([
+    ['changeMode', 'tracked', 'doc.insert({ value: "text" }, { changeMode: "tracked" })'],
+    ['dryRun', true, 'doc.insert({ value: "text" }, { dryRun: true })'],
+  ])('guides misplaced %s to the options argument before mutation', (field, value, example) => {
+    const selectionAdapter = createStubSelectionAdapter();
+    const writeAdapter = createStubWriteAdapter();
+
+    try {
+      executeInsert(selectionAdapter, writeAdapter, { value: 'hello', [field]: value } as unknown as InsertInput);
+      expect.fail('Expected INVALID_INPUT');
+    } catch (error) {
+      expect(error).toBeInstanceOf(DocumentApiValidationError);
+      const validationError = error as DocumentApiValidationError;
+      expect(validationError.code).toBe('INVALID_INPUT');
+      expect(validationError.message).toContain(`Unknown field "${field}"`);
+      expect(validationError.message).toContain('Allowed fields:');
+      expect(validationError.message).toContain(example);
+    }
+    expect(selectionAdapter.execute).not.toHaveBeenCalled();
+    expect(writeAdapter.write).not.toHaveBeenCalled();
+  });
+
+  it('keeps an unrelated unknown field free of options guidance', () => {
+    try {
+      exec({ value: 'hello', extra: true });
+      expect.fail('Expected INVALID_INPUT');
+    } catch (error) {
+      expect(error).toBeInstanceOf(DocumentApiValidationError);
+      const message = (error as DocumentApiValidationError).message;
+      expect(message).toContain('Unknown field "extra"');
+      expect(message).toContain('Allowed fields:');
+      expect(message).not.toContain('doc.insert(');
+    }
   });
 });
 

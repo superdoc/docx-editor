@@ -35,6 +35,20 @@ const bodyTarget = { kind: 'story' as const, storyType: 'body' as const };
 const fragment = [{ kind: 'paragraph' as const, paragraph: { inlines: [] } }];
 
 describe('executeReplace input union', () => {
+  it('guides a misplaced mutation option to the second argument before mutation', () => {
+    const selection = selectionAdapter();
+    const write = writeAdapter();
+    expect(() =>
+      executeReplace(selection, write, {
+        target: selectionTarget,
+        text: 'replacement',
+        changeMode: 'tracked',
+      } as unknown as ReplaceInput),
+    ).toThrow('doc.replace(input, { changeMode: "tracked" })');
+    expect(selection.execute).not.toHaveBeenCalled();
+    expect(write.replaceStructured).not.toHaveBeenCalled();
+  });
+
   it('requires exactly one content discriminator', () => {
     expect(() => execute({ target: selectionTarget })).toThrow('exactly one');
     expect(() => execute({ target: selectionTarget, text: 'a', content: fragment })).toThrow('exactly one');

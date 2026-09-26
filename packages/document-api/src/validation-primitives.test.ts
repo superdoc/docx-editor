@@ -185,4 +185,17 @@ describe('assertNoUnknownFields', () => {
       expect(e.message).toContain('test');
     }
   });
+
+  it('does not suggest mutation options unless the caller opts in', () => {
+    const allowlist = new Set(['text']);
+    expect(() => assertNoUnknownFields({ text: 'query', changeMode: 'tracked' }, allowlist, 'blocks.findText')).toThrow(
+      'Unknown field "changeMode" on blocks.findText input. Allowed fields: text.',
+    );
+    try {
+      assertNoUnknownFields({ text: 'query', changeMode: 'tracked' }, allowlist, 'blocks.findText');
+      expect.fail('Expected INVALID_INPUT');
+    } catch (error) {
+      expect((error as DocumentApiValidationError).message).not.toContain('second options argument');
+    }
+  });
 });

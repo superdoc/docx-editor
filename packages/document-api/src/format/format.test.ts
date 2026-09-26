@@ -49,6 +49,14 @@ describe('executeStyleApply validation', () => {
     expect(() => executeStyleApply(adapter, input as any)).toThrow('extra');
   });
 
+  it('guides a misplaced mutation option without calling the adapter', () => {
+    const adapter = makeAdapter();
+    expect(() => executeStyleApply(adapter, { target: TARGET, inline: { bold: true }, dryRun: true } as any)).toThrow(
+      'doc.format.apply(input, { dryRun: true })',
+    );
+    expect(adapter.execute).not.toHaveBeenCalled();
+  });
+
   it('rejects missing target', () => {
     const adapter = makeAdapter();
     const input = { inline: { bold: true } };

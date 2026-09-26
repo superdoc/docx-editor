@@ -73,6 +73,18 @@ function makeLegacyAdapterWithoutMarkRunProps(): ParagraphsAdapter {
 }
 
 describe('executeParagraphsSetNumbering', () => {
+  it('guides a misplaced mutation option without changing paragraph state', () => {
+    const adapter = makeAdapter();
+    expect(() =>
+      executeParagraphsSetIndentation(adapter, {
+        target: makeTarget(),
+        left: 120,
+        changeMode: 'tracked',
+      } as unknown as ParagraphsSetIndentationInput),
+    ).toThrow('doc.format.paragraph.setIndentation(input, { changeMode: "tracked" })');
+    expect(adapter.setIndentation).not.toHaveBeenCalled();
+  });
+
   it('delegates to the adapter for valid input', () => {
     const adapter = makeAdapter();
     const result = executeParagraphsSetNumbering(adapter, { target: makeTarget(), numId: 2, level: 1 });

@@ -47,7 +47,7 @@ function validateDeleteInput(input: unknown): asserts input is DeleteInput {
     throw new DocumentApiValidationError('INVALID_TARGET', 'Delete input must be a non-null object.');
   }
 
-  assertNoUnknownFields(input, DELETE_INPUT_ALLOWED_KEYS, 'delete');
+  assertNoUnknownFields(input, DELETE_INPUT_ALLOWED_KEYS, 'delete', 'doc.delete');
   validateStoryLocator(input.in, 'in');
 
   const { target, ref, behavior } = input;

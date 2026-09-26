@@ -156,7 +156,12 @@ function validateBlocksDeleteInput(input: BlocksDeleteInput): void {
       fields: ['input'],
     });
   }
-  assertNoUnknownFields(input as unknown as Record<string, unknown>, BLOCKS_DELETE_INPUT_ALLOWED_KEYS, 'blocks.delete');
+  assertNoUnknownFields(
+    input as unknown as Record<string, unknown>,
+    BLOCKS_DELETE_INPUT_ALLOWED_KEYS,
+    'blocks.delete',
+    'doc.blocks.delete',
+  );
   if (!input.target) {
     throw new DocumentApiValidationError('INVALID_INPUT', 'blocks.delete requires a target.', {
       fields: ['target'],

@@ -184,7 +184,7 @@ export function validateReplaceInput(input: unknown): asserts input is ReplaceIn
 }
 
 function validateRichContentReplaceInput(input: Record<string, unknown>): void {
-  assertNoUnknownFields(input, RICH_REPLACE_ALLOWED_KEYS, 'replace');
+  assertNoUnknownFields(input, RICH_REPLACE_ALLOWED_KEYS, 'replace', 'doc.replace');
 
   const { target, ref: refValue, value, type, nestingPolicy } = input;
   const hasTarget = target !== undefined;
@@ -239,7 +239,7 @@ function validateTextReplaceInput(input: Record<string, unknown>): void {
     );
   }
 
-  assertNoUnknownFields(input, TEXT_REPLACE_ALLOWED_KEYS, 'replace');
+  assertNoUnknownFields(input, TEXT_REPLACE_ALLOWED_KEYS, 'replace', 'doc.replace');
   validateTargetLocator(input, 'replace');
   validateBodyReplaceShape(input);
 
@@ -253,7 +253,7 @@ function validateTextReplaceInput(input: Record<string, unknown>): void {
 
 /** Validates structural SDFragment replace input. */
 function validateStructuralReplaceInput(input: Record<string, unknown>): void {
-  assertNoUnknownFields(input, STRUCTURAL_REPLACE_ALLOWED_KEYS, 'replace');
+  assertNoUnknownFields(input, STRUCTURAL_REPLACE_ALLOWED_KEYS, 'replace', 'doc.replace');
 
   const { target, ref: refValue, content, nestingPolicy } = input;
   const hasTarget = target !== undefined;

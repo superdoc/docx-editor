@@ -290,7 +290,7 @@ function resolveProviderExtension(candidate: Record<string, unknown>): V2Collabo
     return {
       ok: false,
       reason: 'invalid-adapter-id',
-      message: 'SuperDoc v2 provider extensions require a non-empty v2Collaboration.adapterId.',
+      message: 'SuperDoc v2 provider extensions require a non-empty collaboration.adapterId.',
     };
   }
   const documentId = normalizeNonEmptyString(candidate.documentId);
@@ -298,7 +298,7 @@ function resolveProviderExtension(candidate: Record<string, unknown>): V2Collabo
     return {
       ok: false,
       reason: 'invalid-document-id',
-      message: 'SuperDoc v2 provider extensions require a non-empty v2Collaboration.documentId.',
+      message: 'SuperDoc v2 provider extensions require a non-empty collaboration.documentId.',
     };
   }
   const roomMode = normalizeRoomMode(candidate.roomMode);

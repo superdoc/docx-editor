@@ -493,7 +493,7 @@ focus or selection state instead. See [Custom content controls](/editor/custom-u
 
 ### Collaboration
 
-V1 applications supplied an external Y.Doc and provider through `modules.collaboration`. V2 instead takes a supported provider target and owns the provider lifecycle. Do not port the external pair directly.
+V1 applications supplied an external Y.Doc and provider through `modules.collaboration`. V2 instead takes a supported provider target and owns the provider lifecycle. Do not port the external pair directly. [Use your own provider](/editor/collaboration/use-your-own-provider) shows how to move a Hocuspocus setup and when to write a provider extension.
 
 The [preview API](/editor/collaboration/connect-two-editors#configure-your-application) names that target `document.collaboration`, typed as `DocumentCollaborationConfig`. It also accepts `collaboration` in `upgradeToCollaboration()`. The older `v2Collaboration` field and `V2CollaborationConfig` type remain supported for existing integrations; new code should use the unversioned names. When both fields are supplied, `collaboration` wins as a whole—settings are not merged. On a document, `collaboration: null` explicitly opens locally.
 

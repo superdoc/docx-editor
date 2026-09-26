@@ -1,56 +1,34 @@
-import type { SuperDoc, V2CollaborationConfig } from 'superdoc';
-import {
-  bootstrapSuperDocCollaborationWorker,
-  type SuperDocCollaborationProviderFactory,
-} from 'superdoc/collaboration-worker';
+// Main-thread side of a provider extension. The adapter lives in
+// v2-collaboration-provider-extension.worker.ts and is served as the
+// collaboration worker through `workerUrls.collaboration`.
+import { SuperDoc, type DocumentCollaborationConfig, type V2CollaborationConfig } from 'superdoc';
 
-const resolveToken = async (): Promise<string> => 'jwt-current';
+const getAccessToken = async (): Promise<string> => 'jwt-current';
 
 const hocuspocusWithRotatingToken: V2CollaborationConfig = {
   providerType: 'hocuspocus',
-  documentId: 'fieldguide-report',
-  serverUrl: 'wss://collaboration.example.test',
-  token: resolveToken,
+  documentId: 'contract-42',
+  serverUrl: 'wss://collab.example.test',
+  token: getAccessToken,
 };
 
-const customerProviderAdapter: V2CollaborationConfig = {
+const collaboration = {
   providerType: 'extension',
-  adapterId: 'fieldguide-hocuspocus',
-  documentId: 'fieldguide-report',
-  providerOptions: {
-    tenant: 'acme',
-    reconnect: true,
-  },
-};
+  adapterId: 'app-hocuspocus',
+  documentId: 'contract-42',
+  providerOptions: { url: 'wss://collab.example.test', tenant: 'acme' },
+  token: () => getAccessToken(),
+  roomMode: 'join',
+} satisfies DocumentCollaborationConfig;
 
-const fieldguideAdapter: SuperDocCollaborationProviderFactory = ({ documentId, providerOptions, token }) => ({
-  providerFamily: 'hocuspocus',
-  attach({ ydoc, providerRoomName, onSynced, onDegraded, onFailed, onStateless }) {
-    void [documentId, providerOptions, token, ydoc, providerRoomName];
-    void [onSynced, onDegraded, onFailed, onStateless];
-    return {
-      disconnect() {},
-      destroy() {},
-      sendStateless(message) {
-        void message;
-      },
-    };
-  },
+const superdoc = new SuperDoc({
+  selector: '#editor',
+  document: { url: '/contract.docx', collaboration },
+  workerUrls: { collaboration: new URL('./v2-collaboration-provider-extension.worker.js', import.meta.url) },
 });
 
-bootstrapSuperDocCollaborationWorker({
-  providerAdapters: {
-    'fieldguide-hocuspocus': fieldguideAdapter,
-  },
-});
-
-declare const superdoc: SuperDoc;
+// In v2, `provider` is a send-only facade, not the provider instance.
 const tokenRefresh = JSON.stringify({ type: 'token-refresh', token: 'jwt-refreshed' });
-const initializationAttribution = JSON.stringify({ type: 'financial-report-initialization' });
-const contentChangeAttribution = JSON.stringify({ type: 'financial-report-content-changed' });
-
 await superdoc.provider?.sendStateless?.(tokenRefresh);
-await superdoc.provider?.sendStateless?.(initializationAttribution);
-await superdoc.provider?.sendStateless?.(contentChangeAttribution);
 
-void [hocuspocusWithRotatingToken, customerProviderAdapter];
+void hocuspocusWithRotatingToken;

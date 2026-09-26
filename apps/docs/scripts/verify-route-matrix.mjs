@@ -40,19 +40,28 @@ function samePath(left, right) {
   return stripTrailingSlash(left) === stripTrailingSlash(right);
 }
 
-async function probe({ source, kind, destination }) {
-  const requested = `${origin}${source}`;
+export async function probe({ source, kind, destination }, { probeOrigin = origin, fetchImpl = fetch } = {}) {
+  const requested = `${probeOrigin}${source}`;
   let response;
-  try {
-    response = await fetch(requested, {
-      redirect: 'follow',
-      signal: AbortSignal.timeout(requestTimeoutMs),
-    });
-  } catch (error) {
-    return { source, kind, failure: `request failed: ${error.message}` };
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      response = await fetchImpl(requested, {
+        redirect: 'follow',
+        signal: AbortSignal.timeout(requestTimeoutMs),
+      });
+      break;
+    } catch (error) {
+      if (attempt === 1) return { source, kind, failure: `request failed: ${error.message}` };
+    }
   }
 
   const final = new URL(response.url);
+  const status = response.status;
+  try {
+    await response.body?.cancel();
+  } catch {
+    // The body is irrelevant to the route contract and may already be closed.
+  }
   const landed = `${final.origin}${final.pathname}`;
 
   // A retired route is meant to 404 here rather than resolve anywhere. Checking
@@ -60,16 +69,16 @@ async function probe({ source, kind, destination }) {
   // that it stayed on this site and was refused: a retired path that redirected
   // somewhere, or that started answering again, is the failure.
   if (kind === 'retired') {
-    if (response.status !== 404) return { source, kind, landed, failure: `expected 404, got ${response.status}` };
-    if (final.origin !== origin) return { source, kind, landed, failure: `a retired route left ${origin}` };
+    if (status !== 404) return { source, kind, landed, failure: `expected 404, got ${status}` };
+    if (final.origin !== probeOrigin) return { source, kind, landed, failure: `a retired route left ${probeOrigin}` };
     return { source, kind, landed };
   }
 
-  if (response.status !== 200) {
-    return { source, kind, landed, failure: `final status ${response.status}` };
+  if (status !== 200) {
+    return { source, kind, landed, failure: `final status ${status}` };
   }
 
-  const expectedOrigin = kind === 'archive' ? archiveHost : origin;
+  const expectedOrigin = kind === 'archive' ? archiveHost : probeOrigin;
   if (final.origin !== expectedOrigin) {
     return { source, kind, landed, failure: `a ${kind} route left ${expectedOrigin}` };
   }

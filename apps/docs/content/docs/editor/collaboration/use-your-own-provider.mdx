@@ -1,0 +1,220 @@
+---
+title: Use your own provider
+navTitle: Use your own provider
+description: Keep an existing Hocuspocus or other Yjs provider setup, either through built-in settings or a provider extension.
+---
+
+SuperDoc owns the browser's shared document. It creates the `Y.Doc` inside a worker and opens the provider connection
+for it. You cannot hand it a `Y.Doc` or provider instance you already created. You can keep your server, your provider
+library, and your authentication. Pick one of two ways to connect them.
+
+<Callout title='Preview API'>
+  The `collaboration` configuration and provider extensions require the upcoming SuperDoc release. See [the preview
+  API](/editor/collaboration/connect-two-editors#configure-your-application).
+</Callout>
+
+## Choose a path
+
+|                               | Built-in provider                                          | Provider extension                                                      |
+| ----------------------------- | ---------------------------------------------------------- | ----------------------------------------------------------------------- |
+| Use it when                   | Your server speaks Hocuspocus, y-websocket, or Liveblocks. | You need your own connection code, for example custom provider options. |
+| What you write                | Connection settings in `document.collaboration`.           | A worker module with an adapter, plus settings that name it.            |
+| Worker                        | SuperDoc's default worker.                                 | Your worker, passed as `workerUrls.collaboration`.                      |
+| Shared-room check on `create` | Yes.                                                       | No. Readiness means local readiness only.                               |
+
+Start with a built-in provider. Most existing Hocuspocus setups need only settings. Write an extension only when the
+built-in settings cannot express your connection.
+
+In both paths you reuse your **backend and provider library**. You do not reuse a provider **instance**: SuperDoc
+creates the connection, and it ends the connection when the editor is destroyed.
+
+## Move a Hocuspocus setup to built-in settings
+
+A SuperDoc v1 integration created its own provider:
+
+```ts
+// SuperDoc v1
+const ydoc = new Y.Doc();
+const provider = new HocuspocusProvider({
+  url: 'wss://collab.example.com',
+  name: 'contract-42',
+  document: ydoc,
+  token,
+});
+
+new SuperDoc({ selector: '#editor', document: '/contract.docx', modules: { collaboration: { ydoc, provider } } });
+```
+
+In v2, pass the same settings and let SuperDoc create the provider:
+
+```ts
+import { SuperDoc, type DocumentCollaborationConfig } from 'superdoc';
+
+const collaboration = {
+  providerType: 'hocuspocus',
+  serverUrl: 'wss://collab.example.com',
+  documentId: 'contract-42',
+  token: () => getAccessToken(),
+  roomMode: 'join',
+} satisfies DocumentCollaborationConfig;
+
+new SuperDoc({ selector: '#editor', document: { url: '/contract.docx', collaboration } });
+```
+
+- `token` can be a string or a function. SuperDoc calls the function for every connection, including reconnects, so it
+  can return a fresh token.
+- The room name on your server changes. `documentId: 'contract-42'` reaches Hocuspocus as `sd2/v2.1/contract-42`.
+  Update any server hooks that authorize or store rooms by name. See [Control access to a
+  room](/editor/collaboration/control-room-access).
+- Existing v1 room data is not v2 room data. See [Upgrade a document](/editor/collaboration/upgrade-a-document#migrate-existing-collaboration-data-separately)
+  for moving it.
+
+## Write a provider extension
+
+An extension has three parts:
+
+1. **An adapter** that connects the `Y.Doc` SuperDoc gives it.
+2. **A collaboration worker** that registers the adapter under an ID.
+3. **Settings** that name that ID and point SuperDoc at your worker.
+
+### 1. Write the adapter and worker
+
+Create a worker module, for example `collaboration-worker.ts`. It registers every adapter your application uses. Built-in providers keep working in the same
+worker.
+
+```ts
+import { HocuspocusProvider, HocuspocusProviderWebsocket } from '@hocuspocus/provider';
+import {
+  bootstrapSuperDocCollaborationWorker,
+  type SuperDocCollaborationProviderFactory,
+} from 'superdoc/collaboration-worker';
+
+interface AppProviderOptions {
+  url: string;
+  tenant: string;
+}
+
+const appHocuspocus: SuperDocCollaborationProviderFactory = ({ providerOptions, token }) => {
+  const { url, tenant } = providerOptions as AppProviderOptions;
+
+  return {
+    providerFamily: 'hocuspocus',
+    attach({ ydoc, providerRoomName, onSynced, onDegraded, onFailed, onStateless }) {
+      let synced = false;
+      const socket = new HocuspocusProviderWebsocket({ url });
+      const provider = new HocuspocusProvider({
+        websocketProvider: socket,
+        name: providerRoomName,
+        document: ydoc,
+        token,
+        parameters: { tenant },
+        onSynced() {
+          synced = true;
+          onSynced();
+        },
+        onDisconnect() {
+          if (synced) onDegraded();
+        },
+        onAuthenticationFailed() {
+          onFailed({ reason: 'authentication_failed' });
+        },
+        onClose({ event }) {
+          if (event.code === 4401 || event.code === 4403) onFailed({ code: event.code });
+        },
+        onStateless({ payload }) {
+          onStateless(payload);
+        },
+      });
+
+      return {
+        awareness: provider.awareness,
+        sendStateless: (message) => provider.sendStateless(message),
+        disconnect: () => provider.disconnect(),
+        destroy() {
+          provider.destroy();
+          socket.destroy();
+        },
+      };
+    },
+  };
+};
+
+bootstrapSuperDocCollaborationWorker({
+  providerAdapters: { 'app-hocuspocus': appHocuspocus },
+});
+```
+
+- Use the `ydoc` and `providerRoomName` you are given. Do not create your own `Y.Doc` or build your own room name.
+- `providerFamily` must be `'hocuspocus'`, `'y-websocket'`, or `'liveblocks'`. Choose the protocol your provider speaks.
+  SuperDoc uses it to decide how authentication and reconnects behave.
+- `@hocuspocus/provider` is a peer dependency of `superdoc`. Install it in your application.
+- Your worker must load a single copy of `yjs`. If the console warns `Yjs was already imported`, your provider and
+  SuperDoc are using different copies and the room will not open. Deduplicate `yjs` in your bundler.
+
+### 2. Point SuperDoc at the worker and adapter
+
+Build the worker as a same-origin module worker and pass its URL. With Vite, import it with `?worker&url`:
+
+```ts
+import { SuperDoc, type DocumentCollaborationConfig } from 'superdoc';
+import collaborationWorkerUrl from './collaboration-worker.ts?worker&url';
+
+const collaboration = {
+  providerType: 'extension',
+  adapterId: 'app-hocuspocus',
+  documentId: 'contract-42',
+  providerOptions: { url: 'wss://collab.example.com', tenant: 'acme' },
+  token: () => getAccessToken(),
+  roomMode: 'join',
+} satisfies DocumentCollaborationConfig;
+
+new SuperDoc({
+  selector: '#editor',
+  document: { url: '/contract.docx', collaboration },
+  workerUrls: { collaboration: collaborationWorkerUrl },
+});
+```
+
+- `adapterId` must match a key in `providerAdapters`.
+- `providerOptions` is copied into the worker, so it must be plain data: strings, numbers, arrays, and objects. It cannot
+  hold functions, class instances, or a provider.
+- `token` stays on the page. The adapter receives it as a string, or as a function that asks the page for a fresh
+  token on every call.
+
+## What an extension must handle
+
+| Area            | What to do                                                                                                                                                                       |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Sync            | Call `onSynced()` when the provider has synced. Call it again after each reconnect so the room returns to `synced`.                                                              |
+| Outages         | Call `onDegraded()` when the connection drops after a sync. Let the provider reconnect.                                                                                          |
+| Failure         | Call `onFailed(detail)` only for errors that will not recover. Use `{ reason: 'authentication_failed' }` for a rejected credential; `onException` reports it as `access-denied`. |
+| Authentication  | Pass `token` to your provider. If it is a function, the provider calls it on each connection.                                                                                    |
+| Presence        | Return the provider's Yjs `awareness`. Without it, [presence and cursors](/editor/collaboration/presence-and-awareness) do not appear.                                           |
+| Custom messages | Return `sendStateless` to support `superdoc.provider.sendStateless(message)`. Forward incoming messages to `onStateless`.                                                        |
+| Create and join | `roomMode` works, but `create` does not check that other editors can see the new room. Do not treat `collaboration-ready` as a signal that others can join.                      |
+| Cleanup         | `disconnect()` closes the connection. `destroy()` releases everything the transport created. SuperDoc calls them when the editor is destroyed.                                   |
+
+Server-to-page messages are not available yet. Your page can send a stateless message, but a message from the server
+reaches only your adapter's `onStateless`, inside the worker.
+
+Collaboration syncs the shared document. It does not save a DOCX or store the room on your server. See [Save and
+restore a room](/editor/collaboration/save-and-restore-a-room).
+
+## Limits
+
+- An extension works only in a worker that registers it. The default worker has no extensions.
+- SuperDoc supports the three provider families above. Other Yjs providers may work through an extension if they
+  follow one of those protocols, but SuperDoc does not test them.
+- `superdoc.provider` is not your provider instance. In v2 it only offers `sendStateless(message)`.
+  `superdoc.ydoc` is not set.
+
+## Errors you might see
+
+| Message                                                                   | Fix                                                                           |
+| ------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `...cannot use an external { ydoc, provider } pair...`                    | Remove `ydoc` and `provider`. Use built-in settings or an extension.          |
+| `...cannot use modules.collaboration...`                                  | Move the connection to `document.collaboration`.                              |
+| `...provider extensions require a non-empty collaboration.adapterId`      | Set `adapterId` to a key in your worker's `providerAdapters`.                 |
+| `...provider extension options must be structured-clone-safe`             | Remove functions and class instances from `providerOptions`.                  |
+| `collaboration provider extension '...' is not registered in this worker` | Pass your worker as `workerUrls.collaboration`, and check that the IDs match. |
+| `...returned an unsupported providerFamily`                               | Set `providerFamily` to `'hocuspocus'`, `'y-websocket'`, or `'liveblocks'`.   |

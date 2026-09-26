@@ -1097,14 +1097,16 @@ export interface Document {
   isNewFile?: boolean;
   /** Password for this encrypted DOCX. Overrides top-level `Config.password`. */
   password?: string;
-  /** The Yjs document for collaboration. */
+  /**
+   * Not set in v2 and cannot be supplied. SuperDoc owns the collaboration
+   * `Y.Doc` inside its worker; configure the room with `collaboration`.
+   */
   ydoc?: YDoc;
   /**
-   * The provider for collaboration. Widened from `HocuspocusProvider` to
-   * `CollaborationProvider` to match the runtime, which stores whatever
-   * provider the consumer passed via `Config.modules.collaboration.provider`
-   * (HocuspocusProvider, LiveblocksYjsProvider, TiptapCollabProvider, etc.).
-   * Consumers needing Hocuspocus-specific members must narrow before use.
+   * Collaboration provider facade for this document's v2 room. It is not a
+   * provider instance and cannot be supplied: SuperDoc owns the provider
+   * inside its collaboration worker, and this object only offers
+   * `sendStateless(message)`. Configure the room with `collaboration`.
    */
   provider?: CollaborationProvider;
   /**
@@ -1218,19 +1220,30 @@ export interface RuntimeDocument extends Document {
   removeComments?: () => void;
 }
 
-/** Collaboration module configuration. */
+/**
+ * SuperDoc v1 collaboration module configuration.
+ *
+ * SuperDoc v2 rejects this configuration at runtime: it owns the `Y.Doc` and
+ * provider inside its collaboration worker, so it neither attaches an external
+ * `{ ydoc, provider }` pair nor opens the internal provider these fields
+ * describe. Configure a room with `document.collaboration`
+ * (`DocumentCollaborationConfig`) instead. To keep an existing provider setup,
+ * see https://docs.superdoc.dev/editor/collaboration/use-your-own-provider
+ *
+ * @deprecated replaceWith=`DocumentCollaborationConfig` removeIn=v3.0
+ */
 export interface CollaborationConfig {
-  /** External Yjs document (provider-agnostic mode). */
+  /** SuperDoc v1 external Yjs document. Rejected by v2, which owns its `Y.Doc`. */
   ydoc?: YDoc;
-  /** External collaboration provider (provider-agnostic mode). */
+  /** SuperDoc v1 external provider. Rejected by v2, which owns its provider. */
   provider?: CollaborationProvider;
-  /** Internal provider type (deprecated). */
+  /** SuperDoc v1 internal provider type. Use `DocumentCollaborationConfig.providerType`. */
   providerType?: 'hocuspocus' | 'superdoc';
-  /** WebSocket URL for internal provider (deprecated). */
+  /** SuperDoc v1 internal provider URL. Use `DocumentCollaborationConfig` `serverUrl`. */
   url?: string;
-  /** Authentication token for internal provider (deprecated). */
+  /** SuperDoc v1 internal provider token. Use `DocumentCollaborationConfig` `token`. */
   token?: string;
-  /** Additional params for internal provider (deprecated). */
+  /** SuperDoc v1 internal provider params. Use `DocumentCollaborationConfig` `params`. */
   params?: object;
 }
 
@@ -2661,7 +2674,12 @@ export interface Modules {
     /** Canvas render scale (quality). */
     outputScale?: number;
   } & Record<string, unknown>;
-  /** Collaboration module configuration. */
+  /**
+   * SuperDoc v1 collaboration module. SuperDoc v2 refuses it at runtime and
+   * attaches nothing; configure `document.collaboration` instead.
+   *
+   * @deprecated replaceWith=`Document.collaboration` removeIn=v3.0
+   */
   collaboration?: CollaborationConfig;
   /**
    * Toolbar module configuration. Pass `true` to configure the toolbar with

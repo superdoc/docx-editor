@@ -9,6 +9,7 @@
     "save-and-restore-a-room",
     "control-room-access",
     "run-a-server",
+    "use-your-own-provider",
     "upgrade-a-document"
   ]
 }

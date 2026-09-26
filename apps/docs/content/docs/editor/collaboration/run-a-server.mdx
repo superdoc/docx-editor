@@ -39,7 +39,7 @@ Hocuspocus is the local example's default, not a requirement. The document's `co
 | `'y-websocket'` | `documentId` and `serverUrl` (or `url`) | String `params` forwarded to your server        |
 | `'liveblocks'`  | `documentId` or `roomId`                | Exactly one of `authEndpoint` or `publicApiKey` |
 
-For Liveblocks, use an authenticated endpoint when access must be checked per room; a public key does not provide that check. Configure the chosen provider's server or service before pointing the editor at it. SuperDoc owns the browser connection and local shared state; pass connection settings, not an external `{ ydoc, provider }` pair.
+For Liveblocks, use an authenticated endpoint when access must be checked per room; a public key does not provide that check. Configure the chosen provider's server or service before pointing the editor at it. SuperDoc owns the browser connection and local shared state; pass connection settings, not an external `{ ydoc, provider }` pair. To keep an existing provider setup or your own connection code, see [Use your own provider](/editor/collaboration/use-your-own-provider).
 
 ### Authorize access
 

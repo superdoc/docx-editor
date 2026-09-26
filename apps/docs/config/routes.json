@@ -529,6 +529,7 @@
     "/editor/collaboration/run-a-server/",
     "/editor/collaboration/save-and-restore-a-room/",
     "/editor/collaboration/upgrade-a-document/",
+    "/editor/collaboration/use-your-own-provider/",
     "/editor/comments/",
     "/editor/configuration/",
     "/editor/content-controls/",

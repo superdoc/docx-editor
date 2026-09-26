@@ -878,16 +878,17 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
    */
   users: User[] = [];
 
-  /** Yjs document for collaboration; set in `#init` when collaboration is enabled, otherwise undefined. */
+  /**
+   * Not set in v2. SuperDoc owns the collaboration `Y.Doc` inside its
+   * collaboration worker and does not expose it on the main thread.
+   */
   ydoc: Y.Doc | undefined;
 
   /**
-   * Provider for the SuperDoc-level collaboration room (separate from
-   * per-document providers). Widened to `CollaborationProvider` to match
-   * the runtime, which stores whatever provider the consumer passed via
-   * `Config.modules.collaboration.provider`. Consumers needing Hocuspocus-
-   * specific members must narrow before use.
-   *
+   * Collaboration provider facade for the active v2 room. It is not a
+   * provider instance: SuperDoc owns the provider inside its collaboration
+   * worker, and this object only offers `sendStateless(message)`. It is
+   * `undefined` or `null` when no room is open.
    */
   provider: CollaborationProvider | undefined;
 
@@ -3252,7 +3253,7 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
         feature: 'shell.collaboration',
         status: 'supported',
         reason:
-          'v2 single-doc y-websocket collaboration is wired through document.v2Collaboration, including collaboration-ready, awareness-update, and locked event bridges; arbitrary external { ydoc, provider } adapters remain unsupported',
+          'v2 single-doc collaboration (hocuspocus, y-websocket, liveblocks, and registered provider extensions) is wired through document.collaboration, including collaboration-ready, awareness-update, and locked event bridges; external { ydoc, provider } instances remain unsupported',
       },
       {
         feature: 'shell.context-menu',

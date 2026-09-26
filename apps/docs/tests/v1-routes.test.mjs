@@ -16,9 +16,50 @@ import {
   validateManifest,
   validateManifestConsistency,
 } from '../scripts/v1-routes.mjs';
-import { INTENDED_MERGES, collapsedRoutes } from '../scripts/verify-route-matrix.mjs';
+import { INTENDED_MERGES, collapsedRoutes, probe } from '../scripts/verify-route-matrix.mjs';
 
 const readConfig = async (name) => JSON.parse(await readFile(new URL(`../config/${name}`, import.meta.url), 'utf8'));
+
+test('route probe recovers from a transport timeout and closes the successful response', async () => {
+  let requests = 0;
+  let bodyCanceled = false;
+  const result = await probe(
+    { source: '/document-api/reference/footnotes/get', kind: 'v2', destination: '/document-api/reference/footnotes/get/' },
+    {
+      probeOrigin: 'https://docs.example.test',
+      fetchImpl: async () => {
+        requests++;
+        if (requests === 1) throw new Error('The operation was aborted due to timeout');
+        return {
+          status: 200,
+          url: 'https://docs.example.test/document-api/reference/footnotes/get/',
+          body: { cancel: async () => { bodyCanceled = true; } },
+        };
+      },
+    },
+  );
+
+  assert.equal(requests, 2);
+  assert.equal(bodyCanceled, true);
+  assert.equal(result.failure, undefined);
+});
+
+test('route probe reports a wrong destination without retrying it', async () => {
+  let requests = 0;
+  const result = await probe(
+    { source: '/document-api/reference/footnotes/get', kind: 'v2', destination: '/document-api/reference/footnotes/get/' },
+    {
+      probeOrigin: 'https://docs.example.test',
+      fetchImpl: async () => {
+        requests++;
+        return { status: 200, url: 'https://docs.example.test/', body: null };
+      },
+    },
+  );
+
+  assert.equal(requests, 1);
+  assert.equal(result.failure, 'expected /document-api/reference/footnotes/get/');
+});
 
 /**
  * A manifest file for the redirect-writing tests.

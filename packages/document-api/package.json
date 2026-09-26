@@ -11,6 +11,9 @@
   "files": [
     "dist"
   ],
+  "scripts": {
+    "test": "bun test"
+  },
   "exports": {
     ".": {
       "source": "./src/index.ts",

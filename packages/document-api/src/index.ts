@@ -2337,8 +2337,8 @@ function capabilityFailureResult(
   return operationId === 'templates.apply' ? Promise.resolve(result) : result;
 }
 
-function installCapabilityPreflight(api: DocumentApi, adapter: CapabilitiesAdapter): void {
-  if (!adapter.resolve) return;
+function installCapabilityPreflight(api: DocumentApi, adapter: CapabilitiesAdapter | undefined): void {
+  if (!adapter?.resolve) return;
 
   for (const operationId of OPERATION_IDS) {
     if (operationId.startsWith('capabilities.')) continue;

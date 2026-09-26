@@ -32,6 +32,14 @@ const config = {
   },
 } satisfies Config;
 
+// Hocuspocus accepts a static token or a resolver called for every connection.
+const staticToken = { ...collaboration, token: 'jwt' } satisfies DocumentCollaborationConfig;
+const asyncTokenResolver = {
+  ...collaboration,
+  token: async () => 'jwt-fresh',
+} satisfies DocumentCollaborationConfig;
+const syncTokenResolver = { ...collaboration, token: () => 'jwt-fresh' } satisfies DocumentCollaborationConfig;
+
 const legacy: V2CollaborationConfig = collaboration;
 const legacyConfig = {
   selector: '#editor',
@@ -57,4 +65,16 @@ const external: DocumentCollaborationConfig = { ydoc: {} };
 // @ts-expect-error Room creation and joining are explicit operations.
 const invalidMode: DocumentCollaborationConfig = { ...collaboration, roomMode: 'create-if-missing' };
 
-void [legacyConfig, upgradeArguments, upgradeReturn, result, oldResult, conflictCode, external, invalidMode];
+void [
+  legacyConfig,
+  upgradeArguments,
+  upgradeReturn,
+  result,
+  oldResult,
+  conflictCode,
+  external,
+  invalidMode,
+  staticToken,
+  asyncTokenResolver,
+  syncTokenResolver,
+];

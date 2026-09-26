@@ -57,6 +57,13 @@ export interface TrackChangeWordRevisionIds {
 /** Durable membership of one authored text rewrite; children can be decided individually. */
 export interface TrackChangeRewriteReviewGroup {
   kind: 'text-rewrite';
+  /**
+   * Provenance basis for this review group, distinct from the unrelated flat
+   * {@link TrackChangeInfo.origin} (importing platform, e.g. Word/Google
+   * Docs). `'authored-operation'` here reflects an authored `text.rewrite`
+   * transaction (spec SD-5189 CASE-3).
+   */
+  groupOrigin: 'authored-operation';
   role: 'parent' | 'child';
   parentId?: string;
   childChangeIds: readonly string[];
@@ -67,6 +74,32 @@ export interface TrackChangeRewriteReviewGroup {
     sourceIds: TrackChangeSourceIds;
   }[];
 }
+/**
+ * Durable membership of one document-comparison hunk; children can be
+ * decided individually. Distinct from {@link TrackChangeRewriteReviewGroup}:
+ * a comparison hunk originates from `diff.apply({changeMode:'tracked'})`,
+ * not an authored rewrite transaction (spec SD-4953, SD-5189 CASE-2/CASE-3).
+ */
+export interface TrackChangeComparisonHunkReviewGroup {
+  kind: 'comparison-hunk';
+  groupOrigin: 'comparison-hunk';
+  role: 'parent' | 'child';
+  parentId?: string;
+  childChangeIds: readonly string[];
+  members: readonly {
+    id: string;
+    type: TrackChangeBroadType;
+    subtype: string;
+    sourceIds: TrackChangeSourceIds;
+  }[];
+}
+/**
+ * Public review-group union (spec SD-5189 CASE-3). Only the two producer
+ * kinds this contract covers today; whether the kernel's other internal
+ * review-group kinds (formatting/structural/list-delta variants) also need
+ * public projection is an open question left to whoever owns those surfaces.
+ */
+export type TrackChangeReviewGroup = TrackChangeRewriteReviewGroup | TrackChangeComparisonHunkReviewGroup;
 /**
  * Canonical multi-side source provenance per spec §3 / §4. Each value is
  * raw, source-format identity (Word `w:id`, `w:rsidR` / `w:rsidDel`, future
@@ -578,7 +611,7 @@ export interface TrackChangeInfo {
   wordRevisionIds?: TrackChangeWordRevisionIds;
   /** Stable revision-group id (spec §3, fragment lineage). */
   revisionGroupId?: string;
-  reviewGroup?: TrackChangeRewriteReviewGroup;
+  reviewGroup?: TrackChangeReviewGroup;
   /** Set to the retired source id when this change is a partial-split fragment; otherwise `null`. */
   splitFromId?: string | null;
   /** Replacement side metadata (`grouped` mode replacements only). */
@@ -710,7 +743,7 @@ export interface TrackChangeDomain {
   structuralDescriptor?: TrackChangeStructuralDescriptor;
   /** Stable revision-group id. */
   revisionGroupId?: string;
-  reviewGroup?: TrackChangeRewriteReviewGroup;
+  reviewGroup?: TrackChangeReviewGroup;
   /** Set to the retired source id when this list item is a partial-split fragment; otherwise `null`. */
   splitFromId?: string | null;
   /**

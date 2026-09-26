@@ -5,8 +5,9 @@ const changes = doc.trackChanges.list({ in: 'all' });
 for (const change of changes.items) {
   const group = change.reviewGroup;
   if (group?.role !== 'parent') continue;
-  if (group.kind !== 'text-rewrite') continue;
-  const kind: 'text-rewrite' = group.kind;
+  if (group.kind !== 'comparison-hunk') continue;
+  const kind: 'comparison-hunk' = group.kind;
+  const groupOrigin: 'comparison-hunk' = group.groupOrigin;
   const children: readonly string[] = group.childChangeIds;
   for (const id of children) {
     const child = doc.trackChanges.get({ id });
@@ -21,5 +22,5 @@ for (const change of changes.items) {
     const rawId: string | undefined = member.sourceIds.wordIdInsert;
     void [id, type, rawId];
   }
-  void kind;
+  void [kind, groupOrigin];
 }

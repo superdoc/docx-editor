@@ -2415,6 +2415,7 @@ const trackChangeCustomAttributeSchema: JsonSchema = objectSchema(
 const trackChangeRewriteReviewGroupSchema = objectSchema(
   {
     kind: { const: 'text-rewrite' },
+    groupOrigin: { const: 'authored-operation' },
     role: { enum: ['parent', 'child'] },
     parentId: { type: 'string' },
     childChangeIds: { type: 'array', items: { type: 'string' } },
@@ -2431,8 +2432,35 @@ const trackChangeRewriteReviewGroupSchema = objectSchema(
       ),
     },
   },
-  ['kind', 'role', 'childChangeIds', 'members'],
+  ['kind', 'groupOrigin', 'role', 'childChangeIds', 'members'],
 );
+// SD-4953/SD-5189 CASE-2/CASE-3: distinct kind/groupOrigin from the rewrite
+// schema above — a comparison hunk is not a rewrite. Same member shape.
+const trackChangeComparisonHunkReviewGroupSchema = objectSchema(
+  {
+    kind: { const: 'comparison-hunk' },
+    groupOrigin: { const: 'comparison-hunk' },
+    role: { enum: ['parent', 'child'] },
+    parentId: { type: 'string' },
+    childChangeIds: { type: 'array', items: { type: 'string' } },
+    members: {
+      type: 'array',
+      items: objectSchema(
+        {
+          id: { type: 'string' },
+          type: { enum: [...trackChangeBroadTypeEnum] },
+          subtype: { type: 'string' },
+          sourceIds: trackChangeSourceIdsSchema,
+        },
+        ['id', 'type', 'subtype', 'sourceIds'],
+      ),
+    },
+  },
+  ['kind', 'groupOrigin', 'role', 'childChangeIds', 'members'],
+);
+const trackChangeReviewGroupSchema: JsonSchema = {
+  oneOf: [trackChangeRewriteReviewGroupSchema, trackChangeComparisonHunkReviewGroupSchema],
+};
 const trackChangeInfoSchema = objectSchema(
   {
     address: trackedChangeAddressSchema,
@@ -2446,7 +2474,7 @@ const trackChangeInfoSchema = objectSchema(
     sourceIds: trackChangeSourceIdsSchema,
     wordRevisionIds: trackChangeWordRevisionIdsSchema,
     revisionGroupId: { type: 'string' },
-    reviewGroup: trackChangeRewriteReviewGroupSchema,
+    reviewGroup: trackChangeReviewGroupSchema,
     splitFromId: { oneOf: [{ type: 'string' }, { type: 'null' }] },
     replacement: trackChangeReplacementSchema,
     author: { type: 'string' },
@@ -2503,7 +2531,7 @@ const trackChangeDomainItemSchema = discoveryItemSchema(
     sourceIds: trackChangeSourceIdsSchema,
     wordRevisionIds: trackChangeWordRevisionIdsSchema,
     revisionGroupId: { type: 'string' },
-    reviewGroup: trackChangeRewriteReviewGroupSchema,
+    reviewGroup: trackChangeReviewGroupSchema,
     author: { type: 'string' },
     authorEmail: { type: 'string' },
     authorImage: { type: 'string' },

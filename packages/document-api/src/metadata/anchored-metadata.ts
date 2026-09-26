@@ -3,6 +3,7 @@ import { normalizeMutationOptions } from '../write/write.js';
 import { DocumentApiValidationError } from '../errors.js';
 import { isSelectionTarget } from '../validation/selection-target-validator.js';
 import { isTextTarget } from '../validation-primitives.js';
+import { validateStoryLocator } from '../validation/story-validator.js';
 import type {
   AnchoredMetadataAttachInput,
   AnchoredMetadataAttachResult,
@@ -57,6 +58,15 @@ function validateId(id: unknown, operationName: string): asserts id is string {
     throw new DocumentApiValidationError('INVALID_INPUT', `${operationName} requires a non-empty 'id' string.`, {
       idType: typeof id,
     });
+  }
+}
+
+function validateContentControlId(id: unknown, operationName: string): void {
+  if (id !== undefined && (typeof id !== 'string' || id.length === 0)) {
+    throw new DocumentApiValidationError(
+      'INVALID_INPUT',
+      `${operationName} requires a non-empty 'contentControlId' string when provided.`,
+    );
   }
 }
 
@@ -202,6 +212,12 @@ export function executeAnchoredMetadataGet(
   input: AnchoredMetadataGetInput,
 ): AnchoredMetadataInfo | null {
   validateId(input.id, 'metadata.get');
+  validateContentControlId(input.contentControlId, 'metadata.get');
+  if (input.contentControlId !== undefined) {
+    if (input.story === undefined) return null;
+    validateStoryLocator(input.story, 'metadata.get.story');
+    if (input.story.storyType !== 'body') return null;
+  }
   return adapter.get(input);
 }
 
@@ -229,5 +245,11 @@ export function executeAnchoredMetadataResolve(
   input: AnchoredMetadataResolveInput,
 ): AnchoredMetadataResolveInfo | null {
   validateId(input.id, 'metadata.resolve');
+  validateContentControlId(input.contentControlId, 'metadata.resolve');
+  if (input.contentControlId !== undefined) {
+    if (input.story === undefined) return null;
+    validateStoryLocator(input.story, 'metadata.resolve.story');
+    if (input.story.storyType !== 'body') return null;
+  }
   return adapter.resolve(input);
 }

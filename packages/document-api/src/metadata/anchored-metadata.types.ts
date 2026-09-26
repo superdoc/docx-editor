@@ -21,6 +21,7 @@
 import type { AdapterMutationFailure } from '../types/adapter-result.js';
 import type { DiscoveryOutput } from '../types/discovery.js';
 import type { SelectionTarget, TextTarget } from '../types/address.js';
+import type { StoryLocator } from '../types/story.types.js';
 
 // ---------------------------------------------------------------------------
 // Stable identity
@@ -139,9 +140,10 @@ export interface AnchoredMetadataListInput {
   offset?: number;
 }
 
-export interface AnchoredMetadataGetInput {
-  id: AnchoredMetadataId;
-}
+export type AnchoredMetadataGetInput = { id: AnchoredMetadataId } & (
+  | { contentControlId?: never; story?: never }
+  | { contentControlId: string; story: StoryLocator }
+);
 
 export interface AnchoredMetadataUpdateInput {
   id: AnchoredMetadataId;
@@ -156,9 +158,7 @@ export interface AnchoredMetadataRemoveInput {
   id: AnchoredMetadataId;
 }
 
-export interface AnchoredMetadataResolveInput {
-  id: AnchoredMetadataId;
-}
+export type AnchoredMetadataResolveInput = AnchoredMetadataGetInput;
 
 // ---------------------------------------------------------------------------
 // Info / domain

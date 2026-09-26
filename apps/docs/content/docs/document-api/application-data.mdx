@@ -88,7 +88,7 @@ async function attachFinding() {
 
 Metadata persists with the DOCX but does not add visible styling. Add a render-only extension visual when people need to see the anchored range.
 
-The anchor is painted as a content control — one per paragraph it spans, all sharing the same tag when the anchor covers multiple paragraphs. A viewport hit carries the metadata ID in `tag`, while `id` identifies the underlying content control. A record with that ID existing is not proof the click landed on its anchor: nothing stops an ordinary content control from carrying a tag that matches a record anchored elsewhere, including elsewhere in the same paragraph. Comparing the clicked control's full range with where the record resolves rules out that case, though not every case, as the note after the example explains:
+The anchor is painted as a content control — one per paragraph it spans, all sharing the same tag when the anchor covers multiple paragraphs. A viewport hit carries the metadata ID in `tag`, while `id` identifies the underlying content control. A record with that ID existing is not proof the click landed on its anchor: nothing stops an ordinary content control from carrying a tag that matches a record anchored elsewhere. Pass the hit's physical control ID to `metadata.resolve` and `metadata.get` so a foreign body control does not acquire that record's payload. Reject non-body hits before either lookup:
 
 ```ts
 import type { SelectionTarget, TextTarget } from 'superdoc/ui';
@@ -152,21 +152,23 @@ editorShell.addEventListener('pointerdown', async (event) => {
   // nested control. Test every content-control hit rather than the innermost,
   // or a nested control shadows the anchor that encloses it.
   //
-  // A non-body hit cannot be filtered out here, and it cannot be detected
-  // afterwards either. `context.position` is always `null` in v2 and
-  // `hit.story` is populated only for tracked-change hits, so nothing reports
-  // the story of a content control. Both lookups below read the main document
-  // part, and painted ids are unique only within that part, so a header,
-  // footer, note, or textbox control that reuses a body anchor's id and tag
-  // resolves the body record and passes every check below.
-  //
-  // The example opens the record because a colliding non-body control is
-  // unlikely in documents this application produced. That is a judgement about
-  // your corpus, not a guarantee from the API. If your documents come from
-  // elsewhere, treat a match as unverified and confirm through your own
-  // backend before acting on it.
+  // Metadata anchors live only in the body. Painted content-control hits carry
+  // a story locator for non-body controls; reject those before either body-only
+  // metadata lookup, even when an id and tag collide with a body anchor.
   for (const hit of context.entities.filter((entity) => entity.type === 'contentControl')) {
     if (!hit.tag) continue;
+    const paintedStory = hit.story;
+    if (
+      paintedStory !== undefined &&
+      (paintedStory === null ||
+        typeof paintedStory !== 'object' ||
+        !('kind' in paintedStory) ||
+        paintedStory.kind !== 'story' ||
+        !('storyType' in paintedStory) ||
+        paintedStory.storyType !== 'body')
+    )
+      continue;
+    const story = paintedStory === undefined ? undefined : ({ kind: 'story', storyType: 'body' } as const);
     // A metadata anchor is a hidden **inline** content control, so `kind` below
     // must say `inline`. Read it from the hit rather than hardcoding it: `scope`
     // is absent when the painted control carries no scope attribute, and a
@@ -188,8 +190,14 @@ editorShell.addEventListener('pointerdown', async (event) => {
     let anchor: Awaited<ReturnType<typeof doc.metadata.resolve>> | null = null;
     try {
       [control, anchor] = await Promise.all([
-        doc.contentControls.get({ target: { kind: 'inline', nodeType: 'sdt', nodeId: hit.id } }),
-        doc.metadata.resolve({ id: hit.tag }),
+        doc.contentControls.get({
+          target: { kind: 'inline', nodeType: 'sdt', nodeId: hit.id, ...(story ? { story } : {}) },
+        }),
+        doc.metadata.resolve({
+          id: hit.tag,
+          contentControlId: hit.id,
+          story: story ?? { kind: 'story', storyType: 'body' },
+        }),
       ]);
     } catch {
       continue;
@@ -197,27 +205,29 @@ editorShell.addEventListener('pointerdown', async (event) => {
     if (!anchor || !control?.selectionTarget) continue;
     if (!controlMatchesAnchor(anchor.target, control.selectionTarget)) continue;
 
-    const record = await doc.metadata.get({ id: hit.tag });
+    const record = await doc.metadata.get({
+      id: hit.tag,
+      contentControlId: hit.id,
+      story: story ?? { kind: 'story', storyType: 'body' },
+    });
     if (record) openApplicationRecord(record);
     return;
   }
 });
 ```
 
-<Callout variant='warning' title='The range comparison narrows the risk without closing it'>
-  The adapter treats the public `w:alias` value `Anchored metadata` as proof on its own that a control is an anchor,
-  without checking the rest of the anchor shape. That alias is the **Title** field in Word's content-control properties
-  dialog, so any author or any other tool can set it. Same-tag controls are grouped by document position into the
-  anchor's segments, so a control carrying that alias and a colliding tag near the real anchor can be absorbed as an
-  extra segment (or, if it breaks the contiguous run, excluded and resolved as a separate, wrong match) — either way,
-  the comparison above still succeeds, because both sides describe the same wrong control. Treat an anchored record as a
-  hint from document content rather than as an authenticated identity, and keep anything security-relevant in your own
-  backend, keyed by the record ID.
+<Callout variant='warning' title='Document content is not an authenticated identity'>
+  New records persist their physical control IDs alongside the payload, and the adapter refuses ambiguous body controls,
+  including duplicate physical IDs. This does not authenticate imported DOCX content: an external editor can change both
+  the payload and the IDs. A physical-control lookup requires an explicit body story and returns `null` for a non-body
+  painted hit. Keep anything security-relevant in your own backend, keyed by the record ID.
 </Callout>
+
+Documents saved before physical-control binding may contain two or more same-tag controls for a single record (for example, after an Enter split). Their payload remains available through `metadata.get({ id })`, but `metadata.resolve` returns `null`, `metadata.list({ resolvedOnly: true })` omits the record, and `metadata.remove` rejects ambiguous anchors rather than guessing which controls belong to it. To migrate a trusted document, inspect its DOCX package outside the metadata API: identify the record's `<ref id="...">` in its namespaced `customXml/item*.xml`, verify **every** intended body `<w:sdt>` and its own `<w:id w:val="..."/>` (including absence of duplicate IDs and unrelated same-tag controls), then set that ref's `sdAnchorIdsV1="id1,id2"` attribute to those physical IDs in document order. Reimport and check `metadata.resolve({ id })`; if the ownership cannot be verified, do not bind or remove the controls automatically.
 
 Anchored metadata requires one or more non-empty text ranges, in visible coordinates, anchored in the main document **body**. A single-paragraph target is a `SelectionTarget`, unchanged since v1. A target spanning multiple paragraphs is a `TextTarget` with one segment per paragraph: the segments must be contiguous paragraphs in document order, and none of the boundary they cross may be a table cell, a block-level content control, or a section — a target that crosses any of those is rejected. Within a paragraph, a segment may freely cross bold, italic, colour, or character-style boundaries — the anchor preserves each run's own formatting rather than requiring the whole segment to sit in one run — but a segment that overlaps an existing content control, a hyperlink, or a `w:fldSimple` field is rejected, since anchoring inside one of those would either nest content controls or land in text that isn't real anchorable content. A `w:fldSimple` is rejected in full, code and cached result alike; a complex field (`w:fldChar`/`w:instrText`) is different — only its instruction-code runs are rejected, and its cached result text is ordinary anchorable content, same as any other run. The adapter resolves every paragraph against the main document part, so a header, footer, or note paragraph is not found, and the anchor rewrite searches visible `w:t` runs, so a selection crossing deleted tracked text addresses different characters than its offsets suggest. Resolve the record again with `doc.metadata.resolve({ id })` after document edits instead of keeping an old range — it returns the same `SelectionTarget | TextTarget` union, narrowing to `TextTarget` only when the anchor spans more than one paragraph.
 
-The read path carries the same body-only restriction, and gives you nothing to check it with. `contentControls.get()` and `metadata.resolve()` both read the main document part, while painted content-control ids are unique only within that part. A control in a header, footer, note, or textbox that reuses a body anchor's id and tag therefore resolves the body record, and every comparison the example makes succeeds against it. Nothing lets you tell the two apart: `context.position` is always `null` in this release, and `hit.story` is populated only for tracked-change hits, so neither reports the story of a content control.
+The metadata read path remains body-only. Painted content-control hits in `ui.viewport.contextAt(...).entities` report a `story` locator for non-body controls; body hits omit it. Reject non-body hits before reading metadata, because an unscoped body lookup by a header, footer, note, or textbox control's colliding id and tag can return the body record. `context.position` is always `null` in v2 and is not a substitute for the hit's story. The `story` property is typed `unknown`, so validate it before passing it to a Document API target.
 
 Anything in a paragraph that is not literal text shifts the two coordinate systems apart. A selection counts a tab, a line break, and an inline image as caret positions, while the anchor rewrite accumulates offsets from `w:t` contents alone. Any of them before or inside the selection makes the stored anchor land later in the paragraph than the user selected, and a long enough run of following text absorbs the difference so the write succeeds instead of failing.
 

@@ -287,6 +287,33 @@ describe('metadata.{get,update,remove,resolve} require id', () => {
     expect(() => executeAnchoredMetadataGet(adapter, { id: 'm-1' })).not.toThrow();
   });
 
+  it('requires a valid body story for physical control reads and resolves', () => {
+    const adapter = makeAdapter();
+    const bodyStory = { kind: 'story', storyType: 'body' } as const;
+    const headerStory = { kind: 'story', storyType: 'headerFooterPart', refId: 'rId1' } as const;
+    const withoutStory = { id: 'm-1', contentControlId: '4001' } as never;
+    const malformedStory = {
+      id: 'm-1',
+      contentControlId: '4001',
+      story: { kind: 'story', storyType: 'headerFooterPart' },
+    } as never;
+
+    expect(executeAnchoredMetadataGet(adapter, withoutStory)).toBeNull();
+    expect(executeAnchoredMetadataResolve(adapter, withoutStory)).toBeNull();
+    expect(executeAnchoredMetadataGet(adapter, { id: 'm-1', contentControlId: '4001', story: headerStory })).toBeNull();
+    expect(
+      executeAnchoredMetadataResolve(adapter, { id: 'm-1', contentControlId: '4001', story: headerStory }),
+    ).toBeNull();
+    expect(() => executeAnchoredMetadataGet(adapter, malformedStory)).toThrow(DocumentApiValidationError);
+    expect(() => executeAnchoredMetadataResolve(adapter, malformedStory)).toThrow(DocumentApiValidationError);
+    expect(adapter.get).not.toHaveBeenCalled();
+    expect(adapter.resolve).not.toHaveBeenCalled();
+    executeAnchoredMetadataGet(adapter, { id: 'm-1', contentControlId: '4001', story: bodyStory });
+    executeAnchoredMetadataResolve(adapter, { id: 'm-1', contentControlId: '4001', story: bodyStory });
+    expect(adapter.get).toHaveBeenCalledWith({ id: 'm-1', contentControlId: '4001', story: bodyStory });
+    expect(adapter.resolve).toHaveBeenCalledWith({ id: 'm-1', contentControlId: '4001', story: bodyStory });
+  });
+
   it('get rejects empty id', () => {
     const adapter = makeAdapter();
     expect(() => executeAnchoredMetadataGet(adapter, { id: '' })).toThrow(DocumentApiValidationError);

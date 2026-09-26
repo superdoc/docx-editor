@@ -217,10 +217,12 @@ editorShell.addEventListener('pointerdown', async (event) => {
 ```
 
 <Callout variant='warning' title='Document content is not an authenticated identity'>
-  New records persist their physical control IDs alongside the payload, and the adapter refuses ambiguous body controls,
-  including duplicate physical IDs. This does not authenticate imported DOCX content: an external editor can change both
-  the payload and the IDs. A physical-control lookup requires an explicit body story and returns `null` for a non-body
-  painted hit. Keep anything security-relevant in your own backend, keyed by the record ID.
+  The adapter recognizes a hidden control with the `Anchored metadata` alias even if Word has removed its plain-text
+  marker. The alias is the **Title** field in Word's content-control properties dialog. New records persist their
+  physical control IDs alongside the payload, and the adapter refuses ambiguous body controls, including duplicate
+  physical IDs. This does not authenticate imported DOCX content: an external editor can change the payload, alias, and
+  IDs. A physical-control lookup requires an explicit body story and returns `null` for a non-body painted hit. Keep
+  anything security-relevant in your own backend, keyed by the record ID.
 </Callout>
 
 Documents saved before physical-control binding may contain two or more same-tag controls for a single record (for example, after an Enter split). Their payload remains available through `metadata.get({ id })`, but `metadata.resolve` returns `null`, `metadata.list({ resolvedOnly: true })` omits the record, and `metadata.remove` rejects ambiguous anchors rather than guessing which controls belong to it. To migrate a trusted document, inspect its DOCX package outside the metadata API: identify the record's `<ref id="...">` in its namespaced `customXml/item*.xml`, verify **every** intended body `<w:sdt>` and its own `<w:id w:val="..."/>` (including absence of duplicate IDs and unrelated same-tag controls), then set that ref's `sdAnchorIdsV1="id1,id2"` attribute to those physical IDs in document order. Reimport and check `metadata.resolve({ id })`; if the ownership cannot be verified, do not bind or remove the controls automatically.

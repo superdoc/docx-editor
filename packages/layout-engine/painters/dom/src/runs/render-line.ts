@@ -737,7 +737,7 @@ export const renderLine = ({
       useLineUnderlineOverlay,
       underlineSpanCollector: useLineUnderlineOverlay ? underlineSpans : undefined,
     });
-    paintInlineBoxes(line.inlineBoxes, el, isRtl);
+    paintInlineBoxes(line.inlineBoxes, el);
   } else {
     renderInlineRuns({
       block: expandedBlock as ParagraphBlock,
@@ -754,7 +754,7 @@ export const renderLine = ({
       isRtl,
       spacingPerSpace,
     });
-    paintInlineBoxes(line.inlineBoxes, el, isRtl);
+    paintInlineBoxes(line.inlineBoxes, el);
     if (useLineUnderlineOverlay) {
       underlineSpans.push(
         ...buildInlineUnderlineSpans(expandedBlock as ParagraphBlock, line, spacingPerSpace, lineTextStartOffsetPx),

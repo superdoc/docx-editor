@@ -114,8 +114,11 @@ describe('fixture-only inline box proof', () => {
 
     expect(styledLeaves.length).toBeGreaterThan(0);
     expect(styledLeaves[0]!.classList.contains('superdoc-text-run')).toBe(true);
-    expect(styledLeaves[0]!.style.paddingLeft).toBe('24px');
-    expect(styledLeaves[0]!.style.borderLeftWidth).toBe('2px');
+    // Logical, not physical: the painter writes inline-start/end so the same
+    // call is correct on an RTL line. See inline-box-rtl.test.ts.
+    expect(styledLeaves[0]!.style.paddingInlineStart).toBe('24px');
+    // The shorthand, because jsdom does not expand it into the longhand.
+    expect(styledLeaves[0]!.style.borderInlineStart).toContain('2px');
     expect(styledLeaves[0]!.style.backgroundColor).not.toBe('');
     expect(styledLeaves[0]!.dataset.pmStart).toBeDefined();
     expect(lineElement.querySelector('[aria-hidden="true"][data-superdoc-inline-box-id]')).toBeNull();

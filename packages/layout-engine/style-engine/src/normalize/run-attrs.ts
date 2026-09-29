@@ -61,8 +61,15 @@ export function normalizeRunAttrsFromOoxml(
   const out: TextRunStyleAttrs = {};
   if (!props) return out;
 
-  if (props.bold != null) out.bold = props.bold === true;
-  if (props.italic != null) out.italic = props.italic === true;
+  // Complex-script runs take bold/italic from the CS toggles. Hebrew and
+  // Arabic Word writes `w:bCs` alone whenever the styled selection is
+  // single-script, so a heading that is bold in Word arrived here with
+  // `bold` undefined and painted at normal weight.
+  const complexScript = usesComplexScriptToggles(props);
+  const bold = complexScript ? (props.boldCs ?? props.bold) : props.bold;
+  const italic = complexScript ? (props.iCs ?? props.italic) : props.italic;
+  if (bold != null) out.bold = bold === true;
+  if (italic != null) out.italic = italic === true;
   if (props.strike != null || props.dstrike != null) {
     out.strike = props.strike === true || props.dstrike === true;
   }
@@ -127,6 +134,37 @@ export function normalizeRunAttrsFromOoxml(
   return out;
 }
 
+/**
+ * Whether the run resolves its character-formatting toggles through the
+ * complex-script stack.
+ *
+ * Per ECMA-376 Annex I, `w:rPr/w:rtl` (§17.3.2.30) and `w:rPr/w:cs`
+ * (§17.3.2.7) each select the complex-script variants of the toggles —
+ * `w:bCs`, `w:iCs` — over their Latin counterparts.
+ *
+ * Absence is not `false`: with neither signal set, the stack follows the
+ * Unicode script of the run text, which this layer never sees. Those runs keep
+ * the Latin toggles.
+ */
+function usesComplexScriptToggles(props: RunProperties): boolean {
+  return props.rtl === true || props.cs === true;
+}
+
+/**
+ * The Latin toggle stays a fallback under the complex-script stack instead of
+ * being ignored, and that is deliberate.
+ *
+ * Word decides the stack per character, not per run: a run carrying only
+ * `w:b` renders bold there for whatever Latin text it holds, and plenty of
+ * existing documents (SuperDoc's own `format.apply` among the writers) carry
+ * `w:b` alone on right-to-left runs. Reading `w:bCs` strictly would turn
+ * those normal — a regression in the opposite direction, and a wider one.
+ *
+ * Per-character parity needs the run text alongside the properties. Until the
+ * projection layer passes it down, precedence-with-fallback is the closest
+ * single-value answer: it fixes runs Word paints bold and leaves the rest as
+ * they are.
+ */
 function normalizeHorizontalScale(value: string | undefined): number | undefined {
   if (value == null) return undefined;
   const normalized = value.trim().replace(/%$/, '');

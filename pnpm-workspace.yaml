@@ -193,12 +193,3 @@ peerDependencyRules:
 # AIDEV-NOTE: Configuration gates run before native system dependencies exist;
 # dependency lifecycle scripts belong to the explicit install step.
 verifyDepsBeforeRun: false
-
-minimumReleaseAgeExclude:
-  - '@superdoc/docx-engine@0.19.0-next.13'
-  - '@superdoc/sdk-darwin-arm64@2.17.0-next.10'
-  - '@superdoc/sdk-darwin-x64@2.17.0-next.10'
-  - '@superdoc/sdk-linux-arm64@2.17.0-next.10'
-  - '@superdoc/sdk-linux-x64@2.17.0-next.10'
-  - '@superdoc/sdk-windows-x64@2.17.0-next.10'
-  - '@superdoc/sdk@2.17.0-next.10'

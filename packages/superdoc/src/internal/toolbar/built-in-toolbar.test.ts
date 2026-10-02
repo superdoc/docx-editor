@@ -1208,6 +1208,138 @@ describe('BuiltInToolbar', () => {
     toolbar.destroy();
   });
 
+  it('keeps legacy toolbarButtonsExclude controls out of the responsive overflow menu (SD-5050)', () => {
+    const toolbarContainer = document.createElement('div');
+    Object.defineProperty(toolbarContainer, 'offsetWidth', { configurable: true, value: 300 });
+    document.body.append(toolbarContainer);
+
+    const toolbar = new BuiltInToolbar({
+      superdoc: makeHost(),
+      selector: toolbarContainer,
+      groups: {
+        left: ['zoom'],
+      },
+      toolbarButtonsExclude: ['zoom'],
+      responsiveToContainer: true,
+    });
+
+    expect(toolbar.overflowItems.map((item) => item.name.value)).not.toContain('zoom');
+    expect(toolbarContainer.querySelector('[aria-label="Overflow items"]')).toBeNull();
+    toolbar.destroy();
+  });
+
+  it('keeps a toolbarButtonsExclude control out of the overflow menu after narrowing (SD-5050)', async () => {
+    const toolbarContainer = document.createElement('div');
+    Object.defineProperty(toolbarContainer, 'offsetWidth', { configurable: true, value: 1600 });
+    document.body.append(toolbarContainer);
+
+    const toolbar = new BuiltInToolbar({
+      superdoc: makeHost(),
+      selector: toolbarContainer,
+      groups: {
+        // `fontFamily` is forced enabled regardless of command/selection
+        // state (`shouldKeepEnabledForV1ToolbarParity` in built-in-toolbar.js)
+        // and is not one of the sticky items that never overflow
+        // (`stickyItemNames` in default-items.js), unlike e.g. `redo`, whose
+        // default-disabled state (no real editor/undo-stack here) would
+        // disable the overflow trigger itself and no-op the click below. It's
+        // also the item the Linear report itself uses as its example.
+        left: ['zoom', 'fontFamily'],
+      },
+      toolbarButtonsExclude: ['zoom'],
+      responsiveToContainer: true,
+    });
+
+    try {
+      // Model-level: dynamic rebuild (the same path a real resize triggers)
+      // must not let the excluded item back into `overflowItems`.
+      expect(toolbarContainer.querySelector('[data-item="btn-zoom"]')).toBeNull();
+      // Very narrow, matching the width the file's other overflow-menu-opening
+      // test uses, so every item -- not just the ones on a forced-hide list --
+      // reliably lands in the overflow menu regardless of exact width math.
+      Object.defineProperty(toolbarContainer, 'offsetWidth', { configurable: true, value: 50 });
+      toolbar.onToolbarResize();
+      expect(toolbar.overflowItems.map((item) => item.name.value)).not.toContain('zoom');
+
+      // DOM-level: the rendered menu content is teleported to `document.body`
+      // (ToolbarDropdown.vue), not `toolbarContainer` -- assert against
+      // `document.body` so a wrong container scope can't produce a false pass.
+      window.dispatchEvent(new Event('resize'));
+      await vi.waitFor(() => {
+        expect(document.body.querySelector('[aria-label="Overflow items"]')).not.toBeNull();
+      });
+
+      const overflowTrigger = document.body.querySelector('[aria-label="Overflow items"]') as HTMLElement;
+      overflowTrigger.click();
+
+      // `.superdoc-toolbar-overflow` (OverflowMenu.vue) only wraps the
+      // teleported menu's own items, never the main bar. The open transition
+      // runs its own async watcher (ToolbarDropdown.vue), so poll for it
+      // instead of assuming a fixed number of microtask ticks -- a single
+      // `nextTick()` here is exactly what made this test flaky in a full
+      // suite run (SD-5050 review).
+      await vi.waitFor(() => {
+        expect(document.body.querySelector('.superdoc-toolbar-overflow')).not.toBeNull();
+      });
+
+      const openedMenu = document.body.querySelector('.superdoc-toolbar-overflow')!;
+      // Sanity: the menu actually opened and rendered an allowed item, so an
+      // absent excluded item below isn't just a wrong selector.
+      expect(openedMenu.querySelector('[data-item="btn-fontFamily"]')).not.toBeNull();
+      expect(openedMenu.querySelector('[data-item="btn-zoom"]')).toBeNull();
+    } finally {
+      toolbar.destroy();
+    }
+  });
+
+  it('unions excludeItems and toolbarButtonsExclude instead of one replacing the other', () => {
+    const toolbarContainer = document.createElement('div');
+    Object.defineProperty(toolbarContainer, 'offsetWidth', { configurable: true, value: 300 });
+    document.body.append(toolbarContainer);
+
+    const toolbar = new BuiltInToolbar({
+      superdoc: makeHost(),
+      selector: toolbarContainer,
+      groups: {
+        left: ['zoom', 'undo', 'redo'],
+      },
+      excludeItems: ['zoom'],
+      toolbarButtonsExclude: ['undo'],
+      responsiveToContainer: true,
+    });
+
+    const allNames = [...toolbar.toolbarItems, ...toolbar.overflowItems].map((item) => item.name.value);
+    expect(allNames).not.toContain('zoom');
+    expect(allNames).not.toContain('undo');
+    expect(allNames).toContain('redo');
+    toolbar.destroy();
+  });
+
+  it('honors excludeItems from ui.toolbar and toolbarButtonsExclude from legacy modules.toolbar together', () => {
+    const toolbarContainer = document.createElement('div');
+    Object.defineProperty(toolbarContainer, 'offsetWidth', { configurable: true, value: 1600 });
+    document.body.append(toolbarContainer);
+
+    const normalized = normalizeUiConfig({
+      ui: { toolbar: { excludeItems: ['zoom'] } },
+      modules: { toolbar: { toolbarButtonsExclude: ['undo'] } },
+    }).toolbar;
+
+    const toolbar = new BuiltInToolbar({
+      superdoc: makeHost(),
+      selector: toolbarContainer,
+      ...normalized.options,
+      groups: { left: ['zoom', 'undo', 'redo'] },
+      responsiveToContainer: true,
+    });
+
+    const names = toolbar.toolbarItems.map((item) => item.name.value);
+    expect(names).not.toContain('zoom');
+    expect(names).not.toContain('undo');
+    expect(names).toContain('redo');
+    toolbar.destroy();
+  });
+
   it('routes string-valued custom commands through the async shared command controller', () => {
     const toolbar = new BuiltInToolbar({
       superdoc: makeHost(),

@@ -706,9 +706,25 @@ describe('normalizeUiConfig', () => {
       }).toolbar.options;
 
       expect(options.excludeItems).toEqual(['fontSize']);
+    });
 
+    it('keeps canonical excludeItems and legacy toolbarButtonsExclude distinct (SD-5050)', () => {
+      // `excludeItems` (from `ui.toolbar`) and `toolbarButtonsExclude` (from
+      // legacy `modules.toolbar`) are two different keys for the same intent.
+      // The normalizer must not merge or let one clobber the other -- the
+      // toolbar model (`BuiltInToolbar`) is what unions them.
+      const options = normalizeUiConfig({
+        ui: { toolbar: { excludeItems: ['zoom'] } },
+        modules: { toolbar: { toolbarButtonsExclude: ['undo'] } },
+      }).toolbar.options;
+
+      expect(options.excludeItems).toEqual(['zoom']);
+      expect(options.toolbarButtonsExclude).toEqual(['undo']);
+    });
+
+    it('treats an undefined nested icon option as unset rather than an override', () => {
       const icons = normalizeUiConfig({
-        ui: { toolbar: { icons: { bold: undefinedOption } } },
+        ui: { toolbar: { icons: { bold: undefined } } },
         toolbarIcons: { bold: 'B' },
       }).toolbar.options.icons;
 

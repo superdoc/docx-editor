@@ -51,11 +51,9 @@ const uiFontFamily = computed(() => {
 
 const showLeftSide = proxy.$toolbar.config?.toolbarGroups?.includes('left');
 const showRightSide = proxy.$toolbar.config?.toolbarGroups?.includes('right');
-const excludeButtonsList = proxy.$toolbar.config?.toolbarButtonsExclude || [];
-
 const getFilteredItems = (position) => {
   void toolbarStateVersion.value;
-  return proxy.$toolbar.getToolbarItemByGroup(position).filter((item) => !excludeButtonsList.includes(item.name.value));
+  return proxy.$toolbar.getToolbarItemByGroup(position);
 };
 
 const updateCompactSideGroups = () => {

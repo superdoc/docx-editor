@@ -173,6 +173,7 @@ export class BuiltInToolbar extends EventEmitter {
     responsiveToContainer: false,
     mode: 'docx',
     excludeItems: [],
+    toolbarButtonsExclude: [],
     groups: null,
     customButtons: [],
     showFormattingMarksButton: false,
@@ -413,7 +414,15 @@ export class BuiltInToolbar extends EventEmitter {
     const configuredItemNames = hasExplicitGroupComposition
       ? new Set(Object.values(this.config.groups).flatMap((items) => items))
       : null;
-    const excludedItemNames = new Set(this.config.excludeItems);
+    // AIDEV-NOTE: SD-5050 - merge legacy `toolbarButtonsExclude` in here, not
+    // just `excludeItems`. This runs before `makeDefaultItems` partitions
+    // items by width, so both toolbarItems and overflowItems exclude it.
+    // `Toolbar.vue` no longer filters `toolbarButtonsExclude` itself; this is
+    // now the only enforcement point.
+    const excludedItemNames = new Set([
+      ...(this.config.excludeItems ?? []),
+      ...(this.config.toolbarButtonsExclude ?? []),
+    ]);
 
     const customItems = this.config.customButtons || [];
     // `useToolbarItem` throws on a missing name, an unknown type, and a button

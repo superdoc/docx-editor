@@ -26,7 +26,10 @@ SOFTWARE.
 */
 
 export class EMFJSError extends Error {
-  constructor(message: string) {
+  constructor(
+    message: string,
+    public readonly code?: 'unsupported-text-mode',
+  ) {
     super(message); // 'Error' breaks prototype chain here
     Object.setPrototypeOf(this, new.target.prototype); // restore prototype chain
   }

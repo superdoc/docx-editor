@@ -105,6 +105,9 @@ export class Renderer {
     gdi.setMapMode(mapMode);
     Helper.log('[EMF] BEGIN RENDERING --->');
     this._img.render(gdi);
+    if (gdi.hasUnsupportedTextMode()) {
+      throw new EMFJSError('Unsupported Unicode text alignment', 'unsupported-text-mode');
+    }
     Helper.log('[EMF] <--- DONE RENDERING');
     return gdi;
   }

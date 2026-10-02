@@ -799,8 +799,6 @@ export function convertEmfToSvg(data, size = {}) {
       });
     }
 
-    const renderer = new EMFJS.Renderer(buffer, dualText);
-
     const renderSettings = {
       width: String(size.width || dimensions.width) + 'px',
       height: String(size.height || dimensions.height) + 'px',
@@ -811,7 +809,15 @@ export function convertEmfToSvg(data, size = {}) {
       mapMode: MM_ANISOTROPIC,
     };
 
-    const svgElement = renderer.render(renderSettings);
+    let svgElement;
+    try {
+      svgElement = new EMFJS.Renderer(buffer, dualText).render(renderSettings);
+    } catch (error) {
+      if (!dualText || error.code !== 'unsupported-text-mode') throw error;
+      // A valid Dual composition can use classic records the renderer cannot
+      // handle. Preserve its embedded artwork when composition is unavailable.
+      return extractBitmapFromEmf(buffer) ?? extractBitmapFromEmfPlus(buffer);
+    }
 
     if (!svgElement?.childNodes?.length) {
       return null;

@@ -214,6 +214,11 @@ class GDIContextState {
 }
 
 export class GDIContext {
+  private unsupportedTextMode = false;
+
+  public hasUnsupportedTextMode(): boolean {
+    return this.unsupportedTextMode;
+  }
   private _svg: SVG;
   private _svgdefs: SVGDefsElement;
   private _svgPatterns: { [key: string]: Brush };
@@ -643,15 +648,23 @@ export class GDIContext {
 
   public textOut(x: number, y: number, text: string, advances: number[], options: number, rectangle: RectL): void {
     const font = this.state.selected.font;
-    // Only horizontal, baseline-left text is qualified here. Do not paint other
-    // GDI text modes with silently incorrect placement.
-    if (this.state.textalign !== 24 || font.escapement !== 0 || font.orientation !== 0) {
-      throw new EMFJSError('Unsupported Unicode text alignment');
-    }
     const scaleY = Math.abs(this.state.vh / this.state.wh);
     const glyphScaleX = this.state.vw / this.state.ww / scaleY;
     if (!Number.isFinite(scaleY) || scaleY === 0 || !Number.isFinite(glyphScaleX) || glyphScaleX === 0) {
       throw new EMFJSError('Invalid Unicode text mapping extents');
+    }
+    if (
+      (this.state.textalign & ~0x11f) !== 0 ||
+      (this.state.textalign & 6) === 4 ||
+      (this.state.textalign & 24) === 16
+    ) {
+      throw new EMFJSError('Invalid Unicode text alignment');
+    }
+    // Only horizontal, baseline-left text is qualified here. A valid other
+    // mode can use Dual bitmap artwork after mapping validation succeeds.
+    if (this.state.textalign !== 24 || font.escapement !== 0 || font.orientation !== 0) {
+      this.unsupportedTextMode = true;
+      return;
     }
     this._pushGroup();
     const settings: any = {

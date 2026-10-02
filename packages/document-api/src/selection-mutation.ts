@@ -32,6 +32,8 @@ export type SelectionReplaceRequest = TargetLocator & {
   target?: SelectionTarget;
   ref?: string;
   text: string;
+  /** Exact selected-text precondition for an explicit single-paragraph selection. */
+  expectedText?: string;
   /** Story locator threaded from the operation input's `in` field. */
   in?: StoryLocator;
 };

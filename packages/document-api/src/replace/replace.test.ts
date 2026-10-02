@@ -35,6 +35,54 @@ const bodyTarget = { kind: 'story' as const, storyType: 'body' as const };
 const fragment = [{ kind: 'paragraph' as const, paragraph: { inlines: [] } }];
 
 describe('executeReplace input union', () => {
+  it('forwards an intended-text guard with an explicit selection before mutation', () => {
+    const selection = selectionAdapter();
+    executeReplace(selection, writeAdapter(), {
+      target: selectionTarget,
+      text: 'replacement',
+      expectedText: 'old',
+    } as unknown as ReplaceInput);
+    expect(selection.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'replace', target: selectionTarget, expectedText: 'old' }),
+      expect.anything(),
+    );
+  });
+
+  const assertInvalidGuard = (expectedText: unknown) => {
+    const selection = selectionAdapter();
+    expect(() =>
+      executeReplace(selection, writeAdapter(), {
+        target: selectionTarget,
+        text: 'X',
+        expectedText,
+      } as unknown as ReplaceInput),
+    ).toThrow();
+    expect(selection.execute).not.toHaveBeenCalled();
+  };
+
+  it('rejects a numeric expectedText before mutation', () => assertInvalidGuard(42));
+  it('rejects a null expectedText before mutation', () => assertInvalidGuard(null));
+  it('rejects a boolean expectedText before mutation', () => assertInvalidGuard(true));
+
+  const assertUnsupportedGuard = (input: unknown) => {
+    const selection = selectionAdapter();
+    const write = writeAdapter();
+    expect(() => executeReplace(selection, write, input as ReplaceInput)).toThrow();
+    expect(selection.execute).not.toHaveBeenCalled();
+    expect(write.replaceStructured).not.toHaveBeenCalled();
+  };
+
+  it('rejects a guarded ref before mutation', () =>
+    assertUnsupportedGuard({ ref: 'text:search', text: 'X', expectedText: 'old' }));
+  it('rejects a guarded body target before mutation', () =>
+    assertUnsupportedGuard({ target: bodyTarget, text: 'X', expectedText: 'old' }));
+  it('rejects a guarded cross-paragraph target before mutation', () =>
+    assertUnsupportedGuard({
+      target: { ...selectionTarget, end: { kind: 'text', blockId: 'p2', offset: 4 } },
+      text: 'X',
+      expectedText: 'old',
+    }));
+
   it('guides a misplaced mutation option to the second argument before mutation', () => {
     const selection = selectionAdapter();
     const write = writeAdapter();

@@ -37,6 +37,10 @@ The replacement advances the document revision. The example runs a new query bef
 
 `expectedRevision` makes each operation reject stale query input. `changeMode: 'direct'` applies the change immediately. Use `'tracked'` when a change should remain a suggestion for human review.
 
+For an explicit single-paragraph text selection, `expectedText` checks the selected text before a plain-text replacement. A mismatch returns `PRECONDITION_FAILED` without changing the document. This guard supports empty strings, but does not support search refs, complete-body targets, or selections across paragraphs.
+
+When building a target from `projectHtml({ includeSourceMap: true })`, retain the source map's `coordinateSpace` on the selection and pass the projection's `evaluatedRevision` as `expectedRevision`. Source-map offsets can include deleted revision text; dropping the coordinate metadata changes what those numbers select. Add `expectedText` with the intended token, then obtain a fresh projection after each edit.
+
 `behavior: 'exact'` removes only the resolved text range. The default `'selection'` behavior may expand to block edges when the query covers an entire boundary block.
 
 ## 3. Inspect receipts before continuing

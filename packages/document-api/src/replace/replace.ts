@@ -11,7 +11,7 @@
  */
 
 import type { RichContentMutationOptions } from '../write/write.js';
-import type { SelectionTarget, TargetLocator } from '../types/address.js';
+import type { SelectionTarget } from '../types/address.js';
 import type { SDMutationReceipt } from '../types/sd-contract.js';
 import type { SDReplaceInput } from '../types/structural-input.js';
 import type { SDFragment } from '../types/fragment.js';
@@ -39,16 +39,26 @@ import { textReceiptToSDReceipt } from '../receipt-bridge.js';
 
 /** Text replacement input: uses SelectionTarget / ref, or the complete main body. */
 export type TextReplaceInput =
-  | (TargetLocator & {
-      target?: SelectionTarget;
-      ref?: string;
+  | {
+      target: SelectionTarget;
+      ref?: never;
       text: string;
+      /** Require this exact selected text before replacing a single-paragraph text selection. */
+      expectedText?: string;
       /** Target a specific document story (body, header, footer, footnote, endnote). */
       in?: StoryLocator;
-    })
+    }
+  | {
+      ref: string;
+      target?: never;
+      text: string;
+      expectedText?: never;
+      in?: StoryLocator;
+    }
   | {
       target: BodyStoryLocator;
       text: string;
+      expectedText?: never;
       ref?: never;
       in?: never;
     };
@@ -87,7 +97,7 @@ export type ReplaceInput = TextReplaceInput | RichContentReplaceInput | SDReplac
 // Allowlists
 // ---------------------------------------------------------------------------
 
-const TEXT_REPLACE_ALLOWED_KEYS = new Set(['text', 'target', 'ref', 'in']);
+const TEXT_REPLACE_ALLOWED_KEYS = new Set(['text', 'target', 'ref', 'in', 'expectedText']);
 const STRUCTURAL_REPLACE_ALLOWED_KEYS = new Set(['content', 'target', 'ref', 'nestingPolicy', 'in']);
 const RICH_REPLACE_ALLOWED_KEYS = new Set(['value', 'type', 'target', 'ref', 'nestingPolicy', 'in']);
 const RICH_REPLACE_TYPES = new Set(['html', 'markdown']);
@@ -243,6 +253,23 @@ function validateTextReplaceInput(input: Record<string, unknown>): void {
   validateTargetLocator(input, 'replace');
   validateBodyReplaceShape(input);
 
+  if (input.expectedText !== undefined) {
+    const target = input.target;
+    if (
+      typeof input.expectedText !== 'string' ||
+      !isSelectionTarget(target) ||
+      target.start.kind !== 'text' ||
+      target.end.kind !== 'text' ||
+      target.start.blockId !== target.end.blockId
+    ) {
+      throw new DocumentApiValidationError(
+        'INVALID_INPUT',
+        'expectedText requires a string and an explicit single-paragraph text selection.',
+        { field: 'expectedText' },
+      );
+    }
+  }
+
   if (typeof input.text !== 'string') {
     throw new DocumentApiValidationError('INVALID_TARGET', `text must be a string, got ${typeof input.text}.`, {
       field: 'text',
@@ -343,7 +370,13 @@ export function executeReplace(
     return writeAdapter.replaceStructured(textInput, normalizeMutationOptions(options));
   }
   const request = textInput.target
-    ? { kind: 'replace' as const, target: textInput.target, text: textInput.text, in: textInput.in }
+    ? {
+        kind: 'replace' as const,
+        target: textInput.target,
+        text: textInput.text,
+        in: textInput.in,
+        ...(textInput.expectedText !== undefined ? { expectedText: textInput.expectedText } : {}),
+      }
     : { kind: 'replace' as const, ref: textInput.ref!, text: textInput.text, in: textInput.in };
   const textReceipt = selectionAdapter.execute(request, normalizeMutationOptions(options));
   return textReceiptToSDReceipt(textReceipt);

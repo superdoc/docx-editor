@@ -1015,6 +1015,7 @@ export const OPERATION_DEFINITIONS = {
     description:
       'Replace content at a contiguous document selection. ' +
       'Text path accepts a SelectionTarget or ref plus replacement text. ' +
+      'For explicit single-paragraph text selections, expectedText rejects mismatches with PRECONDITION_FAILED before mutation. ' +
       'Rich string path accepts HTML or Markdown plus a BlockNodeAddress, SelectionTarget, or ref. ' +
       'Structural path accepts the same locator forms plus SDFragment content. ' +
       "An explicit {kind:'story', storyType:'body'} target replaces the complete main body in direct mode while preserving the destination DOCX package.",

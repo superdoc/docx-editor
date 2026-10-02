@@ -4567,15 +4567,31 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
   replace: {
     input: {
       oneOf: [
-        // Text replacement: TargetLocator + text
+        // Text replacement: explicit selection with optional guard, or a ref.
         {
-          ...targetLocatorWithPayload(
-            {
-              in: storyLocatorSchema,
-              text: { type: 'string', description: 'Replacement text content.' },
-            },
-            ['text'],
-          ),
+          oneOf: [
+            objectSchema(
+              {
+                target: ref('SelectionTarget'),
+                in: storyLocatorSchema,
+                text: { type: 'string', description: 'Replacement text content.' },
+                expectedText: {
+                  type: 'string',
+                  description:
+                    'Require exact selected text before mutation. Only explicit single-paragraph text selections support this guard.',
+                },
+              },
+              ['target', 'text'],
+            ),
+            objectSchema(
+              {
+                ref: { type: 'string', description: 'Search result handle.' },
+                in: storyLocatorSchema,
+                text: { type: 'string', description: 'Replacement text content.' },
+              },
+              ['ref', 'text'],
+            ),
+          ],
         },
         objectSchema(
           {

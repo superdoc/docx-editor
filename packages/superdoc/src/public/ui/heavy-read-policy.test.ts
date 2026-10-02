@@ -52,6 +52,7 @@ interface Harness {
   setCommentAnchor: (offset: number, anchoredText: string) => void;
   setParagraphAlignment: (alignment: 'left' | 'center') => void;
   setForeground: (state: { active: number; pending: number }) => void;
+  emitSelection: (snapshot: unknown) => void;
   /** Per-policy-key issued-read counters. */
   countFor: (policyKey: string) => number;
   styleCatalogInputs: () => unknown[];
@@ -73,6 +74,7 @@ function makeHarness(
   let paragraphAlignment: 'left' | 'center' = 'left';
   let commentIds = options.initialCommentIds ?? ['c-1'];
   let commentAnchor = { offset: 0, anchoredText: 'hello' };
+  const selectionListeners: Array<(snapshot: unknown) => void> = [];
   const loadingListeners: Array<(snapshot: { sourceStage: LoadStage }) => void> = [];
   const eventListeners: Array<(event: Record<string, unknown>) => void> = [];
 
@@ -132,7 +134,18 @@ function makeHarness(
     },
   };
 
+  const selectionSource = {
+    subscribe: (listener: (snapshot: unknown) => void) => {
+      selectionListeners.push(listener);
+      return () => {
+        const index = selectionListeners.indexOf(listener);
+        if (index >= 0) selectionListeners.splice(index, 1);
+      };
+    },
+  };
   const host = {
+    getHandles: () => ({ editing: { selection: selectionSource } }),
+    readLiveSelectionSyncSnapshot: () => ({ empty: true, target: null, selectionTarget: null }),
     getDocumentLoadingSnapshot: () => ({ sourceStage: stage }),
     subscribeDocumentLoading: (listener: (snapshot: { sourceStage: LoadStage }) => void) => {
       // Reproduce the non-replaying-subscription race: the host reaches its
@@ -227,6 +240,9 @@ function makeHarness(
     },
     setForeground: (state) => {
       foreground = state;
+    },
+    emitSelection: (snapshot) => {
+      for (const listener of [...selectionListeners]) listener(snapshot);
     },
     countFor,
     styleCatalogInputs: () => stylesGetCatalog.mock.calls.map(([input]) => input),
@@ -806,6 +822,21 @@ describe('public ui — heavy-read policy behavior details', () => {
     await settle();
     expect(isHeavyDocReadKey('selection')).toBe(false);
     expect(harness.ui.state.selection.status).toBe('ready');
+    harness.ui.destroy();
+  });
+
+  it('reads a fresh selection immediately while the host holds background reads for input idle (SD-5394)', () => {
+    vi.useFakeTimers();
+    const harness = makeHarness('source-complete');
+    harness.setForeground({ active: 0, pending: 1 });
+    harness.emitSelection({
+      anchor: { blockId: 'P1', blockOffset: 0 },
+      focus: { blockId: 'P1', blockOffset: 5 },
+    });
+    expect(harness.ui.state.selection).toMatchObject({ status: 'ready', empty: false, quotedText: 'hello' });
+    expect(harness.countFor('comments')).toBe(0);
+    expect(harness.countFor('contentControls')).toBe(0);
+    expect(harness.countFor('styles:catalog:')).toBe(0);
     harness.ui.destroy();
   });
 });

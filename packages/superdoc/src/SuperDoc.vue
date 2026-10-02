@@ -547,6 +547,9 @@ const installV2CommandShortcutBinding = ({ documentId, bindEditShortcuts }) => {
   if (!documentId) return;
   clearV2CommandShortcutBinding(documentId);
   if (typeof bindEditShortcuts !== 'function') return;
+  // Track selection state before the first shortcut, including editors without
+  // built-in UI. Creating the controller on that first key misses its selection.
+  getSuperDocUI();
   const openLinkWorkflow = resolveV2LinkWorkflowOpener();
   const unbind = bindEditShortcuts({
     commandRoute: {

@@ -757,6 +757,29 @@ function readCollapsedHostTrackChangeId(snapshot: unknown): string | null {
   return typeof anchorId === 'string' && anchorId.length > 0 && anchorId === focusId ? anchorId : null;
 }
 
+function isNonCollapsedHostSelection(snapshot: unknown): boolean {
+  if (!snapshot || typeof snapshot !== 'object') return false;
+  const record = snapshot as LooseRecord;
+  const anchor = record.anchor as LooseRecord | undefined;
+  const focus = record.focus as LooseRecord | undefined;
+  if (
+    typeof anchor?.blockId !== 'string' ||
+    !anchor.blockId ||
+    typeof focus?.blockId !== 'string' ||
+    !focus.blockId ||
+    !Number.isFinite(anchor.blockOffset) ||
+    !Number.isFinite(focus.blockOffset)
+  )
+    return false;
+  return (
+    anchor.blockId !== focus.blockId ||
+    anchor.blockOffset !== focus.blockOffset ||
+    (Number.isFinite(anchor.trackedBlockOffset) &&
+      Number.isFinite(focus.trackedBlockOffset) &&
+      anchor.trackedBlockOffset !== focus.trackedBlockOffset)
+  );
+}
+
 /**
  * Resolve a painted/raw tracked-change id to the public {@link TrackChangesItem}
  * id it belongs to, and enumerate every raw alias for a public id.
@@ -3403,7 +3426,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
         }
         if (pendingPostPaintSelectionRefresh) continue;
         selectionEpoch += 1;
-        seedCaretSelectionFromHost();
+        refreshSelectionFromHost();
         recompute(paintCompleted ? 'post-paint-selection' : 'post-paint-selection-failed');
       }
     };
@@ -3886,8 +3909,9 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
    * effective font resolved from it) on the next recompute, instead of serving
    * the previous selection until the worker `selection.current` round-trip lands
    * (SD-3652). Only a resolvable COLLAPSED CARET is seeded - a range's snapshot
-   * cannot be resolved synchronously in worker mode, so ranges defer to the async
-   * read (seeding an empty value would wrongly disable range-only commands). The
+   * cannot be resolved synchronously in worker mode, so a new range starts an
+   * authoritative async read without waiting for the input-idle gate (SD-5394).
+   * Seeding an empty value would wrongly disable range-only commands. The
    * authoritative async read still overwrites marks/text/review overlap, but
    * foreground typing defers and coalesces that worker hop through the shared
    * retry gate. Previous marks are carried forward for toolbar continuity. A
@@ -3895,14 +3919,19 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
    * same carrier, or while an active typing dispatch advances the same caret by
    * one code point. Pending work alone never carries review command context.
    */
-  const seedCaretSelectionFromHost = (hostSelectionSnapshot?: unknown): void => {
+  const refreshSelectionFromHost = (hostSelectionSnapshot?: unknown): void => {
+    const foreground = foregroundMutationState();
+    if (isNonCollapsedHostSelection(hostSelectionSnapshot) && !(foreground && foreground.active > 0)) {
+      pendingSelectionSeedValidationToken = null;
+      issueAsyncRead('selection', selectionReadToken(), selectionCurrentRun, normalizeSelectionInfo);
+      return;
+    }
     const host = getHost();
     const read = host?.readLiveSelectionSyncSnapshot;
     if (typeof read !== 'function') return;
     const seed = normalizeSelectionInfo(safeCall(() => (read as AnyFn).call(host), null));
     if (!seed || !isCollapsedCaretSnapshot(seed)) return;
     const token = selectionReadToken();
-    const foreground = foregroundMutationState();
     const deferAuthoritativeRead = Boolean(foreground && (foreground.active > 0 || foreground.pending > 0));
     if (!deferAuthoritativeRead) {
       pendingSelectionSeedValidationToken = null;
@@ -6791,8 +6820,8 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
         selectionEpoch += 1;
         // Seed a collapsed caret synchronously so the toolbar reflects the new
         // caret immediately instead of after the worker round-trip (SD-3652);
-        // ranges/empties defer to the async read inside recompute.
-        seedCaretSelectionFromHost(snapshot);
+        // ranges refresh authoritatively without seeding unresolved worker data.
+        refreshSelectionFromHost(snapshot);
         recompute('host-selection');
       });
       if (typeof unsubscribe === 'function') detachHostSelection = unsubscribe;

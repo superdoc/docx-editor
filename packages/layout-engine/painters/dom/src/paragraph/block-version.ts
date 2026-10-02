@@ -173,6 +173,13 @@ export const deriveParagraphBlockVersion = (
         textRun.underline?.style ?? '',
         textRun.underline?.color ?? '',
         textRun.strike ? 1 : 0,
+        // The Word 97-2003 effect flags and the double strikethrough: paint-only,
+        // but this version is what decides whether the block is repainted.
+        textRun.doubleStrike ? 1 : 0,
+        textRun.outline ? 1 : 0,
+        textRun.shadow ? 1 : 0,
+        textRun.emboss ? 1 : 0,
+        textRun.imprint ? 1 : 0,
         textRun.highlight ?? '',
         textRun.letterSpacing != null ? textRun.letterSpacing : '',
         textRun.horizontalScale != null ? textRun.horizontalScale : '',
@@ -270,6 +277,12 @@ export const hashParagraphBlockForTableVersion = (
     hash = hashString(hash, getRunUnderlineStyle(run));
     hash = hashString(hash, getRunUnderlineColor(run));
     hash = hashString(hash, getRunBooleanProp(run, 'strike') ? '1' : '');
+    // The Word 97-2003 effect flags and the double strikethrough, for the same
+    // reason `strike` is here and in the sibling version above: they are what
+    // the run paints, and a version that cannot see them reuses the old cell.
+    for (const mark of ['doubleStrike', 'outline', 'shadow', 'emboss', 'imprint'] as const) {
+      hash = hashString(hash, getRunBooleanProp(run, mark) ? '1' : '');
+    }
     hash = hashString(hash, getRunStringProp(run, 'vertAlign'));
     hash = hashNumber(hash, getRunNumberProp(run, 'baselineShift'));
     hash = hashString(hash, trackedChangeVersion(run as TextRun));

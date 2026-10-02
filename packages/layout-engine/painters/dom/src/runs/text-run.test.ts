@@ -4,7 +4,7 @@ import type { FragmentRenderContext } from '../renderer.js';
 import type { DerivedRunTextPlane } from '../derived-run-text-plane.js';
 import type { RunRenderContext } from './types.js';
 import { textRunMergeSignature } from './hash.js';
-import { applyRunStyles, renderTextRun, resolveRunText } from './text-run.js';
+import { applyRunStyles, renderTextRun, resolveRunText, runStrikeDecoration } from './text-run.js';
 
 const makeRunRenderContext = (overrides: Partial<RunRenderContext> = {}): RunRenderContext =>
   ({
@@ -172,6 +172,16 @@ describe('resolveRunText', () => {
 
     expect(textRunMergeSignature(baseRun)).not.toBe(textRunMergeSignature(effectedRun));
   });
+
+  it('changes merge signature for each Word 97-2003 effect flag', () => {
+    const baseRun: TextRun = { text: 'Styled', fontFamily: 'Arial', fontSize: 12 };
+
+    // Neighbouring runs that differ only in one of these are not one span:
+    // merging them would paint the first run's effect over the second's text.
+    for (const mark of ['doubleStrike', 'outline', 'shadow', 'emboss', 'imprint'] as const) {
+      expect(textRunMergeSignature({ ...baseRun, [mark]: true })).not.toBe(textRunMergeSignature(baseRun));
+    }
+  });
 });
 
 describe('renderTextRun', () => {
@@ -282,5 +292,218 @@ describe('applyRunStyles', () => {
     expect(element.style.display).toBe('inline-block');
     expect(element.style.transform).toBe('scaleX(0.9)');
     expect(element.style.transformOrigin).toBe('left center');
+  });
+
+  const effectRun = (marks: Partial<TextRun>): TextRun => ({
+    text: 'Effect',
+    fontFamily: 'Arial',
+    fontSize: 16,
+    ...marks,
+  });
+
+  /** The two shading colors of the emboss/imprint pair, as the painter writes them. */
+  const EFFECT_LIGHT_CSS = 'rgba(255, 255, 255, 0.85)';
+  const EFFECT_DARK_CSS = 'rgba(0, 0, 0, 0.45)';
+
+  it('paints w:outline as a hollow glyph: a hairline stroke with the fill removed', () => {
+    const element = document.createElement('span');
+
+    applyRunStyles(element, effectRun({ outline: true, color: '#123456' }), false, (family) => family);
+
+    expect(element.style.webkitTextStroke).toBe('0.67px currentColor');
+    // The fill goes; the color stays, because the stroke reads currentColor from it.
+    expect(element.style.webkitTextFillColor).toBe('transparent');
+    expect(element.style.color).toBe('#123456');
+  });
+
+  /**
+   * The default path, and the one that goes invisible if the fill is cleared
+   * through `color`: Word's Font dialog writes the Outline effect with Automatic
+   * color, and `normalizeRunAttrsFromOoxml` deliberately reports Automatic as no
+   * color at all so paint can apply the document default. Clearing `color` here
+   * would leave the glyph with no fill AND a transparent stroke — blank space
+   * where there used to be readable text.
+   */
+  it('keeps an outlined run visible when it carries no explicit color', () => {
+    const element = document.createElement('span');
+
+    applyRunStyles(element, effectRun({ outline: true }), false, (family) => family);
+
+    expect(element.style.color).toBe('');
+    expect(element.style.webkitTextFillColor).toBe('transparent');
+    expect(element.style.webkitTextStroke).toBe('0.67px currentColor');
+  });
+
+  it('paints w:shadow as a single offset copy behind the glyph', () => {
+    const element = document.createElement('span');
+
+    applyRunStyles(element, effectRun({ shadow: true }), false, (family) => family);
+
+    expect(element.style.textShadow).toBe('1px 1px 0 rgba(0, 0, 0, 0.45)');
+  });
+
+  it('separates emboss from imprint by the side the light falls on', () => {
+    const embossed = document.createElement('span');
+    const imprinted = document.createElement('span');
+
+    applyRunStyles(embossed, effectRun({ emboss: true }), false, (family) => family);
+    applyRunStyles(imprinted, effectRun({ imprint: true }), false, (family) => family);
+
+    expect(embossed.style.textShadow).toBe('-1px -1px 0 rgba(255, 255, 255, 0.85), 1px 1px 0 rgba(0, 0, 0, 0.45)');
+    expect(imprinted.style.textShadow).toBe('1px 1px 0 rgba(255, 255, 255, 0.85), -1px -1px 0 rgba(0, 0, 0, 0.45)');
+    expect(embossed.style.textShadow).not.toBe(imprinted.style.textShadow);
+  });
+
+  it('scales the effect offset and the outline stroke with the font size', () => {
+    const heading = document.createElement('span');
+
+    applyRunStyles(heading, effectRun({ fontSize: 48, outline: true, shadow: true }), false, (family) => family);
+
+    expect(heading.style.webkitTextStroke).toBe('2px currentColor');
+    expect(heading.style.textShadow).toBe('3px 3px 0 rgba(0, 0, 0, 0.45)');
+  });
+
+  it('stands aside for an authored w14 outline on the same run', () => {
+    const element = document.createElement('span');
+    const run = effectRun({
+      outline: true,
+      color: '#000000',
+      textEffects: { outline: { width: 3, fill: '#ff0000' } },
+    });
+
+    applyRunStyles(element, run, false, (family) => family);
+
+    expect(element.style.webkitTextStroke).toBe('3px #ff0000');
+    // And the legacy pass leaves no transparent fill behind: `w14:textOutline`
+    // strokes a **filled** glyph, so a leftover empty fill would turn an
+    // authored outline into a hollow one.
+    expect(element.style.webkitTextFillColor).toBeFalsy();
+  });
+
+  it('stands aside for an authored w14 fill, which would otherwise paint into an empty glyph', () => {
+    const element = document.createElement('span');
+    const run = effectRun({ outline: true, textEffects: { fill: '#00ff00' } });
+
+    applyRunStyles(element, run, false, (family) => family);
+
+    expect(element.style.color).toBe('#00ff00');
+    expect(element.style.webkitTextFillColor).toBeFalsy();
+  });
+
+  /**
+   * Glow is not a shadow generation ahead of emboss — they are two different
+   * effects, and both are just `text-shadow` layers. Assigning rather than
+   * appending would let a glow silently erase the emboss on the same run.
+   */
+  /**
+   * `<w14:textOutline w14:w="0"><w14:noFill/></w14:textOutline>` is what Word
+   * writes for "no outline": the object is present and `applyTextEffects` paints
+   * nothing from it. Standing aside for its mere existence would leave the run
+   * with neither an authored stroke nor the legacy one — blank space, which is
+   * the failure this whole change exists to remove.
+   */
+  it('does not stand aside for a w14 outline that paints nothing', () => {
+    const element = document.createElement('span');
+    const run = effectRun({ outline: true, textEffects: { outline: { width: 0, fill: null } } });
+
+    applyRunStyles(element, run, false, (family) => family);
+
+    expect(element.style.webkitTextStroke).toBe('0.67px currentColor');
+    expect(element.style.webkitTextFillColor).toBe('transparent');
+  });
+
+  it('stands aside for an authored w14 shadow rather than drawing a second one', () => {
+    const element = document.createElement('span');
+    const run = effectRun({
+      shadow: true,
+      textEffects: { shadow: { color: { color: '#0000ff' }, direction: 45, distance: 3, blurRadius: 2 } },
+    });
+
+    applyRunStyles(element, run, false, (family) => family);
+
+    expect(element.style.textShadow).toContain('#0000ff');
+    // One shadow, not two: the legacy flag and `w14:shadow` are the same effect.
+    expect(element.style.textShadow).not.toContain(EFFECT_DARK_CSS);
+  });
+
+  it('composes a legacy emboss with an authored w14 glow instead of losing one', () => {
+    const element = document.createElement('span');
+    const run = effectRun({ emboss: true, textEffects: { glow: { color: { color: '#ff0000' }, radius: 4 } } });
+
+    applyRunStyles(element, run, false, (family) => family);
+
+    const shadow = element.style.textShadow;
+    expect(shadow).toContain('#ff0000');
+    expect(shadow).toContain(EFFECT_LIGHT_CSS);
+    expect(shadow).toContain(EFFECT_DARK_CSS);
+  });
+
+  it('draws w:dstrike as two lines rather than one', () => {
+    const element = document.createElement('span');
+
+    applyRunStyles(element, effectRun({ strike: true, doubleStrike: true }), false, (family) => family);
+
+    expect(element.style.textDecorationLine).toBe('line-through');
+    expect(element.style.textDecorationStyle).toBe('double');
+  });
+
+  /**
+   * `doubleStrike` is its own `RunMarks` field and its own settable run
+   * attribute, so a run carrying only it still has a strikethrough to draw.
+   * Reading the line off `strike` alone would render such a run undecorated.
+   */
+  it('draws a run that carries only doubleStrike', () => {
+    const element = document.createElement('span');
+
+    applyRunStyles(element, effectRun({ doubleStrike: true }), false, (family) => family);
+
+    expect(element.style.textDecorationLine).toBe('line-through');
+    expect(element.style.textDecorationStyle).toBe('double');
+  });
+
+  it('keeps the authored underline style when a run is both underlined and double-struck', () => {
+    const element = document.createElement('span');
+    const run = effectRun({ strike: true, doubleStrike: true, underline: { style: 'wavy' } });
+
+    applyRunStyles(element, run, false, (family) => family);
+
+    expect(element.style.textDecorationLine).toBe('underline line-through');
+    expect(element.style.textDecorationStyle).toBe('wavy');
+  });
+
+  /**
+   * `render-line.ts` re-derives the strike after painting on the paths that lift
+   * an underline onto a line overlay. It read the line off `strike` alone, so a
+   * run carrying only `w:dstrike` came out undecorated there while an ordinary
+   * line drew it — the shared helper is what keeps the two in step.
+   */
+  it('reports the strike for a doubleStrike-only run through the shared helper', () => {
+    expect(runStrikeDecoration(effectRun({ doubleStrike: true }))).toEqual({
+      line: 'line-through',
+      style: 'double',
+    });
+    expect(runStrikeDecoration(effectRun({ strike: true }))).toEqual({ line: 'line-through' });
+    expect(runStrikeDecoration(effectRun({}))).toEqual({ line: 'none' });
+  });
+
+  it('leaves the strike single for the helper when the element keeps its underline', () => {
+    // One `text-decoration-style` for the whole set: the underline's authored
+    // style wins, and the overlay paths get `double` because the underline has
+    // already been lifted off the run.
+    expect(runStrikeDecoration(effectRun({ strike: true, doubleStrike: true, underline: { style: 'wavy' } }))).toEqual({
+      line: 'line-through',
+    });
+  });
+
+  it('paints nothing extra for a run that carries no effect flag', () => {
+    const element = document.createElement('span');
+
+    applyRunStyles(element, effectRun({ strike: true }), false, (family) => family);
+
+    expect(element.style.webkitTextStroke).toBeFalsy();
+    expect(element.style.webkitTextFillColor).toBeFalsy();
+    expect(element.style.textShadow).toBeFalsy();
+    expect(element.style.textDecorationStyle).toBeFalsy();
+    expect(element.style.color).toBe('');
   });
 });

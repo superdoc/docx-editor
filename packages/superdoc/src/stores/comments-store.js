@@ -17,6 +17,7 @@ import {
 import useComment from '@superdoc/components/CommentsLayer/use-comment';
 import { groupChanges } from '../helpers/group-changes.js';
 import { buildFloatingCommentInstances } from './helpers/floating-comment-instances.js';
+import { normalizeCommentForEditor, getRichTextSupportedNodeNames } from './comment-normalize.js';
 
 export const useCommentsStore = defineStore('comments', () => {
   const BODY_TRACKED_CHANGE_STORY = { kind: 'story', storyType: 'body' };
@@ -2511,66 +2512,6 @@ export const useCommentsStore = defineStore('comments', () => {
    * @param {Object} commentTextJson The comment text JSON
    * @returns {string} The HTML content
    */
-  const normalizeCommentForEditor = (node) => {
-    if (Array.isArray(node)) {
-      return node
-        .map((child) => normalizeCommentForEditor(child))
-        .flat()
-        .filter(Boolean);
-    }
-
-    if (!node || typeof node !== 'object') return node;
-
-    const stripTextStyleAttrs = (attrs) => {
-      if (!attrs) return attrs;
-      const rest = { ...attrs };
-      delete rest.fontSize;
-      delete rest.fontFamily;
-      delete rest.eastAsiaFontFamily;
-      return Object.keys(rest).length ? rest : undefined;
-    };
-
-    const normalizeMark = (mark) => {
-      if (!mark) return mark;
-      const typeName = typeof mark.type === 'string' ? mark.type : mark.type?.name;
-      const attrs = mark?.attrs ? { ...mark.attrs } : undefined;
-      if (typeName === 'textStyle' && attrs) {
-        return { ...mark, attrs: stripTextStyleAttrs(attrs) };
-      }
-      return { ...mark, attrs };
-    };
-
-    const cloneMarks = (marks) =>
-      Array.isArray(marks) ? marks.filter(Boolean).map((mark) => normalizeMark(mark)) : undefined;
-
-    const cloneAttrs = (attrs) => (attrs && typeof attrs === 'object' ? { ...attrs } : undefined);
-
-    if (!Array.isArray(node.content)) {
-      return {
-        type: node.type,
-        ...(node.text !== undefined ? { text: node.text } : {}),
-        ...(node.attrs ? { attrs: cloneAttrs(node.attrs) } : {}),
-        ...(node.marks ? { marks: cloneMarks(node.marks) } : {}),
-      };
-    }
-
-    const normalizedChildren = node.content
-      .map((child) => normalizeCommentForEditor(child))
-      .flat()
-      .filter(Boolean);
-
-    if (node.type === 'run') {
-      return normalizedChildren;
-    }
-
-    return {
-      type: node.type,
-      ...(node.attrs ? { attrs: cloneAttrs(node.attrs) } : {}),
-      ...(node.marks ? { marks: cloneMarks(node.marks) } : {}),
-      content: normalizedChildren,
-    };
-  };
-
   const getHtmlFromComment = (commentTextElements) => {
     // If no content, we can't convert and its not a valid comment
     const elementsArray = Array.isArray(commentTextElements)
@@ -2582,7 +2523,8 @@ export const useCommentsStore = defineStore('comments', () => {
     if (!hasContent) return;
 
     try {
-      const normalizedContent = normalizeCommentForEditor(elementsArray);
+      const supportedNodeNames = getRichTextSupportedNodeNames(getRichTextExtensions());
+      const normalizedContent = normalizeCommentForEditor(elementsArray, supportedNodeNames);
       const contentArray = Array.isArray(normalizedContent)
         ? normalizedContent
         : normalizedContent

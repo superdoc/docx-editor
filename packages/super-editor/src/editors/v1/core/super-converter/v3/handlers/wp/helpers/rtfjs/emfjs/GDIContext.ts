@@ -633,6 +633,63 @@ export class GDIContext {
     this.state.polyfillmode = polyFillMode;
   }
 
+  public setTextColor(color: ColorRef): void {
+    this.state.textcolor = color;
+  }
+
+  public createFont(index: number, font: Font): void {
+    this._storeObject(font, index);
+  }
+
+  public textOut(x: number, y: number, text: string, advances: number[], options: number, rectangle: RectL): void {
+    const font = this.state.selected.font;
+    // Only horizontal, baseline-left text is qualified here. Do not paint other
+    // GDI text modes with silently incorrect placement.
+    if (this.state.textalign !== 24 || font.escapement !== 0 || font.orientation !== 0) {
+      throw new EMFJSError('Unsupported Unicode text alignment');
+    }
+    this._pushGroup();
+    const settings: any = {
+      fill: '#' + this.state.textcolor.toHex(),
+      'font-family': font.facename,
+      'font-size': Math.abs((font.height * this.state.vh) / this.state.wh),
+      'font-weight': font.weight || 400,
+      'font-style': font.italic ? 'italic' : 'normal',
+      'xml:space': 'preserve',
+    };
+    if (font.underline || font.strikeout) {
+      settings['text-decoration'] = [font.underline ? 'underline' : '', font.strikeout ? 'line-through' : '']
+        .filter(Boolean)
+        .join(' ');
+    }
+    if (advances.length > 0) {
+      let current = x;
+      settings.x = advances
+        .map((advance) => {
+          const position = this._todevX(current);
+          current += advance;
+          return position;
+        })
+        .join(' ');
+    }
+    if (options & 6) {
+      const left = this._todevX(rectangle.left);
+      const top = this._todevY(rectangle.top);
+      const width = this._todevX(rectangle.right) - left;
+      const height = this._todevY(rectangle.bottom) - top;
+      if (options & 2) {
+        this._svg.rect(this.state._svggroup, left, top, width, height, { fill: '#' + this.state.bkcolor.toHex() });
+      }
+      if (options & 4) {
+        const id = Helper._makeUniqueId('textclip');
+        const clip = this._svg.clipPath(this._getSvgDef(), id, 'userSpaceOnUse');
+        this._svg.rect(clip, left, top, width, height, {});
+        settings['clip-path'] = 'url(#' + id + ')';
+      }
+    }
+    this._svg.text(this.state._svggroup, this._todevX(x), this._todevY(y), text, settings);
+  }
+
   public createBrush(index: number, brush: Brush): void {
     const idx = this._storeObject(brush, index);
     Helper.log('[gdi] createBrush: brush=' + brush.toString() + ' with handle ' + idx);

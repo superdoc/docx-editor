@@ -32,7 +32,7 @@ import { GDIContext } from './GDIContext';
 import { EMFJSError, Helper } from './Helper';
 import { PointL, PointS, RectL, SizeL } from './Primitives';
 import { Region } from './Region';
-import { Brush, ColorRef, Pen } from './Style';
+import { Brush, ColorRef, Font, Pen } from './Style';
 
 class EmfHeader {
   private size: number;
@@ -139,7 +139,7 @@ export class EMFRecords {
   private _records: ((gdi: GDIContext) => void)[];
   private _header: EmfHeader;
 
-  constructor(reader: Blob, first: number) {
+  constructor(reader: Blob, first: number, renderUnicodeText = false) {
     this._records = [];
 
     this._header = new EmfHeader(reader, first);
@@ -221,6 +221,51 @@ export class EMFRecords {
           this._records.push((gdi) => {
             gdi.setBkColor(bkColor);
           });
+          break;
+        }
+        case Helper.GDI.RecordType.EMR_SETTEXTCOLOR: {
+          if (!renderUnicodeText) break;
+          const color = new ColorRef(reader);
+          this._records.push((gdi) => gdi.setTextColor(color));
+          break;
+        }
+        case Helper.GDI.RecordType.EMR_EXTCREATEFONTINDIRECTW: {
+          if (!renderUnicodeText) break;
+          if (size < 104) throw new EMFJSError('Invalid font record size');
+          const index = reader.readUint32();
+          const font = new Font(reader, 92);
+          this._records.push((gdi) => gdi.createFont(index, font));
+          break;
+        }
+        case Helper.GDI.RecordType.EMR_EXTTEXTOUTW: {
+          if (!renderUnicodeText) break;
+          if (size < 76) throw new EMFJSError('Invalid Unicode text record size');
+          reader.skip(28); // Bounds, graphics mode and scale factors.
+          const x = reader.readInt32();
+          const y = reader.readInt32();
+          const count = reader.readUint32();
+          const stringOffset = reader.readUint32();
+          const options = reader.readUint32();
+          const rectangle = new RectL(reader);
+          const dxOffset = reader.readUint32();
+          if ((options & ~6) !== 0) throw new EMFJSError('Unsupported Unicode text options');
+          if (count === 0) break;
+          if (
+            stringOffset < 76 ||
+            stringOffset + count * 2 > size ||
+            (dxOffset !== 0 && (dxOffset < 76 || dxOffset + count * 4 > size))
+          ) {
+            throw new EMFJSError('Invalid Unicode text record offset');
+          }
+          reader.seek(curpos + stringOffset);
+          let text = '';
+          for (let i = 0; i < count; i++) text += String.fromCharCode(reader.readUint16());
+          const advances: number[] = [];
+          if (dxOffset !== 0) {
+            reader.seek(curpos + dxOffset);
+            for (let i = 0; i < count; i++) advances.push(reader.readInt32());
+          }
+          this._records.push((gdi) => gdi.textOut(x, y, text, advances, options, rectangle));
           break;
         }
         case Helper.GDI.RecordType.EMR_CREATEBRUSHINDIRECT: {
@@ -539,7 +584,6 @@ export class EMFRecords {
         case Helper.GDI.RecordType.EMR_SETMAPPERFLAGS:
         case Helper.GDI.RecordType.EMR_SETROP2:
         case Helper.GDI.RecordType.EMR_SETCOLORADJUSTMENT:
-        case Helper.GDI.RecordType.EMR_SETTEXTCOLOR:
         case Helper.GDI.RecordType.EMR_SETMETARGN:
         case Helper.GDI.RecordType.EMR_EXCLUDECLIPRECT:
         case Helper.GDI.RecordType.EMR_INTERSECTCLIPRECT:
@@ -574,9 +618,7 @@ export class EMFRecords {
         case Helper.GDI.RecordType.EMR_MASKBLT:
         case Helper.GDI.RecordType.EMR_PLGBLT:
         case Helper.GDI.RecordType.EMR_SETDIBITSTODEVICE:
-        case Helper.GDI.RecordType.EMR_EXTCREATEFONTINDIRECTW:
         case Helper.GDI.RecordType.EMR_EXTTEXTOUTA:
-        case Helper.GDI.RecordType.EMR_EXTTEXTOUTW:
         case Helper.GDI.RecordType.EMR_POLYPOLYLINE16:
         case Helper.GDI.RecordType.EMR_POLYDRAW16:
         case Helper.GDI.RecordType.EMR_CREATEMONOBRUSH:

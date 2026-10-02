@@ -8,7 +8,7 @@
  *      - Classic EMR_STRETCHDIBITS DIB → BMP
  *      - EmfPlusObject(Image) compressed bitmap → original PNG/JPEG/GIF
  *   2. Raw-pixel EmfPlusObject(Image) → PNG via canvas
- *   3. Vector rasterization via the rtf.js renderer → SVG (classic EMF/WMF only)
+ *   3. Complete classic drawing via the rtf.js renderer → SVG (including EMF+ Dual Unicode text compositions)
  *   4. Placeholder SVG when an EMF+ payload uses GDI+ vector records we can't render
  *
  * EMF/WMF rendering code extracted from rtf.js (MIT License)
@@ -613,6 +613,34 @@ function getEmfDimensions(buffer) {
   };
 }
 
+/** Dual drawings with classic Unicode text need the composition, not one bitmap object. */
+function hasEmfPlusDualText(buffer) {
+  const view = new DataView(buffer);
+  if (view.byteLength < 88) return false;
+  let dual = false;
+  let text = false;
+  let offset = view.getUint32(4, true);
+  while (offset >= 88 && offset + 8 <= view.byteLength) {
+    const type = view.getUint32(offset, true);
+    const size = view.getUint32(offset + 4, true);
+    if (size < 8 || offset + size > view.byteLength) return false;
+    if (type === EMR_COMMENT && size >= 28 && view.getUint32(offset + 12, true) === EMF_PLUS_SIGNATURE) {
+      const end = Math.min(offset + size, offset + 12 + view.getUint32(offset + 8, true));
+      for (let plus = offset + 16; plus + 12 <= end; ) {
+        const plusType = view.getUint16(plus, true);
+        const plusSize = view.getUint32(plus + 4, true);
+        if (plusSize < 12 || plus + plusSize > end) return false;
+        if (plusType === 0x4001) dual = (view.getUint16(plus + 2, true) & 1) !== 0;
+        plus += plusSize;
+      }
+    }
+    if (type === 84) text = true;
+    if (type === 14) break;
+    offset += size;
+  }
+  return dual && text;
+}
+
 /**
  * Detect if an EMF file contains EMF+ payloads.
  * EMF+ lives inside EMR_COMMENT records with identifier 0x2B464D45.
@@ -748,14 +776,15 @@ export function convertEmfToSvg(data, size = {}) {
     const buffer = base64ToArrayBuffer(data);
 
     // Try to extract embedded bitmap payloads before attempting SVG rendering.
-    const bitmapResult = extractBitmapFromEmf(buffer);
+    const dualText = hasEmfPlusDualText(buffer);
+    const bitmapResult = dualText ? null : extractBitmapFromEmf(buffer);
     if (bitmapResult) {
       return bitmapResult;
     }
 
     const dimensions = getEmfDimensions(buffer);
 
-    if (isEmfPlus(buffer)) {
+    if (!dualText && isEmfPlus(buffer)) {
       // EMF+ payloads use GDI+ drawing records that rtf.js does not implement.
       // Many real-world EMF+ files (Office cover slides, charts) embed a complete
       // PNG/JPEG inside an EmfPlusObject(Image) record — extract that for a
@@ -770,7 +799,7 @@ export function convertEmfToSvg(data, size = {}) {
       });
     }
 
-    const renderer = new EMFJS.Renderer(buffer);
+    const renderer = new EMFJS.Renderer(buffer, dualText);
 
     const renderSettings = {
       width: String(size.width || dimensions.width) + 'px',

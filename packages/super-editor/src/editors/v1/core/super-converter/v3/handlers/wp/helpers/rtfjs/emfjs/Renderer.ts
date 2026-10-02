@@ -44,8 +44,8 @@ export interface IRendererSettings {
 export class Renderer {
   private _img: EMF;
 
-  constructor(blob: ArrayBuffer) {
-    this.parse(blob);
+  constructor(blob: ArrayBuffer, renderUnicodeText = false) {
+    this.parse(blob, renderUnicodeText);
     Helper.log('EMFJS.Renderer instantiated');
   }
 
@@ -77,7 +77,7 @@ export class Renderer {
     return svgElement;
   }
 
-  private parse(blob: ArrayBuffer) {
+  private parse(blob: ArrayBuffer, renderUnicodeText: boolean) {
     this._img = null;
 
     const reader = new Blob(blob);
@@ -91,7 +91,7 @@ export class Renderer {
       throw new EMFJSError('Not an EMF file');
     }
 
-    this._img = new EMF(reader, size);
+    this._img = new EMF(reader, size, renderUnicodeText);
 
     if (this._img == null) {
       throw new EMFJSError('Format not recognized');
@@ -114,9 +114,9 @@ class EMF {
   private _hdrsize: number;
   private _records: EMFRecords;
 
-  constructor(reader: Blob, hdrsize: number) {
+  constructor(reader: Blob, hdrsize: number, renderUnicodeText: boolean) {
     this._hdrsize = hdrsize;
-    this._records = new EMFRecords(reader, this._hdrsize);
+    this._records = new EMFRecords(reader, this._hdrsize, renderUnicodeText);
   }
 
   public render(gdi: GDIContext): void {

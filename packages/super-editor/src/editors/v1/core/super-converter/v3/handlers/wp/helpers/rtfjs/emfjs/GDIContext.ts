@@ -383,7 +383,7 @@ export class GDIContext {
         rasterOp.toString(16),
     );
     this._pushGroup();
-    this._svg.image(this.state._svggroup, dstX, dstY, dstW, dstH, dib.base64ref());
+    this._svg.image(this.state._svggroup, dstX, dstY, dstW, dstH, dib.base64ref(), { preserveAspectRatio: 'none' });
   }
 
   public rectangle(rect: RectL, rw: number, rh: number): void {
@@ -648,15 +648,23 @@ export class GDIContext {
     if (this.state.textalign !== 24 || font.escapement !== 0 || font.orientation !== 0) {
       throw new EMFJSError('Unsupported Unicode text alignment');
     }
+    const scaleY = Math.abs(this.state.vh / this.state.wh);
+    const glyphScaleX = this.state.vw / this.state.ww / scaleY;
+    if (!Number.isFinite(scaleY) || scaleY === 0 || !Number.isFinite(glyphScaleX) || glyphScaleX === 0) {
+      throw new EMFJSError('Invalid Unicode text mapping extents');
+    }
     this._pushGroup();
     const settings: any = {
       fill: '#' + this.state.textcolor.toHex(),
       'font-family': font.facename,
-      'font-size': Math.abs((font.height * this.state.vh) / this.state.wh),
+      'font-size': Math.abs(font.height) * scaleY,
       'font-weight': font.weight || 400,
       'font-style': font.italic ? 'italic' : 'normal',
       'xml:space': 'preserve',
     };
+    // Font size accounts for vertical mapping; scale glyph widths independently
+    // and compensate device-space positions so recorded origins stay fixed.
+    if (glyphScaleX !== 1) settings.transform = `scale(${glyphScaleX},1)`;
     if (font.underline || font.strikeout) {
       settings['text-decoration'] = [font.underline ? 'underline' : '', font.strikeout ? 'line-through' : '']
         .filter(Boolean)
@@ -666,7 +674,7 @@ export class GDIContext {
       let current = x;
       settings.x = advances
         .map((advance) => {
-          const position = this._todevX(current);
+          const position = this._todevX(current) / glyphScaleX;
           current += advance;
           return position;
         })
@@ -683,11 +691,11 @@ export class GDIContext {
       if (options & 4) {
         const id = Helper._makeUniqueId('textclip');
         const clip = this._svg.clipPath(this._getSvgDef(), id, 'userSpaceOnUse');
-        this._svg.rect(clip, left, top, width, height, {});
+        this._svg.rect(clip, left / glyphScaleX, top, width / glyphScaleX, height, {});
         settings['clip-path'] = 'url(#' + id + ')';
       }
     }
-    this._svg.text(this.state._svggroup, this._todevX(x), this._todevY(y), text, settings);
+    this._svg.text(this.state._svggroup, this._todevX(x) / glyphScaleX, this._todevY(y), text, settings);
   }
 
   public createBrush(index: number, brush: Brush): void {

@@ -103,6 +103,7 @@ export const makeDefaultItems = ({
   role,
   isDev = false,
   configuredItemNames,
+  configuredItemOrder,
   excludedItemNames,
   additionalItems = [],
 } = {}) => {
@@ -1402,6 +1403,18 @@ export const makeDefaultItems = ({
   const isStickyItem = (item) => stickyItemNames.includes(item.name.value);
   const overflowTrigger = toolbarItems.find((item) => item.name.value === 'overflow');
   const layoutItems = toolbarItems.filter((item) => item !== overflowTrigger);
+  // A composition map is a priority order, not just a set: when width can't
+  // fit every configured control, the ones the consumer listed first should
+  // be the ones that win the remaining space. Without this, the walk below
+  // always visits `layoutItems` in the fixed built-in registry order, so
+  // visibility/overflow membership would follow that order instead of the
+  // consumer's. Sticky items stay unaffected -- they're pulled out of the
+  // width budget entirely below, regardless of position.
+  if (configuredItemOrder) {
+    const orderIndex = new Map(configuredItemOrder.map((name, index) => [name, index]));
+    const rank = (item) => orderIndex.get(item.name.value) ?? Number.MAX_SAFE_INTEGER;
+    layoutItems.sort((a, b) => rank(a) - rank(b));
+  }
   const partitionItems = (reserveOverflowTrigger) => {
     const overflowItems = [];
     const visibleItems = [];

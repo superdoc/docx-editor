@@ -4120,16 +4120,18 @@ export interface ToolbarConfig {
    * syntax resolves to nothing.
    */
   container?: string | HTMLElement;
-  /** Built-in controls to render by region. Controls keep their built-in order. Omit to use the default toolbar. */
+  /** Built-in controls to render by region. Each region's controls render in the array order given. Omit to use the default toolbar. */
   items?: Readonly<Partial<Record<ToolbarRegion, readonly ToolbarItemId[]>>>;
   /**
    * Which groups render, or which items they contain.
    *
    * An array selects groups. The built-in layout still places them in its
    * left, center, and right regions, and always renders the center region.
+   * Item order within each region stays the built-in order for this shape.
    *
    * An object maps each group to its toolbar item ids. Its keys choose the
-   * regions and its values form a grouped allowlist.
+   * regions; its values form both the group's composition and the render
+   * order of items within that region.
    * @deprecated replaceWith=`ui.toolbar.items` removeIn=v3.0
    */
   groups?: readonly string[] | Readonly<Record<string, readonly string[]>>;

@@ -571,6 +571,22 @@ describe('BuiltInToolbar', () => {
     toolbar.destroy();
   });
 
+  it('renders composed items in the configured order within a region', () => {
+    const toolbar = new BuiltInToolbar({
+      superdoc: makeHost(),
+      groups: { center: ['zoom', 'search', 'ruler', 'documentMode'] },
+      hideButtons: false,
+    });
+
+    expect(toolbar.getToolbarItemByGroup('center').map((item) => item.name.value)).toEqual([
+      'zoom',
+      'search',
+      'ruler',
+      'documentMode',
+    ]);
+    toolbar.destroy();
+  });
+
   it('renders and runs canonical custom items through the public callback context', async () => {
     const toolbarContainer = document.createElement('div');
     document.body.append(toolbarContainer);
@@ -1075,6 +1091,45 @@ describe('BuiltInToolbar', () => {
 
     expect(toolbar.overflowItems.map((item) => item.name.value)).toContain('zoom');
     expect(toolbarContainer.querySelector('[aria-label="Overflow items"]')).not.toBeNull();
+    toolbar.destroy();
+  });
+
+  it('keeps overflowed items in the configured order', () => {
+    const toolbarContainer = document.createElement('div');
+    Object.defineProperty(toolbarContainer, 'offsetWidth', { configurable: true, value: 80 });
+    document.body.append(toolbarContainer);
+
+    const toolbar = new BuiltInToolbar({
+      superdoc: makeHost(),
+      selector: toolbarContainer,
+      groups: { right: ['measurementUnit', 'zoom'] },
+      responsiveToContainer: true,
+    });
+
+    expect(toolbar.overflowItems.map((item) => item.name.value)).toEqual(['measurementUnit', 'zoom']);
+    toolbar.destroy();
+  });
+
+  it('gives earlier configured items priority to stay visible when only some fit', () => {
+    const toolbarContainer = document.createElement('div');
+    Object.defineProperty(toolbarContainer, 'offsetWidth', { configurable: true, value: 140 });
+    document.body.append(toolbarContainer);
+
+    const toolbar = new BuiltInToolbar({
+      superdoc: makeHost(),
+      selector: toolbarContainer,
+      // `measurementUnit` (52px) is declared far later than `bold`/`italic`
+      // (32px each, and declared first) in the built-in registry, so a
+      // registry-order partition keeps `bold`/`italic` visible and overflows
+      // `measurementUnit` regardless of this configured order. Listing
+      // `measurementUnit` first here means it should win the limited space
+      // instead.
+      groups: { right: ['measurementUnit', 'bold', 'italic'] },
+      responsiveToContainer: true,
+    });
+
+    expect(toolbar.getToolbarItemByGroup('right').map((item) => item.name.value)).toEqual(['measurementUnit']);
+    expect(toolbar.overflowItems.map((item) => item.name.value)).toEqual(['bold', 'italic']);
     toolbar.destroy();
   });
 

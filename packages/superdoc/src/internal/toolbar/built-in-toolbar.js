@@ -466,6 +466,15 @@ export class BuiltInToolbar extends EventEmitter {
       ? customToolbarItems.filter((item) => configuredGroups.has(item.group?.value || 'center'))
       : customToolbarItems;
 
+    let allConfigItems = null;
+    if (hasExplicitGroupComposition) {
+      const groupedItems = Object.values(this.config.groups).flatMap((item) => item);
+      const groupedCustomItems = customToolbarItems
+        .filter((item) => configuredGroups.has(item.group?.value || 'center'))
+        .map((item) => item.name.value);
+      allConfigItems = [...new Set([...groupedItems, ...groupedCustomItems])];
+    }
+
     const { defaultItems, overflowItems } = makeDefaultItems({
       superToolbar: this,
       toolbarIcons: this.config.icons,
@@ -476,20 +485,24 @@ export class BuiltInToolbar extends EventEmitter {
       role: this.role,
       isDev: this.isDev,
       configuredItemNames,
+      // A composition map is a consumer-authored priority order, not just an
+      // allowlist: when width forces a choice, whichever controls the
+      // consumer listed first should be the ones that stay visible, not
+      // whichever happens to come first in the built-in registry. Without
+      // this, `makeDefaultItems` decides visibility/overflow by walking its
+      // fixed internal order, so a width that only fits one of three
+      // configured controls could keep the "wrong" one visible relative to
+      // what the consumer asked for.
+      configuredItemOrder: allConfigItems,
       excludedItemNames,
       additionalItems: layoutCustomItems,
     });
 
-    let allConfigItems = [
-      ...defaultItems.map((item) => item.name.value),
-      ...overflowItems.map((item) => item.name.value),
-    ];
-    if (hasExplicitGroupComposition) {
-      const groupedItems = Object.values(this.config.groups).flatMap((item) => item);
-      const groupedCustomItems = customToolbarItems
-        .filter((item) => configuredGroups.has(item.group?.value || 'center'))
-        .map((item) => item.name.value);
-      allConfigItems = [...new Set([...groupedItems, ...groupedCustomItems])];
+    if (!hasExplicitGroupComposition) {
+      allConfigItems = [
+        ...defaultItems.map((item) => item.name.value),
+        ...overflowItems.map((item) => item.name.value),
+      ];
     }
 
     const configuredOverflowItems = overflowItems.filter(
@@ -499,6 +512,38 @@ export class BuiltInToolbar extends EventEmitter {
     const filteredItems = defaultItems
       .filter((item) => visibleItemNames.includes(item.name.value))
       .filter((item) => !excludedItemNames.has(item.name.value));
+
+    // An explicit composition map is a consumer-authored sequence, not just
+    // an allowlist: `allConfigItems` already walks the map's arrays in the
+    // order the consumer wrote them, so reuse that order here instead of the
+    // fixed registry order `filteredItems`/`configuredOverflowItems` came in
+    // as. The array-of-group-names selection shape never sets
+    // `hasExplicitGroupComposition`, so it keeps the registry order it has
+    // always had.
+    if (hasExplicitGroupComposition) {
+      const orderIndex = new Map(allConfigItems.map((name, index) => [name, index]));
+      const rank = (item) => orderIndex.get(item.name.value) ?? Number.MAX_SAFE_INTEGER;
+
+      // The overflow trigger is never part of `allConfigItems` (consumers
+      // must not name it), and `default-items.js` deliberately does not put
+      // it last -- it reinserts it next to whatever followed it in the
+      // built-in layout. Ranking it last here would relocate it every time a
+      // composition-map toolbar overflows, so it is pulled out, the rest are
+      // sorted by consumer order, and it is reinserted using the same
+      // relative-position rule `default-items.js` uses.
+      const overflowTrigger = filteredItems.find((item) => item.name.value === 'overflow');
+      const originalIndex = new Map(filteredItems.map((item, index) => [item, index]));
+      const reordered = filteredItems.filter((item) => item !== overflowTrigger);
+      reordered.sort((a, b) => rank(a) - rank(b));
+      if (overflowTrigger) {
+        const triggerOriginalIndex = originalIndex.get(overflowTrigger);
+        const insertAt = reordered.findIndex((item) => originalIndex.get(item) > triggerOriginalIndex);
+        insertAt === -1 ? reordered.push(overflowTrigger) : reordered.splice(insertAt, 0, overflowTrigger);
+      }
+      filteredItems.splice(0, filteredItems.length, ...reordered);
+
+      configuredOverflowItems.sort((a, b) => rank(a) - rank(b));
+    }
 
     // Apply explicit per-group placement only for the composition-map shape.
     if (hasExplicitGroupComposition) {

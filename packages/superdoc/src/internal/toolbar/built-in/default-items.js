@@ -33,6 +33,54 @@ const getToolbarItemWidth = (item, controlSizes) => {
   return controlSizes.get(item.name.value) || controlSizes.get('default');
 };
 
+// A run of one-or-more separators is only meaningful when it has a real,
+// visible control on both sides *within the same rendered group* -- Toolbar.vue
+// renders left/center/right as three independent lists, so a separator flanked
+// by a different-group neighbor in the raw sequence can still be an orphan edge
+// item once its own group is rendered alone. Collapse to at most one separator
+// per boundary, and drop any separator with nothing left to divide.
+const collapseSeparatorRun = (items) => {
+  const result = [];
+  for (const item of items) {
+    if (item.type === 'separator') {
+      const previous = result[result.length - 1];
+      if (!previous || previous.type === 'separator') continue;
+    }
+    result.push(item);
+  }
+  while (result.length && result[result.length - 1].type === 'separator') {
+    result.pop();
+  }
+  return result;
+};
+
+const normalizeSeparators = (items) => {
+  const byGroup = new Map();
+  for (const item of items) {
+    const group = item.group?.value || 'center';
+    if (!byGroup.has(group)) byGroup.set(group, []);
+    byGroup.get(group).push(item);
+  }
+
+  const kept = new Set();
+  for (const groupItems of byGroup.values()) {
+    for (const item of collapseSeparatorRun(groupItems)) kept.add(item);
+  }
+
+  return items.filter((item) => kept.has(item));
+};
+
+// The overflow trigger isn't yet decided to be visible at this point --
+// `partitionItems` excludes it from the width walk and only splices it back in
+// conditionally -- so it must not count as a neighbor that "saves" an adjacent
+// separator here, or that separator gets charged width it may never need.
+const normalizeSeparatorsIgnoringOverflow = (items) => {
+  const overflowTrigger = items.find((item) => item.type === 'overflow');
+  const withoutOverflow = items.filter((item) => item !== overflowTrigger);
+  const kept = new Set(normalizeSeparators(withoutOverflow));
+  return items.filter((item) => item === overflowTrigger || kept.has(item));
+};
+
 /**
  * Set or clear the link item's `href` without disturbing the rest of its
  * attributes. The static configuration (`ariaLabel`, and anything added later)
@@ -1395,6 +1443,7 @@ export const makeDefaultItems = ({
   if (excludedItemNames?.size) {
     toolbarItems = toolbarItems.filter((item) => !excludedItemNames.has(item.name.value));
   }
+  toolbarItems = normalizeSeparatorsIgnoringOverflow(toolbarItems);
 
   // Always-visible items. The overflow trigger is reserved only after the
   // first pass proves that another control needs it; otherwise a focused
@@ -1479,6 +1528,8 @@ export const makeDefaultItems = ({
     if (insertAt === -1) visibleItems.push(overflowTrigger);
     else visibleItems.splice(insertAt, 0, overflowTrigger);
   }
+
+  visibleItems = normalizeSeparators(visibleItems);
 
   return {
     defaultItems: visibleItems,

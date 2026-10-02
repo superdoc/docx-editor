@@ -512,6 +512,25 @@ describe('BuiltInToolbar', () => {
     });
   });
 
+  it('drops orphaned separators, per rendered group, when excludeItems removes a whole control group', () => {
+    const host = makeHost();
+    const normalized = normalizeUiConfig({
+      ui: { toolbar: { excludeItems: ['fontFamily', 'fontSize', 'bold', 'italic', 'underline'] } },
+    }).toolbar;
+    const toolbar = new BuiltInToolbar({ superdoc: host, ...normalized.options });
+
+    for (const group of ['left', 'center', 'right'] as const) {
+      const types = toolbar.getToolbarItemByGroup(group).map((item) => item.type);
+      expect(types[0]).not.toBe('separator');
+      expect(types[types.length - 1]).not.toBe('separator');
+      for (let i = 0; i < types.length - 1; i += 1) {
+        expect(types[i] === 'separator' && types[i + 1] === 'separator').toBe(false);
+      }
+    }
+
+    toolbar.destroy();
+  });
+
   it('treats a groups array as group ordering instead of button composition', async () => {
     const toolbarContainer = document.createElement('div');
     document.body.append(toolbarContainer);

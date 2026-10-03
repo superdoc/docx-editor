@@ -69,3 +69,16 @@ A shared tag groups controls for lookup. It does not synchronize their content. 
 between its data and each document occurrence.
 
 Content controls are stored as `w:sdt` elements in the DOCX. You do not need to edit that XML to use the Document API.
+
+## Update metadata
+
+Use `doc.contentControls.patch({ target, alias: 'Client name' })` to update a control's title.
+
+In V2, `contentControls.patch` does not support `placeholder` or `showingPlaceholder`. If either field is defined,
+including an empty string, `null`, or `false`, the operation returns `success: false` with
+`failure.code: 'CAPABILITY_UNAVAILABLE'`. The entire patch is rejected, including other fields in the same call.
+Omit these fields when updating supported metadata.
+
+Changing the alias does not replace the control's visible text. Placeholder metadata also does not archive the
+original formatted content for later restoration. For workflows that capture and restore selected runs, see
+[selection OOXML](/document-api/selection-ooxml).

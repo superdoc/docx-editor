@@ -375,7 +375,9 @@ export interface ContentControlsPatchInput {
   tag?: string | null;
   appearance?: ContentControlAppearance | null;
   color?: string | null;
+  /** V2 rejects the entire patch with CAPABILITY_UNAVAILABLE when this field is defined, including null. */
   placeholder?: string | null;
+  /** V2 rejects the entire patch with CAPABILITY_UNAVAILABLE when this field is defined, including false. */
   showingPlaceholder?: boolean;
   temporary?: boolean;
   tabIndex?: number | null;

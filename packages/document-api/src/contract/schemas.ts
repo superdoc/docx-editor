@@ -3603,7 +3603,7 @@ function buildContentControlSchemas(): Record<ContentControlOperationId, Operati
           tag: {},
           appearance: { enum: ['boundingBox', 'tags', 'hidden'] },
           color: { type: 'string' },
-          placeholder: { type: 'string' },
+          placeholder: { oneOf: [{ type: 'string' }, { type: 'null' }] },
           showingPlaceholder: { type: 'boolean' },
           temporary: { type: 'boolean' },
           tabIndex: { type: 'integer' },

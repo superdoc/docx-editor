@@ -5183,14 +5183,16 @@ export const OPERATION_DEFINITIONS = {
   },
   'contentControls.patch': {
     memberPath: 'contentControls.patch',
-    description: 'Patch metadata properties on a content control (tag, alias, appearance, color, etc.).',
-    expectedResult: 'Returns a ContentControlMutationResult; reports NO_OP if no fields changed.',
+    description:
+      'Patch metadata properties on a content control (tag, alias, appearance, color, etc.). V2 does not support placeholder or showingPlaceholder; defining either field rejects the entire patch without changing properties or content.',
+    expectedResult:
+      'Returns a ContentControlMutationResult; reports NO_OP if no fields changed, or CAPABILITY_UNAVAILABLE for unsupported V2 placeholder fields.',
     requiresDocumentContext: true,
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
       trackedSupport: 'never',
-      possibleFailureCodes: ['NO_OP'],
+      possibleFailureCodes: ['NO_OP', 'CAPABILITY_UNAVAILABLE'],
       throws: T_CC_MUTATION,
     }),
     referenceDocPath: 'content-controls/patch.mdx',

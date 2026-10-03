@@ -406,7 +406,12 @@ export const deriveBlockVersion = (block: FlowBlock): string => {
         }
 
         if (run.kind === 'lineBreak') {
-          return ['linebreak', run.trackedChange ? trackedChangeMetaSignature(run.trackedChange) : ''].join(',');
+          return [
+            'linebreak',
+            run.attrs?.lineBreakType ?? '',
+            run.attrs?.clear ?? '',
+            run.trackedChange ? trackedChangeMetaSignature(run.trackedChange) : '',
+          ].join(',');
         }
 
         if (run.kind === 'tab') {

@@ -9,6 +9,13 @@ import { hashRunVisualMarks } from '../src/run-visual-marks';
 import type { Run } from '@superdoc/contracts';
 
 describe('hashRunVisualMarks', () => {
+  it('changes when a manual break starts clearing floating objects', () => {
+    const plain: Run = { kind: 'lineBreak' };
+    const cleared: Run = { kind: 'lineBreak', attrs: { lineBreakType: 'textWrapping', clear: 'all' } };
+    expect(hashRunVisualMarks(cleared)).not.toBe(hashRunVisualMarks(plain));
+    expect(hashRunVisualMarks(cleared)).toBe(hashRunVisualMarks({ ...cleared }));
+  });
+
   it('is deterministic for the same run object', () => {
     const run = {
       text: 'Hello',

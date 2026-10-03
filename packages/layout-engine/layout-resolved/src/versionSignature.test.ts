@@ -1098,3 +1098,15 @@ describe('SD-5361 manual break revision cache identity', () => {
     expect(deriveBlockVersion(deleted)).toBe(deriveBlockVersion({ ...deleted }));
   });
 });
+
+describe('SD-5640 manual clear break cache identity', () => {
+  it('invalidates the paragraph when its break starts clearing floating objects', () => {
+    const plain: ParagraphBlock = { kind: 'paragraph', id: 'clear-break', runs: [{ kind: 'lineBreak' }] };
+    const cleared: ParagraphBlock = {
+      ...plain,
+      runs: [{ kind: 'lineBreak', attrs: { lineBreakType: 'textWrapping', clear: 'all' } }],
+    };
+    expect(deriveBlockVersion(cleared)).not.toBe(deriveBlockVersion(plain));
+    expect(deriveBlockVersion(cleared)).toBe(deriveBlockVersion({ ...cleared }));
+  });
+});

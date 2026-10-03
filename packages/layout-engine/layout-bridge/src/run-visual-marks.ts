@@ -45,5 +45,6 @@ export const hashRunVisualMarks = (run: Run): string => {
     vanish ? 'v:1' : '',
     horizontalScale != null ? `hs:${horizontalScale}` : '',
     bidi ? `bd:${JSON.stringify(bidi)}` : '',
+    run.kind === 'lineBreak' ? `br:${JSON.stringify([run.attrs?.lineBreakType, run.attrs?.clear])}` : '',
   ].join('');
 };

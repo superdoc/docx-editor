@@ -1062,6 +1062,57 @@ export function layoutParagraphBlock(ctx: ParagraphLayoutContext, anchors?: Para
     return;
   }
 
+  const clearAllBreaks = block.runs.flatMap((run, index) =>
+    run.kind === 'lineBreak' &&
+    run.attrs?.clear === 'all' &&
+    (run.attrs.lineBreakType == null || run.attrs.lineBreakType === 'textWrapping')
+      ? [index]
+      : [],
+  );
+  const isBreakOnlyLine = (line: Line, runIndex: number): boolean =>
+    line.fromRun === runIndex && line.toRun === runIndex && line.fromChar === 0 && line.toChar === 0;
+  const clearsBeforeLine = (candidateLines: Line[], index: number): boolean => {
+    if (index === 0 || clearAllBreaks.length === 0) return false;
+    const previous = candidateLines[index - 1];
+    const current = candidateLines[index];
+    return clearAllBreaks.some(
+      (runIndex) =>
+        // A post-break placeholder has already consumed the clear. An ordinary
+        // break after it must keep wrapping around any later floating object.
+        !(index > 1 && isBreakOnlyLine(previous, runIndex)) &&
+        runIndex >= previous.toRun &&
+        // A trailing empty line can retain the break's own source run.
+        (runIndex < current.fromRun || isBreakOnlyLine(current, runIndex)),
+    );
+  };
+  const lineClearance = (lineY: number, lineHeight: number, state: PageState, clearAll: boolean): number => {
+    let resolvedY = lineY;
+    while (true) {
+      let nextY =
+        floatManager.computeVerticalClearance(resolvedY, lineHeight, state.columnIndex, state.page.number) ?? resolvedY;
+      if (clearAll) {
+        const left = columnX(state) + Math.min(0, indentLeft);
+        const right = columnX(state) + columnWidth - Math.min(0, indentRight);
+        for (const zone of floatManager.getExclusionsForLine(
+          resolvedY,
+          lineHeight,
+          state.columnIndex,
+          state.page.number,
+        )) {
+          if (
+            zone.wrapMode !== 'none' &&
+            zone.bounds.x - zone.distances.left < right &&
+            zone.bounds.x + zone.bounds.width + zone.distances.right > left
+          ) {
+            nextY = Math.max(nextY, zone.bounds.y + zone.bounds.height + zone.distances.bottom);
+          }
+        }
+      }
+      if (nextY <= resolvedY) return resolvedY;
+      resolvedY = nextY;
+    }
+  };
+
   // PHASE 1: Derive line-specific flow regions before remeasuring. A single
   // paragraph can be narrow beside a float and full-width immediately below
   // it, so a paragraph-wide "narrowest width" loses Word's line boundaries.
@@ -1079,22 +1130,7 @@ export function layoutParagraphBlock(ctx: ParagraphLayoutContext, anchors?: Para
 
       for (let i = 0; i < candidateLines.length; i++) {
         const lineHeight = candidateLines[i]?.lineHeight || 0;
-        let lineY = tempY;
-        // A Square float that consumes the entire column behaves like a
-        // vertical blocker for this paragraph, just as Word does. Resolve the
-        // physical line origin before deriving its horizontal regions so the
-        // remeasure path does not treat the 1px fail-closed sentinel as usable
-        // text space.
-        while (true) {
-          const clearance = floatManager.computeVerticalClearance(
-            lineY,
-            lineHeight,
-            tempState.columnIndex,
-            tempState.page.number,
-          );
-          if (clearance == null || clearance <= lineY) break;
-          lineY = clearance;
-        }
+        const lineY = lineClearance(tempY, lineHeight, tempState, clearsBeforeLine(candidateLines, i));
         const availableRegions = floatManager.computeAvailableRegions(
           lineY,
           lineHeight,
@@ -1388,11 +1424,11 @@ export function layoutParagraphBlock(ctx: ParagraphLayoutContext, anchors?: Para
     // reduction. Move the next flow line below every overlapping band,
     // including the authored bottom text distance.
     const lineTop = state.cursorY + borderExpansion.top;
-    const verticalClearance = floatManager.computeVerticalClearance(
+    const verticalClearance = lineClearance(
       lineTop,
       lines[fromLine]?.lineHeight ?? 0,
-      state.columnIndex,
-      state.page.number,
+      state,
+      clearsBeforeLine(lines, fromLine),
     );
     if (verticalClearance != null && verticalClearance > lineTop) {
       state.cursorY += verticalClearance - lineTop;
@@ -1556,16 +1592,25 @@ export function layoutParagraphBlock(ctx: ParagraphLayoutContext, anchors?: Para
     let height = 0;
     let sliceDemand = 0;
     let sliceRefs = 0;
+    let splitsWithinColumn = false;
     while (toLine < lines.length) {
       const lineHeight = lines[toLine].lineHeight || 0;
       const candidateLineTop = state.cursorY + borderExpansion.top + height;
-      const candidateVerticalClearance = floatManager.computeVerticalClearance(
+      const candidateVerticalClearance = lineClearance(
         candidateLineTop,
         lineHeight,
-        state.columnIndex,
-        state.page.number,
+        state,
+        clearsBeforeLine(lines, toLine),
       );
       if (toLine > fromLine && candidateVerticalClearance != null && candidateVerticalClearance > candidateLineTop) {
+        // A gap within this column is not a page boundary for widow control.
+        const candidateAnchors = getSliceAnchors(fromLine, toLine + 1);
+        splitsWithinColumn =
+          candidateVerticalClearance + lineHeight + borderExpansion.bottom <=
+          computeEffectiveBottom(
+            computeFootnoteClusterDemand(candidateAnchors),
+            getSliceRefCount(candidateAnchors, fromLine, toLine + 1),
+          );
         // Commit the lines above the float as one fragment. The next loop
         // iteration will move the remaining line below the exclusion band.
         break;
@@ -1604,6 +1649,7 @@ export function layoutParagraphBlock(ctx: ParagraphLayoutContext, anchors?: Para
     // the unconstrained line-by-line behavior.
     if (
       widowControl &&
+      !splitsWithinColumn &&
       fromLine === 0 &&
       pageHasNonTableAnchorContent(state) &&
       remainingLineCount > 0 &&
@@ -1615,7 +1661,7 @@ export function layoutParagraphBlock(ctx: ParagraphLayoutContext, anchors?: Para
       continue;
     }
 
-    if (widowControl && remainingLineCount === 1 && sliceLineCount > 2) {
+    if (widowControl && !splitsWithinColumn && remainingLineCount === 1 && sliceLineCount > 2) {
       toLine -= 1;
       height -= lines[toLine].lineHeight || 0;
       advanceForWidow = true;
@@ -1732,6 +1778,14 @@ export function layoutParagraphBlock(ctx: ParagraphLayoutContext, anchors?: Para
   }
 
   if (lastState) {
+    // Only omitted post-break lines need a fallback. Measured blank lines
+    // have already cleared and consumed their height below the float.
+    const terminalRun = block.runs.length - 1;
+    const hasTrailingBreakLine = lines.length > 1 && isBreakOnlyLine(lines[lines.length - 1], terminalRun);
+    if (clearAllBreaks.includes(terminalRun) && !hasTrailingBreakLine) {
+      lastState.cursorY = lineClearance(lastState.cursorY, lines.at(-1)?.lineHeight ?? 1, lastState, true);
+      lastState.maxCursorY = Math.max(lastState.maxCursorY, lastState.cursorY);
+    }
     if (spacingAfter > 0) {
       let targetState = lastState;
       let appliedSpacingAfter = spacingAfter;

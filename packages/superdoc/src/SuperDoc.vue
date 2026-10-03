@@ -1,5 +1,9 @@
 <script setup>
-import { recordInteraction } from './internal/diagnostics/interaction-history.js';
+import {
+  recordInteraction,
+  isWorkflowRecordingEnabled,
+  getWorkflowRecording,
+} from './internal/diagnostics/interaction-history.js';
 import { executeFirstPartyCommandAsync, registerFirstPartyCommandMutation } from './public/ui/create-super-doc-ui.js';
 import '@superdoc/common/styles/common-styles.css';
 import { superdocIcons } from './icons.js';
@@ -2287,6 +2291,9 @@ const editorOptions = (doc) => {
     proxy.$superdoc.config.v2CollaborationPreflightFailure ??
     (collaborationResolution.state === 'invalid' ? collaborationResolution.failure : null);
   const options = {
+    ...(isWorkflowRecordingEnabled(proxy.$superdoc.config)
+      ? { isInteractionRecording: () => getWorkflowRecording(proxy.$superdoc)?.active === true }
+      : {}),
     isDebug: proxy.$superdoc.config.isDebug || false,
     documentId: doc.id,
     user: proxy.$superdoc.user,

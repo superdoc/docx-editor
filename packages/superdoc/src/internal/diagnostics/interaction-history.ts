@@ -3,6 +3,19 @@ import type {
   InteractionHistorySnapshot,
   SuperDocDiagnostics,
 } from '../../core/types/diagnostics.js';
+import { WorkflowRecorder, type WorkflowRecording } from './workflow-recording.js';
+
+export interface InternalDiagnostics extends SuperDocDiagnostics {
+  readonly recording?: WorkflowRecording;
+}
+
+export function isWorkflowRecordingEnabled(config: unknown): boolean {
+  try {
+    return own(own(own(config, 'diagnostics'), 'recording'), 'enabled') === true;
+  } catch {
+    return false;
+  }
+}
 
 const recorders = new WeakMap<object, InteractionRecorder>();
 let nextSession = 0;
@@ -105,6 +118,7 @@ function limit(value: unknown, fallback: number, ceiling: number): number {
 }
 
 class InteractionRecorder {
+  readonly workflow: WorkflowRecorder | undefined;
   readonly sessionId = `interaction-${++nextSession}`;
   readonly maxEvents: number;
   readonly maxBytes: number;
@@ -126,7 +140,15 @@ class InteractionRecorder {
   constructor(
     config: unknown,
     private readonly version: () => string,
+    root: HTMLElement,
   ) {
+    if (isWorkflowRecordingEnabled(config)) {
+      try {
+        this.workflow = new WorkflowRecorder(root, version);
+      } catch {
+        /* Recording setup must not disable rolling history. */
+      }
+    }
     const history = own(own(config, 'diagnostics'), 'history');
     this.enabled = own(history, 'enabled') !== false;
     this.captureContent = own(history, 'captureContent') === true;
@@ -135,6 +157,7 @@ class InteractionRecorder {
   }
 
   record(type: string, read: () => unknown): void {
+    this.workflow?.observe(type, read);
     if (!this.enabled || this.closed) return;
     try {
       let truncated = false;
@@ -214,7 +237,7 @@ class InteractionRecorder {
   }
 
   action(): string | undefined {
-    return this.enabled && !this.closed ? `${this.sessionId}:${++this.actions}` : undefined;
+    return (this.enabled || this.workflow?.active) && !this.closed ? `${this.sessionId}:${++this.actions}` : undefined;
   }
 
   snapshot(): InteractionHistorySnapshot {
@@ -297,6 +320,7 @@ class InteractionRecorder {
   }
 
   close(): void {
+    this.workflow?.close();
     this.closed = true;
     for (const cleanup of this.cleanups) {
       try {
@@ -320,19 +344,20 @@ const unavailableSnapshot = (): InteractionHistorySnapshot => ({
   truncatedEvents: 0,
   captureFailures: 1,
 });
-const unavailable: SuperDocDiagnostics = Object.freeze({ getSnapshot: unavailableSnapshot, clear() {} });
+const unavailable: InternalDiagnostics = Object.freeze({ getSnapshot: unavailableSnapshot, clear() {} });
 
 export function createInteractionHistory(
   owner: object,
   config: unknown,
   version: () => string,
   root: HTMLElement,
-): SuperDocDiagnostics {
+): InternalDiagnostics {
   try {
-    const recorder = new InteractionRecorder(config, version);
+    const recorder = new InteractionRecorder(config, version, root);
     recorders.set(owner, recorder);
     recorder.attach(root);
-    const handle: SuperDocDiagnostics = Object.freeze({
+    const handle: InternalDiagnostics = Object.freeze({
+      ...(recorder.workflow ? { recording: recorder.workflow.api } : {}),
       getSnapshot: () => {
         try {
           return recorder.snapshot();
@@ -380,4 +405,8 @@ export function closeInteractionHistory(owner: object): void {
   } catch {
     /* Teardown must continue. */
   }
+}
+
+export function getWorkflowRecording(owner: object): WorkflowRecording | undefined {
+  return recorders.get(owner)?.workflow?.api;
 }

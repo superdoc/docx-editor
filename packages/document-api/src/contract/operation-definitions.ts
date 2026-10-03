@@ -258,8 +258,8 @@ export const INTENT_GROUP_META: Record<string, IntentGroupMeta> = {
     description:
       'IMPORTANT: For headings and paragraphs, use superdoc_edit with type "markdown" instead: it is faster, creates proper styles, and handles positioning via target + placement. ' +
       'Only use superdoc_create for tables or when markdown cannot express the content. ' +
-      'Creates a single paragraph, heading, or table. Returns nodeId and ref for the created block. ' +
-      'After creating, the returned ref is valid for ONE immediate superdoc_format call. For subsequent operations, re-fetch blocks with superdoc_get_content to get fresh refs (refs expire after any mutation). ' +
+      'Creates a single paragraph, heading, or table. Returns nodeId, an opaque handle.ref for the created block, and evaluatedRevision. ' +
+      'handle.ref works directly with superdoc_format (pass expectedRevision as evaluatedRevision to avoid REVISION_MISMATCH) and already carries its story, including for a header/footer block — no need to pass story separately. It is valid for ONE immediate follow-up call only; for anything after that, re-fetch blocks with superdoc_get_content to get a fresh ref. If "text" is empty, handle.ref spans no characters and cannot be used with superdoc_format action "inline" (it needs at least one character); use a block target with nodeId for paragraph-level actions like set_style or set_alignment instead. ' +
       'When the user asks for a "heading", use action "heading" with a level (default 1). Use action "paragraph" for regular body text. ' +
       'Position with "at": {kind:"documentEnd"} (default), {kind:"documentStart"}, or {kind:"after"/"before", target:{kind:"block", nodeType, nodeId}} for relative placement. ' +
       'When creating multiple items in sequence, use the previous response nodeId as the next "at" target to maintain correct ordering. ' +
@@ -298,7 +298,7 @@ export const INTENT_GROUP_META: Record<string, IntentGroupMeta> = {
       { action: 'inline', ref: '<handle.ref>', inline: { bold: true } },
       {
         action: 'inline',
-        ref: '<create.ref>',
+        ref: '<create.handle.ref>',
         inline: { fontFamily: 'Calibri', fontSize: 11, color: '#000000', bold: false },
       },
       {

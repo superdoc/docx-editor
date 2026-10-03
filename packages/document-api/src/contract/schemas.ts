@@ -1426,13 +1426,14 @@ const createParagraphSuccessSchema = objectSchema(
     paragraph: paragraphAddressSchema,
     insertionPoint: textAddressSchema,
     trackedChangeRefs: arraySchema(trackChangeRefSchema),
+    handle: ref('ResolvedHandle'),
+    evaluatedRevision: { type: 'string' },
     ref: {
       type: 'string',
-      description:
-        'Ref handle for the created block. Pass directly to superdoc_format or superdoc_edit ref param without searching.',
+      description: 'Deprecated: use handle.ref instead. Kept as an alias of handle.ref for backward compatibility.',
     },
   },
-  ['success', 'paragraph', 'insertionPoint'],
+  ['success', 'paragraph', 'insertionPoint', 'handle', 'evaluatedRevision'],
 );
 function createParagraphFailureSchemaFor(operationId: OperationId): JsonSchema {
   return objectSchema(
@@ -1454,13 +1455,14 @@ const createHeadingSuccessSchema = objectSchema(
     heading: headingAddressSchema,
     insertionPoint: textAddressSchema,
     trackedChangeRefs: arraySchema(trackChangeRefSchema),
+    handle: ref('ResolvedHandle'),
+    evaluatedRevision: { type: 'string' },
     ref: {
       type: 'string',
-      description:
-        'Ref handle for the created block. Pass directly to superdoc_format or superdoc_edit ref param without searching.',
+      description: 'Deprecated: use handle.ref instead. Kept as an alias of handle.ref for backward compatibility.',
     },
   },
-  ['success', 'heading', 'insertionPoint'],
+  ['success', 'heading', 'insertionPoint', 'handle', 'evaluatedRevision'],
 );
 function createHeadingFailureSchemaFor(operationId: OperationId): JsonSchema {
   return objectSchema(
@@ -5735,6 +5737,11 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
         description:
           'Paragraph text content. Each call creates ONE paragraph. For multiple items (e.g. list items), call superdoc_create separately for each item: do NOT use newlines to put multiple items in one paragraph.',
       },
+      styleId: {
+        type: 'string',
+        description:
+          'Explicit paragraph style id (e.g. "BodyText") to apply instead of the default resolved from the anchor/document. An unknown style id fails with INVALID_INPUT and does not mutate the document.',
+      },
     }),
     output: createParagraphResultSchemaFor('create.paragraph'),
     success: createParagraphSuccessSchema,
@@ -5768,6 +5775,11 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
           ],
         },
         text: { type: 'string', description: 'Heading text content.' },
+        styleId: {
+          type: 'string',
+          description:
+            'Explicit paragraph style id to apply instead of the Heading{level} style normally derived from level. level still controls numbering suppression regardless of this override. An unknown style id fails with INVALID_INPUT and does not mutate the document.',
+        },
       },
       ['level'],
     ),

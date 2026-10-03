@@ -282,6 +282,31 @@ describe('ooxml - resolveRunProperties', () => {
     expect(result).toEqual({ fontSize: 22, color: { val: 'BBBBBB' } });
   });
 
+  it('resolves an explicit styleId:"Normal" the same way as an unspecified paragraph style (SD-4886)', () => {
+    // SD-4886: create.paragraph now writes an explicit <w:pStyle w:val="Normal"/>
+    // on an edge-of-document paragraph that previously had none. This proves the
+    // cascade resolves that literal shape to Normal's own run properties (here,
+    // a distinct font from docDefaults), not docDefaults' — i.e. the fix's output
+    // shape renders identically to the already-covered implicit-no-style case
+    // above, closing the font-mismatch concern from the ticket for this cascade.
+    const params = buildParams({
+      translatedLinkedStyles: {
+        ...emptyStyles,
+        docDefaults: { runProperties: { fontFamily: { ascii: 'Calibri', hAnsi: 'Calibri' } } },
+        styles: {
+          Normal: {
+            type: 'paragraph',
+            styleId: 'Normal',
+            default: true,
+            runProperties: { fontFamily: { ascii: 'Cambria', hAnsi: 'Cambria' } },
+          },
+        },
+      },
+    });
+    const result = resolveRunProperties(params, {}, { styleId: 'Normal' });
+    expect(result).toEqual({ fontFamily: { ascii: 'Cambria', hAnsi: 'Cambria' } });
+  });
+
   it('uses run-property full overrides across basedOn style chains', () => {
     const params = buildParams({
       translatedLinkedStyles: {

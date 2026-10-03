@@ -157,6 +157,24 @@ const SECTION_BREAK_REPRESENTATIONS: readonly SectionBreakRepresentation[] = [
   'attachToPreviousParagraph',
 ] as const;
 
+/**
+ * Shape-validates an optional `styleId` input: undefined or a non-empty
+ * string. Whether the style id actually exists in the document cannot be
+ * checked here (no session/document access at this layer) — that check
+ * happens in the adapter and surfaces as `INVALID_INPUT` /
+ * `style-reference-not-found` without mutating the document.
+ */
+function validateStyleId(value: unknown, operationName: string): void {
+  if (value === undefined) return;
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new DocumentApiValidationError(
+      'INVALID_INPUT',
+      `${operationName} styleId must be a non-empty string when provided.`,
+      { field: 'styleId', value },
+    );
+  }
+}
+
 function validateMarginValue(field: string, value: unknown): void {
   if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
     throw new DocumentApiValidationError('INVALID_INPUT', `${field} must be a non-negative number.`, {
@@ -205,6 +223,7 @@ export function normalizeCreateParagraphInput(input: CreateParagraphInput): Crea
     at: normalizeCreateLocation<ParagraphCreateLocation>(input.at, () => {}),
     text: input.text ?? '',
     ...(input.in ? { in: input.in } : {}),
+    ...(input.styleId ? { styleId: input.styleId } : {}),
   };
 }
 
@@ -217,6 +236,7 @@ export function executeCreateParagraph(
     throw new DocumentApiValidationError('INVALID_INPUT', 'create.paragraph input must be a non-null object.');
   }
   validateStoryLocator(input.in, 'in');
+  validateStyleId(input.styleId, 'create.paragraph');
   const at = normalizeCreateLocation<ParagraphCreateLocation>(input.at, (loc) =>
     validateTargetOnlyCreateLocation(loc, 'create.paragraph'),
   );
@@ -224,6 +244,7 @@ export function executeCreateParagraph(
     at,
     text: input.text ?? '',
     ...(input.in ? { in: input.in } : {}),
+    ...(input.styleId ? { styleId: input.styleId } : {}),
   };
   return adapter.paragraph(normalized, normalizeMutationOptions(options));
 }
@@ -235,6 +256,7 @@ export function normalizeCreateHeadingInput(input: CreateHeadingInput): CreateHe
     at: normalizeCreateLocation<HeadingCreateLocation>(input.at, () => {}),
     text: input.text ?? '',
     ...(input.in ? { in: input.in } : {}),
+    ...(input.styleId ? { styleId: input.styleId } : {}),
   };
 }
 
@@ -254,6 +276,7 @@ export function executeCreateHeading(
       { field: 'level', value: input.level },
     );
   }
+  validateStyleId(input.styleId, 'create.heading');
   const at = normalizeCreateLocation<HeadingCreateLocation>(input.at, (loc) =>
     validateTargetOnlyCreateLocation(loc, 'create.heading'),
   );
@@ -262,6 +285,7 @@ export function executeCreateHeading(
     at,
     text: input.text ?? '',
     ...(input.in ? { in: input.in } : {}),
+    ...(input.styleId ? { styleId: input.styleId } : {}),
   };
   return adapter.heading(normalized, normalizeMutationOptions(options));
 }

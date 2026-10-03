@@ -278,7 +278,7 @@ export interface FontSizeOption {
 
 /** Observable enable/active state for a toolbar-style command. */
 export interface CommandState {
-  /** The command can run against the current selection / mode. */
+  /** Availability for a control in the current selection / mode snapshot. */
   enabled: boolean;
   /** Compatibility inverse of `enabled` for demo code that models commands as disabled. */
   disabled?: boolean;
@@ -401,9 +401,10 @@ export type SuperDocUIReceipt = Receipt | SuperDocUIFailureReceipt | PartialLink
  * preserves the public Document API facade result (or a controller-minted
  * failure), including read-only / unsupported failures and mutation effects.
  * `true` is returned for legacy command handlers that do not produce a
- * structured result, or when the host reports only that an async browser
- * operation was scheduled. Use `executeAsync(...)` to await the settled result
- * when the browser Document API / host runs asynchronously.
+ * structured result, including accepted no-ops, or when the host reports only
+ * that an async browser operation was scheduled. Use `executeAsync(...)` to await the settled result
+ * when the browser Document API / host runs asynchronously. A settled `true`
+ * does not guarantee a document mutation, such as Undo with an empty history.
  */
 export type CommandExecutionResult = boolean | SuperDocUIReceipt;
 
@@ -459,16 +460,18 @@ export interface CommandHandle<Id extends CommandId = CommandId> {
   observe(listener: (state: CommandState) => void): () => void;
   /**
    * Run the command. Returns the Document API receipt when the host facade
-   * provides one, or `false` for unsupported / disabled commands rather than
-   * throwing. When the browser operation settles asynchronously this returns
-   * the immediate routed result (`true` or a sync receipt); use
+   * provides one, or `false` when routing or current execution prerequisites
+   * are unavailable rather than throwing. When the browser operation settles
+   * asynchronously this returns the immediate routed result (`true` or a sync receipt); use
    * `executeAsync(...)` to await settlement.
    */
   execute(payload?: unknown): CommandExecutionResult;
   /**
    * Run the command and resolve once the routed operation has settled. On
    * browser-backed hosts this includes the post-mutation paint observation
-   * boundary when available.
+   * boundary when available. Selection-dependent commands may refresh stale
+   * selection state before execution. A settled `true` can be an accepted
+   * no-op and does not guarantee a document mutation.
    */
   executeAsync(payload?: unknown): Promise<CommandExecutionResult>;
 }

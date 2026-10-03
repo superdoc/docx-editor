@@ -5343,6 +5343,11 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     return SUPERDOC_UI_REASONS.bulkDecisionsDisabled;
   };
 
+  const canStorePendingInlineFormat = (selection: SelectionSlice): boolean =>
+    selection.empty &&
+    collapsedTextAddressFromSelection(selection) != null &&
+    typeof getHost()?.setPendingInlineFormat === 'function';
+
   const computeCommandState = (
     id: string,
     doc: LooseRecord | null,
@@ -5582,10 +5587,8 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       if (lockReason) {
         return normalizeCommandState({ enabled: false, active, supported: true, value, reason: lockReason }, 'builtin');
       }
-      const canStorePending =
-        selectionBlockIds(selection).length > 0 && typeof getHost()?.setPendingInlineFormat === 'function';
       return normalizeCommandState(
-        canStorePending
+        canStorePendingInlineFormat(selection)
           ? { enabled: true, active, supported: true, value }
           : { enabled: false, active, supported: true, value, reason: SUPERDOC_UI_REASONS.rangeSelectionRequired },
         'builtin',
@@ -8954,7 +8957,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     // Inline: a range mutates directly; a collapsed caret in a block stores the
     // pick (mark toggle or font/size) for the next typed text (SD-3654/SD-3652).
     if (descriptor.inline) {
-      return resolveInlineSelectionTarget(state.selection) != null || selectionBlockIds(state.selection).length > 0;
+      return resolveInlineSelectionTarget(state.selection) != null || canStorePendingInlineFormat(state.selection);
     }
     if (descriptor.blockParagraph || descriptor.list) return selectionBlockIds(state.selection).length > 0;
     if (descriptor.link) {
@@ -9065,13 +9068,10 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       );
       if (contentControlLockReason(lockModesById)) return false;
       const target = resolveInlineSelectionTarget(state.selection);
-      // Store the pick as a pending mark ONLY for a genuine collapsed caret
-      // (SD-3654/SD-3652). A non-empty selection with an unresolved target is a
-      // range whose async read has not settled yet - do not mis-route it to the
-      // caret store (that would leave the range unstyled); fail closed so the
-      // caller's fresh-selection retry applies it to the range instead.
+      // Pending formatting belongs to a resolved collapsed text caret.
+      // Missing or unresolved selections must not arm the next insertion.
       if (!target) {
-        if (state.selection.empty === false) return settleCommandExecution(false);
+        if (!canStorePendingInlineFormat(state.selection)) return settleCommandExecution(false);
         return settleCommandExecution(storePendingInlineFormat(descriptor, normalized));
       }
       const active = commandActiveState(descriptor, doc, state.selection);

@@ -46,14 +46,18 @@ the workflow does not need it.
 
 Use `executeAsync()` when your interface or later work depends on the action:
 
-| Result               | Meaning                                               |
-| -------------------- | ----------------------------------------------------- |
-| `false`              | The controller could not route the command            |
-| `true`               | The host completed the command without a receipt      |
-| `{ success: true }`  | The document operation completed                      |
-| `{ success: false }` | The receipt explains why the operation did not finish |
+| Result               | Meaning                                                           |
+| -------------------- | ----------------------------------------------------------------- |
+| `false`              | The controller could not route the command                        |
+| `true`               | The host accepted the command without a receipt, including no-ops |
+| `{ success: true }`  | The document operation completed                                  |
+| `{ success: false }` | The receipt explains why the operation did not finish             |
 
-Command state is a snapshot, so check the result even when `enabled` was `true`. For receipt failure codes, see
+Command state is a snapshot. Selection-dependent commands can refresh it before execution, so a stale disabled
+snapshot does not always mean execution will fail. Keep controls disabled according to `enabled`, and check the result even when `enabled` was `true`.
+
+A settled `true` does not guarantee a document mutation. For example, Undo with an empty history can return `true` as an
+accepted no-op. For receipt failure codes, see
 [Receipts and errors](/document-api/receipts-and-errors).
 
 ## Choose commands deliberately

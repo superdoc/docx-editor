@@ -11487,7 +11487,10 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
     text: '',
   } as const;
 
-  function makeCaretSuperdocWithPendingHost(docExtra: Record<string, unknown> = {}) {
+  function makeCaretSuperdocWithPendingHost(
+    docExtra: Record<string, unknown> = {},
+    selectionInfo: unknown = COLLAPSED_CARET_INFO,
+  ) {
     const store = new Map<string, boolean | string | number | null>();
     const host = {
       getPendingInlineFormat: () => (store.size ? Object.fromEntries(store) : null),
@@ -11499,9 +11502,84 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
       ),
       getHandles: () => ({ editing: { selection: { subscribe: () => () => {} } } }),
     };
-    const superdoc = makeBlockSuperdoc(docExtra, { selectionInfo: COLLAPSED_CARET_INFO, editorExtra: { host } });
+    const superdoc = makeBlockSuperdoc(docExtra, { selectionInfo, editorExtra: { host } });
     return { superdoc, host, store };
   }
+
+  it.each([
+    ['missing selection', null],
+    ['no caret before the first document click', { ...COLLAPSED_CARET_INFO, target: null, selectionTarget: null }],
+    [
+      'block address without a text caret',
+      {
+        ...COLLAPSED_CARET_INFO,
+        target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P1' },
+        selectionTarget: null,
+      },
+    ],
+  ])('rejects inline formatting with %s without arming the host (SD-5394)', async (_label, selectionInfo) => {
+    const { superdoc, host } = makeCaretSuperdocWithPendingHost(
+      {
+        format: {
+          bold: vi.fn(),
+          italic: vi.fn(),
+          underline: vi.fn(),
+          fontFamily: vi.fn(),
+          fontSize: vi.fn(),
+        },
+      },
+      selectionInfo,
+    );
+    const ui = createSuperDocUI({ superdoc });
+    for (const [id, payload] of [
+      ['bold', undefined],
+      ['italic', undefined],
+      ['underline', undefined],
+      ['font-family', 'Arial'],
+      ['font-size', '18'],
+    ] as const) {
+      const command = ui.commands.get(id);
+      expect.soft(command.getState(), id).toMatchObject({ enabled: false });
+      expect.soft(command.execute(payload), id + ' sync').toBe(false);
+      expect.soft(await command.executeAsync(payload), id + ' async').toBe(false);
+    }
+    expect(host.setPendingInlineFormat).not.toHaveBeenCalled();
+  });
+
+  it('refreshes a disabled missing-caret snapshot before executing a new range (SD-5394)', async () => {
+    let selectionInfo: unknown = null;
+    const bold = vi.fn(() => ({ success: true }));
+    const { superdoc, host } = makeCaretSuperdocWithPendingHost({
+      format: { bold },
+      selection: { current: () => selectionInfo },
+    });
+    const ui = createSuperDocUI({ superdoc });
+    const command = ui.commands.get('bold');
+    expect(command.getState()).toMatchObject({ enabled: false });
+
+    selectionInfo = SELECTION_INFO;
+    expect(await command.executeAsync()).toEqual({ success: true });
+    expect(bold).toHaveBeenCalledWith({ target: SELECTION_TARGET, value: true }, { offsetSpace: 'selection' });
+    expect(host.setPendingInlineFormat).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['body', undefined],
+    ['header/footer part', { kind: 'story', storyType: 'headerFooterPart', refId: 'rId7' }],
+  ])('allows a selectionTarget-only %s caret to store pending marks (SD-5394)', async (_label, story) => {
+    const { superdoc, host } = makeCaretSuperdocWithPendingHost(
+      { format: { bold: vi.fn() } },
+      {
+        ...COLLAPSED_CARET_INFO,
+        target: null,
+        selectionTarget: { ...COLLAPSED_CARET_INFO.selectionTarget, ...(story ? { story } : {}) },
+      },
+    );
+    const ui = createSuperDocUI({ superdoc });
+    expect(ui.commands.get('bold').getState()).toMatchObject({ enabled: true });
+    expect(await ui.commands.get('bold').executeAsync()).toBe(true);
+    expect(host.setPendingInlineFormat).toHaveBeenCalledWith('bold', true);
+  });
 
   it('bold on a collapsed caret is enabled and stores a pending mark instead of failing closed (SD-3654)', async () => {
     const { superdoc, host } = makeCaretSuperdocWithPendingHost({ format: { bold: vi.fn() } });

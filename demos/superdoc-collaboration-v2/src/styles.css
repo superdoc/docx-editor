@@ -1,0 +1,449 @@
+:root {
+  color: #20242c;
+  background: #eef0f3;
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  min-width: 900px;
+  min-height: 100vh;
+}
+button,
+input,
+select {
+  font: inherit;
+}
+button {
+  cursor: pointer;
+}
+
+.room-picker {
+  display: grid;
+  min-height: 100%;
+  place-items: center;
+  padding: 24px;
+  background: #ececec;
+}
+.room-card {
+  width: min(100%, 430px);
+  padding: 34px;
+  background: #fff;
+  border: 1px solid #d9dce3;
+  border-radius: 14px;
+  box-shadow: 0 14px 42px #222b3a1c;
+}
+.eyebrow {
+  color: #8a8f9c;
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+.room-card h1 {
+  margin: 6px 0 10px;
+  font-size: 25px;
+  letter-spacing: -0.03em;
+}
+.room-card p {
+  margin: 0;
+  color: #6e7480;
+  font-size: 13px;
+  line-height: 1.55;
+}
+.room-card .room-error {
+  margin-top: 12px;
+  color: #9d2727;
+}
+.retry-room {
+  margin-top: 18px;
+  padding: 10px 14px;
+  color: #fff;
+  background: #2563eb;
+  border: 0;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.app-shell {
+  height: 100vh;
+  display: grid;
+  grid-template-rows: 122px minmax(0, 1fr);
+  overflow: hidden;
+}
+.topbar {
+  z-index: 12;
+  display: grid;
+  grid-template-rows: 50px 72px;
+  background: #f8f8f8;
+  border-bottom: 1px solid #cfd5dd;
+  box-shadow: 0 1px 5px #11182712;
+}
+.ribbon-tabs-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  border-bottom: 1px solid #e1e5ea;
+}
+.file-title {
+  position: absolute;
+  left: 50%;
+  display: flex;
+  flex-direction: column;
+  min-width: 260px;
+  transform: translateX(-50%);
+  text-align: center;
+}
+.file-name-button {
+  align-self: center;
+  max-width: 520px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 4px 9px;
+  overflow: hidden;
+  color: #20242c;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  font-size: 16px;
+  font-weight: 400;
+  white-space: nowrap;
+}
+.file-name-button:hover {
+  background: #fff;
+  border-color: #d5d8dd;
+}
+.file-name-button > span:first-child {
+  overflow: hidden;
+  font-size: 16px !important;
+  font-weight: 400 !important;
+  text-overflow: ellipsis;
+}
+.file-name-caret {
+  width: 0;
+  height: 0;
+  flex: 0 0 auto;
+  border-top: 6px solid #737984;
+  border-right: 6px solid transparent;
+  border-left: 6px solid transparent;
+}
+.file-name-input {
+  width: 400px;
+  align-self: center;
+  padding: 5px 9px;
+  background: #fff;
+  border: 1px solid #3b82f6;
+  border-radius: 6px;
+  outline: none;
+  font-size: 16px;
+  text-align: center;
+  box-shadow: 0 0 0 3px #3b82f61c;
+}
+.file-menu {
+  min-width: 112px;
+  height: 34px;
+  padding: 5px 28px 5px 10px;
+  color: #303640;
+  background: #fff;
+  border: 1px solid #cfd4db;
+  border-radius: 7px;
+  font-size: 11px;
+  font-weight: 750;
+}
+.mode-select {
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+}
+.mode-select select {
+  min-width: 122px;
+  padding: 8px 30px 8px 10px;
+  color: #303640;
+  background: #fff;
+  border: 1px solid #cfd4db;
+  border-radius: 8px;
+  outline: none;
+  font-size: 12px;
+  font-weight: 700;
+}
+.mode-select select:focus,
+.file-menu:focus {
+  border-color: #3b82f6;
+  outline: 0;
+  box-shadow: 0 0 0 3px #3b82f61c;
+}
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.ribbon-controls-row {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 3px 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.native-font-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.native-font-controls select {
+  height: 32px;
+  padding: 3px 26px 3px 8px;
+  background: #fff;
+  border: 1px solid #b9bec6;
+  border-radius: 7px;
+  font-size: 14px;
+}
+.native-font-controls select:first-child {
+  width: 180px;
+}
+.native-font-controls select:last-child {
+  width: 88px;
+}
+.default-toolbar {
+  width: auto;
+  background: #f8f8f8;
+}
+.default-toolbar :is(.superdoc-toolbar, .toolbar) {
+  width: 100%;
+  background: #f8f8f8 !important;
+  box-shadow: none !important;
+  border: 0 !important;
+}
+.sd-tooltip-content {
+  display: none !important;
+}
+
+.workspace {
+  min-height: 0;
+  overflow: hidden;
+  background: #ececec;
+}
+.document-stage {
+  position: relative;
+  height: 100%;
+  overflow: auto;
+  scrollbar-width: none;
+}
+.document-stage::-webkit-scrollbar {
+  display: none;
+}
+.fixed-ruler {
+  position: sticky;
+  z-index: 10;
+  top: 0;
+  display: flex;
+  min-height: 25px;
+  justify-content: center;
+  background: #fff;
+}
+.editor-mount {
+  width: min(100%, 1000px);
+  min-height: calc(100vh - 122px);
+  margin: 0 auto;
+  padding-top: 16px;
+}
+.error-banner {
+  position: absolute;
+  z-index: 10;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 10px 16px;
+  color: #9d2727;
+  background: #fff0f0;
+  border: 1px solid #f4b7b7;
+  border-radius: 8px;
+}
+
+.room-dialog-backdrop {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: #11182759;
+  backdrop-filter: blur(2px);
+}
+.room-dialog {
+  width: min(100%, 920px);
+  height: min(660px, calc(100vh - 48px));
+  display: grid;
+  grid-template-rows: auto 28px minmax(0, 1fr) auto;
+  overflow: hidden;
+  background: #f8f8f8;
+  border: 1px solid #aeb4bc;
+  border-radius: 12px;
+  box-shadow: 0 24px 70px #11182740;
+}
+.room-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 46px;
+  padding: 10px 18px;
+  background: #f3f3f3;
+  border-bottom: 1px solid #c8ccd2;
+}
+.room-dialog-header h2 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 650;
+}
+.room-list-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 190px;
+  align-items: center;
+  padding: 0 18px 0 62px;
+  color: #363b44;
+  background: #fafafa;
+  border-bottom: 1px solid #d5d8dd;
+  font-size: 11px;
+  font-weight: 650;
+}
+.room-list {
+  overflow-y: auto;
+  padding: 6px 10px;
+  background: #fff;
+}
+.room-list > button {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) 180px;
+  align-items: center;
+  gap: 10px;
+  min-height: 58px;
+  padding: 6px 12px;
+  color: #282d35;
+  background: #fff;
+  border: 0;
+  border-radius: 7px;
+  text-align: left;
+}
+.room-list > button:nth-child(even) {
+  background: #f5f5f5;
+}
+.room-list > button:hover {
+  background: #e8f0fd;
+}
+.room-list > button.is-selected {
+  color: #fff;
+  background: #1457b8;
+}
+.document-icon {
+  display: flex;
+  width: 38px;
+  height: 44px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  color: #fff;
+  background: #1670ca;
+  border-radius: 5px;
+  font-size: 7px;
+  font-weight: 800;
+}
+.document-sheet {
+  position: relative;
+  width: 15px;
+  height: 18px;
+  background: #fff;
+  border-radius: 2px;
+}
+.document-sheet::after {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 6px;
+  height: 6px;
+  background: #91c5f4;
+  clip-path: polygon(0 0, 100% 100%, 0 100%);
+  content: '';
+}
+.room-document-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.room-document-copy strong {
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.room-document-copy small {
+  margin-top: 4px;
+  overflow: hidden;
+  color: #858b94;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.room-list > button.is-selected small {
+  color: #dceaff;
+}
+.room-list time {
+  padding-left: 12px;
+  font-size: 11px;
+}
+.room-list > p {
+  margin: 40px;
+  color: #818795;
+  text-align: center;
+  font-size: 12px;
+}
+.room-dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+  padding: 12px 18px;
+  background: #f5f5f5;
+  border-top: 1px solid #cfd3d8;
+}
+.room-dialog-footer button {
+  min-width: 76px;
+  padding: 7px 16px;
+  color: #303640;
+  background: #f7f7f7;
+  border: 1px solid #c8ccd2;
+  border-radius: 7px;
+  font-size: 12px;
+  box-shadow: none;
+}
+.room-dialog-footer .open-room-button {
+  color: #fff;
+  background: #2563eb;
+  border-color: #2563eb;
+}
+.room-dialog-footer button:disabled {
+  opacity: 0.48;
+  cursor: default;
+}

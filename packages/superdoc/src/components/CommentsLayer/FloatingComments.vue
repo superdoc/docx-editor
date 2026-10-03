@@ -436,6 +436,7 @@ const allPositions = computed(() => {
       collisionPositions.push(position);
     } else {
       position.top = offscreenTop;
+      position.isOffscreenReviewCard = true;
     }
   }
 
@@ -1187,7 +1188,8 @@ onBeforeUnmount(() => {
           'is-direct-decision-continuity-target': pos.id === directDecisionContinuityTargetId,
         }"
         :style="{
-          top: pos.top + 'px',
+          // Excluded rows must stay outside the viewport when the active rail moves.
+          top: (pos.isOffscreenReviewCard ? pos.top - sidebarOffsetY : pos.top) + 'px',
           height: pos.height + 'px',
           transition: disableInstantLayoutTransitions ? 'none' : undefined,
         }"

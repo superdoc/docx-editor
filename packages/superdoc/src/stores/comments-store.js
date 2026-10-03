@@ -1857,6 +1857,17 @@ export const useCommentsStore = defineStore('comments', () => {
     superdoc?.activeEditor?.commands?.removeComment({ commentId: 'pending' });
   };
 
+  const getV2CreatedComment = ({ outcome, reconciled, documentId }) => {
+    const createdId = normalizeCommentId(outcome?.createdCommentId);
+    if (!createdId) return reconciled?.added ?? null;
+    return (
+      commentsList.value.find(
+        (row) =>
+          String(row.commentId) === createdId && (documentId == null || String(row.fileId) === String(documentId)),
+      ) ?? null
+    );
+  };
+
   /**
    * Add a new comment to the document
    *
@@ -1928,13 +1939,14 @@ export const useCommentsStore = defineStore('comments', () => {
           documentId: v2Adapter.documentId,
           items: outcome.items,
         });
+        const created = getV2CreatedComment({ outcome, reconciled, documentId: v2Adapter.documentId });
         const hadPendingComment = !!pendingComment.value;
         if (hadPendingComment) removePendingComment(superdoc);
         // Hand off activeComment/instance to the newly created comment instead
         // of leaving it null, so the floating sidebar keeps treating this row
         // as active (viewport exemption, dialog mount, collision pinning) and
         // never observes an intermediate null in the same reactive flush.
-        const createdId = reconciled?.added?.commentId ?? null;
+        const createdId = created?.commentId ?? null;
         if (hadPendingComment && createdId) {
           setActiveComment(superdoc, createdId);
           setActiveFloatingCommentInstance(createdId);
@@ -1942,10 +1954,10 @@ export const useCommentsStore = defineStore('comments', () => {
         if (broadcastChanges) {
           superdoc.emit('comments-update', {
             type: COMMENT_EVENTS.ADD,
-            comment: reconciled?.added?.getValues?.() ?? null,
+            comment: created?.getValues?.() ?? null,
           });
         }
-        return { ok: true, comment: reconciled?.added ?? null };
+        return { ok: true, comment: created };
       });
     }
 
@@ -2627,9 +2639,9 @@ export const useCommentsStore = defineStore('comments', () => {
       eventType: COMMENT_EVENTS.ADD,
       rejectionFallbackReason: 'v2-reply-failed',
       rejectionEventExtras: parent ? { comment: getCommentEventPayload(parent) } : {},
-      successEventBuilder: ({ reconciled }) => ({
+      successEventBuilder: ({ outcome, reconciled }) => ({
         type: COMMENT_EVENTS.ADD,
-        comment: reconciled?.added?.getValues?.() ?? null,
+        comment: getV2CreatedComment({ outcome, reconciled, documentId: v2Adapter.documentId })?.getValues?.() ?? null,
       }),
     });
   };

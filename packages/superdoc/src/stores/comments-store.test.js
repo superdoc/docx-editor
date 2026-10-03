@@ -3716,6 +3716,48 @@ describe('comments-store v2 pending document comments', () => {
     expect(store.commentsList.map((comment) => comment.commentId)).toEqual(['c-created']);
   });
 
+  it.each(['Add', 'Reply'])('publishes the receipt-owned %s already hydrated during refresh', async (kind) => {
+    const root = { commentId: 'c1', fileId: 'doc-1', commentText: 'Root' };
+    const owned = {
+      commentId: 'c2',
+      parentCommentId: kind === 'Reply' ? 'c1' : undefined,
+      fileId: 'doc-1',
+      commentText: 'Owned committed body',
+    };
+    const neighbour = { commentId: 'c3', fileId: 'doc-1', commentText: 'Another concurrent comment' };
+    const settle = async () => {
+      store.reconcileCommentsFromV2({ superdoc, adapter, documentId: 'doc-1', items: [root, owned] });
+      return { ok: true, complete: false, createdCommentId: 'c2', items: [root, owned, neighbour] };
+    };
+    const adapter = {
+      documentId: 'doc-1',
+      reply: vi.fn(settle),
+      commitPendingComment: vi.fn(settle),
+      mapV2CommentToUseCommentInput: vi.fn((item) => item),
+    };
+    const superdoc = makeSuperdoc(adapter);
+    store.setV2CommentsAdapter(adapter);
+    store.commentsList = [
+      useComment({ ...owned, fileId: 'foreign-doc', commentText: 'Foreign body' }),
+      useComment(root),
+    ];
+    const outcome =
+      kind === 'Reply'
+        ? await store.replyCommentV2({ superdoc, parentCommentId: 'c1', text: owned.commentText })
+        : await store.addComment({ superdoc, comment: useComment(owned) });
+    expect(outcome.ok).toBe(true);
+    expect(superdoc.emit).toHaveBeenCalledTimes(1);
+    expect(superdoc.emit).toHaveBeenCalledWith(
+      'comments-update',
+      expect.objectContaining({
+        type: 'add',
+        comment: expect.objectContaining({ commentId: 'c2', commentText: owned.commentText }),
+      }),
+    );
+    expect(store.commentsList.filter((row) => row.commentId === 'c2' && row.fileId === 'doc-1')).toHaveLength(1);
+    expect(store.commentsList.find((row) => row.fileId === 'foreign-doc')?.commentText).toBe('Foreign body');
+  });
+
   it('submits reply mentions and exposes them in the successful update event', async () => {
     const mentions = [{ id: 'u1', name: 'Internal Reviewer', email: 'internal@example.com' }];
     const items = [

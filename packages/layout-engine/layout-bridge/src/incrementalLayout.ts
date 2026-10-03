@@ -8517,6 +8517,7 @@ async function layoutWithOptionalReuse(input: {
     let sourceConvergencePageIndex: number | null = null;
     let convergenceSectionPageNumberTransform: IncrementalSectionPageNumberTransform | null = null;
     let convergenceDisplayPageNumberTransform: IncrementalDisplayPageNumberTransform | null = null;
+    let convergenceDisplayPageNumberUnchanged = false;
     let checkpointConvergenceRejection = partialPageCheckpoint
       ? 'partial-page-no-candidate-evaluated'
       : `partial-page-${partialPageCheckpointRejection ?? 'unavailable'}`;
@@ -8828,6 +8829,10 @@ async function layoutWithOptionalReuse(input: {
         delta: targetSectionPageNumber - sourceSectionPageNumber,
       };
       convergenceDisplayPageNumberTransform = displayPageNumberTransform;
+      convergenceDisplayPageNumberUnchanged =
+        sourceDisplayPageNumber != null &&
+        targetDisplayPageNumber != null &&
+        sourceDisplayPageNumber === targetDisplayPageNumber;
       break;
     }
 
@@ -8898,7 +8903,8 @@ async function layoutWithOptionalReuse(input: {
         pageReferenceLocationsStable:
           pageIndexDelta === 0 &&
           convergenceSectionPageNumberTransform.delta === 0 &&
-          supportsLocalizedDecimalNumbering(input.options),
+          convergenceDisplayPageNumberUnchanged &&
+          supportsLocalizedSectionNumbering(input.options),
         sourceLayoutEpoch: previousLayout.layoutEpoch ?? null,
         positionTransforms,
         blockIdRewrites: reuse.blockIdRewrites?.previousToCurrent ?? null,

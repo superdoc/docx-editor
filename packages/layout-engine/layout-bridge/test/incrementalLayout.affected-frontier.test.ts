@@ -1251,7 +1251,7 @@ describe('incrementalLayout affected frontier', () => {
     expect(incremental.layoutReuse).toMatchObject({
       mode: 'tail-splice',
       reason: 'm4-affected-frontier-converged-tail-adopted',
-      tailAdoption: { pageIndexDelta: 0 },
+      tailAdoption: { pageIndexDelta: 0, pageReferenceLocationsStable: true },
     });
 
     measureCache.clear();
@@ -1264,6 +1264,54 @@ describe('incrementalLayout affected frontier', () => {
     );
     expect(json(incremental.layout)).toEqual(json(full.layout));
   });
+
+  it.each(['chapter-numbering', 'missing-display-number', 'changed-display-number'] as const)(
+    'does not certify unchanged PAGEREF locations for %s',
+    async (caseName) => {
+      const numberedOptions = {
+        ...options,
+        sectionMetadata: [
+          {
+            sectionIndex: 0,
+            numbering: {
+              start: 1,
+              format: 'upperRoman' as const,
+              ...(caseName === 'chapter-numbering' ? { chapterStyle: 1 } : {}),
+            },
+          },
+        ],
+      };
+      const previousBlocks = documentBlocks(14);
+      const measureBlock = async (block: FlowBlock) => measureFor(block);
+      const previous = await incrementalLayout([], null, previousBlocks, numberedOptions, measureBlock);
+      // Exercise incomplete or differing retained metadata at the actual producer boundary.
+      if (caseName !== 'chapter-numbering') {
+        const dirtyPage = blockPageIndex(previous.layout).get('p6')!.lastPage;
+        for (const page of previous.layout.pages.slice(dirtyPage + 1)) {
+          if (caseName === 'missing-display-number') delete page.displayNumber;
+          else page.displayNumber = (page.displayNumber ?? page.number) + 10;
+        }
+      }
+      const nextBlocks = replaceParagraphText(previousBlocks, 6, 'text-6!');
+      const incremental = await incrementalLayout(
+        previousBlocks,
+        previous.layout,
+        nextBlocks,
+        numberedOptions,
+        measureBlock,
+        undefined,
+        previous.measures,
+        undefined,
+        undefined,
+        {
+          ...provedReuse(previousBlocks, nextBlocks, previous.layout),
+          pmShift: { atChar: previousBlocks[6]!.runs[0]!.pmEnd!, delta: 1 },
+        },
+      );
+      expect(incremental.layoutReuse?.tailAdoption?.pageReferenceLocationsStable ?? false).toBe(false);
+      if (caseName !== 'chapter-numbering') expect(incremental.layoutReuse?.mode).toBe('tail-splice');
+    },
+  );
 
   it('supports a page-zero edit and adopts only the proved tail', async () => {
     const previousBlocks = documentBlocks(8);
@@ -2228,6 +2276,7 @@ describe('incrementalLayout affected frontier', () => {
       mode: 'tail-splice',
       tailAdoption: {
         pageIndexDelta: 1,
+        pageReferenceLocationsStable: false,
         sectionPageNumberTransform: { sectionIndex: 0, delta: 1 },
       },
     });

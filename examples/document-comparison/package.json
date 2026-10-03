@@ -9,7 +9,7 @@
     "test": "tsx --test compare.test.ts"
   },
   "dependencies": {
-    "@superdoc/sdk": "2.17.1-next.7"
+    "@superdoc/sdk": "2.17.1-next.8"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

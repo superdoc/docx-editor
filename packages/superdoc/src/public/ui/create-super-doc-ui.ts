@@ -2665,6 +2665,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
   let asyncReadFailureRetryAtMs = 0;
   let foregroundAsyncRetryTimer: ReturnType<typeof setTimeout> | null = null;
   let pendingSelectionSeedValidationToken: string | null = null;
+  let typedCaretValidationHeld = false;
   let typingContentInvalidationTimer: ReturnType<typeof setTimeout> | null = null;
   const pendingAsyncReadSettlements: Array<{
     key: string;
@@ -3255,6 +3256,16 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
         scheduleForegroundAsyncRetry();
         return;
       }
+      if (typedCaretValidationHeld && Date.now() - lastTypingMutationAtMs < HEAVY_READ_IDLE_MS) {
+        const token = selectionReadToken();
+        if (asyncReads.get('selection')?.token !== token) {
+          refreshSelectionFromHost(undefined, true);
+          if (asyncReads.get('selection')?.token === token) recompute();
+        }
+        scheduleForegroundAsyncRetry(HEAVY_READ_IDLE_POLL_MS);
+        return;
+      }
+      typedCaretValidationHeld = false;
       const validationToken = pendingSelectionSeedValidationToken;
       pendingSelectionSeedValidationToken = null;
       if (validationToken === selectionReadToken()) {
@@ -3426,7 +3437,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
         }
         if (pendingPostPaintSelectionRefresh) continue;
         selectionEpoch += 1;
-        refreshSelectionFromHost();
+        refreshSelectionFromHost(undefined, true);
         recompute(paintCompleted ? 'post-paint-selection' : 'post-paint-selection-failed');
       }
     };
@@ -3439,7 +3450,11 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     if (typingContentInvalidationTimer) clearTimeout(typingContentInvalidationTimer);
     typingContentInvalidationTimer = setTimeout(() => {
       typingContentInvalidationTimer = null;
-      if (!disposed) invalidateDocumentContentAndRecompute();
+      if (!disposed) {
+        invalidateDocumentContent();
+        if (typedCaretValidationHeld && !foregroundMutationActive()) refreshSelectionFromHost(undefined, true);
+        recompute();
+      }
     }, 500);
   };
 
@@ -3550,6 +3565,10 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     if (entry && entry.token === token && entry.hasSettled) {
       return { value: entry.value as T | null, status: 'ready' };
     }
+    if (key === 'selection' && typedCaretValidationHeld && Date.now() - lastTypingMutationAtMs < HEAVY_READ_IDLE_MS) {
+      scheduleForegroundAsyncRetry(HEAVY_READ_IDLE_POLL_MS);
+      return { value: entry?.hasSettled ? (entry.value as T) : null, status: entry?.hasSettled ? 'stale' : 'pending' };
+    }
     // Heavy-read gate: while the source is actively loading, passive recompute
     // neither cold-starts nor refreshes catalog-scale reads. Settled values
     // (from any token) serve as `stale`; nothing settled serves `pending`.
@@ -3658,6 +3677,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     heldSettledInlineValues = null;
     optimisticParagraphAlignment = null;
     pendingSelectionSeedValidationToken = null;
+    typedCaretValidationHeld = false;
     coldAsyncReadDeferrals.clear();
     demandedHeavyReads.clear();
     incompleteTrackChangesDirectoryReadTokens.clear();
@@ -3919,9 +3939,10 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
    * same carrier, or while an active typing dispatch advances the same caret by
    * one code point. Pending work alone never carries review command context.
    */
-  const refreshSelectionFromHost = (hostSelectionSnapshot?: unknown): void => {
+  const refreshSelectionFromHost = (hostSelectionSnapshot?: unknown, afterTypingPaint = false): void => {
     const foreground = foregroundMutationState();
     if (isNonCollapsedHostSelection(hostSelectionSnapshot) && !(foreground && foreground.active > 0)) {
+      typedCaretValidationHeld = false;
       pendingSelectionSeedValidationToken = null;
       issueAsyncRead('selection', selectionReadToken(), selectionCurrentRun, normalizeSelectionInfo);
       return;
@@ -3931,8 +3952,24 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     if (typeof read !== 'function') return;
     const seed = normalizeSelectionInfo(safeCall(() => (read as AnyFn).call(host), null));
     if (!seed || !isCollapsedCaretSnapshot(seed)) return;
+    const previousCaret = collapsedTextAddressFromSelection(state.selection);
+    const nextCaret =
+      collapsedTextAddressFromTarget(seed.selectionTarget) ?? collapsedTextAddressFromTarget(seed.target);
+    const previousRange = previousCaret?.range as LooseRecord | undefined;
+    const nextRange = nextCaret?.range as LooseRecord | undefined;
+    const sameSeedCaret = Boolean(
+      previousCaret &&
+      nextCaret &&
+      previousCaret.blockId === nextCaret.blockId &&
+      storyLocatorSignature(previousCaret.story) === storyLocatorSignature(nextCaret.story) &&
+      previousRange?.start === nextRange?.start,
+    );
+    typedCaretValidationHeld =
+      Boolean(foreground && foreground.active > 0) || (typedCaretValidationHeld && (afterTypingPaint || sameSeedCaret));
     const token = selectionReadToken();
-    const deferAuthoritativeRead = Boolean(foreground && (foreground.active > 0 || foreground.pending > 0));
+    const deferAuthoritativeRead =
+      Boolean(foreground && (foreground.active > 0 || foreground.pending > 0)) ||
+      (typedCaretValidationHeld && Date.now() - lastTypingMutationAtMs < HEAVY_READ_IDLE_MS);
     if (!deferAuthoritativeRead) {
       pendingSelectionSeedValidationToken = null;
       const completed = issueAsyncRead('selection', token, selectionCurrentRun, normalizeSelectionInfo);
@@ -3950,11 +3987,6 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
           : [];
     const seedCommentIds = Array.isArray(seed.activeCommentIds) ? seed.activeCommentIds : [];
     const paintedTrackChangeId = readCollapsedHostTrackChangeId(hostSelectionSnapshot);
-    const previousCaret = collapsedTextAddressFromSelection(state.selection);
-    const nextCaret =
-      collapsedTextAddressFromTarget(seed.selectionTarget) ?? collapsedTextAddressFromTarget(seed.target);
-    const previousRange = previousCaret?.range as LooseRecord | undefined;
-    const nextRange = nextCaret?.range as LooseRecord | undefined;
     const sameActiveTypingCaret = Boolean(
       foreground &&
       foreground.active > 0 &&

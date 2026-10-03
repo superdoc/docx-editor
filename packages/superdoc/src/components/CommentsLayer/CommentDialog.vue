@@ -1448,6 +1448,12 @@ watch(isV2WriteDisabled, (isDisabled) => {
               <span class="change-type"> with </span>
               <span class="tracked-change-text is-inserted">"{{ comment.trackedChangeText }}"</span>
             </div>
+            <div v-else-if="comment.deletedText && comment.deletedText === '\n'">
+              <span class="change-type">Deleted line break</span>
+            </div>
+            <div v-else-if="comment.trackedChangeText && comment.trackedChangeText === '\n'">
+              <span class="change-type">Added line break</span>
+            </div>
             <div v-else-if="comment.deletedText">
               <span class="change-type">Deleted </span>
               <span class="tracked-change-text is-deleted">"{{ comment.deletedText }}"</span>

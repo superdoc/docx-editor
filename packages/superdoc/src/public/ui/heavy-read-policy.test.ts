@@ -67,6 +67,9 @@ function makeHarness(
     contentControlsList?: () => unknown;
     commentsList?: () => unknown;
     initialCommentIds?: string[];
+    selectionCurrent?: () => unknown;
+    syncSelection?: () => unknown;
+    reviewWindowItems?: () => Record<string, unknown>[];
   } = {},
 ): Harness {
   let stage: LoadStage = initialStage;
@@ -107,8 +110,20 @@ function makeHarness(
   }));
   // Model the worker-backed bridge: both logical UI cache keys attach to one
   // shared asynchronous catalog transport.
-  const trackChangesFeedList = vi.fn(() => Promise.resolve({ items: [] }));
+  const trackChangesFeedList = vi.fn(() => Promise.resolve({ items: options.reviewWindowItems?.() ?? [] }));
 
+  const selectionCurrent = vi.fn(
+    options.selectionCurrent ??
+      (() => ({
+        empty: false,
+        target: SELECTION_TARGET,
+        selectionTarget: SELECTION_SELECTION_TARGET,
+        activeMarks: [],
+        activeCommentIds: [],
+        activeChangeIds: [],
+        text: 'hello',
+      })),
+  );
   const doc = {
     getNodeById: () => ({
       node: { kind: 'paragraph', paragraph: { props: { alignment: paragraphAlignment } } },
@@ -122,15 +137,7 @@ function makeHarness(
     hyperlinks: { list: hyperlinksList, wrap: vi.fn() },
     styles: { getCatalog: stylesGetCatalog },
     selection: {
-      current: () => ({
-        empty: false,
-        target: SELECTION_TARGET,
-        selectionTarget: SELECTION_SELECTION_TARGET,
-        activeMarks: [],
-        activeCommentIds: [],
-        activeChangeIds: [],
-        text: 'hello',
-      }),
+      current: selectionCurrent,
     },
   };
 
@@ -145,7 +152,13 @@ function makeHarness(
   };
   const host = {
     getHandles: () => ({ editing: { selection: selectionSource } }),
-    readLiveSelectionSyncSnapshot: () => ({ empty: true, target: null, selectionTarget: null }),
+    readLiveSelectionSyncSnapshot:
+      options.syncSelection ??
+      (() => ({
+        empty: true,
+        target: null,
+        selectionTarget: null,
+      })),
     getDocumentLoadingSnapshot: () => ({ sourceStage: stage }),
     subscribeDocumentLoading: (listener: (snapshot: { sourceStage: LoadStage }) => void) => {
       // Reproduce the non-replaying-subscription race: the host reaches its
@@ -166,6 +179,19 @@ function makeHarness(
 
   const superdoc = {
     activeEditor: {
+      ...(options.reviewWindowItems
+        ? {
+            editorVersion: 2,
+            reviewWindow: {
+              getSnapshot: () => ({
+                status: 'ready',
+                commentItems: [],
+                trackedChangeItems: options.reviewWindowItems!(),
+              }),
+              subscribe: () => () => {},
+            },
+          }
+        : {}),
       doc,
       host,
       v2TrackedChanges: { listTrackedChanges: trackChangesFeedList },
@@ -178,6 +204,8 @@ function makeHarness(
 
   const countFor = (policyKey: string): number => {
     switch (policyKey) {
+      case 'selection':
+        return selectionCurrent.mock.calls.length;
       case 'contentControls':
         return ccList.mock.calls.length;
       case 'contentControls:inRange:':
@@ -813,6 +841,99 @@ describe('public ui — heavy-read policy behavior details', () => {
 
     await settle(7_000);
     expect(harness.countFor('contentControls')).toBeGreaterThan(initial);
+    harness.ui.destroy();
+  });
+
+  it('SD-5646 holds deferred typed-caret validation through inter-key gaps without blocking fresh ranges', async () => {
+    vi.useFakeTimers();
+    let offset = 0;
+    const caret = () => ({
+      empty: true,
+      target: null,
+      selectionTarget: {
+        kind: 'selection',
+        start: { kind: 'text', blockId: 'P1', offset },
+        end: { kind: 'text', blockId: 'P1', offset },
+      },
+      activeMarks: [],
+      activeCommentIds: [],
+      activeChangeIds: [],
+    });
+    const harness = makeHarness('source-complete', { selectionCurrent: caret, syncSelection: caret });
+    await settle();
+    const before = harness.countFor('selection');
+    harness.setForeground({ active: 1, pending: 0 });
+    offset = 1;
+    harness.emitTypingMutation();
+    harness.emitSelection({ anchor: { blockId: 'P1', blockOffset: 1 }, focus: { blockId: 'P1', blockOffset: 1 } });
+    harness.setForeground({ active: 0, pending: 1 });
+    harness.emitSelection({ anchor: { blockId: 'P1', blockOffset: 1 }, focus: { blockId: 'P1', blockOffset: 1 } });
+    harness.setForeground({ active: 0, pending: 0 });
+    await settle(1000);
+    expect(
+      harness.countFor('selection'),
+      'deferred authoritative validation cannot occupy the worker between keys',
+    ).toBe(before);
+    expect(harness.ui.state.selection.selectionTarget).toMatchObject({ start: { offset: 1 }, end: { offset: 1 } });
+    harness.emitSelection({ anchor: { blockId: 'P1', blockOffset: 0 }, focus: { blockId: 'P1', blockOffset: 5 } });
+    expect(harness.countFor('selection'), 'explicit range selection still reads immediately').toBeGreaterThan(before);
+    harness.ui.destroy();
+  });
+
+  it.each([0, 900])('SD-5646 keeps an observed review directory ready after a %ims foreground tail', async (tailMs) => {
+    vi.useFakeTimers();
+    let offset = 0;
+    const caret = () => ({
+      empty: true,
+      target: null,
+      selectionTarget: {
+        kind: 'selection',
+        start: { kind: 'text', blockId: 'P1', offset },
+        end: { kind: 'text', blockId: 'P1', offset },
+      },
+      activeMarks: [],
+      activeCommentIds: [],
+      activeChangeIds: [],
+    });
+    let changes: Record<string, unknown>[] = [];
+    const harness = makeHarness('source-complete', {
+      selectionCurrent: caret,
+      syncSelection: caret,
+      reviewWindowItems: () => changes,
+    });
+    let directory = harness.ui.trackChanges.getSnapshot();
+    const stop = harness.ui.trackChanges.observe((snapshot) => {
+      directory = snapshot;
+    });
+    await settle();
+    expect(harness.ui.trackChanges.getSnapshot().status).toBe('ready');
+    const initialSelectionReads = harness.countFor('selection');
+    const initialDirectoryReads = harness.countFor('trackChanges');
+
+    harness.setForeground({ active: 1, pending: 0 });
+    offset = 2;
+    changes = [{ id: 'ime-1', type: 'insert', insertedText: '甲乙' }];
+    harness.emitTypingMutation();
+    harness.emitSelection({ anchor: { blockId: 'P1', blockOffset: 2 }, focus: { blockId: 'P1', blockOffset: 2 } });
+    harness.setForeground({ active: 0, pending: tailMs > 0 ? 1 : 0 });
+    await settle(tailMs);
+    harness.setForeground({ active: 0, pending: 0 });
+    await settle(1000);
+
+    expect(harness.countFor('trackChanges')).toBeGreaterThan(initialDirectoryReads);
+    expect(directory).toMatchObject({
+      status: 'ready',
+      total: 1,
+      items: [{ id: 'ime-1', type: 'insert', insertedText: '甲乙' }],
+    });
+    expect(harness.ui.selection.getSnapshot()).toMatchObject({
+      status: 'ready',
+      selectionTarget: { start: { offset: 2 }, end: { offset: 2 } },
+    });
+    expect(harness.countFor('selection'), 'the worker caret validation must remain deferred').toBe(
+      initialSelectionReads,
+    );
+    stop();
     harness.ui.destroy();
   });
 

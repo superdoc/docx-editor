@@ -539,6 +539,7 @@ watch(
         v-if="isOpen"
         ref="popupRef"
         role="listbox"
+        data-sd-part="dropdown-menu"
         :id="listboxId"
         :aria-label="ariaLabel"
         class="sd-font-combobox__listbox"

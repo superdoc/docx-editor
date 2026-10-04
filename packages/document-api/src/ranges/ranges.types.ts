@@ -61,16 +61,20 @@ export interface ResolveRangeInput {
 export interface RangeBlockPreview {
   nodeId: string;
   nodeType: BlockNodeType;
+  /** Block text clipped to 200 characters. */
   textPreview: string;
 }
 
 /** Preview metadata for the resolved range. */
 export interface RangePreview {
-  /** Concatenated text content across the range (truncated if large). */
+  /**
+   * Concatenated text content across the range.
+   * Truncated above 2000 characters; see `truncated`.
+   */
   text: string;
-  /** Whether the text was truncated. */
+  /** Whether `text` was truncated above the 2000-character budget. */
   truncated: boolean;
-  /** Per-block preview entries in document order. */
+  /** Per-block preview entries in document order (each textPreview capped at 200 characters). */
   blocks: RangeBlockPreview[];
 }
 

@@ -3666,6 +3666,11 @@ function* layoutDocumentSteps(
               const textboxId = drawBlock.attrs?.textboxId;
               if (typeof textboxId === 'string' && textboxId.length > 0) fragment.textboxId = textboxId;
             }
+            // SD-5244: carry per-child editable-textbox measurements from the
+            // shape-group measure onto its painted fragment.
+            if (drawBlock.drawingKind === 'shapeGroup' && drawMeasure.groupChildContentMeasures) {
+              fragment.groupChildContentMeasures = drawMeasure.groupChildContentMeasures;
+            }
 
             const attrs = drawBlock.attrs as Record<string, unknown> | undefined;
             if (attrs?.pmStart != null) fragment.pmStart = attrs.pmStart as number;
@@ -3921,6 +3926,11 @@ function* layoutDocumentSteps(
             fragment.contentMeasures = contentMeasures;
             const textboxId = block.attrs?.textboxId;
             if (typeof textboxId === 'string' && textboxId.length > 0) fragment.textboxId = textboxId;
+          }
+          // SD-5244: carry per-child editable-textbox measurements from the
+          // shape-group measure onto its painted fragment.
+          if (block.drawingKind === 'shapeGroup' && measure.groupChildContentMeasures) {
+            fragment.groupChildContentMeasures = measure.groupChildContentMeasures;
           }
           const attrs = block.attrs as Record<string, unknown> | undefined;
           if (attrs?.pmStart != null) fragment.pmStart = attrs.pmStart as number;

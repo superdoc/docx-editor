@@ -1,14 +1,11 @@
 import type { FlowBlock, Line, Run, TabRun } from '@superdoc/contracts';
 import {
-  shouldApplyJustify,
-  calculateJustifySpacing,
-  calculateInterCharacterJustifySpacing,
   interCharacterJustifyAdvanceBeforeOffset,
   isBodyNoteReferenceRun,
   sliceRunsForLine,
-  SPACE_CHARS as SHARED_SPACE_CHARS,
 } from '@superdoc/contracts';
 import { DEFAULT_FONT_MEASURE_CONTEXT, type FaceKey, type FontMeasureContext } from '@superdoc/font-system';
+import { countSpaces, getJustifyAdjustment } from './line-justify-adjustment.js';
 
 /**
  * Shared text measurement utility for accurate character positioning.
@@ -59,19 +56,6 @@ const isVisualOnlyRun = (run: Run | undefined): boolean => {
 const isVanishedRun = (run: Run | undefined): boolean => {
   return !!run && 'vanish' in run && run.vanish === true;
 };
-
-/**
- * Characters considered as spaces for justify alignment calculations.
- * Only includes regular space (U+0020) and non-breaking space (U+00A0).
- *
- * Rationale: These are the only space characters that participate in CSS word-spacing
- * behavior, which is what the painter uses for justify alignment. Other Unicode spaces
- * (em space, en space, thin space, etc.) are not affected by word-spacing and should
- * not contribute to justify distribution calculations.
- *
- * NOTE: Using shared constant from contracts to ensure consistency with painter.
- */
-const SPACE_CHARS = SHARED_SPACE_CHARS;
 
 const isTabRun = (run: Run): run is TabRun => run?.kind === 'tab';
 
@@ -136,200 +120,6 @@ function getMeasurementContext(): CanvasRenderingContext2D | null {
 
   return measurementCtx;
 }
-
-/**
- * Represents the justify alignment adjustment applied to a line.
- *
- * When text is justified, the layout engine distributes extra space (slack) evenly
- * across all space characters in the line. This type captures both the per-space
- * adjustment amount and the total number of spaces, which are used by text measurement
- * functions to accurately calculate character positions in justified text.
- *
- * @property extraPerSpace - Additional pixels to add after each space character (can be 0 for non-justified text)
- * @property totalSpaces - Total count of space characters in the line (used for validation and debugging)
- */
-type JustifyAdjustment = {
-  extraPerSpace: number;
-  totalSpaces: number;
-  interCharacterSpacing: number;
-  interCharacterBoundaries: readonly number[];
-};
-
-type GetJustifyAdjustmentParams = {
-  block: FlowBlock;
-  line: Line;
-  availableWidthOverride?: number;
-  alignmentOverride?: string;
-  isLastLineOfParagraph?: boolean;
-  paragraphEndsWithLineBreak?: boolean;
-  skipJustifyOverride?: boolean;
-};
-
-/**
- * Counts the number of space characters in a text string.
- *
- * Only counts spaces that participate in CSS word-spacing behavior (regular space
- * and non-breaking space). This is used for justify alignment calculations where
- * extra width needs to be distributed proportionally across spaces.
- *
- * @param text - The text string to analyze
- * @returns The count of space characters (regular space U+0020 and non-breaking space U+00A0)
- *
- * @example
- * ```typescript
- * countSpaces("Hello World");  // Returns: 1
- * countSpaces("A B C");        // Returns: 2
- * countSpaces("No-spaces");    // Returns: 0
- * ```
- */
-const countSpaces = (text: string): number => {
-  let spaces = 0;
-  for (let i = 0; i < text.length; i += 1) {
-    if (SPACE_CHARS.has(text[i])) {
-      spaces += 1;
-    }
-  }
-  return spaces;
-};
-
-/**
- * Computes the per-space expansion applied when a line is justified.
- *
- * This function uses shared justify utilities to ensure consistency with the painter's
- * justify logic, which distributes slack (extra horizontal space) evenly across all
- * space characters using CSS word-spacing. The calculation is critical for accurate
- * text measurement in justified paragraphs.
- *
- * Algorithm:
- * 1. Use shouldApplyJustify() to determine if justify should be applied (including last-line detection)
- * 2. Count all space characters (or use pre-computed line.spaceCount)
- * 3. Use calculateJustifySpacing() to compute per-space adjustment
- * 4. Support negative slack for compressed lines (naturalWidth > availableWidth)
- *
- * Edge Cases:
- * - Non-justify alignment: Returns zero adjustment
- * - Last line of paragraph: Returns zero adjustment (unless paragraph ends with soft break)
- * - No spaces: Returns zero adjustment (prevents division by zero)
- * - Lines with author-defined tab stops: Returns zero adjustment
- * - Compressed lines: Returns negative adjustment (naturalWidth used for slack calculation)
- * - Empty runs array: Returns zero adjustment
- *
- * @param params - Named parameters for justify adjustment.
- * @param params.block - The paragraph block containing the line
- * @param params.line - The line to compute justify adjustment for
- * @param params.availableWidthOverride - The available width for content (fragment width minus paragraph indents).
- *   Must match what the painter uses to ensure consistent justify spacing. If not provided,
- *   falls back to line.maxWidth or line.width.
- * @param params.alignmentOverride - Optional alignment override (defaults to block.attrs.alignment)
- * @param params.isLastLineOfParagraph - Whether this is the last line of the paragraph.
- *   If not provided, auto-derived from block/line: `line.toRun >= block.runs.length - 1`.
- *   Auto-derivation ensures measurement matches rendering. Returns false for empty runs arrays.
- * @param params.paragraphEndsWithLineBreak - Whether the paragraph ends with a soft break (Shift+Enter).
- *   If not provided, auto-derived: `lastRun?.kind === 'lineBreak'`.
- *   Auto-derivation ensures measurement matches rendering. Returns false for empty runs arrays.
- * @param params.skipJustifyOverride - Explicit override to skip justify
- * @returns Object containing extraPerSpace (pixels to add after each space) and totalSpaces
- *
- * @example
- * ```typescript
- * // Line with 200px width in 250px available space, 5 spaces
- * const adj = getJustifyAdjustment({ block, line, availableWidthOverride: 250, isLastLineOfParagraph: false });
- * // Returns: { extraPerSpace: 10, totalSpaces: 5 }  (50px slack / 5 spaces)
- *
- * // Last line of paragraph (no soft break)
- * const adj = getJustifyAdjustment({ block, line, availableWidthOverride: 250, isLastLineOfParagraph: true });
- * // Returns: { extraPerSpace: 0, totalSpaces: 5 }  (last line not justified)
- * ```
- */
-const getJustifyAdjustment = ({
-  block,
-  line,
-  availableWidthOverride,
-  alignmentOverride,
-  isLastLineOfParagraph,
-  paragraphEndsWithLineBreak,
-  skipJustifyOverride,
-}: GetJustifyAdjustmentParams): JustifyAdjustment => {
-  if (block.kind !== 'paragraph') {
-    return { extraPerSpace: 0, totalSpaces: 0, interCharacterSpacing: 0, interCharacterBoundaries: [] };
-  }
-
-  // Guard against empty runs array
-  if (block.runs.length === 0) {
-    return { extraPerSpace: 0, totalSpaces: 0, interCharacterSpacing: 0, interCharacterBoundaries: [] };
-  }
-
-  const alignment = alignmentOverride ?? block.attrs?.alignment;
-
-  // Derive last-line info from block/line when not explicitly provided.
-  // This ensures measurement matches rendering even when callers don't pass these flags.
-  const lastRunIndex = block.runs.length - 1;
-  const lastRun = block.runs[lastRunIndex];
-  const lastRunLength = getRunCharacterLength(lastRun);
-  const derivedIsLastLine = line.toRun > lastRunIndex || (line.toRun === lastRunIndex && line.toChar >= lastRunLength);
-  const derivedEndsWithLineBreak = lastRun ? lastRun.kind === 'lineBreak' : false;
-  // Determine if justify should be applied using shared logic
-  const shouldJustify = shouldApplyJustify({
-    alignment,
-    hasExplicitPositioning: line.segments?.some((seg) => seg.x !== undefined) ?? false,
-    hasExplicitTabStops: line.hasExplicitTabStops === true,
-    isLastLineOfParagraph: isLastLineOfParagraph ?? derivedIsLastLine,
-    paragraphEndsWithLineBreak: paragraphEndsWithLineBreak ?? derivedEndsWithLineBreak,
-    skipJustifyOverride,
-  });
-
-  if (!shouldJustify) {
-    return { extraPerSpace: 0, totalSpaces: 0, interCharacterSpacing: 0, interCharacterBoundaries: [] };
-  }
-
-  // Use pre-computed spaceCount if available, otherwise count manually
-  let totalSpaces = line.spaceCount ?? 0;
-  if (totalSpaces === 0) {
-    const runs = sliceRunsForLine(block, line);
-    totalSpaces = runs.reduce((sum, run) => {
-      if (
-        isVanishedRun(run) ||
-        isTabRun(run) ||
-        'src' in run ||
-        run.kind === 'lineBreak' ||
-        run.kind === 'break' ||
-        run.kind === 'fieldAnnotation' ||
-        run.kind === 'math'
-      ) {
-        return sum;
-      }
-      return sum + countSpaces(run.text ?? '');
-    }, 0);
-  }
-
-  // Use the same available width as the painter: override > maxWidth > width
-  const availableWidth = availableWidthOverride ?? line.maxWidth ?? line.width;
-
-  // Use naturalWidth if available (for compressed lines), otherwise use width
-  const lineWidth = line.naturalWidth ?? line.width;
-
-  // Calculate justify spacing using shared utility
-  const extraPerSpace = calculateJustifySpacing({
-    lineWidth,
-    availableWidth,
-    spaceCount: totalSpaces,
-    shouldJustify: true, // Already checked above
-  });
-  const interCharacterBoundaries = totalSpaces === 0 ? (line.justificationPlan?.boundaries ?? []) : [];
-  const interCharacterSpacing = calculateInterCharacterJustifySpacing({
-    lineWidth,
-    availableWidth,
-    boundaryCount: interCharacterBoundaries.length,
-    shouldJustify: true,
-  });
-
-  return {
-    extraPerSpace,
-    totalSpaces,
-    interCharacterSpacing,
-    interCharacterBoundaries,
-  };
-};
 
 /**
  * Generates a CSS font string from a run's formatting properties.
@@ -437,7 +227,6 @@ function measureCharacterXWithoutInlineBoxes(
   const runs = sliceRunsForLine(block, line);
   let currentX = 0;
   let currentCharOffset = 0;
-  let spaceTally = 0;
 
   for (const run of runs) {
     if (isTabRun(run)) {
@@ -493,13 +282,20 @@ function measureCharacterXWithoutInlineBoxes(
       const measuredWidth = memoizedCaretWidth(ctx, runFont, displayText, offsetInRun);
       const spacingWidth = computeLetterSpacingWidth(run, offsetInRun, runLength);
       const horizontalScale = getHorizontalScale(run);
+      // `currentX` already carries the FULL word-spacing stretch contributed
+      // by every run measured so far (baked in below, in the "whole run"
+      // branch). Only THIS run's own portion is still outstanding — adding a
+      // running space tally on top here would double-count every completed
+      // prior run's spaces once for their own advance and again for this
+      // return, pushing caret/hit-test x to the right of the real painted
+      // position on any multi-run justified line.
       const spacesInPortion = justify.extraPerSpace !== 0 ? countSpaces(text.slice(0, offsetInRun)) : 0;
       const lineOffset = currentCharOffset + offsetInRun;
       return (
         alignmentOffset +
         currentX +
         (measuredWidth + spacingWidth) * horizontalScale +
-        justify.extraPerSpace * (spaceTally + spacesInPortion) +
+        justify.extraPerSpace * spacesInPortion +
         interCharacterJustifyAdvanceBeforeOffset(
           justify.interCharacterBoundaries,
           lineOffset,
@@ -508,14 +304,15 @@ function measureCharacterXWithoutInlineBoxes(
       );
     }
 
-    // Measure entire run and advance (memoized).
+    // Measure entire run and advance (memoized). The run's own word-spacing
+    // stretch is folded into `currentX` right here, once — see the comment
+    // above on why the target-run return above must NOT add it a second time.
     const wholeRunFont = getRunFontString(run, fontContext);
     ctx.font = wholeRunFont;
     const wholeRunWidth = memoizedCaretWidth(ctx, wholeRunFont, displayText, displayText.length);
     const runLetterSpacing = computeLetterSpacingWidth(run, runLength, runLength);
     const spacesInRun = justify.extraPerSpace !== 0 ? countSpaces(text) : 0;
     currentX += (wholeRunWidth + runLetterSpacing) * getHorizontalScale(run) + justify.extraPerSpace * spacesInRun;
-    spaceTally += spacesInRun;
 
     currentCharOffset += runLength;
   }

@@ -62,6 +62,8 @@ import {
   type DrawingMeasure,
   type DrawingGeometry,
   type TextboxContentMeasure,
+  type TextboxContentBlock,
+  type ShapeTextLayout,
   type DropCapDescriptor,
   type CellSpacing,
   type CellBorders,
@@ -5575,6 +5577,65 @@ async function measureDrawingBlock(
       geometry.height = Math.max(1, insets.top + contentHeight + insets.bottom);
     }
   }
+  // SD-5244: measure each in-scope shape-group child's canonical textbox
+  // content, mirroring the `textboxShape` branch above but keyed per child
+  // by `textboxId` rather than owning the whole block. Kept off
+  // `block.shapes[i].attrs` (see `DrawingMeasure.groupChildContentMeasures`
+  // doc) — this is `Measure`-side output only.
+  let groupChildContentMeasures: Record<string, TextboxContentMeasure[]> | undefined;
+  if (block.drawingKind === 'shapeGroup') {
+    const measuresByTextboxId: Record<string, TextboxContentMeasure[]> = {};
+    for (const shape of block.shapes ?? []) {
+      // `ShapeGroupUnknownChild.shapeType` is a plain `string`, so this guard
+      // cannot narrow the union away statically (a known TS limitation for a
+      // widened discriminant member) — read `attrs` loosely, matching the
+      // painter's own established pattern for this same union
+      // (`renderer.ts`'s `createShapeGroupElement`).
+      if (shape.shapeType !== 'vectorShape') continue;
+      const childAttrs = shape.attrs as Record<string, unknown>;
+      const textboxId = childAttrs.textboxId;
+      const contentBlocks = childAttrs.contentBlocks as TextboxContentBlock[] | undefined;
+      if (typeof textboxId !== 'string' || !Array.isArray(contentBlocks) || contentBlocks.length === 0) {
+        continue;
+      }
+      const insets = (childAttrs.textInsets as
+        | { top: number; right: number; bottom: number; left: number }
+        | undefined) ?? { top: 0, right: 0, bottom: 0, left: 0 };
+      const childWidth = typeof childAttrs.width === 'number' ? childAttrs.width : geometry.width;
+      // Reuse the ordinary textbox path's width resolution: a `wrap="none"`
+      // shape (no group-child auto-fit boundary exists, out of SD-5244 scope)
+      // measures at unbounded width, exactly like a top-level textboxShape
+      // does — otherwise a one-line, no-wrap group-child label would wrap at
+      // the child's box width during measurement while painting unwrapped,
+      // producing mismatched line breaks and wrong caret geometry.
+      const contentWidth = resolveShapeTextContentMeasureWidth(
+        childWidth,
+        insets,
+        childAttrs.textLayout as ShapeTextLayout | undefined,
+      );
+      const childMeasures = await Promise.all(
+        contentBlocks.map(async (contentBlock) => {
+          const nestedConstraints = { maxWidth: contentWidth };
+          if (typeof renderDiagnosticOwner === 'function') {
+            Object.defineProperty(nestedConstraints, V2_RENDER_DIAGNOSTIC_MEASUREMENT_OWNER, {
+              configurable: true,
+              enumerable: false,
+              value: renderDiagnosticOwner,
+            });
+          }
+          const contentMeasure = await measureBlock(contentBlock, nestedConstraints, fontContext);
+          if (contentMeasure.kind !== 'paragraph' && contentMeasure.kind !== 'table') {
+            throw new Error(`Unsupported group-child textbox content measurement: ${contentMeasure.kind}`);
+          }
+          return contentMeasure;
+        }),
+      );
+      measuresByTextboxId[textboxId] = childMeasures;
+    }
+    if (Object.keys(measuresByTextboxId).length > 0) {
+      groupChildContentMeasures = measuresByTextboxId;
+    }
+  }
   const rotatedBounds = calculateRotatedBounds(geometry);
   const naturalWidth = Math.max(1, rotatedBounds.width);
   const naturalHeight = Math.max(1, rotatedBounds.height);
@@ -5618,6 +5679,7 @@ async function measureDrawingBlock(
     ...(block.drawingKind === 'shapeGroup' && block.groupTransform
       ? { groupTransform: { ...block.groupTransform } }
       : {}),
+    ...(groupChildContentMeasures ? { groupChildContentMeasures } : {}),
   };
 }
 

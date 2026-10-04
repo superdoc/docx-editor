@@ -180,4 +180,69 @@ describe('painter textbox interaction dataset', () => {
     expect(el.dataset.sdTextboxStaticReason).toBe('canonical-binding-unavailable');
     expect(el.dataset.sdTextboxId).toBeUndefined();
   });
+
+  it('stamps textbox interaction metadata on an in-scope shape-group child (SD-5244)', () => {
+    const groupGeometry: DrawingGeometry = { width: 200, height: 100, rotation: 0, flipH: false, flipV: false };
+    const block: FlowBlock = {
+      kind: 'drawing',
+      id: 'exhibit-group',
+      drawingKind: 'shapeGroup',
+      geometry: groupGeometry,
+      groupTransform: { width: 200, height: 100, childWidth: 200, childHeight: 100 },
+      shapes: [
+        {
+          shapeType: 'vectorShape',
+          attrs: {
+            x: 0,
+            y: 0,
+            width: 80,
+            height: 30,
+            textboxId: 'tb-exhibit-a',
+            textboxBinding: { textboxId: 'tb-exhibit-a', canMove: false, canResize: false, geometryRevision: 'g1' },
+          },
+        },
+      ],
+    } as unknown as FlowBlock;
+    const measure = {
+      kind: 'drawing',
+      drawingKind: 'shapeGroup',
+      width: groupGeometry.width,
+      height: groupGeometry.height,
+      scale: 1,
+      naturalWidth: groupGeometry.width,
+      naturalHeight: groupGeometry.height,
+      geometry: groupGeometry,
+    } as unknown as Measure;
+    const layout = {
+      pageSize: { w: 600, h: 800 },
+      pages: [
+        {
+          number: 1,
+          fragments: [
+            {
+              kind: 'drawing',
+              blockId: 'exhibit-group',
+              drawingKind: 'shapeGroup',
+              x: 20,
+              y: 20,
+              width: groupGeometry.width,
+              height: groupGeometry.height,
+              geometry: groupGeometry,
+              scale: 1,
+              isAnchored: false,
+            },
+          ],
+        },
+      ],
+    } as unknown as Layout;
+
+    const painter = createDomPainter({ blocks: [block], measures: [measure] });
+    painter.paint(layout, mount);
+
+    const childEl = mount.querySelector('.superdoc-shape-group__child') as HTMLElement;
+    expect(childEl).toBeTruthy();
+    expect(childEl.dataset.sdTextboxId).toBe('tb-exhibit-a');
+    expect(childEl.dataset.sdTextboxCanMove).toBe('false');
+    expect(childEl.dataset.sdTextboxCanResize).toBe('false');
+  });
 });

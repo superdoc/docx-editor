@@ -1791,6 +1791,33 @@ export type ShapeGroupVectorChild = {
       customGeometry?: CustomGeometryData;
       shapeId?: string;
       shapeName?: string;
+      /**
+       * SD-5244: canonical textbox story identity for an in-scope group
+       * child (single-level, unrotated/unflipped group and child). Present
+       * only when the child was successfully bound to an editor-core
+       * textbox story; absent otherwise (see `textboxStaticReason`).
+       */
+      textboxId?: string;
+      /**
+       * Canonical block content for the bound textbox story. Loosely typed
+       * like `DrawingBlockBase.attrs`/`TextboxDrawing`'s own informal
+       * `textboxBinding` attrs entry elsewhere in this file — group
+       * children intentionally reuse that same "opaque round-trip" shape
+       * rather than a dedicated type, so no new cross-package dependency on
+       * v2-layout-adapter's `TextboxProjectionBinding` is introduced here.
+       */
+      contentBlocks?: TextboxContentBlock[];
+      /** Opaque kernel binding round-tripped for the story registration step; not consumed at this layer. */
+      textboxBinding?: unknown;
+      /** Opaque content-block identities round-tripped for the story registration step; not consumed at this layer. */
+      textboxContentBlockIdentities?: unknown;
+      /**
+       * Present iff this child could not be (or was not) bound to an
+       * editable textbox story — e.g. nested group, rotated/flipped group
+       * or child, or a canonical binding was unavailable. Drives the
+       * fail-closed rendering and clean-rejection paths.
+       */
+      textboxStaticReason?: string;
     };
 };
 
@@ -3150,6 +3177,14 @@ export type DrawingMeasure = {
   groupTransform?: ShapeGroupTransform;
   /** Canonical block measurements for textbox content, when the drawing owns a textbox story. */
   contentMeasures?: TextboxContentMeasure[];
+  /**
+   * SD-5244: canonical block measurements for editable shape-group children's
+   * textbox content, keyed by each child's `textboxId`. Kept as a `Measure`/
+   * `Layout`-side artifact — like `contentMeasures` above — rather than on
+   * `ShapeGroupVectorChild.attrs`/`block.shapes`, which `layout-bridge`'s
+   * cache hash serializes in full.
+   */
+  groupChildContentMeasures?: Record<string, TextboxContentMeasure[]>;
 };
 
 export type TableCellMeasure = {
@@ -3538,6 +3573,8 @@ export type DrawingFragment = {
   /** V2 textbox story id for DrawingML textbox content painted inside this drawing. */
   textboxId?: string;
   contentMeasures?: TextboxContentMeasure[];
+  /** SD-5244: see `DrawingMeasure.groupChildContentMeasures` — carried through onto the painted fragment for a `shapeGroup` drawing. */
+  groupChildContentMeasures?: Record<string, TextboxContentMeasure[]>;
   pmStart?: number;
   pmEnd?: number;
   sourceAnchor?: SourceAnchor;

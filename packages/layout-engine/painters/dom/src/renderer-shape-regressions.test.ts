@@ -466,6 +466,134 @@ describe('DomPainter shape regressions', () => {
     expect(firstRun?.style.letterSpacing).toBe('-0.1px');
   });
 
+  it('renders an in-scope shape-group child textbox as editable, even with no fill at all (SD-5244)', () => {
+    const geometry: DrawingGeometry = { width: 200, height: 100, rotation: 0, flipH: false, flipV: false };
+    const drawingBlock: DrawingFlowBlock = {
+      kind: 'drawing',
+      id: 'shape-group-editable-child',
+      drawingKind: 'shapeGroup',
+      geometry,
+      groupTransform: { width: 200, height: 100, childWidth: 200, childHeight: 100 },
+      shapes: [
+        {
+          shapeType: 'vectorShape',
+          attrs: {
+            x: 0,
+            y: 0,
+            width: 80,
+            height: 30,
+            textboxId: 'tb-exhibit-a',
+            // Deliberately no `fillColor`/`strokeColor` key at all — regression
+            // guard for the `createGroupChildContent` entry-gate fix: a plain,
+            // unstyled textbox must still render, not silently fall through to
+            // the placeholder.
+            contentBlocks: [{ kind: 'paragraph', id: 'exhibit-a-p0', runs: [{ text: 'Exhibit A' }] }],
+          },
+        },
+        // A second, out-of-scope child (no textboxId at all) alongside it must
+        // stay a plain, static vector shape.
+        {
+          shapeType: 'vectorShape',
+          attrs: { x: 0, y: 40, width: 80, height: 20, fillColor: '#E2E8F0' },
+        },
+      ],
+    };
+
+    const groupChildContentMeasures = {
+      'tb-exhibit-a': [
+        {
+          kind: 'paragraph' as const,
+          lines: [{ fromRun: 0, fromChar: 0, toRun: 0, toChar: 9, width: 60, ascent: 10, descent: 3, lineHeight: 14 }],
+          totalHeight: 14,
+        },
+      ],
+    };
+
+    const measure: Measure = {
+      kind: 'drawing',
+      drawingKind: 'shapeGroup',
+      width: geometry.width,
+      height: geometry.height,
+      scale: 1,
+      naturalWidth: geometry.width,
+      naturalHeight: geometry.height,
+      geometry,
+      groupTransform: drawingBlock.drawingKind === 'shapeGroup' ? drawingBlock.groupTransform : undefined,
+      groupChildContentMeasures,
+    } as Measure;
+
+    const layout: Layout = {
+      pageSize: { w: 600, h: 800 },
+      pages: [
+        {
+          number: 1,
+          fragments: [
+            {
+              kind: 'drawing',
+              blockId: drawingBlock.id,
+              drawingKind: 'shapeGroup',
+              x: 20,
+              y: 20,
+              width: geometry.width,
+              height: geometry.height,
+              geometry,
+              scale: 1,
+              isAnchored: false,
+              // In the real pipeline, layout-engine copies this from the
+              // measure onto the fragment (SD-5244 step 5b) — this test
+              // bypasses layout-engine, so set it directly to simulate that.
+              groupChildContentMeasures,
+            },
+          ],
+        },
+      ],
+    } as unknown as Layout;
+
+    const painter = createDomPainter({ blocks: [drawingBlock], measures: [measure] });
+    painter.paint(layout, mount);
+
+    const editableChild = mount.querySelector('.superdoc-shape-group .superdoc-textbox-shape');
+    expect(editableChild).toBeTruthy();
+    expect(editableChild?.textContent).toContain('Exhibit A');
+
+    const children = mount.querySelectorAll('.superdoc-shape-group__child');
+    expect(children).toHaveLength(2);
+    // The second, out-of-scope child never gained the textboxShape class.
+    expect(children[1]?.querySelector('.superdoc-textbox-shape')).toBeNull();
+  });
+
+  it('stamps a static-reason dataset (not an editable class) on an out-of-scope shape-group child', () => {
+    const geometry: DrawingGeometry = { width: 200, height: 100, rotation: 0, flipH: false, flipV: false };
+    const drawingBlock: DrawingFlowBlock = {
+      kind: 'drawing',
+      id: 'shape-group-static-child',
+      drawingKind: 'shapeGroup',
+      geometry,
+      groupTransform: { width: 200, height: 100, childWidth: 200, childHeight: 100 },
+      shapes: [
+        {
+          shapeType: 'vectorShape',
+          attrs: {
+            x: 0,
+            y: 0,
+            width: 80,
+            height: 30,
+            textboxStaticReason: 'unsupported-group-child-geometry',
+            textContent: { parts: [{ text: 'Rotated Exhibit' }] },
+          },
+        },
+      ],
+    };
+
+    const { blocks, measures, layout } = createDrawingFixtures(drawingBlock);
+    const painter = createDomPainter({ blocks, measures });
+    painter.paint(layout, mount);
+
+    const child = mount.querySelector('.superdoc-shape-group__child') as HTMLElement | null;
+    expect(child?.dataset.sdTextboxStaticReason).toBe('unsupported-group-child-geometry');
+    expect(child?.querySelector('.superdoc-textbox-shape')).toBeNull();
+  });
+
   it('allows wrap-none shape text to paint past its authored box', () => {
     const geometry: DrawingGeometry = { width: 80, height: 40, rotation: 0, flipH: false, flipV: false };
     const drawingBlock: DrawingFlowBlock = {

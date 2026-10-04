@@ -157,6 +157,35 @@ describe('layoutDrawingBlock', () => {
       expect(state.page.fragments[0]?.kind).toBe('drawing');
       expect((state.page.fragments[0] as DrawingFragment).contentMeasures).toEqual(contentMeasures);
     });
+
+    it('carries groupChildContentMeasures from the shape-group measure onto its fragment (SD-5244)', () => {
+      const groupChildContentMeasures = {
+        'tb-exhibit-a': [{ kind: 'paragraph', lines: [], totalHeight: 18 }],
+        'tb-exhibit-b': [{ kind: 'paragraph', lines: [], totalHeight: 18 }],
+      };
+      const context = createMockContext(
+        { drawingKind: 'shapeGroup' },
+        { drawingKind: 'shapeGroup', groupChildContentMeasures },
+      );
+
+      layoutDrawingBlock(context);
+
+      const state = context.ensurePage();
+      expect(state.page.fragments).toHaveLength(1);
+      expect((state.page.fragments[0] as DrawingFragment).groupChildContentMeasures).toEqual(groupChildContentMeasures);
+    });
+
+    it('does not attach groupChildContentMeasures for a non-shapeGroup drawing', () => {
+      const context = createMockContext({ drawingKind: 'vectorShape' }, {
+        drawingKind: 'vectorShape',
+        groupChildContentMeasures: { 'tb-x': [] },
+      } as Partial<DrawingMeasure>);
+
+      layoutDrawingBlock(context);
+
+      const state = context.ensurePage();
+      expect((state.page.fragments[0] as DrawingFragment).groupChildContentMeasures).toBeUndefined();
+    });
   });
 
   describe('Basic inline placement', () => {

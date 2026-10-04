@@ -5766,6 +5766,73 @@ describe('measureBlock', () => {
       expect(wrapped.contentMeasures?.[0].lines.length ?? 0).toBeGreaterThan(1);
     });
 
+    it('measures an in-scope shape-group child textbox, keyed by textboxId (SD-5244)', async () => {
+      const block: DrawingBlock = {
+        kind: 'drawing',
+        id: 'exhibit-group',
+        drawingKind: 'shapeGroup',
+        geometry: { width: 400, height: 120, rotation: 0 },
+        shapes: [
+          {
+            shapeType: 'vectorShape',
+            attrs: {
+              x: 0,
+              y: 0,
+              width: 80,
+              height: 30,
+              textboxId: 'tb-exhibit-a',
+              textInsets: { top: 0, right: 0, bottom: 0, left: 0 },
+              contentBlocks: [
+                {
+                  kind: 'paragraph',
+                  id: 'exhibit-a-paragraph',
+                  runs: [{ text: 'Exhibit A', fontFamily: 'Arial', fontSize: 12 }],
+                  attrs: {},
+                },
+              ],
+            },
+          },
+          // wrap="none": measurement must not wrap at the child's narrow box
+          // width — it should lay out on one unbounded authored line, exactly
+          // like the ordinary (ungrouped) textboxShape case above. Regression
+          // guard for using the naive `childWidth - insets` width instead of
+          // `resolveShapeTextContentMeasureWidth`.
+          {
+            shapeType: 'vectorShape',
+            attrs: {
+              x: 0,
+              y: 40,
+              width: 80,
+              height: 30,
+              textboxId: 'tb-exhibit-b',
+              textInsets: { top: 0, right: 0, bottom: 0, left: 0 },
+              textLayout: { wrap: 'none', horizontalOverflow: 'overflow' },
+              contentBlocks: [
+                {
+                  kind: 'paragraph',
+                  id: 'exhibit-b-paragraph',
+                  runs: [
+                    {
+                      text: 'EXHIBIT B — SHELF DISCLOSURE, deliberately wider than its narrow box',
+                      fontFamily: 'Arial',
+                      fontSize: 12,
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+          // Plain decorative shape, no textbox — must not appear in the map.
+          { shapeType: 'vectorShape', attrs: { x: 0, y: 80, width: 80, height: 20 } },
+        ],
+      } as DrawingBlock;
+
+      const measure = expectDrawingMeasure(await measureBlock(block, { maxWidth: 500 }));
+      expect(Object.keys(measure.groupChildContentMeasures ?? {})).toEqual(['tb-exhibit-a', 'tb-exhibit-b']);
+      expect(measure.groupChildContentMeasures?.['tb-exhibit-a']?.[0].lines).toHaveLength(1);
+      expect(measure.groupChildContentMeasures?.['tb-exhibit-b']?.[0].lines).toHaveLength(1);
+    });
+
     it('grows a wrap-none auto-fit shape up to the available boundary before wrapping', async () => {
       const block: DrawingBlock = {
         kind: 'drawing',

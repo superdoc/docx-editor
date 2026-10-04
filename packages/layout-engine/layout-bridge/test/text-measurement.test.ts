@@ -606,6 +606,38 @@ describe('text measurement utility', () => {
       expect(x2Justified).toBeGreaterThan(x2Normal);
     });
 
+    it('does not double-count word-spacing slack for an offset in a run AFTER one containing spaces', () => {
+      // Regression: the per-run walk folds each completed run's own slack into
+      // `currentX` once (as it advances past that run); the target run's
+      // return must not add that same slack again via a running space tally.
+      // "A B" (1 space, run 0) + "CD" (run 1, no spaces) + "E" (run 2, keeps
+      // the line from being the true last line) share one line, natural width
+      // 30 + 20 = 50 in a 70px column -> 20px slack over 1 space.
+      const block = createBlock([
+        { text: 'A B', fontFamily: 'Arial', fontSize: 16 },
+        { text: 'CD', fontFamily: 'Arial', fontSize: 16 },
+        { text: 'E', fontFamily: 'Arial', fontSize: 16 },
+      ]);
+      (block as any).attrs = { alignment: 'justify' };
+      const line = baseLine({
+        fromRun: 0,
+        toRun: 1,
+        toChar: 2,
+        width: 50,
+        maxWidth: 70,
+      });
+
+      // 1 char into run 1 ("C"): natural 30 + 10 = 40, plus the ONE space's
+      // slack (not the space counted twice) = 60.
+      expect(measureCharacterX(block, line, 4, 70)).toBe(60);
+      // End of run 1 ("CD" complete): natural 50, plus the one space's slack = 70.
+      expect(measureCharacterX(block, line, 5, 70)).toBe(70);
+      // A hit-test at the true stretched end (70) must resolve back to the
+      // full line length (5), not overshoot past it from the double-counted
+      // slack the old code would have reported as the line's end x (90).
+      expect(findCharacterAtX(block, line, 70, 0, 70).charOffset).toBe(5);
+    });
+
     it('keeps CJK caret and hit geometry aligned with measured character boundaries', () => {
       const block = createBlock([
         { text: '春天来到', fontFamily: 'Arial', fontSize: 16 },

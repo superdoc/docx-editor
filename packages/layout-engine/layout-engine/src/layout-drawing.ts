@@ -171,6 +171,12 @@ export function layoutDrawingBlock({
     const textboxId = block.attrs?.textboxId;
     if (typeof textboxId === 'string' && textboxId.length > 0) fragment.textboxId = textboxId;
   }
+  // SD-5244: carry per-child editable-textbox measurements from the
+  // shape-group measure onto its painted fragment, mirroring the
+  // `contentMeasures` wiring above.
+  if (block.drawingKind === 'shapeGroup' && measure.groupChildContentMeasures) {
+    fragment.groupChildContentMeasures = measure.groupChildContentMeasures;
+  }
 
   state.page.fragments.push(fragment);
   state.cursorY += requiredHeight;

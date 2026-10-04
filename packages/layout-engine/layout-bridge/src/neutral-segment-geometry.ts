@@ -52,10 +52,12 @@ import {
   buildLayoutSourceIdentityForFragment,
   getFirstLineIndentOffset,
   getParagraphInlineDirection,
+  interCharacterJustifyAdvanceBeforeOffset,
   sliceRunsForLine,
 } from '@superdoc/contracts';
 import { calculatePageTopFallback, findBlockIndexByFragmentId } from './position-hit.js';
 import { lineHasComplexBidiContent } from './rtl-text-geometry.js';
+import { countSpaces, getJustifyAdjustment, type JustifyAdjustment } from './line-justify-adjustment.js';
 import {
   calculateTextStartIndent,
   extractParagraphIndent,
@@ -136,6 +138,14 @@ const resolveAlignmentOffset = (alignment: string | undefined, availableWidth: n
   return 0;
 };
 
+/** A justify adjustment that resolves to no-op (used for non-justified lines). */
+const NO_JUSTIFY: JustifyAdjustment = {
+  extraPerSpace: 0,
+  totalSpaces: 0,
+  interCharacterSpacing: 0,
+  interCharacterBoundaries: [],
+};
+
 /**
  * Resolve per-segment geometry for one line, replicating
  * `measureCharacterXSegmentBased`'s base-x walk: an explicit `segment.x` (tab
@@ -143,29 +153,71 @@ const resolveAlignmentOffset = (alignment: string | undefined, availableWidth: n
  * previous one. `originX` is the absolute container-space x of the line content
  * start (fragment.x + indent), and `alignmentOffset` is folded into the running
  * cursor for non-tab lines.
+ *
+ * `justify` carries the shared, painter-consistent slack computed by
+ * `getJustifyAdjustment` (see `line-justify-adjustment.ts`) — a no-op for
+ * non-justified lines. `runningX`/`segment.width` stay the NATURAL (pre-slack)
+ * cumulative walk, exactly like `text-measurement.ts#measureCharacterXWithoutInlineBoxes`;
+ * the slack is folded in only when emitting each segment's absolute `x` and
+ * `width`, via the cumulative justify advance at the segment's start and end
+ * line-relative character offsets (`advanceAt`) — the same "advance so far"
+ * quantity `text-measurement.ts` computes for a single point, applied at both
+ * boundaries so `width = (advance at end) - (advance at start) + natural
+ * width`. This covers BOTH justify modes uniformly: word-spacing
+ * (`extraPerSpace`, keyed by a running space tally) and inter-character
+ * distribution (`interCharacterSpacing`, keyed by boundary offsets — the CJK
+ * no-space case). Computing width from the delta, rather than only
+ * multiplying `extraPerSpace` by the segment's own space count, also covers a
+ * segment straddling multiple inter-character boundaries internally: a caret
+ * or click landing anywhere inside a stretched segment (not just at a
+ * segment boundary) resolves to the correct stretched x.
  */
 const resolveLineSegments = (
+  block: ParagraphBlock,
   line: Line,
   originX: number,
   alignmentOffset: number,
   tabAligned: boolean,
+  justify: JustifyAdjustment = NO_JUSTIFY,
 ): NeutralSegmentGeometry[] => {
   const segments = line.segments;
   if (!segments || segments.length === 0) return [];
 
+  const advanceAt = (lineCharOffset: number, spacesBefore: number): number =>
+    justify.extraPerSpace !== 0
+      ? justify.extraPerSpace * spacesBefore
+      : interCharacterJustifyAdvanceBeforeOffset(
+          justify.interCharacterBoundaries,
+          lineCharOffset,
+          justify.interCharacterSpacing,
+        );
+
   const out: NeutralSegmentGeometry[] = [];
   let runningX = tabAligned ? 0 : alignmentOffset;
+  let spaceTally = 0;
+  let lineCharOffset = 0;
   segments.forEach((segment, segmentIndex) => {
     const segStartX = segment.x !== undefined ? segment.x : runningX;
+    const run = block.runs[segment.runIndex];
+    const segmentText = run && 'text' in run && typeof run.text === 'string' ? run.text : undefined;
+    const spacesInSegment =
+      justify.extraPerSpace !== 0 && segmentText != null
+        ? countSpaces(segmentText.slice(segment.fromChar, segment.toChar))
+        : 0;
+    const segmentCharLength = segment.toChar - segment.fromChar;
+    const advanceBefore = advanceAt(lineCharOffset, spaceTally);
+    const advanceAfter = advanceAt(lineCharOffset + segmentCharLength, spaceTally + spacesInSegment);
     runningX = segStartX + segment.width;
     out.push({
       segmentIndex,
       runIndex: segment.runIndex,
       fromChar: segment.fromChar,
       toChar: segment.toChar,
-      x: originX + segStartX,
-      width: segment.width,
+      x: originX + segStartX + advanceBefore,
+      width: segment.width + (advanceAfter - advanceBefore),
     });
+    spaceTally += spacesInSegment;
+    lineCharOffset += segmentCharLength;
   });
   return out;
 };
@@ -266,6 +318,27 @@ const buildParagraphLineGeometry = (
     const originX = fragment.x + indentAdjust;
     const contentLeft = originX + alignmentOffset;
 
+    // Shared, painter-consistent slack (word-spacing / inter-character
+    // distribution) for this line. `getJustifyAdjustment` re-derives
+    // `shouldApplyJustify` itself (tab stops, last-line-of-paragraph), so it is
+    // safe to call unconditionally for every justified-alignment line — it
+    // resolves to a no-op where justify does not actually apply (e.g. the
+    // true last line, or a tab-aligned line). RTL never reaches here:
+    // `classifyRtlSupport` fails RTL+justify closed before this function runs.
+    const justify = isJustified
+      ? getJustifyAdjustment({ block, line, availableWidthOverride: availableWidth })
+      : NO_JUSTIFY;
+    const lineIsStretched = justify.extraPerSpace !== 0 || justify.interCharacterSpacing !== 0;
+    // A justified line that actually stretches (not the true last line, not
+    // tab-aligned) is rendered by the painter at the full available width, not
+    // its natural pre-slack width — mirrors `renderedLineWidth` in
+    // `text-measurement.ts#measureCharacterXWithoutInlineBoxes`. Consumers
+    // (host hit-test/caret) rely on `contentWidth` matching what is actually
+    // painted, both as the coordinate-space bound for a click on the
+    // stretched line and as the `availableWidthOverride` fed back into the
+    // shared justify math, so it must track the rendered span here.
+    const contentWidth = lineIsStretched ? availableWidth : line.width;
+
     const flags: NeutralLineGeometryFlags = {};
     if (isJustified) {
       flags.justified = true;
@@ -281,12 +354,12 @@ const buildParagraphLineGeometry = (
       descent: line.descent,
       lineHeight: line.lineHeight,
       contentLeft,
-      contentWidth: line.width,
+      contentWidth,
       direction,
       ...(Object.keys(flags).length > 0 ? { flags } : {}),
       segments: isRtl
         ? resolveLineSegmentsRtl(line, contentLeft, line.width)
-        : resolveLineSegments(line, originX, alignmentOffset, tabAligned),
+        : resolveLineSegments(block, line, originX, alignmentOffset, tabAligned, justify),
     });
 
     cumulativeTop += line.lineHeight;
@@ -497,7 +570,15 @@ const buildParaFragmentGeometry = (
     direction,
   );
 
-  if (built.justified) diagnostics.push({ code: 'approximate-justify' });
+  // `buildParagraphLineGeometry`'s LTR segment resolution now applies the same
+  // shared word-spacing / inter-character justify math the painter uses
+  // (`resolveLineSegments`, via `getJustifyAdjustment`), so a justified line's
+  // segment positions are exact, not approximate. RTL+justify never reaches
+  // this point — `classifyRtlSupport` fails it closed above with
+  // `unsupported-direction` — so `approximate-justify` no longer has a
+  // reachable case to describe. The diagnostic code stays defined in the
+  // contract (schema stability) in case a future unresolved justify variant
+  // needs it again.
 
   return {
     ...base,

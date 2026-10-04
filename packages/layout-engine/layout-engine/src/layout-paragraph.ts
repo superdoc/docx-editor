@@ -802,6 +802,11 @@ export function layoutParagraphBlock(ctx: ParagraphLayoutContext, anchors?: Para
           const textboxId = entry.block.attrs?.textboxId;
           if (typeof textboxId === 'string' && textboxId.length > 0) fragment.textboxId = textboxId;
         }
+        // SD-5244: carry per-child editable-textbox measurements from the
+        // shape-group measure onto its painted fragment.
+        if (entry.block.drawingKind === 'shapeGroup' && entry.measure.groupChildContentMeasures) {
+          fragment.groupChildContentMeasures = entry.measure.groupChildContentMeasures;
+        }
         if (pmRange.pmStart != null) fragment.pmStart = pmRange.pmStart;
         if (pmRange.pmEnd != null) fragment.pmEnd = pmRange.pmEnd;
         state.page.fragments.push(fragment);

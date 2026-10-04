@@ -32,6 +32,8 @@ import type {
   TableBlock,
   TableFragment,
   TableMeasure,
+  TextboxContentBlock,
+  TextboxContentMeasure,
   TextEffectColor,
   TextboxDrawing,
   VectorShapeDrawing,
@@ -3084,7 +3086,9 @@ export class DomPainter {
       return this.createVectorShapeElement(block, fragment.geometry, false, 1, 1, context, fragment);
     }
     if (block.drawingKind === 'shapeGroup') {
-      return this.createShapeGroupElement(block, context);
+      // SD-5244: per-child editable-textbox measures live on the fragment
+      // (already in scope here), not the block.
+      return this.createShapeGroupElement(block, context, fragment.groupChildContentMeasures);
     }
     if (block.drawingKind === 'chart') {
       return this.createChartElement(block);
@@ -5220,7 +5224,11 @@ export class DomPainter {
     }
   }
 
-  private createShapeGroupElement(block: ShapeGroupDrawing, context?: FragmentRenderContext): HTMLElement {
+  private createShapeGroupElement(
+    block: ShapeGroupDrawing,
+    context?: FragmentRenderContext,
+    groupChildContentMeasures?: Record<string, TextboxContentMeasure[]>,
+  ): HTMLElement {
     const groupEl = this.doc!.createElement('div');
     groupEl.classList.add('superdoc-shape-group');
     groupEl.style.position = 'relative';
@@ -5246,13 +5254,53 @@ export class DomPainter {
     }
 
     block.shapes.forEach((child) => {
-      const childContent = this.createGroupChildContent(child, 1, 1, context);
+      const childContent = this.createGroupChildContent(child, 1, 1, context, groupChildContentMeasures);
       if (!childContent) return;
       const attrs = (child as ShapeGroupChild).attrs ?? {};
       const wrapper = this.doc!.createElement('div');
       wrapper.classList.add('superdoc-shape-group__child');
       wrapper.style.position = 'absolute';
       wrapper.style.boxSizing = 'border-box';
+
+      // SD-5244: stamp textbox interaction metadata for both in-scope
+      // (editable, `textboxId` set) and out-of-scope (`textboxStaticReason`
+      // set) children. `applyTextboxInteractionDataset` already handles both
+      // cases correctly on its own — it stamps `data-sd-textbox-static-reason`
+      // unconditionally when present, and only continues into full
+      // binding-based dataset stamping when a `textboxId`+binding pair also
+      // exists — so no separate branch is needed here. This is what lets
+      // `edit-position.ts`'s hit-test resolve an in-scope child and cleanly
+      // reject an out-of-scope one via `static-textbox:...`, instead of the
+      // click silently falling through to `editable-input.ts`'s
+      // nearest-fragment snap.
+      // `attrs` spans the whole `ShapeGroupChild` union (image/unknown
+      // children have no `textboxId`/`textboxStaticReason` at all) — read it
+      // loosely here, same rationale as `createGroupChildContent`'s own
+      // `shapeType` narrowing note above.
+      const textboxAttrs = attrs as Record<string, unknown>;
+      if (
+        child.shapeType === 'vectorShape' &&
+        context &&
+        (typeof textboxAttrs.textboxId === 'string' || typeof textboxAttrs.textboxStaticReason === 'string')
+      ) {
+        const childGeometry: DrawingGeometry = {
+          width: typeof attrs.width === 'number' ? attrs.width : 0,
+          height: typeof attrs.height === 'number' ? attrs.height : 0,
+          rotation: typeof attrs.rotation === 'number' ? attrs.rotation : 0,
+          flipH: attrs.flipH === true,
+          flipV: attrs.flipV === true,
+        };
+        const textboxId = typeof textboxAttrs.textboxId === 'string' ? (textboxAttrs.textboxId as string) : undefined;
+        this.applyTextboxInteractionDataset(
+          wrapper,
+          { attrs } as DrawingBlock,
+          childGeometry,
+          1,
+          textboxId ?? `${block.id}.child`,
+          textboxId,
+          context,
+        );
+      }
 
       // Children use pre-scaled (visual-space) positions/sizes from import.
       wrapper.style.left = `${Number(attrs.x ?? 0)}px`;
@@ -5294,10 +5342,20 @@ export class DomPainter {
     groupScaleX: number = 1,
     groupScaleY: number = 1,
     context?: FragmentRenderContext,
+    groupChildContentMeasures?: Record<string, TextboxContentMeasure[]>,
   ): HTMLElement | null {
-    // Type narrowing with explicit checks to help TypeScript distinguish union members
-    if (child.shapeType === 'vectorShape' && 'fillColor' in child.attrs) {
-      // After this check, child should be ShapeGroupVectorChild
+    // SD-5244: `shapeType` is the union's sole discriminant
+    // (`ShapeGroupUnknownChild.shapeType` is a plain `string`, so it cannot
+    // narrow the union away statically — read `attrs` loosely below, same as
+    // elsewhere in this method). The previous `'fillColor' in child.attrs`
+    // check was not a narrowing requirement — `shapeType` alone already
+    // narrows — it was an unintended behavior gate: `attrs` only carries a
+    // `fillColor` key when the shape has an explicit fill/`noFill`
+    // (`project-blocks.ts`'s conditional spread), so a plain, unstyled
+    // textbox with no `<a:spPr>` fill at all (exactly the Exhibit A/B shape)
+    // silently fell through to the placeholder below, regardless of whether
+    // it carried a bound textbox story.
+    if (child.shapeType === 'vectorShape') {
       const attrs = child.attrs as PositionedDrawingGeometry &
         VectorShapeStyle & {
           kind?: string;
@@ -5307,6 +5365,8 @@ export class DomPainter {
           textContent?: ShapeTextContent;
           textAlign?: string;
           lineEnds?: LineEnds;
+          textboxId?: string;
+          contentBlocks?: TextboxContentBlock[];
         };
       const childGeometry = {
         width: attrs.width ?? 0,
@@ -5315,8 +5375,17 @@ export class DomPainter {
         flipH: attrs.flipH ?? false,
         flipV: attrs.flipV ?? false,
       };
-      const vectorChild: ShapeTextDrawingWithEffects = {
-        drawingKind: 'vectorShape',
+      // SD-5244: an in-scope child bound to a canonical textbox story
+      // (`project-blocks.ts` step 4) renders through the real editable path
+      // (`drawingKind: 'textboxShape'` -> `createVectorShapeElement`'s
+      // `textboxShape` branch -> `createTextboxContentElement`), not the
+      // static `createShapeTextElement` every group child used before.
+      // Out-of-scope children (no `textboxId`, or `textboxStaticReason` set)
+      // stay `vectorShape` — today's static rendering is correct for them.
+      const isEditableTextbox =
+        typeof attrs.textboxId === 'string' && Array.isArray(attrs.contentBlocks) && attrs.contentBlocks.length > 0;
+      const vectorChild = {
+        drawingKind: isEditableTextbox ? 'textboxShape' : 'vectorShape',
         kind: 'drawing',
         id: `${attrs.shapeId ?? child.shapeType}`,
         geometry: childGeometry,
@@ -5343,9 +5412,40 @@ export class DomPainter {
         textFlow: attrs.textFlow,
         textLayout: attrs.textLayout,
         textInsets: attrs.textInsets,
-      };
+        ...(isEditableTextbox ? { contentBlocks: attrs.contentBlocks } : {}),
+      } as ShapeTextDrawingWithEffects;
+      // For the editable case, build a synthetic per-child `DrawingFragment`
+      // carrying its own `contentMeasures`/`textboxId`, mirroring
+      // `renderDrawingContentForTable`'s pattern — `createVectorShapeElement`'s
+      // `textboxShape` branch reads `fragment?.contentMeasures ?? block.contentMeasures`,
+      // and without a real measure it silently degrades back to static text.
+      const fragment: DrawingFragment | undefined = isEditableTextbox
+        ? ({
+            kind: 'drawing',
+            blockId: attrs.textboxId!,
+            drawingKind: 'textboxShape',
+            x: 0,
+            y: 0,
+            width: childGeometry.width,
+            height: childGeometry.height,
+            geometry: childGeometry,
+            scale: 1,
+            textboxId: attrs.textboxId,
+            ...(groupChildContentMeasures?.[attrs.textboxId!]
+              ? { contentMeasures: groupChildContentMeasures[attrs.textboxId!] }
+              : {}),
+          } as DrawingFragment)
+        : undefined;
       // Pass geometry and scale factors to ensure text overlay has correct dimensions
-      return this.createVectorShapeElement(vectorChild, childGeometry, false, groupScaleX, groupScaleY, context);
+      return this.createVectorShapeElement(
+        vectorChild,
+        childGeometry,
+        false,
+        groupScaleX,
+        groupScaleY,
+        context,
+        fragment,
+      );
     }
     if (child.shapeType === 'image' && 'src' in child.attrs) {
       return createShapeGroupImageElement(this.doc!, child);
@@ -5441,7 +5541,12 @@ export class DomPainter {
     if (block.drawingKind === 'image') {
       return createDrawingImageElement(this.doc!, block, this.buildImageHyperlinkAnchor.bind(this));
     }
-    if (block.drawingKind === 'shapeGroup') return this.createShapeGroupElement(block, context);
+    // SD-5244: this call previously dropped `measure` entirely for a nested
+    // shape group (pre-existing gap); now threads per-child editable-textbox
+    // measures through like the anchored/in-flow path does.
+    if (block.drawingKind === 'shapeGroup') {
+      return this.createShapeGroupElement(block, context, measure.groupChildContentMeasures);
+    }
     if (block.drawingKind === 'vectorShape' || block.drawingKind === 'textboxShape') {
       const fragment: DrawingFragment = {
         kind: 'drawing',

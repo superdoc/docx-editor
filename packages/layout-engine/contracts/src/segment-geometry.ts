@@ -78,10 +78,11 @@ export type NeutralSegmentGeometry = {
  */
 export type NeutralLineGeometryFlags = {
   /**
-   * Line participates in justified alignment. Segment `x`/`width` are the
-   * natural (pre-justify) measured values; the painter distributes slack across
-   * spaces at paint time, so downstream caret math past the first segment is
-   * approximate. Paired with a `approximate-justify` diagnostic on the fragment.
+   * Line participates in justified alignment. When the line actually stretches
+   * (not the true last line of its paragraph, not tab-aligned), segment
+   * `x`/`width` already carry the exact painter-consistent slack — the same
+   * shared word-spacing / inter-character distribution the painter applies at
+   * paint time — so downstream caret math is exact, not approximate.
    */
   justified?: boolean;
   /** Line uses explicit tab/segment positioning (at least one segment has an explicit x). */
@@ -111,7 +112,15 @@ export type NeutralLineGeometry = {
   lineHeight: number;
   /** Container-space x where line content starts after indent + alignment (px). */
   contentLeft: number;
-  /** Measured natural content width of the line (px). */
+  /**
+   * Content width of the line (px), matching what the painter actually
+   * renders: the natural measured width for an unstretched line, or the full
+   * available (post-slack) width for a justified line that is actually
+   * stretched (see {@link NeutralLineGeometryFlags.justified}). Consumers use
+   * this both as the coordinate-space bound for a point on the line and as
+   * the available width fed back into justify math, so it must track the
+   * rendered span, not always the natural one.
+   */
   contentWidth: number;
   /** Resolved inline direction for the line. */
   direction: NeutralTextDirection;
@@ -154,7 +163,14 @@ export type NeutralGeometryDiagnostic =
    * (V2 RTL Plan 004 scope boundary; Plan 005+ may extend.)
    */
   | { code: 'unsupported-complex-bidi' }
-  /** Fragment has justified lines; segment x past the first is pre-justify (approximate). */
+  /**
+   * Reserved for a justified-line case whose exact position cannot be proven
+   * (mirrors the fail-closed posture of the other diagnostics here). LTR
+   * justify is resolved exactly (see {@link NeutralLineGeometryFlags.justified})
+   * and RTL+justify fails closed with `unsupported-direction` before reaching
+   * per-line geometry, so no producer currently emits this code — kept for
+   * schema stability in case a future unresolved variant needs it.
+   */
   | { code: 'approximate-justify' }
   /** The block measure was missing or mismatched; no geometry was produced. */
   | { code: 'missing-measure' }

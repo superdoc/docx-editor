@@ -390,7 +390,9 @@ describe('collectSegmentGeometry', () => {
     expect(frag.diagnostics).toEqual([{ code: 'unsupported-direction', direction: 'rtl' }]);
   });
 
-  it('flags justified lines and reports the approximation diagnostic', () => {
+  it('flags justified lines without an approximation diagnostic (exact painter-consistent slack)', () => {
+    // "justify me" as the true (only) line of its paragraph is never stretched —
+    // Word never justifies the last line of a paragraph.
     const block = paragraphBlock('j1', [textRun('justify me', 1)], { alignment: 'justify' } as ParagraphAttrs);
     const line = makeLine({
       toChar: 10,
@@ -404,7 +406,152 @@ describe('collectSegmentGeometry', () => {
     expect(frag.lines[0].flags?.justified).toBe(true);
     // justify anchors content at the left edge (pre-justify natural widths)
     expect(frag.lines[0].contentLeft).toBe(0);
-    expect(frag.diagnostics).toEqual([{ code: 'approximate-justify' }]);
+    // Last line of the paragraph: shouldApplyJustify is false, so no slack.
+    expect(frag.lines[0].segments[0].x).toBe(0);
+    expect(frag.lines[0].segments[0].width).toBe(100);
+    expect(frag.diagnostics).toBeUndefined();
+  });
+
+  it('stretches a non-last justified line by the exact painter word-spacing slack, and leaves the true last line natural', () => {
+    // "aa bb cc dd" split across two lines of one run: line 1 = "aa bb " (2
+    // spaces, natural width 60 in a 100px available column -> 40px slack over 2
+    // spaces = 20px/space); line 2 = "cc dd" is the true last line of the
+    // paragraph, so Word never stretches it.
+    const text = 'aa bb cc dd';
+    const block = paragraphBlock('j2', [textRun(text, 1)], { alignment: 'justify' } as ParagraphAttrs);
+    const line1 = makeLine({
+      fromChar: 0,
+      toChar: 6,
+      width: 60,
+      maxWidth: 100,
+      segments: [{ runIndex: 0, fromChar: 0, toChar: 6, width: 60 }],
+    });
+    const line2 = makeLine({
+      fromChar: 6,
+      toChar: text.length,
+      width: 50,
+      maxWidth: 100,
+      segments: [{ runIndex: 0, fromChar: 6, toChar: text.length, width: 50 }],
+    });
+    const layout = singlePageLayout([paraFragment({ blockId: 'j2', x: 0, width: 100, fromLine: 0, toLine: 2 })]);
+
+    const frag = collectSegmentGeometry(layout, [block], [paragraphMeasure([line1, line2])]).fragments[0];
+    expect(frag.diagnostics).toBeUndefined();
+
+    // Line 1 (justified, stretched): one segment covering the whole line, so
+    // its stretched width fills the full available width exactly. contentWidth
+    // tracks the rendered (stretched) span, not the natural 60px — consumers
+    // (host hit-test) rely on this to clamp/scale a click correctly.
+    expect(frag.lines[0].flags?.justified).toBe(true);
+    expect(frag.lines[0].contentWidth).toBe(100);
+    expect(frag.lines[0].segments[0].x).toBe(0);
+    expect(frag.lines[0].segments[0].width).toBe(100);
+
+    // Line 2 (true last line): natural, unstretched geometry.
+    expect(frag.lines[1].flags?.justified).toBe(true);
+    expect(frag.lines[1].contentWidth).toBe(50);
+    expect(frag.lines[1].segments[0].x).toBe(0);
+    expect(frag.lines[1].segments[0].width).toBe(50);
+  });
+
+  it('accumulates justify slack across multiple segments on one justified line', () => {
+    // Three runs: "aa bb " (bold, 2 spaces) + "cc " (plain, 1 space) share
+    // line 1 (not the true last line); "dd" alone is line 2, the true last
+    // line of the paragraph (never stretched). The second segment's x on
+    // line 1 must include the full slack from segment 0's two spaces, not
+    // just its own single space.
+    const block = paragraphBlock('j3', [textRun('aa bb ', 1, { bold: true }), textRun('cc ', 7), textRun('dd', 10)], {
+      alignment: 'justify',
+    } as ParagraphAttrs);
+    const line1 = makeLine({
+      fromRun: 0,
+      fromChar: 0,
+      toRun: 1,
+      toChar: 3,
+      width: 90,
+      maxWidth: 120,
+      segments: [
+        { runIndex: 0, fromChar: 0, toChar: 6, width: 60 },
+        { runIndex: 1, fromChar: 0, toChar: 3, width: 30 },
+      ],
+    });
+    const line2 = makeLine({
+      fromRun: 2,
+      fromChar: 0,
+      toRun: 2,
+      toChar: 2,
+      width: 20,
+      maxWidth: 120,
+      segments: [{ runIndex: 2, fromChar: 0, toChar: 2, width: 20 }],
+    });
+    const layout = singlePageLayout([paraFragment({ blockId: 'j3', x: 0, width: 120, fromLine: 0, toLine: 2 })]);
+
+    const frag = collectSegmentGeometry(layout, [block], [paragraphMeasure([line1, line2])]).fragments[0];
+    expect(frag.diagnostics).toBeUndefined();
+
+    // slack = 120 - 90 = 30 over 3 spaces (2 in segment 0, 1 in segment 1) = 10px/space.
+    const segments = frag.lines[0].segments;
+    expect(segments[0]!.x).toBe(0);
+    expect(segments[0]!.width).toBe(60 + 10 * 2); // both spaces are inside segment 0
+    expect(segments[1]!.x).toBe(60 + 10 * 2); // full slack from segment 0's spaces precedes segment 1
+    expect(segments[1]!.width).toBe(30 + 10 * 1); // segment 1's own space also stretches its width
+
+    // True last line of the paragraph: natural, unstretched.
+    expect(frag.lines[1].segments[0]!.x).toBe(0);
+    expect(frag.lines[1].segments[0]!.width).toBe(20);
+  });
+
+  it('stretches segment width, not just x, for inter-character (no-space, e.g. CJK) justify boundaries inside a segment', () => {
+    // "ABCDEF" (no spaces) is line 1, split into two segments of 3 chars each,
+    // not the true last line ("X" alone is line 2). An inter-character
+    // justification plan stretches after every character (boundaries 1..6).
+    // Each 3-char segment straddles THREE of those boundaries internally, so
+    // its width — not just its start x — must grow by their combined slack.
+    const block = paragraphBlock('j4', [textRun('ABCDEF', 1), textRun('X', 7)], {
+      alignment: 'justify',
+    } as ParagraphAttrs);
+    const line1 = makeLine({
+      fromRun: 0,
+      fromChar: 0,
+      toRun: 0,
+      toChar: 6,
+      width: 60,
+      maxWidth: 90,
+      justificationPlan: { type: 'inter-character', boundaries: [1, 2, 3, 4, 5, 6] },
+      segments: [
+        { runIndex: 0, fromChar: 0, toChar: 3, width: 30 },
+        { runIndex: 0, fromChar: 3, toChar: 6, width: 30 },
+      ],
+    });
+    const line2 = makeLine({
+      fromRun: 1,
+      fromChar: 0,
+      toRun: 1,
+      toChar: 1,
+      width: 10,
+      maxWidth: 90,
+      segments: [{ runIndex: 1, fromChar: 0, toChar: 1, width: 10 }],
+    });
+    const layout = singlePageLayout([paraFragment({ blockId: 'j4', x: 0, width: 90, fromLine: 0, toLine: 2 })]);
+
+    const frag = collectSegmentGeometry(layout, [block], [paragraphMeasure([line1, line2])]).fragments[0];
+    expect(frag.diagnostics).toBeUndefined();
+    expect(frag.lines[0].flags?.justified).toBe(true);
+    expect(frag.lines[0].contentWidth).toBe(90);
+
+    // slack = (90 - 60) / 6 boundaries = 5px/boundary. Segment 0 (chars 0-3)
+    // straddles boundaries 1,2,3 -> +15px; segment 1 (chars 3-6) straddles
+    // boundaries 4,5,6 -> +15px. Each segment's OWN width grows by its share,
+    // not just its start x, and the two segments still tile contiguously.
+    const segments = frag.lines[0].segments;
+    expect(segments[0]!.x).toBe(0);
+    expect(segments[0]!.width).toBe(30 + 15);
+    expect(segments[1]!.x).toBe(45);
+    expect(segments[1]!.width).toBe(30 + 15);
+
+    // True last line: natural, unstretched.
+    expect(frag.lines[1].segments[0]!.x).toBe(0);
+    expect(frag.lines[1].segments[0]!.width).toBe(10);
   });
 
   it('applies paragraph left indent to content start and segment x', () => {

@@ -68,7 +68,7 @@
     "check:public": "pnpm run check:public:superdoc && pnpm run check:public:docapi",
     "generate:docapi": "pnpm exec tsx packages/document-api/scripts/generate-contract-outputs.ts",
     "report:public:superdoc": "node scripts/report-public-contract.mjs",
-    "test:sdk-python-document-host": "python3 packages/sdk/langs/python/tests/structured_document_rpc_e2e.py"
+    "test:sdk-python-document-host": "python3 packages/sdk/langs/python/tests/structured_document_rpc_e2e.py && python3 packages/sdk/langs/python/tests/default_cli_optimization_e2e.py"
   },
   "devDependencies": {
     "@clack/prompts": "^1.0.1",

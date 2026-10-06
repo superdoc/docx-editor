@@ -135,6 +135,34 @@ offer. See [Configure the built-in toolbar](/editor/built-in-ui/configure-the-to
 SuperDoc registers these providers at startup and loads required faces before measuring when it can. A missing or blocked
 asset still allows the document to open, but the report identifies the fallback.
 
+## Preview document fonts in your picker
+
+`superdoc.fonts.getDocumentFontOptions()` returns one option per used logical family. Keep `logicalFamily` for your
+label and apply value, and `previewFamily` for the physical preview face. The additive `genericFamily` field identifies
+the first unquoted CSS generic in the renderer's normalized logical stack. Use it after the preview face:
+
+```ts
+const rows = superdoc.fonts.getDocumentFontOptions().map((option) => ({
+  label: option.logicalFamily,
+  value: option.logicalFamily,
+  fontFamily: option.genericFamily
+    ? `${JSON.stringify(option.previewFamily)}, ${option.genericFamily}`
+    : JSON.stringify(option.previewFamily),
+}));
+```
+
+For example, missing Aptos Display uses `sans-serif`, Cambria uses `serif`, and Consolas uses `monospace`.
+Imported font-table family and fixed-pitch metadata supply the renderer's classification. Without that metadata,
+known monospace names use `monospace`, known serif names use `serif`, and other names use `sans-serif`.
+An explicit CSS stack keeps its own generic. `genericFamily` is `null` when an explicit stack has no generic.
+A quoted name such as `"serif"` denotes a named face rather than the CSS generic.
+
+The same options appear in `fonts.onReport()` payloads as `documentFontOptions`, including the current report replay
+when you subscribe. Refresh your rows when that payload changes after editing, font loading, or a peer's edit.
+The field describes a fallback class; it does not identify the installed font that the browser ultimately chooses
+or reproduce intermediate named fallbacks in the document's complete stack. It is derived again when you reopen a
+DOCX; the existing logical font names remain the document formatting values.
+
 ## Check what rendered
 
 Subscribe after the Editor is ready. `fonts.onReport()` immediately replays the current report when one exists, then

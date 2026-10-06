@@ -34,6 +34,7 @@
     "vite-plus": "catalog:"
   },
   "dependencies": {
-    "@docfonts/fallbacks": "0.16.0"
+    "@docfonts/fallbacks": "0.16.0",
+    "@superdoc/font-utils": "workspace:*"
   }
 }

@@ -140,9 +140,16 @@ const splitOutsideQuotes = (str, delimiter) => {
   let current = '';
   let inQuote = false;
   let quoteChar = null;
+  let escaped = false;
 
   for (const char of str) {
-    if (!inQuote && (char === '"' || char === "'")) {
+    if (escaped) {
+      current += char;
+      escaped = false;
+    } else if (char === '\\') {
+      current += char;
+      escaped = true;
+    } else if (!inQuote && (char === '"' || char === "'")) {
       inQuote = true;
       quoteChar = char;
       current += char;
@@ -318,4 +325,37 @@ export function toCssFontFamily(fontName, options = {}) {
   }
 
   return [trimmed, ...fallbackParts].join(', ');
+}
+
+const CSS_GENERIC_FAMILIES = new Set([
+  'serif',
+  'sans-serif',
+  'monospace',
+  'cursive',
+  'fantasy',
+  'system-ui',
+  'ui-serif',
+  'ui-sans-serif',
+  'ui-monospace',
+  'ui-rounded',
+  'emoji',
+  'math',
+  'fangsong',
+]);
+
+/**
+ * Returns the first unquoted CSS generic in the normalized renderer stack.
+ * Bare names use the same fallback heuristic as rendering. Explicit stacks
+ * without a generic return null; quoted generic words are named faces.
+ * @param {string | null | undefined} fontFamily
+ * @returns {string | null}
+ */
+export function getGenericFontFamily(fontFamily) {
+  const stack = toCssFontFamily(fontFamily);
+  if (typeof stack !== 'string') return null;
+  for (const part of splitOutsideQuotes(stack, ',')) {
+    const family = part.toLowerCase();
+    if (CSS_GENERIC_FAMILIES.has(family)) return family;
+  }
+  return null;
 }

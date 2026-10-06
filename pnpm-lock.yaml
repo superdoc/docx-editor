@@ -1261,6 +1261,9 @@ importers:
       '@docfonts/fallbacks':
         specifier: 0.16.0
         version: 0.16.0
+      '@superdoc/font-utils':
+        specifier: workspace:*
+        version: link:../font-utils
     devDependencies:
       '@types/node':
         specifier: 'catalog:'

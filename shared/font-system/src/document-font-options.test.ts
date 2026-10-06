@@ -270,3 +270,36 @@ describe('buildFontFamilyOptions (custom UI font picker rows)', () => {
     expect(options.some((o) => o.label === 'Foo')).toBe(false);
   });
 });
+
+describe('SD-5389 document option generic fallback', () => {
+  it.each([
+    ['Aptos Display', 'sans-serif'],
+    ['Cambria', 'serif'],
+    ['Consolas', 'monospace'],
+    ['SD Unknown Missing', 'sans-serif'],
+    ['SD Swiss Missing, Arial, sans-serif', 'sans-serif'],
+    ['SD Roman Missing, Times New Roman, serif', 'serif'],
+    ['SD Modern Missing, Courier New, monospace', 'monospace'],
+    ['SD Fixed Missing, monospace', 'monospace'],
+    ['"serif", sans-serif', 'sans-serif'],
+    ['SD Missing, cursive', 'cursive'],
+    ['SD Missing, fantasy', 'fantasy'],
+    ['SD Missing, system-ui', 'system-ui'],
+    ['SD Missing, serif, monospace', 'serif'],
+    ['SD Missing, Another Missing', null],
+  ])('exposes the renderer generic for %s without changing existing fields', (logicalFamily, genericFamily) => {
+    const [option] = buildDocumentFontOptions([regular(logicalFamily)], new FaceRegistry().asRegistry());
+    expect(option.logicalFamily).toBe(logicalFamily);
+    const expectedPreview = logicalFamily
+      .split(',')[0]
+      .trim()
+      .replace(/^["']|["']$/g, '');
+    expect(option.previewFamily).toBe(expectedPreview);
+    expect((option as typeof option & { genericFamily?: string | null }).genericFamily).toBe(genericFamily);
+  });
+
+  it('keeps the logical classification when the physical preview is substituted', () => {
+    const [option] = buildDocumentFontOptions([regular('Cambria')], loadedRegistry().asRegistry());
+    expect(option).toMatchObject({ logicalFamily: 'Cambria', previewFamily: 'Caladea', genericFamily: 'serif' });
+  });
+});

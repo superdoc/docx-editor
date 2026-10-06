@@ -3,9 +3,9 @@
  * actually uses. Distinct from the static {@link ./font-offerings} (the bundled choices): this is
  * runtime and document-scoped because it needs the document's registry and resolver.
  *
- * Fallback diagnostics are intentionally not part of this surface. The toolbar lists document fonts as
- * plain picker rows; internal fallback/reporting details stay in SuperDoc's runtime font report.
+ * Each option also carries the rendered generic fallback for host-built previews.
  */
+import { getGenericFontFamily } from '@superdoc/font-utils';
 import { type BundledActivation, BASELINE_BUNDLED } from './activation';
 import { buildFaceReport, type FontResolutionRecord, type UsedFace } from './report';
 import { getBuiltInToolbarFontOfferings } from './font-offerings';
@@ -24,6 +24,8 @@ export interface DocumentFontOption {
    * provided font previews as itself). The regular face is used as the representative when present.
    */
   previewFamily: string;
+  /** First CSS generic in the rendered logical stack, or null when that stack has none. */
+  genericFamily: string | null;
 }
 
 /** Normalize a family for dedupe: trim, strip surrounding quotes, lowercase (matches the resolver key). */
@@ -84,7 +86,11 @@ export function buildDocumentFontOptions(
   }
   const options: DocumentFontOption[] = [];
   for (const rep of agg.values()) {
-    options.push({ logicalFamily: rep.logicalFamily, previewFamily: rep.physicalFamily });
+    options.push({
+      logicalFamily: rep.logicalFamily,
+      previewFamily: rep.physicalFamily,
+      genericFamily: getGenericFontFamily(rep.logicalFamily),
+    });
   }
   return options;
 }
@@ -115,7 +121,7 @@ function compareByLabel(a: FontFamilyOption, b: FontFamilyOption): number {
  * logical family.
  */
 export function buildFontFamilyOptions(
-  documentOptions: ReadonlyArray<DocumentFontOption>,
+  documentOptions: ReadonlyArray<Pick<DocumentFontOption, 'logicalFamily' | 'previewFamily'>>,
   activation: BundledActivation = BASELINE_BUNDLED,
 ): FontFamilyOption[] {
   const seen = new Set<string>();

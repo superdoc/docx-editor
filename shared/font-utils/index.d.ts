@@ -13,3 +13,6 @@ export interface ToCssFontFamilyOptions {
 export function mapWordFamilyFallback(wordFamily?: WordFontFamily | null): string;
 
 export function toCssFontFamily(fontName?: string | null, options?: ToCssFontFamilyOptions): string | undefined | null;
+
+/** First unquoted CSS generic in the normalized renderer stack, or null if none. */
+export function getGenericFontFamily(fontFamily?: string | null): string | null;

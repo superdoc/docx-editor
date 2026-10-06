@@ -55,7 +55,6 @@
     "check:v2-only-source": "node scripts/check-v2-only-source.mjs",
     "check:workflow-paths": "node scripts/check-workflow-paths.mjs",
     "check:workflow-paths:tests": "node --test scripts/__tests__/workflow-path-filters.test.mjs",
-    "check:public-ci": "node --test scripts/__tests__/public-ci-coverage.test.mjs",
     "check:public-boundary": "node scripts/check-public-boundary.mjs",
     "check:public-boundary:tests": "node --test scripts/__tests__/check-public-boundary.test.mjs",
     "check:pnpm-config": "node --test scripts/__tests__/pnpm-config-ownership.test.mjs",

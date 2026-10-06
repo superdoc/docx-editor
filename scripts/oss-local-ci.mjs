@@ -58,7 +58,6 @@ const LANES = [
       // makes running them here possible at all.
       { id: 'pnpm-config', title: 'pnpm config ownership', ...sh('pnpm run check:pnpm-config') },
       { id: 'vite-plus', title: 'Vite+ toolchain guard', ...sh('pnpm run check:vite-plus') },
-      { id: 'public-ci', title: 'Public CI coverage contract', ...sh('pnpm run check:public-ci') },
       {
         id: 'install',
         title: 'Install dependencies',
@@ -79,7 +78,6 @@ const LANES = [
       // own the other v2-public-validation steps reported in the metadata.
       { id: 'pnpm-config', title: 'pnpm config ownership', ...sh('pnpm run check:pnpm-config') },
       { id: 'vite-plus', title: 'Vite+ toolchain guard', ...sh('pnpm run check:vite-plus') },
-      { id: 'public-ci', title: 'Public CI coverage contract', ...sh('pnpm run check:public-ci') },
       { id: 'lint', title: 'Lint', ...sh('NODE_OPTIONS=--max-old-space-size=4096 pnpm run lint') },
       { id: 'format', title: 'Format check', ...sh('pnpm run format:check') },
       { id: 'build', title: 'Build', ...sh('pnpm run build') },

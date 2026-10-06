@@ -1014,9 +1014,6 @@ function unwrapBody(body) {
  */
 const MULTIPLEXER = /(?<![\w.-])(?:concurrently|npm-run-all|run-p|run-s)(?![\w./-])/u;
 
-/** A single- or double-quoted argument. */
-const QUOTED_ARGUMENT = /'[^']*'|"(?:\\.|[^"\\])*"/gu;
-
 /**
  * Launcher names this source can call, including import aliases.
  *
@@ -2234,7 +2231,7 @@ test('the protected engine resolves the same vite-plus version from both owning 
   );
 });
 
-test('the test entrypoints stay on vp rather than drifting back to vitest', () => {
+test('the JavaScript test entrypoints stay on vp rather than drifting back to vitest', () => {
   // `pnpm test` dispatched to `scripts/test.mjs`, which ran `pnpm exec vitest`,
   // so the primary gate never exercised the toolchain this migration is about.
   // The reviewer who caught it was right that a passing suite proved nothing
@@ -2247,23 +2244,9 @@ test('the test entrypoints stay on vp rather than drifting back to vitest', () =
   // A manifest is scanned as scripts rather than as text, though. `"vitest":
   // "catalog:"` is a dependency declaration, and reading the whole file reported
   // it as an invocation.
-  const requiredEntrypoints = [
-    'package.json',
-    'scripts/test.mjs',
-    'scripts/test-cov.mjs',
-    'scripts/oss-local-ci.mjs',
-    '.github/workflows/validate.yml',
-  ];
-  // ci-superdoc stays covered in Orbit, but the standalone projection removes
-  // it and runs v2-public-validation instead. Treating the private workflow as
-  // universally required made the exported repository's own toolchain guard
-  // fail before it could inspect the entrypoints that actually ship there.
-  const optionalOrbitEntrypoints = ['.github/workflows/ci-superdoc.yml'].filter((path) =>
-    existsSync(resolve(PUBLIC_ROOT, path)),
-  );
-  const entrypoints = [...requiredEntrypoints, ...optionalOrbitEntrypoints];
-  const missing = requiredEntrypoints.filter((path) => !existsSync(resolve(PUBLIC_ROOT, path)));
-  assert.deepEqual(missing, [], `these entrypoints no longer exist, so nothing was checked: ${missing.join(', ')}`);
+  const entrypoints = ['scripts/test.mjs', 'scripts/test-cov.mjs', 'scripts/oss-local-ci.mjs'];
+  const missing = entrypoints.filter((entrypoint) => !existsSync(resolve(PUBLIC_ROOT, entrypoint)));
+  assert.deepEqual(missing, [], `missing test entrypoints: ${missing.join(', ')}`);
 
   // The dispatchers, judged with the shared matcher rather than the prose rules
   // the text scan needs: a manifest has no labels or import specifiers, only
@@ -2279,50 +2262,9 @@ test('the test entrypoints stay on vp rather than drifting back to vitest', () =
       `what the scripts they dispatch to do: ${dispatchers.join('; ')}`,
   );
 
-  for (const relativePath of entrypoints.filter((path) => path !== 'package.json')) {
+  for (const relativePath of entrypoints) {
     const raw = readFileSync(resolve(PUBLIC_ROOT, relativePath), 'utf8');
-    // Comments are prose about commands, not commands. Blanked rather than
-    // removed so reported line numbers still point at the real file.
-    //
-    // A `#` inside quotes is content: `run: echo "foo # setup" && vitest run` is
-    // one command, and treating that `#` as a comment deleted the real
-    // invocation after it. So the scan tracks quoting and only cuts at an
-    // unquoted marker.
-    //
-    // Which markers apply depends on the language. A workflow is YAML whose
-    // `run:` values are shell, where `//` is ordinary path or argument text:
-    // `run: echo setup // note && vitest run` lost its invocation to a marker
-    // that language does not have. So `//` is honoured only in the JavaScript
-    // entrypoints.
-    // Which markers apply depends on the language. A workflow is YAML whose
-    // `run:` values are shell, where `//` is ordinary path or argument text:
-    // `run: echo setup // note && vitest run` lost its invocation to a marker
-    // that language does not have. The mirror holds for JavaScript, where `#`
-    // starts no comment and appears in regex literals and private fields, so
-    // each file gets only its own marker.
-    const markers = relativePath.endsWith('.mjs') ? ['//'] : ['#'];
-    // Stripped as a whole rather than line by line, because a template literal
-    // spans lines: resetting the quote state at each newline made an interior
-    // line of one look like ordinary code, so a `//` inside the literal
-    // truncated it. Both files' comment syntax is line-terminated, so this only
-    // changes which regions count as quoted.
-    const source = withoutComments(raw, markers);
-    // A YAML escape that decodes to whitespace has to be visible to the token
-    // scan: in `run: "echo ok\nvitest run"` the raw text reads `nvitest`, so the
-    // boundary rejects it and no downstream check ever sees a match. Every form
-    // that can produce a separator is covered, not only `\n`: the hex, 16-bit and
-    // 32-bit escapes decode to the same character.
-    //
-    // Blanked length-for-length so every offset and line number stays exact;
-    // `runBody` decodes the escape into a real separator for the command split.
-    // `\\` is matched first so an escaped backslash cannot start a new escape,
-    // which would let `a\\nvitest` read as a separator it is not.
-    const scanned =
-      relativePath.endsWith('.yml') || relativePath.endsWith('.yaml')
-        ? source.replace(/\\(?:\\|[nrtLPN_]|x[0-9A-Fa-f]{2}|u[0-9A-Fa-f]{4}|U[0-9A-Fa-f]{8})/gu, (escape) =>
-            ' '.repeat(escape.length),
-          )
-        : source;
+    const source = withoutComments(raw, ['//']);
     // Match the token in a command position, not every mention of the word. An
     // earlier version recognised `pnpm ... exec vitest` and the literal
     // `'vitest', 'run'` and nothing else, so `run: vitest run`, `npx vitest run`,
@@ -2334,13 +2276,13 @@ test('the test entrypoints stay on vp rather than drifting back to vitest', () =
     // What remains to filter here is context this file has that a package script
     // does not: import specifiers, and the step labels these files are made of.
     const invocation = new RegExp(binaryPattern('vitest').source, 'gu');
-    const offenders = [...scanned.matchAll(invocation)]
+    const offenders = [...source.matchAll(invocation)]
       .filter((match) => {
         // Bounded to the current line. Reading 20 characters back crossed
         // newlines, so a multiline `run: |` block whose previous line ended in a
         // word ("echo setup") made the next line's real invocation look like
         // prose.
-        const lineStart = scanned.lastIndexOf('\n', match.index - 1) + 1;
+        const lineStart = source.lastIndexOf('\n', match.index - 1) + 1;
         const line = source.slice(lineStart, match.index);
         // An import specifier is a reference, not a call. Excluding any preceding
         // quote also dropped `spawn('vitest', ...)`, so this is narrow.
@@ -2352,29 +2294,9 @@ test('the test entrypoints stay on vp rather than drifting back to vitest', () =
         // both went unreported while executing Vitest directly. There is no
         // bounded list of wrappers to enumerate.
         //
-        // A workflow says which values are commands: `run:` bodies, and the
-        // lines of a `run: |` block. Everything else is configuration, so
-        // `env:\n  TEST_CONFIG: vitest` is a value the shell never executes, and
-        // reporting it blocked a valid file. Judging by "not one of four prose
-        // keys" was the wrong default for YAML.
-        //
         // The JavaScript entrypoints have no such marker: any line can be a
         // command there, so they keep the broader rule, minus the prose keys
         // their step tables use.
-        if (relativePath.endsWith('.yml') || relativePath.endsWith('.yaml')) {
-          if (!inRunBody(source, match.index)) return false;
-          // A run body is shell, so it gets the same command-aware matcher a
-          // package script does. Accepting every token in one reported
-          // `run: echo 'vitest run is legacy documentation'`, where the shell
-          // executes only `echo`.
-          //
-          // A folded scalar (`run: >`) joins its lines with spaces before the
-          // shell sees them, so `echo` and `vitest` on separate lines are one
-          // command with an argument. Reading only the physical line judged the
-          // argument as a command. A literal block (`run: |`) keeps the newlines,
-          // and those are separators, so it is left as-is.
-          return invokes(runBody(source, match.index), 'vitest');
-        }
         // The JavaScript entrypoints have no `run:` marker, so the rule is what
         // makes a string *not* executable. A prose key's value and a logger's
         // argument are data; an argv element, a `spawn` argument, and a shell

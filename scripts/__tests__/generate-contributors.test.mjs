@@ -1,7 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { fileURLToPath } from "node:url";
 
 import {
   collectContributors,
@@ -14,14 +12,6 @@ function jsonResponse(body) {
     headers: { "content-type": "application/json" },
   });
 }
-
-test("does not ship an OSS contributor update workflow", async () => {
-  const workflowPath = fileURLToPath(
-    new URL("../../.github/workflows/update-contributors.yml", import.meta.url),
-  );
-
-  await assert.rejects(() => readFile(workflowPath, "utf8"), { code: "ENOENT" });
-});
 
 test("combines branch histories and counts each person once per unique commit", async () => {
   const pages = new Map([

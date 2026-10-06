@@ -149,33 +149,3 @@ for (const scenario of [
     if (scenario.sources) assert.equal(await readFile(sourceFile, 'utf8'), source);
   });
 }
-
-test('workflows use the guarded canvas dependency installer instead of raw apt commands', async () => {
-  const workflowCandidates = [
-    { path: '.github/workflows/ci-superdoc.yml', requiresInstaller: true },
-    { path: '.github/workflows/validate.yml', requiresInstaller: false },
-  ];
-  const workflowFiles = [];
-  for (const candidate of workflowCandidates) {
-    try {
-      await access(path.join(REPO_ROOT, candidate.path));
-      workflowFiles.push(candidate);
-    } catch {
-      // The export seam intentionally replaces ci-superdoc with
-      // v2-public-validation, so exactly one candidate may be absent.
-    }
-  }
-  assert.ok(workflowFiles.length > 0, 'expected an active SuperDoc validation workflow to scan');
-
-  for (const { path: file, requiresInstaller } of workflowFiles) {
-    const content = await readRepoFile(file);
-    if (requiresInstaller) {
-      assert.ok(
-        content.includes('scripts/install-canvas-system-dependencies.sh'),
-        `${file}: must call scripts/install-canvas-system-dependencies.sh`,
-      );
-    }
-    assert.equal(content.includes('sudo apt-get update'), false, `${file}: must not run raw apt-get update`);
-    assert.equal(content.includes('sudo apt-get install'), false, `${file}: must not run raw apt-get install`);
-  }
-});

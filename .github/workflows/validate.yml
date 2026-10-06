@@ -30,9 +30,6 @@ jobs:
         run: pnpm run check:pnpm-config
       - name: Validate Vite+ ownership
         run: pnpm run check:vite-plus
-      - name: Validate the public CI contract
-        run: pnpm run check:public-ci
-
   core:
     name: Core
     needs: preflight

@@ -143,6 +143,8 @@ export interface DiffApplyResult {
   coverage: DiffCoverage;
   summary: DiffSummary;
   diagnostics: string[];
+  /** Style definitions applied directly; these changes remain when body revisions are rejected. */
+  styleChanges?: { changeMode: 'direct'; partUris: string[] };
 }
 
 // ---------------------------------------------------------------------------
@@ -152,11 +154,15 @@ export interface DiffApplyResult {
 /** Input for `diff.compare`. */
 export interface DiffCompareInput {
   targetSnapshot: DiffSnapshot;
+  /** Assess tracked eligibility with explicit consent to apply style definitions directly. */
+  styleChangeMode?: 'direct';
 }
 
 /** Input for `diff.apply`. */
 export interface DiffApplyInput {
   diff: DiffPayload;
+  /** Apply target style definitions directly, even when body changes are tracked. */
+  styleChangeMode?: 'direct';
 }
 
 // ---------------------------------------------------------------------------

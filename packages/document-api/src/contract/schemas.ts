@@ -4243,6 +4243,10 @@ const diffPayloadSchema: JsonSchema = objectSchema(
 const diffApplyResultSchema: JsonSchema = objectSchema(
   {
     appliedOperations: { type: 'integer' },
+    styleChanges: objectSchema({ changeMode: { const: 'direct' }, partUris: arraySchema({ type: 'string' }) }, [
+      'changeMode',
+      'partUris',
+    ]),
     operationReceipts: {
       type: 'array',
       items: {
@@ -10363,11 +10367,13 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
     output: diffSnapshotSchema,
   },
   'diff.compare': {
-    input: objectSchema({ targetSnapshot: diffSnapshotSchema }, ['targetSnapshot']),
+    input: objectSchema({ targetSnapshot: diffSnapshotSchema, styleChangeMode: { enum: ['direct'] } }, [
+      'targetSnapshot',
+    ]),
     output: diffPayloadSchema,
   },
   'diff.apply': {
-    input: objectSchema({ diff: diffPayloadSchema }, ['diff']),
+    input: objectSchema({ diff: diffPayloadSchema, styleChangeMode: { enum: ['direct'] } }, ['diff']),
     output: diffApplyResultSchema,
     success: diffApplyResultSchema,
     failure: { type: 'object' },

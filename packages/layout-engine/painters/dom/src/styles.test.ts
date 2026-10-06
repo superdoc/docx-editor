@@ -188,6 +188,49 @@ describe('ensureSdtContainerStyles', () => {
     expect(selectedRule).toContain('border-color: var(--sd-content-controls-inline-border, #629be7);');
   });
 
+  it('visibly selects a Word checkbox without changing its layout', () => {
+    ensureSdtContainerStyles(document);
+
+    const styleEl = document.querySelector('[data-superdoc-sdt-container-styles="true"]');
+    const cssText = styleEl?.textContent ?? '';
+    const selectedRule =
+      cssText.match(
+        /\.superdoc-structured-content-inline\[data-word-checkbox='true'\]\.ProseMirror-selectednode\s*\{([^}]*)\}/,
+      )?.[1] ?? '';
+
+    expect(selectedRule).toContain('background-color: var(--sd-content-controls-checkbox-selected-bg, #b4c7e7);');
+    expect(selectedRule).toContain('outline: 1px solid var(--sd-content-controls-checkbox-selected-border, #4472c4);');
+    expect(selectedRule).not.toContain('padding:');
+  });
+
+  it('selects a block Word checkbox at its glyph instead of its table-cell container', () => {
+    ensureSdtContainerStyles(document);
+
+    const styleEl = document.querySelector('[data-superdoc-sdt-container-styles="true"]');
+    const cssText = styleEl?.textContent ?? '';
+    const selectedRule =
+      cssText.match(
+        /\.superdoc-word-checkbox-container\.ProseMirror-selectednode \.superdoc-text-run\s*\{([^}]*)\}/,
+      )?.[1] ?? '';
+
+    expect(selectedRule).toContain('background-color: var(--sd-content-controls-checkbox-selected-bg, #b4c7e7);');
+    expect(selectedRule).toContain('outline: 1px solid var(--sd-content-controls-checkbox-selected-border, #4472c4);');
+    expect(selectedRule).not.toContain('padding:');
+  });
+
+  it('keeps a Word checkbox glyph on a stable em line box', () => {
+    ensureSdtContainerStyles(document);
+
+    const styleEl = document.querySelector('[data-superdoc-sdt-container-styles="true"]');
+    const cssText = styleEl?.textContent ?? '';
+    const glyphRule =
+      cssText.match(/\.superdoc-word-checkbox-glyph\.superdoc-empty-sdt-placeholder\s*\{([^}]*)\}/)?.[1] ?? '';
+
+    expect(glyphRule).toContain('display: inline-block;');
+    expect(glyphRule).toContain('line-height: 1;');
+    expect(glyphRule).toContain('vertical-align: baseline;');
+  });
+
   it('does not paint placeholder text for an emptied inline control', () => {
     ensureSdtContainerStyles(document);
 

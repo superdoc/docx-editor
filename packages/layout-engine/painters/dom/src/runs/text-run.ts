@@ -24,6 +24,37 @@ import { resolveDerivedRunText } from '../derived-run-text-plane.js';
 const DEFAULT_SUPERSCRIPT_RAISE_RATIO = 0.33;
 const DEFAULT_SUBSCRIPT_LOWER_RATIO = 0.14;
 
+export type CheckboxGlyphs = { checked: string; unchecked: string; current: string };
+
+const checkboxGlyphFromCodePoint = (value: string): string | null => {
+  if (!/^[0-9a-f]{1,6}$/i.test(value)) return null;
+  const codePoint = Number.parseInt(value, 16);
+  return codePoint <= 0x10ffff ? String.fromCodePoint(codePoint) : null;
+};
+
+export const checkboxGlyphs = (run: TextRun): CheckboxGlyphs | null => {
+  const sdt = run.sdt;
+  if (sdt?.type !== 'structuredContent' || !sdt.checkbox || sdt.appearance === 'hidden') return null;
+  const checkbox = sdt.checkbox;
+  const checked = checkboxGlyphFromCodePoint(checkbox.checkedSymbol.char);
+  const unchecked = checkboxGlyphFromCodePoint(checkbox.uncheckedSymbol.char);
+  if (!checked || !unchecked) return null;
+  return { checked, unchecked, current: checkbox.checked ? checked : unchecked };
+};
+
+/** Stamps the authored states needed to reflect an accepted checkbox toggle. */
+export const applyCheckboxGlyphMetadata = (element: HTMLElement, run: TextRun): CheckboxGlyphs | null => {
+  const glyphs = checkboxGlyphs(run);
+  if (!glyphs) return null;
+  // A checkbox SDT can contain more than its state symbol. Only the run that
+  // paints that authored symbol may be updated optimistically after a toggle.
+  if (run.text && run.text !== glyphs.current) return null;
+  element.dataset.wordCheckboxGlyph = 'true';
+  element.dataset.checkboxCheckedGlyph = glyphs.checked;
+  element.dataset.checkboxUncheckedGlyph = glyphs.unchecked;
+  return glyphs;
+};
+
 /**
  * Underline thickness in px, scaled to font size. Shared by text runs
  * (`text-decoration-thickness`) and tab underlines (border width) so a run's
@@ -423,6 +454,7 @@ export const renderTextRun = (
 
   // Pass isLink flag to skip applying inline color/decoration styles for links
   applyRunStyles(elem as HTMLElement, run, isActiveLink, renderContext.resolvePhysical);
+  applyCheckboxGlyphMetadata(elem as HTMLElement, run);
   const dirAttr = resolveRunDirectionAttribute({
     runText: run.text,
     effectiveText,

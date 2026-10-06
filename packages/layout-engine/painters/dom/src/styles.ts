@@ -1116,6 +1116,51 @@ const SDT_CONTAINER_STYLES = `
   background-color: transparent;
 }
 
+/* Word checkbox SDTs are controls, not generic labelled content-control chrome. */
+.superdoc-structured-content-inline[data-word-checkbox='true'] {
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.superdoc-structured-content-inline[data-word-checkbox='true']:hover {
+  border: none;
+  background: transparent;
+}
+
+/* Word highlights a checkbox as an atomic selected control before its wrapper
+ * is removed. Use paint-only decoration so selection does not change glyph
+ * layout or its inherited Word font size. */
+.superdoc-structured-content-inline[data-word-checkbox='true'].ProseMirror-selectednode {
+  border: none;
+  background-color: var(--sd-content-controls-checkbox-selected-bg, #b4c7e7);
+  outline: 1px solid var(--sd-content-controls-checkbox-selected-border, #4472c4);
+  outline-offset: 1px;
+}
+
+.superdoc-structured-content-inline[data-word-checkbox='true'][aria-disabled='true'] {
+  cursor: default;
+}
+
+.superdoc-word-checkbox-container {
+  cursor: pointer;
+}
+
+/* Block checkboxes occupy their table cell for layout, so paint selection on
+ * the glyph rather than the full cell. This mirrors inline checkbox selection
+ * without affecting authored dimensions. */
+.superdoc-word-checkbox-container.ProseMirror-selectednode .superdoc-text-run {
+  background-color: var(--sd-content-controls-checkbox-selected-bg, #b4c7e7);
+  outline: 1px solid var(--sd-content-controls-checkbox-selected-border, #4472c4);
+  outline-offset: 1px;
+}
+
+.superdoc-word-checkbox-container[aria-disabled='true'] {
+  cursor: default;
+}
+
 /* Word does not show placeholder text on an emptied inline control. */
 .superdoc-structured-content-inline[data-empty='true'] .superdoc-empty-sdt-placeholder::before {
   content: none;
@@ -1126,6 +1171,16 @@ const SDT_CONTAINER_STYLES = `
   line-height: normal;
   vertical-align: baseline;
   white-space: nowrap;
+}
+
+/* The generic placeholder rule intentionally uses the source font's normal
+ * line-height. Checkbox glyphs are also represented by an empty-SDT run, but
+ * their selected-control outline must stay on the authored em square. */
+.superdoc-word-checkbox-glyph.superdoc-empty-sdt-placeholder {
+  display: inline-block;
+  color: inherit;
+  line-height: 1;
+  vertical-align: baseline;
 }
 
 .superdoc-empty-sdt-placeholder::before {

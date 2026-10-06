@@ -31,6 +31,91 @@ const pageField: TextRun = {
 };
 
 describe('renderRun position validation', () => {
+  it('retains both authored Word-checkbox glyphs on its painted placeholder', () => {
+    const checkboxRun: TextRun = {
+      text: '',
+      fontFamily: 'Arial',
+      fontSize: 12,
+      visualPlaceholder: 'emptyInlineSdt',
+      sdt: {
+        type: 'structuredContent',
+        scope: 'inline',
+        id: 'checkbox-1',
+        checkbox: {
+          checked: false,
+          checkedSymbol: { font: 'MS Gothic', char: '2612' },
+          uncheckedSymbol: { font: 'MS Gothic', char: '2610' },
+        },
+      },
+    };
+
+    const element = renderRun(
+      checkboxRun,
+      { pageNumber: 1, totalPages: 1, section: 'body' },
+      makeRunContext(undefined),
+    );
+
+    expect(element?.textContent).toBe('☐');
+    expect(element?.dataset.wordCheckboxGlyph).toBe('true');
+    expect(element?.dataset.checkboxCheckedGlyph).toBe('☒');
+    expect(element?.dataset.checkboxUncheckedGlyph).toBe('☐');
+  });
+
+  it('retains both authored Word-checkbox glyphs on a non-empty checkbox run', () => {
+    const checkboxRun: TextRun = {
+      text: '☐',
+      fontFamily: 'Arial',
+      fontSize: 12,
+      sdt: {
+        type: 'structuredContent',
+        scope: 'inline',
+        id: 'checkbox-2',
+        checkbox: {
+          checked: false,
+          checkedSymbol: { font: 'MS Gothic', char: '2612' },
+          uncheckedSymbol: { font: 'MS Gothic', char: '2610' },
+        },
+      },
+    };
+
+    const element = renderRun(
+      checkboxRun,
+      { pageNumber: 1, totalPages: 1, section: 'body' },
+      makeRunContext(undefined),
+    );
+
+    expect(element?.textContent).toBe('☐');
+    expect(element?.dataset.wordCheckboxGlyph).toBe('true');
+    expect(element?.dataset.checkboxCheckedGlyph).toBe('☒');
+    expect(element?.dataset.checkboxUncheckedGlyph).toBe('☐');
+  });
+
+  it('does not mark non-glyph text inside a checkbox SDT as the toggle target', () => {
+    const checkboxRun: TextRun = {
+      text: 'Not required',
+      fontFamily: 'Arial',
+      fontSize: 12,
+      sdt: {
+        type: 'structuredContent',
+        scope: 'inline',
+        id: 'checkbox-3',
+        checkbox: {
+          checked: false,
+          checkedSymbol: { font: 'MS Gothic', char: '2612' },
+          uncheckedSymbol: { font: 'MS Gothic', char: '2610' },
+        },
+      },
+    };
+
+    const element = renderRun(
+      checkboxRun,
+      { pageNumber: 1, totalPages: 1, section: 'body' },
+      makeRunContext(undefined),
+    );
+
+    expect(element?.dataset.wordCheckboxGlyph).toBeUndefined();
+  });
+
   it('keeps an editable body page field on the body coordinate requirement', () => {
     const collector = createPositionValidationCollector({
       enabled: true,

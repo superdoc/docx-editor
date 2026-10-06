@@ -50,3 +50,16 @@ export const shouldPreserveHostV2Selection = (documentMode, hostSnapshot) => {
   if (documentMode !== 'editing' && documentMode !== 'suggesting') return false;
   return isV2RangeSnapshot(hostSnapshot);
 };
+
+/**
+ * A V2 paint can briefly have no DOM anchor while a selected control is being
+ * rebuilt. Keep an already-positioned comment affordance during that gap when
+ * the host still owns a range; otherwise the button unmounts and remounts on
+ * consecutive paint frames, making it blink and intercepting its own click.
+ *
+ * @param {boolean} hasHostRange
+ * @param {{ source?: unknown } | null | undefined} selectionPosition
+ * @returns {boolean}
+ */
+export const shouldRetainV2FloatingSelection = (hasHostRange, selectionPosition) =>
+  hasHostRange === true && selectionPosition?.source === 'document-editor';

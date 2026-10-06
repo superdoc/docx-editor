@@ -64,7 +64,11 @@ import {
 } from './helpers/v2-keyboard-edit-rejection.js';
 import { createV2MutationRejectionCause } from './helpers/v2-mutation-exception.js';
 import { DOCUMENT_EDITOR_SELECTION_SOURCE } from './helpers/selection-source.js';
-import { hasOutsideV2DomRangeSelection, shouldPreserveHostV2Selection } from './helpers/v2-selection-sync.js';
+import {
+  hasOutsideV2DomRangeSelection,
+  shouldPreserveHostV2Selection,
+  shouldRetainV2FloatingSelection,
+} from './helpers/v2-selection-sync.js';
 import { useUiFontFamily } from './composables/useUiFontFamily.js';
 import { usePasswordPrompt } from './composables/use-password-prompt.js';
 import { useFindReplace } from './composables/use-find-replace.js';
@@ -1685,6 +1689,11 @@ const syncV2SelectionToolbarState = () => {
 
   const selection = buildV2FloatingSelection();
   if (!selection) {
+    // Repainted content controls can briefly have no painted selection anchor
+    // even though the host still holds their range. Preserve the positioned
+    // comment action until that range actually ends so the button remains
+    // visible and clickable instead of blinking between paint frames.
+    if (shouldRetainV2FloatingSelection(v2HasRangeSelection.value, selectionPosition.value)) return;
     activeSelection.value = null;
     resetSelection();
     return;

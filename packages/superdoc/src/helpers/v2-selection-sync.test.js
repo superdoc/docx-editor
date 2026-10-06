@@ -3,6 +3,7 @@ import {
   hasOutsideV2DomRangeSelection,
   isV2RangeSnapshot,
   shouldPreserveHostV2Selection,
+  shouldRetainV2FloatingSelection,
 } from './v2-selection-sync.js';
 
 const rangeSnapshot = {
@@ -102,5 +103,17 @@ describe('shouldPreserveHostV2Selection', () => {
   it('does not preserve when the host holds only a collapsed caret', () => {
     expect(shouldPreserveHostV2Selection('editing', collapsedSnapshot)).toBe(false);
     expect(shouldPreserveHostV2Selection('editing', null)).toBe(false);
+  });
+});
+
+describe('shouldRetainV2FloatingSelection', () => {
+  it('keeps an existing document-editor affordance while a host range survives a repaint', () => {
+    expect(shouldRetainV2FloatingSelection(true, { source: 'document-editor' })).toBe(true);
+  });
+
+  it('releases the affordance once the host range ends or it belongs to another surface', () => {
+    expect(shouldRetainV2FloatingSelection(false, { source: 'document-editor' })).toBe(false);
+    expect(shouldRetainV2FloatingSelection(true, { source: 'pdf' })).toBe(false);
+    expect(shouldRetainV2FloatingSelection(true, null)).toBe(false);
   });
 });

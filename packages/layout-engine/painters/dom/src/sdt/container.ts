@@ -122,6 +122,29 @@ export function applySdtContainerChrome(
 
   const isStart = boundaryOptions?.isStart ?? config.isStart;
   const isEnd = boundaryOptions?.isEnd ?? config.isEnd;
+  const shouldShowLabel = boundaryOptions?.showLabel ?? isStart;
+
+  if (isStructuredContentMetadata(metadata) && metadata.checkbox) {
+    // Checkbox content controls use their child glyph as the visible control;
+    // do not surround a block checkbox with generic SDT chrome or a label.
+    container.classList.add('superdoc-word-checkbox-container');
+    container.dataset.wordCheckbox = 'true';
+    container.dataset.lockMode = metadata.lockMode || 'unlocked';
+    // Boundary stamps are needed by page-content's fragment-reuse check even
+    // though checkboxes do not render generic chrome or labels.
+    container.dataset.sdtContainerStart = String(isStart);
+    container.dataset.sdtContainerEnd = String(isEnd);
+    container.dataset.sdtContainerLabel = String(shouldShowLabel);
+    container.setAttribute('role', 'checkbox');
+    container.setAttribute('aria-checked', String(metadata.checkbox.checked));
+    container.setAttribute('aria-label', metadata.alias ?? 'Checkbox');
+    if (metadata.lockMode === 'contentLocked' || metadata.lockMode === 'sdtContentLocked') {
+      container.setAttribute('aria-disabled', 'true');
+    } else {
+      container.tabIndex = 0;
+    }
+    return true;
+  }
 
   container.classList.add(config.className);
   container.dataset.sdtContainerStart = String(isStart);
@@ -141,7 +164,6 @@ export function applySdtContainerChrome(
     container.style.setProperty('--sd-sdt-chrome-bottom-extension', `${boundaryOptions.paddingBottomOverride}px`);
   }
 
-  const shouldShowLabel = boundaryOptions?.showLabel ?? isStart;
   // Rendered-label intent stamp: `shouldRebuildForSdtBoundary` compares it
   // against the label the next paint WOULD render, so patch/reuse paths
   // self-correct when the label-bearing page changes (window shifts, dense

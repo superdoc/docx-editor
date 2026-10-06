@@ -6,7 +6,7 @@ import type { PositionRunKind } from '../pm-position-validation.js';
 import { renderFieldAnnotationRun } from './field-annotation-run.js';
 import { renderImageRun } from './image-run.js';
 import { renderMathRun } from './math-run.js';
-import { applyRunStyles, renderTextRun } from './text-run.js';
+import { applyCheckboxGlyphMetadata, applyRunStyles, checkboxGlyphs, renderTextRun } from './text-run.js';
 
 export const isImageRun = (run: Run): run is ImageRun => run.kind === 'image';
 export const isLineBreakRun = (run: Run): run is import('@superdoc/contracts').LineBreakRun => run.kind === 'lineBreak';
@@ -16,14 +16,23 @@ export const isMathRun = (run: Run): run is MathRun => run.kind === 'math';
 
 const renderEmptySdtPlaceholderRun = (run: TextRun, renderContext: RunRenderContext): HTMLElement | null => {
   const elem = renderContext.doc.createElement('span');
+  const glyph = checkboxGlyphs(run);
   elem.classList.add('superdoc-empty-sdt-placeholder');
   if (run.visualPlaceholder === 'emptyInlineSdt') {
     elem.classList.add('superdoc-empty-inline-sdt-placeholder');
   } else if (run.visualPlaceholder === 'emptyBlockSdt') {
     elem.classList.add('superdoc-empty-block-sdt-placeholder');
   }
-  elem.setAttribute('aria-hidden', 'true');
-  elem.dataset.placeholderText = EMPTY_SDT_PLACEHOLDER_TEXT;
+  if (glyph) {
+    elem.classList.add('superdoc-word-checkbox-glyph');
+    // AIDEV-NOTE: The V2 host uses both authored symbols for immediate local
+    // feedback; the source repaint remains authoritative.
+    applyCheckboxGlyphMetadata(elem, run);
+    elem.textContent = glyph.current;
+  } else {
+    elem.setAttribute('aria-hidden', 'true');
+    elem.dataset.placeholderText = EMPTY_SDT_PLACEHOLDER_TEXT;
+  }
   elem.dataset.layoutEpoch = String(renderContext.layoutEpoch);
   if (run.pmStart != null) elem.dataset.pmStart = String(run.pmStart);
   if (run.pmEnd != null) elem.dataset.pmEnd = String(run.pmEnd);

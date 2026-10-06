@@ -504,6 +504,32 @@ describe('remeasureParagraph', () => {
       expect(measure.lines[0].width).toBe(0);
     });
 
+    it('measures an empty Word checkbox by its visible glyph', () => {
+      const block = createBlock([
+        textRun('', {
+          kind: 'text',
+          visualPlaceholder: 'emptyInlineSdt',
+          sdt: {
+            type: 'structuredContent',
+            scope: 'inline',
+            id: 'checkbox',
+            checkbox: {
+              checked: false,
+              checkedSymbol: { font: 'MS Gothic', char: '2612' },
+              uncheckedSymbol: { font: 'MS Gothic', char: '2610' },
+            },
+          },
+          pmStart: 4,
+          pmEnd: 4,
+        }),
+      ]);
+      const measure = remeasureParagraph(block, 500);
+
+      expect(measure.lines).toHaveLength(1);
+      expect(measure.lines[0].width).toBe(CHAR_WIDTH);
+      expect(computeLinePmRange(block, measure.lines[0])).toEqual({ pmStart: 4, pmEnd: 4 });
+    });
+
     it('keeps a visible empty SDT placeholder atomic when it is wider than the line', () => {
       const block = createBlock([
         textRun('', {

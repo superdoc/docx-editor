@@ -1539,6 +1539,16 @@ const isBookmarkMarkerRun = (run: Run): run is TextRun & { dataAttrs: Record<str
   return typeof (run as TextRun).dataAttrs?.['data-bookmark-marker'] === 'string';
 };
 
+const checkboxPlaceholderText = (run: TextRun): string | null => {
+  const sdt = run.sdt;
+  if (sdt?.type !== 'structuredContent' || !sdt.checkbox || sdt.appearance === 'hidden') return null;
+  const checkbox = sdt.checkbox;
+  const value = checkbox.checked ? checkbox.checkedSymbol.char : checkbox.uncheckedSymbol.char;
+  if (!/^[0-9a-f]{1,6}$/i.test(value)) return null;
+  const codePoint = Number.parseInt(value, 16);
+  return codePoint <= 0x10ffff ? String.fromCodePoint(codePoint) : null;
+};
+
 /**
  * Type guard to check if a run is a field annotation run
  */
@@ -3581,14 +3591,15 @@ async function measureParagraphBlock(
 
     if (isEmptySdtPlaceholderRun(textRun)) {
       const placeholderFont = resolveParagraphFontString(textRun).font;
-      const placeholderText = applyTextTransform(EMPTY_SDT_PLACEHOLDER_TEXT, textRun);
+      const checkboxText = checkboxPlaceholderText(textRun);
+      const placeholderText = applyTextTransform(checkboxText ?? EMPTY_SDT_PLACEHOLDER_TEXT, textRun);
       const measuredPlaceholderWidth =
         measuredTextWidth(placeholderText, placeholderFont, textRun.letterSpacing ?? 0, ctx) *
         getRunHorizontalScale(textRun);
       const fallbackPlaceholderWidth =
         placeholderText.length * textRun.fontSize * 0.45 * getRunHorizontalScale(textRun);
       const placeholderWidth =
-        textRun.visualPlaceholder === 'emptyInlineSdt' ||
+        (textRun.visualPlaceholder === 'emptyInlineSdt' && checkboxText == null) ||
         (textRun.sdt?.type === 'structuredContent' && textRun.sdt.appearance === 'hidden')
           ? 0
           : measuredPlaceholderWidth > 0

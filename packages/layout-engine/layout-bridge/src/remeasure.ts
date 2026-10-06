@@ -233,6 +233,15 @@ function fontString(run: Run): string {
  */
 function runText(run: Run): string {
   if (isEmptySdtPlaceholderRun(run)) {
+    const sdt = run.sdt;
+    if (sdt?.type === 'structuredContent' && sdt.checkbox && sdt.appearance !== 'hidden') {
+      const checkbox = sdt.checkbox;
+      const value = checkbox.checked ? checkbox.checkedSymbol.char : checkbox.uncheckedSymbol.char;
+      if (/^[0-9a-f]{1,6}$/i.test(value)) {
+        const codePoint = Number.parseInt(value, 16);
+        if (codePoint <= 0x10ffff) return String.fromCodePoint(codePoint);
+      }
+    }
     if (run.visualPlaceholder === 'emptyInlineSdt') return '';
     return run.sdt?.type === 'structuredContent' && run.sdt.appearance === 'hidden' ? '' : EMPTY_SDT_PLACEHOLDER_TEXT;
   }

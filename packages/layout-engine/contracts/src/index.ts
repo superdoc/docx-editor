@@ -304,6 +304,19 @@ export type StructuredContentLockMode = 'unlocked' | 'sdtLocked' | 'contentLocke
  */
 export type StructuredContentAppearance = 'boundingBox' | 'tags' | 'hidden';
 
+/** The visible state Word stores on a `w14:checkbox` content control. */
+export type StructuredContentCheckbox = {
+  checked: boolean;
+  checkedSymbol: { font: string; char: string };
+  uncheckedSymbol: { font: string; char: string };
+  /**
+   * CSS-pixel size resolved from the checkbox SDT's own `<w:rPr>`.
+   * Word applies this control-level run formatting to its glyph even when the
+   * carrier `<w:sym>` does not retain that formatting through projection.
+   */
+  fontSize?: number;
+};
+
 export type StructuredContentMetadata = {
   type: 'structuredContent';
   scope: 'inline' | 'block';
@@ -313,6 +326,8 @@ export type StructuredContentMetadata = {
   lockMode?: StructuredContentLockMode;
   /** Appearance from the SDT's `<w15:appearance>` element, when present. */
   appearance?: StructuredContentAppearance;
+  /** Word-native checkbox state parsed from the SDT properties, when present. */
+  checkbox?: StructuredContentCheckbox;
   sdtPr?: unknown;
 };
 

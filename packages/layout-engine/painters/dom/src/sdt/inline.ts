@@ -22,6 +22,19 @@ export const createInlineSdtWrapper = (sdt: SdtMetadata, context: RunRenderConte
     wrapper.dataset.appearance = 'hidden';
     return wrapper;
   }
+  const structuredContent = sdt.type === 'structuredContent' ? sdt : undefined;
+  const checkbox = structuredContent?.checkbox;
+  if (checkbox) {
+    // Checkbox content controls own their visible glyph. Do not paint the
+    // generic SDT border label around them: Word presents these as controls.
+    wrapper.dataset.wordCheckbox = 'true';
+    wrapper.setAttribute('role', 'checkbox');
+    wrapper.setAttribute('aria-checked', String(checkbox.checked));
+    if (structuredContent?.lockMode === 'contentLocked' || structuredContent?.lockMode === 'sdtContentLocked') {
+      wrapper.setAttribute('aria-disabled', 'true');
+    } else wrapper.tabIndex = 0;
+    return wrapper;
+  }
   if (context.contentControlsChrome === 'none') {
     return wrapper;
   }
@@ -41,6 +54,15 @@ export const syncInlineSdtWrapperTypography = (wrapper: HTMLElement, runForSizin
       ? `${runForSizing.fontSize}px`
       : BROWSER_DEFAULT_FONT_SIZE;
   wrapper.style.fontSize = runFontSize;
+  // A checkbox's symbol can come from a font whose `normal` line-height is
+  // taller than its measured Word line. Keep the control's hit/selection box
+  // on the authored em square so it cannot grow on the first interaction and
+  // then shrink after the next paint.
+  if (wrapper.dataset.wordCheckbox === 'true') {
+    wrapper.style.lineHeight = '1';
+    wrapper.style.verticalAlign = 'baseline';
+    return;
+  }
   wrapper.style.lineHeight = 'normal';
 };
 

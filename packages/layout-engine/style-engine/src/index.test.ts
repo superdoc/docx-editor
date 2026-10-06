@@ -99,6 +99,30 @@ describe('resolveSdtMetadata', () => {
     });
   });
 
+  it('carries Word checkbox state and symbols through structured content metadata', () => {
+    const metadata = resolveSdtMetadata({
+      nodeType: 'structuredContent',
+      attrs: {
+        id: 'checkbox-1',
+        checkbox: {
+          checked: true,
+          checkedSymbol: { font: 'Wingdings', char: 'F0FE' },
+          uncheckedSymbol: { font: 'MS Gothic', char: '2610' },
+          fontSize: 24,
+        },
+      },
+    });
+    expect(metadata).toMatchObject({
+      type: 'structuredContent',
+      checkbox: {
+        checked: true,
+        checkedSymbol: { font: 'Wingdings', char: 'F0FE' },
+        uncheckedSymbol: { font: 'MS Gothic', char: '2610' },
+        fontSize: 24,
+      },
+    });
+  });
+
   it('drops unknown appearance values rather than letting them flow to the renderer', () => {
     const metadata = resolveSdtMetadata({
       nodeType: 'structuredContent',

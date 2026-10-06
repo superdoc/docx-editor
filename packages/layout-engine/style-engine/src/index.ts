@@ -250,6 +250,8 @@ function normalizeStructuredContentMetadata(
     lockMode: attrs.lockMode as StructuredContentMetadata['lockMode'],
     sdtPr: attrs.sdtPr,
   };
+  const checkbox = normalizeStructuredContentCheckbox(attrs.checkbox);
+  if (checkbox) metadata.checkbox = checkbox;
   // `appearance` comes from the SDT's <w15:appearance> element on import.
   // Only the three spec-defined values flow through; anything else is
   // discarded so a bad value doesn't poison rendering decisions.
@@ -258,6 +260,25 @@ function normalizeStructuredContentMetadata(
     metadata.appearance = rawAppearance;
   }
   return metadata;
+}
+
+function normalizeStructuredContentCheckbox(value: unknown): StructuredContentMetadata['checkbox'] | undefined {
+  if (!isPlainObject(value)) return undefined;
+  const checkedSymbol = value.checkedSymbol;
+  const uncheckedSymbol = value.uncheckedSymbol;
+  if (!isPlainObject(checkedSymbol) || !isPlainObject(uncheckedSymbol)) return undefined;
+  const checkedFont = toOptionalString(checkedSymbol.font);
+  const checkedChar = toOptionalString(checkedSymbol.char);
+  const uncheckedFont = toOptionalString(uncheckedSymbol.font);
+  const uncheckedChar = toOptionalString(uncheckedSymbol.char);
+  if (!checkedFont || !checkedChar || !uncheckedFont || !uncheckedChar) return undefined;
+  const fontSize = toNumber(value.fontSize);
+  return {
+    checked: toBoolean(value.checked, false),
+    checkedSymbol: { font: checkedFont, char: checkedChar },
+    uncheckedSymbol: { font: uncheckedFont, char: uncheckedChar },
+    ...(fontSize != null && fontSize > 0 ? { fontSize } : {}),
+  };
 }
 
 function normalizeDocumentSectionMetadata(attrs: Record<string, unknown>): DocumentSectionMetadata {

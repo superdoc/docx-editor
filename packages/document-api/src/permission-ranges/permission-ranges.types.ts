@@ -2,6 +2,7 @@ import type { Position } from '../types/base.js';
 import type { SelectionTarget } from '../types/address.js';
 import type { AdapterMutationFailure } from '../types/adapter-result.js';
 import type { DiscoveryOutput } from '../types/discovery.js';
+import type { StoryLocator } from '../types/story.types.js';
 
 // ---------------------------------------------------------------------------
 // Principal model
@@ -25,6 +26,8 @@ export interface PermissionRangeInfo {
   kind: PermissionRangeKind;
   start: Position;
   end: Position;
+  /** Story containing this range. Omit for body (backward compatible). */
+  story?: StoryLocator;
 }
 
 // ---------------------------------------------------------------------------

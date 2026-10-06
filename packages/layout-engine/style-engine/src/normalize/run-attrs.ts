@@ -26,6 +26,8 @@ export interface NormalizeRunAttrsContext {
   themeColors?: WordThemeColorPalette;
   /** Compiled theme font scheme. */
   themeFontScheme?: WordThemeFontScheme;
+  /** Font-table family and pitch, keyed by font name or its normalized lowercase name. */
+  fontTable?: Readonly<Record<string, { readonly family?: string; readonly pitch?: string }>>;
   /**
    * Resolved background color in which the run will render (e.g. shaded cell
    * background). When set and the run color resolves to `auto`, the
@@ -74,7 +76,9 @@ export function normalizeRunAttrsFromOoxml(
   if (props.smallCaps != null) out.smallCaps = props.smallCaps === true;
 
   const fontFamily = resolveFontFamily(props, context.themeFontScheme);
-  const cssFontFamily = toCssFontFamily(fontFamily);
+  const fontKey = fontFamily?.trim().replace(/^["']|["']$/g, '');
+  const metadata = fontKey ? (context.fontTable?.[fontKey] ?? context.fontTable?.[fontKey.toLowerCase()]) : undefined;
+  const cssFontFamily = toCssFontFamily(fontFamily, { wordFamily: metadata?.family, pitch: metadata?.pitch });
   if (cssFontFamily) out.fontFamily = cssFontFamily;
 
   const fontSize = resolveFontSize(props.fontSize);

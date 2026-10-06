@@ -196,7 +196,7 @@ describe('toCssFontFamily', () => {
     });
 
     it('should append default fallback when options is empty object', () => {
-      expect(toCssFontFamily('Courier', {})).toBe('Courier, sans-serif');
+      expect(toCssFontFamily('Courier', {})).toBe('Courier, monospace');
     });
   });
 

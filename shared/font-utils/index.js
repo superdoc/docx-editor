@@ -77,8 +77,23 @@ const normalizeFontNameForLookup = (fontName) => {
     .toLowerCase();
 };
 
-const inferGenericFallbackFromFontName = (fontName) =>
-  SERIF_LIKE_FONTS.has(normalizeFontNameForLookup(fontName)) ? 'serif' : DEFAULT_GENERIC_FALLBACK;
+const MONOSPACE_FONTS = new Set([
+  'courier',
+  'courier new',
+  'consolas',
+  'menlo',
+  'monaco',
+  'lucida console',
+  'liberation mono',
+  'dejavu sans mono',
+  'source code pro',
+]);
+
+const inferGenericFallbackFromFontName = (fontName) => {
+  const name = normalizeFontNameForLookup(fontName);
+  if (MONOSPACE_FONTS.has(name)) return 'monospace';
+  return SERIF_LIKE_FONTS.has(name) ? 'serif' : DEFAULT_GENERIC_FALLBACK;
+};
 
 /**
  * Normalizes a comma-separated font-family string into an array of trimmed, non-empty parts.
@@ -196,8 +211,9 @@ export function mapWordFamilyFallback(wordFamily) {
  *    returns it as-is (assumes it's already a complete font-family declaration)
  * 4. **Fallback resolution**: Determines the fallback chain using this precedence:
  *    - Explicit `options.fallback` (highest priority)
- *    - `options.wordFamily` mapped via mapWordFamilyFallback()
- *    - DEFAULT_GENERIC_FALLBACK ('sans-serif')
+ *    - Fixed `options.pitch` uses monospace, including conflicting family metadata
+ *    - A recognized, non-auto `options.wordFamily` mapped via mapWordFamilyFallback()
+ *    - The font-name heuristic (known monospace, known serif, otherwise sans-serif)
  * 5. **Duplicate detection**: If the font name already appears in the fallback chain
  *    (case-insensitive), returns just the fallback chain
  * 6. **Composition**: Prepends the font name to the fallback chain
@@ -210,12 +226,13 @@ export function mapWordFamilyFallback(wordFamily) {
  *
  * @param {string | undefined | null} fontName - The primary font name to use.
  *   Can be null/undefined (returned as-is), or a string font name.
- * @param {{ fallback?: string; wordFamily?: string | null }} [options={}] - Configuration options
+ * @param {{ fallback?: string; wordFamily?: string | null; pitch?: string | null }} [options={}] - Configuration options
  * @param {string} [options.fallback] - Explicit CSS fallback string (e.g., 'Arial, sans-serif').
  *   Takes precedence over wordFamily. Can be a comma-separated list.
  * @param {string | null} [options.wordFamily] - DOCX font family classification
  *   (e.g., 'swiss', 'roman'). Mapped to CSS fallback via mapWordFamilyFallback().
  *   Ignored if options.fallback is provided.
+ * @param {string | null} [options.pitch] - DOCX pitch. Fixed pitch takes precedence over family classification.
  *
  * @returns {string | undefined | null} A complete CSS font-family string, or the original
  *   value if it was not a string. Never throws errors; returns passthrough values safely.
@@ -280,10 +297,13 @@ export function toCssFontFamily(fontName, options = {}) {
     trimmed = splitOutsideQuotes(trimmed, ';').join(', ');
   }
 
-  const { fallback, wordFamily } = options;
+  const { fallback, wordFamily, pitch } = options;
+  const family = typeof wordFamily === 'string' ? wordFamily.trim().toLowerCase() : '';
+  const fixedPitch = typeof pitch === 'string' && pitch.trim().toLowerCase() === 'fixed';
   const fallbackValue =
     fallback ??
-    (wordFamily ? mapWordFamilyFallback(wordFamily) : undefined) ??
+    (fixedPitch ? 'monospace' : undefined) ??
+    (family !== 'auto' && Object.hasOwn(FONT_FAMILY_FALLBACKS, family) ? mapWordFamilyFallback(family) : undefined) ??
     inferGenericFallbackFromFontName(trimmed);
 
   const fallbackParts = normalizeParts(fallbackValue);

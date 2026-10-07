@@ -939,7 +939,7 @@ export const renderTableCell = (deps: TableCellRenderDependencies): TableCellRen
   cellEl.style.paddingBottom = `${paddingBottom}px`;
 
   if (borders) {
-    applyCellBorders(cellEl, borders);
+    applyCellBorders(cellEl, borders, true);
   } else if (useDefaultBorder) {
     cellEl.style.border = '1px solid rgba(0,0,0,0.6)';
   }

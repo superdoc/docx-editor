@@ -24,6 +24,7 @@ import {
   swapCellBordersLR,
   resolveBorderConflict,
   createThinDoubleBorderOverlay,
+  createCellBorderOverlay,
 } from './border-utils.js';
 
 describe('applyBorder', () => {
@@ -141,6 +142,11 @@ describe('applyBorder', () => {
     const border: BorderSpec = { style: 'dashed', width: 1, color: '#00FF00' };
     applyBorder(element, 'Top', border);
     expect(element.style.borderTop).toMatch(/1px dashed (#00FF00|rgb\(0,\s*255,\s*0\))/i);
+  });
+
+  it('paints dashSmallGap as a dashed CSS border', () => {
+    applyBorder(element, 'Top', { style: 'dashSmallGap', width: 2 / 3, color: '#000000' });
+    expect(element.style.borderTopStyle).toBe('dashed');
   });
 
   it('should apply border with dotted style', () => {
@@ -262,6 +268,110 @@ describe('applyCellBorders', () => {
     expect(element.style.borderRight).toBe('');
     expect(element.style.borderBottom).toBe('');
     expect(element.style.borderLeft).toBe('');
+  });
+
+  it('keeps ordinary borders native and reserves advanced sides for SVG paint', () => {
+    applyCellBorders(
+      element,
+      {
+        top: { style: 'single', width: 1, color: '#000080' },
+        bottom: { style: 'dashDotStroked', width: 2, color: '#000080' },
+      },
+      true,
+    );
+    expect(element.style.borderTopColor).not.toBe('transparent');
+    expect(element.style.borderBottomWidth).toBe('2px');
+    expect(element.style.borderBottomColor).toBe('transparent');
+  });
+
+  it('keeps the CSS fallback for callers without a cell SVG overlay', () => {
+    applyCellBorders(element, { bottom: { style: 'dashDotStroked', width: 2, color: '#000080' } });
+    expect(element.style.borderBottomColor).not.toBe('transparent');
+  });
+});
+
+describe('createCellBorderOverlay', () => {
+  const geometry = { left: '10px', top: '20px', width: 100, height: 40 };
+
+  it('paints both diagonal directions at their authored width and color', () => {
+    const overlay = createCellBorderOverlay(
+      document,
+      {
+        tl2br: { style: 'single', width: 4 / 3, color: '#000080' },
+        tr2bl: { style: 'single', width: 2 / 3, color: '#FF8000' },
+      },
+      geometry,
+    )!;
+    expect(overlay.style.left).toBe('10px');
+    expect(overlay.style.top).toBe('20px');
+    expect(overlay.querySelector('[data-side="tl2br"]')?.getAttribute('d')).toBe('M 0 0 L 100 40');
+    expect(overlay.querySelector('[data-side="tr2bl"]')?.getAttribute('d')).toBe('M 100 0 L 0 40');
+    expect(overlay.querySelector('[data-side="tl2br"]')?.getAttribute('stroke')).toBe('#000080');
+    expect(overlay.querySelector('[data-side="tr2bl"]')?.getAttribute('stroke-width')).toBe(String(2 / 3));
+  });
+
+  it('paints diagonal dash, double, and wave styles distinctly', () => {
+    const dashed = createCellBorderOverlay(document, { tl2br: { style: 'dashed', width: 2 } }, geometry)!;
+    const doubled = createCellBorderOverlay(document, { tl2br: { style: 'double', width: 3 } }, geometry)!;
+    const waved = createCellBorderOverlay(document, { tr2bl: { style: 'wave', width: 2 } }, geometry)!;
+    const dotted = createCellBorderOverlay(document, { tl2br: { style: 'dotted', width: 2 } }, geometry)!;
+    const tripled = createCellBorderOverlay(document, { tl2br: { style: 'triple', width: 3 } }, geometry)!;
+    const doubleWaved = createCellBorderOverlay(document, { tr2bl: { style: 'doubleWave', width: 2 } }, geometry)!;
+    expect(dashed.querySelector('[data-side="tl2br"]')?.getAttribute('stroke-dasharray')).toBeTruthy();
+    expect(doubled.querySelectorAll('[data-side="tl2br"]')).toHaveLength(2);
+    expect(
+      new Set(Array.from(doubled.querySelectorAll('[data-side="tl2br"]'), (path) => path.getAttribute('d'))).size,
+    ).toBe(2);
+    expect(waved.querySelector('[data-side="tr2bl"]')?.getAttribute('d')).toContain(' Q ');
+    expect(dotted.querySelector('[data-side="tl2br"]')?.getAttribute('stroke-linecap')).toBe('round');
+    expect(tripled.querySelectorAll('[data-side="tl2br"]')).toHaveLength(3);
+    expect(doubleWaved.querySelectorAll('[data-side="tr2bl"]')).toHaveLength(2);
+  });
+
+  it('paints advanced styles on their assigned edges with distinct patterns', () => {
+    const overlay = createCellBorderOverlay(
+      document,
+      {
+        top: { style: 'wave', width: 1, color: '#000080' },
+        right: { style: 'dotDash', width: 1, color: '#FF8000' },
+        bottom: { style: 'dashDotStroked', width: 2, color: '#000080' },
+        left: { style: 'triple', width: 2 / 3, color: '#000080' },
+      },
+      geometry,
+    )!;
+    expect(overlay.querySelector('[data-side="top"] path')?.getAttribute('d')).toContain(' Q ');
+    expect(overlay.querySelector('[data-side="right"] path')?.getAttribute('stroke-dasharray')).toBeTruthy();
+    expect(overlay.querySelector('[data-side="bottom"] path')?.getAttribute('d')).toContain(' L ');
+    expect(overlay.querySelectorAll('[data-side="left"] path')).toHaveLength(3);
+    expect(overlay.querySelector('[data-side="right"] path')?.getAttribute('stroke')).toBe('#FF8000');
+    expect(overlay.querySelector('[data-side="bottom"]')?.getAttribute('transform')).toContain('translate(0 38)');
+    expect(overlay.querySelector('[data-side="bottom"] path')?.getAttribute('fill')).toBe('#000080');
+  });
+
+  it('keeps every dashDotStroked stripe within the edge length', () => {
+    const overlay = createCellBorderOverlay(
+      document,
+      { top: { style: 'dashDotStroked', width: 2, color: '#000080' } },
+      geometry,
+    )!;
+    const d = overlay.querySelector('[data-side="top"] path')?.getAttribute('d') ?? '';
+    const xCoordinates = Array.from(d.matchAll(/[ML] (-?\d+(?:\.\d+)?) -?\d+(?:\.\d+)?/g), (match) => Number(match[1]));
+    expect(xCoordinates.length).toBeGreaterThan(0);
+    expect(Math.min(...xCoordinates)).toBeGreaterThanOrEqual(0);
+    expect(Math.max(...xCoordinates)).toBeLessThanOrEqual(geometry.width);
+  });
+
+  it('does not add an overlay for ordinary or nil borders', () => {
+    expect(
+      createCellBorderOverlay(
+        document,
+        {
+          top: { style: 'single', width: 1 },
+          bottom: { style: 'none', width: 0 },
+        },
+        geometry,
+      ),
+    ).toBeNull();
   });
 });
 

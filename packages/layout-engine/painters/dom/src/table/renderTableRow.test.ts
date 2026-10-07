@@ -61,6 +61,67 @@ describe('renderTableRow', () => {
       borders?: { top?: unknown; right?: unknown; bottom?: unknown; left?: unknown };
     };
 
+  it('carries a diagonal-only cell border through row resolution into paint', () => {
+    const tl2br = { style: 'single', width: 4 / 3, color: '#000080' };
+    renderTableRow(
+      createDeps({
+        tableBorders: undefined,
+        row: { id: 'row-1', cells: [{ id: 'cell-1', attrs: { borders: { tl2br } }, blocks: [] }] },
+      }) as never,
+    );
+
+    expect((renderTableCellMock.mock.calls[0][0] as { borders: { tl2br: unknown } }).borders.tl2br).toEqual(tl2br);
+    expect(container.querySelector('[data-side="tl2br"]')).not.toBeNull();
+  });
+
+  it('keeps table top, insideH, and bottom borders when RTL cells define only diagonals', () => {
+    const outer = { style: 'single' as const, width: 2 / 3, color: '#000000' };
+    const redDivider = { style: 'single' as const, width: 4, color: '#FF0000' };
+    const diagonal = { style: 'single' as const, width: 2 / 3, color: '#000000' };
+    const tableBorders = { top: outer, bottom: outer, insideH: redDivider };
+    const rowMeasure = { height: 20, cells: [{ width: 100, height: 20, gridColumnStart: 0, colSpan: 1, rowSpan: 1 }] };
+    const firstRow = {
+      id: 'first',
+      cells: [{ id: 'a', attrs: { borders: { tl2br: diagonal, tr2bl: diagonal } }, blocks: [] }],
+    };
+    const secondRow = {
+      id: 'second',
+      cells: [{ id: 'b', attrs: { borders: { tl2br: diagonal, tr2bl: diagonal } }, blocks: [] }],
+    };
+
+    renderTableRow(
+      createDeps({
+        rowIndex: 0,
+        totalRows: 2,
+        cellSpacingPx: 0,
+        isRtl: true,
+        tableBorders,
+        rowMeasure,
+        row: firstRow,
+        nextRow: secondRow,
+        nextRowMeasure: rowMeasure,
+      }) as never,
+    );
+    expect(getRenderedCellCall().borders?.top).toEqual(outer);
+
+    renderTableCellMock.mockClear();
+    renderTableRow(
+      createDeps({
+        rowIndex: 1,
+        totalRows: 2,
+        cellSpacingPx: 0,
+        isRtl: true,
+        tableBorders,
+        rowMeasure,
+        row: secondRow,
+        prevRow: firstRow,
+        prevRowMeasure: rowMeasure,
+      }) as never,
+    );
+    expect(getRenderedCellCall().borders?.top).toEqual(redDivider);
+    expect(getRenderedCellCall().borders?.bottom).toEqual(outer);
+  });
+
   it('does not draw insideH on top edge for continuation fragments with cell spacing', () => {
     renderTableRow(createDeps({ continuesFromPrev: true }) as never);
 
@@ -594,6 +655,135 @@ describe('renderTableRow', () => {
   describe('collapsed cell-border conflict resolution (ECMA-376 §17.4.66, SD-3345)', () => {
     const B = { style: 'single' as const, width: 1.333, color: '#BDD7EE' };
     const allSides = { top: B, right: B, bottom: B, left: B };
+
+    it('gives the shared edge below a double ring to a higher-weight dot-dash border', () => {
+      const double = { style: 'double' as const, width: 1, color: '#1F3864' };
+      const dotDash = { style: 'dotDash' as const, width: 1, color: '#E55A2A' };
+      const measure = { height: 20, cells: [{ width: 100, height: 20, gridColumnStart: 0, colSpan: 1, rowSpan: 1 }] };
+      const upper = {
+        id: 'upper',
+        cells: [
+          {
+            id: 'double',
+            attrs: { borders: { top: double, right: double, bottom: double, left: double } },
+            blocks: [],
+          },
+        ],
+      };
+      const lower = { id: 'lower', cells: [{ id: 'dot-dash', attrs: { borders: { top: dotDash } }, blocks: [] }] };
+
+      renderTableRow(
+        createDeps({
+          rowIndex: 0,
+          totalRows: 2,
+          cellSpacingPx: 0,
+          tableBorders: undefined,
+          rowMeasure: measure,
+          row: upper,
+          nextRow: lower,
+          nextRowMeasure: measure,
+        }) as never,
+      );
+      expect(getRenderedCellCall().borders?.bottom).toBeUndefined();
+
+      renderTableCellMock.mockClear();
+      renderTableRow(
+        createDeps({
+          rowIndex: 1,
+          totalRows: 2,
+          cellSpacingPx: 0,
+          tableBorders: undefined,
+          rowMeasure: measure,
+          row: lower,
+          prevRow: upper,
+          prevRowMeasure: measure,
+        }) as never,
+      );
+      expect(getRenderedCellCall().borders?.top).toEqual(dotDash);
+    });
+
+    it('keeps an authored dashSmallGap top above E.2 P when the preceding cell has a single bottom', () => {
+      const single = { style: 'single' as const, width: 2 / 3, color: '#000000' };
+      const smallGap = { style: 'dashSmallGap' as const, width: 2 / 3, color: '#000000' };
+      const measure = { height: 20, cells: [{ width: 100, height: 20, gridColumnStart: 0, colSpan: 1, rowSpan: 1 }] };
+      const upper = { id: 'previous', cells: [{ id: 'P-above', attrs: { borders: { bottom: single } }, blocks: [] }] };
+      const lower = { id: 'E.2', cells: [{ id: 'P', attrs: { borders: { top: smallGap } }, blocks: [] }] };
+      renderTableRow(
+        createDeps({
+          rowIndex: 1,
+          totalRows: 3,
+          cellSpacingPx: 0,
+          tableBorders: undefined,
+          rowMeasure: measure,
+          row: lower,
+          prevRow: upper,
+          prevRowMeasure: measure,
+        }) as never,
+      );
+      expect(getRenderedCellCall().borders?.top).toEqual(smallGap);
+    });
+
+    it('resolves a merged double-ring bottom across both lower cells', () => {
+      const double = { style: 'double' as const, width: 1, color: '#1F3864' };
+      const dotDash = { style: 'dotDash' as const, width: 1, color: '#E55A2A' };
+      const single = { style: 'single' as const, width: 1, color: '#000000' };
+      const upperMeasure = {
+        height: 20,
+        cells: [{ width: 200, height: 20, gridColumnStart: 0, colSpan: 2, rowSpan: 1 }],
+      };
+      const lowerMeasure = {
+        height: 20,
+        cells: [
+          { width: 100, height: 20, gridColumnStart: 0, colSpan: 1, rowSpan: 1 },
+          { width: 100, height: 20, gridColumnStart: 1, colSpan: 1, rowSpan: 1 },
+        ],
+      };
+      const upper = {
+        id: 'upper',
+        cells: [
+          { id: 'ring', attrs: { borders: { top: double, right: double, bottom: double, left: double } }, blocks: [] },
+        ],
+      };
+      const lower = {
+        id: 'lower',
+        cells: [
+          { id: 'strong', attrs: { borders: { top: dotDash } }, blocks: [] },
+          { id: 'weak', attrs: { borders: { top: single } }, blocks: [] },
+        ],
+      };
+
+      renderTableRow(
+        createDeps({
+          rowIndex: 0,
+          totalRows: 2,
+          cellSpacingPx: 0,
+          tableBorders: undefined,
+          columnWidths: [100, 100],
+          rowMeasure: upperMeasure,
+          row: upper,
+          nextRow: lower,
+          nextRowMeasure: lowerMeasure,
+        }) as never,
+      );
+      expect(getRenderedCellCall().borders?.bottom).toBeUndefined();
+
+      renderTableCellMock.mockClear();
+      renderTableRow(
+        createDeps({
+          rowIndex: 1,
+          totalRows: 2,
+          cellSpacingPx: 0,
+          tableBorders: undefined,
+          columnWidths: [100, 100],
+          rowMeasure: lowerMeasure,
+          row: lower,
+          prevRow: upper,
+          prevRowMeasure: upperMeasure,
+        }) as never,
+      );
+      expect((renderTableCellMock.mock.calls[0][0] as { borders: { top: unknown } }).borders.top).toEqual(dotDash);
+      expect((renderTableCellMock.mock.calls[1][0] as { borders: { top: unknown } }).borders.top).toEqual(double);
+    });
 
     it('draws a shared interior vertical edge once (no doubling) for adjacent cells with identical borders', () => {
       // The M&A checklist case: no table-level borders, every cell has all 4 sides.

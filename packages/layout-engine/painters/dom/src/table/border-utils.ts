@@ -19,6 +19,7 @@ const ALLOWED_BORDER_STYLES = new Set<BorderStyle>([
   'single',
   'double',
   'dashed',
+  'dashSmallGap',
   'dotted',
   'thick',
   'triple',
@@ -26,6 +27,7 @@ const ALLOWED_BORDER_STYLES = new Set<BorderStyle>([
   'dotDotDash',
   'wave',
   'doubleWave',
+  'dashDotStroked',
 ]);
 
 const borderStyleToCSS = (style?: BorderStyle): string => {
@@ -42,6 +44,7 @@ const borderStyleToCSS = (style?: BorderStyle): string => {
     single: 'solid',
     double: 'double',
     dashed: 'dashed',
+    dashSmallGap: 'dashed',
     dotted: 'dotted',
     thick: 'solid',
     triple: 'solid',
@@ -49,6 +52,7 @@ const borderStyleToCSS = (style?: BorderStyle): string => {
     dotDotDash: 'dashed',
     wave: 'solid',
     doubleWave: 'solid',
+    dashDotStroked: 'solid',
   };
 
   return styleMap[style];
@@ -63,6 +67,7 @@ const NATIVE_DOUBLE_BORDER_MIN_WIDTH_PX = 3;
 const THIN_DOUBLE_BORDER_DATASET_KEY = 'superdocThinDoubleBorder';
 const THIN_DOUBLE_BORDER_CLASS_NAME = 'superdoc-thin-double-border';
 const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
+const SVG_CELL_BORDER_STYLES = new Set<BorderStyle>(['dotDash', 'triple', 'wave', 'dashDotStroked']);
 // V2 publishes the inverse of its CSS transform on the paint wrapper. Other
 // hosts fall back to 1, so the painter keeps the same one-screen-pixel floor.
 const RENDER_ZOOM_INVERSE_PROPERTY = '--sd-render-zoom-inverse';
@@ -290,12 +295,231 @@ export const applyBorder = (element: HTMLElement, side: BorderSide, border?: Bor
  * });
  * ```
  */
-export const applyCellBorders = (element: HTMLElement, borders?: CellBorders): void => {
+export const applyCellBorders = (element: HTMLElement, borders?: CellBorders, useSvgOverlay = false): void => {
   if (!borders) return;
   applyBorder(element, 'Top', borders.top);
   applyBorder(element, 'Right', borders.right);
   applyBorder(element, 'Bottom', borders.bottom);
   applyBorder(element, 'Left', borders.left);
+  if (useSvgOverlay) {
+    for (const side of BORDER_SIDES) {
+      const border = borders[side.toLowerCase() as Lowercase<BorderSide>];
+      if (border?.style && SVG_CELL_BORDER_STYLES.has(border.style) && border.width !== 0) {
+        element.style[`border${side}Color`] = 'transparent';
+      }
+    }
+  }
+};
+
+/** Paints cell-only border patterns that CSS borders cannot represent. */
+export const createCellBorderOverlay = (
+  doc: Document,
+  borders: CellBorders | undefined,
+  geometry: { left: string; top: string; width: number; height: number },
+): SVGSVGElement | null => {
+  const { width, height } = geometry;
+  if (!borders || width <= 0 || height <= 0) return null;
+  const sides = BORDER_SIDES.filter((side) => {
+    const border = borders[side.toLowerCase() as Lowercase<BorderSide>];
+    return border?.style && SVG_CELL_BORDER_STYLES.has(border.style) && border.width !== 0;
+  });
+  const diagonals = (['tl2br', 'tr2bl'] as const).filter((side) => isPresentBorderContract(borders[side]));
+  if (sides.length === 0 && diagonals.length === 0) return null;
+
+  const svg = doc.createElementNS(SVG_NAMESPACE, 'svg');
+  svg.dataset.superdocCellBorderOverlay = 'true';
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+  svg.style.position = 'absolute';
+  svg.style.left = geometry.left;
+  svg.style.top = geometry.top;
+  svg.style.width = `${width}px`;
+  svg.style.height = `${height}px`;
+  svg.style.overflow = 'visible';
+  svg.style.pointerEvents = 'none';
+  svg.style.zIndex = '1';
+
+  const appendPath = (parent: SVGElement, d: string, color: string, strokeWidth: number, pattern?: string): void => {
+    const path = doc.createElementNS(SVG_NAMESPACE, 'path');
+    path.setAttribute('d', d);
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', color);
+    path.setAttribute('stroke-width', String(strokeWidth));
+    if (pattern) path.setAttribute('stroke-dasharray', pattern);
+    parent.append(path);
+  };
+
+  for (const side of sides) {
+    const border = borders[side.toLowerCase() as Lowercase<BorderSide>]!;
+    const size = Math.max(0, border.width ?? 1);
+    // Word keeps compound strokes and waves legible even when w:sz is below one CSS pixel.
+    const paintBand =
+      border.style === 'triple'
+        ? Math.max(size, 5)
+        : border.style === 'wave'
+          ? Math.max(size, 4)
+          : border.style === 'dashDotStroked'
+            ? Math.max(size, 4)
+            : size;
+    const color = border.color && isValidHexColor(border.color) ? border.color : '#000000';
+    const horizontal = side === 'Top' || side === 'Bottom';
+    const length = horizontal ? width : height;
+    const group = doc.createElementNS(SVG_NAMESPACE, 'g');
+    group.dataset.side = side.toLowerCase();
+    const x = side === 'Right' ? width - paintBand / 2 : side === 'Left' ? paintBand / 2 : 0;
+    const y = side === 'Bottom' ? height - paintBand / 2 : side === 'Top' ? paintBand / 2 : 0;
+    group.setAttribute('transform', `translate(${x} ${y})${horizontal ? '' : ' rotate(90)'}`);
+    svg.append(group);
+
+    if (border.style === 'triple') {
+      for (const offset of [-paintBand * 0.4, 0, paintBand * 0.4]) {
+        appendPath(group, `M 0 ${offset} H ${length}`, color, Math.max(size / 5, 1));
+      }
+    } else if (border.style === 'dotDash') {
+      const stroke = Math.max(size, 0.5);
+      appendPath(
+        group,
+        `M 0 0 H ${length}`,
+        color,
+        stroke,
+        `${stroke * 0.1} ${stroke * 2} ${stroke * 4} ${stroke * 2}`,
+      );
+      group.setAttribute('stroke-linecap', 'round');
+    } else if (border.style === 'wave') {
+      const period = Math.max(8, size * 6);
+      const amplitude = Math.max(1.25, size / 2);
+      let d = 'M 0 0';
+      for (let at = 0; at < length; at += period) {
+        const end = Math.min(length, at + period);
+        const mid = (at + end) / 2;
+        d += ` Q ${(at + mid) / 2} ${-amplitude} ${mid} 0 Q ${(mid + end) / 2} ${amplitude} ${end} 0`;
+      }
+      appendPath(group, d, color, Math.max(0.5, size / 2));
+    } else if (border.style === 'dashDotStroked') {
+      const step = Math.max(6, paintBand * 2);
+      let d = '';
+      const clipAt = (
+        points: Array<[number, number]>,
+        bound: number,
+        keepGreater: boolean,
+      ): Array<[number, number]> => {
+        const clipped: Array<[number, number]> = [];
+        for (let i = 0; i < points.length; i++) {
+          const from = points[i];
+          const to = points[(i + 1) % points.length];
+          const fromInside = keepGreater ? from[0] >= bound : from[0] <= bound;
+          const toInside = keepGreater ? to[0] >= bound : to[0] <= bound;
+          if (fromInside !== toInside) {
+            const ratio = (bound - from[0]) / (to[0] - from[0]);
+            clipped.push([bound, from[1] + ratio * (to[1] - from[1])]);
+          }
+          if (toInside) clipped.push(to);
+        }
+        return clipped;
+      };
+      for (let at = -paintBand; at < length; at += step) {
+        const polygon: Array<[number, number]> = [
+          [at, -paintBand / 2],
+          [at + step * 0.6, -paintBand / 2],
+          [at + step * 0.6 + paintBand, paintBand / 2],
+          [at + paintBand, paintBand / 2],
+        ];
+        const trimmed = clipAt(clipAt(polygon, 0, true), length, false);
+        if (trimmed.length < 3) continue;
+        d += ` M ${trimmed[0][0]} ${trimmed[0][1]}`;
+        for (const [x, y] of trimmed.slice(1)) d += ` L ${x} ${y}`;
+        d += ' Z';
+      }
+      const stripes = doc.createElementNS(SVG_NAMESPACE, 'path');
+      stripes.setAttribute('d', d);
+      stripes.setAttribute('fill', color);
+      group.append(stripes);
+    }
+  }
+
+  for (const side of diagonals) {
+    const border = borders[side]!;
+    const color = border.color && isValidHexColor(border.color) ? border.color : '#000000';
+    const size = border.width ?? 1;
+    const startX = side === 'tl2br' ? 0 : width;
+    const dx = side === 'tl2br' ? width : -width;
+    const length = Math.hypot(width, height);
+    const normalX = -height / length;
+    const normalY = dx / length;
+    const line = (offset: number): string =>
+      `M ${startX + normalX * offset} ${normalY * offset} L ${startX + dx + normalX * offset} ${height + normalY * offset}`;
+    const appendDiagonal = (d: string, strokeWidth: number, dashArray?: string, roundCaps = false): void => {
+      const path = doc.createElementNS(SVG_NAMESPACE, 'path');
+      path.dataset.side = side;
+      path.setAttribute('d', d);
+      path.setAttribute('fill', 'none');
+      path.setAttribute('stroke', color);
+      path.setAttribute('stroke-width', String(strokeWidth));
+      if (dashArray) path.setAttribute('stroke-dasharray', dashArray);
+      if (roundCaps) path.setAttribute('stroke-linecap', 'round');
+      svg.append(path);
+    };
+    const wave = (offset: number): string => {
+      const amplitude = Math.max(1.25, size / 2);
+      const period = Math.max(8, size * 6);
+      const point = (distance: number, displacement = 0): [number, number] => [
+        startX + (dx * distance) / length + normalX * (offset + displacement),
+        (height * distance) / length + normalY * (offset + displacement),
+      ];
+      const [startWaveX, startWaveY] = point(0);
+      let d = `M ${startWaveX} ${startWaveY}`;
+      for (let at = 0; at < length; at += period) {
+        const end = Math.min(length, at + period);
+        const mid = (at + end) / 2;
+        const firstControl = point((at + mid) / 2, -amplitude);
+        const midpoint = point(mid);
+        const secondControl = point((mid + end) / 2, amplitude);
+        const endpoint = point(end);
+        d += ` Q ${firstControl[0]} ${firstControl[1]} ${midpoint[0]} ${midpoint[1]}`;
+        d += ` Q ${secondControl[0]} ${secondControl[1]} ${endpoint[0]} ${endpoint[1]}`;
+      }
+      return d;
+    };
+    switch (border.style) {
+      case 'double':
+      case 'triple': {
+        const offsets = border.style === 'double' ? [-size / 3, size / 3] : [-size * 0.4, 0, size * 0.4];
+        for (const offset of offsets)
+          appendDiagonal(line(offset), Math.max(size / (border.style === 'double' ? 3 : 5), 0.5));
+        break;
+      }
+      case 'wave':
+        appendDiagonal(wave(0), Math.max(0.5, size / 2));
+        break;
+      case 'doubleWave':
+        for (const offset of [-size / 3, size / 3]) appendDiagonal(wave(offset), Math.max(0.5, size / 3));
+        break;
+      case 'dashed':
+      case 'dashSmallGap':
+        appendDiagonal(line(0), size, `${size * 4} ${size * 2}`);
+        break;
+      case 'dotted':
+        appendDiagonal(line(0), size, `${size * 0.1} ${size * 2}`, true);
+        break;
+      case 'dotDash':
+        appendDiagonal(line(0), size, `${size * 0.1} ${size * 2} ${size * 4} ${size * 2}`, true);
+        break;
+      case 'dotDotDash':
+        appendDiagonal(
+          line(0),
+          size,
+          `${size * 0.1} ${size * 2} ${size * 0.1} ${size * 2} ${size * 4} ${size * 2}`,
+          true,
+        );
+        break;
+      case 'dashDotStroked':
+        appendDiagonal(line(0), size, `${size * 5} ${size * 1.5} ${size * 0.5} ${size * 1.5}`);
+        break;
+      default:
+        appendDiagonal(line(0), size);
+    }
+  }
+  return svg;
 };
 
 /**
@@ -520,5 +744,7 @@ export const swapCellBordersLR = (borders: CellBorders | undefined): CellBorders
     ...borders,
     left: borders.right,
     right: borders.left,
+    tl2br: borders.tr2bl,
+    tr2bl: borders.tl2br,
   };
 };

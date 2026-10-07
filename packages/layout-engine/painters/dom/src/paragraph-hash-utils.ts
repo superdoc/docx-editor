@@ -78,6 +78,8 @@ export const hashCellBorders = (borders: CellBorders | undefined): string => {
   if (borders.right) parts.push(`r:[${hashBorderSpec(borders.right)}]`);
   if (borders.bottom) parts.push(`b:[${hashBorderSpec(borders.bottom)}]`);
   if (borders.left) parts.push(`l:[${hashBorderSpec(borders.left)}]`);
+  if (borders.tl2br) parts.push(`d1:[${hashBorderSpec(borders.tl2br)}]`);
+  if (borders.tr2bl) parts.push(`d2:[${hashBorderSpec(borders.tr2bl)}]`);
   return parts.join(';');
 };
 

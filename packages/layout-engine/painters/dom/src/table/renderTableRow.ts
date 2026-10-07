@@ -23,6 +23,7 @@ import {
   isExplicitNoneBorder,
   swapCellBordersLR,
   createThinDoubleBorderOverlay,
+  createCellBorderOverlay,
 } from './border-utils.js';
 import { getTableCellGridBounds, type TableCellGridPosition } from './grid-geometry.js';
 import {
@@ -52,6 +53,10 @@ type CellBorderResolutionArgs = {
   leftCellBorders?: CellBorders;
   /** Borders of the cell directly to the right (same row, next grid column), for asymmetric-edge ownership. */
   rightCellBorders?: CellBorders;
+  /** Whether this cell's double ring wins across every cell below its bottom edge. */
+  doubleRingOwnsBottom?: boolean;
+  /** Whether the double ring above actually paints its full bottom edge. */
+  aboveDoubleRingOwnsBottom?: boolean;
   /**
    * True when the next row's real cells do not reach this cell's right edge (e.g. the next
    * row has a `w:gridAfter` spacer while this cell spans into it). The cell below then can't
@@ -111,10 +116,13 @@ const resolveRenderedCellBorders = ({
   aboveCellBorders,
   leftCellBorders,
   rightCellBorders,
+  doubleRingOwnsBottom,
+  aboveDoubleRingOwnsBottom,
   nextRowLeavesRightGap,
   deferTopToAboveCell,
   nextRowSuppressesSharedTop,
 }: CellBorderResolutionArgs): CellBorders | undefined => {
+  const hasDiagonalBorders = cellBorders?.tl2br !== undefined || cellBorders?.tr2bl !== undefined;
   const hasExplicitBorders = hasExplicitCellBorders(cellBorders);
 
   const cellBounds = getTableCellGridBounds(cellPosition);
@@ -155,7 +163,9 @@ const resolveRenderedCellBorders = ({
         ? resolveTableBorderValue(cb.top, tableBorders?.top)
         : deferTopToAboveCell
           ? undefined
-          : aboveDoubleRing && borderSpecsMatch(cb.top, aboveCellBorders?.bottom)
+          : aboveDoubleRing &&
+              aboveDoubleRingOwnsBottom &&
+              resolveBorderConflict(aboveCellBorders?.bottom, cb.top) === aboveCellBorders?.bottom
             ? undefined
             : (resolveBorderConflict(cb.top, aboveCellBorders?.bottom) ??
               // Both sides not present: an explicit nil on BOTH adjacent cells suppresses the
@@ -171,7 +181,7 @@ const resolveRenderedCellBorders = ({
       // the cell after the left/right swap instead of moving onto a borderless neighbor. (SD-3345)
       left: cellBounds.touchesLeftEdge
         ? resolveTableBorderValue(cb.left, tableBorders?.left)
-        : leftDoubleRing && borderSpecsMatch(cb.left, leftCellBorders?.right)
+        : leftDoubleRing && resolveBorderConflict(leftCellBorders?.right, cb.left) === leftCellBorders?.right
           ? undefined
           : isPresentBorder(cb.left)
             ? (resolveBorderConflict(cb.left, leftCellBorders?.right) ?? borderValueToSpec(tableBorders?.insideV))
@@ -186,19 +196,26 @@ const resolveRenderedCellBorders = ({
       right: cellBounds.touchesRightEdge
         ? resolveTableBorderValue(cb.right, tableBorders?.right)
         : cellDoubleRing
-          ? cb.right
+          ? resolveBorderConflict(cb.right, rightCellBorders?.left) === cb.right
+            ? cb.right
+            : undefined
           : isPresentBorder(cb.right) && !isPresentBorder(rightCellBorders?.left)
             ? cb.right
             : undefined,
       bottom: touchesBottomBoundary
         ? resolveTableBorderValue(cb.bottom, tableBorders?.bottom)
         : cellDoubleRing
-          ? cb.bottom
+          ? doubleRingOwnsBottom
+            ? cb.bottom
+            : undefined
           : undefined,
     };
   }
 
-  if (hasBordersAttribute && !hasExplicitBorders) {
+  // Diagonal-only tcBorders leave the four cardinal sides unspecified. Those
+  // sides still inherit table borders; an actually empty border object keeps
+  // the existing explicit-borderless behavior.
+  if (hasBordersAttribute && !hasExplicitBorders && !hasDiagonalBorders) {
     return undefined;
   }
 
@@ -604,18 +621,40 @@ export const renderTableRow = (deps: TableRowRenderDependencies): void => {
     return undefined;
   };
 
-  // Right edge (exclusive grid column) of the cell occupying `gridCol` in `measureCells`.
-  const findCellRightEdgeAtColumn = (
+  // Grid span of the cell occupying `gridCol` in `measureCells`.
+  const findCellSpanAtColumn = (
     measureCells: TableRowMeasure['cells'] | undefined,
     gridCol: number,
-  ): number | undefined => {
+  ): { start: number; end: number } | undefined => {
     if (!measureCells) return undefined;
     for (let i = 0; i < measureCells.length; i++) {
       const start = measureCells[i].gridColumnStart ?? i;
       const span = measureCells[i].colSpan ?? 1;
-      if (gridCol >= start && gridCol < start + span) return start + span;
+      if (gridCol >= start && gridCol < start + span) return { start, end: start + span };
     }
     return undefined;
+  };
+
+  // A merged double ring paints one unbroken bottom edge only if it wins against
+  // every lower cell along that edge. Otherwise each lower cell paints its local winner.
+  const doubleRingWinsAcrossSpan = (
+    ringBorders: CellBorders | undefined,
+    start: number,
+    end: number,
+    lowerCells: TableRow['cells'] | undefined,
+    lowerMeasureCells: TableRowMeasure['cells'] | undefined,
+  ): boolean => {
+    if (!uniformDoubleRing(ringBorders)) return false;
+    if (!lowerCells || !lowerMeasureCells) return true;
+    for (let i = 0; i < lowerMeasureCells.length; i++) {
+      const lowerStart = lowerMeasureCells[i].gridColumnStart ?? i;
+      const lowerEnd = lowerStart + (lowerMeasureCells[i].colSpan ?? 1);
+      if (lowerStart >= end || lowerEnd <= start) continue;
+      if (resolveBorderConflict(ringBorders?.bottom, lowerCells[i]?.attrs?.borders?.top) !== ringBorders?.bottom) {
+        return false;
+      }
+    }
+    return true;
   };
 
   // Rightmost grid column (exclusive) covered by the next row's REAL cells. When a spanning
@@ -665,13 +704,23 @@ export const renderTableRow = (deps: TableRowRenderDependencies): void => {
     // The cell to the right (same row, the column just past this cell's span) — used to keep
     // an asymmetric vertical edge on the owning cell instead of moving it to the neighbor.
     const rightCellBorders = findCellBordersAtColumn(row?.cells, rowMeasure.cells, gridColumnStart + colSpan);
+    const doubleRingOwnsBottom = doubleRingWinsAcrossSpan(
+      cellBordersAttr,
+      gridColumnStart,
+      gridColumnStart + colSpan,
+      nextRow?.cells,
+      nextRowMeasure?.cells,
+    );
     // This cell spans past the next row's real cells (gridAfter spacer beneath its right edge).
     const nextRowLeavesRightGap = gridColumnStart + colSpan > nextRowMaxCol;
     // Conversely, the cell ABOVE spans past THIS row's right edge (this row has a gridAfter
     // relative to it). The spanning cell then owns the full shared edge and draws its own
     // bottom, so this cell must NOT also draw its top, or the edge doubles. (SD-3345)
-    const aboveCellRightEdge = findCellRightEdgeAtColumn(prevRowMeasure?.cells, gridColumnStart);
-    const deferTopToAboveCell = aboveCellRightEdge !== undefined && aboveCellRightEdge > rowRightEdgeCol;
+    const aboveCellSpan = findCellSpanAtColumn(prevRowMeasure?.cells, gridColumnStart);
+    const deferTopToAboveCell = aboveCellSpan !== undefined && aboveCellSpan.end > rowRightEdgeCol;
+    const aboveDoubleRingOwnsBottom = aboveCellSpan
+      ? doubleRingWinsAcrossSpan(aboveCellBorders, aboveCellSpan.start, aboveCellSpan.end, row?.cells, rowMeasure.cells)
+      : false;
 
     // Resolve borders using logical positions, then swap output for RTL.
     // The resolver uses touchesLeftEdge/touchesRightEdge which are LOGICAL edges.
@@ -688,12 +737,18 @@ export const renderTableRow = (deps: TableRowRenderDependencies): void => {
       aboveCellBorders,
       leftCellBorders,
       rightCellBorders,
+      doubleRingOwnsBottom,
+      aboveDoubleRingOwnsBottom,
       nextRowLeavesRightGap,
       deferTopToAboveCell,
       nextRowSuppressesSharedTop,
     });
     // RTL: swap resolved left↔right so CSS properties match visual edges
-    const finalBorders = isRtl && resolvedBorders ? swapCellBordersLR(resolvedBorders) : resolvedBorders;
+    const withDiagonals =
+      cellBordersAttr?.tl2br || cellBordersAttr?.tr2bl
+        ? { ...resolvedBorders, tl2br: cellBordersAttr.tl2br, tr2bl: cellBordersAttr.tr2bl }
+        : resolvedBorders;
+    const finalBorders = isRtl && withDiagonals ? swapCellBordersLR(withDiagonals) : withDiagonals;
 
     // Calculate cell height - use rowspan height if cell spans multiple rows
     // For partial rows, use the partial height instead
@@ -753,7 +808,14 @@ export const renderTableRow = (deps: TableRowRenderDependencies): void => {
     cellElement.setAttribute(TABLE_ROW_ROLE_ATTRIBUTE, rowRole);
     if (
       !finalBorders ||
-      ![finalBorders.top, finalBorders.right, finalBorders.bottom, finalBorders.left].some(isPresentBorder)
+      ![
+        finalBorders.top,
+        finalBorders.right,
+        finalBorders.bottom,
+        finalBorders.left,
+        finalBorders.tl2br,
+        finalBorders.tr2bl,
+      ].some(isPresentBorder)
     ) {
       cellElement.dataset.sdBorderlessCell = '';
     }
@@ -781,6 +843,13 @@ export const renderTableRow = (deps: TableRowRenderDependencies): void => {
     }
 
     container.appendChild(cellElement);
+    const specialBorderOverlay = createCellBorderOverlay(doc, finalBorders, {
+      left: cellElement.style.left,
+      top: cellElement.style.top,
+      width: computedCellWidth > 0 ? computedCellWidth : cellMeasure.width,
+      height: cellHeight,
+    });
+    if (specialBorderOverlay) container.appendChild(specialBorderOverlay);
     const thinDoubleBorderOverlay = createThinDoubleBorderOverlay(doc, cellElement, {
       left: cellElement.style.left,
       top: cellElement.style.top,

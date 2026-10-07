@@ -1069,13 +1069,15 @@ export type BorderStyle =
   | 'single'
   | 'double'
   | 'dashed'
+  | 'dashSmallGap'
   | 'dotted'
   | 'thick'
   | 'triple'
   | 'dotDash'
   | 'dotDotDash'
   | 'wave'
-  | 'doubleWave';
+  | 'doubleWave'
+  | 'dashDotStroked';
 
 /** Border specification for table and cell borders. */
 export type BorderSpec = {
@@ -1124,6 +1126,8 @@ export type CellBorders = {
   right?: BorderSpec;
   bottom?: BorderSpec;
   left?: BorderSpec;
+  tl2br?: BorderSpec;
+  tr2bl?: BorderSpec;
 };
 
 const TABLE_BORDER_STYLE_NUMBER: Partial<Record<BorderStyle, number>> = {
@@ -1132,24 +1136,13 @@ const TABLE_BORDER_STYLE_NUMBER: Partial<Record<BorderStyle, number>> = {
   double: 3,
   dotted: 4,
   dashed: 5,
-  dotDash: 6,
-  dotDotDash: 7,
-  triple: 8,
-  wave: 18,
-  doubleWave: 19,
-};
-
-const TABLE_BORDER_STYLE_LINES: Partial<Record<BorderStyle, number>> = {
-  single: 1,
-  thick: 1,
-  double: 2,
-  dotted: 1,
-  dashed: 1,
-  dotDash: 1,
-  dotDotDash: 1,
-  triple: 3,
-  wave: 1,
-  doubleWave: 2,
+  dashSmallGap: 22,
+  dotDash: 8,
+  dotDotDash: 9,
+  triple: 10,
+  wave: 20,
+  doubleWave: 21,
+  dashDotStroked: 23,
 };
 
 /** True when a normalized border contributes a visible edge. */
@@ -1163,9 +1156,13 @@ export const isExplicitNoneBorder = (border?: unknown): boolean => {
   return value.style === 'none' || value.none === true;
 };
 
-const tableBorderWeight = (border: BorderSpec): number =>
-  (TABLE_BORDER_STYLE_LINES[border.style as BorderStyle] ?? 1) *
-  (TABLE_BORDER_STYLE_NUMBER[border.style as BorderStyle] ?? 1);
+const tableBorderWeight = (border: BorderSpec): number => {
+  // dashSmallGap looks dashed, but Word gives it its own border number (22).
+  if (border.style === 'dotted' || border.style === 'dashed') return 1;
+  // OOXML w:sz is in eighth-points; normalized cell widths are in CSS pixels.
+  const widthInEighthPoints = Math.round((border.width ?? 1) * 6);
+  return widthInEighthPoints * (TABLE_BORDER_STYLE_NUMBER[border.style as BorderStyle] ?? 1);
+};
 
 const tableBorderColorBrightness = (
   color: string | undefined,

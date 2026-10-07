@@ -316,6 +316,12 @@ describe('hashCellBorders', () => {
     expect(hash1).not.toBe(hash2);
   });
 
+  it('invalidates layout when either diagonal changes', () => {
+    const base: CellBorders = { tl2br: { style: 'single', width: 1, color: '#000080' } };
+    expect(hashCellBorders(base)).not.toBe(hashCellBorders({ ...base, tl2br: { ...base.tl2br, width: 2 } }));
+    expect(hashCellBorders(base)).not.toBe(hashCellBorders({ ...base, tr2bl: { style: 'single', width: 1 } }));
+  });
+
   it('handles partial border definitions', () => {
     const borders: CellBorders = {
       top: { style: 'single', width: 4 },

@@ -112,8 +112,12 @@ export function translateRenderReadinessDiagnostic(diag, ctx = {}) {
   // for a transient, already-recovered condition.
   if (code === 'render.exact-content-hydration-failed') return null;
 
+  const unusableFurniture =
+    code === 'render.header-footer.ref-unusable' || code === 'render.header-footer.part-unusable';
   let diagnosticCode;
-  if (
+  if (unusableFurniture) {
+    diagnosticCode = 'PARSE_ERROR';
+  } else if (
     code.includes('page-geometry.failed') ||
     code.includes('section-metadata.failed') ||
     code.includes('page-furniture.failed') ||
@@ -153,7 +157,7 @@ export function translateRenderReadinessDiagnostic(diag, ctx = {}) {
   return {
     error: new Error(message),
     diagnosticCode,
-    diagnosticStage: 'render',
+    diagnosticStage: unusableFurniture ? 'parse' : 'render',
     severity,
     internalCode: code,
     documentId: ctx.documentId ?? null,

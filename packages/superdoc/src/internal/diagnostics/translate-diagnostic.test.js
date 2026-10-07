@@ -103,6 +103,24 @@ describe('translateUnzipDiagnostic', () => {
 });
 
 describe('translateRenderReadinessDiagnostic', () => {
+  it.each(['render.header-footer.ref-unusable', 'render.header-footer.part-unusable'])(
+    'forwards %s as a typed nonfatal input diagnostic',
+    (code) => {
+      const result = translateRenderReadinessDiagnostic(
+        { code, reason: 'A referenced header cannot be used.', severity: 'warn' },
+        { documentId: 'sd-5696' },
+      );
+      expect(result).toMatchObject({
+        diagnosticCode: 'PARSE_ERROR',
+        diagnosticStage: 'parse',
+        severity: 'warn',
+        internalCode: code,
+        documentId: 'sd-5696',
+      });
+      expect(result.error).toBeInstanceOf(Error);
+    },
+  );
+
   it('maps a page-geometry error code to RENDER_ERROR', () => {
     const result = translateRenderReadinessDiagnostic({
       code: 'render.page-geometry.failed',

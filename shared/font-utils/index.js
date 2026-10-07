@@ -113,11 +113,7 @@ const inferGenericFallbackFromFontName = (fontName) => {
  * normalizeParts(''); // []
  * normalizeParts(null); // []
  */
-const normalizeParts = (value) =>
-  (value || '')
-    .split(',')
-    .map((part) => part.trim())
-    .filter(Boolean);
+const normalizeParts = (value) => splitOutsideQuotes(value || '', ',');
 
 /**
  * Splits a string by a delimiter, but only when the delimiter is outside of quotes.
@@ -170,6 +166,19 @@ const splitOutsideQuotes = (str, delimiter) => {
   return parts;
 };
 
+// Unquoted family names must be sequences of CSS identifiers. A numeric token
+// or punctuation invalidates the declaration in both canvas and DOM styling.
+const CSS_IDENTIFIER = /^(?:--|-?(?:[a-zA-Z_]|[^\x00-\x7f]))(?:[a-zA-Z0-9_-]|[^\x00-\x7f])*$/;
+const serializeFamily = (family) => {
+  const first = family[0];
+  if ((first === '"' || first === "'") && family.endsWith(first)) return family;
+  if (family.split(/\s+/).every((part) => CSS_IDENTIFIER.test(part))) return family;
+  const escaped = family.replace(/["\\\x00-\x1f\x7f]/g, (char) =>
+    char === '"' || char === '\\' ? `\\${char}` : `\\${char.codePointAt(0).toString(16)} `,
+  );
+  return `"${escaped}"`;
+};
+
 /**
  * Maps a DOCX font family classification to a CSS fallback string.
  *
@@ -214,8 +223,8 @@ export function mapWordFamilyFallback(wordFamily) {
  * 1. **Passthrough for non-strings**: Returns the input unchanged if it's not a string
  *    (null, undefined, number, object, etc.)
  * 2. **Trimming**: Removes leading/trailing whitespace from the font name
- * 3. **Early return**: If the trimmed string is empty or already contains commas,
- *    returns it as-is (assumes it's already a complete font-family declaration)
+ * 3. **Explicit stacks**: Serializes each family in comma-separated stacks without
+ *    adding fallbacks. Quotes names that cannot be expressed as CSS identifiers.
  * 4. **Fallback resolution**: Determines the fallback chain using this precedence:
  *    - Explicit `options.fallback` (highest priority)
  *    - Fixed `options.pitch` uses monospace, including conflicting family metadata
@@ -223,7 +232,7 @@ export function mapWordFamilyFallback(wordFamily) {
  *    - The font-name heuristic (known monospace, known serif, otherwise sans-serif)
  * 5. **Duplicate detection**: If the font name already appears in the fallback chain
  *    (case-insensitive), returns just the fallback chain
- * 6. **Composition**: Prepends the font name to the fallback chain
+ * 6. **Composition**: Serializes the font name and fallback chain as CSS families
  *
  * **Edge cases handled:**
  * - Preserves quotes in font names (e.g., "Times New Roman")
@@ -295,7 +304,12 @@ export function mapWordFamilyFallback(wordFamily) {
 export function toCssFontFamily(fontName, options = {}) {
   if (!fontName || typeof fontName !== 'string') return fontName;
   let trimmed = fontName.trim();
-  if (!trimmed || trimmed.includes(',')) return trimmed;
+  if (!trimmed) return trimmed;
+  const explicitParts = normalizeParts(trimmed);
+  if (explicitParts.length > 1) {
+    const serialized = explicitParts.map(serializeFamily);
+    return serialized.every((part, i) => part === explicitParts[i]) ? trimmed : serialized.join(', ');
+  }
   // OOXML may use this placeholder instead of a concrete font; adding a fallback makes canvas measurement diverge from CSS paint.
   if (trimmed.toLowerCase() === INHERITED_FONT_FAMILY) return undefined;
   // Replace semicolon font fallback separators (e.g., "Liberation Sans;Arial" from LibreOffice).
@@ -314,17 +328,18 @@ export function toCssFontFamily(fontName, options = {}) {
     inferGenericFallbackFromFontName(trimmed);
 
   const fallbackParts = normalizeParts(fallbackValue);
+  const primaryParts = normalizeParts(trimmed);
   if (fallbackParts.length === 0) {
-    return trimmed;
+    return primaryParts.map(serializeFamily).join(', ');
   }
 
   const normalizedName = trimmed.toLowerCase();
   const includesName = fallbackParts.some((part) => part.toLowerCase() === normalizedName);
   if (includesName) {
-    return fallbackParts.join(', ');
+    return fallbackParts.map(serializeFamily).join(', ');
   }
 
-  return [trimmed, ...fallbackParts].join(', ');
+  return [...primaryParts, ...fallbackParts].map(serializeFamily).join(', ');
 }
 
 const CSS_GENERIC_FAMILIES = new Set([

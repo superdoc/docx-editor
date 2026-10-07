@@ -2122,6 +2122,16 @@ const onV2EditorFailed = (payload) => {
   const detail = normalizeV2EditorFailureDetail(payload?.detail);
   const documentId =
     typeof payload?.documentId === 'string' && payload.documentId.length > 0 ? payload.documentId : null;
+  if (reason === 'worker-transport-failed') {
+    proxy.$superdoc.emit('exception', {
+      error: new Error('Worker transport failed.'),
+      code: reason,
+      ...(documentId ? { documentId } : {}),
+      editor: null,
+      ...(payload?.workerFailure ? { workerFailure: payload.workerFailure } : {}),
+    });
+    return;
+  }
   const collaborationException = createCollaborationException(reason, documentId);
   const message = collaborationException?.error.message ?? getV2EditorFailureMessage(reason);
   // plan §Workstream 3: store a renderable terminal failure state for the

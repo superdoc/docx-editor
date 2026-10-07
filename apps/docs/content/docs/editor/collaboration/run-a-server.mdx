@@ -64,6 +64,21 @@ If initialization stops partway through, do not let multiple clients independent
 
 The local example's optional access check validates an identity and room **at connection time**; it does not reserve an initializer or fence later writes. Its optional file storage is also a development example, not a coordinated recovery service. Provider hooks differ: test the write-admission boundary with your provider before relying on this pattern in production.
 
+### Handle connection loss
+
+V2's built-in Hocuspocus connection currently bundles `@hocuspocus/provider` 2.15.3 inside the document worker. The recovery cases below are tested with Hocuspocus servers 2.15.3 and 4.2.0; they do not qualify every server version or extension. Installing a different `@hocuspocus/provider` peer dependency in your application does not replace that connection. The `sd2/v2.1/<documentId>` room namespace stays the same when the connection retries.
+
+| Server signal                                                                  | Built-in V2 connection behavior                                                                        |
+| ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
+| Document CLOSE message (type 7)                                                | Close the dedicated socket, reconnect, authenticate again, and synchronize the same local document.    |
+| Socket close `1000`, `4205` (Reset Connection), or `4408` (Connection Timeout) | Retry and synchronize. An intentional application disconnect or destroy stops retries.                 |
+| Socket close `4401` or `4403`, or authentication permission-denied             | Report `failed` and stop retries for that session. Check credentials and room access before reopening. |
+| Unknown extension message type                                                 | Ignore the frame and continue processing supported messages.                                           |
+
+Use `onCollaborationConnectionChange` or `getCollaborationConnectionState()` to distinguish `lost`, `reconnecting`, `recovered`, and `failed`. Recovery is reported only after synchronization succeeds; a provider's `sync(false)` notification does not mean the room recovered. A transient outage does not emit `onException`. If the worker transport fails and disposes the document session, the connection reports `failed` immediately and `onException` includes `code: 'worker-transport-failed'`. Your application controls error messaging and can reopen the document after resolving the cause. Malformed supported protocol messages can cause this terminal failure.
+
+Closing sockets with `4205` is a reconnect control, not evidence that a shutdown saved every pending edit. Before using it for deployment, verify that your server drains pending writes, waits for storage hooks to finish, and restores the stored room with an independent reader. `stopOnSignals: false` gives your application ownership of shutdown; it does not add that durability barrier.
+
 ### Persist the room separately from DOCX files
 
 [Save and restore a room](/editor/collaboration/save-and-restore-a-room) shows how to store binary Yjs state, restart the server, and reopen with edits intact. It also explains why DOCX exports and presence are separate from room storage.

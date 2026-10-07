@@ -143,6 +143,27 @@ describe('sliceRunsForLine', () => {
     expect(sliceRunsForLine(block, partialLine)).toEqual([{ ...marker, text: '0' }]);
   });
 
+  it.each(['first', 'middle', 'last'] as const)(
+    'keeps a deleted paragraph-mark anchor zero-width in the %s run of a line',
+    (position) => {
+      const marker: TextRun = {
+        ...makeTextRun('\u200b', 100),
+        pmEnd: 100,
+        vanish: true,
+        dataAttrs: { 'data-paragraph-mark-deletion-anchor': 'true' },
+        trackedChange: { id: 'deleted-mark', kind: 'delete' },
+      };
+      const runs = [
+        ...(position === 'first' ? [] : [makeTextRun('Prior', 95)]),
+        marker,
+        ...(position === 'last' ? [] : [makeTextRun('Live', 100)]),
+      ];
+      const line = makeLine({ toRun: runs.length - 1, toChar: runs.at(-1)!.text!.length });
+      const result = sliceRunsForLine(makeParagraph(runs), line);
+      expect(result.find((run) => run.dataAttrs?.['data-paragraph-mark-deletion-anchor'] === 'true')).toEqual(marker);
+    },
+  );
+
   it('passes middle text runs through unchanged when the line spans multiple runs', () => {
     const first = makeTextRun('foo', 0);
     const middle = makeTextRun('bar', 3);

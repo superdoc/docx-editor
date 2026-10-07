@@ -125,7 +125,7 @@ export function sliceRunsForLine(block: FlowBlock, line: Line): Run[] {
     if (isFirstRun || isLastRun) {
       const start = isFirstRun ? line.fromChar : 0;
       const end = isLastRun ? line.toChar : text.length;
-      if (isBodyNoteReferenceRun(run)) {
+      if (isBodyNoteReferenceRun(run) || run.dataAttrs?.['data-paragraph-mark-deletion-anchor'] === 'true') {
         const slice = text.slice(start, end);
         if (!slice) continue;
         result.push(start === 0 && end === text.length ? run : { ...run, text: slice });

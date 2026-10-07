@@ -32,6 +32,24 @@ Copy any user or mode options you chose on the previous pages into this configur
 movement or pagination. Downloading a copy does not save changes to your application, so it does not clear the
 **Unsaved changes** status.
 
+## Handle rejected edits
+
+The browser Editor reports a rejected keyboard edit through `onException` (or the `exception` event),
+with `code: 'edit-rejected'`. Your application decides whether and how to present a message. SuperDoc
+adds no error message to the document UI. Each independent rejected attempt produces its own event;
+a proven no-op at a document or body/table boundary produces none.
+
+The payload's `error` is unknown: narrow it to an `Error` before reading `message` or `cause`.
+The optional `error.cause` contains diagnostic codes such as `failureSource`, `reason`, `inputKind`,
+and `editableCommandKind`. `failureSource: 'shell'` identifies a host dispatch rejection, while
+`'receipt'` identifies a Document API mutation failure. These values identify the originating layer,
+not severity. Cause fields and reason values are diagnostic details, not a typed, exhaustive public
+contract; tolerate absent fields and unfamiliar reasons. Use the exception code for application routing
+and avoid treating a diagnostic reason as a permanent capability check.
+
+The normalized cause excludes raw document text and receipt messages. Review other error details
+before sending them to your logging or support system.
+
 ## Release what you own
 
 Call `unmountEditor()` when the owning route or component unmounts. It removes the button listener and calls

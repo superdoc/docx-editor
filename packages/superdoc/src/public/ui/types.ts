@@ -694,6 +694,8 @@ export interface SelectionSlice {
   target: TextTarget | null;
   /** Explicit start/end selection target, when available. */
   selectionTarget: SelectionTarget | null;
+  /** Table/cell identities from the settled public selection read, when supported. */
+  tableSelection?: SelectionInfo['tableSelection'];
   /** Marks currently active at the selection. */
   activeMarks: readonly string[];
   /** Comment ids overlapping the selection. */

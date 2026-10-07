@@ -3006,9 +3006,9 @@ export const OPERATION_DEFINITIONS = {
   'selection.current': {
     memberPath: 'selection.current',
     description:
-      "Read the editor's current selection as a portable SelectionInfo with a text-anchored TextTarget. Primitive for building custom comments UIs, floating toolbars, and other selection-driven components without reaching into ProseMirror internals.",
+      "Read the editor's current selection as a portable SelectionInfo with text targets or V2 browser table/cell metadata. Primitive for building custom comments UIs, floating toolbars, and other selection-driven components without reaching into ProseMirror internals.",
     expectedResult:
-      'Returns a SelectionInfo with `empty`, `target` (TextTarget or null), optional `selectionTarget`, `activeMarks`, and optionally `text` when `includeText: true`.',
+      'Returns a SelectionInfo with `empty`, `target` (TextTarget or null), optional `selectionTarget` and `tableSelection`, `activeMarks`, and optionally `text` when `includeText: true`.',
     requiresDocumentContext: true,
     metadata: readOperation({
       idempotency: 'idempotent',

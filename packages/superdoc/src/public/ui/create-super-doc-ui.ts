@@ -3874,6 +3874,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       empty: info.empty === true,
       target,
       selectionTarget: (info.selectionTarget ?? null) as SelectionSlice['selectionTarget'],
+      tableSelection: info.tableSelection ?? null,
       activeMarks: Array.isArray(info.activeMarks) ? (info.activeMarks as string[]) : [],
       activeCommentIds: Array.isArray(info.activeCommentIds) ? (info.activeCommentIds as string[]) : [],
       activeChangeIds: Array.isArray(info.activeChangeIds) ? (info.activeChangeIds as string[]) : [],

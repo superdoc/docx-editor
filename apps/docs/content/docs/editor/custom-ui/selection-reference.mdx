@@ -27,6 +27,34 @@ position. Use [Context menu](/editor/custom-ui/context-menus) for a complete poi
 allows the geometry fallback `selectionTarget ?? target`, but only `selectionTarget` is accepted by
 `apply()`. Read it directly and handle `null` rather than reusing that geometry fallback.
 
+## Read table and cell selection identities
+
+In the V2 browser editor, `doc.selection.current()` includes `tableSelection` for a caret or text range inside one cell,
+a rectangular selection in an unmerged table, and a whole-grid selection. The same metadata is available in the settled
+`ui.viewport.contextAt(point).selection` slice for custom menu predicates and actions:
+
+```ts
+const context = ui.viewport.contextAt({ x: event.clientX, y: event.clientY });
+if (context.selection.status === 'ready' && context.selection.tableSelection) {
+  const selected = context.selection.tableSelection;
+  console.info(
+    selected.type,
+    selected.tableId,
+    selected.cells.map((cell) => cell.nodeId),
+  );
+}
+```
+
+`type` is `cell`, `cells`, or `table`. `start` and `end` are inclusive, zero-based grid coordinates. Cell IDs are opaque
+Document API node IDs, returned in row-major order. A caret inside one cell keeps `empty: true` and its existing text targets.
+For a rectangular or whole-grid selection, `target` and `selectionTarget` are `null`; `text` (when requested) contains the
+selected cell texts separated by tabs. The UI slice exposes that text as `quotedText`.
+
+Rectangles in tables containing merged cells or omitted grid positions currently return `tableSelection: null`, null text targets, and empty text.
+These selected cell ranges still report `empty: false`; unavailable metadata does not mean that no cells are selected.
+A caret inside a merged cell still returns that cell's identity. This metadata does not add table editing commands or change
+which targets existing write operations accept.
+
 ## Resolve entities under a point
 
 `ui.viewport.entityAt()` answers the opposite question: which document entities are painted under a screen point. Coordinates are `MouseEvent` `clientX` and `clientY` space, so a pointer handler can pass its own event through:

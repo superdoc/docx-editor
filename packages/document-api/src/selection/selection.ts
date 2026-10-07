@@ -25,6 +25,7 @@ export type {
   SelectionExtractOoxmlResult,
   SelectionOoxmlDependency,
   SelectionTableCellsTarget,
+  TableSelectionInfo,
   SelectionInfo,
 } from './selection.types.js';
 

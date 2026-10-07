@@ -8,6 +8,14 @@ export interface SelectionTableCellsTarget {
   story?: SelectionTarget['story'];
 }
 
+/** Table identity for a caret, rectangular cell selection, or whole-grid selection. */
+export interface TableSelectionInfo extends SelectionTableCellsTarget {
+  /** `cell` includes a caret or text range contained in one cell. */
+  type: 'table' | 'cell' | 'cells';
+  /** Selected cells in row-major order, using opaque Document API node IDs. */
+  cells: { nodeId: string; rowIndex: number; columnIndex: number }[];
+}
+
 export type SelectionExtractOoxmlInput =
   | { at: SelectionTarget | SelectionTableCellsTarget; selection?: never }
   | { selection: 'current'; at?: never };
@@ -81,7 +89,7 @@ export interface SelectionCurrentInput {
 
 /**
  * Canonical shape of the editor's current selection, projected into the
- * Document API's text-address model. This is the primitive consumers use
+ * Document API's text and table-address models. This is the primitive consumers use
  * to build custom comments UIs, floating toolbars, mention popovers, etc.
  *
  * Unlike PM's `Selection` (positional and private), `SelectionInfo` is
@@ -108,6 +116,13 @@ export interface SelectionInfo {
    * selection-target model the write APIs consume directly.
    */
   selectionTarget?: SelectionTarget | null;
+  /**
+   * V2 browser table selection with inclusive, zero-based grid coordinates.
+   * Rectangles in unmerged tables clear `target` and `selectionTarget`.
+   * Rectangles in tables containing merged cells return null and empty text.
+   * A single-cell caret/text range preserves its text targets and `empty` value.
+   */
+  tableSelection?: TableSelectionInfo | null;
   /**
    * Active marks at the caret or across the selection. Names are
    * ProseMirror mark type names (e.g. `'bold'`, `'italic'`, `'link'`).

@@ -7654,6 +7654,38 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
             empty: { type: 'boolean' },
             target: { oneOf: [textTargetSchema, { type: 'null' }] },
             selectionTarget: { oneOf: [selectionTargetSchema, { type: 'null' }] },
+            tableSelection: {
+              oneOf: [
+                objectSchema(
+                  {
+                    kind: { const: 'tableCells' },
+                    type: { enum: ['table', 'cell', 'cells'] },
+                    tableId: { type: 'string', minLength: 1 },
+                    story: storyLocatorSchema,
+                    start: objectSchema(
+                      { rowIndex: { type: 'integer', minimum: 0 }, columnIndex: { type: 'integer', minimum: 0 } },
+                      ['rowIndex', 'columnIndex'],
+                    ),
+                    end: objectSchema(
+                      { rowIndex: { type: 'integer', minimum: 0 }, columnIndex: { type: 'integer', minimum: 0 } },
+                      ['rowIndex', 'columnIndex'],
+                    ),
+                    cells: arraySchema(
+                      objectSchema(
+                        {
+                          nodeId: { type: 'string', minLength: 1 },
+                          rowIndex: { type: 'integer', minimum: 0 },
+                          columnIndex: { type: 'integer', minimum: 0 },
+                        },
+                        ['nodeId', 'rowIndex', 'columnIndex'],
+                      ),
+                    ),
+                  },
+                  ['kind', 'type', 'tableId', 'start', 'end', 'cells'],
+                ),
+                { type: 'null' },
+              ],
+            },
             activeMarks: arraySchema({ type: 'string' }),
             activeCommentIds: arraySchema({ type: 'string' }),
             activeChangeIds: arraySchema({ type: 'string' }),

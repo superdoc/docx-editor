@@ -40,6 +40,7 @@ export type {
   SelectionExtractOoxmlResult,
   SelectionOoxmlDependency,
   SelectionTableCellsTarget,
+  TableSelectionInfo,
   SelectionInfo,
 } from './selection/selection.js';
 export { executeSelectionCurrent, executeSelectionExtractOoxml } from './selection/selection.js';

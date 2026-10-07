@@ -712,6 +712,10 @@ export type TabRun = RunMarks & {
   pmEnd?: number;
   /** SDT metadata if tab is inside a structured document tag. */
   sdt?: SdtMetadata;
+  /** Tracked-change identity of the wrapper owning this tab. */
+  trackedChange?: TrackedChangeMeta;
+  /** Ordered tracked-change layers when wrappers overlap. */
+  trackedChanges?: TrackedChangeMeta[];
 };
 
 export type LineBreakRun = {

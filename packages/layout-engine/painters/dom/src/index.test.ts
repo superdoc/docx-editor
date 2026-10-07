@@ -6205,6 +6205,61 @@ describe('DomPainter', () => {
     expect(deletion.style.getPropertyValue('--sd-tracked-changes-semantic-color')).toBe('#cb0e47');
   });
 
+  it.each([false, true])('retains deleted-tab identity in positioned=%s paint (SD-5403)', (positioned) => {
+    const block: ParagraphBlock = {
+      kind: 'paragraph',
+      id: 'deleted-tab',
+      runs: [
+        { text: 'Before', fontFamily: 'Arial', fontSize: 16 },
+        {
+          kind: 'tab',
+          text: '\t',
+          width: 48,
+          pmStart: 6,
+          pmEnd: 7,
+          trackedChange: { kind: 'delete', id: 'tab-deletion', author: 'Reviewer One', date: '2026-01-01T00:00:00Z' },
+        },
+        { text: 'After', fontFamily: 'Arial', fontSize: 16 },
+      ],
+      attrs: { trackedChangesMode: 'review', trackedChangesEnabled: true },
+    };
+    const measure: ParagraphMeasure = {
+      kind: 'paragraph',
+      totalHeight: 20,
+      lines: [
+        {
+          fromRun: 0,
+          fromChar: 0,
+          toRun: 2,
+          toChar: 5,
+          width: 128,
+          ascent: 12,
+          descent: 4,
+          lineHeight: 20,
+          ...(positioned
+            ? {
+                segments: [
+                  { runIndex: 0, fromChar: 0, toChar: 6, width: 40, x: 0 },
+                  { runIndex: 2, fromChar: 0, toChar: 5, width: 40, x: 88 },
+                ],
+              }
+            : {}),
+        },
+      ],
+    };
+    const { paragraphLayout } = buildSingleParagraphData(block.id, 12);
+    createTestPainter({ blocks: [block], measures: [measure] }).paint(paragraphLayout, mount);
+    const tab = mount.querySelector('.superdoc-tab') as HTMLElement;
+    expect(tab).not.toBeNull();
+    expect(tab.dataset.trackChangeKind).toBe('delete');
+    expect(tab.dataset.trackChangeId).toBe('tab-deletion');
+    expect(tab.dataset.trackChangeAuthor).toBe('Reviewer One');
+    expect(tab.dataset.trackChangeDate).toBe('2026-01-01T00:00:00Z');
+    expect(tab.dataset.pmStart).toBe('6');
+    expect(tab.dataset.pmEnd).toBe('7');
+    expect(tab.classList.contains('track-delete-dec')).toBe(true);
+  });
+
   it('uses the semantic color for visual variables while keeping the author color dataset (SD-3481)', () => {
     const trackedBlock: FlowBlock = {
       kind: 'paragraph',

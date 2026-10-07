@@ -995,6 +995,7 @@ const renderExplicitlyPositionedRuns = ({
         styleId,
         !coveredByOverlay,
       );
+      runContext.applyTrackedChangeDecorations(tabEl, baseRun, trackedConfig);
       appendToLineGeo(tabEl, baseRun, tabStartX + indentOffset, actualTabWidth);
       if (coveredByOverlay && underlineSpanCollector) {
         appendUnderlineOverlaySpan(
@@ -1299,6 +1300,7 @@ const renderInlineRuns = ({
         : renderRun(runForRender, context, runContext, trackedConfig);
 
     if (elem) {
+      if (run.kind === 'tab') runContext.applyTrackedChangeDecorations(elem, run, trackedConfig);
       if (suppressUnderline && run.kind !== 'tab') {
         elem.style.textDecorationLine = 'strike' in runForRender && runForRender.strike ? 'line-through' : 'none';
       }

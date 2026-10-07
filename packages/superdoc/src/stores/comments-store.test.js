@@ -637,6 +637,63 @@ describe('comments-store', () => {
     expect(setActiveCommentSpy).toHaveBeenCalledWith({ commentId: 'comment-3' });
   });
 
+  it('keeps tracked-change identity lookup current after alias changes and list reordering', () => {
+    store.commentsList = [
+      { commentId: 'first', importedId: 'shared', trackedChange: true, fileId: 'doc-1', trackedChangeText: 'First' },
+      { commentId: 'second', importedId: 'shared', trackedChange: true, fileId: 'doc-1', trackedChangeText: 'Second' },
+    ];
+    const update = (changeId, text) =>
+      store.handleTrackedChangeUpdate({
+        superdoc: {},
+        broadcastChanges: false,
+        params: {
+          event: 'update',
+          changeId,
+          documentId: 'doc-1',
+          trackedChangeText: text,
+          trackedChangeStoryKind: 'body',
+          trackedChangeAnchorKey: null,
+        },
+      });
+    update('shared', 'First refreshed');
+    expect(store.commentsList.map((c) => c.trackedChangeText)).toEqual(['First refreshed', 'Second']);
+    store.commentsList.reverse();
+    update('shared', 'Second refreshed');
+    expect(store.commentsList.map((c) => c.trackedChangeText)).toEqual(['Second refreshed', 'First refreshed']);
+    store.commentsList[0].importedId = 'new-alias';
+    update('new-alias', 'Alias refreshed');
+    update('shared', 'Remaining alias');
+    expect(store.commentsList.map((c) => c.trackedChangeText)).toEqual(['Alias refreshed', 'Remaining alias']);
+  });
+
+  it('preserves first occurrence when the same comment object appears twice in an identity lookup', () => {
+    const first = {
+      commentId: 'first',
+      importedId: 'shared',
+      trackedChange: true,
+      fileId: 'doc-1',
+      trackedChangeText: 'First',
+    };
+    store.commentsList = [
+      first,
+      { commentId: 'second', importedId: 'shared', trackedChange: true, fileId: 'doc-1', trackedChangeText: 'Second' },
+      first,
+    ];
+    store.handleTrackedChangeUpdate({
+      superdoc: {},
+      broadcastChanges: false,
+      params: {
+        event: 'update',
+        changeId: 'shared',
+        documentId: 'doc-1',
+        trackedChangeText: 'Refreshed',
+        trackedChangeStoryKind: 'body',
+        trackedChangeAnchorKey: null,
+      },
+    });
+    expect(store.commentsList.map((c) => c.trackedChangeText)).toEqual(['Refreshed', 'Second', 'Refreshed']);
+  });
+
   it('updates tracked change comments and emits events', () => {
     const superdoc = {
       emit: vi.fn(),
@@ -1795,6 +1852,66 @@ describe('comments-store', () => {
       const raw = { mark, node: {}, from, to };
       return { raw, grouped: { from, to, insertedMark: raw } };
     };
+
+    it('does not rediscover inline marks when no whole-table change can own the review item', () => {
+      const editor = makeEditor();
+      const superdoc = { activeEditor: editor, emit: vi.fn(), config: { isInternal: true } };
+      store.handleTrackedChangeUpdate({
+        superdoc,
+        params: { event: 'add', changeId: 'inline-only', documentId: 'doc-1', trackedChangeText: 'Text' },
+      });
+      expect(store.commentsList.map((comment) => comment.commentId)).toEqual(['inline-only']);
+      expect(trackChangesHelpersMock.getTrackChanges).not.toHaveBeenCalled();
+    });
+
+    it('uses current table containment when a supplied inline snapshot belongs to an older state', () => {
+      const editor = makeEditor();
+      const superdoc = { activeEditor: editor, emit: vi.fn(), config: { isInternal: true } };
+      trackChangesHelpersMock.enumerateStructuralRowChanges.mockReturnValue([
+        {
+          id: 'table-insert',
+          decidable: true,
+          wholeTable: true,
+          tableFrom: 10,
+          tableTo: 40,
+          rows: [],
+        },
+      ]);
+      const oldRange = inlineInsert({ id: 'moved-inline', from: 1, to: 2 }).raw;
+      const currentRange = inlineInsert({ id: 'moved-inline', from: 20, to: 21 }).raw;
+      trackChangesHelpersMock.getTrackChanges.mockReturnValue([currentRange]);
+      store.handleTrackedChangeUpdate({
+        superdoc,
+        params: { event: 'add', changeId: 'moved-inline', documentId: 'doc-1', trackedChangeText: 'Text' },
+        trackedChangesForId: [oldRange],
+        trackedChangeState: { doc: {} },
+      });
+      expect(store.commentsList).toHaveLength(0);
+      expect(trackChangesHelpersMock.getTrackChanges).toHaveBeenCalledWith(editor.state, 'moved-inline');
+    });
+
+    it('reuses current inline ranges to suppress table-owned changes during a full refresh', () => {
+      const editor = makeEditor();
+      const superdoc = { activeEditor: editor, emit: vi.fn(), config: { isInternal: true } };
+      trackChangesHelpersMock.enumerateStructuralRowChanges.mockReturnValue([
+        {
+          id: 'table-insert',
+          decidable: true,
+          wholeTable: true,
+          tableFrom: 10,
+          tableTo: 40,
+          rows: [],
+        },
+      ]);
+      store.handleTrackedChangeUpdate({
+        superdoc,
+        params: { event: 'add', changeId: 'inline-cell', documentId: 'doc-1', trackedChangeText: 'Text' },
+        trackedChangesForId: [inlineInsert({ id: 'inline-cell', from: 20, to: 21 }).raw],
+        trackedChangeState: editor.state,
+      });
+      expect(store.commentsList).toHaveLength(0);
+      expect(trackChangesHelpersMock.getTrackChanges).not.toHaveBeenCalled();
+    });
 
     it('creates ONLY the structural bubble — no separate item for cell text inside a tracked inserted table', () => {
       const editor = makeEditor();

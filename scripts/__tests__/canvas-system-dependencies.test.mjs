@@ -37,7 +37,8 @@ test('canvas system dependency installer guards apt commands with timeout and di
 });
 
 for (const scenario of [
-  { name: 'preserves Blacksmith-managed mirrors', mirrorName: 'blacksmith-ubuntu-mirrors.txt', preserve: true },
+  { name: 'preserves healthy Blacksmith-managed mirrors', mirrorName: 'blacksmith-ubuntu-mirrors.txt', preserve: true },
+  { name: 'uses HTTPS fallbacks for Blacksmith Azure mirrors', mirrorName: 'blacksmith-ubuntu-mirrors.txt', preserve: false },
   { name: 'uses HTTPS fallbacks for legacy Azure mirrors', mirrorName: 'apt-mirrors.txt', preserve: false },
 ]) {
   test(`canvas dependency installer ${scenario.name}`, async (t) => {
@@ -50,7 +51,7 @@ for (const scenario of [
     const aptLog = path.join(root, 'apt.log');
     await mkdir(bin);
     const originalMirrors = [
-      'http://azure.archive.ubuntu.com/ubuntu/\tpriority:1',
+      ...(scenario.preserve ? [] : ['http://azure.archive.ubuntu.com/ubuntu/\tpriority:1']),
       'http://mirrors.edge.kernel.org/ubuntu/\tpriority:2',
       'http://archive.ubuntu.com/ubuntu/\tpriority:3',
       '',
@@ -97,6 +98,10 @@ for (const scenario of [
     const aptCommands = await readFile(aptLog, 'utf8');
     assert.match(aptCommands, /update/);
     assert.match(aptCommands, /install .*build-essential/);
+    for (const invocation of aptCommands.trim().split('\n')) {
+      assert.match(invocation, /Acquire::http::Timeout=30/);
+      assert.match(invocation, /Acquire::https::Timeout=30/);
+    }
   });
 }
 

@@ -8,6 +8,9 @@ export DEBIAN_FRONTEND="${DEBIAN_FRONTEND:-noninteractive}"
 
 apt_opts=(
   -o Acquire::Retries=3
+  # Bound stalled mirror connections so apt can reach the configured fallbacks.
+  -o Acquire::http::Timeout=30
+  -o Acquire::https::Timeout=30
   -o Dpkg::Use-Pty=0
 )
 
@@ -61,12 +64,6 @@ run_apt() {
 
 stabilize_github_apt_mirrors() {
   if [ "${GITHUB_ACTIONS:-}" != "true" ] || [ ! -f "${apt_mirror_file}" ]; then
-    return 0
-  fi
-  if [ "${apt_mirror_file##*/}" = "blacksmith-ubuntu-mirrors.txt" ]; then
-    # Blacksmith stages package indexes for its managed mirrors. Rewriting the
-    # list discards those indexes and sends apt back to the upstream mirrors.
-    echo "::notice::Preserving Blacksmith-managed apt mirrors and staged package indexes."
     return 0
   fi
   if ! grep -qF 'azure.archive.ubuntu.com' "${apt_mirror_file}"; then

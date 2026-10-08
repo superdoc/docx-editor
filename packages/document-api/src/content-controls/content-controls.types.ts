@@ -357,6 +357,8 @@ export interface ContentControlsUnwrapInput {
 
 export interface ContentControlsDeleteInput {
   target: ContentControlTarget;
+  /** Override only this target's deletion lock; document and ancestor protection still apply. */
+  overrideDeletionLock?: boolean;
 }
 
 export interface ContentControlsCopyInput {

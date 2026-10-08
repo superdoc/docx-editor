@@ -474,6 +474,9 @@ export function executeContentControlsDelete(
 ): ContentControlMutationResult {
   validateCCInput(input, 'contentControls.delete');
   validateCCTarget(input.target, 'contentControls.delete');
+  if (input.overrideDeletionLock !== undefined) {
+    requireBoolean(input.overrideDeletionLock, 'overrideDeletionLock', 'contentControls.delete');
+  }
   return adapter.delete(input, options);
 }
 

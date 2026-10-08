@@ -5136,8 +5136,10 @@ export const OPERATION_DEFINITIONS = {
   },
   'contentControls.delete': {
     memberPath: 'contentControls.delete',
-    description: 'Delete a content control and its content from the document.',
-    expectedResult: 'Returns a ContentControlMutationResult; reports NO_OP if already removed.',
+    description:
+      'Delete a content control and its content. Set overrideDeletionLock to remove a deletion-locked target without first unlocking it.',
+    expectedResult:
+      'Returns a ContentControlMutationResult; reports NO_OP if already removed. An explicit override deletes in one history entry; Undo restores the original control and lock.',
     requiresDocumentContext: true,
     metadata: mutationOperation({
       idempotency: 'conditional',

@@ -3578,7 +3578,20 @@ function buildContentControlSchemas(): Record<ContentControlOperationId, Operati
       failure: contentControlMutationFailureSchema,
     },
     'contentControls.unwrap': targetOnlyMutation,
-    'contentControls.delete': targetOnlyMutation,
+    'contentControls.delete': {
+      ...targetOnlyMutation,
+      input: objectSchema(
+        {
+          target: contentControlTargetSchema,
+          overrideDeletionLock: {
+            type: 'boolean',
+            description:
+              'Override only the target wrapper deletion lock. Document and ancestor protection still apply.',
+          },
+        },
+        ['target'],
+      ),
+    },
     'contentControls.copy': {
       input: objectSchema({ target: contentControlTargetSchema, destination: contentControlTargetSchema }, [
         'target',

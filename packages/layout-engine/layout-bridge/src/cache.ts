@@ -1,5 +1,6 @@
 import {
   getParagraphInlineDirection,
+  getTableCellTextDirection,
   isNumberedNoteMarkerRun,
   trackedChangeMetaSignature,
   type DrawingBlock,
@@ -377,6 +378,8 @@ const writeTableHash = (tableBlock: TableBlock, write: HashWriter, capabilities?
       if (cell.attrs) {
         const cellAttrs = cell.attrs as TableCellAttrs;
         const cellAttrParts: string[] = [];
+        const direction = getTableCellTextDirection(cellAttrs);
+        if (direction) cellAttrParts.push(`td:${direction}`);
         if (cellAttrs.borders) {
           cellAttrParts.push(`cb:${hashCellBorders(cellAttrs.borders)}`);
         }
@@ -702,6 +705,8 @@ const hashRuns = (block: FlowBlock, capabilities?: FontMeasureCapabilities): str
     // Direction
     const dir = getParagraphInlineDirection(attrs);
     if (dir) parts.push(`dir:${dir}`);
+    if (attrs.directionContext?.writingMode) parts.push(`wm:${attrs.directionContext.writingMode}`);
+    if (attrs.textDirection) parts.push(`td:${attrs.textDirection}`);
 
     // Pagination properties
     if (attrs.keepNext) parts.push('kn');

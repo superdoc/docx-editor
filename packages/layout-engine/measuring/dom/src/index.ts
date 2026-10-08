@@ -33,6 +33,7 @@
 
 import {
   Engines,
+  getTableCellTextDirection,
   type FlowBlock,
   type ParagraphBlock,
   type ParagraphSpacing,
@@ -50,6 +51,7 @@ import {
   type TableMeasure,
   type TableRowMeasure,
   type TableCellMeasure,
+  type TableCell,
   type ListMeasure,
   type Run,
   type TextRun,
@@ -4810,6 +4812,7 @@ async function measureTableBlock(
   constraints: MeasureConstraints,
   fontContext: FontMeasureContext,
   renderDiagnosticOwner?: unknown,
+  horizontalFallbackCells: ReadonlySet<TableCell> = new Set(),
 ): Promise<TableMeasure> {
   const measurementStartedAt = tableMeasurementNow();
   const tableObservation = createMutableTableMeasurementObservation();
@@ -4878,6 +4881,14 @@ async function measureTableBlock(
   // from automatic cell measurement so `atLeast` cannot consume them.
   const rowAuthoredHeightChrome: number[] = Array.from({ length: block.rows.length }, () => 0);
   const spanConstraints: Array<{ startRow: number; rowSpan: number; requiredHeight: number }> = [];
+  const verticalCells: Array<{
+    rowIndex: number;
+    cellIndex: number;
+    paragraph: ParagraphBlock;
+    direction: 'btLr' | 'tbRl';
+    inlineInsets: number;
+    blockSize: number;
+  }> = [];
   const rowAssemblyStartedAt = tableMeasurementNow();
   const cellMeasurementBeforeRows = tableObservation.phases['cell-block-measurement'];
   let cellsSinceCheckpoint = 0;
@@ -5021,6 +5032,26 @@ async function measureTableBlock(
       }> = [];
 
       const cellBlocks = (cell.blocks ?? (cell.paragraph ? [cell.paragraph] : [])) as FlowBlock[];
+      const cellDirection = getTableCellTextDirection(cell.attrs);
+      const verticalParagraph =
+        cellBlocks.length === 1 && cellBlocks[0].kind === 'paragraph' ? cellBlocks[0] : undefined;
+      const authoredHeight = row.attrs?.rowHeight;
+      const hasAuthoredHeight =
+        authoredHeight &&
+        Number.isFinite(authoredHeight.value) &&
+        authoredHeight.value > 0 &&
+        (authoredHeight.rule === 'exact' || authoredHeight.rule === 'atLeast');
+      const isVerticalText =
+        !horizontalFallbackCells.has(cell) &&
+        cellDirection &&
+        verticalParagraph &&
+        (rowspan > 1 || hasAuthoredHeight) &&
+        !verticalParagraph.attrs?.frame &&
+        !verticalParagraph.attrs?.dropCap &&
+        !verticalParagraph.attrs?.pageBreakBefore &&
+        verticalParagraph.attrs?.textDirection == null &&
+        verticalParagraph.runs.every((run) => run.kind == null || run.kind === 'text');
+
       const previousCell = retainedTable?.block.rows[rowIndex]?.cells[cellIndex];
       const previousCellMeasure = retainedTable?.measure.rows[rowIndex]?.cells[cellIndex];
       const previousBlocks = previousCell?.blocks ?? (previousCell?.paragraph ? [previousCell.paragraph] : []);
@@ -5029,53 +5060,59 @@ async function measureTableBlock(
       const nestedTrace = constraints.tableMeasurementTrace
         ? { ...constraints.tableMeasurementTrace, depth: constraints.tableMeasurementTrace.depth + 1 }
         : undefined;
-      const blockMeasures = await recordAsyncTableMeasurementPhase(tableObservation, 'cell-block-measurement', () =>
-        measureTableCellBlocks(
-          cellBlocks,
-          contentWidth,
-          fontContext,
-          measurementRuntimeSignature,
-          (nestedBlock, nestedConstraints, blockIndex) => {
-            const recursiveConstraints = nestedTrace
-              ? { ...nestedConstraints, tableMeasurementTrace: nestedTrace }
-              : { ...nestedConstraints };
-            const previousBlock = previousBlocks[blockIndex];
-            const previousMeasure = previousMeasures[blockIndex];
-            if (nestedBlock.kind === 'table' && previousBlock?.kind === 'table' && previousMeasure?.kind === 'table') {
-              (recursiveConstraints as MeasureConstraints).retainedTable = {
-                block: previousBlock,
-                measure: previousMeasure,
-              };
-            }
-            if (typeof renderDiagnosticOwner === 'function') {
-              Object.defineProperty(recursiveConstraints, V2_RENDER_DIAGNOSTIC_MEASUREMENT_OWNER, {
-                configurable: true,
-                enumerable: false,
-                value: renderDiagnosticOwner,
-              });
-            }
-            return measureBlock(nestedBlock, recursiveConstraints, fontContext);
-          },
-          (outcome) => {
-            tableObservation.cellBlockCache[outcome] += 1;
-          },
-          nestedTrace?.cacheIdentity === 'content',
-          retainedTable
-            ? (nestedBlock, blockIndex) => {
+      const blockMeasures: Measure[] = isVerticalText
+        ? []
+        : await recordAsyncTableMeasurementPhase(tableObservation, 'cell-block-measurement', () =>
+            measureTableCellBlocks(
+              cellBlocks,
+              contentWidth,
+              fontContext,
+              measurementRuntimeSignature,
+              (nestedBlock, nestedConstraints, blockIndex) => {
+                const recursiveConstraints = nestedTrace
+                  ? { ...nestedConstraints, tableMeasurementTrace: nestedTrace }
+                  : { ...nestedConstraints };
+                const previousBlock = previousBlocks[blockIndex];
                 const previousMeasure = previousMeasures[blockIndex];
-                return nestedBlock.kind === 'paragraph' &&
-                  previousBlocks[blockIndex] === nestedBlock &&
-                  previousMeasure?.kind === 'paragraph' &&
-                  previousMeasure.measuredAtMaxWidth === contentWidth
-                  ? previousMeasure
-                  : undefined;
-              }
-            : undefined,
-        ),
-      );
+                if (
+                  nestedBlock.kind === 'table' &&
+                  previousBlock?.kind === 'table' &&
+                  previousMeasure?.kind === 'table'
+                ) {
+                  (recursiveConstraints as MeasureConstraints).retainedTable = {
+                    block: previousBlock,
+                    measure: previousMeasure,
+                  };
+                }
+                if (typeof renderDiagnosticOwner === 'function') {
+                  Object.defineProperty(recursiveConstraints, V2_RENDER_DIAGNOSTIC_MEASUREMENT_OWNER, {
+                    configurable: true,
+                    enumerable: false,
+                    value: renderDiagnosticOwner,
+                  });
+                }
+                return measureBlock(nestedBlock, recursiveConstraints, fontContext);
+              },
+              (outcome) => {
+                tableObservation.cellBlockCache[outcome] += 1;
+              },
+              nestedTrace?.cacheIdentity === 'content',
+              retainedTable
+                ? (nestedBlock, blockIndex) => {
+                    const previousMeasure = previousMeasures[blockIndex];
+                    return nestedBlock.kind === 'paragraph' &&
+                      previousBlocks[blockIndex] === nestedBlock &&
+                      previousMeasure?.kind === 'paragraph' &&
+                      previousMeasure.measuredAtMaxWidth === contentWidth
+                      ? previousMeasure
+                      : undefined;
+                  }
+                : undefined,
+            ),
+          );
       certifyTableMeasurementCell(rowMeasurementOwner);
 
-      for (let blockIndex = 0; blockIndex < cellBlocks.length; blockIndex++) {
+      for (let blockIndex = 0; !isVerticalText && blockIndex < cellBlocks.length; blockIndex++) {
         const block = cellBlocks[blockIndex];
         const measure = blockMeasures[blockIndex]!;
         // Get height from different measure types
@@ -5153,6 +5190,16 @@ async function measureTableBlock(
         rowSpan: rowspan,
       });
 
+      if (isVerticalText) {
+        verticalCells.push({
+          rowIndex,
+          cellIndex,
+          paragraph: verticalParagraph!,
+          direction: cellDirection!,
+          inlineInsets: paddingTop + paddingBottom + borderInsets.top + borderInsets.bottom,
+          blockSize: contentWidth,
+        });
+      }
       if (rowspan === 1) {
         rowBaseHeights[rowIndex] = Math.max(rowBaseHeights[rowIndex], totalCellHeight);
       } else {
@@ -5230,6 +5277,52 @@ async function measureTableBlock(
     if (rows[i] === retainedRows?.measure.rows[i]) {
       if (rows[i].height !== height) rows[i] = { ...rows[i], height };
     } else rows[i].height = height;
+  }
+
+  const cellsWithoutCapacity = verticalCells.filter((entry) => {
+    const cell = rows[entry.rowIndex].cells[entry.cellIndex];
+    const span = Math.min(cell.rowSpan ?? 1, rows.length - entry.rowIndex);
+    const height =
+      rows.slice(entry.rowIndex, entry.rowIndex + span).reduce((sum, row) => sum + row.height, 0) +
+      Math.max(0, span - 1) * cellSpacingPx;
+    return height - entry.inlineInsets < 1;
+  });
+  if (cellsWithoutCapacity.length > 0) {
+    // Below the paragraph measurer's one-pixel width floor, retain horizontal text
+    // demand and rerun row resolution instead of hiding content in a zero span.
+    const fallbackCells = new Set(horizontalFallbackCells);
+    for (const entry of cellsWithoutCapacity) {
+      fallbackCells.add(block.rows[entry.rowIndex].cells[entry.cellIndex]);
+    }
+    return measureTableBlock(block, constraints, fontContext, renderDiagnosticOwner, fallbackCells);
+  }
+
+  // Resolve physical span capacity first. Rotated paragraph line heights are
+  // cross-axis costs and must not grow rows to remove Word's own clipping.
+  for (const entry of verticalCells) {
+    const cell = rows[entry.rowIndex].cells[entry.cellIndex];
+    const span = Math.min(cell.rowSpan ?? 1, rows.length - entry.rowIndex);
+    const height =
+      rows.slice(entry.rowIndex, entry.rowIndex + span).reduce((sum, row) => sum + row.height, 0) +
+      Math.max(0, span - 1) * cellSpacingPx;
+    const inlineSize = Math.max(1, height - entry.inlineInsets);
+    const paragraphConstraints: MeasureConstraints = { maxWidth: inlineSize };
+    if (typeof renderDiagnosticOwner === 'function') {
+      Object.defineProperty(paragraphConstraints, V2_RENDER_DIAGNOSTIC_MEASUREMENT_OWNER, {
+        value: renderDiagnosticOwner,
+      });
+    }
+    const paragraphMeasure = await recordAsyncTableMeasurementPhase(tableObservation, 'cell-block-measurement', () =>
+      measureBlock(entry.paragraph, paragraphConstraints, fontContext),
+    );
+    if (paragraphMeasure.kind !== 'paragraph') throw new Error('Vertical cell paragraph measure kind mismatch');
+    rows[entry.rowIndex].cells[entry.cellIndex] = {
+      ...cell,
+      height,
+      blocks: [paragraphMeasure],
+      paragraph: paragraphMeasure,
+      verticalText: { direction: entry.direction, inlineSize, blockSize: entry.blockSize },
+    };
   }
 
   // Preserve the canonical left-to-right floating-point accumulation exactly.

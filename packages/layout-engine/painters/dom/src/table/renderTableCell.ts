@@ -967,8 +967,16 @@ export function* renderTableCellWork(deps: TableCellRenderDependencies): RenderW
     // Cell's overflow:hidden handles clipping, no explicit width needed
     const content = doc.createElement('div');
     content.style.position = 'relative';
-    content.style.width = '100%';
-    content.style.height = '100%';
+    const verticalText = cellMeasure.verticalText;
+    content.style.width = verticalText ? `${verticalText.inlineSize}px` : '100%';
+    content.style.height = verticalText ? `${verticalText.blockSize}px` : '100%';
+    if (verticalText) {
+      content.style.transformOrigin = '0 0';
+      content.style.transform =
+        verticalText.direction === 'btLr'
+          ? `translate(0, ${verticalText.inlineSize}px) rotate(-90deg)`
+          : `translate(${verticalText.blockSize}px, 0) rotate(90deg)`;
+    }
     content.style.display = 'flex';
     content.style.flexDirection = 'column';
 
@@ -1016,7 +1024,7 @@ export function* renderTableCellWork(deps: TableCellRenderDependencies): RenderW
     const globalToLine = toLine === -1 || toLine === undefined ? totalLines : toLine;
 
     const effectiveCellWidth = cellWidth ?? cellMeasure.width;
-    const contentWidthPx = Math.max(0, effectiveCellWidth - paddingLeft - paddingRight);
+    const contentWidthPx = verticalText?.inlineSize ?? Math.max(0, effectiveCellWidth - paddingLeft - paddingRight);
     const contentHeightPx = Math.max(0, rowHeight - paddingTop - paddingBottom);
     let flowCursorY = 0;
     const anchoredBlocks: Array<{ block: ImageBlock | DrawingBlock; measure: ImageMeasure | DrawingMeasure }> = [];
@@ -1216,6 +1224,7 @@ export function* renderTableCellWork(deps: TableCellRenderDependencies): RenderW
         paraWrapper.style.position = 'relative';
         paraWrapper.style.left = '0';
         paraWrapper.style.width = '100%';
+        if (verticalText) paraWrapper.style.flexShrink = '0';
         const baseSdtBoundary = sdtBoundaries[i];
         const sdtBoundary = baseSdtBoundary
           ? {
@@ -1264,7 +1273,7 @@ export function* renderTableCellWork(deps: TableCellRenderDependencies): RenderW
           spacingPolicy: {
             isFirstBlock: i === 0,
             isLastBlock: isLastBlockInCell,
-            paddingTop,
+            paddingTop: verticalText ? (verticalText.direction === 'btLr' ? paddingLeft : paddingRight) : paddingTop,
           },
           sdtBoundary,
           ancestorContainerKey,
@@ -1476,7 +1485,7 @@ export function* renderTableCellWork(deps: TableCellRenderDependencies): RenderW
     // This keeps anchored objects out-of-flow while preventing text overlap in table cells.
     applySquareWrapExclusionsToLines(renderedLines, wrapExclusions, contentWidthPx, alignmentOffsetY);
 
-    if (captureLineSnapshot) {
+    if (captureLineSnapshot && !verticalText) {
       for (const rendered of renderedLines) {
         const candidateLine = rendered.el.classList.contains('superdoc-line')
           ? rendered.el

@@ -561,7 +561,7 @@ describe('incrementalLayout progressive execution', () => {
       undefined,
       reuse(full, afterFirst),
       undefined,
-      { progressive: { firstBatchPageCount: 1 } },
+      { progressive: { firstBatchPageCount: 2 } },
     );
     expect(pending.layout.pages).toHaveLength(11);
     expect(pending.layout.blockResumeCheckpoints?.has('p-30')).toBe(true);

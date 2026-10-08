@@ -1112,6 +1112,26 @@ describe('SD-5640 manual clear break cache identity', () => {
   });
 });
 
+describe('cell direction paint version', () => {
+  it('changes when only a cell rotation changes and stays stable for equivalent source', () => {
+    const make = (textDirection?: 'btLr' | 'tbRl'): TableBlock => ({
+      kind: 'table',
+      id: 't',
+      rows: [
+        {
+          id: 'r',
+          cells: [
+            { id: 'c', attrs: { textDirection }, blocks: [{ kind: 'paragraph', id: 'p', runs: [{ text: 'NORTH' }] }] },
+          ],
+        },
+      ],
+    });
+    expect(deriveBlockVersion(make('btLr'))).toBe(deriveBlockVersion(make('btLr')));
+    expect(deriveBlockVersion(make('btLr'))).not.toBe(deriveBlockVersion(make('tbRl')));
+    expect(deriveBlockVersion(make('btLr'))).not.toBe(deriveBlockVersion(make()));
+  });
+});
+
 describe('deriveBlockVersion - recorded font epoch', () => {
   const paragraph: ParagraphBlock = {
     kind: 'paragraph',

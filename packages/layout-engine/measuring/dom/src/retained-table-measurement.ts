@@ -1,3 +1,4 @@
+import { getTableCellTextDirection } from '@superdoc/contracts';
 import type { TableBlock, TableMeasure, TableRowMeasure } from '@superdoc/contracts';
 import type { FontMeasureContext } from '@superdoc/font-system';
 import { getSurfaceMeasurementRuntime, type SurfaceMeasurementRuntimeState } from './measurement-runtime-context.js';
@@ -197,6 +198,7 @@ export function prepareTableMeasurementCell(owner: TableRowMeasurementOwner | nu
   if (!owner?.immutable) return;
   const cell = owner.row.cells[cellIndex]!;
   owner.reusable &&=
+    getTableCellTextDirection(cell.attrs) == null &&
     (cell.rowSpan ?? 1) === 1 &&
     cell.paragraph == null &&
     Array.isArray(cell.blocks) &&
@@ -246,7 +248,7 @@ function hasFrozenReusableTopology(row: TableBlock['rows'][number]): boolean {
   if (!isFrozenArray(cells) || cells.length > 256) return false;
   for (let index = 0; index < cells.length; index++) {
     const cell = Object.getOwnPropertyDescriptor(cells, index)?.value;
-    if (!cell || !hasFrozenPlainPrototype(cell)) return false;
+    if (!cell || !hasFrozenPlainPrototype(cell) || getTableCellTextDirection(cell.attrs) != null) return false;
     const span = Object.getOwnPropertyDescriptor(cell, 'rowSpan');
     const legacy = Object.getOwnPropertyDescriptor(cell, 'paragraph');
     const blocksDescriptor = Object.getOwnPropertyDescriptor(cell, 'blocks');

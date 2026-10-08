@@ -1207,6 +1207,8 @@ export const resolveBorderConflict = (first?: BorderSpec, second?: BorderSpec): 
 };
 
 export type TableCellAttrs = {
+  /** Resolved ordinary Latin text rotation from w:tcPr/w:textDirection. */
+  textDirection?: 'btLr' | 'tbRl';
   borders?: CellBorders;
   padding?: BoxSpacing;
   verticalAlign?: 'top' | 'middle' | 'center' | 'bottom';
@@ -1269,6 +1271,12 @@ export type TableCell = {
   attrs?: TableCellAttrs;
   sourceAnchor?: SourceAnchor;
 };
+
+/** Read the resolved cell axis, with compatibility for older raw carriers. */
+export function getTableCellTextDirection(attrs: TableCellAttrs | undefined): 'btLr' | 'tbRl' | undefined {
+  const direction = attrs?.textDirection ?? attrs?.tableCellProperties?.textDirection;
+  return direction === 'btLr' || direction === 'tbRl' ? direction : undefined;
+}
 
 export type TableRowProperties = {
   repeatHeader?: boolean;
@@ -2218,13 +2226,9 @@ export function allExplicitColumnWidthsEqual(widths: readonly number[]): boolean
 /**
  * Shared "genuinely unequal explicit column widths" predicate (SD-2324).
  *
- * The layout engine skips end-of-section column balancing exactly when this
- * is true: Word fills genuinely-unequal explicit columns column-by-column
- * rather than rebalancing them. Host retained-layout dependency scanning
- * (SD-3772) consumes the same predicate so checkpoint admission can never
- * drift from the engine's balancing semantics. Explicit widths that are all
- * EQUAL (`equalWidth="0"` with every `<w:col w:w>` equal) still balance like
- * implicit equal columns and are NOT genuinely unequal.
+ * Unequal geometry requires width-aware paragraph reflow during balancing;
+ * equal explicit widths can use the same fixed-line balancing as implicit
+ * equal columns. This predicate describes geometry, not balancing eligibility.
  */
 export function hasGenuinelyUnequalExplicitColumnWidths(
   columns: { equalWidth?: boolean | undefined; widths?: readonly number[] | undefined } | null | undefined,
@@ -2632,6 +2636,8 @@ export type ParagraphAttrs = {
    * See `@superdoc/contracts/direction-context` for axis semantics.
    */
   directionContext?: ParagraphDirectionContext;
+  /** Authored paragraph writing-mode override; kept distinct from inherited cell rotation. */
+  textDirection?: string;
   isTocEntry?: boolean;
   tocInstruction?: string;
   /** Stable id shared by every paragraph in the same TOC (docPartObj uniqueId or parent sdBlockId). */
@@ -2900,6 +2906,70 @@ const isEmptyParagraphSkippedAtBoundary = (block: ParagraphBlock): boolean => {
   );
 };
 
+/** An invisible continuous carrier must not spill before its closing boundary. */
+const isInvisibleUnequalColumnClosingCarrier = (blocks: FlowBlock[], index: number): boolean => {
+  const block = blocks[index];
+  const next = blocks[index + 1];
+  if (
+    block?.kind !== 'paragraph' ||
+    !isInvisibleSectionBoundaryMarkerBlock(block) ||
+    block.attrs?.paragraphMarkTrackedChange != null ||
+    block.attrs?.numberingProperties ||
+    block.attrs?.wordLayout?.marker ||
+    block.attrs?.frame ||
+    block.attrs?.sdt ||
+    block.attrs?.containerSdt ||
+    (block.inlineBoxes?.length ?? 0) > 0 ||
+    block.runs.some((run) => 'dataAttrs' in run && Object.keys(run.dataAttrs ?? {}).length > 0) ||
+    next?.kind !== 'sectionBreak' ||
+    next.attrs?.source !== 'sectPr' ||
+    next.type !== 'continuous' ||
+    next.columns?.count !== 1
+  )
+    return false;
+
+  let preceding: SectionBreakBlock | undefined;
+  for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
+    const candidate = blocks[cursor];
+    if (candidate.kind === 'sectionBreak') {
+      preceding = candidate;
+      break;
+    }
+  }
+  const columns = preceding?.columns;
+  if (
+    !columns ||
+    !Number.isInteger(columns.count) ||
+    columns.count <= 1 ||
+    !Array.isArray(columns.widths) ||
+    columns.widths.length !== columns.count ||
+    !columns.widths.every((width) => Number.isFinite(width) && width > 0) ||
+    !hasGenuinelyUnequalExplicitColumnWidths(columns)
+  )
+    return false;
+
+  // Anchor resolvers consult this predicate before building their maps. Prove
+  // explicit owners stay eligible without recursively resolving fallback paths.
+  const owners = new Map<string, { block: FlowBlock; index: number }>();
+  blocks.forEach((candidate, ordinal) => owners.set(candidate.id, { block: candidate, index: ordinal }));
+  const markerRoot = sourceParagraphRootKey(block);
+  for (const candidate of blocks) {
+    if (candidate.kind !== 'drawing' && candidate.kind !== 'image' && candidate.kind !== 'table') continue;
+    const anchorId = (candidate.attrs as { anchorParagraphId?: unknown } | undefined)?.anchorParagraphId;
+    if (anchorId === block.id || (markerRoot != null && sourceParagraphRootKey(candidate) === markerRoot)) return false;
+    if (!candidate.anchor?.isAnchored) continue;
+    const owner = typeof anchorId === 'string' ? owners.get(anchorId) : undefined;
+    if (!owner || owner.block.kind !== 'paragraph' || owner.block.attrs?.sectPrMarker === true) return false;
+    if (
+      isEmptyParagraphSkippedAtBoundary(owner.block) &&
+      blocks[owner.index - 1]?.kind === 'pageBreak' &&
+      blocks[owner.index + 1]?.kind === 'sectionBreak'
+    )
+      return false;
+  }
+  return true;
+};
+
 /** Shared eligibility for paragraphs the layout loop deliberately omits. */
 export const shouldSkipParagraphDuringLayout = (blocks: FlowBlock[], index: number): boolean => {
   const block = blocks[index];
@@ -2921,6 +2991,7 @@ export const shouldSkipParagraphDuringLayout = (blocks: FlowBlock[], index: numb
     // insertion/deletion geometry remains addressable.
     if (sectionBreakForcesPage(next)) return true;
     if (next.attrs?.source === 'sectPr' && hasUnequalExplicitColumnWidths(next)) return true;
+    if (isInvisibleUnequalColumnClosingCarrier(blocks, index)) return true;
     if (next.attrs?.source === 'sectPr' && isExplicitEmptyTextParagraphBlock(previous ?? undefined)) return true;
   }
   return previous?.kind === 'pageBreak' && next?.kind === 'sectionBreak';
@@ -3212,6 +3283,8 @@ export type TableCellMeasure = {
   paragraph?: ParagraphMeasure;
   width: number;
   height: number;
+  /** Resolved whole-cell rotated flow; dimensions exclude physical padding/borders. */
+  verticalText?: { direction: 'btLr' | 'tbRl'; inlineSize: number; blockSize: number };
   /** Starting grid column index (0-based) */
   gridColumnStart?: number;
   /** Number of grid columns this cell spans */

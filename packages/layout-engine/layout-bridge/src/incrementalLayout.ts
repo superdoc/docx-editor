@@ -56,6 +56,8 @@ import {
   type LayoutContinuationBatch,
   type LayoutContinuationResume,
   findLineIndexForRunOrdinal,
+  findKeepNextChainStart,
+  isOutOfFlowDrawing,
   type LayoutOptions,
   type HeaderFooterConstraints,
   computeDisplayPageNumber,
@@ -1317,8 +1319,7 @@ export type IncrementalPaginationProof = IncrementalPaginationProofBase &
           predecessorBlockId: string | null;
         };
         /**
-         * SD-3772 D1: true means the host proved (via the shared
-         * `hasGenuinelyUnequalExplicitColumnWidths` predicate) that no
+         * SD-3772 D1: true means the host proved that no
          * potentially balanceable multi-column section exists anywhere in the
          * retained document. Balancing is a post-pagination finalizer that a
          * mid-section checkpoint cannot seed. False is admissible only
@@ -8809,20 +8810,13 @@ async function layoutWithOptionalReuse(input: {
           })
       : { ok: false as const, reason: 'profile-or-dirty-shape-ineligible' };
   let partialPageCheckpoint = partialPageCheckpointResult.ok ? partialPageCheckpointResult : null;
-  if (partialPageCheckpoint && input.preparedCoupled) {
+  if (partialPageCheckpoint) {
     const currentId =
       reuse.blockIdRewrites?.previousToCurrent.get(partialPageCheckpoint.previousBlockId) ??
       partialPageCheckpoint.previousBlockId;
     const index = reuse.currentBlockIndexById?.get(currentId);
     if (index != null) {
-      let decisionIndex = index;
-      while (
-        decisionIndex > 0 &&
-        input.blocks[decisionIndex - 1]?.kind === 'paragraph' &&
-        (input.blocks[decisionIndex - 1] as ParagraphBlock).attrs?.keepNext === true
-      ) {
-        decisionIndex -= 1;
-      }
+      const decisionIndex = findKeepNextChainStart(input.blocks, index);
       if (decisionIndex < index) {
         // The dirty paragraph checkpoint is after keep preflight. Prefer the
         // exact same-page checkpoint for the kept predecessor so pagination
@@ -8856,27 +8850,46 @@ async function layoutWithOptionalReuse(input: {
   const partialPageCheckpointRejection = partialPageCheckpointResult.ok ? null : partialPageCheckpointResult.reason;
   let checkpointPageIndex =
     partialPageCheckpoint?.checkpoint.pageIndex ?? (reuse.requireDocumentStartCheckpoint === true ? 0 : dirtyPage);
-  if (input.preparedCoupled) {
-    // A paragraph can be deferred by keep/widow/line fitting after the engine
-    // records its starting page. Revisit that decision, not only its first
-    // painted fragment. A changed chain follower also invalidates its starter.
-    for (const id of [...dirtyBlockIds, ...input.dirty.deletedBlockIds]) {
-      let currentIndex = reuse.currentBlockIndexById?.get(id);
-      while (
-        currentIndex != null &&
-        currentIndex > 0 &&
-        input.blocks[currentIndex - 1]?.kind === 'paragraph' &&
-        (input.blocks[currentIndex - 1] as ParagraphBlock).attrs?.keepNext === true
-      )
-        currentIndex -= 1;
-      const decisionId = currentIndex == null ? id : input.blocks[currentIndex].id;
-      const previousId = reuse.blockIdRewrites?.currentToPrevious.get(decisionId) ?? decisionId;
-      const checkpoint = previousLayout.blockResumeCheckpoints?.get(previousId);
-      const decisionPage = checkpoint?.preflightPageIndex ?? checkpoint?.pageIndex;
-      if (Number.isInteger(decisionPage) && decisionPage! >= 0 && decisionPage! < checkpointPageIndex) {
-        partialPageCheckpoint = null;
-        checkpointPageIndex = decisionPage!;
-      }
+  // Keep decisions and coupled footnote demand need their original page
+  // reconsidered. A changed chain follower also invalidates its starter.
+  for (const id of [...dirtyBlockIds, ...input.dirty.deletedBlockIds]) {
+    const dirtyIndex = reuse.currentBlockIndexById?.get(id);
+    const currentIndex = dirtyIndex == null ? undefined : findKeepNextChainStart(input.blocks, dirtyIndex);
+    const decisionId = currentIndex == null ? id : input.blocks[currentIndex].id;
+    const previousId = reuse.blockIdRewrites?.currentToPrevious.get(decisionId) ?? decisionId;
+    const checkpoint = previousLayout.blockResumeCheckpoints?.get(previousId);
+    const decisionBlock = currentIndex == null ? null : input.blocks[currentIndex];
+    const keptDecision =
+      currentIndex != null &&
+      dirtyIndex != null &&
+      (currentIndex < dirtyIndex || (decisionBlock?.kind === 'paragraph' && decisionBlock.attrs?.keepNext === true));
+    const movedBeforeParagraph =
+      Number.isInteger(checkpoint?.preflightPageIndex) && checkpoint?.preflightPageIndex !== checkpoint?.pageIndex;
+    const dirtyBlock = dirtyIndex == null ? null : input.blocks[dirtyIndex];
+    const previousDirtyId = reuse.blockIdRewrites?.currentToPrevious.get(id) ?? id;
+    const previousDirtyIndex =
+      reuse.previousBlockIndexById?.get(previousDirtyId) ??
+      input.previousBlocks.findIndex((block) => block.id === previousDirtyId);
+    const previousDirtyBlock = input.previousBlocks[previousDirtyIndex];
+    const dirtyMeasure = dirtyIndex == null ? null : input.measures[dirtyIndex];
+    const previousDirtyMeasure = input.previousMeasures?.[previousDirtyIndex];
+    // Ordinary line fitting can move a paragraph after its checkpoint is saved.
+    // Changed line geometry or paragraph attributes must revisit that earlier
+    // page. Borders and contextual spacing also affect fit outside measurement.
+    const changedParagraphGeometry =
+      dirtyBlock?.kind === 'paragraph' &&
+      (previousDirtyBlock?.kind !== 'paragraph' ||
+        dirtyMeasure?.kind !== 'paragraph' ||
+        previousDirtyMeasure?.kind !== 'paragraph' ||
+        dirtyMeasure.totalHeight !== previousDirtyMeasure.totalHeight ||
+        dirtyMeasure.lines.length !== previousDirtyMeasure.lines.length ||
+        dirtyMeasure.lines.some((line, index) => line.lineHeight !== previousDirtyMeasure.lines[index].lineHeight) ||
+        JSON.stringify(dirtyBlock.attrs) !== JSON.stringify(previousDirtyBlock.attrs));
+    if (!input.preparedCoupled && !keptDecision && !movedBeforeParagraph && !changedParagraphGeometry) continue;
+    const decisionPage = checkpoint?.preflightPageIndex ?? checkpoint?.pageIndex;
+    if (Number.isInteger(decisionPage) && decisionPage! >= 0 && decisionPage! < checkpointPageIndex) {
+      partialPageCheckpoint = null;
+      checkpointPageIndex = decisionPage!;
     }
   }
   if (!partialPageCheckpoint) {
@@ -8884,45 +8897,63 @@ async function layoutWithOptionalReuse(input: {
       checkpointPageIndex -= 1;
     }
   }
-  if (sameInvocationReserveRelayout || input.preparedCoupled) {
-    // A keep-next chain can pull its predecessor from the retained page into
-    // the changed-reserve page. Rewind until no such chain crosses the page
-    // checkpoint; unchanged pages before that boundary are then independent.
-    while (checkpointPageIndex > 0) {
-      const checkpointStartBlockId =
-        partialPageCheckpoint?.previousBlockId ?? readFirstPageBlockId(previousPages[checkpointPageIndex]);
-      const checkpointStartBlockIndex = checkpointStartBlockId
-        ? reuse.currentBlockIndexById?.get(checkpointStartBlockId)
-        : null;
-      if (!Number.isInteger(checkpointStartBlockIndex)) {
-        return full('m4-layout-reuse-disabled-reserve-checkpoint-block-unresolved');
-      }
-      if (checkpointStartBlockIndex! <= 0) break;
-      let keepChainStartBlockIndex = checkpointStartBlockIndex!;
-      while (keepChainStartBlockIndex > 0) {
-        const predecessor = input.blocks[keepChainStartBlockIndex - 1];
-        if (predecessor?.kind !== 'paragraph' || predecessor.attrs?.keepNext !== true) break;
-        keepChainStartBlockIndex -= 1;
-      }
-      if (keepChainStartBlockIndex === checkpointStartBlockIndex) break;
-      const keepChainStartPage = reuse.previousBlockPageIndex.get(
-        input.blocks[keepChainStartBlockIndex]!.id,
-      )?.firstPage;
-      if (!Number.isInteger(keepChainStartPage) || keepChainStartPage! < 0) {
-        return full('m4-layout-reuse-disabled-reserve-keep-chain-page-unresolved');
-      }
-      if (keepChainStartPage! >= checkpointPageIndex) break;
-      // A rewind invalidates the later page's saved fragments and cursor.
-      // Never pair that partial state with an earlier page number.
+  // A keep-next chain can pull its predecessor from the retained page into
+  // the changed-reserve page. Rewind until no such chain crosses the page
+  // checkpoint; unchanged pages before that boundary are then independent.
+  while (checkpointPageIndex > 0) {
+    const checkpointStartBlockId =
+      partialPageCheckpoint?.previousBlockId ?? readFirstPageBlockId(previousPages[checkpointPageIndex]);
+    const decisionCheckpoint = checkpointStartBlockId
+      ? previousLayout.blockResumeCheckpoints?.get(checkpointStartBlockId)
+      : null;
+    const decisionOrigin = decisionCheckpoint?.preflightPageIndex;
+    if (
+      Number.isInteger(decisionOrigin) &&
+      decisionOrigin! >= 0 &&
+      decisionOrigin !== decisionCheckpoint?.pageIndex &&
+      decisionOrigin! < checkpointPageIndex
+    ) {
       partialPageCheckpoint = null;
-      checkpointPageIndex = keepChainStartPage!;
+      checkpointPageIndex = decisionOrigin!;
       while (checkpointPageIndex > 0 && !pageStartsAtCleanBlockBoundary(previousPages[checkpointPageIndex])) {
         checkpointPageIndex -= 1;
       }
+      continue;
     }
-    if (checkpointPageIndex === 0 && sameInvocationReserveRelayout) {
-      return full('m4-layout-reuse-disabled-reserve-checkpoint-has-no-stable-prefix');
+    const checkpointCurrentBlockId = checkpointStartBlockId
+      ? (reuse.blockIdRewrites?.previousToCurrent.get(checkpointStartBlockId) ?? checkpointStartBlockId)
+      : null;
+    const checkpointStartBlockIndex = checkpointCurrentBlockId
+      ? reuse.currentBlockIndexById?.get(checkpointCurrentBlockId)
+      : null;
+    if (!Number.isInteger(checkpointStartBlockIndex)) {
+      return full('m4-layout-reuse-disabled-reserve-checkpoint-block-unresolved');
     }
+    if (!partialPageCheckpoint && isOutOfFlowDrawing(input.blocks[checkpointStartBlockIndex!])) {
+      // Painted graphics can precede their source owner, so their source index
+      // cannot establish a complete paragraph replay boundary.
+      return full('m4-layout-reuse-disabled-anchored-checkpoint-owner-unresolved');
+    }
+    if (checkpointStartBlockIndex! <= 0) break;
+    const keepChainStartBlockIndex = findKeepNextChainStart(input.blocks, checkpointStartBlockIndex!);
+    if (keepChainStartBlockIndex === checkpointStartBlockIndex) break;
+    const keepChainCurrentId = input.blocks[keepChainStartBlockIndex]!.id;
+    const keepChainPreviousId = reuse.blockIdRewrites?.currentToPrevious.get(keepChainCurrentId) ?? keepChainCurrentId;
+    const keepChainStartPage = reuse.previousBlockPageIndex.get(keepChainPreviousId)?.firstPage;
+    if (!Number.isInteger(keepChainStartPage) || keepChainStartPage! < 0) {
+      return full('m4-layout-reuse-disabled-reserve-keep-chain-page-unresolved');
+    }
+    if (keepChainStartPage! >= checkpointPageIndex) break;
+    // A rewind invalidates the later page's saved fragments and cursor.
+    // Never pair that partial state with an earlier page number.
+    partialPageCheckpoint = null;
+    checkpointPageIndex = keepChainStartPage!;
+    while (checkpointPageIndex > 0 && !pageStartsAtCleanBlockBoundary(previousPages[checkpointPageIndex])) {
+      checkpointPageIndex -= 1;
+    }
+  }
+  if (checkpointPageIndex === 0 && sameInvocationReserveRelayout) {
+    return full('m4-layout-reuse-disabled-reserve-checkpoint-has-no-stable-prefix');
   }
   if (
     scopedVAlignBoundaryPages != null &&

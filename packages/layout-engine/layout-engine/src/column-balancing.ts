@@ -767,8 +767,8 @@ function setRecordedColumnIndex(fragment: BalancingFragment, columnIndex: number
  * Guards (skip balancing when):
  *   - Section has <= 1 column (nothing to balance)
  *   - Section contains an explicit column break (author intent wins)
- *   - Section uses GENUINELY-unequal column widths (Word fills these column-by-column;
- *     explicit widths that are all equal still balance — SD-2324)
+ *   - Section uses genuinely unequal widths, which require width-aware reflow
+ *     rather than this redistribution of fixed line measurements
  *   - No fragments on this page belong to the section
  */
 export function balanceSectionOnPage(args: BalanceSectionOnPageArgs): { maxY: number } | null {
@@ -776,12 +776,9 @@ export function balanceSectionOnPage(args: BalanceSectionOnPageArgs): { maxY: nu
 
   if (sectionColumns.count <= 1) return null;
   if (sectionHasExplicitColumnBreak) return null;
-  // Genuinely-unequal explicit widths: Word fills these column-by-column rather than
-  // rebalancing, and the height-balancer measures each fragment at a single width so it
-  // can't reflow per column. Explicit widths that are all EQUAL (equalWidth="0" with every
-  // <w:col w:w> equal — the common continuous newspaper case) DO balance like implicit
-  // equal columns. (SD-2324) The predicate is shared with host retained-layout
-  // dependency scanning (SD-3772); both sides must consume the same definition.
+  // A height-only redistribution cannot reflow unequal columns. The continuous
+  // paragraph path in index.ts performs bounded width-aware replay instead.
+  // Explicit widths that are all equal can still use this fixed-line balancer.
   if (hasGenuinelyUnequalExplicitColumnWidths(sectionColumns)) {
     return null;
   }

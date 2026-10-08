@@ -1212,6 +1212,27 @@ function findSplitPoint(
     const row = block.rows[i];
     const rowMeasure = measure.rows[i];
     const rowHeight = rowMeasure?.height || 0;
+
+    if (rowMeasure?.cells.some((cell) => cell.verticalText)) {
+      // Rotated lines advance across the cell, not down its physical rows.
+      // Keep a resolved span intact; an oversized span advances as one
+      // clipped whole-cell fragment rather than entering horizontal slicing.
+      let spanEnd = i + 1;
+      for (let spanRow = i; spanRow < spanEnd && spanRow < measure.rows.length; spanRow++) {
+        for (const cell of measure.rows[spanRow].cells) spanEnd = Math.max(spanEnd, spanRow + (cell.rowSpan ?? 1));
+      }
+      spanEnd = Math.min(spanEnd, block.rows.length);
+      const withSpan = computeFragmentFitHeight(measure, startRow, spanEnd, 0, borderCollapse);
+      if (withSpan <= availableHeight) {
+        lastFitRow = spanEnd;
+        i = spanEnd - 1;
+        continue;
+      }
+      const spanHeight = computeFragmentFitHeight(measure, i, spanEnd, 0, borderCollapse);
+      if (lastFitRow === startRow && fullPageHeight && spanHeight > fullPageHeight)
+        return { endRow: spanEnd, partialRow: null };
+      return { endRow: lastFitRow, partialRow: null };
+    }
     let cantSplit = row.attrs?.tableRowProperties?.cantSplit === true;
     if (rowMeasure && hasExplicitRowHeightSlack(row, rowMeasure) && (!fullPageHeight || rowHeight <= fullPageHeight)) {
       cantSplit = true;

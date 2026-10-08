@@ -1,6 +1,7 @@
 import {
   buildLayoutSourceIdentityForFragment,
   getParagraphInlineDirection,
+  getTableCellTextDirection,
   inlineBoxStyleSignature,
   type DrawingBlock,
   type FieldAnnotationRun,
@@ -531,6 +532,8 @@ export const deriveBlockVersion = (block: FlowBlock, fontConfigVersion?: number)
           attrs.shading?.fill ?? '',
           attrs.shading?.color ?? '',
           getParagraphInlineDirection(attrs) ?? '',
+          attrs.directionContext?.writingMode ?? '',
+          attrs.textDirection ?? '',
           attrs.tabs?.length ? JSON.stringify(attrs.tabs) : '',
           attrs.paragraphMarkTrackedChange ? trackedChangeMetaSignature(attrs.paragraphMarkTrackedChange) : '',
           attrs.paragraphPropertyTrackedChange ? trackedChangeMetaSignature(attrs.paragraphPropertyTrackedChange) : '',
@@ -636,6 +639,8 @@ export const deriveBlockVersion = (block: FlowBlock, fontConfigVersion?: number)
 
         if (cell.attrs) {
           const cellAttrs = cell.attrs as TableCellAttrs;
+          const direction = getTableCellTextDirection(cellAttrs);
+          if (direction) hash = hashString(hash, `td:${direction}`);
           if (cellAttrs.borders) {
             hash = hashString(hash, hashCellBorders(cellAttrs.borders));
           }

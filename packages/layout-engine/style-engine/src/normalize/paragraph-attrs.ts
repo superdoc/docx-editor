@@ -48,6 +48,7 @@ export function normalizeParagraphAttrsFromOoxml(
 ): Partial<ParagraphAttrs> {
   if (!props) return {};
   const attrs: Partial<ParagraphAttrs> = {};
+  if (props.textDirection != null) attrs.textDirection = props.textDirection;
 
   if (props.styleId) attrs.styleId = String(props.styleId);
 

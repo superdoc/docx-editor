@@ -43,6 +43,7 @@ import {
 } from '@superdoc/contracts';
 import { createAnchoredTableFragment, isAnchoredTableFullWidth } from './layout-table.js';
 import { clampPageRelativeFloatingTableY } from './floating-table-anchor.js';
+import { paragraphContinuation } from './paragraph-continuation.js';
 import type { AnchoredTable } from './anchors.js';
 
 /** Points → CSS pixels (96 dpi / 72 pt-per-inch). */
@@ -373,6 +374,7 @@ export type ParagraphLayoutContext = {
   block: ParagraphBlock;
   measure: ParagraphMeasure;
   columnWidth: number;
+  columnWidthForState?: (state: PageState) => number;
   ensurePage: () => PageState;
   advanceColumn: (state: PageState) => PageState;
   columnX: (state: PageState, columnIndex?: number) => number;
@@ -389,6 +391,8 @@ export type ParagraphLayoutContext = {
    * When undefined, uses the value from block.attrs.spacing.after.
    */
   overrideSpacingAfter?: number;
+  /** A keep-next preflight moved this paragraph to a fresh page. */
+  suppressSpacingBefore?: boolean;
   /**
    * SD-3049 / SD-2656: footnote demand under the ordered-cluster rule.
    *
@@ -498,6 +502,26 @@ function shouldAdvanceForParagraphRelativeDrawing(
     const anchor = entry.block.anchor;
     const objectHeight = entry.measure.height ?? 0;
     const wrapType = entry.block.wrap?.type ?? 'Inline';
+    // Word keeps foreground wrap-none pictures, text-free shapes and
+    // unwarped rectangular textboxes with their fitting paragraph at the footer.
+    const block = entry.block;
+    const isOverlay =
+      block.kind === 'image' ||
+      (block.kind === 'drawing' &&
+        ((block.drawingKind === 'vectorShape' && block.textContent == null && block.textWarp == null) ||
+          (block.drawingKind === 'textboxShape' &&
+            block.shapeKind === 'rect' &&
+            (block.textWarp == null || block.textWarp.preset === 'textNoShape'))));
+    if (
+      isOverlay &&
+      anchor?.isAnchored === true &&
+      anchor.vRelativeFrom === 'paragraph' &&
+      wrapType === 'None' &&
+      anchor.behindDoc === false &&
+      entry.block.wrap?.behindDoc !== true
+    ) {
+      return false;
+    }
     if (
       (anchor?.vRelativeFrom != null && anchor.vRelativeFrom !== 'paragraph') ||
       wrapType === 'Inline' ||
@@ -529,18 +553,19 @@ export function* layoutParagraphBlockSteps(
   ctx: ParagraphLayoutContext,
   anchors?: ParagraphAnchorsContext,
 ): Generator<{ index: number; total: number }, void, void> {
-  const { block, measure, columnWidth, ensurePage, advanceColumn, columnX, floatManager } = ctx;
+  const { block, measure, ensurePage, advanceColumn, columnX, floatManager } = ctx;
+  let columnWidth = ctx.columnWidth;
   const remeasureParagraph = ctx.remeasureParagraph;
   let reportedInlineBoxRemeasureDrop = false;
-  const blockForRemeasure = (): ParagraphBlock => {
-    if (!block.inlineBoxes?.length) return block;
+  const blockForRemeasure = (source = block): ParagraphBlock => {
+    if (!source.inlineBoxes?.length) return source;
     if (!reportedInlineBoxRemeasureDrop) {
       reportedInlineBoxRemeasureDrop = true;
       console.warn(
-        `layout.inline-box-remeasure-unsupported: dropped ${block.inlineBoxes.length} inline box(es) from paragraph ${block.id}`,
+        `layout.inline-box-remeasure-unsupported: dropped ${source.inlineBoxes.length} inline box(es) from paragraph ${block.id}`,
       );
     }
-    return { ...block, inlineBoxes: undefined };
+    return { ...source, inlineBoxes: undefined };
   };
 
   const blockAttrs = getParagraphAttrs(block);
@@ -575,7 +600,7 @@ export function* layoutParagraphBlockSteps(
   const measuredAtMaxWidth = measure.measuredAtMaxWidth;
   const needsRemeasureForColumnWidth =
     typeof measuredAtMaxWidth === 'number' && Number.isFinite(measuredAtMaxWidth)
-      ? measuredAtMaxWidth - columnWidth > REMEASURE_WIDTH_EPSILON_PX
+      ? Math.abs(measuredAtMaxWidth - columnWidth) > REMEASURE_WIDTH_EPSILON_PX
       : typeof measurementWidth === 'number' && measurementWidth > remeasureWidth;
   let didRemeasureForColumnWidth = false;
   // Track remeasured marker info to ensure fragment gets accurate marker text width
@@ -612,6 +637,7 @@ export function* layoutParagraphBlockSteps(
   }
   /** Original spacing before value, preserved for blank page calculations where no trailing collapse occurs. */
   const baseSpacingBefore = spacingBefore;
+  if (ctx.suppressSpacingBefore) spacingBefore = 0;
   let appliedSpacingBefore = spacingBefore === 0;
   let lastState: PageState | null = null;
   if (spacingDebugEnabled) {
@@ -642,25 +668,37 @@ export function* layoutParagraphBlockSteps(
       contextualSpacing,
       previewState.lastParagraphStyleId,
     );
+    const rewindTrailingFromPrevious = shouldSuppressOwnSpacing(
+      previewState.lastParagraphStyleId,
+      previewState.lastParagraphContextualSpacing,
+      styleId,
+    );
     const floatScanStartY = computeParagraphLayoutStartY({
       cursorY: previewState.cursorY,
       spacingBefore,
       trailingSpacing: previewState.trailingSpacing,
       suppressSpacingBefore,
-      rewindTrailingFromPrevious: shouldSuppressOwnSpacing(
-        previewState.lastParagraphStyleId,
-        previewState.lastParagraphContextualSpacing,
-        styleId,
-      ),
+      rewindTrailingFromPrevious,
     });
     const preSpacingOrigin = Math.max(
       previewState.topMargin,
       floatScanStartY - (suppressSpacingBefore ? 0 : spacingBefore),
     );
+    // Paragraph-relative drawings retain the preceding after-gap. Subtracting
+    // the full before-gap after spacing collapse would rewind that gap twice.
+    const paragraphRelativeDrawingOrigin = Math.max(
+      previewState.topMargin,
+      computeParagraphLayoutStartY({
+        cursorY: previewState.cursorY,
+        spacingBefore: 0,
+        trailingSpacing: previewState.trailingSpacing,
+        rewindTrailingFromPrevious,
+      }),
+    );
     return {
       paragraphAnchorBaseY: floatScanStartY + borderExpansion.top - (inBorderGroup ? rawBorderExpansion.bottom : 0),
-      // Word resolves paragraph-relative drawing offsets from the paragraph's
-      // outer origin, before its own spaceBefore.
+      paragraphRelativeDrawingAnchorBaseY:
+        paragraphRelativeDrawingOrigin + borderExpansion.top - (inBorderGroup ? rawBorderExpansion.bottom : 0),
       paragraphDrawingAnchorBaseY:
         preSpacingOrigin + borderExpansion.top - (inBorderGroup ? rawBorderExpansion.bottom : 0),
       paragraphTableAnchorBaseY:
@@ -677,13 +715,23 @@ export function* layoutParagraphBlockSteps(
     shouldAdvanceForParagraphRelativeDrawing(
       anchors?.anchoredDrawings,
       previewState,
-      paragraphOrigins.paragraphDrawingAnchorBaseY,
+      paragraphOrigins.paragraphRelativeDrawingAnchorBaseY,
       paragraphOrigins.paragraphAnchorBaseY,
       measure.lines?.[0]?.lineHeight || measure.totalHeight || 0,
       anchors?.pageMargins.bottom ?? 0,
     )
   ) {
+    const previousPageNumber = previewState.page.number;
     previewState = advanceColumn(previewState);
+    if (
+      previewState.page.number !== previousPageNumber &&
+      Math.abs(previewState.cursorY - previewState.topMargin) < 1e-6
+    ) {
+      // Word suppresses spaceBefore when the drawing carrier automatically
+      // moves to a fresh page, before resolving its paragraph-relative floats.
+      spacingBefore = 0;
+      appliedSpacingBefore = true;
+    }
     inBorderGroup = currentBorderHash != null && currentBorderHash === previewState.lastParagraphBorderHash;
     borderExpansion = {
       top: inBorderGroup ? 0 : rawBorderExpansion.top,
@@ -695,6 +743,7 @@ export function* layoutParagraphBlockSteps(
 
   const paragraphAnchorBaseY = paragraphOrigins.paragraphAnchorBaseY;
   const paragraphDrawingAnchorBaseY = paragraphOrigins.paragraphDrawingAnchorBaseY;
+  const paragraphRelativeDrawingAnchorBaseY = paragraphOrigins.paragraphRelativeDrawingAnchorBaseY;
   const paragraphTableAnchorBaseY = paragraphOrigins.paragraphTableAnchorBaseY;
 
   const registerAnchoredDrawings = () => {
@@ -710,7 +759,11 @@ export function* layoutParagraphBlockSteps(
       // vRelativeFrom and Word resolves that offset from the paragraph's
       // content origin after spaceBefore.
       const anchorParagraphY =
-        entry.block.anchor?.vRelativeFrom == null ? paragraphAnchorBaseY : paragraphDrawingAnchorBaseY;
+        entry.block.anchor?.vRelativeFrom === 'paragraph'
+          ? paragraphRelativeDrawingAnchorBaseY
+          : entry.block.anchor?.vRelativeFrom == null
+            ? paragraphAnchorBaseY
+            : paragraphDrawingAnchorBaseY;
       const anchorY = resolveAnchoredGraphicY({
         anchor: entry.block.anchor,
         objectHeight: entry.measure.height,
@@ -1131,14 +1184,22 @@ export function* layoutParagraphBlockSteps(
   // it, so a paragraph-wide "narrowest width" loses Word's line boundaries.
   let didRemeasureForFloats = false;
 
-  if (typeof remeasureParagraph === 'function') {
+  const remeasureFloatRegions = (
+    candidateBlock: ParagraphBlock,
+    candidateLines: Line[],
+    state: PageState,
+    startY: number,
+    firstLineIndent: number,
+    mapLine: (line: Line) => Line = (line) => line,
+  ): { lines: Line[]; constrained: boolean; marker?: ParagraphMeasure['marker'] } => {
+    if (!remeasureParagraph) return { lines: candidateLines, constrained: false };
     const paragraphContentLeft = indentLeft;
     const paragraphContentRight = columnWidth - indentRight;
     const paragraphContentWidth = Math.max(1, paragraphContentRight - paragraphContentLeft);
 
     const scanFloatConstraints = (candidateLines: Line[]): ParagraphLineRegion[][] => {
-      const tempState = ensurePage();
-      let tempY = paragraphAnchorBaseY;
+      const tempState = state;
+      let tempY = startY;
       const constraints: ParagraphLineRegion[][] = [];
 
       for (let i = 0; i < candidateLines.length; i++) {
@@ -1191,29 +1252,50 @@ export function* layoutParagraphBlockSteps(
           ),
       );
 
-    const preFloatLines = lines;
-    let lineRegions = scanFloatConstraints(lines);
+    const preFloatLines = candidateLines;
+    let resultLines = candidateLines;
+    let marker: ParagraphMeasure['marker'];
+    let constrained = false;
+    let lineRegions = scanFloatConstraints(candidateLines);
     if (isConstrained(lineRegions)) {
-      const firstLineIndent = calculateFirstLineIndent(block, measure);
       for (let pass = 0; pass < 8; pass += 1) {
-        const newMeasure = remeasureParagraph(blockForRemeasure(), columnWidth, firstLineIndent, lineRegions);
+        const newMeasure = remeasureParagraph(
+          blockForRemeasure(candidateBlock),
+          columnWidth,
+          firstLineIndent,
+          lineRegions,
+        );
         const newLines = collapseSplitLineBreakCarrierLines(
           normalizeLines(newMeasure),
           ctx.collapseSplitLineBreakCarrier,
-        );
+        ).map(mapLine);
         const nextRegions = scanFloatConstraints(newLines);
         if (!isConstrained(nextRegions)) {
-          lines = preFloatLines;
-          didRemeasureForFloats = false;
+          resultLines = preFloatLines;
+          constrained = false;
           break;
         }
-        lines = newLines;
-        didRemeasureForFloats = true;
-        if (newMeasure.marker) remeasuredMarkerInfo = newMeasure.marker;
+        resultLines = newLines;
+        constrained = true;
+        marker = newMeasure.marker;
         if (sameConstraints(lineRegions, nextRegions)) break;
         lineRegions = nextRegions;
       }
     }
+    return { lines: resultLines, constrained, marker };
+  };
+
+  if (typeof remeasureParagraph === 'function') {
+    const result = remeasureFloatRegions(
+      block,
+      lines,
+      ensurePage(),
+      paragraphAnchorBaseY,
+      calculateFirstLineIndent(block, measure),
+    );
+    lines = result.lines;
+    didRemeasureForFloats = result.constrained;
+    if (result.marker) remeasuredMarkerInfo = result.marker;
   }
 
   // Resolve exact markers after width/float remeasurement, once for this
@@ -1221,11 +1303,15 @@ export function* layoutParagraphBlockSteps(
   // ownership must match the final footnote planner rather than charge both.
   const paragraphAnchors = ctx.getFootnoteAnchorsForBlockId?.(block.id) ?? [];
   const anchorLines = new Map<FootnoteAnchorRef, number>();
-  for (const anchor of paragraphAnchors) {
-    if (anchor.runOrdinal == null) continue;
-    const lineIndex = findLineIndexForRunOrdinal(lines, anchor.runOrdinal);
-    if (lineIndex != null) anchorLines.set(anchor, lineIndex);
-  }
+  const refreshAnchorLines = () => {
+    anchorLines.clear();
+    for (const anchor of paragraphAnchors) {
+      if (anchor.runOrdinal == null) continue;
+      const lineIndex = findLineIndexForRunOrdinal(lines, anchor.runOrdinal);
+      if (lineIndex != null) anchorLines.set(anchor, lineIndex);
+    }
+  };
+  refreshAnchorLines();
   const getSliceAnchors = (startLine: number, endLine: number): ReadonlyArray<FootnoteAnchorRef> => {
     if (paragraphAnchors.length === 0) return paragraphAnchors;
     const range = computeFragmentPmRange(block, lines, startLine, endLine);
@@ -1243,10 +1329,38 @@ export function* layoutParagraphBlockSteps(
     return ctx.getFootnoteRefCountForBlockId?.(block.id, range.pmStart, range.pmEnd) ?? 0;
   };
 
+  const refreshColumnMeasure = (state: PageState) => {
+    const nextWidth = ctx.columnWidthForState?.(state) ?? columnWidth;
+    if (Math.abs(nextWidth - columnWidth) <= REMEASURE_WIDTH_EPSILON_PX) return;
+    columnWidth = nextWidth;
+    if (!remeasureParagraph || !lines[fromLine]) return;
+    const continuation = fromLine > 0 ? paragraphContinuation(blockForRemeasure(), lines[fromLine]) : undefined;
+    const candidate = continuation?.block ?? blockForRemeasure();
+    const mapLine = continuation?.mapLine ?? ((line: Line) => line);
+    const firstLineIndent = continuation ? 0 : calculateFirstLineIndent(block, measure);
+    const remaining = normalizeLines(remeasureParagraph(candidate, columnWidth, firstLineIndent)).map(mapLine);
+    const result = remeasureFloatRegions(
+      candidate,
+      remaining,
+      state,
+      state.cursorY + borderExpansion.top,
+      firstLineIndent,
+      mapLine,
+    );
+    // Already committed fragments keep their lines and source ranges. Only the
+    // unconsumed suffix is composed at the destination column's constraint.
+    lines = [...lines.slice(0, fromLine), ...result.lines];
+    didRemeasureForColumnWidth = true;
+    didRemeasureForFloats = result.constrained;
+    if (!continuation && result.marker) remeasuredMarkerInfo = result.marker;
+    refreshAnchorLines();
+  };
+
   // PHASE 2: Layout the paragraph with the remeasured lines
   while (fromLine < lines.length) {
     yield { index: fromLine, total: lines.length };
     let state = ensurePage();
+    refreshColumnMeasure(state);
     if (state.trailingSpacing == null) state.trailingSpacing = 0;
 
     // Reclaim the previous paragraph's bottom border expansion when joining a group.
@@ -1434,6 +1548,8 @@ export function* layoutParagraphBlockSteps(
       state.trailingSpacing = 0;
     }
 
+    refreshColumnMeasure(state);
+
     // TopAndBottom wrapping is a vertical exclusion, not a horizontal width
     // reduction. Move the next flow line below every overlapping band,
     // including the authored bottom text distance.
@@ -1568,12 +1684,16 @@ export function* layoutParagraphBlockSteps(
 
     if (state.cursorY >= effectiveBottom) {
       state = advanceColumn(state);
+      if (Math.abs((ctx.columnWidthForState?.(state) ?? columnWidth) - columnWidth) > REMEASURE_WIDTH_EPSILON_PX)
+        continue;
       effectiveBottom = computePreviewBottom();
     }
 
     const availableHeight = effectiveBottom - state.cursorY;
     if (availableHeight <= 0) {
       state = advanceColumn(state);
+      if (Math.abs((ctx.columnWidthForState?.(state) ?? columnWidth) - columnWidth) > REMEASURE_WIDTH_EPSILON_PX)
+        continue;
       effectiveBottom = computePreviewBottom();
     }
 
@@ -1581,6 +1701,8 @@ export function* layoutParagraphBlockSteps(
     const remainingHeight = effectiveBottom - state.cursorY;
     if (pageHasNonTableAnchorContent(state) && remainingHeight < nextLineHeight) {
       state = advanceColumn(state);
+      if (Math.abs((ctx.columnWidthForState?.(state) ?? columnWidth) - columnWidth) > REMEASURE_WIDTH_EPSILON_PX)
+        continue;
       effectiveBottom = computePreviewBottom();
     }
 

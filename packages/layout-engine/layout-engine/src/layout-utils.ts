@@ -2,7 +2,7 @@ import {
   computeFragmentPmRange as computeFragmentPmRangeUnified,
   computeLinePmRange as computeLinePmRangeUnified,
 } from '@superdoc/contracts';
-import type { Line, ParagraphBlock, ParagraphMeasure, LinePmRange, Run, TextRun } from '@superdoc/contracts';
+import type { FlowBlock, Line, ParagraphBlock, ParagraphMeasure, LinePmRange, Run, TextRun } from '@superdoc/contracts';
 
 // ============================================================================
 // Empty Paragraph Detection Types & Utilities
@@ -252,3 +252,25 @@ export const extractBlockPmRange = (block: { attrs?: Record<string, unknown> } |
     pmEnd: end ?? (start != null ? start + 1 : undefined),
   };
 };
+
+/** Positioned drawings are laid out by their owner, rather than consuming a flow slot. */
+export function isOutOfFlowDrawing(block: FlowBlock): boolean {
+  return (block.kind === 'image' || block.kind === 'drawing') && block.anchor?.isAnchored === true;
+}
+
+/** Find the kept paragraph whose page decision also owns this flow block. */
+export function findKeepNextChainStart(blocks: readonly FlowBlock[], index: number): number {
+  let start = index;
+  let predecessorIndex = index - 1;
+  while (predecessorIndex >= 0) {
+    const predecessor = blocks[predecessorIndex];
+    if (isOutOfFlowDrawing(predecessor)) {
+      predecessorIndex -= 1;
+      continue;
+    }
+    if (predecessor.kind !== 'paragraph' || predecessor.attrs?.keepNext !== true) break;
+    start = predecessorIndex;
+    predecessorIndex -= 1;
+  }
+  return start;
+}

@@ -43,6 +43,7 @@ import {
   getColumnWidth,
   getColumnX,
   columnRenderLayoutsEqual,
+  hasGenuinelyUnequalExplicitColumnWidths,
   resolveColumnCount,
   resolveColumnLayout,
   resolveAnchoredGraphicY,
@@ -64,7 +65,7 @@ import {
   SINGLE_COLUMN_DEFAULT,
   isInitialSectionBreak,
 } from './section-breaks.js';
-import { layoutParagraphBlockSteps, type FootnoteAnchorRef } from './layout-paragraph.js';
+import { layoutParagraphBlock, layoutParagraphBlockSteps, type FootnoteAnchorRef } from './layout-paragraph.js';
 import { buildFootnoteAnchorIndexSteps } from './footnote-anchor-index.js';
 import { coupledFootnoteBodyBottom, type FootnotePageFlow } from './footnote-page-flow.js';
 export type { FootnotePageFlow } from './footnote-page-flow.js';
@@ -94,8 +95,13 @@ import { clampPageRelativeFloatingTableY } from './floating-table-anchor.js';
 import { normalizeFragmentsForRegion } from './normalize-header-footer-fragments.js';
 import { createPaginator, isPaginationEarlyStop, type PageState, type ConstraintBoundary } from './paginator.js';
 import { formatPageNumber } from './pageNumbering.js';
-import { shouldSuppressSpacingForEmpty, shouldSuppressOwnSpacing, findLineIndexForRunOrdinal } from './layout-utils.js';
-export { findLineIndexForRunOrdinal } from './layout-utils.js';
+import {
+  shouldSuppressSpacingForEmpty,
+  shouldSuppressOwnSpacing,
+  findLineIndexForRunOrdinal,
+  isOutOfFlowDrawing,
+} from './layout-utils.js';
+export { findLineIndexForRunOrdinal, findKeepNextChainStart, isOutOfFlowDrawing } from './layout-utils.js';
 import { shouldSkipParagraphDuringLayout } from './paragraph-layout-eligibility.js';
 import {
   balanceSectionOnPage,
@@ -307,12 +313,15 @@ function* computeKeepNextChainSteps(
     // Walk forward to find all consecutive keepNext paragraphs.
     const memberIndices: number[] = [i];
     let endIndex = i;
+    let anchorIndex = -1;
 
     for (let j = i + 1; j < blocks.length; j++) {
       if (checkpointEveryBlocks != null && j % checkpointEveryBlocks === 0) {
         yield { index: j, total: blocks.length };
       }
       const nextBlock = blocks[j];
+      if (isOutOfFlowDrawing(nextBlock)) continue;
+      anchorIndex = j;
 
       // Explicit breaks terminate the chain - keepNext doesn't span across them
       if (nextBlock.kind === 'sectionBreak' || nextBlock.kind === 'pageBreak' || nextBlock.kind === 'columnBreak') {
@@ -330,6 +339,7 @@ function* computeKeepNextChainSteps(
         // This paragraph continues the chain - add it and mark as processed
         memberIndices.push(j);
         endIndex = j;
+        anchorIndex = -1;
         processedIndices.add(j);
       } else {
         // Found a paragraph without keepNext - this becomes the anchor
@@ -337,10 +347,6 @@ function* computeKeepNextChainSteps(
         break;
       }
     }
-
-    // Determine the anchor: the first paragraph after the chain that we must "keep with"
-    // A single keepNext paragraph still needs chain logic to evaluate with its anchor
-    const anchorIndex = endIndex + 1 < blocks.length ? endIndex + 1 : -1;
 
     // Validate that the anchor is not an explicit break (those don't count as anchors)
     if (anchorIndex !== -1) {
@@ -2573,6 +2579,124 @@ function* layoutDocumentSteps(
     }
   }
 
+  // Unequal columns need new line breaks at each trial height; the existing
+  // equal-width balancer can only redistribute already measured lines. Limit
+  // this replay to a complete, unanchored paragraph section on the current page.
+  const balanceUnequalParagraphSection = (
+    state: PageState,
+    sectionIndex: number,
+    columns: NormalizedColumns,
+    regionTop: number,
+  ): { maxY: number } | null => {
+    if (!options.remeasureParagraph || !hasGenuinelyUnequalExplicitColumnWidths(columns)) return null;
+    const sectionBlocks = blocks.filter(
+      (b) => blockSectionMap.get(b.id) === sectionIndex && b.kind !== 'sectionBreak' && !sectPrMarkerBlockIds.has(b.id),
+    );
+    if (sectionBlocks.length !== 1 || sectionBlocks[0].kind !== 'paragraph') return null;
+    const paragraph = sectionBlocks[0];
+    // Tab widths are currently run-owned; repeated trials cannot publish a
+    // different width for each selected column fragment. Preserve natural flow.
+    if (paragraph.runs.some((run) => run.kind === 'tab')) return null;
+    if (
+      paragraph.attrs?.keepLines ||
+      paragraph.attrs?.keepNext ||
+      paragraph.attrs?.frame ||
+      paragraph.inlineBoxes?.length
+    )
+      return null;
+    if (
+      states.some((s) => s !== state && s.page.fragments.some((f) => blockSectionMap.get(f.blockId) === sectionIndex))
+    )
+      return null;
+    const original = state.page.fragments.filter((f) => blockSectionMap.get(f.blockId) === sectionIndex);
+    if (!original.length || original.some((f) => f.kind !== 'para')) return null;
+    if (
+      getFootnoteRefCountForBlockId(paragraph.id) > 0 ||
+      anchoredByParagraph.has(blocks.indexOf(paragraph)) ||
+      anchoredTablesByParagraph.has(blocks.indexOf(paragraph))
+    )
+      return null;
+    if (
+      floatManager
+        .getAllFloatsForPage(state.page.number)
+        .some((z) => z.bounds.y + z.bounds.height + z.distances.bottom > regionTop)
+    )
+      return null;
+    const checkpoint = blockResumeCheckpoints.get(paragraph.id);
+    if (!checkpoint || checkpoint.columnIndex !== 0 || checkpoint.cursorY < regionTop) return null;
+    const sourceMeasure = balancingMeasureMap.get(paragraph.id) as ParagraphMeasure;
+    if (!sourceMeasure?.lines.length) return null;
+    const prefix = state.page.fragments.filter((f) => blockSectionMap.get(f.blockId) !== sectionIndex);
+    const geometry = getColumnGeometry(columns);
+    const overflow = Symbol('unequal-column-balance-overflow');
+    const trial = (height: number): { fragments: Fragment[]; maxY: number } | null => {
+      const candidate: PageState = {
+        ...state,
+        page: { ...state.page, fragments: [...prefix] },
+        cursorY: checkpoint.cursorY,
+        maxCursorY: regionTop,
+        topMargin: regionTop,
+        contentBottom: regionTop + height,
+        columnIndex: 0,
+        trailingSpacing: checkpoint.trailingSpacing,
+        lastParagraphStyleId: checkpoint.lastParagraphStyleId,
+        lastParagraphContextualSpacing: checkpoint.lastParagraphContextualSpacing,
+        lastParagraphBorderHash: checkpoint.lastParagraphBorderHash,
+        committedBodyBottom: undefined,
+        footnoteAnchorsThisPage: [],
+      };
+      const advance = (s: PageState) => {
+        if (++s.columnIndex >= columns.count) throw overflow;
+        s.cursorY = regionTop;
+        s.trailingSpacing = 0;
+        s.lastParagraphStyleId = undefined;
+        s.lastParagraphContextualSpacing = false;
+        s.lastParagraphBorderHash = undefined;
+        return s;
+      };
+      const trialParagraph: ParagraphBlock = { ...paragraph, runs: paragraph.runs.map((run) => ({ ...run })) };
+      try {
+        layoutParagraphBlock({
+          block: trialParagraph,
+          measure: sourceMeasure,
+          columnWidth: getColumnWidth(geometry, 0),
+          columnWidthForState: (s) => getColumnWidth(geometry, s.columnIndex),
+          ensurePage: () => candidate,
+          advanceColumn: advance,
+          columnX: (s, i = s.columnIndex) => getColumnX(geometry, i, state.page.margins?.left ?? activeLeftMargin),
+          floatManager,
+          remeasureParagraph: options.remeasureParagraph,
+        });
+      } catch (error) {
+        if (error === overflow) return null;
+        throw error;
+      }
+      const fragments = candidate.page.fragments.slice(prefix.length);
+      const maxY = candidate.maxCursorY;
+      if (maxY > regionTop + height + 0.01) return null;
+      return { fragments, maxY };
+    };
+    let high = state.contentBottom - regionTop;
+    let best = trial(high);
+    if (!best) return null;
+    let low = 0;
+    // Bounded sub-pixel search; a failed trial never mutates committed fragments.
+    for (let i = 0; i < 16 && high - low > 0.1; i++) {
+      const mid = (low + high) / 2;
+      const candidate = trial(mid);
+      if (candidate) {
+        high = mid;
+        best = candidate;
+      } else low = mid;
+    }
+    const first = state.page.fragments.findIndex((f) => blockSectionMap.get(f.blockId) === sectionIndex);
+    const replacement = state.page.fragments.filter((f) => blockSectionMap.get(f.blockId) !== sectionIndex);
+    replacement.splice(first, 0, ...best.fragments);
+    state.page.fragments.splice(0, state.page.fragments.length, ...replacement);
+    state.committedBodyBottom = best.maxY;
+    return { maxY: best.maxY };
+  };
+
   // Collect anchored drawings mapped to their anchor paragraphs
   const anchoredDrawings = yield* mapLayoutWorkCheckpoints(
     collectAnchoredDrawingsSteps(
@@ -3226,20 +3350,22 @@ function* layoutDocumentSteps(
               const availableHeight = activePageSize.h - activeBottomMargin - activeRegionTop;
               const contentWidth = activePageSize.w - (activeLeftMargin + activeRightMargin);
               const normalized = normalizeColumns(endingSectionColumns!, contentWidth);
-              balanceResult = balanceSectionOnPage({
-                fragments: state.page.fragments as BalancingFragment[],
-                sectionIndex: endingSectionIndex!,
-                sectionColumns: toBalancingColumns(normalized),
-                sectionHasExplicitColumnBreak: false,
-                blockSectionMap,
-                margins: { left: activeLeftMargin },
-                topMargin: activeRegionTop,
-                columnWidth: normalized.width,
-                availableHeight,
-                measureMap: balancingMeasureMap,
-                sectPrMarkerBlockIds,
-                keepLinesBlockIds,
-              });
+              balanceResult =
+                balanceUnequalParagraphSection(state, endingSectionIndex!, normalized, activeRegionTop) ??
+                balanceSectionOnPage({
+                  fragments: state.page.fragments as BalancingFragment[],
+                  sectionIndex: endingSectionIndex!,
+                  sectionColumns: toBalancingColumns(normalized),
+                  sectionHasExplicitColumnBreak: false,
+                  blockSectionMap,
+                  margins: { left: activeLeftMargin },
+                  topMargin: activeRegionTop,
+                  columnWidth: normalized.width,
+                  availableHeight,
+                  measureMap: balancingMeasureMap,
+                  sectPrMarkerBlockIds,
+                  keepLinesBlockIds,
+                });
               if (balanceResult) {
                 // Collapse both cursors to the balanced section bottom so the new
                 // region starts there, not below an unbalanced tallest column.
@@ -3370,9 +3496,7 @@ function* layoutDocumentSteps(
               ? anchorsForPara.filter((entry) => entry.block.id !== deferredSplitCarrierAnchorId)
               : anchorsForPara;
           const hasAnchorsForLayout = anchorsForLayout != null && anchorsForLayout.length > 0;
-          const preflightPageIndex = options.footnotePageFlow
-            ? paginator.ensurePage().page.number - 1 - pageNumberOffset
-            : undefined;
+          const preflightPageIndex = paginator.ensurePage().page.number - 1 - pageNumberOffset;
 
           /**
            * keepNext Chain-Aware Page Break Logic
@@ -3582,6 +3706,9 @@ function* layoutDocumentSteps(
           }
 
           const checkpointState = paginator.ensurePage();
+          const suppressSpacingBefore =
+            checkpointState.page.number - 1 - pageNumberOffset !== preflightPageIndex &&
+            Math.abs(checkpointState.cursorY - checkpointState.topMargin) < 1e-6;
           blockResumeCheckpoints.set(block.id, {
             blockId: block.id,
             pageIndex: checkpointState.page.number - 1 - pageNumberOffset,
@@ -3619,12 +3746,14 @@ function* layoutDocumentSteps(
               block,
               measure,
               columnWidth: getCurrentColumnWidth(),
+              columnWidthForState,
               ensurePage: paginator.ensurePage,
               advanceColumn: paginator.advanceColumn,
               columnX,
               floatManager,
               remeasureParagraph: options.remeasureParagraph,
               overrideSpacingAfter,
+              suppressSpacingBefore,
               getFootnoteDemandForBlockId,
               getFootnoteRefCountForBlockId,
               getFootnoteBandOverhead,
@@ -5400,6 +5529,46 @@ function shouldExcludeFromMeasurement(
   }
 
   const anchoredBlock = block as ImageBlock | DrawingBlock;
+
+  // Header/footer fragment widths already describe the rotated paint bounds.
+  // Page-relative X stays in page coordinates; other anchors are story-local.
+  // A side decoration must remain painted without reserving body height.
+  const pageRelativeX = anchoredBlock.anchor?.hRelativeFrom === 'page';
+  const knownHorizontalGeometry =
+    !pageRelativeX ||
+    (typeof constraints.pageWidth === 'number' && Number.isFinite(constraints.pageWidth) && constraints.pageWidth > 0);
+  const wrap = anchoredBlock.wrap;
+  const horizontalWrap = wrap?.type === 'Square' || wrap?.type === 'Tight' || wrap?.type === 'Through';
+  const bothSides = wrap?.wrapText == null || wrap.wrapText === 'bothSides';
+  const distLeft = wrap?.distLeft ?? 0;
+  const distRight = wrap?.distRight ?? 0;
+  if (
+    kind &&
+    horizontalWrap &&
+    bothSides &&
+    knownHorizontalGeometry &&
+    Number.isFinite(constraints.width) &&
+    constraints.width > 0 &&
+    Number.isFinite(distLeft) &&
+    Number.isFinite(distRight) &&
+    distLeft >= 0 &&
+    distRight >= 0
+  ) {
+    const bandLeft = pageRelativeX ? (constraints.margins?.left ?? 0) : 0;
+    const width = 'width' in fragment ? fragment.width : undefined;
+    if (
+      Number.isFinite(bandLeft) &&
+      Number.isFinite(fragment.x) &&
+      typeof width === 'number' &&
+      Number.isFinite(width) &&
+      width > 0 &&
+      Number.isFinite(fragment.x - distLeft) &&
+      Number.isFinite(fragment.x + width + distRight) &&
+      !rangesIntersect(fragment.x - distLeft, fragment.x + width + distRight, bandLeft, bandLeft + constraints.width)
+    ) {
+      return true;
+    }
+  }
 
   // behindDoc fragments never affect measurement
   if (anchoredBlock.anchor?.behindDoc) return true;

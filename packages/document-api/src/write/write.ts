@@ -126,12 +126,23 @@ export function normalizeMutationOptions(
   // of the public MutationOptions contract; normalization forwards it opaquely
   // so internal callers that cast it in do not lose it at the dispatch seam.
   const offsetSpace = (options as { offsetSpace?: unknown } | undefined)?.offsetSpace;
+  const tableCellSelection = (
+    options as { tableCellSelection?: { anchorBlockId?: unknown; focusBlockId?: unknown } } | undefined
+  )?.tableCellSelection;
   return {
     expectedRevision: options?.expectedRevision,
     changeMode: options?.changeMode ?? 'direct',
     dryRun: options?.dryRun ?? false,
     ...(supportCheck ? { supportCheck } : {}),
     ...(offsetSpace === 'selection' || offsetSpace === 'kernel' ? ({ offsetSpace } as object) : {}),
+    ...(typeof tableCellSelection?.anchorBlockId === 'string' && typeof tableCellSelection?.focusBlockId === 'string'
+      ? {
+          tableCellSelection: {
+            anchorBlockId: tableCellSelection.anchorBlockId,
+            focusBlockId: tableCellSelection.focusBlockId,
+          },
+        }
+      : {}),
   };
 }
 

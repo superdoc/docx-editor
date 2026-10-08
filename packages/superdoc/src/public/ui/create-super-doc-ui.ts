@@ -114,7 +114,7 @@ import type {
 import { collectEntityHitsFromChain } from './entity-at.js';
 import { decodeLayoutStoryDataset } from '@superdoc/dom-contract';
 import { getParagraphInlineDirection } from '@superdoc/contracts';
-import { INLINE_PROPERTY_BY_KEY, type InlineRunPatchKey } from '@superdoc/document-api';
+import { INLINE_PROPERTY_BY_KEY, isStoryLocator, type InlineRunPatchKey } from '@superdoc/document-api';
 
 // ---------------------------------------------------------------------------
 // Loose runtime views over the duck-typed host. The public types keep the
@@ -1943,6 +1943,42 @@ function selectionTargetFromTextTarget(
   };
 }
 
+// Cell captures retain the pointer endpoints because the public text target can
+// be disjoint and its enclosing range would include unselected neighboring cells.
+// Keep this private recipe enumerable so application stores can copy/serialize it.
+type CellSelectionCapture = SelectionCapture & { _tableCellSelectionTarget?: unknown };
+
+type TextSelectionTarget = SelectionTarget & {
+  start: Extract<SelectionTarget['start'], { kind: 'text' }>;
+  end: Extract<SelectionTarget['end'], { kind: 'text' }>;
+};
+
+function capturedTableCellTarget(value: unknown): TextSelectionTarget | null {
+  if (!value || typeof value !== 'object') return null;
+  const target = value as LooseRecord;
+  if (
+    target.kind !== 'selection' ||
+    (target.coordinateSpace !== undefined &&
+      target.coordinateSpace !== 'visible' &&
+      target.coordinateSpace !== 'tracked') ||
+    (target.story !== undefined && !isStoryLocator(target.story))
+  )
+    return null;
+  for (const point of [target.start, target.end]) {
+    if (
+      !point ||
+      point.kind !== 'text' ||
+      typeof point.blockId !== 'string' ||
+      point.blockId.length === 0 ||
+      !Number.isInteger(point.offset) ||
+      point.offset < 0 ||
+      (point.story !== undefined && !isStoryLocator(point.story))
+    )
+      return null;
+  }
+  return value as TextSelectionTarget;
+}
+
 function selectionTargetForRestore(capture: SelectionCapture): SelectionTarget | null {
   if (capture.selectionTarget) return capture.selectionTarget;
   return selectionTargetFromTextTarget(capture.target);
@@ -3639,11 +3675,11 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
 
   const selectionScopedAsyncReadKeys = (selection: SelectionSlice): ReadonlySet<string> => {
     const signature = selectionSignature(selection);
-    const effectiveUniformitySignature = selectionEffectiveUniformitySignature(selection);
+    const effectiveUniformityKey = effectiveInlineUniformityCacheKey(selection);
     return new Set([
       `contentControls:inRange:${signature}`,
       `query:${signature}`,
-      ...(effectiveUniformitySignature ? [`effInline:${effectiveUniformitySignature}`] : []),
+      ...(effectiveUniformityKey ? [effectiveUniformityKey] : []),
     ]);
   };
 
@@ -4921,6 +4957,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
   const completeProjectedInlineValues = (
     selection: SelectionSlice,
     direct: ProjectedInlineSelectionValues,
+    effectiveInput = effectiveInlineUniformityInput(selection),
   ): ProjectedInlineValuesRead => {
     // Direct run overrides win; fill inherited font/size/color/highlight from the
     // resolved layout (so a caret reflects its run's effective values). The
@@ -4949,7 +4986,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     // effective-inline uniformity read - uniform fills the value; a settled
     // mixed verdict stays blank (never a mounted subset as representative).
     if (!selection.empty && (combined.fontFamily === undefined || combined.fontSize === undefined)) {
-      const uniformity = resolveEffectiveInlineUniformityValues(selection);
+      const uniformity = resolveEffectiveInlineUniformityValues(selection, effectiveInput);
       if (uniformity.values) {
         if (combined.fontFamily === undefined && uniformity.values.fontFamily !== undefined) {
           combined.fontFamily = uniformity.values.fontFamily;
@@ -4985,30 +5022,53 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     'strikethrough',
   ] as const;
 
+  function effectiveInlineUniformityInput(selection: SelectionSlice): LooseRecord | null {
+    const cellTarget = currentCellSelectionTarget();
+    const target = cellTarget ?? selection.selectionTarget;
+    if (!target) return null;
+    const tableCellSelection = cellTarget ? tableCellSelectionForTarget(cellTarget) : null;
+    return {
+      target,
+      offsetSpace: 'selection',
+      ...(tableCellSelection ? { tableCellSelection } : {}),
+    };
+  }
+
+  function effectiveInlineUniformityCacheKey(
+    selection: SelectionSlice,
+    input = effectiveInlineUniformityInput(selection),
+  ): string | null {
+    if (!input) return null;
+    const signature = input.tableCellSelection
+      ? `${selectionKey({ selectionTarget: input.target })}|cells:${JSON.stringify(input.tableCellSelection)}`
+      : (selectionEffectiveUniformitySignature(selection) ?? selectionSignature(selection));
+    return `effInline:${signature}`;
+  }
+
   const readEffectiveInlineUniformityCached = (
     selection: SelectionSlice,
+    input = effectiveInlineUniformityInput(selection),
   ): { value: LooseRecord | null; status: SliceStatus } => {
-    const target = selection.selectionTarget;
-    if (!target) return { value: null, status: 'ready' };
+    if (!input) return { value: null, status: 'ready' };
     const doc = getDoc();
     const op = resolveDocOperation(doc, 'format.readEffectiveInlineUniformity');
     if (!op) return { value: null, status: 'ready' };
-    const signature = selectionEffectiveUniformitySignature(selection) ?? selectionSignature(selection);
     return readAsync<LooseRecord>(
-      `effInline:${signature}`,
+      effectiveInlineUniformityCacheKey(selection, input)!,
       contentToken(),
-      () => op({ target, offsetSpace: 'selection', keys: EFFECTIVE_INLINE_UNIFORMITY_KEYS }),
+      () => op({ ...input, keys: EFFECTIVE_INLINE_UNIFORMITY_KEYS }),
       (raw) => (raw && typeof raw === 'object' ? (raw as LooseRecord) : null),
     );
   };
 
   const resolveEffectiveInlineUniformityValues = (
     selection: SelectionSlice,
+    input = effectiveInlineUniformityInput(selection),
   ): {
     values: Pick<ProjectedInlineSelectionValues, 'fontFamily' | 'fontSize'> | null;
     status: SliceStatus;
   } => {
-    const { value, status } = readEffectiveInlineUniformityCached(selection);
+    const { value, status } = readEffectiveInlineUniformityCached(selection, input);
     if (!value || value.success !== true) return { values: null, status };
     const states = value.values as LooseRecord | undefined;
     const uniform = (key: 'fontFamily' | 'fontSize'): string | undefined => {
@@ -5057,13 +5117,12 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     return fromWorker !== undefined ? fromWorker : null;
   };
 
-  const readEffectiveInlineUniformityNow = async (selection: SelectionSlice): Promise<LooseRecord | null> => {
-    const target = selection.selectionTarget;
-    if (!target) return null;
+  const readEffectiveInlineUniformityNow = async (input: LooseRecord | null): Promise<LooseRecord | null> => {
+    if (!input) return null;
     const op = resolveDocOperation(getDoc(), 'format.readEffectiveInlineUniformity');
     if (!op) return null;
     try {
-      const raw = await Promise.resolve(op({ target, offsetSpace: 'selection' }));
+      const raw = await Promise.resolve(op(input));
       return raw && typeof raw === 'object' && (raw as LooseRecord).success === true ? (raw as LooseRecord) : null;
     } catch {
       return null;
@@ -5087,14 +5146,20 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     }
   };
 
-  const projectSelectionInlineValuesWithStatus = (selection: SelectionSlice): ProjectedInlineValuesRead =>
+  const projectSelectionInlineValuesWithStatus = (
+    selection: SelectionSlice,
+    effectiveInput = effectiveInlineUniformityInput(selection),
+  ): ProjectedInlineValuesRead =>
     completeProjectedInlineValues(
       selection,
       projectInlineValuesFromQueryItem(resolveSelectionTextQueryItem(selection), selection),
+      effectiveInput,
     );
 
-  const projectSelectionInlineValues = (selection: SelectionSlice): ProjectedInlineSelectionValues =>
-    projectSelectionInlineValuesWithStatus(selection).values;
+  const projectSelectionInlineValues = (
+    selection: SelectionSlice,
+    effectiveInput = effectiveInlineUniformityInput(selection),
+  ): ProjectedInlineSelectionValues => projectSelectionInlineValuesWithStatus(selection, effectiveInput).values;
 
   /**
    * Read command-critical inline values for format-painter capture. Reactive
@@ -5104,28 +5169,29 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
    * without changing the non-blocking toolbar snapshot policy.
    */
   const readFormatPainterInlineValues = async (selection: SelectionSlice): Promise<ProjectedInlineSelectionValues> => {
+    const effectiveInput = effectiveInlineUniformityInput(selection);
     const doc = getDoc();
     const query = doc?.query as LooseRecord | undefined;
     const request = selectionTextQueryRequest(selection);
     if (typeof query?.match !== 'function' || !request) {
-      return projectSelectionInlineValues(selection);
+      return projectSelectionInlineValues(selection, effectiveInput);
     }
 
     try {
       const raw = await Promise.resolve(query.match(request));
       const result = raw && typeof raw === 'object' ? (raw as LooseRecord) : null;
       const direct = projectInlineValuesFromQueryItem(pickSelectionTextQueryItem(result, selection), selection);
-      const completed = completeProjectedInlineValues(selection, direct);
+      const completed = completeProjectedInlineValues(selection, direct, effectiveInput);
       if (
         completed.effectiveUniformityStatus !== 'ready' &&
         (direct.fontFamily === undefined || direct.fontSize === undefined)
       ) {
-        const effective = await readEffectiveInlineUniformityNow(selection);
+        const effective = await readEffectiveInlineUniformityNow(effectiveInput);
         if (effective) applyEffectiveInlineUniformity(completed.values, direct, effective);
       }
       return completed.values;
     } catch {
-      return projectSelectionInlineValues(selection);
+      return projectSelectionInlineValues(selection, effectiveInput);
     }
   };
 
@@ -5476,7 +5542,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       if (lockReason) {
         return normalizeCommandState({ enabled: false, active: false, supported: true, reason: lockReason }, 'builtin');
       }
-      const enabled = selectionBlockIds(selection).length > 0 || resolveInlineSelectionTarget(selection) != null;
+      const enabled = selectionBlockIds(selection).length > 0 || resolveInlineCommandTarget(selection) != null;
       return normalizeCommandState(
         {
           enabled,
@@ -5579,7 +5645,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     // pick for the next typed text (stored marks, SD-3654/SD-3652) - a mark
     // toggle or a font/size - so they stay enabled at a caret. The combobox shows
     // the effective font (the `value` below), so font/size are never blank.
-    if (descriptor.inline && !resolveInlineSelectionTarget(selection)) {
+    if (descriptor.inline && !resolveInlineCommandTarget(selection)) {
       // Word parity (SD-3274): a collapsed caret is the common case for a
       // locked content control (no range to resolve a target from) — must
       // not report the button as clickable here only for `executeCommand`'s
@@ -8073,14 +8139,49 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
    * option is not part of public `MutationOptions`; this is the same cast
    * pattern the delete/replace callers use.
    */
+  function currentCellSelectionTarget(): TextSelectionTarget | null {
+    const handles = safeCall<LooseRecord | null>(() => getHost()?.getHandles?.(), null);
+    const held = handles?.selection?.getSnapshot?.();
+    if (!held?.tableCells) return null;
+    const resolved = handles?.selection?.toSelectionTarget?.();
+    return resolved?.kind === 'ok' && resolved.mode === 'range' ? capturedTableCellTarget(resolved.target) : null;
+  }
+
+  function resolveInlineCommandTarget(selection: SelectionSlice): SelectionTarget | null {
+    return currentCellSelectionTarget() ?? resolveInlineSelectionTarget(selection);
+  }
+
+  function tableCellSelectionForTarget(
+    target: unknown,
+  ): Readonly<{ anchorBlockId: string; focusBlockId: string }> | null {
+    const cellTarget = currentCellSelectionTarget();
+    const candidate = target as LooseRecord | undefined;
+    if (
+      !cellTarget ||
+      candidate?.start?.blockId !== cellTarget.start.blockId ||
+      candidate?.end?.blockId !== cellTarget.end.blockId ||
+      candidate?.start?.offset !== cellTarget.start.offset ||
+      candidate?.end?.offset !== cellTarget.end.offset
+    )
+      return null;
+    return { anchorBlockId: cellTarget.start.blockId, focusBlockId: cellTarget.end.blockId };
+  }
+
   const callInlineFormatMutation = (
     route: string,
     op: AnyFn,
     input: unknown,
     selection: Pick<SelectionSlice, 'selectionTarget'> | SelectionInfo = state.selection,
+    tableCellSelection = tableCellSelectionForTarget((input as LooseRecord)?.target),
   ): unknown => {
     const options = editorMutationOptionsForRoute(route);
     if (options && (options as LooseRecord).success === false) return options;
+    if (tableCellSelection)
+      return op(input, {
+        ...options,
+        offsetSpace: 'selection',
+        tableCellSelection,
+      });
     if (!(selection as LooseRecord).selectionTarget) return options ? op(input, options) : op(input);
     return op(input, { ...options, offsetSpace: 'selection' });
   };
@@ -8199,7 +8300,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     const catalog = getStyleCatalog().cache;
     const defaultStyleId = catalog?.full.defaults.paragraphStyleId ?? DEFAULT_PARAGRAPH_STYLE_ID;
 
-    const rangeTarget = resolveInlineSelectionTarget(state.selection);
+    const rangeTarget = resolveInlineCommandTarget(state.selection);
     if (rangeTarget) {
       const inlineOp = resolveDocOperation(doc, 'format.apply');
       // One cross-block-capable format.apply call for the whole selection
@@ -8953,12 +9054,12 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     if (trackCommand?.scope === 'id') return true;
     if (!descriptor || descriptor.disposition !== 'routed') return true;
     if (descriptor.inline?.kind === 'clear') {
-      return selectionBlockIds(state.selection).length > 0 || resolveInlineSelectionTarget(state.selection) != null;
+      return selectionBlockIds(state.selection).length > 0 || resolveInlineCommandTarget(state.selection) != null;
     }
     // Inline: a range mutates directly; a collapsed caret in a block stores the
     // pick (mark toggle or font/size) for the next typed text (SD-3654/SD-3652).
     if (descriptor.inline) {
-      return resolveInlineSelectionTarget(state.selection) != null || canStorePendingInlineFormat(state.selection);
+      return resolveInlineCommandTarget(state.selection) != null || canStorePendingInlineFormat(state.selection);
     }
     if (descriptor.blockParagraph || descriptor.list) return selectionBlockIds(state.selection).length > 0;
     if (descriptor.link) {
@@ -9068,7 +9169,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
         state.selection,
       );
       if (contentControlLockReason(lockModesById)) return false;
-      const target = resolveInlineSelectionTarget(state.selection);
+      const target = resolveInlineCommandTarget(state.selection);
       // Pending formatting belongs to a resolved collapsed text caret.
       // Missing or unresolved selections must not arm the next insertion.
       if (!target) {
@@ -9083,6 +9184,10 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       // fan-out or plan composition exists in the UI.
       const input = buildInlineFormatInput(descriptor.inline, target, normalized, active);
       if (!input) return false;
+      // A queued toggle must retain the accepted scope even when the user
+      // moves the caret or selects a different cell rectangle before paint.
+      const commandSelection = state.selection;
+      const tableCellSelection = tableCellSelectionForTarget(target);
       let releaseScheduledMutation: (() => void) | null = null;
       try {
         const commandEditor = getEditor();
@@ -9095,7 +9200,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
             readDocumentMode() !== commandMode
           )
             return false;
-          return callInlineFormatMutation(route, op, input);
+          return callInlineFormatMutation(route, op, input, commandSelection, tableCellSelection);
         };
         const selectionSignature = selectionInlineValueSignature(state.selection) ?? selectionKey(state.selection);
         const scheduledMutation =
@@ -9518,25 +9623,30 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
 
     const doc = getDoc();
     const selectionApi = doc?.selection as LooseRecord | undefined;
-    const readSelection = async (): Promise<SelectionInfo | null> => {
+    const readSelection = async () => {
+      // Capture the held rectangle before an asynchronous selection read can
+      // resolve after the user has moved the caret to a different target.
+      const cellTarget = currentCellSelectionTarget();
+      const tableCellSelection = tableCellSelectionForTarget(cellTarget);
       const rawSelection =
         typeof selectionApi?.['current'] === 'function'
           ? await Promise.resolve((selectionApi['current'] as (opts: unknown) => unknown)({ includeText: true }))
           : readSelectionInfoLive().value;
-      return normalizeSelectionInfo(rawSelection);
+      return { selection: normalizeSelectionInfo(rawSelection), cellTarget, tableCellSelection };
     };
     const waitForSelectionSettle = (): Promise<void> => new Promise<void>((resolve) => setTimeout(resolve, 16));
 
     // After pointerup/keyup the target selection sometimes "ripens" asynchronously.
     // Poll for a settled non-empty (text) selection first.
     const MAX_SELECTION_ATTEMPTS = 8;
-    let sel: SelectionInfo | null = null;
+    let selectionRead: Awaited<ReturnType<typeof readSelection>> | null = null;
     let key = '';
     for (let attempt = 0; attempt < MAX_SELECTION_ATTEMPTS; attempt += 1) {
       if (attempt > 0) await waitForSelectionSettle();
       if ((painter as FormatPainterState).mode === 'idle' || painter.pointerSelecting || painter.keyboardSelecting)
         return;
-      sel = await readSelection();
+      selectionRead = await readSelection();
+      const sel = selectionRead.selection;
       if (!sel || (sel as LooseRecord)['empty']) continue; // wait for text selection to ripen
       key = selectionKey(sel);
       if (key === painter.sourceSelectionKey) continue;
@@ -9544,23 +9654,32 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     }
 
     // Text selection settled: apply inline + paragraph.
-    if (sel && !(sel as LooseRecord)['empty'] && key !== painter.sourceSelectionKey) {
-      await applyFormatPainter(sel);
+    if (
+      selectionRead?.selection &&
+      !(selectionRead.selection as LooseRecord)['empty'] &&
+      key !== painter.sourceSelectionKey
+    ) {
+      await applyFormatPainter(selectionRead.selection, selectionRead.cellTarget, selectionRead.tableCellSelection);
       return;
     }
 
     // No text selection. If there is a paragraph snapshot, check for a positioned
     // caret (click) and apply paragraph formatting only.
     if (painter.snapshot?.paragraph) {
-      const caretSel = await readSelection();
+      const caretRead = await readSelection();
+      const caretSel = caretRead.selection;
       if (!caretSel) return;
       const caretKey = selectionKey(caretSel);
       if (caretKey === painter.sourceSelectionKey) return;
-      await applyFormatPainter(caretSel);
+      await applyFormatPainter(caretSel, caretRead.cellTarget, caretRead.tableCellSelection);
     }
   };
 
-  const applyFormatPainter = async (selection: SelectionInfo): Promise<void> => {
+  const applyFormatPainter = async (
+    selection: SelectionInfo,
+    cellTarget: TextSelectionTarget | null,
+    tableCellSelection: ReturnType<typeof tableCellSelectionForTarget>,
+  ): Promise<void> => {
     const snap = painter.snapshot;
     if (!snap) {
       if (painter.mode === 'armed') exitFormatPainter();
@@ -9582,7 +9701,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
 
     // TextTarget (segments/blockIds) for paragraph apply; SelectionTarget for inline apply
     const selTarget = (selection as LooseRecord)['target'] as LooseRecord | undefined;
-    const selectionTarget = (selection as LooseRecord)['selectionTarget'] as LooseRecord | undefined;
+    const selectionTarget = cellTarget ?? selection.selectionTarget;
 
     const selectionIsEmpty = (selection as LooseRecord)['empty'] === true;
 
@@ -9599,6 +9718,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
               inlineOp,
               { target: selectionTarget, inline: snap.inline },
               selection,
+              tableCellSelection,
             ),
           );
           if (!commandResultSucceeded(commandResultFromOperationResult(result))) {
@@ -9830,7 +9950,12 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     capture: (): SelectionCapture | null => {
       const snapshot = selectionSub.get();
       if (snapshot.empty || (!snapshot.target && !snapshot.selectionTarget)) return null;
-      return { ...snapshot, capturedAt: Date.now() };
+      const cells = currentCellSelectionTarget();
+      return {
+        ...snapshot,
+        capturedAt: Date.now(),
+        ...(cells ? { _tableCellSelectionTarget: cells } : {}),
+      };
     },
     restore: (capture: SelectionCapture): SelectionRestoreResult => {
       // Best-effort: re-apply the captured selection target onto the live v2
@@ -9847,12 +9972,21 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
         return done({ ok: false, reason: SUPERDOC_UI_REASONS.targetUnresolved });
       }
       if (!getEditor()) return done({ ok: false, reason: SUPERDOC_UI_REASONS.notReady });
-      const target = selectionTargetForRestore(capture);
+      const hasCellTarget = '_tableCellSelectionTarget' in capture;
+      const cellTarget = hasCellTarget
+        ? capturedTableCellTarget((capture as CellSelectionCapture)._tableCellSelectionTarget)
+        : null;
+      if (hasCellTarget && !cellTarget) return done({ ok: false, reason: SUPERDOC_UI_REASONS.targetUnresolved });
+      const target = cellTarget ?? selectionTargetForRestore(capture);
       if (!target) return done({ ok: false, reason: SUPERDOC_UI_REASONS.targetUnresolved });
       const resolved = getSelectionApplyHelper();
       if (!('helper' in resolved)) return done({ ok: false, reason: resolved.reason });
       try {
-        return done(normalizeHostSelectionApplyResult(resolved.helper.apply(target)));
+        return done(
+          normalizeHostSelectionApplyResult(
+            cellTarget ? resolved.helper.apply(target, { tableCells: true }) : resolved.helper.apply(target),
+          ),
+        );
       } catch {
         return done({ ok: false, reason: SUPERDOC_UI_REASONS.hostCapabilityUnavailable });
       }

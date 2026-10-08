@@ -2071,6 +2071,135 @@ describe('public facade (ui)', () => {
     });
   });
 
+  it.each(['original', 'copied', 'serialized'] as const)(
+    'restores %s disjoint cell intent and formats the held cell owners rather than an enclosing text range',
+    async (captureKind) => {
+      const raw = {
+        kind: 'selection',
+        start: { kind: 'text', blockId: 'CELL0', offset: 3 },
+        end: { kind: 'text', blockId: 'CELL4', offset: 2 },
+      } as const;
+      const info = {
+        empty: false,
+        selectionTarget: null,
+        target: {
+          kind: 'text',
+          segments: [
+            { blockId: 'CELL0', range: { start: 0, end: 8 } },
+            { blockId: 'CELL1', range: { start: 0, end: 8 } },
+            { blockId: 'CELL3', range: { start: 0, end: 8 } },
+            { blockId: 'CELL4', range: { start: 0, end: 8 } },
+          ],
+        },
+        activeMarks: [],
+        activeCommentIds: [],
+        activeChangeIds: [],
+        text: 'selected cells',
+      };
+      const { superdoc, apply } = makeSelectionSuperdoc({ info });
+      let cellIntent = true;
+      const color = vi.fn(() => ({ success: true }));
+      Object.assign(superdoc.activeEditor.doc, { format: { color } });
+      superdoc.activeEditor.host.getHandles = () =>
+        ({
+          selection: {
+            getSnapshot: () => ({ tableCells: cellIntent }),
+            toSelectionTarget: () => ({ kind: 'ok', mode: 'range', target: raw }),
+          },
+          editing: {
+            selection: { subscribe: () => () => {} },
+            selectionTargets: {
+              apply: (target: unknown, options?: { tableCells?: true }) => {
+                cellIntent = options?.tableCells === true;
+                return apply(target, options);
+              },
+            },
+          },
+        }) as any;
+      const ui = createSuperDocUI({ superdoc });
+      const capture = ui.selection.capture();
+      expect(capture?.selectionTarget).toBeNull();
+      const retainedCapture =
+        captureKind === 'copied'
+          ? { ...capture! }
+          : captureKind === 'serialized'
+            ? JSON.parse(JSON.stringify(capture))
+            : capture!;
+      cellIntent = false;
+      expect(ui.selection.restore(retainedCapture)).toEqual({ ok: true, success: true });
+      expect(apply).toHaveBeenCalledWith(raw, { tableCells: true });
+      expect(await ui.commands.execute('text-color', '#111111')).not.toBe(false);
+      expect(color).toHaveBeenCalledWith(
+        { target: raw, value: '#111111' },
+        {
+          offsetSpace: 'selection',
+          tableCellSelection: { anchorBlockId: 'CELL0', focusBlockId: 'CELL4' },
+        },
+      );
+    },
+  );
+
+  it.each(['start', 'end', 'both'] as const)(
+    'keeps node-edge %s endpoints on the ordinary formatting route when cell intent is stale',
+    async (nodeEdgeEndpoints) => {
+      const raw = {
+        kind: 'selection',
+        start:
+          nodeEdgeEndpoints !== 'end'
+            ? { kind: 'nodeEdge', node: { kind: 'block', nodeType: 'table', nodeId: 'TABLE0' }, edge: 'before' }
+            : { kind: 'text', blockId: 'CELL0', offset: 3 },
+        end:
+          nodeEdgeEndpoints !== 'start'
+            ? { kind: 'nodeEdge', node: { kind: 'block', nodeType: 'table', nodeId: 'TABLE0' }, edge: 'after' }
+            : { kind: 'text', blockId: 'CELL4', offset: 2 },
+      };
+      const { superdoc } = makeSelectionSuperdoc({
+        info: {
+          empty: false,
+          selectionTarget: raw,
+          target: TARGET,
+          activeMarks: [],
+          activeCommentIds: [],
+          activeChangeIds: [],
+          text: 'selected cells',
+        },
+      });
+      const color = vi.fn(() => ({ success: true }));
+      Object.assign(superdoc.activeEditor.doc, { format: { color } });
+      superdoc.activeEditor.host.getHandles = () =>
+        ({
+          selection: {
+            getSnapshot: () => ({ tableCells: true }),
+            toSelectionTarget: () => ({ kind: 'ok', mode: 'range', target: raw }),
+          },
+        }) as any;
+      const ui = createSuperDocUI({ superdoc });
+
+      expect(await ui.commands.execute('text-color', '#111111')).not.toBe(false);
+      expect(color).toHaveBeenCalledWith({ target: raw, value: '#111111' }, { offsetSpace: 'selection' });
+    },
+  );
+
+  it.each([
+    null,
+    { ...SELECTION_TARGET, start: { kind: 'text', blockId: 'P1', offset: -1 } },
+    { ...SELECTION_TARGET, story: { kind: 'story', storyType: 'footnote' } },
+    { ...SELECTION_TARGET, coordinateSpace: 'screen' },
+  ])(
+    'restore rejects malformed serialized cell metadata without applying an enclosing range (%j)',
+    async (cellTarget) => {
+      const { superdoc, apply } = makeSelectionSuperdoc();
+      const ui = createSuperDocUI({ superdoc });
+      const capture = JSON.parse(JSON.stringify({ ...ui.selection.capture(), _tableCellSelectionTarget: cellTarget }));
+      expect(ui.selection.restore(capture)).toEqual({
+        ok: false,
+        success: false,
+        reason: SUPERDOC_UI_REASONS.targetUnresolved,
+      });
+      expect(apply).not.toHaveBeenCalled();
+    },
+  );
+
   it('restore fails closed with not-ready when no editor is mounted', async () => {
     const { superdoc } = makeSelectionSuperdoc();
     const ui = createSuperDocUI({ superdoc });
@@ -3698,6 +3827,63 @@ describe('public ui — command reason taxonomy', () => {
     );
   });
 
+  it.each([false, true])(
+    'copy-format applies disjoint cell formatting with a delayed selection read: %s',
+    async (delayedSelectionRead) => {
+      const { superdoc, apply, setAlignment, setSelection, targetSelection } = makeFormatPainterSuperdoc({
+        sourceParagraphProps: { alignment: 'center' },
+      });
+      let cells = false;
+      const rawTarget = {
+        kind: 'selection',
+        start: { kind: 'text', blockId: 'P2', offset: 2 },
+        end: { kind: 'text', blockId: 'P5', offset: 3 },
+      };
+      superdoc.activeEditor.host = {
+        getHandles: () => ({
+          selection: {
+            getSnapshot: () => ({ tableCells: cells }),
+            toSelectionTarget: () => ({ kind: 'ok', mode: 'range', target: rawTarget }),
+          },
+        }),
+      } as any;
+      const ui = createSuperDocUI({ superdoc });
+      expect(await ui.commands.executeAsync('copy-format')).toBe(true);
+
+      cells = true;
+      const cellSelection = {
+        ...targetSelection,
+        selectionTarget: null,
+        target: {
+          kind: 'text',
+          segments: ['P2', 'P3', 'P4', 'P5'].map((blockId) => ({ blockId, range: { start: 0, end: 5 } })),
+        },
+      };
+      setSelection(cellSelection);
+      let resolveSelection: ((selection: unknown) => void) | undefined;
+      if (delayedSelectionRead) {
+        const selectionPromise = new Promise((resolve) => {
+          resolveSelection = resolve;
+        });
+        superdoc.activeEditor.doc.selection.current = vi.fn(() => selectionPromise) as any;
+      }
+      ui.formatPainter.notifyPointerUp();
+      if (delayedSelectionRead) {
+        cells = false;
+        resolveSelection!(cellSelection);
+      }
+
+      await vi.waitFor(() => expect(apply).toHaveBeenCalledTimes(1));
+      expect(apply).toHaveBeenCalledWith(
+        { target: rawTarget, inline: { bold: true, color: '#D2003F' } },
+        { offsetSpace: 'selection', tableCellSelection: { anchorBlockId: 'P2', focusBlockId: 'P5' } },
+      );
+      await vi.waitFor(() => expect(setAlignment).toHaveBeenCalledTimes(4));
+      expect(setAlignment.mock.calls.map(([input]) => input.target.nodeId)).toEqual(['P2', 'P3', 'P4', 'P5']);
+      ui.destroy();
+    },
+  );
+
   it('copy-format stops before paragraph mutations and remains armed when inline apply fails', async () => {
     const { superdoc, apply, setAlignment, setSelection, targetSelection } = makeFormatPainterSuperdoc({
       sourceParagraphProps: { alignment: 'center' },
@@ -3834,6 +4020,75 @@ describe('public ui — command reason taxonomy', () => {
       { offsetSpace: 'selection' },
     );
   });
+
+  it.each([false, true])(
+    'copy-format captures inherited cell fonts before an async query permits the caret to move (query rejects: %s)',
+    async (rejectQuery) => {
+      let finishQuery: (value: unknown) => void = () => undefined;
+      let failQuery: (error: Error) => void = () => undefined;
+      const pendingQuery = new Promise((resolve, reject) => {
+        finishQuery = resolve;
+        failQuery = reject;
+      });
+      const queryMatch = vi.fn(() => pendingQuery);
+      const uniformity = {
+        success: true,
+        values: { fontFamily: { state: 'uniform', value: 'Georgia' }, fontSize: { state: 'uniform', value: '14' } },
+      };
+      const readEffectiveInlineUniformity = vi.fn(() => (rejectQuery ? uniformity : Promise.resolve(uniformity)));
+      const { superdoc, apply, setSelection, targetSelection } = makeFormatPainterSuperdoc({
+        queryMatch,
+        readEffectiveInlineUniformity,
+      });
+      const rawTarget = {
+        kind: 'selection',
+        start: { kind: 'text', blockId: 'P1', offset: 2 },
+        end: { kind: 'text', blockId: 'P5', offset: 3 },
+      };
+      let cells = true;
+      superdoc.activeEditor.host = {
+        getHandles: () => ({
+          selection: {
+            getSnapshot: () => ({ tableCells: cells }),
+            toSelectionTarget: () => ({ kind: 'ok', mode: 'range', target: rawTarget }),
+          },
+        }),
+      } as any;
+      setSelection({
+        ...targetSelection,
+        selectionTarget: null,
+        target: {
+          kind: 'text',
+          segments: ['P1', 'P3', 'P4', 'P5'].map((blockId) => ({ blockId, range: { start: 0, end: 5 } })),
+        },
+        text: 'hello',
+      });
+      const ui = createSuperDocUI({ superdoc });
+      const readsBeforeCapture = queryMatch.mock.calls.length;
+      const capture = ui.commands.executeAsync('copy-format');
+      await vi.waitFor(() => expect(queryMatch.mock.calls.length).toBeGreaterThan(readsBeforeCapture));
+      cells = false;
+      setSelection(targetSelection);
+      if (rejectQuery) failQuery(new Error('selection query unavailable'));
+      else finishQuery({ items: [] });
+      await expect(capture).resolves.toBe(true);
+      expect(readEffectiveInlineUniformity).toHaveBeenCalledWith(
+        expect.objectContaining({
+          target: rawTarget,
+          tableCellSelection: { anchorBlockId: 'P1', focusBlockId: 'P5' },
+        }),
+      );
+      ui.formatPainter.notifyPointerUp();
+      for (let tick = 0; tick < 10; tick += 1) await Promise.resolve();
+      expect(apply).toHaveBeenCalledWith(
+        expect.objectContaining({
+          inline: expect.objectContaining({ fontFamily: 'Georgia', fontSize: 14 }),
+        }),
+        { offsetSpace: 'selection' },
+      );
+      ui.destroy();
+    },
+  );
 
   it('copy-format apply stays active in persistent mode after pointer-up on a new selection', async () => {
     const { superdoc, apply, setSelection, targetSelection } = makeFormatPainterSuperdoc();
@@ -8542,6 +8797,129 @@ describe('public ui — Plan B command catalog (row 747)', () => {
     );
   });
 
+  function makeCellUniformitySuperdoc(readEffectiveInlineUniformity: (input: Record<string, unknown>) => unknown) {
+    const rawTarget = {
+      kind: 'selection',
+      start: { kind: 'text', blockId: 'CELL0', offset: 3 },
+      end: { kind: 'text', blockId: 'CELL4', offset: 2 },
+    };
+    let cellIntent = true;
+    let notifySelection = () => {};
+    const editingSelection = {
+      subscribe: (listener: () => void) => {
+        notifySelection = listener;
+        return () => {};
+      },
+    };
+    const selection = {
+      ...SELECTION_INFO,
+      target: {
+        kind: 'text',
+        segments: ['CELL0', 'CELL1', 'CELL3', 'CELL4'].map((blockId) => ({
+          blockId,
+          range: { start: 0, end: 8 },
+        })),
+      },
+      selectionTarget: null as typeof rawTarget | null,
+      text: 'uniformly inherited formatting',
+    };
+    const bold = vi.fn(() => ({ success: true }));
+    const host = {
+      readMountedProjectionBlocks: () => [
+        {
+          kind: 'paragraph',
+          sourceAnchor: { sourceNodeId: 'CELL0' },
+          runs: [{ kind: 'text', text: 'CELL0xxx', bold: true, fontFamily: 'Cambria', fontSize: 14 }],
+        },
+      ],
+      getHandles: () => ({
+        editing: { selection: editingSelection },
+        selection: {
+          getSnapshot: () => ({ tableCells: cellIntent }),
+          toSelectionTarget: () => ({ kind: 'ok', mode: 'range', target: rawTarget }),
+        },
+      }),
+    };
+    const superdoc = makeCatalogSuperdoc({
+      doc: {
+        comments: { list: () => ({ items: [] }) },
+        trackChanges: { list: () => ({ items: [] }) },
+        selection: { current: () => selection },
+        format: { bold, fontFamily: vi.fn(), fontSize: vi.fn(), readEffectiveInlineUniformity },
+      },
+      host,
+    });
+    return {
+      superdoc,
+      bold,
+      rawTarget,
+      selection,
+      setCellIntent: (value: boolean) => {
+        cellIntent = value;
+        notifySelection();
+      },
+    };
+  }
+
+  it('removes inherited bold from unmounted disjoint cells on the first click', async () => {
+    const readEffectiveInlineUniformity = vi.fn(() => ({
+      success: true,
+      values: { bold: { state: 'uniform', value: 'true' } },
+    }));
+    const { superdoc, bold, rawTarget } = makeCellUniformitySuperdoc(readEffectiveInlineUniformity);
+    const ui = createSuperDocUI({ superdoc });
+    ui.commands.get('bold').getState();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(ui.commands.get('bold').getState().active).toBe(true);
+    await ui.commands.executeAsync('bold');
+    expect(bold).toHaveBeenCalledWith(
+      { target: rawTarget, value: false },
+      { offsetSpace: 'selection', tableCellSelection: { anchorBlockId: 'CELL0', focusBlockId: 'CELL4' } },
+    );
+    expect(readEffectiveInlineUniformity).toHaveBeenCalledWith(
+      expect.objectContaining({ tableCellSelection: { anchorBlockId: 'CELL0', focusBlockId: 'CELL4' } }),
+    );
+    ui.destroy();
+  });
+
+  it.each(['uniform', 'mixed'])(
+    'reads %s inherited fonts over unmounted disjoint cells and keeps character reads separate',
+    async (verdict) => {
+      const readEffectiveInlineUniformity = vi.fn((input) => ({
+        success: true,
+        values: input.tableCellSelection
+          ? {
+              fontFamily: verdict === 'uniform' ? { state: 'uniform', value: 'Georgia' } : { state: 'mixed' },
+              fontSize: verdict === 'uniform' ? { state: 'uniform', value: '14' } : { state: 'mixed' },
+            }
+          : { fontFamily: { state: 'uniform', value: 'Cambria' }, fontSize: { state: 'uniform', value: '12' } },
+      }));
+      const { superdoc, selection, rawTarget, setCellIntent } =
+        makeCellUniformitySuperdoc(readEffectiveInlineUniformity);
+      // Keep identical character endpoints to prove that the private cell recipe
+      // cannot reuse an ordinary character uniformity cache entry.
+      selection.selectionTarget = rawTarget;
+      const ui = createSuperDocUI({ superdoc });
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(ui.commands.get('font-family').getState().value).toBe(verdict === 'uniform' ? 'Georgia' : undefined);
+      expect(ui.commands.get('font-size').getState().value).toBe(verdict === 'uniform' ? '14' : undefined);
+      expect(readEffectiveInlineUniformity).toHaveBeenCalledWith(
+        expect.objectContaining({ tableCellSelection: { anchorBlockId: 'CELL0', focusBlockId: 'CELL4' } }),
+      );
+      setCellIntent(false);
+      ui.commands.get('font-family').getState();
+      await Promise.resolve();
+      await Promise.resolve();
+      await vi.waitFor(() => expect(ui.commands.get('font-family').getState().value).toBe('Cambria'));
+      expect(readEffectiveInlineUniformity).toHaveBeenCalledWith(
+        expect.not.objectContaining({ tableCellSelection: expect.anything() }),
+      );
+      ui.destroy();
+    },
+  );
+
   it('does not show italic active for a selection that is only effectively bold (distinct mark keys stay independent)', async () => {
     const host = {
       readMountedProjectionBlocks: () => [
@@ -8650,6 +9028,105 @@ describe('public ui — Plan B command catalog (row 747)', () => {
     expect(bold).toHaveBeenCalledTimes(2);
     ui.destroy();
   });
+
+  it.each([true, false])(
+    'retains the accepted inline-toggle scope after selection changes (cell selection: %s)',
+    async (queuedCellSelection) => {
+      const raw = {
+        kind: 'selection',
+        start: { kind: 'text', blockId: 'CELL0', offset: 3 },
+        end: { kind: 'text', blockId: 'CELL4', offset: 2 },
+      } as const;
+      const cellInfo = {
+        empty: false,
+        selectionTarget: null,
+        target: {
+          kind: 'text',
+          segments: ['CELL0', 'CELL1', 'CELL3', 'CELL4'].map((blockId) => ({
+            blockId,
+            range: { start: 0, end: 8 },
+          })),
+        },
+        activeMarks: [],
+        activeCommentIds: [],
+        activeChangeIds: [],
+      };
+      let info: unknown = queuedCellSelection ? cellInfo : { ...cellInfo, selectionTarget: raw };
+      let cells = queuedCellSelection;
+      let liveTarget: unknown = raw;
+      let notifySelection = () => {};
+      const paintResolvers: Array<() => void> = [];
+      const bold = vi.fn((_input: unknown, _options?: unknown) => ({
+        success: true,
+        txId: `tx-${paintResolvers.length + 1}`,
+      }));
+      const superdoc = {
+        activeEditor: {
+          host: {
+            getHandles: () => ({
+              selection: {
+                getSnapshot: () => ({ tableCells: cells }),
+                toSelectionTarget: () => ({ kind: 'ok', mode: 'range', target: liveTarget }),
+              },
+              editing: {
+                selection: {
+                  subscribe: (listener: () => void) => {
+                    notifySelection = listener;
+                    return () => {};
+                  },
+                },
+              },
+            }),
+          },
+          documentMutationReadiness: {
+            whenPainted: vi.fn(() => new Promise<void>((resolve) => paintResolvers.push(resolve))),
+          },
+          doc: {
+            comments: { list: () => ({ items: [] }) },
+            trackChanges: { list: () => ({ items: [] }) },
+            selection: { current: () => info },
+            format: { bold },
+          },
+        },
+        config: { documentMode: 'editing' },
+        on: vi.fn(),
+        off: vi.fn(),
+      };
+      const ui = createSuperDocUI({ superdoc });
+      try {
+        ui.commands.execute('bold');
+        ui.commands.execute('bold');
+        expect(bold).toHaveBeenCalledTimes(1);
+
+        // Change the live host and UI selection while the second toggle waits
+        // for paint. The old command must keep its own cell or character scope.
+        cells = !queuedCellSelection;
+        if (queuedCellSelection) {
+          liveTarget = {
+            kind: 'selection',
+            start: { kind: 'text', blockId: 'AFTER', offset: 0 },
+            end: { kind: 'text', blockId: 'AFTER', offset: 0 },
+          };
+          info = { ...cellInfo, empty: true, target: null, selectionTarget: liveTarget };
+        } else {
+          info = cellInfo;
+        }
+        notifySelection();
+        expect(ui.selection.getSnapshot().empty).toBe(queuedCellSelection);
+
+        paintResolvers[0]?.();
+        await vi.waitFor(() => expect(bold).toHaveBeenCalledTimes(2));
+        expect(bold.mock.calls[1]?.[0]).toMatchObject({ target: raw });
+        expect(bold.mock.calls[1]?.[1]).toEqual({
+          offsetSpace: 'selection',
+          ...(queuedCellSelection ? { tableCellSelection: { anchorBlockId: 'CELL0', focusBlockId: 'CELL4' } } : {}),
+        });
+      } finally {
+        paintResolvers.forEach((resolve) => resolve());
+        ui.destroy();
+      }
+    },
+  );
 
   it('compacts alternating inline-toggle bursts per command and selection (SD-3788)', async () => {
     const paintResolvers: Array<() => void> = [];

@@ -120,11 +120,12 @@ const boldButton = '[data-item="btn-bold"]';
 
 /** Run bold through the instance's controller, the way a custom panel would. */
 async function execBoldThroughUi(page: Page): Promise<void> {
-  await page.evaluate(() =>
+  const result = await page.evaluate(() =>
     (
-      window as never as { __editor: { ui: { commands: { execute(id: string): unknown } } } }
-    ).__editor.ui.commands.execute('bold'),
+      window as never as { __editor: { ui: { commands: { executeAsync(id: string): Promise<unknown> } } } }
+    ).__editor.ui.commands.executeAsync('bold'),
   );
+  expect(result).not.toBe(false);
 }
 
 async function boldActive(page: Page): Promise<boolean> {

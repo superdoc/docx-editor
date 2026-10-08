@@ -1027,6 +1027,7 @@ const applyTabLayoutToLines = (
   indentLeft: number,
   firstLineTabOffset: number,
   marginWidth: number,
+  isWordLayoutList: boolean,
 ): void => {
   const totalTabRuns = runs.reduce((count, run) => (run.kind === 'tab' && !isVanishedRun(run) ? count + 1 : count), 0);
   const alignmentTabStopsPx = tabStops
@@ -1170,6 +1171,18 @@ const applyTabLayoutToLines = (
       lineWidth = Math.max(lineWidth, relativeTarget);
       if (stop?.source === 'explicit') {
         line.hasExplicitTabStops = true;
+        line.justifyAfterHangingTab =
+          lineIndex === 0 &&
+          totalTabRuns === 1 &&
+          !isWordLayoutList &&
+          !positioned &&
+          firstLineTabOffset < 0 &&
+          stop.val === 'start' &&
+          (!stop.leader || stop.leader === 'none') &&
+          Math.abs(clampedTarget - indentLeft) < TAB_EPSILON &&
+          runs
+            .slice(0, tabRunIdx ?? startRunIndex)
+            .every((prefix) => !('text' in prefix) || !/[ \u00a0]/.test(prefix.text));
       }
       let currentLeader: LeaderDecoration | null = null;
 
@@ -2264,7 +2277,16 @@ export function remeasureParagraph(
     regions.some((region) => Number.isFinite(region.offsetX) && Math.abs(region.offsetX) > 0.01),
   );
   if (hasTabRun || hasTextTab || hasLineRegionOffsets) {
-    applyTabLayoutToLines(lines, runs, tabStops, decimalSeparator, indentLeft, firstLineTabOffset, maxWidth);
+    applyTabLayoutToLines(
+      lines,
+      runs,
+      tabStops,
+      decimalSeparator,
+      indentLeft,
+      firstLineTabOffset,
+      maxWidth,
+      Boolean(wordLayout?.marker),
+    );
   }
 
   if (hasLineRegionOffsets) {

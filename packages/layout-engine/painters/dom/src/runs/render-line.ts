@@ -612,6 +612,7 @@ export const renderLine = ({
     alignment: (block as ParagraphBlock).attrs?.alignment,
     hasExplicitPositioning: hasExplicitPositioning ?? false,
     hasExplicitTabStops: line.hasExplicitTabStops === true,
+    justifyAfterHangingTab: line.justifyAfterHangingTab === true,
     // Caller already folds last-line + trailing lineBreak behavior into skipJustify.
     isLastLineOfParagraph: false,
     paragraphEndsWithLineBreak: false,

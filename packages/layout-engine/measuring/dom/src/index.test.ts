@@ -4059,7 +4059,7 @@ describe('measureBlock', () => {
       expect(line2.leaders?.[0]?.style).toBe('dot');
     });
 
-    it('preserves trailing spaces after tabs when line breaks', async () => {
+    it('preserves trailing source spaces after tabs while collapsing their paint geometry', async () => {
       const block: FlowBlock = {
         kind: 'paragraph',
         id: '0-paragraph',
@@ -4101,7 +4101,7 @@ describe('measureBlock', () => {
       expect(lineWithWord).toBeDefined();
 
       if (lineWithWord) {
-        // The segment should include the trailing space after "Word"
+        // The paint segment excludes the wrap space; the line source range still owns it.
         const wordSegment = lineWithWord.segments?.find((seg) => {
           const run = block.runs[seg.runIndex];
           return run.kind !== 'tab' && 'text' in run && run.text.includes('Word');
@@ -4113,11 +4113,11 @@ describe('measureBlock', () => {
           const run = block.runs[wordSegment.runIndex];
           if (run.kind !== 'tab' && 'text' in run) {
             const segmentText = run.text.substring(wordSegment.fromChar, wordSegment.toChar);
-            // If a word-level break split "Word Next", the first segment should
-            // include the trailing space ("Word ").  If the whole run fits on one
-            // line the segment covers the full text — both are valid outcomes
-            // depending on font metrics.
-            expect(segmentText === 'Word ' || segmentText === 'Word Next').toBe(true);
+            expect(segmentText === 'Word' || segmentText === 'Word Next').toBe(true);
+            if (segmentText === 'Word') {
+              expect(extractLineText(block, lineWithWord).endsWith('Word ')).toBe(true);
+              expect(lineWithWord.toChar).toBeGreaterThan(wordSegment.toChar);
+            }
           }
         }
       }
@@ -4255,6 +4255,65 @@ describe('measureBlock', () => {
       const expectedWidth = measureThis.lines[0].width + measureSpace.lines[0].width + measureConf.lines[0].width;
 
       expect(measureCombined.lines[0].width).toBeCloseTo(expectedWidth, 0);
+    });
+  });
+
+  describe('single hanging-tab justification', () => {
+    it.each([
+      ['hanging start', 'start', undefined, false, 720, true],
+      ['other start column', 'start', undefined, false, 360, false],
+      ['end column', 'end', undefined, false, 720, false],
+      ['center column', 'center', undefined, false, 720, false],
+      ['decimal column', 'decimal', undefined, false, 720, false],
+      ['leader', 'start', 'dot', false, 720, false],
+      ['two tabs', 'start', undefined, true, 720, false],
+    ] as const)('qualifies only %s', async (name, val, leader, secondTab, pos, expected) => {
+      const block: FlowBlock = {
+        kind: 'paragraph',
+        id: `hanging-tab-${name}`,
+        attrs: { alignment: 'justify', indent: { left: 48, hanging: 48 }, tabs: [{ val, pos, leader }] },
+        runs: [
+          { text: '1.1', fontFamily: 'Arial', fontSize: 16 },
+          { kind: 'tab', text: '\t' },
+          {
+            text: 'Body words in a long clause that wraps onto another line for its continuation.',
+            fontFamily: 'Arial',
+            fontSize: 16,
+          },
+          ...(secondTab
+            ? [
+                { kind: 'tab' as const, text: '\t' },
+                { text: 'Column', fontFamily: 'Arial', fontSize: 16 },
+              ]
+            : []),
+        ],
+      };
+      const measure = expectParagraphMeasure(await measureBlock(block, 240));
+      expect(measure.lines[0].hasExplicitTabStops).toBe(true);
+      expect(measure.lines[0].justifyAfterHangingTab === true).toBe(expected);
+      expect(measure.lines.slice(1).every((line) => !line.justifyAfterHangingTab)).toBe(true);
+    });
+
+    it('collapses wrap spaces at a style boundary without losing the line source range', async () => {
+      const block: FlowBlock = {
+        kind: 'paragraph',
+        id: 'hanging-styled-wrap',
+        attrs: { indent: { left: 48, hanging: 48 } },
+        runs: [
+          { text: '1.1', fontFamily: 'Arial', fontSize: 16 },
+          { kind: 'tab', text: '\t' },
+          { text: 'Bold ', bold: true, fontFamily: 'Arial', fontSize: 16 },
+          { text: 'body words that wrap onto another line. ', fontFamily: 'Arial', fontSize: 16 },
+        ],
+      };
+      const measure = expectParagraphMeasure(await measureBlock(block, 160));
+      const wrapped = measure.lines.slice(0, -1).filter((line) => extractLineText(block, line).endsWith(' '));
+      expect(wrapped.length).toBeGreaterThan(0);
+      for (const line of wrapped) {
+        expect(extractSegmentText(block, line).join('').endsWith(' ')).toBe(false);
+        const last = line.segments!.at(-1)!;
+        expect(line.toRun > last.runIndex || line.toChar > last.toChar).toBe(true);
+      }
     });
   });
 

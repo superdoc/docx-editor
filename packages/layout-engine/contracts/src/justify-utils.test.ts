@@ -138,6 +138,19 @@ describe('shouldApplyJustify', () => {
     expect(shouldApplyJustify(params)).toBe(false);
   });
 
+  it('justifies body text after a measured hanging tab but still honors last-line and skip rules', () => {
+    const params: ShouldApplyJustifyParams = {
+      alignment: 'justify',
+      hasExplicitTabStops: true,
+      justifyAfterHangingTab: true,
+      isLastLineOfParagraph: false,
+      paragraphEndsWithLineBreak: false,
+    };
+    expect(shouldApplyJustify(params)).toBe(true);
+    expect(shouldApplyJustify({ ...params, isLastLineOfParagraph: true })).toBe(false);
+    expect(shouldApplyJustify({ ...params, skipJustifyOverride: true })).toBe(false);
+  });
+
   it('returns false when skipJustifyOverride is true', () => {
     const params: ShouldApplyJustifyParams = {
       alignment: 'justify',

@@ -324,10 +324,13 @@ export function resolveParagraphContent(
 
     // Adjust availableWidth for first-line text indent. Default/generated tabs
     // can still use segment positioning, but they should justify against the
-    // same hanging-indent first-line width as ordinary inline text. Authored
-    // explicit tab stops skip justify, so their tab-controlled geometry wins.
+    // same hanging-indent first-line width as ordinary inline text. A single
+    // authored hanging-prefix tab uses that width too; other authored stops keep
+    // their tab-controlled geometry.
     const availableWidthIndentOffset =
-      isFirstLine && !isListFirstLine && line.hasExplicitTabStops !== true ? firstLineOffset : textIndentPx;
+      isFirstLine && !isListFirstLine && (line.hasExplicitTabStops !== true || line.justifyAfterHangingTab === true)
+        ? firstLineOffset
+        : textIndentPx;
     availableWidth = adjustAvailableWidthForTextIndent(availableWidth, availableWidthIndentOffset, line.maxWidth);
 
     // --- indentOffset for segment positioning path (mirrors renderer lines 5635-5653) ---

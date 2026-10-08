@@ -21,6 +21,39 @@ import {
 import { LIST_MARKER_GAP } from '@superdoc/common/layout-constants';
 import { remeasureParagraph } from '../src/remeasure.ts';
 
+describe('single hanging-tab remeasurement', () => {
+  it.each([
+    ['hanging start', 'start', undefined, false, 720, true],
+    ['other column', 'start', undefined, false, 360, false],
+    ['end column', 'end', undefined, false, 720, false],
+    ['center column', 'center', undefined, false, 720, false],
+    ['decimal column', 'decimal', undefined, false, 720, false],
+    ['leader', 'start', 'dot', false, 720, false],
+    ['multiple tabs', 'start', undefined, true, 720, false],
+  ] as const)('qualifies only %s', (name, val, leader, secondTab, pos, expected) => {
+    const block: ParagraphBlock = {
+      kind: 'paragraph',
+      id: `hanging-remeasure-${name}`,
+      attrs: { alignment: 'justify', indent: { left: 48, hanging: 48 }, tabs: [{ val, pos, leader }] },
+      runs: [
+        { text: '1', fontFamily: 'Arial', fontSize: 16 },
+        { kind: 'tab', text: '\t' },
+        { text: 'Body words that wrap onto a continuation line.', fontFamily: 'Arial', fontSize: 16 },
+        ...(secondTab
+          ? [
+              { kind: 'tab' as const, text: '\t' },
+              { text: 'Column', fontFamily: 'Arial', fontSize: 16 },
+            ]
+          : []),
+      ],
+    };
+    const measure = remeasureParagraph(block, 240);
+    expect(measure.lines[0].hasExplicitTabStops).toBe(true);
+    expect(measure.lines[0].justifyAfterHangingTab === true).toBe(expected);
+    expect(measure.lines.slice(1).every((line) => !line.justifyAfterHangingTab)).toBe(true);
+  });
+});
+
 describe('positioned tab remeasurement', () => {
   it('starts a new line when a centered positioned tab falls behind its label', () => {
     const block: ParagraphBlock = {

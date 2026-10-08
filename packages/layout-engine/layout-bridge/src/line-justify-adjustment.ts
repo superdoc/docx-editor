@@ -157,6 +157,7 @@ export const getJustifyAdjustment = ({
     alignment,
     hasExplicitPositioning: line.segments?.some((seg) => seg.x !== undefined) ?? false,
     hasExplicitTabStops: line.hasExplicitTabStops === true,
+    justifyAfterHangingTab: line.justifyAfterHangingTab === true,
     isLastLineOfParagraph: isLastLineOfParagraph ?? derivedIsLastLine,
     paragraphEndsWithLineBreak: paragraphEndsWithLineBreak ?? derivedEndsWithLineBreak,
     skipJustifyOverride,

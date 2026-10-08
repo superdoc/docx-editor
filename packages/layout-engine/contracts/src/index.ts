@@ -3049,6 +3049,8 @@ export type Line = {
   justificationPlan?: LineJustificationPlan;
   /** True when this line used author-defined OOXML tab stops, not synthesized default stops. */
   hasExplicitTabStops?: boolean;
+  /** A single first-line start tab ends at the hanging indent, leaving body text justifiable. */
+  justifyAfterHangingTab?: boolean;
   segments?: LineSegment[];
   leaders?: LeaderDecoration[];
   bars?: BarDecoration[];

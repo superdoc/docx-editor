@@ -727,6 +727,7 @@ const resolveBlockSdtChromePaintedLineWidth = (
     alignment: block.attrs?.alignment,
     hasExplicitPositioning: line.segments?.some((segment) => segment.x !== undefined) === true,
     hasExplicitTabStops: line.hasExplicitTabStops === true,
+    justifyAfterHangingTab: line.justifyAfterHangingTab === true,
     isLastLineOfParagraph,
     paragraphEndsWithLineBreak,
     skipJustifyOverride: (resolvedLine?.skipJustify ?? false) || hasMultipleExplicitPositionedSegments,

@@ -2465,6 +2465,7 @@ async function measureParagraphBlock(
     structuralFallbackFontInfo?: FontInfo;
     maxWidth: number;
     hasExplicitTabStops?: boolean;
+    justifyAfterHangingTab?: boolean;
     /** Every in-progress line owns a concrete segment collection. */
     segments: NonNullable<Line['segments']>;
     leaders?: Line['leaders'];
@@ -2816,7 +2817,10 @@ async function measureParagraphBlock(
    * This matches typical word-processor behavior: spaces that exist only because of wrapping at
    * a word boundary do not render at line ends.
    */
-  const trimTrailingWrapSpaces = (lineToTrim: NonNullable<typeof currentLine>): void => {
+  const trimTrailingWrapSpaces = (
+    lineToTrim: NonNullable<typeof currentLine>,
+    preserveSegmentSourceRanges = false,
+  ): void => {
     const lastRun = runsToProcess[lineToTrim.toRun];
     if (!lastRun || !('text' in lastRun) || typeof lastRun.text !== 'string') return;
 
@@ -2844,6 +2848,19 @@ async function measureParagraphBlock(
     const keptWidth = keptText.length > 0 ? resolveParagraphRunWidth(keptText, font, ctx, lastRun, sliceStart) : 0;
     const delta = Math.max(0, fullWidth - keptWidth);
 
+    // Soft-wrap spaces have no painted carrier; terminal boundary spaces retain their source segments.
+    const paintEnd = sliceEnd - trimCount;
+    for (const segment of preserveSegmentSourceRanges ? [] : lineToTrim.segments) {
+      if (segment.runIndex !== lineToTrim.toRun || segment.toChar <= paintEnd) continue;
+      segment.toChar = Math.max(segment.fromChar, paintEnd);
+      segment.width = resolveParagraphRunWidth(
+        lastRun.text.slice(segment.fromChar, segment.toChar),
+        font,
+        ctx,
+        lastRun,
+        segment.fromChar,
+      );
+    }
     lineToTrim.width = roundValue(Math.max(0, lineToTrim.width - delta));
     lineToTrim.spaceCount = Math.max(0, lineToTrim.spaceCount - trimCount);
 
@@ -2866,7 +2883,7 @@ async function measureParagraphBlock(
     toChar: number,
   ): void => {
     if (!lineToExtend.collapsedWrapSpaces) {
-      trimTrailingWrapSpaces(lineToExtend);
+      trimTrailingWrapSpaces(lineToExtend, true);
       lineToExtend.collapsedWrapSpaces = true;
     }
     lineToExtend.toRun = runIndex;
@@ -3168,6 +3185,16 @@ async function measureParagraphBlock(
       currentLine.width = roundValue(currentLine.width + tabAdvance);
       if (stop?.source === 'explicit') {
         currentLine.hasExplicitTabStops = true;
+        currentLine.justifyAfterHangingTab =
+          lines.length === 0 &&
+          totalTabRuns === 1 &&
+          !isWordLayoutList &&
+          !positioned &&
+          rawFirstLineOffset < 0 &&
+          stop.val === 'start' &&
+          (!stop.leader || stop.leader === 'none') &&
+          Math.abs(clampedTarget - indentLeft) < TAB_EPSILON &&
+          runsToProcess.slice(0, runIndex).every((prefix) => !isTextRun(prefix) || !/[ \u00a0]/.test(prefix.text));
       }
       // Persist measured tab width on the TabRun for downstream consumers/tests
       (run as TabRun & { width?: number }).width = tabAdvance;

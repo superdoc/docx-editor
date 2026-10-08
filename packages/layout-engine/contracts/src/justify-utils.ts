@@ -22,6 +22,8 @@ export type ShouldApplyJustifyParams = {
   hasExplicitPositioning?: boolean;
   /** Whether the line used author-defined OOXML tab stops. */
   hasExplicitTabStops?: boolean;
+  /** Whether a single start tab only separates a hanging prefix from the body. */
+  justifyAfterHangingTab?: boolean;
   /** Whether this is the last line of the paragraph. */
   isLastLineOfParagraph: boolean;
   /** Whether the paragraph ends with a soft break (Shift+Enter / LineBreak run). */
@@ -36,13 +38,14 @@ export type ShouldApplyJustifyParams = {
  * Justify is applied when ALL of the following are true:
  * - Alignment is 'justify'
  * - No explicit skip override
- * - Line doesn't have author-defined tab stops
+ * - Line has no column-aligned tab stops
  * - Line is NOT the last line, OR paragraph ends with a soft break
  *
  * This matches Microsoft Word's behavior:
  * - All lines are justified except the true last line
  * - Soft breaks (Shift+Enter) do NOT count as "last line"
- * - Explicit tab-aligned text is never justified
+ * - Explicit column-aligned text is never justified
+ * - A single start tab at the hanging indent leaves body text justifiable
  * - Default/manual tab-aligned text can still be justified
  *
  * @param params - Parameters for justify decision
@@ -53,6 +56,7 @@ export function shouldApplyJustify(params: ShouldApplyJustifyParams): boolean {
     alignment,
     hasExplicitPositioning,
     hasExplicitTabStops,
+    justifyAfterHangingTab,
     isLastLineOfParagraph,
     paragraphEndsWithLineBreak,
     skipJustifyOverride,
@@ -70,8 +74,8 @@ export function shouldApplyJustify(params: ShouldApplyJustifyParams): boolean {
     return false;
   }
 
-  // Author-defined tab stops control horizontal positioning and should not be stretched.
-  if (lineHasExplicitTabStops) {
+  // Column-aligned tab stops fix horizontal positioning; a hanging prefix leaves body text justifiable.
+  if (lineHasExplicitTabStops && !justifyAfterHangingTab) {
     return false;
   }
 

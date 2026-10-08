@@ -207,6 +207,32 @@ describe('SD-4772 terminal wrap spaces', () => {
     });
   });
 
+  describe('fragmented terminal source ranges', () => {
+    it.each([
+      { name: 'paragraph end', tail: [] as Run[], expectedLines: 1 },
+      {
+        name: 'line break',
+        tail: [{ kind: 'lineBreak' } as Run, textRun(AFTER_BREAK_TEXT)],
+        expectedLines: 2,
+      },
+    ])('preserves every collapsed space across runs at $name', async ({ name, tail, expectedLines }) => {
+      const block = paragraph(`fragmented-terminal-range-${name.replaceAll(' ', '-')}`, [
+        textRun(`${BOUNDARY_TEXT} `),
+        textRun(' '),
+        textRun(' '),
+        ...tail,
+      ]);
+      const textWidth = (await measureBoundaryText()).lines[0].width;
+      const spaceWidth = (await measureBoundaryText(' ')).lines[0].width - textWidth;
+      const measure = expectParagraphMeasure(await measureBlock(block, textWidth + spaceWidth * 1.5));
+
+      expect(measure.lines).toHaveLength(expectedLines);
+      expect(measure.lines[0]).toMatchObject({ toRun: 2, toChar: 1 });
+      expect(lineText(block, measure.lines[0])).toBe(`${BOUNDARY_TEXT}   `);
+      expect(measure.lines[0].width).toBeCloseTo(textWidth, 5);
+    });
+  });
+
   describe('preservation controls', () => {
     it('preserves an overflowing nonterminal space for following text', async () => {
       const block = paragraph('nonterminal-space', [textRun(`${BOUNDARY_TEXT} `), textRun('more')]);

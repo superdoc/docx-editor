@@ -97,7 +97,7 @@ export const resolveAvailableWidthForLine = (params: {
     availableWidth = containerWidth - resolvedListTextStartPx - Math.max(0, indentRightPx);
   }
 
-  if (isFirstLine && !isListFirstLine && line.hasExplicitTabStops !== true) {
+  if (isFirstLine && !isListFirstLine && (line.hasExplicitTabStops !== true || line.justifyAfterHangingTab === true)) {
     availableWidth = adjustAvailableWidthForTextIndent(availableWidth, firstLineOffset, line.maxWidth);
   }
 

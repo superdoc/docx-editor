@@ -75,6 +75,10 @@ import { getPresetShapeSvg } from '@superdoc/preset-geometry';
 import { DOM_CLASS_NAMES } from './constants.js';
 import {
   createEmptyPaintWorkSummary,
+  planDetachedPageFragments,
+  persistentPageVersionKey,
+  sdtLabelSetsEqual,
+  planWindowPositionRemap,
   isNonBodyStoryBlockId,
   patchPage as patchPageContent,
   renderPage as renderPageContent,
@@ -105,6 +109,7 @@ import {
 import { applyAlphaToSVG, applyGradientToSVG, createGradient, validateHexColor } from './svg-utils.js';
 import {
   renderTableFragment as renderTableFragmentElement,
+  renderTableFragmentWork,
   type TableRenderDependencies,
 } from './table/renderTableFragment.js';
 import { applyCellBorders } from './table/border-utils.js';
@@ -124,8 +129,8 @@ import {
 import { computeBetweenBorderFlags, type BetweenBorderInfo } from './paragraph/borders/index.js';
 import { applyParagraphFragmentPmAttributes } from './paragraph/frame.js';
 import { renderParagraphContent } from './paragraph/renderParagraphContent.js';
-import { renderParagraphFragment as renderParagraphFragmentElement } from './paragraph/renderParagraphFragment.js';
-import { renderLine as renderRunLine } from './runs/render-line.js';
+import { renderParagraphFragmentWork as renderParagraphFragmentElement } from './paragraph/renderParagraphFragment.js';
+import { renderLineWork as renderRunLine } from './runs/render-line.js';
 import type { RunRenderContext } from './runs/types.js';
 import {
   createPositionValidationCollector,
@@ -152,6 +157,8 @@ import {
   type WordArtWarpGeometry,
 } from './shapes/wordart-warp.js';
 import { applyLayoutIdentityDataset } from './utils/layout-identity.js';
+import { completeRenderWork, resolveRenderWork, type RenderWork } from './render-work.js';
+import { computeExpectedSdtLabelKeys } from './sdt/boundaries.js';
 import { applySourceAnchorDataset } from './utils/source-anchor.js';
 
 export type {
@@ -470,8 +477,11 @@ type PersistentPagePainterStateSnapshot = {
   totalPages: number;
   sectionPageCounts: Map<number, number>;
   linkIdCounter: number;
+  shapeImageFillCounter: number;
+  wordArtPathCounter: number;
   sdtLabelsRendered: Set<string>;
   pendingTooltips: WeakMap<HTMLElement, string>;
+  positionValidation: PositionValidationCollector;
   pageGap: number;
   layoutVersion: number;
   layoutEpoch: number;
@@ -484,10 +494,33 @@ type PersistentPagePainterStateSnapshot = {
   paintWork: PaintWorkSummary;
   paintSnapshotBuilder: PaintSnapshotBuilder | null;
   lastPaintSnapshot: PaintSnapshot | null;
-  persistentPageIndices: number[];
+  persistentPageCount: number;
   resolvedLayout: ResolvedLayout | null;
   showFormattingMarks: boolean;
   contentControlsChrome: 'default' | 'none';
+};
+
+const PREPARED_PERSISTENT_PAGES = Symbol('prepared-persistent-pages');
+
+type PreparedPersistentPages = {
+  owner: DomPainter;
+  mount: HTMLElement;
+  scaffold: DomPainterPersistentPageInput['scaffold'];
+  revision: number;
+  retained: PersistentPageSurfaceState | null;
+  header?: PageDecorationProvider;
+  footer?: PageDecorationProvider;
+  formatting: boolean;
+  chrome: 'default' | 'none';
+  consumed: boolean;
+  fragments: Map<ResolvedPaintItem, HTMLElement>;
+  decorations: Map<ResolvedPage, HTMLElement[]>;
+  linkIdCounter: number;
+  shapeImageFillCounter: number;
+  wordArtPathCounter: number;
+  positionValidation: PositionValidationCollector;
+  tooltips: WeakMap<HTMLElement, string>;
+  failures: PainterFragmentFailure[];
 };
 
 type ActivePersistentPagePainterTransaction = {
@@ -504,6 +537,7 @@ type PainterFragmentFailure = {
 };
 
 type PersistentPagePainterTransaction = {
+  prepareCommit(): void;
   commit(): void;
   rollback(): void;
   readFragmentFailures(): readonly PainterFragmentFailure[];
@@ -1215,6 +1249,11 @@ export class DomPainter {
   private totalPages = 0;
   private sectionPageCounts = new Map<number, number>();
   private linkIdCounter = 0; // Counter for generating unique link IDs
+  private retainedPaintRevision = 0;
+  private preparedDecorations: Map<ResolvedPage, HTMLElement[]> | null = null;
+  private preparedFragments: Map<ResolvedPaintItem, HTMLElement> | null = null;
+  private detachedPreparationActive = false;
+  private detachedFragmentFailures: PainterFragmentFailure[] = [];
   private shapeImageFillCounter = 0;
   private wordArtPathCounter = 0;
   private sdtLabelsRendered = new Set<string>(); // Tracks SDT labels rendered across pages
@@ -1271,7 +1310,7 @@ export class DomPainter {
    * live persistent surface and fresh-state oracle never mix counts.
    * Dark unless enabled via options; when dark, `record()` is a single branch.
    */
-  private readonly positionValidation: PositionValidationCollector;
+  private positionValidation: PositionValidationCollector;
   private paintSnapshotBuilder: PaintSnapshotBuilder | null = null;
   private lastPaintSnapshot: PaintSnapshot | null = null;
   private onPaintSnapshotCallback: ((snapshot: PaintSnapshot) => void) | null = null;
@@ -1281,7 +1320,7 @@ export class DomPainter {
    * from the public DomPainterHandle contract.
    */
   private activePersistentPageTransaction: ActivePersistentPagePainterTransaction | null = null;
-  private persistentPageIndices: number[] = [];
+  private persistentPageCount = 0;
   /** Resolved layout for the next-gen paint pipeline. */
   private resolvedLayout: ResolvedLayout | null = null;
   private showFormattingMarks = false;
@@ -1307,6 +1346,7 @@ export class DomPainter {
   public setShowFormattingMarks(showFormattingMarks: boolean): void {
     const next = showFormattingMarks === true;
     if (this.showFormattingMarks === next) return;
+    this.retainedPaintRevision += 1;
     this.showFormattingMarks = next;
     this.applyFormattingMarksClass();
     this.invalidateRenderedContent();
@@ -1314,6 +1354,7 @@ export class DomPainter {
 
   public setProviders(header?: PageDecorationProvider, footer?: PageDecorationProvider): void {
     if (this.headerProvider === header && this.footerProvider === footer) return;
+    this.retainedPaintRevision += 1;
     this.headerProvider = header;
     this.footerProvider = footer;
     // Provider output is rendered into page DOM but is NOT a term in
@@ -1370,7 +1411,7 @@ export class DomPainter {
    * Returns the stable page-root indices owned by the current surface.
    */
   public getPersistentPageIndices(): number[] {
-    return [...this.persistentPageIndices];
+    return Array.from({ length: this.persistentPageCount }, (_, index) => index);
   }
 
   /**
@@ -1387,7 +1428,7 @@ export class DomPainter {
    * last-good nodes.
    */
   public beginPersistentPageTransaction(): PersistentPagePainterTransaction {
-    if (this.activePersistentPageTransaction) {
+    if (this.detachedPreparationActive || this.activePersistentPageTransaction) {
       throw new Error('persistent-page painter transaction already active');
     }
 
@@ -1404,6 +1445,16 @@ export class DomPainter {
     this.pendingTooltips = new WeakMap<HTMLElement, string>();
     this.activePersistentPageTransaction = active;
     let settled = false;
+    let prepared = false;
+
+    const prepareCommit = (): void => {
+      if (settled || prepared) return;
+      if (this.activePersistentPageTransaction !== active)
+        throw new Error('persistent-page painter transaction is no longer active');
+      if (active.hasPendingPaintSnapshot && active.pendingPaintSnapshot)
+        this.onPaintSnapshotCallback?.(active.pendingPaintSnapshot);
+      prepared = true;
+    };
 
     const claim = (): boolean => {
       if (settled) return false;
@@ -1427,17 +1478,18 @@ export class DomPainter {
           (candidate) => !retained.some((other) => other !== candidate && other.contains(candidate)),
         );
       },
+      prepareCommit,
       commit: () => {
-        if (!claim()) return;
+        if (settled) return;
         try {
-          if (active.hasPendingPaintSnapshot && active.pendingPaintSnapshot) {
-            this.onPaintSnapshotCallback?.(active.pendingPaintSnapshot);
-          }
+          prepareCommit();
+          if (!claim()) return;
           this.activePersistentPageTransaction = null;
         } catch (error) {
           // The routed wrapper still owns a live DOM journal at this point.
           // Restore painter state before propagating so it can roll the DOM
           // back too and leave the whole visible commit at last-good.
+          settled = true;
           this.restorePersistentPagePainterState(active.snapshot);
           this.activePersistentPageTransaction = null;
           throw error;
@@ -1463,8 +1515,11 @@ export class DomPainter {
       totalPages: this.totalPages,
       sectionPageCounts: new Map(this.sectionPageCounts),
       linkIdCounter: this.linkIdCounter,
+      shapeImageFillCounter: this.shapeImageFillCounter,
+      wordArtPathCounter: this.wordArtPathCounter,
       sdtLabelsRendered: new Set(this.sdtLabelsRendered),
       pendingTooltips: this.pendingTooltips,
+      positionValidation: this.positionValidation.clone(),
       pageGap: this.pageGap,
       layoutVersion: this.layoutVersion,
       layoutEpoch: this.layoutEpoch,
@@ -1477,7 +1532,7 @@ export class DomPainter {
       paintWork: clonePaintWorkSummary(this.paintWork),
       paintSnapshotBuilder: clonePaintSnapshotBuilder(this.paintSnapshotBuilder),
       lastPaintSnapshot: this.lastPaintSnapshot,
-      persistentPageIndices: [...this.persistentPageIndices],
+      persistentPageCount: this.persistentPageCount,
       resolvedLayout: this.resolvedLayout,
       showFormattingMarks: this.showFormattingMarks,
       contentControlsChrome: this.contentControlsChrome,
@@ -1495,8 +1550,11 @@ export class DomPainter {
     this.totalPages = snapshot.totalPages;
     this.sectionPageCounts = snapshot.sectionPageCounts;
     this.linkIdCounter = snapshot.linkIdCounter;
+    this.shapeImageFillCounter = snapshot.shapeImageFillCounter;
+    this.wordArtPathCounter = snapshot.wordArtPathCounter;
     this.sdtLabelsRendered = snapshot.sdtLabelsRendered;
     this.pendingTooltips = snapshot.pendingTooltips;
+    this.positionValidation = snapshot.positionValidation;
     this.pageGap = snapshot.pageGap;
     this.layoutVersion = snapshot.layoutVersion;
     this.layoutEpoch = snapshot.layoutEpoch;
@@ -1509,18 +1567,14 @@ export class DomPainter {
     this.paintWork = snapshot.paintWork;
     this.paintSnapshotBuilder = snapshot.paintSnapshotBuilder;
     this.lastPaintSnapshot = snapshot.lastPaintSnapshot;
-    this.persistentPageIndices = snapshot.persistentPageIndices;
+    this.persistentPageCount = snapshot.persistentPageCount;
     this.resolvedLayout = snapshot.resolvedLayout;
     this.showFormattingMarks = snapshot.showFormattingMarks;
     this.contentControlsChrome = snapshot.contentControlsChrome;
   }
 
-  private createAllPageIndices(pageCount: number): number[] {
-    return Array.from({ length: pageCount }, (_, pageIndex) => pageIndex);
-  }
-
-  private setPersistentPageIndices(pageIndices: number[]): void {
-    this.persistentPageIndices = [...pageIndices];
+  private setPersistentPageCount(pageCount: number): void {
+    this.persistentPageCount = pageCount;
   }
 
   private emitPaintSnapshot(snapshot: PaintSnapshot): void {
@@ -1681,6 +1735,8 @@ export class DomPainter {
 
   /** Semantic continuous paint. Paginated flow has only `paintPersistentPages()`. */
   public paint(input: DomPainterInput, mount: HTMLElement, mapping?: PositionMapping): void {
+    if (this.detachedPreparationActive) throw new Error('persistent-page painter is busy');
+    this.retainedPaintRevision += 1;
     if (!this.isSemanticFlow) {
       throw new Error('DomPainter.paint() rejects paginated flow; use paintPersistentPages()');
     }
@@ -1749,9 +1805,180 @@ export class DomPainter {
     } else {
       this.patchLayout(resolvedLayout);
     }
-    this.setPersistentPageIndices(this.createAllPageIndices(resolvedLayout.pages.length));
+    this.setPersistentPageCount(resolvedLayout.pages.length);
     this.changedBlocks.clear();
     this.currentMapping = null;
+  }
+
+  /** Prepare detached content before the host opens its atomic visible transaction. */
+  public async preparePersistentPages(
+    input: DomPainterPersistentPageInput,
+    options: {
+      mount: HTMLElement;
+      signal?: AbortSignal;
+      yieldToHost?: (checkpoint: { phase: 'paint:content'; index: number; total: number }) => Promise<void>;
+    },
+  ): Promise<{ input: DomPainterPersistentPageInput; discard(): void }> {
+    if (this.detachedPreparationActive || this.activePersistentPageTransaction)
+      throw new Error('persistent-page painter is busy');
+    const { mount, signal } = options;
+    if (this.isSemanticFlow || !(mount instanceof HTMLElement))
+      throw new Error('detached preparation requires a paginated DOM mount');
+    validateDerivedRunTextPlane(input.derivedRunTextPlane, input.scaffold.generation);
+    const snapshot = this.capturePersistentPagePainterState();
+    const preparationRevision = this.retainedPaintRevision;
+    const fragments = new Map<ResolvedPaintItem, HTMLElement>();
+    const decorations = new Map<ResolvedPage, HTMLElement[]>();
+    const packets = new Map<number, ResolvedPage>();
+    const desired = resolveDesiredContentPageIndices(input);
+    let checkpointIndex = 0;
+    let lastYieldAt = performance.now();
+    const checkpoint = async () => {
+      if (signal?.aborted || preparationRevision !== this.retainedPaintRevision)
+        throw new DOMException('Detached page preparation aborted', 'AbortError');
+      const progress = { phase: 'paint:content' as const, index: checkpointIndex++, total: desired.length };
+      if (options.yieldToHost) await options.yieldToHost(progress);
+      else if (performance.now() - lastYieldAt >= 4) {
+        await new Promise<void>((resolve) => setTimeout(resolve, 0));
+        lastYieldAt = performance.now();
+      }
+      if (signal?.aborted || preparationRevision !== this.retainedPaintRevision)
+        throw new DOMException('Detached page preparation aborted', 'AbortError');
+    };
+    const drain = async <T>(work: RenderWork<T>): Promise<T> => {
+      try {
+        let next = work.next();
+        while (!next.done) {
+          await checkpoint();
+          next = work.next();
+        }
+        return next.value;
+      } finally {
+        work.return(undefined as T);
+      }
+    };
+    let candidate: PreparedPersistentPages;
+    this.detachedPreparationActive = true;
+    this.detachedFragmentFailures = [];
+    try {
+      await checkpoint();
+      this.doc = mount.ownerDocument;
+      this.mount = mount;
+      this.currentLayout = null;
+      this.currentMapping = null;
+      this.changedBlocks = new Set();
+      this.paintSnapshotBuilder = null;
+      this.pendingTooltips = new WeakMap();
+      this.positionValidation = this.positionValidation.clone('off');
+      this.sdtLabelsRendered = new Set();
+      this.totalPages = input.scaffold.pageCount;
+      this.layoutEpoch = input.scaffold.generation;
+      this.persistentDocumentBackground = input.documentBackground ?? null;
+      this.persistentDerivedRunTextPlane = input.derivedRunTextPlane ?? null;
+      for (const pageIndex of desired) {
+        const page = input.packetsByPageIndex.get(pageIndex);
+        if (!page) throw new Error(`Missing page packet ${pageIndex}`);
+        const band = input.scaffold.pages[pageIndex];
+        if (
+          (page.layoutEpoch != null && page.layoutEpoch !== input.scaffold.generation) ||
+          (band && (Math.abs(page.width - band.widthPx) > 0.01 || Math.abs(page.height - band.heightPx) > 0.01))
+        )
+          throw new Error(`Detached page packet ${pageIndex} disagrees with scaffold`);
+        packets.set(pageIndex, page);
+      }
+      this.sectionPageCounts = input.sectionPageCounts
+        ? readSectionPageCounts(input.sectionPageCounts)
+        : buildSectionPageCounts([...packets.values()]);
+      for (const pageIndex of desired) {
+        await checkpoint();
+        const page = packets.get(pageIndex)!;
+        const entry =
+          this.persistentSurface?.mount === mount ? this.persistentSurface.content.get(pageIndex) : undefined;
+        const labels = computeExpectedSdtLabelKeys(page.items, this.sdtLabelsRendered);
+        const version = persistentPageVersionKey(
+          page,
+          this.totalPages,
+          this.getSectionPageCount(page),
+          input.derivedRunTextPlane,
+        );
+        const untouched =
+          entry &&
+          version != null &&
+          entry.versionKey === version &&
+          sdtLabelSetsEqual(entry.sdtLabels, labels) &&
+          planWindowPositionRemap(entry.state, page).kind !== 'demote';
+        if (!untouched) {
+          const work = await drain(planDetachedPageFragments(this.pageContentContext(), entry?.state, page, pageIndex));
+          for (const job of work) {
+            if (job.item.kind !== 'fragment') continue;
+            fragments.set(
+              job.item,
+              await drain(
+                this.renderFragmentWork(job.item.fragment, job.context, job.sdtBoundary, job.betweenInfo, job.item),
+              ),
+            );
+          }
+        }
+        if (!untouched || this.persistentDecorationsDirty) {
+          const detachedPage = this.doc.createElement('div');
+          await drain(this.renderDecorationsForPageWork(detachedPage, page, pageIndex));
+          decorations.set(page, Array.from(detachedPage.children) as HTMLElement[]);
+        }
+        for (const label of labels) this.sdtLabelsRendered.add(label);
+      }
+      candidate = {
+        owner: this,
+        mount,
+        scaffold: input.scaffold,
+        revision: preparationRevision,
+        retained: null,
+        header: snapshot.headerProvider,
+        footer: snapshot.footerProvider,
+        formatting: this.showFormattingMarks,
+        chrome: this.contentControlsChrome,
+        consumed: false,
+        fragments,
+        decorations,
+        linkIdCounter: this.linkIdCounter,
+        shapeImageFillCounter: this.shapeImageFillCounter,
+        wordArtPathCounter: this.wordArtPathCounter,
+        positionValidation: this.positionValidation,
+        tooltips: this.pendingTooltips,
+        failures: this.detachedFragmentFailures,
+      };
+    } finally {
+      const retained = this.persistentSurface;
+      const header = this.headerProvider;
+      const footer = this.footerProvider;
+      const formatting = this.showFormattingMarks;
+      const dirty = this.persistentDecorationsDirty;
+      this.restorePersistentPagePainterState(snapshot);
+      this.persistentSurface = retained;
+      this.headerProvider = header;
+      this.footerProvider = footer;
+      this.showFormattingMarks = formatting;
+      this.persistentDecorationsDirty ||= dirty;
+      this.detachedPreparationActive = false;
+      this.detachedFragmentFailures = [];
+    }
+    candidate.retained = this.persistentSurface;
+    const preparedInput = Object.freeze({
+      ...input,
+      desiredContentPageIndices: Object.freeze([...input.desiredContentPageIndices]),
+      pinnedContentPageIndices: input.pinnedContentPageIndices
+        ? Object.freeze([...input.pinnedContentPageIndices])
+        : undefined,
+      packetsByPageIndex: packets,
+      [PREPARED_PERSISTENT_PAGES]: candidate,
+    });
+    return {
+      input: preparedInput,
+      discard: () => {
+        candidate.consumed = true;
+        fragments.clear();
+        decorations.clear();
+      },
+    };
   }
 
   /**
@@ -1764,6 +1991,7 @@ export class DomPainter {
    * from the persistent shells plus the container gap alone.
    */
   public paintPersistentPages(input: DomPainterPersistentPageInput, mount: HTMLElement): void {
+    if (this.detachedPreparationActive) throw new Error('persistent-page painter is busy');
     if (this.isSemanticFlow) {
       throw new Error(
         'DomPainter.paintPersistentPages() rejects semantic flow (painter plan P7). ' +
@@ -1778,6 +2006,34 @@ export class DomPainter {
       throw new Error('DomPainter.paintPersistentPages requires a DOM-like document');
     }
     validateDerivedRunTextPlane(input.derivedRunTextPlane, input.scaffold.generation);
+    const candidate = (
+      input as DomPainterPersistentPageInput & { [PREPARED_PERSISTENT_PAGES]?: PreparedPersistentPages }
+    )[PREPARED_PERSISTENT_PAGES];
+    if (candidate) {
+      if (
+        candidate.revision !== this.retainedPaintRevision ||
+        candidate.consumed ||
+        candidate.owner !== this ||
+        candidate.mount !== mount ||
+        candidate.scaffold !== input.scaffold ||
+        candidate.retained?.shells !== this.persistentSurface?.shells ||
+        candidate.header !== this.headerProvider ||
+        candidate.footer !== this.footerProvider ||
+        candidate.formatting !== this.showFormattingMarks ||
+        candidate.chrome !== this.contentControlsChrome
+      )
+        throw new Error('Detached page candidate is stale');
+      candidate.consumed = true;
+      this.preparedFragments = candidate.fragments;
+      this.preparedDecorations = candidate.decorations;
+      this.linkIdCounter = candidate.linkIdCounter;
+      this.shapeImageFillCounter = candidate.shapeImageFillCounter;
+      this.wordArtPathCounter = candidate.wordArtPathCounter;
+      this.pendingTooltips = candidate.tooltips;
+      this.positionValidation = candidate.positionValidation.clone(this.options.positionValidation?.policy ?? 'off');
+      this.activePersistentPageTransaction?.fragmentFailures.push(...candidate.failures);
+    }
+    this.retainedPaintRevision += 1;
     this.doc = doc;
     this.mount = mount;
     this.currentLayout = null;
@@ -1814,29 +2070,34 @@ export class DomPainter {
       mount.innerHTML = '';
     }
 
-    this.persistentSurface = reconcilePersistentPageSurface(
-      {
-        contentContext: this.pageContentContext(),
-        work: this.paintWork,
-        recordPageWork: (kind, pageIndex) => this.recordPageWork(kind, pageIndex),
-        consumeDecorationsDirty: () => {
-          const dirty = this.persistentDecorationsDirty;
-          this.persistentDecorationsDirty = false;
-          return dirty;
+    try {
+      this.persistentSurface = reconcilePersistentPageSurface(
+        {
+          contentContext: this.pageContentContext(),
+          work: this.paintWork,
+          recordPageWork: (kind, pageIndex) => this.recordPageWork(kind, pageIndex),
+          consumeDecorationsDirty: () => {
+            const dirty = this.persistentDecorationsDirty;
+            this.persistentDecorationsDirty = false;
+            return dirty;
+          },
+          // The only per-document dynamic input to shell styles is the
+          // document background; instance-static pageStyles need no signature.
+          shellStyleSignature: `bg:${this.persistentDocumentBackground?.color ?? ''}`,
+          onIntegrityInvalidated: this.persistentSurfaceInvalidationHandler,
         },
-        // The only per-document dynamic input to shell styles is the
-        // document background; instance-static pageStyles need no signature.
-        shellStyleSignature: `bg:${this.persistentDocumentBackground?.color ?? ''}`,
-        onIntegrityInvalidated: this.persistentSurfaceInvalidationHandler,
-      },
-      this.persistentSurface,
-      input,
-      mount,
-    );
+        this.persistentSurface,
+        input,
+        mount,
+      );
 
-    this.setPersistentPageIndices(this.createAllPageIndices(input.scaffold.pageCount));
-    if (input.captureSnapshot !== false) {
-      this.emitPaintSnapshot(this.collectPaintSnapshotFromDomRoot(mount));
+      this.setPersistentPageCount(input.scaffold.pageCount);
+      if (input.captureSnapshot !== false) {
+        this.emitPaintSnapshot(this.collectPaintSnapshotFromDomRoot(mount));
+      }
+    } finally {
+      this.preparedFragments = null;
+      this.preparedDecorations = null;
     }
   }
 
@@ -2046,6 +2307,31 @@ export class DomPainter {
     return geometry;
   }
   private renderDecorationsForPage(pageEl: HTMLElement, page: ResolvedPage, pageIndex: number): void {
+    const prepared = this.preparedDecorations?.get(page);
+    if (!prepared) {
+      completeRenderWork(this.renderDecorationsForPageWork(pageEl, page, pageIndex));
+      return;
+    }
+    this.preparedDecorations!.delete(page);
+    for (const old of Array.from(
+      pageEl.querySelectorAll(
+        `.${CLASS_NAMES.pageHeader}, .${CLASS_NAMES.pageFooter}, [data-behind-doc-section], [data-superdoc-page-border]`,
+      ),
+    ))
+      old.remove();
+    const anchor = pageEl.firstChild;
+    for (const child of prepared) {
+      if (
+        child.dataset.behindDocSection ||
+        child.classList.contains(CLASS_NAMES.pageHeader) ||
+        child.classList.contains(CLASS_NAMES.pageFooter)
+      )
+        pageEl.insertBefore(child, anchor);
+      else pageEl.appendChild(child);
+      this.activePersistentPageTransaction?.changedRoots.add(child);
+    }
+  }
+  private *renderDecorationsForPageWork(pageEl: HTMLElement, page: ResolvedPage, pageIndex: number): RenderWork<void> {
     pageEl.querySelector('[data-superdoc-page-border]')?.remove();
     if (this.isSemanticFlow) return;
     if (page.pageBorders) {
@@ -2062,8 +2348,8 @@ export class DomPainter {
       }
       pageEl.appendChild(border);
     }
-    this.renderDecorationSection(pageEl, page, pageIndex, 'header');
-    this.renderDecorationSection(pageEl, page, pageIndex, 'footer');
+    yield* this.renderDecorationSectionWork(pageEl, page, pageIndex, 'header');
+    yield* this.renderDecorationSectionWork(pageEl, page, pageIndex, 'footer');
   }
 
   /**
@@ -2183,12 +2469,12 @@ export class DomPainter {
     return resolveFooterPageFrameOriginY(page.height, page.baseMargins?.bottom ?? page.margins?.bottom);
   }
 
-  private renderDecorationSection(
+  private *renderDecorationSectionWork(
     pageEl: HTMLElement,
     page: ResolvedPage,
     pageIndex: number,
     kind: 'header' | 'footer',
-  ): void {
+  ): RenderWork<void> {
     if (!this.doc) return;
     const provider = kind === 'header' ? this.headerProvider : this.footerProvider;
     const className = kind === 'header' ? CLASS_NAMES.pageHeader : CLASS_NAMES.pageFooter;
@@ -2344,9 +2630,10 @@ export class DomPainter {
     // We can't use z-index: -1 because that goes behind the page's white background.
     // By inserting at the beginning and using z-index: 0, they render below body content
     // which also has z-index values but comes later in DOM order.
-    behindDocFragments.forEach(({ fragment, originalIndex }) => {
+    for (const { fragment, originalIndex } of behindDocFragments) {
+      yield;
       const resolvedItem = data.items?.[originalIndex];
-      const fragEl = this.renderFragment(
+      const fragEl = yield* this.renderFragmentWork(
         fragment,
         context,
         undefined,
@@ -2375,12 +2662,13 @@ export class DomPainter {
       // Insert at beginning of page so it renders behind body content due to DOM order
       pageEl.insertBefore(fragEl, pageEl.firstChild);
       this.activePersistentPageTransaction?.changedRoots.add(fragEl);
-    });
+    }
 
     // Render normal fragments in the header/footer container
-    normalFragments.forEach(({ fragment, originalIndex }) => {
+    for (const { fragment, originalIndex } of normalFragments) {
+      yield;
       const resolvedItem = data.items?.[originalIndex];
-      const fragEl = this.renderFragment(
+      const fragEl = yield* this.renderFragmentWork(
         fragment,
         context,
         undefined,
@@ -2419,7 +2707,7 @@ export class DomPainter {
         container.classList.add('superdoc-has-inline-run-background');
       }
       container.appendChild(fragEl);
-    });
+    }
 
     const firstBodyFragment = Array.from(pageEl.children).find(
       (child) => child.classList.contains(CLASS_NAMES.fragment) && !child.hasAttribute('data-behind-doc-section'),
@@ -2442,10 +2730,11 @@ export class DomPainter {
     this.processedLayoutVersion = -1;
     this.paintSnapshotBuilder = null;
     this.lastPaintSnapshot = null;
-    this.persistentPageIndices = [];
+    this.persistentPageCount = 0;
   }
 
   public dispose(): void {
+    this.retainedPaintRevision += 1;
     disposePersistentPageSurfaceState(this.persistentSurface);
     if (this.mount) {
       this.mount.innerHTML = '';
@@ -2466,7 +2755,7 @@ export class DomPainter {
     this.currentMapping = null;
     this.paintSnapshotBuilder = null;
     this.lastPaintSnapshot = null;
-    this.persistentPageIndices = [];
+    this.persistentPageCount = 0;
     this.resolvedLayout = null;
     this.totalPages = 0;
     this.mount = null;
@@ -2725,6 +3014,20 @@ export class DomPainter {
     betweenInfo?: BetweenBorderInfo,
     resolvedItem?: ResolvedPaintItem,
   ): HTMLElement {
+    const prepared = resolvedItem ? this.preparedFragments?.get(resolvedItem) : undefined;
+    if (prepared) {
+      this.preparedFragments!.delete(resolvedItem!);
+      return prepared;
+    }
+    return completeRenderWork(this.renderFragmentWork(fragment, context, sdtBoundary, betweenInfo, resolvedItem));
+  }
+  private *renderFragmentWork(
+    fragment: Fragment,
+    context: FragmentRenderContext,
+    sdtBoundary?: SdtBoundaryOptions,
+    betweenInfo?: BetweenBorderInfo,
+    resolvedItem?: ResolvedPaintItem,
+  ): RenderWork<HTMLElement> {
     // Note fragments share the body page's geometry but not its editor story.
     // Use the same canonical block-id-derived story that wrapper identity uses
     // so run rendering (including nested table content) validates and resolves
@@ -2733,23 +3036,31 @@ export class DomPainter {
     const effectiveContext = noteStory ? { ...context, story: noteStory } : context;
     let el: HTMLElement;
     if (fragment.kind === 'para') {
-      el = this.renderParagraphFragment(
-        fragment,
-        effectiveContext,
-        sdtBoundary,
-        betweenInfo,
-        resolvedItem as ResolvedFragmentItem | undefined,
+      el = yield* resolveRenderWork(
+        (this.detachedPreparationActive
+          ? this.renderParagraphFragmentWork.bind(this)
+          : this.renderParagraphFragment.bind(this))(
+          fragment,
+          effectiveContext,
+          sdtBoundary,
+          betweenInfo,
+          resolvedItem as ResolvedFragmentItem | undefined,
+        ),
       );
     } else if (fragment.kind === 'image') {
       el = this.renderImageFragment(fragment, effectiveContext, resolvedItem as ResolvedImageItem | undefined);
     } else if (fragment.kind === 'drawing') {
       el = this.renderDrawingFragment(fragment, effectiveContext, resolvedItem as ResolvedDrawingItem | undefined);
     } else if (fragment.kind === 'table') {
-      el = this.renderTableFragment(
-        fragment,
-        effectiveContext,
-        sdtBoundary,
-        resolvedItem as ResolvedTableItem | undefined,
+      el = yield* resolveRenderWork(
+        (this.detachedPreparationActive
+          ? this.renderTableFragmentWork.bind(this)
+          : this.renderTableFragment.bind(this))(
+          fragment,
+          effectiveContext,
+          sdtBoundary,
+          resolvedItem as ResolvedTableItem | undefined,
+        ),
       );
     } else {
       throw new Error(`DomPainter: unsupported fragment kind ${(fragment as Fragment).kind}`);
@@ -2783,7 +3094,19 @@ export class DomPainter {
     betweenInfo?: BetweenBorderInfo,
     resolvedItem?: ResolvedFragmentItem,
   ): HTMLElement {
-    return renderParagraphFragmentElement({
+    return completeRenderWork(
+      this.renderParagraphFragmentWork(fragment, context, sdtBoundary, betweenInfo, resolvedItem),
+    );
+  }
+
+  private *renderParagraphFragmentWork(
+    fragment: ParaFragment,
+    context: FragmentRenderContext,
+    sdtBoundary?: SdtBoundaryOptions,
+    betweenInfo?: BetweenBorderInfo,
+    resolvedItem?: ResolvedFragmentItem,
+  ): RenderWork<HTMLElement> {
+    return yield* renderParagraphFragmentElement({
       doc: this.doc,
       fragment,
       sdtBoundary,
@@ -2821,6 +3144,7 @@ export class DomPainter {
           resolvedListTextStartPx,
           indentOffsetOverride,
           paragraphMarkLeftOffsetOverride,
+          this.detachedPreparationActive,
         ),
       captureLineSnapshot: (lineEl, options) => {
         this.capturePaintSnapshotLine(lineEl, context, {
@@ -2837,8 +3161,9 @@ export class DomPainter {
 
   private createErrorPlaceholder(blockId: string, _error: unknown): HTMLElement {
     const active = this.activePersistentPageTransaction;
-    if (active && !active.fragmentFailures.some((failure) => failure.blockId === blockId)) {
-      active.fragmentFailures.push({
+    const failures = this.detachedPreparationActive ? this.detachedFragmentFailures : active?.fragmentFailures;
+    if (failures && !failures.some((failure) => failure.blockId === blockId)) {
+      failures.push({
         blockId,
         code: 'painter-fragment-unavailable',
       });
@@ -5496,7 +5821,7 @@ export class DomPainter {
     };
   }
 
-  private createTableCellLineRenderer(): TableRenderDependencies['renderLine'] {
+  private createTableCellLineRenderer(cooperative = false): TableRenderDependencies['renderLine'] {
     const expandedRunsCache = new WeakMap<ParagraphBlock, Run[]>();
     return (block, line, context, lineIndex, isLastLine, resolvedListTextStartPx?: number) => {
       const lastRun = block.runs.length > 0 ? block.runs[block.runs.length - 1] : null;
@@ -5518,6 +5843,9 @@ export class DomPainter {
         shouldSkipJustify,
         expandedRuns,
         resolvedListTextStartPx,
+        undefined,
+        undefined,
+        cooperative,
       );
     };
   }
@@ -5572,6 +5900,15 @@ export class DomPainter {
     sdtBoundary?: SdtBoundaryOptions,
     resolvedItem?: ResolvedTableItem,
   ): HTMLElement {
+    return completeRenderWork(this.renderTableFragmentWork(fragment, context, sdtBoundary, resolvedItem));
+  }
+
+  private *renderTableFragmentWork(
+    fragment: TableFragment,
+    context: FragmentRenderContext,
+    sdtBoundary?: SdtBoundaryOptions,
+    resolvedItem?: ResolvedTableItem,
+  ): RenderWork<HTMLElement> {
     try {
       if (!this.doc) {
         throw new Error('DomPainter: document is not available');
@@ -5583,7 +5920,7 @@ export class DomPainter {
         this.applyFragmentFrame(el, frag, context.section, context.story);
       };
 
-      const renderLineForTableCell = this.createTableCellLineRenderer();
+      const renderLineForTableCell = this.createTableCellLineRenderer(this.detachedPreparationActive);
       const renderDrawingContentForTableCell = (
         block: DrawingBlock,
         interactionHost: HTMLElement,
@@ -5592,7 +5929,7 @@ export class DomPainter {
 
       const tableRenderData = this.resolveTableRenderData(fragment, resolvedItem);
 
-      const el = renderTableFragmentElement({
+      const el = yield* renderTableFragmentWork({
         doc: this.doc,
         fragment,
         context,
@@ -5648,12 +5985,65 @@ export class DomPainter {
     resolvedListTextStartPx?: number,
     indentOffsetOverride?: number,
     paragraphMarkLeftOffsetOverride?: number,
-  ): HTMLElement {
+  ): HTMLElement;
+  private renderLine(
+    block: ParagraphBlock,
+    line: Line,
+    context: FragmentRenderContext,
+    availableWidthOverride: number | undefined,
+    lineIndex: number | undefined,
+    skipJustify: boolean | undefined,
+    preExpandedRuns: Run[] | undefined,
+    resolvedListTextStartPx: number | undefined,
+    indentOffsetOverride: number | undefined,
+    paragraphMarkLeftOffsetOverride: number | undefined,
+    cooperative: boolean,
+  ): HTMLElement | RenderWork<HTMLElement>;
+  private renderLine(
+    block: ParagraphBlock,
+    line: Line,
+    context: FragmentRenderContext,
+    availableWidthOverride?: number,
+    lineIndex?: number,
+    skipJustify?: boolean,
+    preExpandedRuns?: Run[],
+    resolvedListTextStartPx?: number,
+    indentOffsetOverride?: number,
+    paragraphMarkLeftOffsetOverride?: number,
+    cooperative = false,
+  ): HTMLElement | RenderWork<HTMLElement> {
+    const work = this.renderLineWork(
+      block,
+      line,
+      context,
+      availableWidthOverride,
+      lineIndex,
+      skipJustify,
+      preExpandedRuns,
+      resolvedListTextStartPx,
+      indentOffsetOverride,
+      paragraphMarkLeftOffsetOverride,
+    );
+    return cooperative ? work : completeRenderWork(work);
+  }
+
+  private *renderLineWork(
+    block: ParagraphBlock,
+    line: Line,
+    context: FragmentRenderContext,
+    availableWidthOverride?: number,
+    lineIndex?: number,
+    skipJustify?: boolean,
+    preExpandedRuns?: Run[],
+    resolvedListTextStartPx?: number,
+    indentOffsetOverride?: number,
+    paragraphMarkLeftOffsetOverride?: number,
+  ): RenderWork<HTMLElement> {
     if (!this.doc) {
       throw new Error('DomPainter: document is not available');
     }
 
-    return renderRunLine({
+    return yield* renderRunLine({
       block,
       line,
       context,

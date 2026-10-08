@@ -276,5 +276,11 @@ function buildDomPainterHandle(painter: DomPainter): DomPainterHandle {
     writable: false,
     value: () => painter.beginPersistentPageTransaction(),
   });
+  Object.defineProperty(handle, Symbol.for('superdoc.painter-dom.prepare-persistent-pages.v1'), {
+    configurable: false,
+    enumerable: false,
+    writable: false,
+    value: painter.preparePersistentPages.bind(painter),
+  });
   return handle;
 }

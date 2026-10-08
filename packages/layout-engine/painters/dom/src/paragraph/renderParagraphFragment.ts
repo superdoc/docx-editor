@@ -1,3 +1,4 @@
+import { completeRenderWork, type RenderWork } from '../render-work.js';
 import type {
   DropCapDescriptor,
   ParaFragment,
@@ -14,7 +15,7 @@ import { CLASS_NAMES, fragmentStyles } from '../styles.js';
 import { shouldRenderSdtContainerChrome, type SdtBoundaryOptions } from '../sdt/container.js';
 import { allowFontSynthesis } from '../runs/font-synthesis.js';
 import type { BetweenBorderInfo } from './borders/index.js';
-import { renderParagraphContent, type ParagraphRenderLineInput } from './renderParagraphContent.js';
+import { renderParagraphContentWork, type ParagraphRenderLineInput } from './renderParagraphContent.js';
 
 type ApplyStyles = (el: HTMLElement, styles: Partial<CSSStyleDeclaration>) => void;
 
@@ -29,7 +30,7 @@ type RenderParagraphFragmentParams = {
   applyFragmentFrame: (el: HTMLElement, fragment: ParaFragment) => void;
   applySdtDataset: (el: HTMLElement | null, metadata?: SdtMetadata | null) => void;
   applyContainerSdtDataset: (el: HTMLElement | null, metadata?: SdtMetadata | null) => void;
-  renderLine: (input: ParagraphRenderLineInput) => HTMLElement;
+  renderLine: (input: ParagraphRenderLineInput) => HTMLElement | RenderWork<HTMLElement>;
   captureLineSnapshot: (
     lineEl: HTMLElement,
     options?: { sourceAnchor?: ResolvedFragmentItem['sourceAnchor']; wrapperEl?: HTMLElement },
@@ -46,7 +47,7 @@ type RenderParagraphFragmentParams = {
 
 const isMinimalWordLayout = (value: unknown): value is MinimalWordLayout => isMinimalWordLayoutShared(value);
 
-export const renderParagraphFragment = (params: RenderParagraphFragmentParams): HTMLElement => {
+export function* renderParagraphFragmentWork(params: RenderParagraphFragmentParams): RenderWork<HTMLElement> {
   const {
     doc,
     fragment,
@@ -118,7 +119,7 @@ export const renderParagraphFragment = (params: RenderParagraphFragmentParams): 
     }
 
     const lines = fragment.lines ?? measure.lines.slice(fragment.fromLine, fragment.toLine);
-    renderParagraphContent({
+    yield* renderParagraphContentWork({
       doc,
       frameEl: fragmentEl,
       block,
@@ -156,7 +157,7 @@ export const renderParagraphFragment = (params: RenderParagraphFragmentParams): 
   } catch (error) {
     return createErrorPlaceholder(fragment.blockId, error);
   }
-};
+}
 
 const renderDropCap = (
   doc: Document,
@@ -212,3 +213,6 @@ const renderDropCap = (
 
   return dropCapEl;
 };
+
+export const renderParagraphFragment = (params: RenderParagraphFragmentParams): HTMLElement =>
+  completeRenderWork(renderParagraphFragmentWork(params));

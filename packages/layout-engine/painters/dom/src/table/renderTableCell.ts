@@ -1,3 +1,4 @@
+import { completeRenderWork, type RenderWork } from '../render-work.js';
 import type {
   CellBorders,
   DrawingBlock,
@@ -44,8 +45,8 @@ import {
   type SdtBoundaryOptions,
 } from '../sdt/container.js';
 import { applyCellBorders } from './border-utils.js';
-import { renderTableFragment as renderTableFragmentElement } from './renderTableFragment.js';
-import { renderParagraphContent } from '../paragraph/renderParagraphContent.js';
+import { renderTableFragmentWork as renderTableFragmentElement } from './renderTableFragment.js';
+import { renderParagraphContentWork } from '../paragraph/renderParagraphContent.js';
 
 type TableRowMeasure = TableMeasure['rows'][number];
 type TableCellMeasure = TableRowMeasure['cells'][number];
@@ -414,7 +415,7 @@ type EmbeddedTableRenderParams = {
     lineIndex: number,
     isLastLine: boolean,
     resolvedListTextStartPx?: number,
-  ) => HTMLElement;
+  ) => HTMLElement | RenderWork<HTMLElement>;
   /** Optional callback invoked after a table line's final styles/markers are applied. */
   captureLineSnapshot?: (
     lineEl: HTMLElement,
@@ -475,9 +476,9 @@ type EmbeddedTableRenderParams = {
  * cellContent.appendChild(tableEl);
  * ```
  */
-const renderEmbeddedTable = (
+function* renderEmbeddedTable(
   params: EmbeddedTableRenderParams,
-): { element: HTMLElement; hasSdtContainerChrome: boolean } => {
+): RenderWork<{ element: HTMLElement; hasSdtContainerChrome: boolean }> {
   const {
     doc,
     table,
@@ -534,7 +535,7 @@ const renderEmbeddedTable = (
   };
 
   let hasSdtContainerChrome = false;
-  const tableEl = renderTableFragmentElement({
+  const tableEl = yield* renderTableFragmentElement({
     doc,
     fragment,
     context,
@@ -561,7 +562,7 @@ const renderEmbeddedTable = (
   });
 
   return { element: tableEl, hasSdtContainerChrome };
-};
+}
 
 /**
  * Render an embedded table block within a cell, handling segment-based pagination.
@@ -570,7 +571,7 @@ const renderEmbeddedTable = (
  * computes partial row info when a page break falls mid-row, and delegates to
  * renderEmbeddedTable for actual DOM creation.
  */
-function renderPartialEmbeddedTable(params: {
+function* renderPartialEmbeddedTable(params: {
   doc: Document;
   block: TableBlock;
   blockMeasure: TableMeasure;
@@ -590,7 +591,12 @@ function renderPartialEmbeddedTable(params: {
   ancestorContainerKeys?: SdtAncestorOptions['ancestorContainerKeys'];
   ancestorContainerSdts?: SdtAncestorOptions['ancestorContainerSdts'];
   onSdtContainerChrome?: () => void;
-}): { element: HTMLElement | null; height: number; nextCumulativeLineCount: number; hasSdtContainerChrome: boolean } {
+}): RenderWork<{
+  element: HTMLElement | null;
+  height: number;
+  nextCumulativeLineCount: number;
+  hasSdtContainerChrome: boolean;
+}> {
   const {
     doc,
     block,
@@ -702,7 +708,7 @@ function renderPartialEmbeddedTable(params: {
   tableWrapper.style.flexShrink = '0';
   tableWrapper.style.boxSizing = 'border-box';
 
-  const tableResult = renderEmbeddedTable({
+  const tableResult = yield* renderEmbeddedTable({
     doc,
     table: block,
     measure: tableMeasure,
@@ -769,7 +775,7 @@ type TableCellRenderDependencies = {
     lineIndex: number,
     isLastLine: boolean,
     resolvedListTextStartPx?: number,
-  ) => HTMLElement;
+  ) => HTMLElement | RenderWork<HTMLElement>;
   /** Optional callback invoked after a table line's final styles/markers are applied. */
   captureLineSnapshot?: (
     lineEl: HTMLElement,
@@ -881,7 +887,7 @@ export type TableCellRenderResult = {
  * container.appendChild(cellElement);
  * ```
  */
-export const renderTableCell = (deps: TableCellRenderDependencies): TableCellRenderResult => {
+export function* renderTableCellWork(deps: TableCellRenderDependencies): RenderWork<TableCellRenderResult> {
   const {
     doc,
     x,
@@ -988,6 +994,7 @@ export const renderTableCell = (deps: TableCellRenderDependencies): TableCellRen
     // including anchored blocks (matching getCellLines() in layout-table.ts).
     const blockLineCounts: number[] = [];
     for (let i = 0; i < Math.min(blockMeasures.length, cellBlocks.length); i++) {
+      yield;
       const bm = blockMeasures[i];
       if (bm.kind === 'paragraph') {
         blockLineCounts.push((bm as ParagraphMeasure).lines?.length || 0);
@@ -1017,11 +1024,12 @@ export const renderTableCell = (deps: TableCellRenderDependencies): TableCellRen
 
     let cumulativeLineCount = 0; // Track cumulative line count across blocks
     for (let i = 0; i < Math.min(blockMeasures.length, cellBlocks.length); i++) {
+      yield;
       const blockMeasure = blockMeasures[i];
       const block = cellBlocks[i];
 
       if (blockMeasure.kind === 'table' && block?.kind === 'table') {
-        const result = renderPartialEmbeddedTable({
+        const result = yield* renderPartialEmbeddedTable({
           doc,
           block: block as TableBlock,
           blockMeasure: blockMeasure as TableMeasure,
@@ -1243,7 +1251,7 @@ export const renderTableCell = (deps: TableCellRenderDependencies): TableCellRen
           );
         }
 
-        const result = renderParagraphContent({
+        const result = yield* renderParagraphContentWork({
           doc,
           frameEl: paraWrapper,
           block: block as ParagraphBlock,
@@ -1483,4 +1491,7 @@ export const renderTableCell = (deps: TableCellRenderDependencies): TableCellRen
   }
 
   return { cellElement: cellEl };
-};
+}
+
+export const renderTableCell = (deps: TableCellRenderDependencies): TableCellRenderResult =>
+  completeRenderWork(renderTableCellWork(deps));

@@ -7,9 +7,17 @@ import type { FlowBlock, Measure, Page, ParaFragment } from '@superdoc/contracts
  * is laid out. Reposition only its paint fragment once that carrier's measured
  * baseline is known; later flow remains untouched.
  */
-export function alignInlineZeroHeightDrawingFragments(pages: Page[], blocks: FlowBlock[], measures: Measure[]): void {
-  const blockById = new Map(blocks.map((block) => [block.id, block]));
-  const measureById = new Map(blocks.map((block, index) => [block.id, measures[index]]));
+export function alignInlineZeroHeightDrawingFragments(
+  pages: Page[],
+  blocks: FlowBlock[],
+  measures: Measure[],
+  indices?: {
+    blockById: ReadonlyMap<string, FlowBlock>;
+    measureById: ReadonlyMap<string, Measure | undefined>;
+  },
+): void {
+  const blockById = indices?.blockById ?? new Map(blocks.map((block) => [block.id, block]));
+  const measureById = indices?.measureById ?? new Map(blocks.map((block, index) => [block.id, measures[index]]));
 
   for (const page of pages) {
     const paragraphFragments = new Map<string, ParaFragment>();

@@ -156,11 +156,12 @@ export function* collectPreRegisteredAnchorsSteps(
   blocks: FlowBlock[],
   measures: Measure[],
   checkpointEveryBlocks: number | null = null,
+  candidateIndices?: readonly number[],
 ): Generator<LayoutWorkCheckpoint, AnchoredDrawing[], void> {
   const result: AnchoredDrawing[] = [];
   const len = Math.min(blocks.length, measures.length);
 
-  for (let i = 0; i < len; i += 1) {
+  for (const i of candidateIndices ?? Array.from({ length: len }, (_, index) => index)) {
     if (checkpointEveryBlocks != null && i % checkpointEveryBlocks === 0) {
       yield { index: i, total: len };
     }
@@ -195,11 +196,12 @@ export function* collectPreRegisteredTablesSteps(
   blocks: FlowBlock[],
   measures: Measure[],
   checkpointEveryBlocks: number | null = null,
+  candidateIndices?: readonly number[],
 ): Generator<LayoutWorkCheckpoint, AnchoredTable[], void> {
   const result: AnchoredTable[] = [];
   const len = Math.min(blocks.length, measures.length);
 
-  for (let i = 0; i < len; i += 1) {
+  for (const i of candidateIndices ?? Array.from({ length: len }, (_, index) => index)) {
     if (checkpointEveryBlocks != null && i % checkpointEveryBlocks === 0) {
       yield { index: i, total: len };
     }
@@ -224,13 +226,16 @@ export function* collectAnchoredDrawingsSteps(
   blocks: FlowBlock[],
   measures: Measure[],
   checkpointEveryBlocks: number | null = null,
+  preparedParagraphIndexById?: Map<string, number>,
+  candidateIndices?: readonly number[],
 ): Generator<LayoutWorkCheckpoint, AnchoredDrawingCollection, void> {
   const byParagraph = new Map<number, AnchoredDrawing[]>();
   const withoutParagraph: AnchoredDrawing[] = [];
   const len = Math.min(blocks.length, measures.length);
-  const paragraphIndexById = yield* buildParagraphIndexByIdSteps(blocks, len, checkpointEveryBlocks);
+  const paragraphIndexById =
+    preparedParagraphIndexById ?? (yield* buildParagraphIndexByIdSteps(blocks, len, checkpointEveryBlocks));
 
-  for (let i = 0; i < len; i += 1) {
+  for (const i of candidateIndices ?? Array.from({ length: len }, (_, index) => index)) {
     if (checkpointEveryBlocks != null && i % checkpointEveryBlocks === 0) {
       yield { index: i, total: len };
     }
@@ -299,13 +304,16 @@ export function* collectAnchoredTablesSteps(
   blocks: FlowBlock[],
   measures: Measure[],
   checkpointEveryBlocks: number | null = null,
+  preparedParagraphIndexById?: Map<string, number>,
+  candidateIndices?: readonly number[],
 ): Generator<LayoutWorkCheckpoint, AnchoredTableCollection, void> {
   const len = Math.min(blocks.length, measures.length);
   const byParagraph = new Map<number, AnchoredTable[]>();
   const withoutParagraph: AnchoredTable[] = [];
-  const paragraphIndexById = yield* buildParagraphIndexByIdSteps(blocks, len, checkpointEveryBlocks);
+  const paragraphIndexById =
+    preparedParagraphIndexById ?? (yield* buildParagraphIndexByIdSteps(blocks, len, checkpointEveryBlocks));
 
-  for (let i = 0; i < len; i += 1) {
+  for (const i of candidateIndices ?? Array.from({ length: len }, (_, index) => index)) {
     if (checkpointEveryBlocks != null && i % checkpointEveryBlocks === 0) {
       yield { index: i, total: len };
     }

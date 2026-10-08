@@ -168,10 +168,10 @@ const imageLuminanceVersion = (lum: ImageBlock['lum'] | undefined): string => {
   return [lum.bright ?? '', lum.contrast ?? ''].join(':');
 };
 
-const drawingTextVersion = (block: VectorShapeDrawing | TextboxDrawing): string => {
+const drawingTextVersion = (block: VectorShapeDrawing | TextboxDrawing, fontConfigVersion?: number): string => {
   const textboxContentBlocks =
     'contentBlocks' in block && Array.isArray(block.contentBlocks)
-      ? block.contentBlocks.map((contentBlock) => deriveBlockVersion(contentBlock)).join(';')
+      ? block.contentBlocks.map((contentBlock) => deriveBlockVersion(contentBlock, fontConfigVersion)).join(';')
       : '';
 
   return JSON.stringify([
@@ -390,7 +390,7 @@ export const resolveFragmentLayoutIdentity = (fragment: Fragment, story?: Layout
  * Kept in layout-resolved so the resolved layout stage can pre-compute block
  * versions without depending on painter-dom.
  */
-export const deriveBlockVersion = (block: FlowBlock): string => {
+export const deriveBlockVersion = (block: FlowBlock, fontConfigVersion?: number): string => {
   if (block.kind === 'paragraph') {
     const markerTrackedChangeVersion = block.attrs?.wordLayout?.marker?.trackedChange
       ? trackedChangeMetaSignature(block.attrs.wordLayout.marker.trackedChange)
@@ -437,7 +437,7 @@ export const deriveBlockVersion = (block: FlowBlock): string => {
             (run as { bold?: boolean }).bold ? 1 : 0,
             (run as { italic?: boolean }).italic ? 1 : 0,
             (run as { vanish?: boolean }).vanish ? 1 : 0,
-            getFontConfigVersion(),
+            fontConfigVersion ?? getFontConfigVersion(),
             (run as { color?: string }).color ?? '',
           ].join(',');
         }
@@ -478,7 +478,7 @@ export const deriveBlockVersion = (block: FlowBlock): string => {
           textRun.fontFamily,
           // Font epoch: busts paint reuse when a font loads/changes (the resolved physical
           // family is the same, only its availability changed - logical family alone can't see it).
-          getFontConfigVersion(),
+          fontConfigVersion ?? getFontConfigVersion(),
           textRun.fontSize,
           textRun.bold ? 1 : 0,
           textRun.italic ? 1 : 0,
@@ -546,7 +546,9 @@ export const deriveBlockVersion = (block: FlowBlock): string => {
   }
 
   if (block.kind === 'list') {
-    return block.items.map((item) => `${item.id}:${item.marker.text}:${deriveBlockVersion(item.paragraph)}`).join('|');
+    return block.items
+      .map((item) => `${item.id}:${item.marker.text}:${deriveBlockVersion(item.paragraph, fontConfigVersion)}`)
+      .join('|');
   }
 
   if (block.kind === 'image') {
@@ -575,7 +577,7 @@ export const deriveBlockVersion = (block: FlowBlock): string => {
         vector.geometry.rotation ?? 0,
         vector.geometry.flipH ? 1 : 0,
         vector.geometry.flipV ? 1 : 0,
-        drawingTextVersion(vector),
+        drawingTextVersion(vector, fontConfigVersion),
         block.anchor?.offsetH ?? '',
         block.anchor?.offsetV ?? '',
         drawingSdtVersion,
@@ -662,9 +664,9 @@ export const deriveBlockVersion = (block: FlowBlock): string => {
             // previous table-only copy omitted list-marker text and paragraph
             // property tracked-change metadata, leaving stale TC decoration
             // inside cells after list mutations.
-            hash = hashString(hash, deriveBlockVersion(cellBlock as ParagraphBlock));
+            hash = hashString(hash, deriveBlockVersion(cellBlock as ParagraphBlock, fontConfigVersion));
           } else if (cellBlock?.kind) {
-            hash = hashString(hash, deriveBlockVersion(cellBlock as FlowBlock));
+            hash = hashString(hash, deriveBlockVersion(cellBlock as FlowBlock, fontConfigVersion));
           }
         }
       }

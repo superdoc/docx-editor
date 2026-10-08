@@ -64,7 +64,7 @@ import {
   SINGLE_COLUMN_DEFAULT,
   isInitialSectionBreak,
 } from './section-breaks.js';
-import { layoutParagraphBlock, type FootnoteAnchorRef } from './layout-paragraph.js';
+import { layoutParagraphBlockSteps, type FootnoteAnchorRef } from './layout-paragraph.js';
 import { buildFootnoteAnchorIndexSteps } from './footnote-anchor-index.js';
 import { coupledFootnoteBodyBottom, type FootnotePageFlow } from './footnote-page-flow.js';
 export type { FootnotePageFlow } from './footnote-page-flow.js';
@@ -105,7 +105,14 @@ import {
 } from './column-balancing.js';
 import { cloneColumnLayout } from './column-utils.js';
 import {
+  createPreparedPaginationMetadataView,
+  isPaginationPreparationCandidate,
+  readPaginationSourceScan,
+  retainPaginationSourceScan,
+} from './source-preparation.js';
+import {
   checkpointLayoutExecution,
+  throwIfLayoutExecutionAborted,
   layoutExecutionCheckpointEveryBlocks,
   type LayoutExecutionCheckpoint,
   type LayoutExecutionControl,
@@ -275,12 +282,13 @@ type KeepNextChain = {
 function* computeKeepNextChainSteps(
   blocks: FlowBlock[],
   checkpointEveryBlocks: number | null,
+  candidateIndices?: readonly number[],
 ): Generator<LayoutWorkCheckpoint, Map<number, KeepNextChain>, void> {
   const chains = new Map<number, KeepNextChain>();
   // Track indices we've already included in a chain to avoid re-processing
   const processedIndices = new Set<number>();
 
-  for (let i = 0; i < blocks.length; i++) {
+  for (const i of candidateIndices ?? Array.from({ length: blocks.length }, (_, index) => index)) {
     if (checkpointEveryBlocks != null && i % checkpointEveryBlocks === 0) {
       yield { index: i, total: blocks.length };
     }
@@ -1049,11 +1057,66 @@ function paginationInputFailure(block: FlowBlock, measure: Measure | undefined):
  * FlowBlocks in order, consumes their Measure objects (same index),
  * and greedily stacks fragments inside the content box of each page/column.
  */
+type ContinuationInputPreflight = {
+  blockIndexById: Map<string, number>;
+  pageBorders: Map<number, SectionPageBorders>;
+  publicationBlocker: string | null;
+  complete(blocker: string | null): void;
+};
+
+function* collectPreparedSectionBoundaryFillerIds(
+  blocks: FlowBlock[],
+  measures: Measure[],
+  candidates: readonly number[],
+  checkpointEveryBlocks: number | null,
+): Generator<LayoutExecutionCheckpoint, ReadonlySet<string>, void> {
+  const result = new Set<string>();
+  for (const index of candidates) {
+    const section = blocks[index];
+    if (section?.kind !== 'sectionBreak') continue;
+    let start = index;
+    while (start > 0) {
+      const preceding = blocks[start - 1];
+      if (preceding?.kind !== 'paragraph' && preceding?.kind !== 'drawing') break;
+      // Include the first ordinary predecessor as the context boundary. The
+      // existing collector decides precisely which empty/tiny carriers qualify.
+      start -= 1;
+      if (preceding.kind === 'paragraph' && !isEmptyParagraphBlock(preceding) && preceding.attrs?.sectPrMarker !== true)
+        break;
+      if (checkpointEveryBlocks != null && start % checkpointEveryBlocks === 0) {
+        yield { phase: 'layout-document:preflight-section', index: start, total: blocks.length };
+      }
+    }
+    if (start > 0 && blocks[start - 1]?.kind === 'sectionBreak') start -= 1;
+    const window = blocks.slice(start, index + 1);
+    const ids = yield* mapLayoutWorkCheckpoints(
+      collectSectionBoundaryFillerBlockIdsSteps(
+        window,
+        {
+          isTinyInlineBoundaryDrawing: (block, localIndex) =>
+            isTinyInlineBoundaryDrawingCandidate(block, measures[start + localIndex]),
+        },
+        checkpointEveryBlocks,
+      ),
+      'layout-document:preflight-section',
+    );
+    for (const id of ids) result.add(id);
+  }
+  return result;
+}
+
 function* layoutDocumentSteps(
   blocks: FlowBlock[],
   measures: Measure[],
   options: LayoutOptions,
   checkpointEveryBlocks: number | null,
+  onSealedPage?: (
+    page: Page,
+    state: PageState,
+    blocks: ReadonlyMap<string, import('@superdoc/contracts').LayoutBlockResumeCheckpoint>,
+    tables: ReadonlyMap<string, readonly TableLayoutResumeCheckpoint[]>,
+  ) => void,
+  continuationInput?: ContinuationInputPreflight,
 ): Generator<LayoutExecutionCheckpoint, Layout, void> {
   const renderDiagnosticOwner = (
     options as LayoutOptions & {
@@ -1070,11 +1133,33 @@ function* layoutDocumentSteps(
   }
 
   const blocksById = new Map<string, FlowBlock>();
-  for (let index = 0; index < blocks.length; index += 1) {
+  const measuresById = new Map<string, Measure>();
+  const paragraphIndexById = new Map<string, number>();
+  let preparedSourceScan =
+    paginationOptionsPublicationBlocker(options) == null ? readPaginationSourceScan(blocks, measures) : null;
+  const ownedScan = preparedSourceScan;
+  let preparationBlocks = preparedSourceScan ? createPreparedPaginationMetadataView(blocks, measures) : blocks;
+  const sourceCandidateIds: string[] = [];
+  let candidateIndices = ownedScan?.candidateIds.flatMap((id) => {
+    const index = ownedScan.indexById.get(id);
+    const local = index == null ? -1 : index - ownedScan.offset;
+    return local >= 0 && local < blocks.length ? [local] : [];
+  });
+  if (
+    candidateIndices?.some(
+      (index) => paginationBlockPublicationBlocker(preparationBlocks, index, preparationBlocks[index]!) != null,
+    )
+  ) {
+    preparedSourceScan = null;
+    preparationBlocks = blocks;
+    candidateIndices = undefined;
+  }
+  const validationIndices = candidateIndices ?? Array.from({ length: blocks.length }, (_, index) => index);
+  for (const index of validationIndices) {
     if (checkpointEveryBlocks != null && index % checkpointEveryBlocks === 0) {
       yield { phase: 'layout-document:preflight-section', index, total: blocks.length };
     }
-    const block = blocks[index]!;
+    const block = (preparedSourceScan ? preparationBlocks : blocks)[index]!;
     let inputFailure: Error | null;
     try {
       inputFailure = paginationInputFailure(block, measures[index]);
@@ -1087,17 +1172,68 @@ function* layoutDocumentSteps(
       throw inputFailure;
     }
     blocksById.set(block.id, block);
+    measuresById.set(block.id, measures[index]!);
+    if (block.kind === 'paragraph') paragraphIndexById.set(block.id, index);
+    if (isPaginationPreparationCandidate(block)) sourceCandidateIds.push(block.id);
+    if (continuationInput) {
+      continuationInput.blockIndexById.set(block.id, index);
+      if (block.kind === 'sectionBreak' && block.pageBorders && typeof block.attrs?.sectionIndex === 'number') {
+        continuationInput.pageBorders.set(block.attrs.sectionIndex, block.pageBorders);
+      }
+      continuationInput.publicationBlocker ??= paginationBlockPublicationBlocker(
+        preparedSourceScan ? preparationBlocks : blocks,
+        index,
+        block,
+      );
+    }
   }
-  const sectionBoundaryFillerBlockIds = yield* mapLayoutWorkCheckpoints(
-    collectSectionBoundaryFillerBlockIdsSteps(
-      blocks,
-      {
-        isTinyInlineBoundaryDrawing: (block, index) => isTinyInlineBoundaryDrawingCandidate(block, measures[index]),
-      },
-      checkpointEveryBlocks,
-    ),
-    'layout-document:preflight-section',
-  );
+  if (preparedSourceScan) {
+    const localIndex = (id: string): number | null => {
+      const fullIndex = preparedSourceScan.indexById.get(id);
+      if (fullIndex == null) return null;
+      const index = fullIndex - preparedSourceScan.offset;
+      return index >= 0 && index < blocks.length ? index : null;
+    };
+    blocksById.get = (id) => {
+      const index = localIndex(id);
+      return index == null ? undefined : blocks[index];
+    };
+    measuresById.get = (id) => {
+      const index = localIndex(id);
+      return index == null ? undefined : measures[index];
+    };
+    paragraphIndexById.get = (id) => {
+      const index = localIndex(id);
+      return index == null || preparationBlocks[index]?.kind !== 'paragraph' ? undefined : index;
+    };
+    if (continuationInput) continuationInput.blockIndexById.get = (id) => localIndex(id) ?? undefined;
+  } else {
+    const fullIndex = new Map<string, number>();
+    let ordinal = 0;
+    for (const id of blocksById.keys()) fullIndex.set(id, ordinal++);
+    retainPaginationSourceScan(blocks, measures, fullIndex, sourceCandidateIds);
+  }
+  if (continuationInput) {
+    continuationInput.complete(continuationInput.publicationBlocker);
+    if (continuationInput.publicationBlocker != null) onSealedPage = undefined;
+  }
+  const sectionBoundaryFillerBlockIds = candidateIndices
+    ? yield* collectPreparedSectionBoundaryFillerIds(
+        preparationBlocks,
+        measures,
+        candidateIndices,
+        checkpointEveryBlocks,
+      )
+    : yield* mapLayoutWorkCheckpoints(
+        collectSectionBoundaryFillerBlockIdsSteps(
+          blocks,
+          {
+            isTinyInlineBoundaryDrawing: (block, index) => isTinyInlineBoundaryDrawingCandidate(block, measures[index]),
+          },
+          checkpointEveryBlocks,
+        ),
+        'layout-document:preflight-section',
+      );
 
   const pageSize = options.pageSize ?? DEFAULT_PAGE_SIZE;
   const pageNumberOffset = normalizeNonNegativeInteger(options.startContext?.pageNumberOffset, 0);
@@ -1365,7 +1501,7 @@ function* layoutDocumentSteps(
   // By looking ahead here, we can ensure the page that starts after a break uses the upcoming
   // section's pageSize/margins/columns instead of the section that just ended.
   const nextSectionPropsAtBreak = yield* mapLayoutWorkCheckpoints(
-    computeNextSectionPropsAtBreakSteps(blocks, checkpointEveryBlocks),
+    computeNextSectionPropsAtBreakSteps(preparationBlocks, checkpointEveryBlocks, candidateIndices),
     'layout-document:preflight-section',
   );
 
@@ -1912,7 +2048,33 @@ function* layoutDocumentSteps(
     return Math.min(reserve, Math.max(0, pageCapacity));
   };
 
+  const pageGeometryIndices = { blockById: blocksById, measureById: measuresById };
+  const finalizeBodyPageGeometry = (page: Page, state: PageState): void => {
+    alignInlineZeroHeightDrawingFragments([page], blocks, measures, pageGeometryIndices);
+    const maxY = state.maxCursorY ?? 0;
+    const cursorY = state.cursorY ?? 0;
+    const floatingTableMaxY = maxFlowAffectingFloatingTableBottom(
+      page,
+      pageGeometryIndices.blockById,
+      pageGeometryIndices.measureById,
+    );
+    const raw = Math.max(maxY, cursorY, floatingTableMaxY);
+    const adjusted = raw - (cursorY >= maxY ? (state.trailingSpacing ?? 0) : 0);
+    (page as { bodyMaxY?: number }).bodyMaxY = options.footnotePageFlow
+      ? (state.committedBodyBottom ?? state.topMargin)
+      : Math.max(state.topMargin ?? 0, adjusted);
+  };
   const completedFootnotePages = new WeakSet<Page>();
+  let deferTableCarrierSealing = false;
+  const deferredTableCarrierPages: Array<{ page: Page; state: PageState }> = [];
+  const publishSealedPage = (page: Page, state: PageState): void => {
+    finalizeBodyPageGeometry(page, state);
+    onSealedPage?.(page, state, blockResumeCheckpoints, tableResumeCheckpoints);
+  };
+  const flushTableCarrierPages = (): void => {
+    for (const { page, state } of deferredTableCarrierPages) publishSealedPage(page, state);
+    deferredTableCarrierPages.length = 0;
+  };
   const completeFootnotePage = (state: PageState): void => {
     if (!options.footnotePageFlow || completedFootnotePages.has(state.page)) return;
     options.footnotePageFlow.completePage({
@@ -1944,9 +2106,15 @@ function* layoutDocumentSteps(
     keepNoteOnlyPages: options.footnotePageFlow != null,
     createPage,
     shouldStopBeforeNewPage:
-      options.pageBoundary?.shouldStopBeforeNewPage || options.footnotePageFlow
+      options.pageBoundary?.shouldStopBeforeNewPage || options.footnotePageFlow || onSealedPage
         ? ({ completedPageIndex, pages: completedPages, states: completedStates }) => {
             completeFootnotePage(completedStates[completedPageIndex]);
+            if (onSealedPage) {
+              const page = completedPages[completedPageIndex];
+              const state = completedStates[completedPageIndex];
+              if (deferTableCarrierSealing) deferredTableCarrierPages.push({ page, state });
+              else publishSealedPage(page, state);
+            }
             return (
               options.pageBoundary?.shouldStopBeforeNewPage?.({
                 completedPageIndex,
@@ -2354,11 +2522,11 @@ function* layoutDocumentSteps(
     );
     lastSectionIdx = finalSectionIndex;
   }
-  for (let idx = 0; idx < blocks.length; idx += 1) {
+  for (const idx of candidateIndices ?? Array.from({ length: blocks.length }, (_, index) => index)) {
     if (checkpointEveryBlocks != null && idx % checkpointEveryBlocks === 0) {
       yield { phase: 'layout-document:preflight-section', index: idx, total: blocks.length };
     }
-    const block = blocks[idx]!;
+    const block = preparationBlocks[idx]!;
     const measure = measures[idx];
     if (measure) {
       balancingMeasureMap.set(block.id, measure as MeasureData);
@@ -2407,7 +2575,13 @@ function* layoutDocumentSteps(
 
   // Collect anchored drawings mapped to their anchor paragraphs
   const anchoredDrawings = yield* mapLayoutWorkCheckpoints(
-    collectAnchoredDrawingsSteps(blocks, measures, checkpointEveryBlocks),
+    collectAnchoredDrawingsSteps(
+      preparationBlocks,
+      measures,
+      checkpointEveryBlocks,
+      paragraphIndexById,
+      candidateIndices,
+    ),
     'layout-document:preflight-anchor',
   );
   const anchoredByParagraph = anchoredDrawings.byParagraph;
@@ -2416,22 +2590,37 @@ function* layoutDocumentSteps(
   // Tables without any anchor paragraph need explicit fallback placement so
   // floating-only documents still produce a page and render their content.
   const anchoredTables = yield* mapLayoutWorkCheckpoints(
-    collectAnchoredTablesSteps(blocks, measures, checkpointEveryBlocks),
+    collectAnchoredTablesSteps(
+      preparationBlocks,
+      measures,
+      checkpointEveryBlocks,
+      paragraphIndexById,
+      candidateIndices,
+    ),
     'layout-document:preflight-anchor',
   );
   const anchoredTablesByParagraph = anchoredTables.byParagraph;
   const paragraphlessAnchoredTables = anchoredTables.withoutParagraph;
+  const resolveCurrentTable = (id: string, measure: TableMeasure): TableBlock => {
+    const block = blocksById.get(id);
+    const failure = block ? paginationInputFailure(block, measure) : new Error(`layoutDocument: missing table ${id}`);
+    if (failure || block?.kind !== 'table') {
+      const error = failure ?? new Error(`layoutDocument: expected table ${id}`);
+      throw renderDiagnosticOwner?.({ blockIds: [id], debugDetail: error, phase: 'input' }) ?? error;
+    }
+    return block;
+  };
   const placedAnchoredIds = new Set<string>();
 
   // Pre-register page/margin-relative anchored images before the layout loop.
   // These images position themselves relative to the page, not a paragraph, so they
   // must be registered first so all paragraphs can wrap around them.
   const preRegisteredAnchors = yield* mapLayoutWorkCheckpoints(
-    collectPreRegisteredAnchorsSteps(blocks, measures, checkpointEveryBlocks),
+    collectPreRegisteredAnchorsSteps(preparationBlocks, measures, checkpointEveryBlocks, candidateIndices),
     'layout-document:preflight-anchor',
   );
   const preRegisteredTables = yield* mapLayoutWorkCheckpoints(
-    collectPreRegisteredTablesSteps(blocks, measures, checkpointEveryBlocks),
+    collectPreRegisteredTablesSteps(preparationBlocks, measures, checkpointEveryBlocks, candidateIndices),
     'layout-document:preflight-anchor',
   );
 
@@ -2682,7 +2871,7 @@ function* layoutDocumentSteps(
   // Pre-compute keepNext chains for correct pagination grouping.
   // Word treats consecutive paragraphs with keepNext=true as indivisible units.
   const keepNextChains = yield* mapLayoutWorkCheckpoints(
-    computeKeepNextChainSteps(blocks, checkpointEveryBlocks),
+    computeKeepNextChainSteps(preparationBlocks, checkpointEveryBlocks, candidateIndices),
     'layout-document:preflight-keep-next',
   );
 
@@ -2796,6 +2985,13 @@ function* layoutDocumentSteps(
       }
       const block = blocks[index];
       const measure = measures[index];
+      if (preparedSourceScan) {
+        const failure = paginationInputFailure(block, measure);
+        if (failure) {
+          const owned = renderDiagnosticOwner?.({ blockIds: [block.id], debugDetail: failure, phase: 'input' });
+          throw owned ?? failure;
+        }
+      }
       if (!measure) {
         throw new Error(`layoutDocument: missing measure for block ${block.id}`);
       }
@@ -3415,7 +3611,10 @@ function* layoutDocumentSteps(
             footnoteAnchorsThisPage: checkpointState.footnoteAnchorsThisPage.map((anchor) => ({ ...anchor })),
           });
 
-          layoutParagraphBlock(
+          // AIDEV-NOTE: A floating table can move off the old page while its
+          // carrier's first slice advances. Seal that page after relocation.
+          deferTableCarrierSealing = onSealedPage != null && (tablesForPara?.length ?? 0) > 0;
+          const paragraphSteps = layoutParagraphBlockSteps(
             {
               block,
               measure,
@@ -3444,6 +3643,7 @@ function* layoutDocumentSteps(
               ? {
                   anchoredDrawings: anchorsForLayout,
                   anchoredTables: tablesForPara,
+                  ...(preparedSourceScan ? { resolveCurrentTable } : {}),
                   columnWidth: getCurrentColumnWidth(),
                   pageWidth: activePageSize.w,
                   pageMargins: {
@@ -3458,6 +3658,18 @@ function* layoutDocumentSteps(
                 }
               : undefined,
           );
+
+          while (true) {
+            const paragraphStep = paragraphSteps.next();
+            if (deferTableCarrierSealing && (paragraphStep.done || paragraphStep.value.index > 0)) {
+              deferTableCarrierSealing = false;
+              flushTableCarrierPages();
+            }
+            if (paragraphStep.done) break;
+            if (checkpointEveryBlocks != null) {
+              yield { phase: 'layout-document:paragraph-fragment', ...paragraphStep.value };
+            }
+          }
 
           if (splitCarrierMode === 'spaced') {
             const siblingBlock = blocks[index + 1];
@@ -3949,7 +4161,9 @@ function* layoutDocumentSteps(
   if (allowParagraphlessAnchoredTableFallback && shouldUseBlankPageFallback && paragraphlessAnchoredTables.length > 0) {
     const state = paginator.ensurePage();
 
-    for (const { block: tableBlock, measure: tableMeasure } of paragraphlessAnchoredTables) {
+    for (const entry of paragraphlessAnchoredTables) {
+      const tableMeasure = entry.measure;
+      const tableBlock = preparedSourceScan ? resolveCurrentTable(entry.block.id, tableMeasure) : entry.block;
       const columnWidthForTable = getCurrentColumnWidth();
       const totalWidth = tableMeasure.totalWidth ?? 0;
       const pageHeight =
@@ -4327,8 +4541,6 @@ function* layoutDocumentSteps(
     state.page.columnRegions = regions;
   }
 
-  alignInlineZeroHeightDrawingFragments(pages, blocks, measures);
-
   // SD-2656: stash each page's actual body-bottom on the Page so the band
   // painter can render the separator immediately under the last body
   // fragment instead of at the legacy reserve-derived position. Trailing
@@ -4340,20 +4552,8 @@ function* layoutDocumentSteps(
   // page tail belongs to the last column's last fragment, not to whichever
   // fragment set maxCursorY. Subtracting it unconditionally would clip the
   // band up into the body of an earlier, taller column.
-  const blockById = new Map(blocks.map((block) => [block.id, block]));
-  const measureById = new Map(blocks.map((block, index) => [block.id, measures[index]]));
   for (let i = 0; i < pages.length && i < paginator.states.length; i++) {
-    const s = paginator.states[i];
-    const maxY = s.maxCursorY ?? 0;
-    const cursorY = s.cursorY ?? 0;
-    const trailing = s.trailingSpacing ?? 0;
-    const floatingTableMaxY = maxFlowAffectingFloatingTableBottom(pages[i], blockById, measureById);
-    const raw = Math.max(maxY, cursorY, floatingTableMaxY);
-    const trailingAttachedToMax = cursorY >= maxY;
-    const adjusted = raw - (trailingAttachedToMax ? trailing : 0);
-    (pages[i] as { bodyMaxY?: number }).bodyMaxY = options.footnotePageFlow
-      ? (s.committedBodyBottom ?? s.topMargin)
-      : Math.max(s.topMargin ?? 0, adjusted);
+    finalizeBodyPageGeometry(pages[i], paginator.states[i]);
   }
 
   const pageBordersBySection = new Map<number, SectionPageBorders>();
@@ -4411,6 +4611,226 @@ export async function layoutDocumentCooperatively(
   } finally {
     steps.return?.(undefined as never);
   }
+}
+
+export type LayoutContinuationResume = {
+  nextBlockIndex: number;
+  nextPageIndex: number;
+  pageIndex: number;
+  checkpointIdentity: object;
+  paragraphLineIndex?: number;
+  tableRowIndex?: number;
+};
+
+export type LayoutContinuationBatch = {
+  layout: Layout;
+  pageRange: { startPageIndex: number; endPageIndexExclusive: number };
+  status: 'pending' | 'complete';
+  resume: LayoutContinuationResume;
+  completeReason?: string;
+};
+
+export type LayoutDocumentContinuation = {
+  advance(input?: { pageCount?: number; execution?: LayoutExecutionControl }): Promise<LayoutContinuationBatch>;
+  dispose(): void;
+};
+
+function paginationOptionsPublicationBlocker(options: LayoutOptions): string | null {
+  // AIDEV-NOTE: These finalizers can revise earlier pages after a page boundary.
+  // Their existing cooperative complete path owns publication until their dependency closes.
+  const notes = options.footnotes as { refs?: unknown; blocksById?: unknown } | undefined;
+  const footnotesAbsent =
+    !notes ||
+    (Array.isArray(notes.refs) &&
+      notes.refs.length === 0 &&
+      notes.blocksById instanceof Map &&
+      notes.blocksById.size === 0);
+  if (options.pageBoundary) return 'page-boundary';
+  if (!footnotesAbsent) return 'footnotes';
+  if (options.footnotePageFlow) return 'footnote-page-flow';
+  if (resolveColumnCount(options.columns) > 1 || resolveColumnCount(options.startContext?.activeColumns) > 1)
+    return 'columns';
+  if (options.sectionMetadata?.some((section) => section.vAlign && section.vAlign !== 'top'))
+    return 'section-vertical-alignment';
+  return null;
+}
+
+function paginationBlockPublicationBlocker(
+  blocks: readonly FlowBlock[],
+  index: number,
+  block: FlowBlock,
+): string | null {
+  // AIDEV-NOTE: A spaced split carrier places its sibling on an earlier
+  // carrier page after paragraph pagination; that page is not sealed yet.
+  if (splitLineBreakAnchorCarrierMode(blocks, index) === 'spaced') return 'deferred-spaced-anchor-carrier';
+  if (block.kind === 'drawing' && (block.anchor?.isAnchored !== true || block.wrap?.type !== 'None'))
+    return 'drawing-wrap';
+  if (block.kind === 'image' && block.anchor?.isAnchored === true && block.wrap?.type !== 'None') return 'image-wrap';
+  if (block.kind === 'table' && block.anchor?.isAnchored === true && isPageRelativeAnchor(block))
+    return 'page-relative-anchored-table';
+  if (block.kind === 'sectionBreak') {
+    if (block.vAlign != null && block.vAlign !== 'top') return 'section-break-vertical-alignment';
+    if (resolveColumnCount(block.columns) > 1) return 'section-break-columns';
+  }
+  if (block.kind === 'paragraph' && isPagePositionedParagraphFrame(block.attrs?.frame))
+    return 'positioned-paragraph-frame';
+  return null;
+}
+
+/** AIDEV-NOTE: The handle owns one live paginator; advancing never replays a stopped prefix. */
+export function createLayoutDocumentContinuation(
+  blocks: FlowBlock[],
+  measures: Measure[],
+  options: LayoutOptions = {},
+  execution?: LayoutExecutionControl,
+): LayoutDocumentContinuation {
+  const identity = Object.freeze({});
+  const sealedPages: Page[] = [];
+  const pendingBlankPages: Page[] = [];
+  let sealedBlockCheckpoints = new Map<string, import('@superdoc/contracts').LayoutBlockResumeCheckpoint>();
+  let sealedTableCheckpoints = new Map<string, readonly TableLayoutResumeCheckpoint[]>();
+  const blockIndexById = new Map<string, number>();
+  const pageBorders = new Map<number, SectionPageBorders>();
+  const pageOffset = options.startContext?.pageNumberOffset ?? 0;
+  let publicationBlocker = paginationOptionsPublicationBlocker(options);
+  let seal = false;
+  const preflight: ContinuationInputPreflight = {
+    blockIndexById,
+    pageBorders,
+    publicationBlocker,
+    complete(blocker) {
+      publicationBlocker = blocker;
+      seal = blocker == null;
+    },
+  };
+  const capture: NonNullable<Parameters<typeof layoutDocumentSteps>[4]> = (
+    page,
+    state,
+    blockCheckpoints,
+    tableCheckpoints,
+  ) => {
+    const snapshot = clonePlain(page);
+    if (typeof snapshot.sectionIndex === 'number') snapshot.pageBorders = pageBorders.get(snapshot.sectionIndex);
+    if (state.constraintBoundaries.length > 0) {
+      snapshot.columnRegions = [
+        {
+          yStart: state.topMargin,
+          yEnd: state.constraintBoundaries[0].y,
+          columns: state.page.columns ?? { count: 1, gap: 0 },
+        },
+        ...state.constraintBoundaries.map((boundary, index) => ({
+          yStart: boundary.y,
+          yEnd: state.constraintBoundaries[index + 1]?.y ?? state.contentBottom,
+          columns: resolveColumnLayout(boundary.columns),
+        })),
+      ];
+    }
+    // Trailing blank pages are pruned at document end. Publish them only after
+    // a subsequent content page makes their position durable.
+    if (snapshot.fragments.length === 0 && (snapshot.footnoteReserved ?? 0) === 0) {
+      pendingBlankPages.push(snapshot);
+      return;
+    }
+    for (const page of pendingBlankPages) sealedPages.push(page);
+    pendingBlankPages.length = 0;
+    sealedPages.push(snapshot);
+    sealedBlockCheckpoints = new Map(
+      Array.from(blockCheckpoints).filter(([, checkpoint]) => checkpoint.pageIndex < sealedPages.length),
+    );
+    sealedTableCheckpoints = new Map(
+      Array.from(
+        tableCheckpoints,
+        ([id, checkpoints]) =>
+          [id, checkpoints.filter((checkpoint) => checkpoint.pageIndex < sealedPages.length)] as const,
+      ),
+    );
+  };
+  const steps = layoutDocumentSteps(
+    blocks,
+    measures,
+    options,
+    layoutExecutionCheckpointEveryBlocks(execution),
+    capture,
+    preflight,
+  );
+  let complete: Layout | null = null;
+  let returnedPages = 0;
+  let disposed = false;
+  let advancing = false;
+  const resume = (pages: readonly Page[], done: boolean): LayoutContinuationResume => {
+    const nextPageIndex = pageOffset + pages.length;
+    const cursor: LayoutContinuationResume = {
+      nextBlockIndex: done ? blocks.length : 0,
+      nextPageIndex,
+      pageIndex: nextPageIndex,
+      checkpointIdentity: identity,
+    };
+    const fragments = pages[pages.length - 1]?.fragments;
+    const last = fragments?.[fragments.length - 1];
+    const index = last ? blockIndexById.get(last.blockId) : undefined;
+    if (!done && index != null && last) {
+      cursor.nextBlockIndex = index + 1;
+      if ((last.kind === 'para' || last.kind === 'list-item') && measures[index]?.kind === 'paragraph') {
+        const line = last.toLine;
+        if (line < (measures[index] as ParagraphMeasure).lines.length) {
+          cursor.nextBlockIndex = index;
+          cursor.paragraphLineIndex = line;
+        }
+      } else if (last.kind === 'table' && blocks[index]?.kind === 'table') {
+        if (last.continuesOnNext) {
+          cursor.nextBlockIndex = index;
+          cursor.tableRowIndex = last.partialRow && !last.partialRow.isLastPart ? last.partialRow.rowIndex : last.toRow;
+        }
+      }
+    }
+    return cursor;
+  };
+  return {
+    async advance(input = {}) {
+      if (disposed) throw new Error('Layout continuation is disposed');
+      if (advancing) throw new Error('Layout continuation already has an active advance');
+      advancing = true;
+      const control = input.execution ?? execution;
+      const first = returnedPages;
+      const pageCount = Math.max(1, Math.floor(input.pageCount ?? 1));
+      try {
+        while (!complete && (!seal || sealedPages.length < first + pageCount)) {
+          throwIfLayoutExecutionAborted(control);
+          const step = steps.next();
+          if (step.done) complete = step.value;
+          else await checkpointLayoutExecution(control, step.value);
+          if (disposed) throw new Error('Layout continuation is disposed');
+        }
+        const layout: Layout = complete ?? {
+          pageSize: options.pageSize ?? DEFAULT_PAGE_SIZE,
+          pages: sealedPages.slice(),
+          blockResumeCheckpoints: sealedBlockCheckpoints,
+          ...(options.documentBackground ? { documentBackground: options.documentBackground } : {}),
+        };
+        if (!complete) writeTableLayoutResumeCheckpoints(layout, sealedTableCheckpoints);
+        returnedPages = layout.pages.length;
+        return {
+          layout,
+          pageRange: { startPageIndex: pageOffset + first, endPageIndexExclusive: pageOffset + returnedPages },
+          status: complete ? 'complete' : 'pending',
+          resume: resume(layout.pages, complete != null),
+          ...(!seal ? { completeReason: `post-pagination-dependency:${publicationBlocker}` } : {}),
+        };
+      } catch (error) {
+        if (!control?.signal?.aborted) {
+          disposed = true;
+          steps.return(undefined as never);
+        }
+        throw error;
+      } finally {
+        advancing = false;
+      }
+    },
+    dispose() {
+      disposed = true;
+      steps.return(undefined as never);
+    },
+  };
 }
 
 export type LayoutRangeBoundaryPolicy = 'conservative-context' | 'overscan' | 'degraded-on-incomplete-state';

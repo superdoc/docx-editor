@@ -7,7 +7,7 @@
 // generations, rollback fidelity, and zero shell-root DOM operations on
 // steady same-generation paints.
 
-import { describe, expect, it } from 'vite-plus/test';
+import { describe, expect, it, vi } from 'vite-plus/test';
 import type {
   FlowBlock,
   Layout,
@@ -19,6 +19,7 @@ import type {
 } from '@superdoc/contracts';
 import { resolveLayout } from '@superdoc/layout-resolved';
 import { createDomPainter } from './index.js';
+import { DomPainter } from './renderer.js';
 import type { DerivedRunTextPlane } from './derived-run-text-plane.js';
 import type { DomPainterPersistentPageInput, DomPainterPersistentScaffold } from './persistent-page-surface.js';
 
@@ -300,6 +301,7 @@ function rootAttributeSignature(page: HTMLElement): string {
 }
 
 type PrivatePainterTransaction = {
+  readFragmentFailures?(): readonly unknown[];
   readChangedRoots?(): readonly HTMLElement[];
   commit(): void;
   rollback(): void;
@@ -311,6 +313,68 @@ function beginPrivatePainterTransaction(painter: unknown): PrivatePainterTransac
   ];
   if (typeof begin !== 'function') throw new Error('missing private painter transaction seam');
   return (begin as () => PrivatePainterTransaction)();
+}
+
+function preparePrivatePersistentPages(
+  painter: unknown,
+  input: DomPainterPersistentPageInput,
+  options: {
+    mount: HTMLElement;
+    signal?: AbortSignal;
+    yieldToHost?: (checkpoint: { phase: string; index: number; total: number }) => Promise<void>;
+  },
+): Promise<{ input: DomPainterPersistentPageInput; discard(): void }> {
+  const prepare = (painter as Record<PropertyKey, unknown>)[
+    Symbol.for('superdoc.painter-dom.prepare-persistent-pages.v1')
+  ];
+  if (typeof prepare !== 'function') throw new Error('missing private detached preparation seam');
+  return prepare(input, options);
+}
+
+function denseRunParagraphResolved(runCount: number): ResolvedLayout {
+  const block = {
+    kind: 'paragraph',
+    id: 'dense-runs',
+    runs: Array.from({ length: runCount }, (_, index) => ({
+      kind: 'text',
+      text: 'x',
+      fontFamily: 'Arial',
+      fontSize: 12,
+      bold: index % 2 === 0,
+      pmStart: index,
+      pmEnd: index + 1,
+      link: { version: 2, href: 'https://example.com', tooltip: `Run ${index}` },
+    })),
+  } as FlowBlock;
+  const measure = paraMeasure([[0, 1]]);
+  if (measure.kind !== 'paragraph') throw new Error('expected paragraph measure');
+  measure.lines[0].toRun = runCount - 1;
+  return resolveLayout({
+    layout: {
+      pageSize: { w: REAL_PAGE.w, h: REAL_PAGE.h },
+      pages: [
+        {
+          number: 1,
+          fragments: [
+            {
+              kind: 'para',
+              blockId: block.id,
+              fromLine: 0,
+              toLine: 1,
+              x: 20,
+              y: 30,
+              width: 320,
+              pmStart: 0,
+              pmEnd: runCount,
+            },
+          ],
+        },
+      ],
+    } as Layout,
+    flowMode: 'paginated',
+    blocks: [block],
+    measures: [measure],
+  });
 }
 
 function beginDomMutationJournal(root: HTMLElement): PrivatePainterTransaction {
@@ -836,6 +900,354 @@ describe('persistent content hydration and dehydration', () => {
 });
 
 describe('persistent surface stability and rollback', () => {
+  it('prepares a single dense paragraph cooperatively while retaining the committed DOM', async () => {
+    const mount = document.createElement('div');
+    const painter = createDomPainter({
+      layoutMode: 'vertical',
+      pageGap: GAP_PX,
+      positionValidation: { enabled: true, policy: 'off' },
+    });
+    const resolved = denseRunParagraphResolved(256);
+    const scaffold = realScaffold(resolved, resolved.pages[0]!.layoutEpoch ?? 0);
+    const input = persistentInput(scaffold, packetsFor(resolved.pages), [0]);
+    painter.paintPersistentPages({ ...input, desiredContentPageIndices: [] }, mount);
+    const htmlBefore = mount.innerHTML;
+    const root = mount.firstElementChild;
+    let checkpoints = 0;
+    const prepared = await preparePrivatePersistentPages(painter, input, {
+      mount,
+      yieldToHost: async () => {
+        checkpoints += 1;
+        expect(mount.innerHTML).toBe(htmlBefore);
+        expect(mount.firstElementChild).toBe(root);
+      },
+    });
+    expect(checkpoints).toBeGreaterThanOrEqual(256);
+    expect(mount.innerHTML).toBe(htmlBefore);
+    expect(painter.consumePositionValidationSummary().checked).toBe(0);
+    const transaction = beginPrivatePainterTransaction(painter);
+    painter.paintPersistentPages(prepared.input, mount);
+    transaction.commit();
+    prepared.discard();
+    const reference = document.createElement('div');
+    createDomPainter({ layoutMode: 'vertical', pageGap: GAP_PX }).paintPersistentPages(input, reference);
+    expect(mount.innerHTML).toBe(reference.innerHTML);
+    expect(mount.firstElementChild).toBe(root);
+    expect(painter.consumePositionValidationSummary().checked).toBe(256);
+  });
+
+  it.each(['paragraph', 'table'] as const)(
+    'retains the renderLine fault boundary during cooperative %s preparation',
+    async (kind) => {
+      const resolved = kind === 'paragraph' ? denseRunParagraphResolved(64) : repeatedHeaderTableResolved('Middle', 0);
+      const input = persistentInput(
+        realScaffold(resolved, resolved.pages[0]!.layoutEpoch ?? 0),
+        packetsFor(resolved.pages),
+        [0],
+      );
+      const mount = document.createElement('div');
+      const painter = createDomPainter({ layoutMode: 'vertical', pageGap: GAP_PX });
+      painter.paintPersistentPages({ ...input, desiredContentPageIndices: [] }, mount);
+      const before = mount.innerHTML;
+      const prototype = DomPainter.prototype as unknown as { renderLine: (...args: unknown[]) => unknown };
+      const original = prototype.renderLine;
+      let faults = 0;
+      const fault = vi.spyOn(prototype, 'renderLine').mockImplementation(function (...args) {
+        if (faults++ === 0) throw new Error('controlled line renderer fault');
+        return original.apply(this, args);
+      });
+      try {
+        const prepared = await preparePrivatePersistentPages(painter, input, {
+          mount,
+          yieldToHost: async () => {},
+        });
+        expect(fault).toHaveBeenCalled();
+        expect(mount.innerHTML).toBe(before);
+        const transaction = beginPrivatePainterTransaction(painter);
+        painter.paintPersistentPages(prepared.input, mount);
+        expect(transaction.readFragmentFailures?.().length).toBeGreaterThan(0);
+        transaction.commit();
+        prepared.discard();
+      } finally {
+        fault.mockRestore();
+      }
+    },
+  );
+
+  it('discards an aborted detached candidate without consuming link identities or changing last-good pixels', async () => {
+    const mount = document.createElement('div');
+    const painter = createDomPainter({
+      layoutMode: 'vertical',
+      pageGap: GAP_PX,
+      positionValidation: { enabled: true, policy: 'off' },
+    });
+    const resolved = denseRunParagraphResolved(64);
+    const scaffold = realScaffold(resolved, resolved.pages[0]!.layoutEpoch ?? 0);
+    const input = persistentInput(scaffold, packetsFor(resolved.pages), [0]);
+    painter.paintPersistentPages({ ...input, desiredContentPageIndices: [] }, mount);
+    const htmlBefore = mount.innerHTML;
+    const abort = new AbortController();
+    let checkpoints = 0;
+    await expect(
+      preparePrivatePersistentPages(painter, input, {
+        mount,
+        signal: abort.signal,
+        yieldToHost: async () => {
+          if (++checkpoints === 8) abort.abort();
+        },
+      }),
+    ).rejects.toMatchObject({ name: 'AbortError' });
+    expect(mount.innerHTML).toBe(htmlBefore);
+    expect(painter.getHydratedContentPageIndices()).toEqual([]);
+    expect(painter.consumePositionValidationSummary().checked).toBe(0);
+    painter.paintPersistentPages(input, mount);
+    const reference = document.createElement('div');
+    createDomPainter({ layoutMode: 'vertical', pageGap: GAP_PX }).paintPersistentPages(input, reference);
+    expect(mount.innerHTML).toBe(reference.innerHTML);
+    expect(painter.consumePositionValidationSummary().checked).toBe(64);
+  });
+
+  it('prepares table row and cell work through the canonical painter with exact synchronous parity', async () => {
+    const resolved = repeatedHeaderTableResolved('Middle', 0);
+    const input = persistentInput(
+      realScaffold(resolved, resolved.pages[0]!.layoutEpoch ?? 0),
+      packetsFor(resolved.pages),
+      [0],
+    );
+    const painter = createDomPainter({ layoutMode: 'vertical', pageGap: GAP_PX });
+    const mount = document.createElement('div');
+    painter.paintPersistentPages({ ...input, desiredContentPageIndices: [] }, mount);
+    const before = mount.innerHTML;
+    let checkpoints = 0;
+    const prepared = await preparePrivatePersistentPages(painter, input, {
+      mount,
+      yieldToHost: async () => {
+        checkpoints++;
+        expect(mount.innerHTML).toBe(before);
+      },
+    });
+    expect(checkpoints).toBeGreaterThanOrEqual(12);
+    painter.paintPersistentPages(prepared.input, mount);
+    prepared.discard();
+    const reference = document.createElement('div');
+    createDomPainter({ layoutMode: 'vertical', pageGap: GAP_PX }).paintPersistentPages(input, reference);
+    expect(mount.innerHTML).toBe(reference.innerHTML);
+  });
+
+  it('preserves header link order across pages and avoids rebuilding unchanged fragment work', async () => {
+    const resolved = realResolved(2);
+    const header = denseRunParagraphResolved(32).pages[0]!;
+    const provider = () => ({
+      fragments: header.items.flatMap((item) => (item.kind === 'fragment' ? [item.fragment] : [])),
+      items: header.items,
+      height: 20,
+      offset: 0,
+    });
+    const options = { layoutMode: 'vertical' as const, pageGap: GAP_PX, headerProvider: provider };
+    const input = persistentInput(
+      realScaffold(resolved, resolved.pages[0]!.layoutEpoch ?? 0),
+      packetsFor(resolved.pages),
+      [0, 1],
+    );
+    const painter = createDomPainter(options);
+    const mount = document.createElement('div');
+    painter.paintPersistentPages({ ...input, desiredContentPageIndices: [] }, mount);
+    const prepared = await preparePrivatePersistentPages(painter, input, { mount, yieldToHost: async () => {} });
+    painter.paintPersistentPages(prepared.input, mount);
+    prepared.discard();
+    const reference = document.createElement('div');
+    createDomPainter(options).paintPersistentPages(input, reference);
+    expect(mount.innerHTML).toBe(reference.innerHTML);
+    const fragments = [...mount.querySelectorAll('.superdoc-fragment')];
+    let checkpoints = 0;
+    const steady = await preparePrivatePersistentPages(painter, input, {
+      mount,
+      yieldToHost: async () => {
+        checkpoints++;
+      },
+    });
+    expect(checkpoints).toBeLessThan(10);
+    painter.paintPersistentPages(steady.input, mount);
+    steady.discard();
+    expect([...mount.querySelectorAll('.superdoc-fragment')]).toEqual(fragments);
+    expect(mount.innerHTML).toBe(reference.innerHTML);
+  });
+
+  it('rejects a detached candidate after another paint before changing connected DOM', async () => {
+    const resolved = denseRunParagraphResolved(16);
+    const input = persistentInput(
+      realScaffold(resolved, resolved.pages[0]!.layoutEpoch ?? 0),
+      packetsFor(resolved.pages),
+      [0],
+    );
+    const painter = createDomPainter({ layoutMode: 'vertical', pageGap: GAP_PX });
+    const mount = document.createElement('div');
+    painter.paintPersistentPages({ ...input, desiredContentPageIndices: [] }, mount);
+    const prepared = await preparePrivatePersistentPages(painter, input, { mount });
+    painter.paintPersistentPages(input, mount);
+    const before = mount.innerHTML;
+    expect(() => painter.paintPersistentPages(prepared.input, mount)).toThrow(/candidate is stale/);
+    expect(mount.innerHTML).toBe(before);
+    prepared.discard();
+  });
+
+  it.each([20, 200])('bounds issued progressive shell work with %s retained pages and restores rollback', (count) => {
+    const mount = document.createElement('div');
+    const painter = createDomPainter({ layoutMode: 'vertical', pageGap: GAP_PX });
+    const previous = uniformScaffold(count, 1);
+    painter.paintPersistentPages(persistentInput(previous, new Map(), []), mount);
+    const shellsBefore = shellsOf(mount);
+    const htmlBefore = mount.innerHTML;
+    let bandReads = 0;
+    const next = uniformScaffold(count, 2);
+    const bands = next.pages.map((band, index) =>
+      index === 2
+        ? { ...band, heightPx: 900 }
+        : index > 2
+          ? { ...band, topPx: band.topPx - 100 }
+          : previous.pages[index]!,
+    );
+    next.totalHeightPx -= 100;
+    next.pages = new Proxy(bands, {
+      get(target, key, receiver) {
+        if (typeof key === 'string' && /^\d+$/.test(key)) bandReads++;
+        return Reflect.get(target, key, receiver);
+      },
+    });
+    Object.defineProperty(next, Symbol.for('superdoc.painter-dom.scaffold-interval.v1'), {
+      value: Object.freeze({ previous, startPageIndex: 2, endPageIndexExclusive: 3, pendingGeometryFromPageIndex: 3 }),
+    });
+    const transaction = beginPrivatePainterTransaction(painter);
+    const journal = beginDomMutationJournal(mount);
+    painter.paintPersistentPages(persistentInput(next, new Map(), []), mount);
+    expect(bandReads).toBeLessThanOrEqual(4);
+    expect(shellsOf(mount)).toEqual(shellsBefore);
+    expect(mount.dataset.v2PendingGeometryFromPageIndex).toBe('3');
+    expect(shellsBefore[3]!.dataset.layoutEpoch).toBe('1');
+    expect(shellsBefore[2]!.style.height).toBe('900px');
+    transaction.rollback();
+    journal.rollback();
+    expect(mount.innerHTML).toBe(htmlBefore);
+    expect(mount.dataset.v2PendingGeometryFromPageIndex).toBeUndefined();
+    bandReads = 0;
+    painter.paintPersistentPages(persistentInput(next, new Map(), []), mount);
+    expect(bandReads).toBeLessThanOrEqual(4);
+    expect(shellsOf(mount)).toEqual(shellsBefore);
+  });
+
+  it('rejects the interval shortcut after foreign DOM corruption and heals canonical order', () => {
+    const mount = document.createElement('div');
+    const painter = createDomPainter({ layoutMode: 'vertical', pageGap: GAP_PX });
+    const previous = uniformScaffold(20, 1);
+    painter.paintPersistentPages(persistentInput(previous, new Map(), []), mount);
+    const old = shellsOf(mount);
+    old[10]!.replaceWith(document.createElement('aside'));
+    let reads = 0;
+    const next = uniformScaffold(20, 2);
+    next.pages = new Proxy(next.pages, {
+      get(target, key, receiver) {
+        if (typeof key === 'string' && /^\d+$/.test(key)) reads++;
+        return Reflect.get(target, key, receiver);
+      },
+    });
+    Object.defineProperty(next, Symbol.for('superdoc.painter-dom.scaffold-interval.v1'), {
+      value: Object.freeze({ previous, startPageIndex: 2, endPageIndexExclusive: 3 }),
+    });
+    painter.paintPersistentPages(persistentInput(next, new Map(), []), mount);
+    expect(reads).toBeGreaterThanOrEqual(20);
+    expect(shellsOf(mount)).toHaveLength(20);
+    expect(shellsOf(mount)[10]).not.toBe(old[10]);
+    expect(shellsOf(mount)[9]).toBe(old[9]);
+    expect(mount.querySelector('aside')).toBeNull();
+    expect(painter.isPersistentPageSurfaceIntact()).toBe(true);
+  });
+
+  it('does not traverse document-sized registries for a rollbackable viewport shift', () => {
+    const mount = document.createElement('div');
+    const painter = createDomPainter({ layoutMode: 'vertical', pageGap: GAP_PX });
+    const resolved = realResolved(3);
+    const pageCount = 200;
+    const scaffold = scaffoldFor(
+      Array.from({ length: pageCount }, () => ({ widthPx: REAL_PAGE.w, heightPx: REAL_PAGE.h })),
+      resolved.pages[0]!.layoutEpoch ?? 0,
+    );
+    const packets = packetsFor(resolved.pages);
+    painter.paintPersistentPages(persistentInput(scaffold, packets, [0]), mount);
+    const htmlBefore = mount.innerHTML;
+    const shellsBefore = shellsOf(mount);
+    let documentRegistryVisits = 0;
+    const mapIterator = Map.prototype[Symbol.iterator];
+    const arrayIterator = Array.prototype[Symbol.iterator];
+    const arrayFrom = Array.from;
+    Map.prototype[Symbol.iterator] = function* (this: Map<unknown, unknown>) {
+      for (const entry of mapIterator.call(this)) {
+        if (this.size === pageCount) documentRegistryVisits += 1;
+        yield entry;
+      }
+    } as typeof mapIterator;
+    Array.prototype[Symbol.iterator] = function* (this: unknown[]) {
+      for (const value of arrayIterator.call(this)) {
+        if (this.length === pageCount && this[0] === 0 && this[pageCount - 1] === pageCount - 1) {
+          documentRegistryVisits += 1;
+        }
+        yield value;
+      }
+    } as typeof arrayIterator;
+    Array.from = ((...args: Parameters<typeof Array.from>) => {
+      const source = args[0] as { length?: number; [Symbol.iterator]?: unknown };
+      if (source.length === pageCount && source[Symbol.iterator] == null) {
+        documentRegistryVisits += pageCount;
+      }
+      return Reflect.apply(arrayFrom, Array, args);
+    }) as typeof Array.from;
+    try {
+      const transaction = beginPrivatePainterTransaction(painter);
+      const domJournal = beginDomMutationJournal(mount);
+      painter.paintPersistentPages(persistentInput(scaffold, packets, [1, 2]), mount);
+      transaction.rollback();
+      domJournal.rollback();
+    } finally {
+      Array.from = arrayFrom;
+      Array.prototype[Symbol.iterator] = arrayIterator;
+      Map.prototype[Symbol.iterator] = mapIterator;
+    }
+    expect(documentRegistryVisits).toBe(0);
+    expect(mount.innerHTML).toBe(htmlBefore);
+    expect(shellsOf(mount)).toEqual(shellsBefore);
+    expect(painter.getHydratedContentPageIndices()).toEqual([0]);
+    painter.paintPersistentPages(persistentInput(scaffold, packets, [1, 2]), mount);
+    expect(painter.getHydratedContentPageIndices()).toEqual([1, 2]);
+    expect(painter.getPersistentPageIndices()).toEqual(Array.from({ length: pageCount }, (_, index) => index));
+  });
+
+  it('restores shell keys and page-index ranges after a scaffold replacement rolls back', () => {
+    const mount = document.createElement('div');
+    const painter = createDomPainter({ layoutMode: 'vertical', pageGap: GAP_PX });
+    const scaffold = uniformScaffold(3, 1);
+    const packets = packetsFor([syntheticPage(0), syntheticPage(1), syntheticPage(2)]);
+    painter.paintPersistentPages(persistentInput(scaffold, packets, [1]), mount);
+    const htmlBefore = mount.innerHTML;
+    const shellsBefore = shellsOf(mount);
+
+    for (const pageCount of [2, 5]) {
+      const transaction = beginPrivatePainterTransaction(painter);
+      const domJournal = beginDomMutationJournal(mount);
+      const changedScaffold = scaffoldFor(
+        Array.from({ length: pageCount }, () => ({ widthPx: 700, heightPx: 800 })),
+        2,
+      );
+      painter.paintPersistentPages(persistentInput(changedScaffold, new Map(), []), mount);
+      transaction.rollback();
+      domJournal.rollback();
+      expect(mount.innerHTML).toBe(htmlBefore);
+      expect(shellsOf(mount)).toEqual(shellsBefore);
+      expect(painter.getPersistentPageIndices()).toEqual([0, 1, 2]);
+      expect(painter.getHydratedContentPageIndices()).toEqual([1]);
+      painter.paintPersistentPages(persistentInput(scaffold, packets, [1]), mount);
+      expect(mount.innerHTML).toBe(htmlBefore);
+    }
+  });
+
   it('wakes the registered repair owner when a live shell is replaced', async () => {
     const mount = document.createElement('div');
     const painter = createDomPainter({ layoutMode: 'vertical', pageGap: GAP_PX });

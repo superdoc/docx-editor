@@ -1,3 +1,4 @@
+import { completeRenderWork, type RenderWork } from '../render-work.js';
 import type {
   CellBorders,
   BorderSpec,
@@ -12,7 +13,7 @@ import type {
   TableMeasure,
 } from '@superdoc/contracts';
 import type { ResolvePhysicalFamily } from '@superdoc/font-system';
-import { renderTableCell } from './renderTableCell.js';
+import { renderTableCellWork } from './renderTableCell.js';
 import {
   resolveTableCellBorders,
   borderValueToSpec,
@@ -332,7 +333,7 @@ type TableRowRenderDependencies = {
     context: FragmentRenderContext,
     lineIndex: number,
     isLastLine: boolean,
-  ) => HTMLElement;
+  ) => HTMLElement | RenderWork<HTMLElement>;
   /** Optional callback invoked after a table line's final styles/markers are applied. */
   captureLineSnapshot?: (
     lineEl: HTMLElement,
@@ -421,7 +422,7 @@ type TableRowRenderDependencies = {
  * // Appends all cell elements to container
  * ```
  */
-export const renderTableRow = (deps: TableRowRenderDependencies): void => {
+export function* renderTableRowWork(deps: TableRowRenderDependencies): RenderWork<void> {
   const {
     doc,
     container,
@@ -670,6 +671,7 @@ export const renderTableRow = (deps: TableRowRenderDependencies): void => {
         : Infinity;
 
   for (let cellIndex = 0; cellIndex < rowMeasure.cells.length; cellIndex += 1) {
+    yield;
     const cellMeasure = rowMeasure.cells[cellIndex];
     const cell = row?.cells?.[cellIndex];
     const gridColumnStart = cellMeasure.gridColumnStart ?? cellIndex;
@@ -778,7 +780,7 @@ export const renderTableRow = (deps: TableRowRenderDependencies): void => {
 
     // Never use default borders - cells are either explicitly styled or borderless
     // This prevents gray borders on cells with borders={} (intentionally borderless)
-    const { cellElement } = renderTableCell({
+    const { cellElement } = yield* renderTableCellWork({
       doc,
       x,
       y,
@@ -858,4 +860,6 @@ export const renderTableRow = (deps: TableRowRenderDependencies): void => {
     });
     if (thinDoubleBorderOverlay) container.appendChild(thinDoubleBorderOverlay);
   }
-};
+}
+
+export const renderTableRow = (deps: TableRowRenderDependencies): void => completeRenderWork(renderTableRowWork(deps));

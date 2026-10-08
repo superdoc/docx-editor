@@ -1,3 +1,4 @@
+import { completeRenderWork, type RenderWork } from '../render-work.js';
 import type { ImageRun, Line, LineSegment, ParagraphAttrs, ParagraphBlock, Run, TextRun } from '@superdoc/contracts';
 import {
   calculateJustifySpacing,
@@ -476,7 +477,7 @@ const renderUnderlineSpans = (spans: UnderlineOverlaySpan[], top: number, el: HT
   });
 };
 
-export const renderLine = ({
+export function* renderLineWork({
   block,
   line,
   context,
@@ -488,7 +489,7 @@ export const renderLine = ({
   indentOffsetOverride,
   paragraphMarkLeftOffsetOverride,
   runContext,
-}: RenderLineParams): HTMLElement => {
+}: RenderLineParams): RenderWork<HTMLElement> {
   // Apply the measured per-line inline-image alignment to the image runs before
   // anything reads them, so both render branches and the expanded-run path see
   // the same effective verticalAlign. When the line carries no image alignment,
@@ -733,7 +734,7 @@ export const renderLine = ({
   const underlineSpans: UnderlineOverlaySpan[] = [];
 
   if (useSegmentPositioning) {
-    renderExplicitlyPositionedRuns({
+    yield* renderExplicitlyPositionedRuns({
       block: resolvedBlock,
       line,
       context,
@@ -749,7 +750,7 @@ export const renderLine = ({
     });
     paintInlineBoxes(line.inlineBoxes, el, isRtl);
   } else {
-    renderInlineRuns({
+    yield* renderInlineRuns({
       block: expandedBlock as ParagraphBlock,
       runsForLine,
       line,
@@ -804,7 +805,7 @@ export const renderLine = ({
   });
 
   return el;
-};
+}
 
 type RunRenderBranchParams = {
   line: import('@superdoc/contracts').Line;
@@ -816,7 +817,7 @@ type RunRenderBranchParams = {
   lineContainsLineExpandingImage: boolean;
 };
 
-const renderExplicitlyPositionedRuns = ({
+function* renderExplicitlyPositionedRuns({
   block,
   line,
   context,
@@ -835,7 +836,7 @@ const renderExplicitlyPositionedRuns = ({
   spacingPerSpace: number;
   useLineUnderlineOverlay: boolean;
   underlineSpanCollector?: UnderlineOverlaySpan[];
-}): void => {
+}): RenderWork<void> {
   // Use segment-based rendering with absolute positioning for tab-aligned text.
   // Positioned geometry is disabled for RTL because the layout engine computes
   // tab positions in LTR order; RTL lines fall through to inline-flow rendering
@@ -970,6 +971,7 @@ const renderExplicitlyPositionedRuns = ({
   };
 
   for (let runIndex = line.fromRun; runIndex <= line.toRun; runIndex += 1) {
+    yield;
     const baseRun = block.runs[runIndex];
     if (!baseRun) continue;
 
@@ -995,6 +997,7 @@ const renderExplicitlyPositionedRuns = ({
         immediateNextSegment,
         styleId,
         !coveredByOverlay,
+        line.tabWidths?.[runIndex],
       );
       runContext.applyTrackedChangeDecorations(tabEl, baseRun, trackedConfig);
       appendToLineGeo(tabEl, baseRun, tabStartX + indentOffset, actualTabWidth);
@@ -1151,9 +1154,10 @@ const renderExplicitlyPositionedRuns = ({
     // trailing spaces) and the adjacent tabs (SD-3330).
     const coveredByOverlay = useLineUnderlineOverlay && canPaintUnderlineOverlay(baseRun);
 
-    runSegments.forEach((segment) => {
+    for (const segment of runSegments) {
+      yield;
       const segmentText = baseText.slice(segment.fromChar, segment.toChar);
-      if (!segmentText) return;
+      if (!segmentText) continue;
 
       const pmSliceStart = runPmStart != null ? runPmStart + segment.fromChar : undefined;
       const pmSliceEnd = runPmStart != null ? runPmStart + segment.toChar : (fallbackPmEnd ?? undefined);
@@ -1207,11 +1211,11 @@ const renderExplicitlyPositionedRuns = ({
           geoSdtMaxRight = Math.max(geoSdtMaxRight, xPos + visualWidth);
         }
       }
-    });
+    }
   }
   // Close any remaining SDT wrapper at end of geometry rendering
   closeGeoSdtWrapper();
-};
+}
 
 // Builds a Map from tab run object reference → measured width in px from Line.tabWidths.
 // Tab runs in runsForLine are the same object references as in block.runs (sliceRunsForLine
@@ -1230,7 +1234,7 @@ const buildTabWidthByRun = (block: ParagraphBlock, line: import('@superdoc/contr
   return map;
 };
 
-const renderInlineRuns = ({
+function* renderInlineRuns({
   block,
   runsForLine,
   line,
@@ -1251,7 +1255,7 @@ const renderInlineRuns = ({
   tabWidthByRun: Map<Run, number>;
   isRtl: boolean;
   spacingPerSpace: number;
-}): void => {
+}): RenderWork<void> {
   // Use run-based rendering for normal text flow
   // Track current inline SDT wrapper to group adjacent runs with the same SDT id
   let currentInlineSdtWrapper: HTMLElement | null = null;
@@ -1271,7 +1275,8 @@ const renderInlineRuns = ({
     }
   };
 
-  runsForLine.forEach((run) => {
+  for (const run of runsForLine) {
+    yield;
     // Check if this run has inline structuredContent SDT
     const resolved = runContext.resolveRunSdtId(run);
     const runSdtId = resolved?.sdtId ?? null;
@@ -1342,8 +1347,10 @@ const renderInlineRuns = ({
         el.appendChild(inlineElement);
       }
     }
-  });
+  }
 
   // Close any remaining wrapper at end of line
   closeCurrentWrapper();
-};
+}
+
+export const renderLine = (params: RenderLineParams): HTMLElement => completeRenderWork(renderLineWork(params));

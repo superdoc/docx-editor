@@ -14,6 +14,10 @@ import {
   rescaleColumnWidths,
   resolveColumnCount,
 } from '@superdoc/contracts';
+import {
+  prepareCanonicalPaginationSource,
+  createPreparedPaginationSuffix,
+} from '@superdoc/layout-engine/internal-source-preparation';
 import type {
   NonFlowingPageRelativeAnchorDependencyProof,
   PageCheckpointDependencyClass,
@@ -48,6 +52,9 @@ import {
 import {
   layoutDocument,
   layoutDocumentCooperatively,
+  createLayoutDocumentContinuation,
+  type LayoutContinuationBatch,
+  type LayoutContinuationResume,
   findLineIndexForRunOrdinal,
   type LayoutOptions,
   type HeaderFooterConstraints,
@@ -611,9 +618,145 @@ export type IncrementalLayoutResult = {
    * and `pageTokenTotalMs` includes token remeasure/relayout details.
    */
   bridgeTiming: IncrementalLayoutBridgeTiming;
+  progressive?: {
+    status: 'pending';
+    completedPageRange: { startPageIndex: number; endPageIndexExclusive: number };
+    completedRanges: readonly { startOrdinal: number; endOrdinalExclusive: number }[];
+    resume: LayoutContinuationResume;
+    continuation: IncrementalLayoutContinuation;
+    pageCountFieldsExact: false;
+  };
+  progressiveFallbackReason?: string;
 };
 
+export type IncrementalLayoutContinuation = {
+  advance(execution?: IncrementalLayoutExecutionControl): Promise<IncrementalLayoutResult>;
+  dispose(): void;
+};
+
+type ProgressiveBodyBatch = {
+  layout: Layout;
+  pageRange: LayoutContinuationBatch['pageRange'];
+  resume: LayoutContinuationResume;
+  prefixPageCount: number;
+};
+
+class ProgressiveBridgeSession {
+  private waiter: { resolve(value: IncrementalLayoutResult): void; reject(reason: unknown): void } | null = null;
+  private release: (() => void) | null = null;
+  private outcome: IncrementalLayoutResult | null = null;
+  private failure: unknown;
+  private failed = false;
+  private awaiting = false;
+  private detachInitialSignal: (() => void) | null = null;
+  readonly controller = new AbortController();
+  pageCount: number;
+  nextExecution: IncrementalLayoutExecutionControl | undefined;
+  restartBeforePageIndex: number | undefined;
+  restartBeforeBlockIndex: number | undefined;
+  fallbackReason: string | undefined;
+  publishBody: ((batch: ProgressiveBodyBatch) => Promise<void>) | null = null;
+  readonly continuation: IncrementalLayoutContinuation;
+
+  constructor(pageCount: number, signal?: AbortSignal) {
+    this.pageCount = pageCount;
+    this.continuation = {
+      advance: async (execution) => {
+        if (this.awaiting) throw new Error('Incremental layout advance is already active');
+        if (execution?.signal?.aborted) throw execution.signal.reason;
+        this.nextExecution = execution;
+        if (execution?.progressive?.firstBatchPageCount != null)
+          this.pageCount = execution.progressive.firstBatchPageCount;
+        const next = this.next();
+        const release = this.release;
+        this.release = null;
+        release?.();
+        return await next;
+      },
+      dispose: () => {
+        this.controller.abort(new Error('Incremental layout continuation disposed'));
+        this.fail(this.controller.signal.reason);
+      },
+    };
+    if (signal) {
+      const abort = () => {
+        this.controller.abort(signal.reason);
+        this.fail(signal.reason);
+      };
+      if (signal.aborted) abort();
+      else {
+        signal.addEventListener('abort', abort, { once: true });
+        this.detachInitialSignal = () => signal.removeEventListener('abort', abort);
+      }
+    }
+  }
+
+  next(): Promise<IncrementalLayoutResult> {
+    if (this.awaiting) return Promise.reject(new Error('Incremental layout advance is already active'));
+    if (this.failed) return Promise.reject(this.failure);
+    if (this.outcome) return Promise.resolve(this.outcome);
+    this.awaiting = true;
+    return new Promise((resolve, reject) => {
+      this.waiter = { resolve, reject };
+    });
+  }
+
+  async publish(result: IncrementalLayoutResult): Promise<void> {
+    if (this.failed) throw this.failure;
+    if (this.nextExecution?.signal?.aborted) await this.pauseAbortedAdvance(this.nextExecution.signal.reason);
+    const resumed = new Promise<void>((resolve) => {
+      this.release = resolve;
+    });
+    const waiter = this.waiter;
+    this.waiter = null;
+    this.awaiting = false;
+    waiter?.resolve(result);
+    await resumed;
+    if (this.failed) throw this.failure;
+  }
+
+  async pauseAbortedAdvance(reason: unknown): Promise<void> {
+    if (this.failed) throw this.failure;
+    const resumed = new Promise<void>((resolve) => {
+      this.release = resolve;
+    });
+    this.awaiting = false;
+    this.waiter?.reject(reason);
+    this.waiter = null;
+    await resumed;
+    if (this.failed) throw this.failure;
+  }
+
+  finish(result: IncrementalLayoutResult): void {
+    this.detachInitialSignal?.();
+    this.detachInitialSignal = null;
+    if (this.fallbackReason) result.progressiveFallbackReason = this.fallbackReason;
+    this.outcome = result;
+    this.awaiting = false;
+    if (this.nextExecution?.signal?.aborted) this.waiter?.reject(this.nextExecution.signal.reason);
+    else this.waiter?.resolve(result);
+    this.waiter = null;
+  }
+
+  fail(reason: unknown): void {
+    this.detachInitialSignal?.();
+    this.detachInitialSignal = null;
+    this.failed = true;
+    this.failure = reason;
+    this.awaiting = false;
+    this.waiter?.reject(reason);
+    this.waiter = null;
+    this.release?.();
+    this.release = null;
+  }
+}
+
+const progressiveSessions = new WeakMap<IncrementalLayoutExecutionControl, ProgressiveBridgeSession>();
+// Host geometry stamps copy the layout shell while preserving this exact page plane.
+const pendingLayoutOwners = new WeakMap<Layout['pages'], { blocks: FlowBlock[]; resume: LayoutContinuationResume }>();
+
 export type IncrementalLayoutBridgeTiming = {
+  paginationPreparationRejection?: string;
   /** Content-free reason a document used the conservative note fallback. */
   footnoteCoupledRejection?: string;
   totalMs: number;
@@ -669,6 +812,7 @@ export type IncrementalLayoutBridgeTiming = {
     pagesPaginated: number | null;
     pagesSplicedByReuse: number;
     paginationPasses: number;
+    paginationPreparationReuses?: number;
     pageTokenRelayouts: number;
     headerFooterPreLayoutReuses: number;
     headerFooterPreLayoutBodyBlocksEnumerated: number;
@@ -696,6 +840,77 @@ export type IncrementalLayoutBridgeTiming = {
     footnotePreferredUnimprovableTargetsSkipped: number;
   };
 };
+
+function progressiveTimingSnapshot(): IncrementalLayoutBridgeTiming {
+  return {
+    totalMs: 0,
+    inputPreparationMs: 0,
+    measureTotalMs: 0,
+    measureCallbackWallMs: 0,
+    measureCacheLookupMs: 0,
+    measureCacheWriteMs: 0,
+    measureContentAdoptionMs: 0,
+    measureActualMs: 0,
+    headerFooterPreLayoutMs: 0,
+    headerPreLayoutMs: 0,
+    footerPreLayoutMs: 0,
+    warmStartPreparationMs: 0,
+    layoutDocumentMs: 0,
+    layoutReuseOrchestrationMs: 0,
+    paginationInitialMs: 0,
+    paginationPageTokenMs: 0,
+    paginationFootnoteMs: 0,
+    paginationTotalMs: 0,
+    paginationMs: 0,
+    pageTokenSetupMs: 0,
+    pageTokenTotalMs: 0,
+    pageTokenRemeasureMs: 0,
+    pageTokenRelayoutMs: 0,
+    footnoteMs: 0,
+    numberingMs: 0,
+    finalHeaderFooterMs: 0,
+    layoutExposureMs: 0,
+    unattributedMs: 0,
+    counters: {
+      bodyBlocksMeasuredByKind: createFlowBlockKindCounters(),
+      blocksRead: 0,
+      cacheHits: 0,
+      cacheMisses: 0,
+      bodyMeasureCacheReads: 0,
+      bodyMeasureCacheWrites: 0,
+      bodyMeasureCacheKeyComputations: 0,
+      measureContentSignatureComputations: 0,
+      fontSignaturePresent: 0,
+      fontSignatureChanged: 0,
+      measuresAdopted: 0,
+      pagesPaginated: null,
+      pagesSplicedByReuse: 0,
+      paginationPasses: 0,
+      pageTokenRelayouts: 0,
+      headerFooterPreLayoutReuses: 0,
+      headerFooterPreLayoutBodyBlocksEnumerated: 0,
+      headerFooterPreLayoutSectionsEnumerated: 0,
+      footnoteRelayouts: 0,
+      footnoteReserveRelayouts: 0,
+      footnoteGrowRelayouts: 0,
+      footnoteTightenRelayouts: 0,
+      footnotePreferredRelayouts: 0,
+      footnoteWidowRelayouts: 0,
+      footnoteRevertRelayouts: 0,
+      footnoteOtherRelayouts: 0,
+      footnoteAssignmentReferencesRead: 0,
+      footnoteAssignmentReferencesReused: 0,
+      footnoteAssignmentPagesIndexed: 0,
+      footnoteAssignmentFragmentsIndexed: 0,
+      footnoteRevertSnapshotsRestored: 0,
+      footnotePreferredDuplicateTargetsSkipped: 0,
+      footnoteReservePassReuseAttempts: 0,
+      footnoteReservePassReuseHits: 0,
+      footnotePreferredTrialsDeferred: 0,
+      footnotePreferredUnimprovableTargetsSkipped: 0,
+    },
+  };
+}
 
 type HeaderFooterGeometryPlane = {
   headerContentHeights?: Partial<Record<'default' | 'first' | 'even' | 'odd', number>>;
@@ -2098,9 +2313,9 @@ function readRetainedNoteMeasureSubset(
  * `tabWidths` records. The measurer stamps `run.width` as a side effect of
  * measuring, so a cache-hit or previous-measure reuse over freshly projected
  * run objects would otherwise leave the widths absent — making resolved
- * output (and every `run.width` reader) depend on which pass last measured
- * those exact objects instead of on content. Measures are content-addressed,
- * so this hydration is deterministic and idempotent.
+ * output depend on which pass last measured those exact objects instead of on
+ * content. Immutable canonical runs retain their measure-owned widths without
+ * source mutation; mutable legacy runs keep the deterministic side effect.
  *
  * Tables recurse: cell paragraphs are measured nested (`TableCellMeasure.
  * blocks`/`paragraph`), and their tab runs carry the same stamps — a warm
@@ -2150,7 +2365,7 @@ function hydrateParagraphTabRunWidths(block: ParagraphBlock, measure: ParagraphM
     if (!tabWidths) continue;
     for (const key of Object.keys(tabWidths)) {
       const run = runs[Number(key)];
-      if (run && run.kind === 'tab') {
+      if (run && run.kind === 'tab' && Object.isExtensible(run)) {
         (run as { width?: number }).width = tabWidths[Number(key)]!;
       }
     }
@@ -2400,9 +2615,29 @@ export interface IncrementalLayoutExecutionControl {
   yieldEveryBlocks?: number;
   /** Time-aware mounted probe. Null is the allocation-free under-budget path. */
   checkpointIfDue?: (checkpoint?: LayoutExecutionCheckpoint) => Promise<void> | null;
+  progressive?: { firstBatchPageCount?: number; restartBeforeBlockIndex?: number; restartBeforePageIndex?: number };
 }
 
-export async function incrementalLayout(
+export function incrementalLayout(
+  ...args: Parameters<typeof incrementalLayoutComplete>
+): Promise<IncrementalLayoutResult> {
+  const execution = args[11];
+  if (!execution?.progressive) return incrementalLayoutComplete(...args);
+  const session = new ProgressiveBridgeSession(execution.progressive.firstBatchPageCount ?? 1, execution.signal);
+  session.restartBeforePageIndex = execution.progressive.restartBeforePageIndex;
+  session.restartBeforeBlockIndex = execution.progressive.restartBeforeBlockIndex;
+  const ownedExecution = { ...execution, signal: session.controller.signal };
+  args[11] = ownedExecution;
+  progressiveSessions.set(ownedExecution, session);
+  const first = session.next();
+  void incrementalLayoutComplete(...args).then(
+    (result) => session.finish(result),
+    (reason) => session.fail(reason),
+  );
+  return first;
+}
+
+async function incrementalLayoutComplete(
   previousBlocks: FlowBlock[],
   _previousLayout: Layout | null,
   nextBlocks: FlowBlock[],
@@ -2510,6 +2745,8 @@ export async function incrementalLayout(
       observeConstraints?: (block: FlowBlock, constraints: { maxWidth: number; maxHeight: number }) => void;
     }
   ).observeConstraints;
+  const sourcePreparationOwner = (measureBlock as typeof measureBlock & { paginationSourceOwner?: object })
+    .paginationSourceOwner;
   const measureCallbackIntervals: Array<{ start: number; end: number }> = [];
   const timeMeasureCallback =
     (callback: HeaderFooterMeasureFn): HeaderFooterMeasureFn =>
@@ -3763,6 +4000,8 @@ export async function incrementalLayout(
     coupledPages: 0,
     coupledPasses: 0,
     coupledFallbacks: 0,
+    preparationReuses: 0,
+    preparationRejection: undefined as string | undefined,
   };
   const initialBodyLayoutOptions: LayoutOptions = {
     ...options,
@@ -3780,6 +4019,185 @@ export async function incrementalLayout(
       lineRegions?: readonly (readonly ParagraphLineRegion[])[],
     ) => remeasureParagraph(block as ParagraphBlock, maxWidth, firstLineIndent, lineRegions, fontContext),
   };
+  const progressiveSession = execution ? progressiveSessions.get(execution) : undefined;
+  const containsBodyFields = (block: FlowBlock | undefined): boolean => {
+    if (block?.kind === 'paragraph') return block.runs.some((run) => 'token' in run && run.token != null);
+    return block?.kind === 'table'
+      ? block.rows.some((row) => row.cells.some((cell) => (cell.blocks ?? []).some(containsBodyFields)))
+      : false;
+  };
+  const furnitureHasPageReferences = (blocks: readonly FlowBlock[]): boolean =>
+    blocks.some((block) => {
+      if (block.kind === 'paragraph') return block.runs.some((run) => 'token' in run && run.token === 'pageReference');
+      return (
+        block.kind === 'table' &&
+        block.rows.some((row) => row.cells.some((cell) => furnitureHasPageReferences(cell.blocks ?? [])))
+      );
+    });
+  // AIDEV-NOTE: Retained pagination profiles exclude body PAGE/NUMPAGES dependencies.
+  // Recheck changed ownership without reopening the producer's unchanged source prefix.
+  const retainedBodyFieldProof =
+    progressiveSession &&
+    layoutReuse?.dependencyProof &&
+    validateIncrementalPaginationProof(layoutReuse.dependencyProof) == null &&
+    layoutReuse.currentBlockIndexById;
+  const progressiveBodyFields =
+    Boolean(progressiveSession) &&
+    (retainedBodyFieldProof
+      ? [...dirty.changedBlockIds, ...dirty.insertedBlockIds].some((id) =>
+          containsBodyFields(nextBlocks[layoutReuse!.currentBlockIndexById!.get(id) ?? -1]),
+        )
+      : nextBlocks.some(containsBodyFields));
+  const furnitureStyleReferences =
+    progressiveSession &&
+    headerFooter &&
+    ([headerFooter.headerBlocks, headerFooter.footerBlocks].some(
+      (batch) =>
+        batch &&
+        Object.values(batch).some(
+          (blocks) => blocks && (flowBlocksContainCrossReferenceMetadata(blocks) || furnitureHasPageReferences(blocks)),
+        ),
+    ) ||
+      [headerFooter.headerBlocksByRId, headerFooter.footerBlocksByRId].some(
+        (batch) =>
+          batch &&
+          Array.from(batch.values()).some(
+            (blocks) => flowBlocksContainCrossReferenceMetadata(blocks) || furnitureHasPageReferences(blocks),
+          ),
+      ));
+  const progressiveFootnotesPresent =
+    earlyFootnotesInput != null && (earlyFootnotesInput.refs.length > 0 || earlyFootnotesInput.blocksById.size > 0);
+  const progressiveEligible =
+    progressiveSession &&
+    !progressiveFootnotesPresent &&
+    !hasLiveBodyCrossReferences &&
+    !progressiveBodyFields &&
+    !furnitureStyleReferences &&
+    layoutReuse?.dependencyProof?.pageReferencesAbsent !== false &&
+    supportsLocalizedSectionNumbering(options);
+  if (progressiveSession && !progressiveEligible) {
+    progressiveSession.fallbackReason = progressiveFootnotesPresent
+      ? 'footnote-conservation'
+      : hasLiveBodyCrossReferences || furnitureStyleReferences
+        ? 'cross-reference-resolution'
+        : progressiveBodyFields
+          ? 'body-page-fields'
+          : layoutReuse?.dependencyProof?.pageReferencesAbsent === false
+            ? 'page-reference-resolution'
+            : 'section-numbering';
+  }
+  if (progressiveEligible) {
+    let completedThroughOrdinal: number | null = null;
+    progressiveSession.publishBody = async (batch) => {
+      pendingLayoutOwners.set(batch.layout.pages, { blocks: nextBlocks, resume: batch.resume });
+      const sectionsByIndex = new Map(
+        (options.sectionMetadata ?? []).map((section) => [section.sectionIndex, section]),
+      );
+      const pages = batch.layout.pages;
+      for (let index = batch.pageRange.startPageIndex; index < batch.pageRange.endPageIndexExclusive; index += 1) {
+        const page = pages[index];
+        if (!page) continue;
+        const pageFormat = sectionsByIndex.get(page.sectionIndex ?? 0)?.numbering?.format ?? 'decimal';
+        page.pageNumberFormat = pageFormat;
+        page.numberText = formatSectionPageNumberText({ displayNumber: page.displayNumber ?? page.number, pageFormat });
+        page.pageNumberChapterText = undefined;
+        page.pageNumberChapterSeparator = undefined;
+      }
+      const pageNumbers = Array.from(
+        { length: batch.pageRange.endPageIndexExclusive - batch.pageRange.startPageIndex },
+        (_, index) => batch.pageRange.startPageIndex + index + 1,
+      );
+      const pageResolver: PageResolver = (pageNumber) => {
+        const page = pages[pageNumber - 1];
+        return {
+          displayText: page?.numberText ?? String(pageNumber),
+          displayNumber: page?.displayNumber ?? pageNumber,
+          totalPages: pages.length,
+          sectionPageCount: pages.length,
+          pageFormat: page?.pageNumberFormat,
+        };
+      };
+      const furnitureExecution = { ...headerFooterExecution, pageNumbers };
+      const tokens = { ...hfTokenOptions, pageCountFieldsExact: false };
+      const measureFurniture = headerFooter?.measure ?? measureBlock;
+      const furniture = async (kind: 'header' | 'footer'): Promise<HeaderFooterLayoutResult[] | undefined> => {
+        const content = kind === 'header' ? headerFooter?.headerBlocks : headerFooter?.footerBlocks;
+        if (!content || !headerFooter) return undefined;
+        const result = await layoutHeaderFooterWithCache(
+          content,
+          headerFooter.constraints,
+          measureFurniture,
+          headerMeasureCache,
+          undefined,
+          pageResolver,
+          kind,
+          headerFooterCacheSignature,
+          (block, width, indent, regions) =>
+            remeasureParagraph(block as ParagraphBlock, width, indent, regions, fontContext),
+          tokens,
+          furnitureExecution,
+        );
+        return serializeHeaderFooterResults(kind, result);
+      };
+      const headers = await furniture('header');
+      const footers = await furniture('footer');
+      const firstOrdinal =
+        completedThroughOrdinal ??
+        layoutReuse?.currentBlockIndexById?.get(pages[batch.pageRange.startPageIndex]?.fragments[0]?.blockId ?? '') ??
+        0;
+      const completedRanges =
+        batch.resume.nextBlockIndex > firstOrdinal
+          ? [{ startOrdinal: firstOrdinal, endOrdinalExclusive: batch.resume.nextBlockIndex }]
+          : [];
+      completedThroughOrdinal = batch.resume.nextBlockIndex;
+      const bridgeTiming = progressiveTimingSnapshot();
+      bridgeTiming.totalMs = performance.now() - bridgeStartedAt;
+      bridgeTiming.measureTotalMs = totalMeasureTime;
+      bridgeTiming.headerPreLayoutMs = headerPreLayoutTime;
+      bridgeTiming.footerPreLayoutMs = footerPreLayoutTime;
+      bridgeTiming.layoutDocumentMs = performance.now() - layoutStart;
+      bridgeTiming.counters.pagesPaginated = batch.pageRange.endPageIndexExclusive - batch.pageRange.startPageIndex;
+      bridgeTiming.counters.pagesSplicedByReuse = batch.prefixPageCount;
+      bridgeTiming.counters.paginationPasses = 1;
+      bridgeTiming.counters.paginationPreparationReuses = initialLayoutInvocationTiming.preparationReuses;
+      bridgeTiming.paginationPreparationRejection = initialLayoutInvocationTiming.preparationRejection;
+      bridgeTiming.counters.blocksRead = nextBlocks.length;
+      bridgeTiming.counters.cacheMisses = cacheMisses;
+      bridgeTiming.counters.cacheHits = cacheHits;
+      await progressiveSession.publish({
+        layout: batch.layout,
+        blocks: nextBlocks,
+        measures,
+        dirty,
+        headers,
+        footers,
+        headerFooterGeometryFingerprint,
+        headerFooterGeometrySeed: nextHeaderFooterGeometrySeed,
+        bridgeTiming,
+        layoutReuse: {
+          mode: batch.prefixPageCount > 0 ? 'prefix-resume' : 'full',
+          reason: 'progressive-sealed-prefix',
+          tailDisposition: 'none',
+          checkpointPageIndex: batch.prefixPageCount > 0 ? batch.prefixPageCount : null,
+          affectedFrontierPageIndex: null,
+          sourceAffectedFrontierPageIndex: null,
+          convergencePageIndex: null,
+          sourceConvergencePageIndex: null,
+          pagesPaginated: batch.pageRange.endPageIndexExclusive - batch.pageRange.startPageIndex,
+          pagesSplicedByReuse: batch.prefixPageCount,
+          tailAdoption: null,
+        },
+        progressive: {
+          status: 'pending',
+          completedPageRange: batch.pageRange,
+          completedRanges,
+          resume: batch.resume,
+          continuation: progressiveSession.continuation,
+          pageCountFieldsExact: false,
+        },
+      });
+    };
+  }
   const initialLayoutResult = await layoutWithOptionalReuse({
     previousBlocks,
     blocks: nextBlocks,
@@ -3789,6 +4207,8 @@ export async function incrementalLayout(
     dirty,
     stableBlockIds: dirty.stableBlockIds,
     reuse: layoutReuse,
+    sourcePreparationOwner,
+    provedDirtyMeasureBlockIds: provedDirtyMeasure?.dirtyBlockIds,
     ...(preparedCoupled ? { preparedCoupled } : {}),
     relayoutProvedPrefixToDocumentEndOnBoundedConvergenceFailure:
       earlyFootnotesInput != null &&
@@ -3820,6 +4240,7 @@ export async function incrementalLayout(
       : {}),
     timing: initialLayoutInvocationTiming,
     execution: layoutExecution,
+    ...(progressiveEligible ? { progressive: progressiveSession } : {}),
   });
   let layout = initialLayoutResult.layout;
   let layoutReuseSummary = initialLayoutResult.reuse;
@@ -6340,6 +6761,7 @@ export async function incrementalLayout(
     layoutExposureTime +
     finalHeaderFooterTime;
   const bridgeTiming: IncrementalLayoutBridgeTiming = {
+    paginationPreparationRejection: initialLayoutInvocationTiming.preparationRejection,
     ...(footnoteCoupledRejection ? { footnoteCoupledRejection } : {}),
     totalMs: roundTimingMs(totalBridgeTime),
     inputPreparationMs: roundTimingMs(inputPreparationMs),
@@ -6385,6 +6807,7 @@ export async function incrementalLayout(
       pagesPaginated: layoutReuseSummary.pagesPaginated,
       pagesSplicedByReuse: layoutReuseSummary.pagesSplicedByReuse,
       paginationPasses: initialLayoutInvocationTiming.layoutDocumentCalls + iteration + footnoteRelayouts,
+      paginationPreparationReuses: initialLayoutInvocationTiming.preparationReuses,
       pageTokenRelayouts: iteration,
       headerFooterPreLayoutReuses: headerFooterGeometryReused ? 1 : 0,
       headerFooterPreLayoutBodyBlocksEnumerated,
@@ -6587,6 +7010,7 @@ interface PersistentMeasureNode {
 }
 
 const persistentMeasureOverlays = new WeakMap<object, { root: PersistentMeasureNode | null; valid: boolean }>();
+const paginationMeasureOwners = new WeakMap<object, { measures: Measure[]; root: PersistentMeasureNode | null }>();
 
 function measureArrayIndex(property: PropertyKey): number | null {
   if (typeof property !== 'string' || !/^(?:0|[1-9]\d*)$/.test(property)) return null;
@@ -7555,8 +7979,13 @@ async function layoutWithOptionalReuse(input: {
     coupledPages?: number;
     coupledPasses?: number;
     coupledFallbacks?: number;
+    preparationReuses?: number;
+    preparationRejection?: string;
   };
   execution?: LayoutExecutionControl;
+  progressive?: ProgressiveBridgeSession;
+  sourcePreparationOwner?: object;
+  provedDirtyMeasureBlockIds?: readonly string[];
 }): Promise<{
   layout: Layout;
   reuse: IncrementalLayoutReuseSummary;
@@ -7573,6 +8002,10 @@ async function layoutWithOptionalReuse(input: {
     options: LayoutOptions,
   ): Promise<Layout> => {
     const startedAt = performance.now();
+    const currentMeasureOwner = persistentMeasureOverlays.get(input.measures);
+    if (input.sourcePreparationOwner && currentMeasureOwner?.valid) {
+      paginationMeasureOwners.set(input.blocks, { measures: input.measures, root: currentMeasureOwner.root });
+    }
     input.timing.layoutDocumentCalls += 1;
     lastCoupledPass = undefined;
     try {
@@ -7642,9 +8075,104 @@ async function layoutWithOptionalReuse(input: {
           },
         };
       }
-      const result = input.execution
-        ? await layoutDocumentCooperatively(blocks, measures, passOptions, input.execution)
-        : layoutDocument(blocks, measures, passOptions);
+      let result: Layout;
+      if (input.progressive?.publishBody) {
+        const continuation = createLayoutDocumentContinuation(blocks, measures, passOptions, input.execution);
+        const prefixCount = passOptions.startContext?.pageNumberOffset ?? 0;
+        const firstBlockIndex = blocks[0]
+          ? (input.reuse?.currentBlockIndexById?.get(blocks[0].id) ?? input.blocks.indexOf(blocks[0]))
+          : 0;
+        const advance = async (): Promise<LayoutContinuationBatch> => {
+          while (true) {
+            const nextExecution = input.progressive!.nextExecution;
+            const signal = nextExecution?.signal
+              ? AbortSignal.any([nextExecution.signal, input.progressive!.controller.signal])
+              : input.progressive!.controller.signal;
+            try {
+              return await continuation.advance({
+                pageCount: input.progressive!.pageCount,
+                execution: {
+                  ...input.execution,
+                  ...(nextExecution?.checkpointIfDue
+                    ? {
+                        yieldToHost: async (checkpoint) => {
+                          const pending = nextExecution.checkpointIfDue?.(checkpoint);
+                          if (pending) await pending;
+                        },
+                      }
+                    : nextExecution?.yieldToHost
+                      ? { yieldToHost: nextExecution.yieldToHost }
+                      : {}),
+                  signal,
+                },
+              });
+            } catch (error) {
+              if (input.progressive!.controller.signal.aborted || !nextExecution?.signal?.aborted) throw error;
+              await input.progressive!.pauseAbortedAdvance(error);
+            }
+          }
+        };
+        try {
+          let batch = await advance();
+          while (batch.status === 'pending') {
+            const layout: Layout =
+              prefixCount === 0
+                ? batch.layout
+                : {
+                    ...batch.layout,
+                    pages: createSplicedPageSequence({
+                      previousPages: input.reuse!.previousLayout!.pages,
+                      prefixPageCount: prefixCount,
+                      relaidPages: batch.layout.pages,
+                      relaidPageCount: batch.layout.pages.length,
+                      sourceTailStartPageIndex: input.reuse!.previousLayout!.pages.length,
+                    }),
+                  };
+            if (prefixCount > 0) {
+              const checkpoints = new Map(input.reuse!.previousLayout!.blockResumeCheckpoints);
+              for (const [id, checkpoint] of checkpoints)
+                if (checkpoint.pageIndex >= prefixCount) checkpoints.delete(id);
+              for (const [id, checkpoint] of batch.layout.blockResumeCheckpoints ?? []) {
+                checkpoints.set(id, {
+                  ...checkpoint,
+                  pageIndex: checkpoint.pageIndex + prefixCount,
+                  ...(checkpoint.preflightPageIndex == null
+                    ? {}
+                    : { preflightPageIndex: checkpoint.preflightPageIndex + prefixCount }),
+                });
+              }
+              layout.blockResumeCheckpoints = checkpoints;
+              const tables = createSplicedTableResumeCheckpointMap({
+                previous: readTableLayoutResumeCheckpoints(input.reuse!.previousLayout!),
+                local: readTableLayoutResumeCheckpoints(batch.layout),
+                checkpointPageIndex: prefixCount,
+                relaidPageCount: batch.layout.pages.length,
+                sourceTailStartPageIndex: input.reuse!.previousLayout!.pages.length,
+                pageIndexDelta: 0,
+                checkpointPagePrefixFragmentCount: null,
+                previousToCurrentBlockId: input.reuse?.blockIdRewrites?.previousToCurrent ?? null,
+                positionTransforms: [],
+              });
+              if (tables) writeTableLayoutResumeCheckpoints(layout, tables);
+            }
+            await input.progressive.publishBody({
+              layout,
+              pageRange: batch.pageRange,
+              prefixPageCount: prefixCount,
+              resume: { ...batch.resume, nextBlockIndex: firstBlockIndex + batch.resume.nextBlockIndex },
+            });
+            batch = await advance();
+          }
+          result = batch.layout;
+          if (batch.completeReason) input.progressive.fallbackReason = batch.completeReason;
+        } finally {
+          continuation.dispose();
+        }
+      } else {
+        result = input.execution
+          ? await layoutDocumentCooperatively(blocks, measures, passOptions, input.execution)
+          : layoutDocument(blocks, measures, passOptions);
+      }
       if (prepared && coupled) {
         if (options.pageBoundary == null) {
           // A complete suffix must conserve source anchors, including any
@@ -7738,6 +8266,11 @@ async function layoutWithOptionalReuse(input: {
   }
   const paginationPrefix = readRenderDiagnosticPaginationPrefix(previousLayout);
   const reuse = input.reuse;
+  const pendingOwner = pendingLayoutOwners.get(previousPages);
+  if (pendingOwner && pendingOwner.blocks !== input.previousBlocks) {
+    return full('m4-layout-reuse-disabled-pending-layout-source-owner-mismatch');
+  }
+  const pendingRestart = pendingOwner && pendingOwner.blocks === input.previousBlocks ? pendingOwner : null;
   if (!reuse?.previousBlockPageIndex || !reuse.previousPageStartKeys) {
     return full('m5-layout-reuse-unavailable-retained-page-metadata-missing');
   }
@@ -7790,6 +8323,45 @@ async function layoutWithOptionalReuse(input: {
   if (unsupportedDependency) {
     return full(`m4-layout-reuse-disabled-${unsupportedDependency}`);
   }
+  const previousPaginationMeasureOwner = paginationMeasureOwners.get(input.previousBlocks);
+  const previousMeasureState = input.previousMeasures ? persistentMeasureOverlays.get(input.previousMeasures) : null;
+  const preparedSource =
+    input.sourcePreparationOwner &&
+    input.provedDirtyMeasureBlockIds &&
+    input.previousMeasures &&
+    previousPaginationMeasureOwner?.measures === input.previousMeasures &&
+    previousMeasureState?.valid &&
+    previousPaginationMeasureOwner.root === previousMeasureState.root
+      ? prepareCanonicalPaginationSource({
+          reader: input.sourcePreparationOwner,
+          previousBlocks: input.previousBlocks as FlowBlock[],
+          blocks: input.blocks,
+          previousMeasures: input.previousMeasures as Measure[],
+          measures: input.measures,
+          dirtyBlockIds: input.provedDirtyMeasureBlockIds,
+          currentIndexById: reuse.currentBlockIndexById!,
+          previousToCurrentBlockId: reuse.blockIdRewrites?.previousToCurrent,
+          onReject: (reason) => {
+            input.timing.preparationRejection = reason;
+          },
+        })
+      : false;
+  if (!preparedSource && input.timing.preparationRejection == null) {
+    input.timing.preparationRejection = !input.sourcePreparationOwner
+      ? 'source-owner-missing'
+      : !input.provedDirtyMeasureBlockIds
+        ? 'dirty-measure-proof-missing'
+        : !previousPaginationMeasureOwner
+          ? 'previous-measure-owner-missing'
+          : previousPaginationMeasureOwner.measures !== input.previousMeasures
+            ? 'previous-measure-plane-mismatch'
+            : !previousMeasureState?.valid
+              ? 'previous-measure-state-invalid'
+              : previousPaginationMeasureOwner.root !== previousMeasureState.root
+                ? 'previous-measure-root-changed'
+                : 'preparation-declined';
+  }
+  if (preparedSource) input.timing.preparationReuses = (input.timing.preparationReuses ?? 0) + 1;
   // A balanceable section can be reused only from document start. The named
   // block owns the last retained page touched by any such section; candidate
   // selection below is fenced strictly after it, so pagination must encounter
@@ -8044,6 +8616,27 @@ async function layoutWithOptionalReuse(input: {
   if (provedNoteOnlyResult) return provedNoteOnlyResult;
   let earliestDirtyPage = Number.POSITIVE_INFINITY;
   let sourceAffectedFrontierPageIndex = -1;
+  if (pendingRestart) {
+    const restartPage = Math.min(
+      previousPages.length - 1,
+      pendingRestart.resume.nextPageIndex,
+      input.progressive?.restartBeforePageIndex ?? Number.POSITIVE_INFINITY,
+    );
+    earliestDirtyPage = restartPage;
+    sourceAffectedFrontierPageIndex = previousPages.length - 1;
+  } else if (input.progressive?.restartBeforePageIndex != null) {
+    earliestDirtyPage = Math.max(0, Math.min(previousPages.length - 1, input.progressive.restartBeforePageIndex));
+    sourceAffectedFrontierPageIndex = earliestDirtyPage;
+  }
+  if (input.progressive?.restartBeforeBlockIndex != null) {
+    const block = input.blocks[input.progressive.restartBeforeBlockIndex];
+    const previousId = block && (reuse.blockIdRewrites?.currentToPrevious.get(block.id) ?? block.id);
+    const blockPage = previousId ? reuse.previousBlockPageIndex?.get(previousId)?.firstPage : undefined;
+    if (blockPage != null) {
+      earliestDirtyPage = Math.min(earliestDirtyPage, blockPage);
+      sourceAffectedFrontierPageIndex = Math.max(sourceAffectedFrontierPageIndex, blockPage);
+    }
+  }
   const dirtyPageRanges: Array<{ blockId: string; firstPage: number; lastPage: number }> = [];
   const fragmentlessBreakCompanionRange = (deletedBlockId: string): { firstPage: number; lastPage: number } | null => {
     const deletedIndex = reuse.previousBlockIndexById?.get(deletedBlockId);
@@ -8101,6 +8694,8 @@ async function layoutWithOptionalReuse(input: {
     const previousBlockId = reuse.blockIdRewrites?.currentToPrevious.get(blockId) ?? blockId;
     const pageRange = reuse.previousBlockPageIndex.get(previousBlockId);
     if (!pageRange) {
+      if (pendingRestart && (reuse.currentBlockIndexById?.get(blockId) ?? -1) >= pendingRestart.resume.nextBlockIndex)
+        continue;
       if (input.dirty.insertedBlockIds.includes(blockId)) continue;
       return full('m4-layout-reuse-unavailable-dirty-page-range-not-found');
     }
@@ -8145,6 +8740,12 @@ async function layoutWithOptionalReuse(input: {
   }
   for (const deletedBlockId of input.dirty.deletedBlockIds) {
     const retainedPageRange = reuse.previousBlockPageIndex.get(deletedBlockId);
+    if (
+      pendingRestart &&
+      !retainedPageRange &&
+      (reuse.previousBlockIndexById?.get(deletedBlockId) ?? -1) >= pendingRestart.resume.nextBlockIndex
+    )
+      continue;
     const retainedRangeMatchesPaginationPrefix =
       paginationPrefix?.blockId === deletedBlockId &&
       retainedPageRange?.firstPage === paginationPrefix.pageIndex &&
@@ -8414,19 +9015,20 @@ async function layoutWithOptionalReuse(input: {
     const maxRelaidPages = convergenceProbePageHorizon;
     affectedFrontierPageIndex = Math.max(earliestDirtyPage, scopedVAlignReplayThroughPageIndex ?? earliestDirtyPage);
     const reachesSourceTail = sourceAffectedFrontierPageIndex + maxRelaidPages + 2 >= previousPages.length - 1;
-    const boundedLocalEndBlockIndexExclusive = reachesSourceTail
-      ? input.blocks.length
-      : findLocalPaginationEndBlockIndexExclusive({
-          blocks: input.blocks,
-          previousPages,
-          currentBlockIndexById: reuse.currentBlockIndexById!,
-          suffixStartBlockIndex,
-          sourceAffectedFrontierPageIndex,
-          maxRelaidPages,
-          previousToCurrentBlockId: reuse.blockIdRewrites?.previousToCurrent ?? null,
-          deletedBlockIds: new Set(input.dirty.deletedBlockIds),
-          ignoreUnindexedFootnoteFragments: footnoteFinalizerFragmentsAreExternal,
-        });
+    const boundedLocalEndBlockIndexExclusive =
+      reachesSourceTail || input.progressive
+        ? input.blocks.length
+        : findLocalPaginationEndBlockIndexExclusive({
+            blocks: input.blocks,
+            previousPages,
+            currentBlockIndexById: reuse.currentBlockIndexById!,
+            suffixStartBlockIndex,
+            sourceAffectedFrontierPageIndex,
+            maxRelaidPages,
+            previousToCurrentBlockId: reuse.blockIdRewrites?.previousToCurrent ?? null,
+            deletedBlockIds: new Set(input.dirty.deletedBlockIds),
+            ignoreUnindexedFootnoteFragments: footnoteFinalizerFragmentsAreExternal,
+          });
     if (boundedLocalEndBlockIndexExclusive == null) {
       return full('m4-layout-reuse-disabled-local-pagination-boundary-not-found');
     }
@@ -8447,8 +9049,19 @@ async function layoutWithOptionalReuse(input: {
     // Ordinary non-terminal probes keep both input and pagination bounded.
     // The scoped-anchor exception may extend only the preflight input; the
     // page boundary below still bounds the pages it can emit.
-    const suffixBlocks = input.blocks.slice(suffixStartBlockIndex, localEndBlockIndexExclusive);
-    const suffixMeasures = input.measures.slice(suffixStartBlockIndex, localEndBlockIndexExclusive);
+    const preparedSuffix =
+      preparedSource && input.progressive
+        ? createPreparedPaginationSuffix(
+            input.blocks,
+            input.measures,
+            suffixStartBlockIndex,
+            localEndBlockIndexExclusive,
+          )
+        : null;
+    const suffixBlocks =
+      preparedSuffix?.blocks ?? input.blocks.slice(suffixStartBlockIndex, localEndBlockIndexExclusive);
+    const suffixMeasures =
+      preparedSuffix?.measures ?? input.measures.slice(suffixStartBlockIndex, localEndBlockIndexExclusive);
     if (suffixBlocks.length === 0 || suffixBlocks.length !== suffixMeasures.length) {
       return full('m5-layout-reuse-unavailable-suffix-alignment-mismatch');
     }
@@ -8547,6 +9160,7 @@ async function layoutWithOptionalReuse(input: {
         : sameInvocationReserveRelayout
           ? input.options.footnotes
           : (() => {
+              if (input.options.footnotes!.refs.length === 0) return { ...input.options.footnotes!, refs: [] };
               const suffixBlockIds = new Set(suffixBlocks.map((block) => block.id));
               if (input.options.footnotes!.refs.some((reference) => typeof reference.blockId !== 'string')) return null;
               return {
@@ -8640,6 +9254,12 @@ async function layoutWithOptionalReuse(input: {
       if (sameInvocationReserveRelayout) break;
       if (paginationPrefix) {
         checkpointConvergenceRejection = 'same-pass-pagination-prefix-has-no-retained-tail';
+        continue;
+      }
+      // AIDEV-NOTE: A pending source owns only a sealed prefix. Adopting its
+      // apparent tail would discard the current source's unpaginated remainder.
+      if (pendingRestart) {
+        checkpointConvergenceRejection = 'pending-pagination-prefix-has-no-retained-tail';
         continue;
       }
       const targetPageIndex = checkpointPageIndex + completedPageIndex;

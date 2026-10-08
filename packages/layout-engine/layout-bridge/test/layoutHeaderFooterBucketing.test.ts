@@ -14,6 +14,7 @@ import { describe, it, expect, vi } from 'vite-plus/test';
 import type { FlowBlock, Measure, ParagraphBlock, TextRun } from '@superdoc/contracts';
 import {
   layoutHeaderFooterWithCache,
+  createRetainedHeaderFooterPageReader,
   HeaderFooterLayoutCache,
   getBucketForPageNumber,
   getBucketRepresentative,
@@ -1102,5 +1103,97 @@ describe('layoutHeaderFooterWithCache - Edge Cases', () => {
     // Should only process 'first' variant
     expect(result.default).toBeUndefined();
     expect(result.first).toBeDefined();
+  });
+});
+
+describe('issued retained PAGE bucket lookup', () => {
+  it('reuses measured representatives and rejects foreign, changed, or incomplete contexts', async () => {
+    const blocks = [makeBlock('issued-page-bucket', '0', 'pageNumber')];
+    const constraints = { width: 400, height: 80 };
+    const measureBlock = vi.fn(async () => makeMeasure(20));
+    const resolver: PageResolver = (pageNumber) => ({
+      displayText: String(pageNumber),
+      displayNumber: pageNumber,
+      totalPages: 150,
+    });
+    const batch = await layoutHeaderFooterWithCache(
+      { default: blocks },
+      constraints,
+      measureBlock,
+      undefined,
+      undefined,
+      resolver,
+      'footer',
+      'issued-font',
+    );
+    const layout = batch.default!.layout;
+    expect(measureBlock).toHaveBeenCalledTimes(3);
+    const read = createRetainedHeaderFooterPageReader(layout, blocks, constraints, 'issued-font')!;
+    expect(read(resolver(61))?.number).toBe(getBucketRepresentative('d2'));
+    expect(read({ ...resolver(61), totalPages: 79 })?.number).toBe(getBucketRepresentative('d2'));
+    expect(read({ ...resolver(61), pageFormat: 'upperRoman', displayText: 'LXI' })).toBeNull();
+    expect(read({ ...resolver(61), chapterNumberText: '3', chapterSeparator: '-' })).toBeNull();
+    expect(createRetainedHeaderFooterPageReader({ ...layout }, blocks, constraints, 'issued-font')).toBeNull();
+    expect(
+      createRetainedHeaderFooterPageReader(layout, blocks, { ...constraints, width: 401 }, 'issued-font'),
+    ).toBeNull();
+    expect(createRetainedHeaderFooterPageReader(layout, blocks, constraints, 'new-font')).toBeNull();
+    const source = blocks[0] as ParagraphBlock;
+    (source.runs[0] as TextRun).fontSize = 18;
+    expect(read(resolver(61))).toBeNull();
+    expect(createRetainedHeaderFooterPageReader(layout, blocks, constraints, 'issued-font')).toBeNull();
+    (source.runs[0] as TextRun).fontSize = 16;
+    const last = layout.pages.pop()!;
+    expect(createRetainedHeaderFooterPageReader(layout, blocks, constraints, 'issued-font')).toBeNull();
+    expect(read(resolver(61))).toBeNull();
+    layout.pages.push(last);
+    expect(read(resolver(61))).not.toBeNull();
+    const representative = layout.pages[1]!;
+    const originalHeight = representative.measurementHeight;
+    representative.measurementHeight = (originalHeight ?? 0) + 1;
+    expect(read(resolver(61))).toBeNull();
+    expect(createRetainedHeaderFooterPageReader(layout, blocks, constraints, 'issued-font')).toBeNull();
+    representative.measurementHeight = originalHeight;
+    const originalLines = representative.fragments;
+    representative.fragments = [...originalLines, { ...originalLines[0]!, x: 999 }];
+    expect(read(resolver(61))).toBeNull();
+    representative.fragments = originalLines;
+    expect(read(resolver(61))).not.toBeNull();
+  });
+
+  it('does not issue reuse authority for count-dependent fields or incomplete requested subsets', async () => {
+    const constraints = { width: 400, height: 80 };
+    const measureBlock = vi.fn(async () => makeMeasure(20));
+    const resolver: PageResolver = (pageNumber) => ({
+      displayText: String(pageNumber),
+      displayNumber: pageNumber,
+      totalPages: 150,
+    });
+    const blocks = [makePageTokenBlock('issued-count-rejected')];
+    const full = await layoutHeaderFooterWithCache(
+      { default: blocks },
+      constraints,
+      measureBlock,
+      undefined,
+      undefined,
+      resolver,
+      'footer',
+    );
+    expect(createRetainedHeaderFooterPageReader(full.default!.layout, blocks, constraints, '')).toBeNull();
+    const pageOnly = [makeBlock('issued-subset-rejected', '0', 'pageNumber')];
+    const subset = await layoutHeaderFooterWithCache(
+      { default: pageOnly },
+      constraints,
+      measureBlock,
+      undefined,
+      undefined,
+      resolver,
+      'footer',
+      '',
+      undefined,
+      undefined,
+      { pageNumbers: [50] },
+    );
+    expect(createRetainedHeaderFooterPageReader(subset.default!.layout, pageOnly, constraints, '')).toBeNull();
   });
 });

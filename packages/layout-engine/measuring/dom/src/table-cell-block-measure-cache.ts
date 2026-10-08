@@ -167,7 +167,7 @@ function adoptMeasureAtWidth(
   };
 }
 
-/** Reapply the only authored-block side effect produced by measurement. */
+/** Reapply measured tab stamps for mutable runs; immutable runs use line tab widths. */
 function hydrateTabRunWidthsFromMeasure(block: FlowBlock, measure: Measure): void {
   if (block.kind === 'paragraph' && measure.kind === 'paragraph') {
     hydrateParagraphTabRunWidths(block, measure);
@@ -193,7 +193,7 @@ function hydrateParagraphTabRunWidths(block: ParagraphBlock, measure: ParagraphM
     for (const key of Object.keys(tabWidths)) {
       const runIndex = Number(key);
       const run = block.runs[runIndex];
-      if (run?.kind === 'tab') run.width = tabWidths[runIndex]!;
+      if (run?.kind === 'tab' && Object.isExtensible(run)) run.width = tabWidths[runIndex]!;
     }
   }
 }

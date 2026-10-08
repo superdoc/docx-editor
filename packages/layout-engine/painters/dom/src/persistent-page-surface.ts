@@ -135,9 +135,70 @@ export type DomPainterPersistentPageInput = {
 
 /** Shell registry entry: the persistent page root and its geometry/style reuse key. */
 export type PersistentShellEntry = {
-  element: HTMLElement;
-  shellKey: string;
+  readonly element: HTMLElement;
+  readonly shellKey: string;
 };
+
+type ShellRegistryNode = { left?: ShellRegistryNode; right?: ShellRegistryNode; value?: PersistentShellEntry };
+
+/** Fixed-depth sharing keeps both transaction snapshots and repeated batch lookups bounded. */
+class SharedShellRegistry implements ReadonlyMap<number, PersistentShellEntry> {
+  readonly [Symbol.toStringTag] = 'Map';
+  constructor(
+    private readonly root: ShellRegistryNode | undefined = undefined,
+    readonly size = 0,
+  ) {}
+  get(index: number): PersistentShellEntry | undefined {
+    if (!Number.isInteger(index) || index < 0 || index >= 2 ** 32) return undefined;
+    let node = this.root;
+    for (let bit = 31; bit >= 0 && node; bit -= 1) node = index & (2 ** bit) ? node.right : node.left;
+    return node?.value;
+  }
+  has(index: number): boolean {
+    return this.get(index) != null;
+  }
+  withEntry(index: number, value: PersistentShellEntry | undefined): SharedShellRegistry {
+    const present = this.has(index);
+    const update = (node: ShellRegistryNode | undefined, bit: number): ShellRegistryNode | undefined => {
+      if (bit < 0) return value ? { value } : undefined;
+      const right = (index & (2 ** bit)) !== 0;
+      const next = { ...node, [right ? 'right' : 'left']: update(right ? node?.right : node?.left, bit - 1) };
+      return next.left || next.right ? next : undefined;
+    };
+    return new SharedShellRegistry(update(this.root, 31), this.size + (value ? (present ? 0 : 1) : present ? -1 : 0));
+  }
+  *entries(): MapIterator<[number, PersistentShellEntry]> {
+    function* visit(
+      node: ShellRegistryNode | undefined,
+      bit: number,
+      index: number,
+    ): Generator<[number, PersistentShellEntry]> {
+      if (!node) return;
+      if (bit < 0) {
+        if (node.value) yield [index, node.value];
+        return;
+      }
+      yield* visit(node.left, bit - 1, index);
+      yield* visit(node.right, bit - 1, index + 2 ** bit);
+    }
+    yield* visit(this.root, 31, 0);
+  }
+  *keys(): MapIterator<number> {
+    for (const [index] of this.entries()) yield index;
+  }
+  *values(): MapIterator<PersistentShellEntry> {
+    for (const [, value] of this.entries()) yield value;
+  }
+  [Symbol.iterator](): MapIterator<[number, PersistentShellEntry]> {
+    return this.entries();
+  }
+  forEach(
+    callback: (value: PersistentShellEntry, key: number, map: ReadonlyMap<number, PersistentShellEntry>) => void,
+    thisArg?: unknown,
+  ): void {
+    for (const [index, entry] of this) callback.call(thisArg, entry, index, this);
+  }
+}
 
 /** Bounded content state for one hydrated page. */
 export type PersistentContentEntry = {
@@ -157,9 +218,10 @@ export type PersistentPageSurfaceState = {
   mount: HTMLElement;
   /** The committed scaffold; reference identity gates the O(1) skip. */
   scaffold: DomPainterPersistentScaffold;
-  shells: Map<number, PersistentShellEntry>;
+  shells: ReadonlyMap<number, PersistentShellEntry>;
   content: Map<number, PersistentContentEntry>;
   integrity: PersistentSurfaceIntegrity;
+  shellStyleSignature: string;
 };
 
 /**
@@ -392,6 +454,106 @@ function reconcileScaffoldShells(
   mount: HTMLElement,
 ): PersistentPageSurfaceState {
   const scaffold = input.scaffold;
+  const interval = (
+    scaffold as DomPainterPersistentScaffold & {
+      [key: symbol]:
+        | {
+            previous: DomPainterPersistentScaffold;
+            startPageIndex: number;
+            endPageIndexExclusive: number;
+            pendingGeometryFromPageIndex?: number;
+          }
+        | undefined;
+    }
+  )[Symbol.for('superdoc.painter-dom.scaffold-interval.v1')];
+  if (
+    interval &&
+    previous?.mount === mount &&
+    interval.previous === previous.scaffold &&
+    previous.shellStyleSignature === ctx.shellStyleSignature &&
+    previous.shells instanceof SharedShellRegistry &&
+    !consumePersistentSurfaceIntegrityFailure(previous) &&
+    scaffold.gapPx === previous.scaffold.gapPx &&
+    Number.isInteger(scaffold.generation) &&
+    Number.isInteger(scaffold.pageCount) &&
+    scaffold.pageCount >= 0 &&
+    scaffold.pages.length === scaffold.pageCount &&
+    Number.isInteger(interval.startPageIndex) &&
+    Number.isInteger(interval.endPageIndexExclusive) &&
+    interval.startPageIndex >= 0 &&
+    interval.startPageIndex <= Math.min(previous.scaffold.pageCount, interval.endPageIndexExclusive) &&
+    interval.endPageIndexExclusive <= scaffold.pageCount
+  ) {
+    let expectedTop =
+      interval.startPageIndex === 0
+        ? 0
+        : previous.scaffold.pages[interval.startPageIndex - 1]!.topPx +
+          previous.scaffold.pages[interval.startPageIndex - 1]!.heightPx +
+          scaffold.gapPx;
+    for (let index = interval.startPageIndex; index < interval.endPageIndexExclusive; index += 1) {
+      const band = scaffold.pages[index]!;
+      if (
+        band.index !== index ||
+        !Number.isFinite(band.widthPx) ||
+        band.widthPx <= 0 ||
+        !Number.isFinite(band.heightPx) ||
+        band.heightPx <= 0 ||
+        Math.abs(band.topPx - expectedTop) > SCAFFOLD_EPSILON_PX
+      ) {
+        throw new Error('persistent page scaffold interval has invalid geometry');
+      }
+      expectedTop += band.heightPx + scaffold.gapPx;
+    }
+    const last = scaffold.pages[scaffold.pageCount - 1];
+    if (
+      !Number.isFinite(scaffold.totalHeightPx) ||
+      Math.abs(scaffold.totalHeightPx - (last ? last.topPx + last.heightPx : 0)) > SCAFFOLD_EPSILON_PX
+    ) {
+      throw new Error('persistent page scaffold interval has invalid extent');
+    }
+    const integrity = previous.integrity;
+    integrity.onInvalidated = ctx.onIntegrityInvalidated;
+    integrity.observer?.disconnect();
+    try {
+      let shells = previous.shells;
+      const content = new Map(previous.content);
+      for (let index = interval.startPageIndex; index < interval.endPageIndexExclusive; index += 1) {
+        const band = scaffold.pages[index]!;
+        const shellKey = persistentShellKey(band, ctx.shellStyleSignature);
+        const old = shells.get(index);
+        if (old && old.element.parentElement === mount) {
+          if (old.shellKey !== shellKey) {
+            stampPersistentPageRoot(ctx, old.element, band);
+            old.element.dataset.layoutEpoch = String(scaffold.generation);
+            ctx.work.persistentPagesUpdated += 1;
+          }
+          shells = shells.withEntry(index, { element: old.element, shellKey });
+        } else {
+          const element = renderPageShell(ctx.contentContext, { width: band.widthPx, height: band.heightPx });
+          stampPersistentPageRoot(ctx, element, band);
+          element.dataset.layoutEpoch = String(scaffold.generation);
+          stampContentPosture(element, false);
+          shells = shells.withEntry(index, { element, shellKey });
+          mount.insertBefore(element, mount.children[index] ?? null);
+          ctx.work.persistentPagesCreated += 1;
+          ctx.recordPageWork('createdPersistentPageIndices', index);
+        }
+      }
+      for (let index = scaffold.pageCount; index < previous.scaffold.pageCount; index += 1) {
+        shells.get(index)?.element.remove();
+        shells = shells.withEntry(index, undefined);
+        content.delete(index);
+        ctx.work.persistentPagesRemoved += 1;
+        ctx.recordPageWork('removedPersistentPageIndices', index);
+      }
+      if (interval.pendingGeometryFromPageIndex == null) delete mount.dataset.v2PendingGeometryFromPageIndex;
+      else mount.dataset.v2PendingGeometryFromPageIndex = String(interval.pendingGeometryFromPageIndex);
+      mount.dataset.v2ScaffoldEpoch = String(scaffold.generation);
+      return { mount, scaffold, shells, content, integrity, shellStyleSignature: ctx.shellStyleSignature };
+    } finally {
+      observePersistentSurfaceIntegrity(integrity, mount);
+    }
+  }
   validatePersistentScaffold(scaffold);
 
   const integrity =
@@ -408,7 +570,7 @@ function reconcileScaffoldShells(
     const previousContent =
       previous && previous.mount === mount ? previous.content : new Map<number, PersistentContentEntry>();
 
-    const shells = new Map<number, PersistentShellEntry>();
+    let shells = new SharedShellRegistry();
     const content = new Map<number, PersistentContentEntry>();
     const desiredChildren: HTMLElement[] = [];
     for (const band of scaffold.pages) {
@@ -421,7 +583,7 @@ function reconcileScaffoldShells(
           existing.element.dataset.layoutEpoch = String(scaffold.generation);
           ctx.work.persistentPagesUpdated += 1;
         }
-        shells.set(band.index, { element: existing.element, shellKey });
+        shells = shells.withEntry(band.index, { element: existing.element, shellKey });
         const retainedContent = previousContent.get(band.index);
         if (retainedContent) content.set(band.index, retainedContent);
       } else {
@@ -429,7 +591,7 @@ function reconcileScaffoldShells(
         stampPersistentPageRoot(ctx, element, band);
         element.dataset.layoutEpoch = String(scaffold.generation);
         stampContentPosture(element, false);
-        shells.set(band.index, { element, shellKey });
+        shells = shells.withEntry(band.index, { element, shellKey });
         ctx.work.persistentPagesCreated += 1;
         ctx.recordPageWork('createdPersistentPageIndices', band.index);
       }
@@ -475,7 +637,10 @@ function reconcileScaffoldShells(
       mount.lastElementChild?.remove();
     }
 
-    return { mount, scaffold, shells, content, integrity };
+    if (interval?.pendingGeometryFromPageIndex == null) delete mount.dataset.v2PendingGeometryFromPageIndex;
+    else mount.dataset.v2PendingGeometryFromPageIndex = String(interval.pendingGeometryFromPageIndex);
+    mount.dataset.v2ScaffoldEpoch = String(scaffold.generation);
+    return { mount, scaffold, shells, content, integrity, shellStyleSignature: ctx.shellStyleSignature };
   } finally {
     observePersistentSurfaceIntegrity(integrity, mount);
   }
@@ -647,7 +812,7 @@ export function reconcilePersistentPageSurface(
   return state;
 }
 
-/** Deep-clone the retained planes for the painter's rollback snapshot. */
+/** Snapshot mutable content metadata; scaffold reconciliation replaces the shell registry. */
 export function clonePersistentPageSurfaceState(
   state: PersistentPageSurfaceState | null,
   clonePageState: (pageState: PageDomState) => PageDomState,
@@ -656,7 +821,7 @@ export function clonePersistentPageSurfaceState(
   return {
     mount: state.mount,
     scaffold: state.scaffold,
-    shells: new Map(Array.from(state.shells, ([pageIndex, entry]) => [pageIndex, { ...entry }])),
+    shells: state.shells,
     content: new Map(
       Array.from(state.content, ([pageIndex, entry]) => [
         pageIndex,
@@ -668,5 +833,6 @@ export function clonePersistentPageSurfaceState(
       ]),
     ),
     integrity: state.integrity,
+    shellStyleSignature: state.shellStyleSignature,
   };
 }

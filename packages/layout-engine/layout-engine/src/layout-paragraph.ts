@@ -18,6 +18,8 @@ import type {
   ParagraphBorders,
   TableAnchor,
   TableWrap,
+  TableBlock,
+  TableMeasure,
   ParagraphLineRegion,
   ColumnLayoutForAnchor,
 } from '@superdoc/contracts';
@@ -468,6 +470,7 @@ export type AnchoredDrawingEntry = {
 export type ParagraphAnchorsContext = {
   anchoredDrawings?: AnchoredDrawingEntry[];
   anchoredTables?: AnchoredTable[];
+  resolveCurrentTable?: (id: string, measure: TableMeasure) => TableBlock;
   columnWidth: number;
   pageWidth: number;
   pageMargins: PageMargins;
@@ -522,7 +525,10 @@ const collapseSplitLineBreakCarrierLines = (lines: Line[], collapse: boolean | u
   return collapse && lines.length > 1 ? lines.slice(0, 1) : lines;
 };
 
-export function layoutParagraphBlock(ctx: ParagraphLayoutContext, anchors?: ParagraphAnchorsContext): void {
+export function* layoutParagraphBlockSteps(
+  ctx: ParagraphLayoutContext,
+  anchors?: ParagraphAnchorsContext,
+): Generator<{ index: number; total: number }, void, void> {
   const { block, measure, columnWidth, ensurePage, advanceColumn, columnX, floatManager } = ctx;
   const remeasureParagraph = ctx.remeasureParagraph;
   let reportedInlineBoxRemeasureDrop = false;
@@ -853,6 +859,8 @@ export function layoutParagraphBlock(ctx: ParagraphLayoutContext, anchors?: Para
       ) {
         continue;
       }
+
+      if (anchors!.resolveCurrentTable) entry.block = anchors!.resolveCurrentTable(entry.block.id, entry.measure);
 
       const layoutOffsetV = entry.layoutOffsetV;
       const firstLineHeight = measure.lines?.[0]?.lineHeight || measure.totalHeight || 0;
@@ -1237,6 +1245,7 @@ export function layoutParagraphBlock(ctx: ParagraphLayoutContext, anchors?: Para
 
   // PHASE 2: Layout the paragraph with the remeasured lines
   while (fromLine < lines.length) {
+    yield { index: fromLine, total: lines.length };
     let state = ensurePage();
     if (state.trailingSpacing == null) state.trailingSpacing = 0;
 
@@ -1777,6 +1786,7 @@ export function layoutParagraphBlock(ctx: ParagraphLayoutContext, anchors?: Para
     state.maxCursorY = Math.max(state.maxCursorY, state.cursorY);
     lastState = state;
     fromLine = slice.toLine;
+    yield { index: fromLine, total: lines.length };
     if (advanceForWidow && fromLine < lines.length) {
       advanceColumn(state);
     }
@@ -1827,4 +1837,9 @@ export function layoutParagraphBlock(ctx: ParagraphLayoutContext, anchors?: Para
     lastState.lastParagraphContextualSpacing = contextualSpacing;
     lastState.lastParagraphBorderHash = currentBorderHash;
   }
+}
+
+export function layoutParagraphBlock(ctx: ParagraphLayoutContext, anchors?: ParagraphAnchorsContext): void {
+  const steps = layoutParagraphBlockSteps(ctx, anchors);
+  while (!steps.next().done) {}
 }

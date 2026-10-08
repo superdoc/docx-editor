@@ -60,6 +60,7 @@ export type {
 } from './headerFooterUtils';
 export {
   layoutHeaderFooterWithCache,
+  createRetainedHeaderFooterPageReader,
   invalidateHeaderFooterMeasureCache,
   type HeaderFooterBatchResult,
   getBucketForPageNumber,
@@ -68,6 +69,7 @@ export {
 export type { HeaderFooterBatch, DigitBucket } from './layoutHeaderFooter';
 export {
   resolveHeaderFooterTokens,
+  cloneHeaderFooterBlocks,
   PROVISIONAL_PAGE_COUNT_PLACEHOLDER,
   type ResolveHeaderFooterTokensOptions,
 } from './resolveHeaderFooterTokens';
@@ -98,6 +100,7 @@ export type {
   IncrementalLayoutBridgeTiming,
   IncrementalLayoutResult,
   IncrementalLayoutExecutionControl,
+  IncrementalLayoutContinuation,
   IncrementalMeasureReuseProof,
   IncrementalLayoutReuseOptions,
   IncrementalLayoutReuseSummary,

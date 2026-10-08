@@ -537,6 +537,7 @@ export function computeBlockVersion(
   blockMap: Map<string, BlockMapEntry>,
   cache: Map<string, string>,
   fontSignature = '',
+  fontConfigVersion?: number,
 ): string {
   const cached = cache.get(blockId);
   if (cached !== undefined) return cached;
@@ -548,13 +549,13 @@ export function computeBlockVersion(
   // Prepend the document's font-mapping signature so a `fonts.map` change busts paint reuse the
   // same way a font load (getFontConfigVersion, folded inside deriveBlockVersion) does. The cache
   // is per resolveLayout pass, so the signature is constant here; '' leaves the version unchanged.
-  const versioned = deriveFontAwareBlockVersion(entry.block, fontSignature);
+  const versioned = deriveFontAwareBlockVersion(entry.block, fontSignature, fontConfigVersion);
   cache.set(blockId, versioned);
   return versioned;
 }
 
-function deriveFontAwareBlockVersion(block: FlowBlock, fontSignature = ''): string {
-  const version = deriveBlockVersion(block);
+function deriveFontAwareBlockVersion(block: FlowBlock, fontSignature = '', fontConfigVersion?: number): string {
+  const version = deriveBlockVersion(block, fontConfigVersion);
   return fontSignature ? `${fontSignature}|${version}` : version;
 }
 

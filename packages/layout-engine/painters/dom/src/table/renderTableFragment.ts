@@ -1,3 +1,4 @@
+import { completeRenderWork, type RenderWork } from '../render-work.js';
 import type {
   DrawingBlock,
   DrawingMeasure,
@@ -14,7 +15,7 @@ import type { ResolvePhysicalFamily } from '@superdoc/font-system';
 import { CLASS_NAMES, fragmentStyles } from '../styles.js';
 import { DOM_CLASS_NAMES } from '../constants.js';
 import type { FragmentRenderContext } from '../renderer.js';
-import { renderTableRow } from './renderTableRow.js';
+import { renderTableRowWork } from './renderTableRow.js';
 import {
   applySdtContainerChrome,
   getSdtContainerKey,
@@ -70,7 +71,7 @@ export type TableRenderDependencies = {
     lineIndex: number,
     isLastLine: boolean,
     resolvedListTextStartPx?: number,
-  ) => HTMLElement;
+  ) => HTMLElement | RenderWork<HTMLElement>;
   /** Optional callback invoked after a table line's final styles/markers are applied. */
   captureLineSnapshot?: (
     lineEl: HTMLElement,
@@ -161,7 +162,7 @@ export type TableRenderDependencies = {
  * container.appendChild(tableElement);
  * ```
  */
-export const renderTableFragment = (deps: TableRenderDependencies): HTMLElement => {
+export function* renderTableFragmentWork(deps: TableRenderDependencies): RenderWork<HTMLElement> {
   const {
     doc,
     fragment,
@@ -474,7 +475,7 @@ export const renderTableFragment = (deps: TableRenderDependencies): HTMLElement 
     for (let r = 0; r < fragment.repeatHeaderCount; r += 1) {
       const rowMeasure = measure.rows[r];
       if (!rowMeasure) break;
-      renderTableRow({
+      yield* renderTableRowWork({
         doc,
         container,
         rowIndex: r,
@@ -638,6 +639,7 @@ export const renderTableFragment = (deps: TableRenderDependencies): HTMLElement 
 
   // Render body rows (fromRow to toRow)
   for (let r = fragment.fromRow; r < fragment.toRow; r += 1) {
+    yield;
     const rowMeasure = measure.rows[r];
     if (!rowMeasure) break;
 
@@ -649,7 +651,7 @@ export const renderTableFragment = (deps: TableRenderDependencies): HTMLElement 
     const partialRowData = isPartialRow ? fragment.partialRow : undefined;
     const actualRowHeight = partialRowData ? partialRowData.partialHeight : rowMeasure.height;
 
-    renderTableRow({
+    yield* renderTableRowWork({
       doc,
       container,
       rowIndex: r,
@@ -694,4 +696,7 @@ export const renderTableFragment = (deps: TableRenderDependencies): HTMLElement 
   }
 
   return container;
-};
+}
+
+export const renderTableFragment = (deps: TableRenderDependencies): HTMLElement =>
+  completeRenderWork(renderTableFragmentWork(deps));

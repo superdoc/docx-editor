@@ -1,3 +1,4 @@
+import { completeRenderWork, resolveRenderWork, type RenderWork } from '../render-work.js';
 import type {
   DropCapDescriptor,
   Line,
@@ -318,7 +319,7 @@ export type ParagraphRenderLineInput = {
   paragraphMarkLeftOffsetOverride?: number;
 };
 
-export type ParagraphRenderLine = (input: ParagraphRenderLineInput) => HTMLElement;
+export type ParagraphRenderLine = (input: ParagraphRenderLineInput) => HTMLElement | RenderWork<HTMLElement>;
 
 export type ParagraphRenderDropCap = (
   descriptor: DropCapDescriptor,
@@ -384,7 +385,9 @@ export type RenderParagraphContentResult = {
   renderedLines: RenderedParagraphLineInfo[];
 };
 
-export const renderParagraphContent = (params: RenderParagraphContentParams): RenderParagraphContentResult => {
+export function* renderParagraphContentWork(
+  params: RenderParagraphContentParams,
+): RenderWork<RenderParagraphContentResult> {
   const {
     doc,
     frameEl,
@@ -475,17 +478,16 @@ export const renderParagraphContent = (params: RenderParagraphContentParams): Re
     }
   }
 
-  const renderResult =
-    resolvedContent != null
-      ? renderResolvedLines({
-          ...params,
-          resolvedContent,
-          lineTopOffset: lineTopOffset + beforeHeight,
-        })
-      : renderMeasuredLines({
-          ...params,
-          lineTopOffset: lineTopOffset + beforeHeight,
-        });
+  const renderResult = yield* resolvedContent != null
+    ? renderResolvedLines({
+        ...params,
+        resolvedContent,
+        lineTopOffset: lineTopOffset + beforeHeight,
+      })
+    : renderMeasuredLines({
+        ...params,
+        lineTopOffset: lineTopOffset + beforeHeight,
+      });
   if (applySdtChrome) {
     applyBlockSdtChromeBounds(
       frameEl,
@@ -530,7 +532,7 @@ export const renderParagraphContent = (params: RenderParagraphContentParams): Re
     totalHeight: beforeHeight + renderedHeight + afterHeight,
     renderedLines: renderResult.renderedLines,
   };
-};
+}
 
 const getRenderedContentLines = (params: RenderParagraphContentParams): Line[] => {
   if (params.resolvedContent) {
@@ -736,9 +738,9 @@ const resolveBlockSdtChromePaintedLineWidth = (
   return justifyShouldApply ? Math.max(lineWidth, availableWidth) : lineWidth;
 };
 
-const renderResolvedLines = (
+function* renderResolvedLines(
   params: RenderParagraphContentParams & { resolvedContent: ResolvedParagraphContent },
-): { renderedHeight: number; renderedLines: RenderedParagraphLineInfo[] } => {
+): RenderWork<{ renderedHeight: number; renderedLines: RenderedParagraphLineInfo[] }> {
   const {
     frameEl,
     block,
@@ -758,25 +760,28 @@ const renderResolvedLines = (
   const trackedChangesConfig = resolveTrackedChangesConfig(block);
   let renderedHeight = 0;
 
-  content.lines.forEach((resolvedLine, index) => {
+  for (const [index, resolvedLine] of content.lines.entries()) {
+    yield;
     const paragraphMarkLeftOffset = resolveResolvedListParagraphMarkOffset(
       resolvedLine.isListFirstLine ? resolvedMarker : undefined,
       markerTextWidth,
       resolvedLine.indentOffset,
       resolvedLine.resolvedListTextStartPx,
     );
-    const lineEl = renderLine({
-      block,
-      line: resolvedLine.line,
-      lineIndex: resolvedLine.lineIndex,
-      isLastLine: index === content.lines.length - 1 && !content.continuesOnNext,
-      availableWidth: resolvedLine.availableWidth,
-      skipJustify: resolvedLine.skipJustify,
-      preExpandedRuns: expandedRunsForBlock,
-      resolvedListTextStartPx: resolvedLine.resolvedListTextStartPx,
-      indentOffsetOverride: resolvedLine.indentOffset,
-      paragraphMarkLeftOffsetOverride: paragraphMarkLeftOffset,
-    });
+    const lineEl = yield* resolveRenderWork(
+      renderLine({
+        block,
+        line: resolvedLine.line,
+        lineIndex: resolvedLine.lineIndex,
+        isLastLine: index === content.lines.length - 1 && !content.continuesOnNext,
+        availableWidth: resolvedLine.availableWidth,
+        skipJustify: resolvedLine.skipJustify,
+        preExpandedRuns: expandedRunsForBlock,
+        resolvedListTextStartPx: resolvedLine.resolvedListTextStartPx,
+        indentOffsetOverride: resolvedLine.indentOffset,
+        paragraphMarkLeftOffsetOverride: paragraphMarkLeftOffset,
+      }),
+    );
 
     if (!resolvedLine.isListFirstLine) {
       applyResolvedLineIndentation(lineEl, block, content, resolvedLine);
@@ -821,14 +826,14 @@ const renderResolvedLines = (
     const height = resolvedLine.line.lineHeight;
     renderedLines.push({ el: lineEl, top: lineTopOffset + renderedHeight, height });
     renderedHeight += height;
-  });
+  }
 
   return { renderedHeight, renderedLines };
-};
+}
 
-const renderMeasuredLines = (
+function* renderMeasuredLines(
   params: RenderParagraphContentParams,
-): { renderedHeight: number; renderedLines: RenderedParagraphLineInfo[] } => {
+): RenderWork<{ renderedHeight: number; renderedLines: RenderedParagraphLineInfo[] }> {
   const {
     doc,
     frameEl,
@@ -893,6 +898,7 @@ const renderMeasuredLines = (
   const renderedLocalEndLine = Math.min(localEndLine, lines.length);
 
   for (let lineIdx = localStartLine; lineIdx < localEndLine && lineIdx < lines.length; lineIdx++) {
+    yield;
     const line = lines[lineIdx];
     const explicitSegmentPositioning = hasExplicitSegmentPositioning(line);
     const lineRuns = sliceRunsForLine({ ...block, runs: runsForTextGeometry }, line);
@@ -920,16 +926,18 @@ const renderMeasuredLines = (
             resolvedListTextStartPx: shouldUseResolvedListTextStart ? listFirstLineTextStartPx : undefined,
           })
         : undefined;
-    const lineEl = renderLine({
-      block,
-      line,
-      lineIndex: globalLineIndex,
-      isLastLine: isLastLineOfParagraph,
-      availableWidth,
-      skipJustify: shouldSkipJustifyForLastLine,
-      preExpandedRuns: expandedRunsForBlock,
-      resolvedListTextStartPx: shouldUseResolvedListTextStart ? listFirstLineTextStartPx : undefined,
-    });
+    const lineEl = yield* resolveRenderWork(
+      renderLine({
+        block,
+        line,
+        lineIndex: globalLineIndex,
+        isLastLine: isLastLineOfParagraph,
+        availableWidth,
+        skipJustify: shouldSkipJustifyForLastLine,
+        preExpandedRuns: expandedRunsForBlock,
+        resolvedListTextStartPx: shouldUseResolvedListTextStart ? listFirstLineTextStartPx : undefined,
+      }),
+    );
     lineEl.style.paddingLeft = '';
     lineEl.style.paddingRight = '';
     lineEl.style.textIndent = '';
@@ -1000,7 +1008,7 @@ const renderMeasuredLines = (
   }
 
   return { renderedHeight, renderedLines };
-};
+}
 
 const renderParagraphDropCap = (params: {
   frameEl: HTMLElement;
@@ -1105,3 +1113,6 @@ const convertParagraphMarkToCellMark = (lineEl: HTMLElement): void => {
   mark.classList.add('superdoc-formatting-cell-mark');
   mark.textContent = '¤';
 };
+
+export const renderParagraphContent = (params: RenderParagraphContentParams): RenderParagraphContentResult =>
+  completeRenderWork(renderParagraphContentWork(params));

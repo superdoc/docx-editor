@@ -188,6 +188,19 @@ describe('canPaintUnderlineOverlay - overlay scope', () => {
 // never re-set. The caller pre-resolves the width from Line.tabWidths (keyed by block.runs
 // index, which is stable across pmStart shifts) and passes it as tabWidthFromCache.
 describe('tab width source priority (SD-3347)', () => {
+  it('uses the measured width for a frozen trailing positioned tab', () => {
+    const tab = Object.freeze({ kind: 'tab', text: '\t' }) as TabRun;
+    const result = renderPositionedTabRun(tab, LINE, document, 0, 8, 0, undefined, undefined, true, 37);
+    expect(result.element.style.width).toBe('37px');
+    expect(result.tabEndX).toBe(45);
+  });
+
+  it('prefers the measured width over a previous positioned tab stamp', () => {
+    const tab = { kind: 'tab', text: '\t', width: 48 } as TabRun;
+    const result = renderPositionedTabRun(tab, LINE, document, 0, 8, 0, undefined, undefined, true, 37);
+    expect(result.actualTabWidth).toBe(37);
+  });
+
   it('uses tabWidthFromCache when run.width is absent (cache-hit scenario)', () => {
     const tab = { kind: 'tab', text: '\t' } as TabRun;
     const el = renderInlineTabRun(tab, LINE, document, 0, undefined, true, 200);

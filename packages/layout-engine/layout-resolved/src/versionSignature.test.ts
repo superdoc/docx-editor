@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vite-plus/test';
+import * as fontSystem from '@superdoc/font-system';
+import { describe, expect, it, vi } from 'vite-plus/test';
 import { deriveBlockVersion, derivePmInteriorVersion, sourceAnchorSignature } from './versionSignature.js';
 import type {
   FlowBlock,
@@ -1109,4 +1110,42 @@ describe('SD-5640 manual clear break cache identity', () => {
     expect(deriveBlockVersion(cleared)).not.toBe(deriveBlockVersion(plain));
     expect(deriveBlockVersion(cleared)).toBe(deriveBlockVersion({ ...cleared }));
   });
+});
+
+describe('deriveBlockVersion - recorded font epoch', () => {
+  const paragraph: ParagraphBlock = {
+    kind: 'paragraph',
+    id: 'p',
+    runs: [
+      { text: 'historical text', fontFamily: 'Arial', fontSize: 12 },
+      { kind: 'tab', text: '\t', fontFamily: 'Arial', fontSize: 12 },
+    ],
+  };
+  const examples: FlowBlock[] = [
+    paragraph,
+    { kind: 'table', id: 'table', columnWidths: [120], rows: [{ id: 'row', cells: [{ blocks: [paragraph] }] }] },
+    { kind: 'list', id: 'list', items: [{ id: 'item', marker: { text: '1.' }, paragraph }] } as FlowBlock,
+    {
+      kind: 'drawing',
+      id: 'textbox',
+      drawingKind: 'textboxShape',
+      shapeKind: 'rect',
+      geometry: { width: 120, height: 40 },
+      contentBlocks: [paragraph],
+    } as FlowBlock,
+  ];
+  it.each(examples.map((block) => [block.kind, block] as const))(
+    'preserves the captured epoch recursively for %s',
+    (_kind, block) => {
+      const epoch = fontSystem.getFontConfigVersion();
+      const previous = deriveBlockVersion(block);
+      const spy = vi.spyOn(fontSystem, 'getFontConfigVersion').mockReturnValue(epoch + 1);
+      try {
+        expect(deriveBlockVersion(block, epoch)).toBe(previous);
+        expect(deriveBlockVersion(block)).not.toBe(previous);
+      } finally {
+        spy.mockRestore();
+      }
+    },
+  );
 });

@@ -335,6 +335,34 @@ export class PositionValidationCollector {
     }
   }
 
+  clone(policy: PositionValidationConsolePolicy = this.policy): PositionValidationCollector {
+    const clone = new PositionValidationCollector({
+      enabled: this.enabled,
+      coordinateModel: this.coordinateModel,
+      policy,
+      paintKind: this.paintKind,
+      realm: this.realm,
+    });
+    clone.groups = this.groups ? new Map([...this.groups].map(([key, group]) => [key, { ...group }])) : null;
+    clone.groupsOverflowed = this.groupsOverflowed;
+    clone.checked = this.checked;
+    clone.valid = this.valid;
+    clone.issues = this.issues;
+    clone.issuesByCode = this.issuesByCode ? { ...this.issuesByCode } : null;
+    clone.byRequirement = this.byRequirement
+      ? (Object.fromEntries(Object.entries(this.byRequirement).map(([key, tally]) => [key, { ...tally }])) as Record<
+          RunCoordinateRequirement,
+          PositionValidationRequirementTally
+        >)
+      : null;
+    clone.unexpectedKeys = this.unexpectedKeys?.map((key) => ({ ...key })) ?? null;
+    clone.unexpectedKeysSeen = this.unexpectedKeysSeen ? new Set(this.unexpectedKeysSeen) : null;
+    clone.verboseKeysSeen = this.verboseKeysSeen ? new Set(this.verboseKeysSeen) : null;
+    clone.verboseLines = this.verboseLines;
+    clone.suppressedConsole = this.suppressedConsole;
+    return clone;
+  }
+
   get isEnabled(): boolean {
     return this.enabled;
   }

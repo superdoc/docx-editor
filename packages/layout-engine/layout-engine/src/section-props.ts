@@ -119,11 +119,12 @@ export type SectionPropsScanCheckpoint = {
 export function* computeNextSectionPropsAtBreakSteps(
   blocks: FlowBlock[],
   checkpointEveryBlocks: number | null = null,
+  candidateIndices?: readonly number[],
 ): Generator<SectionPropsScanCheckpoint, Map<number, SectionProps>, void> {
   const nextSectionPropsAtBreak = new Map<number, SectionProps>();
   const docxBreakIndexes: number[] = [];
 
-  for (let i = 0; i < blocks.length; i += 1) {
+  for (const i of candidateIndices ?? Array.from({ length: blocks.length }, (_, index) => index)) {
     if (checkpointEveryBlocks != null && i % checkpointEveryBlocks === 0) {
       yield { index: i, total: blocks.length };
     }

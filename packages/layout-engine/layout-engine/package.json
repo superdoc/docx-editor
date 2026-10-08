@@ -6,7 +6,8 @@
   "private": true,
   "main": "./src/index.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./internal-source-preparation": "./src/source-preparation.ts"
   },
   "scripts": {
     "build": "tsc --project tsconfig.json --noEmit",

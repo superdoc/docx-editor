@@ -150,6 +150,7 @@ export const renderPositionedTabRun = (
   immediateNextSegment?: LineSegment,
   styleId?: string,
   paintUnderline = true,
+  tabWidthFromCache?: number,
 ): { element: HTMLElement; tabEndX: number; actualTabWidth: number } => {
   if (run.vanish === true) {
     const tabEl = doc.createElement('span');
@@ -175,7 +176,7 @@ export const renderPositionedTabRun = (
   // If layout supplied a tab-end boundary for the next segment, prefer it.
   // Otherwise, use the next segment's explicit X (from tab alignment) or the
   // tab's measured width.
-  const measuredTabEndX = tabStartX + (run.width ?? 0);
+  const measuredTabEndX = tabStartX + (tabWidthFromCache ?? run.width ?? 0);
   const tabEndX = immediateNextSegment?.precedingTabEndX ?? immediateNextSegment?.x ?? measuredTabEndX;
   const actualTabWidth = tabEndX - tabStartX;
 

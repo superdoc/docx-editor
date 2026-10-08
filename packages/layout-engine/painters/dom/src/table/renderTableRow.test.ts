@@ -12,6 +12,9 @@ const makeParagraph = (trackedChangesMode?: string, trackedChangesEnabled?: bool
 
 vi.mock('./renderTableCell.js', () => ({
   renderTableCell: (args: unknown) => renderTableCellMock(args),
+  renderTableCellWork: function* (args: unknown) {
+    return renderTableCellMock(args);
+  },
 }));
 
 describe('renderTableRow', () => {

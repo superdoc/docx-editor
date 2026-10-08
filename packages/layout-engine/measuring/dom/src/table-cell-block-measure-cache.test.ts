@@ -194,4 +194,23 @@ describe('table cell block measure cache', () => {
 
     expect(adopted).toEqual(cold);
   });
+
+  it('reuses immutable tab paragraphs through the measure-owned width records', async () => {
+    const measure = vi.fn(async (): Promise<Measure> => paragraphMeasure(37));
+    const block = (): FlowBlock => ({
+      kind: 'paragraph',
+      id: 'FROZEN-CELL-TAB',
+      runs: [{ kind: 'tab', text: '\t', pmStart: 21, pmEnd: 22 }],
+    });
+    const cold = await measureTableCellBlocks([block()], 200, DEFAULT_FONT_MEASURE_CONTEXT, 'browser', measure);
+    const frozen = block() as Extract<FlowBlock, { kind: 'paragraph' }>;
+    Object.freeze(frozen.runs[0]);
+    Object.freeze(frozen.runs);
+    Object.freeze(frozen);
+    const cached = await measureTableCellBlocks([frozen], 200, DEFAULT_FONT_MEASURE_CONTEXT, 'browser', measure);
+    expect(measure).toHaveBeenCalledTimes(1);
+    expect(cached).toEqual(cold);
+    expect((cached[0] as ParagraphMeasure).lines[0]!.tabWidths?.[0]).toBe(37);
+    expect(frozen.runs[0]).not.toHaveProperty('width');
+  });
 });

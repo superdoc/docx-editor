@@ -24,7 +24,8 @@ import {
   type LayoutExecutionCheckpoint,
   type LayoutExecutionControl,
 } from '@superdoc/layout-engine';
-import { MeasureCache } from './cache';
+import { hashMeasureContent, MeasureCache } from './cache';
+import { getFontConfigVersion } from '@superdoc/font-system';
 import {
   resolveHeaderFooterTokens,
   cloneHeaderFooterBlocks,
@@ -176,6 +177,102 @@ function getBucketForRenderedPageNumberText(text: string): DigitBucket | null {
 type PageNumberBucketingStrategy =
   | { kind: 'displayText' }
   | { kind: 'fieldFormat'; fieldFormat: PageNumberFieldFormat };
+
+type RetainedBucketContext = ReturnType<PageResolver>;
+const retainedBucketLayouts = new WeakMap<
+  HeaderFooterLayout,
+  {
+    sourceKey: string;
+    constraintsKey: string;
+    fontSignature: string;
+    fontEpoch: number;
+    strategy: PageNumberBucketingStrategy;
+    pages: HeaderFooterLayout['pages'];
+    pageReferences: HeaderFooterLayout['pages'];
+    pageSignatures: string[];
+    entries: Map<string, HeaderFooterLayout['pages'][number]>;
+  }
+>();
+
+function bucketContextKey(strategy: PageNumberBucketingStrategy, context: RetainedBucketContext): string | null {
+  const text =
+    strategy.kind === 'fieldFormat'
+      ? Number.isFinite(context.displayNumber)
+        ? formatChapterPageNumberText({
+            pageComponent: formatPageNumberFieldValue(context.displayNumber!, strategy.fieldFormat),
+            chapterNumberText: context.chapterNumberText,
+            chapterSeparator: context.chapterSeparator,
+          })
+        : null
+      : context.displayText;
+  const bucket = text ? getBucketForRenderedPageNumberText(text) : null;
+  return bucket
+    ? JSON.stringify([
+        bucket,
+        context.pageFormat ?? null,
+        context.chapterNumberText ?? null,
+        context.chapterSeparator ?? null,
+      ])
+    : null;
+}
+
+function hasOnlyLocalPageFields(blocks: FlowBlock[]): boolean {
+  return blocks.every((block) => {
+    if (block.kind === 'paragraph')
+      return block.runs.every(
+        (run) =>
+          (!('token' in run) || run.token == null || run.token === 'pageNumber') &&
+          !('crossReferenceMetadata' in run && run.crossReferenceMetadata) &&
+          !('pageRefMetadata' in run && run.pageRefMetadata) &&
+          !('seqMetadata' in run && run.seqMetadata),
+      );
+    if (block.kind === 'list') return hasOnlyLocalPageFields(block.items.map((item) => item.paragraph));
+    if (block.kind === 'table')
+      return block.rows.every((row) =>
+        row.cells.every((cell) => hasOnlyLocalPageFields(cell.blocks ?? (cell.paragraph ? [cell.paragraph] : []))),
+      );
+    return false;
+  });
+}
+
+/** Reads only a measured bucket issued by this canonical layout operation. */
+export function createRetainedHeaderFooterPageReader(
+  layout: HeaderFooterLayout,
+  blocks: FlowBlock[],
+  constraints: HeaderFooterConstraints,
+  fontSignature: string,
+): ((context: RetainedBucketContext) => HeaderFooterLayout['pages'][number] | null) | null {
+  const owned = retainedBucketLayouts.get(layout);
+  if (
+    !owned ||
+    owned.pages !== layout.pages ||
+    layout.pages.length !== owned.pageReferences.length ||
+    owned.pageReferences.some(
+      (page, index) => layout.pages[index] !== page || JSON.stringify(page) !== owned.pageSignatures[index],
+    ) ||
+    owned.fontEpoch !== getFontConfigVersion() ||
+    owned.fontSignature !== fontSignature ||
+    owned.constraintsKey !== JSON.stringify(constraints) ||
+    owned.sourceKey !== blocks.map((block) => `${block.id}:${hashMeasureContent(block)}`).join('|')
+  )
+    return null;
+  return (context) => {
+    if (
+      owned.pages !== layout.pages ||
+      layout.pages.length !== owned.pageReferences.length ||
+      owned.pageReferences.some(
+        (page, index) => layout.pages[index] !== page || JSON.stringify(page) !== owned.pageSignatures[index],
+      ) ||
+      owned.fontEpoch !== getFontConfigVersion() ||
+      owned.constraintsKey !== JSON.stringify(constraints) ||
+      owned.sourceKey !== blocks.map((block) => `${block.id}:${hashMeasureContent(block)}`).join('|')
+    )
+      return null;
+    const key = bucketContextKey(owned.strategy, context);
+    const page = key ? owned.entries.get(key) : undefined;
+    return page && layout.pages.includes(page) ? page : null;
+  };
+}
 
 function forEachPageNumberRun(blocks: FlowBlock[], visit: (run: TextRun) => void): void {
   for (const block of blocks) {
@@ -606,6 +703,7 @@ export async function layoutHeaderFooterWithCache(
   execution?: HeaderFooterLayoutExecution,
 ): Promise<HeaderFooterBatchResult> {
   const result: HeaderFooterBatchResult = {};
+  const retainedFontEpoch = getFontConfigVersion();
   const hasExecutionControl = Boolean(execution?.signal || execution?.yieldToHost || execution?.checkpointIfDue);
   const headerFooterExecution: LayoutExecutionControl | undefined = hasExecutionControl
     ? {
@@ -737,6 +835,11 @@ export async function layoutHeaderFooterWithCache(
       (!hasPageNumberToken || canUseDigitBucketingForVariant(blocks, docTotalPages, pageResolver));
 
     const requestedPageNumbers = execution?.pageNumbers;
+    const mayRetainBuckets = useBucketingForVariant && !requestedPageNumbers && hasOnlyLocalPageFields(blocks);
+    const retainedSourceKey = mayRetainBuckets
+      ? blocks.map((block) => `${block.id}:${hashMeasureContent(block)}`).join('|')
+      : null;
+    const retainedConstraintsKey = mayRetainBuckets ? JSON.stringify(constraints) : null;
     if (requestedPageNumbers) {
       const unique = new Set(requestedPageNumbers);
       if (
@@ -906,6 +1009,35 @@ export async function layoutHeaderFooterWithCache(
         measures: p.measures,
       })),
     };
+
+    if (
+      mayRetainBuckets &&
+      retainedSourceKey != null &&
+      retainedConstraintsKey != null &&
+      retainedFontEpoch === getFontConfigVersion() &&
+      retainedConstraintsKey === JSON.stringify(constraints) &&
+      retainedSourceKey === blocks.map((block) => `${block.id}:${hashMeasureContent(block)}`).join('|')
+    ) {
+      const strategy = getPageNumberBucketingStrategy(blocks);
+      if (strategy) {
+        const entries = new Map<string, HeaderFooterLayout['pages'][number]>();
+        for (const page of finalLayout.pages) {
+          const key = bucketContextKey(strategy, pageResolver(page.number));
+          if (key) entries.set(key, page);
+        }
+        retainedBucketLayouts.set(finalLayout, {
+          sourceKey: retainedSourceKey,
+          constraintsKey: retainedConstraintsKey,
+          fontSignature,
+          fontEpoch: retainedFontEpoch,
+          strategy,
+          pages: finalLayout.pages,
+          pageReferences: [...finalLayout.pages],
+          pageSignatures: finalLayout.pages.map((page) => JSON.stringify(page)),
+          entries,
+        });
+      }
+    }
 
     // Return the first page's blocks and measures for backward compatibility
     // Painters will use layout.pages to find the correct fragments per page

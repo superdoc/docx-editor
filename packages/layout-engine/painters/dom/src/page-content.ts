@@ -454,46 +454,19 @@ export function patchPage(
 
     if (current) {
       existing.delete(key);
-      const geometryChanged = hasFragmentGeometryChanged(current.fragment, fragment);
-      const sdtBoundaryMismatch = shouldRebuildForSdtBoundary(current.element, sdtBoundary);
-      // Detect mismatch in any between-border property
-      const betweenBorderMismatch =
-        (current.element.dataset.betweenBorder === 'true') !== (betweenInfo?.showBetweenBorder ?? false) ||
-        (current.element.dataset.suppressTopBorder === 'true') !== (betweenInfo?.suppressTopBorder ?? false) ||
-        (current.element.dataset.gapBelow ?? '') !== (betweenInfo?.gapBelow ? String(betweenInfo.gapBelow) : '');
-      const pageContextChanged = needsRebuildForPageContext(current.context, contextBase, resolvedItem);
-      // Verify the position mapping is reliable: if mapping the old pmStart doesn't produce
-      // the expected new pmStart, the mapping is degenerate (e.g. full-document paste) and
-      // we must rebuild to get correct span position attributes.
-      const newPmStart = (fragment as { pmStart?: number }).pmStart;
-      const mappingUnreliable =
-        ctx.currentMapping != null &&
-        newPmStart != null &&
-        current.element.dataset.pmStart != null &&
-        ctx.currentMapping.map(Number(current.element.dataset.pmStart)) !== newPmStart;
-      // Painter plan P5 (review fix): with no transaction mapping, reuse
-      // across pm drift is only sound when provably UNIFORM — the SAME
-      // `planPmReuse` decision the window remap planner uses, so a planner
-      // demote lands on a real fail-closed rebuild here. Story fragments are
-      // exempt (their story-local updater below handles them).
       const pmDecision =
         ctx.currentMapping == null && !isNonBodyStoryBlockId(fragment.blockId)
           ? planPmReuse(current, fragment, resolvedPmInteriorVersion(resolvedItem))
           : null;
-      const needsRebuild =
-        geometryChanged ||
-        ctx.changedBlocks.has(fragment.blockId) ||
-        current.element.dataset.v2RenderDiagnostic === 'true' ||
-        current.signature !== resolvedSig ||
-        // Fail closed on missing resolve stamps: two unstamped fragments
-        // compare '' === '' above, which proves nothing — content could have
-        // changed without geometry moving. Rebuild instead of reusing.
-        resolvedSig === '' ||
-        sdtBoundaryMismatch ||
-        betweenBorderMismatch ||
-        pageContextChanged ||
-        mappingUnreliable ||
-        pmDecision?.kind === 'rebuild';
+      const needsRebuild = fragmentNeedsRebuild(
+        ctx,
+        current,
+        fragment,
+        contextBase,
+        resolvedItem,
+        sdtBoundary,
+        betweenInfo,
+      );
 
       if (needsRebuild) {
         const replacement = ctx.renderFragment(fragment, contextBase, sdtBoundary, betweenInfo, resolvedItem);
@@ -1031,4 +1004,103 @@ export function planWindowPositionRemap(state: PageDomState, resolvedPage: Resol
   }
   if (cursor !== fragments.length) return REMAP_DEMOTE;
   return drifted && drifted.length > 0 ? { kind: 'remap', drifted } : REMAP_NONE;
+}
+
+function fragmentNeedsRebuild(
+  ctx: PageContentContext,
+  current: FragmentDomState,
+  fragment: Fragment,
+  contextBase: FragmentRenderContext,
+  resolvedItem: ResolvedPaintItem,
+  sdtBoundary?: SdtBoundaryOptions,
+  betweenInfo?: BetweenBorderInfo,
+): boolean {
+  const resolvedSig = resolvedPaintCacheSignature(resolvedItem);
+  const geometryChanged = hasFragmentGeometryChanged(current.fragment, fragment);
+  const sdtBoundaryMismatch = shouldRebuildForSdtBoundary(current.element, sdtBoundary);
+  // Detect mismatch in any between-border property
+  const betweenBorderMismatch =
+    (current.element.dataset.betweenBorder === 'true') !== (betweenInfo?.showBetweenBorder ?? false) ||
+    (current.element.dataset.suppressTopBorder === 'true') !== (betweenInfo?.suppressTopBorder ?? false) ||
+    (current.element.dataset.gapBelow ?? '') !== (betweenInfo?.gapBelow ? String(betweenInfo.gapBelow) : '');
+  const pageContextChanged = needsRebuildForPageContext(current.context, contextBase, resolvedItem);
+  // Verify the position mapping is reliable: if mapping the old pmStart doesn't produce
+  // the expected new pmStart, the mapping is degenerate (e.g. full-document paste) and
+  // we must rebuild to get correct span position attributes.
+  const newPmStart = (fragment as { pmStart?: number }).pmStart;
+  const mappingUnreliable =
+    ctx.currentMapping != null &&
+    newPmStart != null &&
+    current.element.dataset.pmStart != null &&
+    ctx.currentMapping.map(Number(current.element.dataset.pmStart)) !== newPmStart;
+  // Painter plan P5 (review fix): with no transaction mapping, reuse
+  // across pm drift is only sound when provably UNIFORM — the SAME
+  // `planPmReuse` decision the window remap planner uses, so a planner
+  // demote lands on a real fail-closed rebuild here. Story fragments are
+  // exempt (their story-local updater below handles them).
+  const pmDecision =
+    ctx.currentMapping == null && !isNonBodyStoryBlockId(fragment.blockId)
+      ? planPmReuse(current, fragment, resolvedPmInteriorVersion(resolvedItem))
+      : null;
+  const needsRebuild =
+    geometryChanged ||
+    ctx.changedBlocks.has(fragment.blockId) ||
+    current.element.dataset.v2RenderDiagnostic === 'true' ||
+    current.signature !== resolvedSig ||
+    // Fail closed on missing resolve stamps: two unstamped fragments
+    // compare '' === '' above, which proves nothing — content could have
+    // changed without geometry moving. Rebuild instead of reusing.
+    resolvedSig === '' ||
+    sdtBoundaryMismatch ||
+    betweenBorderMismatch ||
+    pageContextChanged ||
+    mappingUnreliable ||
+    pmDecision?.kind === 'rebuild';
+  return needsRebuild;
+}
+
+export function* planDetachedPageFragments(
+  ctx: PageContentContext,
+  state: PageDomState | undefined,
+  page: ResolvedPage,
+  pageIndex: number,
+): Generator<
+  void,
+  {
+    item: ResolvedPaintItem;
+    context: FragmentRenderContext;
+    sdtBoundary?: SdtBoundaryOptions;
+    betweenInfo?: BetweenBorderInfo;
+  }[],
+  void
+> {
+  const contextBase: FragmentRenderContext = {
+    pageNumber: page.number,
+    totalPages: ctx.totalPages,
+    section: 'body',
+    pageNumberText: page.numberText,
+    displayPageNumber: page.displayNumber,
+    pageNumberFormat: page.pageNumberFormat,
+    pageNumberChapterText: page.pageNumberChapterText,
+    pageNumberChapterSeparator: page.pageNumberChapterSeparator,
+    sectionPageCount: ctx.getSectionPageCount(page),
+    pageIndex,
+    ...(page.pageCountFieldsExact === false ? { pageCountFieldsExact: false } : {}),
+    ...(ctx.derivedRunTextPlane ? { derivedRunTextPlane: ctx.derivedRunTextPlane } : {}),
+  };
+  const existing = new Map(state?.fragments.map((fragment) => [fragment.key, fragment]));
+  const boundaries = computeSdtBoundaries(page.items, ctx.sdtLabelsRendered);
+  const borders = computeBetweenBorderFlags(page.items);
+  const result = [];
+  for (const [index, item] of page.items.entries()) {
+    yield;
+    if (item.kind !== 'fragment') continue;
+    const current = existing.get(fragmentKey(item.fragment));
+    const sdtBoundary = boundaries.get(index);
+    const betweenInfo = borders.get(index);
+    if (!current || fragmentNeedsRebuild(ctx, current, item.fragment, contextBase, item, sdtBoundary, betweenInfo)) {
+      result.push({ item, context: contextBase, sdtBoundary, betweenInfo });
+    }
+  }
+  return result;
 }

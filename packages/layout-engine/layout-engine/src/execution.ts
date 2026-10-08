@@ -6,6 +6,7 @@ export type LayoutExecutionPhase =
   | 'layout-document:preflight-anchor'
   | 'layout-document:preflight-keep-next'
   | 'layout-document:block'
+  | 'layout-document:paragraph-fragment'
   | 'layout-document:table-fragment'
   | 'layout-document:footnote-continuation'
   | 'layout-document:finalize-page'

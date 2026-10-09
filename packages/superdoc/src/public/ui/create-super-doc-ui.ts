@@ -9949,8 +9949,9 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     current: () => readSelectionInfoLive().value,
     capture: (): SelectionCapture | null => {
       const snapshot = selectionSub.get();
-      if (snapshot.empty || (!snapshot.target && !snapshot.selectionTarget)) return null;
+      if (snapshot.empty) return null;
       const cells = currentCellSelectionTarget();
+      if (!snapshot.target && !snapshot.selectionTarget && !cells) return null;
       return {
         ...snapshot,
         capturedAt: Date.now(),

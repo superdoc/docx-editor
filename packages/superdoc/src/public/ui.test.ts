@@ -2071,9 +2071,13 @@ describe('public facade (ui)', () => {
     });
   });
 
-  it.each(['original', 'copied', 'serialized'] as const)(
-    'restores %s disjoint cell intent and formats the held cell owners rather than an enclosing text range',
-    async (captureKind) => {
+  it.each(
+    (['original', 'copied', 'serialized'] as const).flatMap((captureKind) =>
+      (['segments', 'public-cells'] as const).map((readbackKind) => [captureKind, readbackKind] as const),
+    ),
+  )(
+    'restores %s disjoint cell intent and formats the held cell owners rather than an enclosing text range (%s readback)',
+    async (captureKind, readbackKind) => {
       const raw = {
         kind: 'selection',
         start: { kind: 'text', blockId: 'CELL0', offset: 3 },
@@ -2082,15 +2086,18 @@ describe('public facade (ui)', () => {
       const info = {
         empty: false,
         selectionTarget: null,
-        target: {
-          kind: 'text',
-          segments: [
-            { blockId: 'CELL0', range: { start: 0, end: 8 } },
-            { blockId: 'CELL1', range: { start: 0, end: 8 } },
-            { blockId: 'CELL3', range: { start: 0, end: 8 } },
-            { blockId: 'CELL4', range: { start: 0, end: 8 } },
-          ],
-        },
+        target:
+          readbackKind === 'public-cells'
+            ? null
+            : {
+                kind: 'text',
+                segments: [
+                  { blockId: 'CELL0', range: { start: 0, end: 8 } },
+                  { blockId: 'CELL1', range: { start: 0, end: 8 } },
+                  { blockId: 'CELL3', range: { start: 0, end: 8 } },
+                  { blockId: 'CELL4', range: { start: 0, end: 8 } },
+                ],
+              },
         activeMarks: [],
         activeCommentIds: [],
         activeChangeIds: [],
@@ -2118,6 +2125,7 @@ describe('public facade (ui)', () => {
         }) as any;
       const ui = createSuperDocUI({ superdoc });
       const capture = ui.selection.capture();
+      expect(capture).not.toBeNull();
       expect(capture?.selectionTarget).toBeNull();
       const retainedCapture =
         captureKind === 'copied'

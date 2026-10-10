@@ -4,6 +4,8 @@ import type { FlowBlock, Measure, ParagraphBlock, ParagraphMeasure } from '@supe
 import { resolveLayout } from '@superdoc/layout-resolved';
 import { createDomPainter } from '@superdoc/painter-dom';
 import { incrementalLayout, measureCache } from '../src/incrementalLayout.js';
+import { remeasureParagraph } from '../src/remeasure.js';
+import { findCharacterAtX, measureCharacterX } from '../src/text-measurement.js';
 
 const options = { pageSize: { w: 300, h: 400 }, margins: { top: 20, right: 20, bottom: 20, left: 20 } };
 const paragraph = (): ParagraphBlock => ({
@@ -60,6 +62,35 @@ const freeze = (value: object): void => {
 
 describe('incrementalLayout immutable measured tabs', () => {
   beforeEach(() => measureCache.clear());
+
+  it('paints a remeasured frozen trailing tab and its underline from line-owned widths', async () => {
+    const block: ParagraphBlock = {
+      kind: 'paragraph',
+      id: 'frozen-trailing-tab',
+      runs: [{ kind: 'tab', text: '\t', fontFamily: 'Arial', fontSize: 12, underline: { style: 'single' } }],
+      attrs: { tabs: [{ pos: 720, val: 'start' }] },
+    };
+    freeze(block);
+    const blocks = [block];
+    const result = await incrementalLayout([], null, blocks, options, async () => remeasureParagraph(block, 260));
+    const resolvedLayout = resolveLayout({
+      layout: result.layout,
+      blocks,
+      measures: result.measures,
+      flowMode: 'semantic',
+    });
+    const mount = document.createElement('div');
+    const painter = createDomPainter({ flowMode: 'semantic' });
+    painter.paint({ resolvedLayout }, mount);
+
+    expect(mount.querySelector<HTMLElement>('.superdoc-tab')?.style.width).toBe('48px');
+    expect(mount.querySelector<HTMLElement>('.superdoc-tab')?.style.borderBottom).toContain('solid');
+    const line = (result.measures[0] as ParagraphMeasure).lines[0]!;
+    expect(measureCharacterX(block, line, 1)).toBe(48);
+    expect(findCharacterAtX(block, line, 40, 0).charOffset).toBe(1);
+    expect(block.runs[0]).not.toHaveProperty('width');
+    painter.dispose();
+  });
 
   it.each([
     ['paragraph previous measure', false, true],

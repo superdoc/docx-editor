@@ -225,6 +225,48 @@ const tabRun = (overrides?: Partial<Run>): Run => ({
   ...overrides,
 });
 
+describe('immutable tab remeasurement', () => {
+  it.each(['start', 'end', 'center', 'decimal'] as const)(
+    'preserves frozen input and measured geometry for %s tabs',
+    (val) => {
+      const block = createBlock([textRun('A'), tabRun(), textRun('12.3')], {
+        tabs: [{ pos: 1440, val, leader: 'dot' }],
+      });
+      const expected = remeasureParagraph(structuredClone(block), 240);
+      for (const run of block.runs) Object.freeze(run);
+      Object.freeze(block.runs);
+      Object.freeze(block);
+
+      const actual = remeasureParagraph(block, 240);
+
+      expect(actual).toEqual(expected);
+      expect(actual.lines[0].tabWidths?.[1]).toBeCloseTo(86, 5);
+      expect(block.runs[1]).not.toHaveProperty('width');
+    },
+  );
+
+  it('records zero width for a frozen vanished tab without changing the input', () => {
+    const hiddenTab = Object.freeze(tabRun({ vanish: true }));
+    const block = createBlock([textRun('A'), hiddenTab, textRun('B')]);
+
+    const measure = remeasureParagraph(block, 240);
+
+    expect(measure.lines[0].tabWidths?.[1]).toBe(0);
+    expect(measure.lines[0].width).toBe(20);
+    expect(hiddenTab).not.toHaveProperty('width');
+  });
+
+  it('keeps a prior tab width unchanged when a new measurement resolves another stop', () => {
+    const tab = Object.freeze(tabRun({ width: 5 }));
+    const block = createBlock([textRun('A'), tab, textRun('B')], { tabs: [{ pos: 1440, val: 'start' }] });
+
+    const measure = remeasureParagraph(block, 240);
+
+    expect(measure.lines[0].tabWidths?.[1]).toBeCloseTo(86, 5);
+    expect(tab).toHaveProperty('width', 5);
+  });
+});
+
 /**
  * Helper to convert pixels to TWIPS for tab stop positions.
  *
@@ -725,7 +767,7 @@ describe('remeasureParagraph', () => {
       expect(measure.lines).toHaveLength(1);
       // "A" = 10px, tab advances to 48px, "B" starts at 48px
       const trailingText = measure.lines[0].segments?.find((segment) => segment.runIndex === 2);
-      expect((explicitTab as { width?: number }).width).toBeCloseTo(38, 5);
+      expect(measure.lines[0].tabWidths?.[1]).toBeCloseTo(38, 5);
       expect(trailingText?.x).toBeCloseTo(DEFAULT_TAB_INTERVAL_PX, 5);
       expect(measure.lines[0].width).toBeCloseTo(58, 5);
       expect(measure.lines[0].hasExplicitTabStops).toBe(true);
@@ -803,7 +845,7 @@ describe('remeasureParagraph', () => {
 
       expect(measure.lines).toHaveLength(1);
       const trailingText = measure.lines[0].segments?.find((segment) => segment.runIndex === 4);
-      expect((fallbackTab as { width?: number }).width).toBeCloseTo(DEFAULT_TAB_INTERVAL_PX - CHAR_WIDTH, 5);
+      expect(measure.lines[0].tabWidths?.[3]).toBeCloseTo(DEFAULT_TAB_INTERVAL_PX - CHAR_WIDTH, 5);
       expect(trailingText?.x).toBeCloseTo(DEFAULT_TAB_INTERVAL_PX * 2, 5);
       expect(measure.lines[0].width).toBeCloseTo(DEFAULT_TAB_INTERVAL_PX * 2 + CHAR_WIDTH, 5);
     });
@@ -836,7 +878,7 @@ describe('remeasureParagraph', () => {
       const measure = remeasureParagraph(block, 200);
 
       expect(measure.lines).toHaveLength(1);
-      expect((run as { width?: number }).width).toBeCloseTo(hangingPx, 1);
+      expect(measure.lines[0].tabWidths?.[0]).toBeCloseTo(hangingPx, 1);
       expect(measure.lines[0].width).toBeCloseTo(hangingPx + 'Test doc'.length * CHAR_WIDTH, 1);
     });
 
@@ -852,7 +894,7 @@ describe('remeasureParagraph', () => {
       const measure = remeasureParagraph(block, 200);
 
       expect(measure.lines).toHaveLength(1);
-      expect((run as { width?: number }).width).toBeCloseTo(expectedTabAdvance, 1);
+      expect(measure.lines[0].tabWidths?.[0]).toBeCloseTo(expectedTabAdvance, 1);
       expect(measure.lines[0].width).toBeCloseTo(expectedTabAdvance + 'Test doc'.length * CHAR_WIDTH, 1);
 
       const textSegment = measure.lines[0].segments?.find((segment) => segment.runIndex === 1);
@@ -873,7 +915,7 @@ describe('remeasureParagraph', () => {
       const measure = remeasureParagraph(block, 100);
 
       expect(measure.lines.length).toBeGreaterThan(1);
-      expect((run as { width?: number }).width).toBeCloseTo(30, 1);
+      expect(measure.lines.find((line) => line.tabWidths?.[1] != null)?.tabWidths?.[1]).toBeCloseTo(30, 1);
 
       const textSegment = measure.lines
         .slice(1)
@@ -911,12 +953,12 @@ describe('remeasureParagraph', () => {
         tabs: [{ pos: pxToTwips(tabStopPx), val: 'start' }],
       });
 
-      remeasureParagraph(block, 200);
+      const result = remeasureParagraph(block, 200);
 
       // The leading implicit zero stop is already behind the cursor:
       // absCurrentX = 50px text + -40px indent = 10px, target = 190px.
       // The old mixed model clamped at 160px and advanced only 150px.
-      expect((run as { width?: number }).width).toBeCloseTo(180, 1);
+      expect(result.lines[0].tabWidths?.[1]).toBeCloseTo(180, 1);
     });
 
     it('keeps right-aligned tab groups on the same line', () => {

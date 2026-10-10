@@ -241,6 +241,79 @@ describe('text measurement utility', () => {
     expect(measureCharacterX(block, line, 8)).toBe(6 * CHAR_WIDTH + 48 + CHAR_WIDTH);
   });
 
+  it.each([
+    {
+      name: 'tab-only',
+      runs: [{ kind: 'tab', text: '\t', pmStart: 0, pmEnd: 1 }],
+      fromRun: 0,
+      fromChar: 0,
+      widths: { 0: 48 },
+      positions: [0, 48],
+    },
+    {
+      name: 'stale trailing tab',
+      runs: [
+        { text: 'A', pmStart: 0, pmEnd: 1 },
+        { kind: 'tab', text: '\t', width: 3, pmStart: 1, pmEnd: 2 },
+      ],
+      fromRun: 0,
+      fromChar: 0,
+      widths: { 1: 48 },
+      positions: [0, 10, 58],
+    },
+    {
+      name: 'nonzero first run',
+      runs: [{ text: 'Previous line' }, { kind: 'tab', text: '\t', width: 3, pmStart: 0, pmEnd: 1 }],
+      fromRun: 1,
+      fromChar: 0,
+      widths: { 1: 48 },
+      positions: [0, 48],
+    },
+    {
+      name: 'omitted empty boundary slice',
+      runs: [
+        { text: 'A', pmStart: 0, pmEnd: 1 },
+        { kind: 'tab', text: '\t', width: 3, pmStart: 1, pmEnd: 2 },
+      ],
+      fromRun: 0,
+      fromChar: 1,
+      widths: { 1: 48 },
+      positions: [0, 48],
+    },
+    {
+      name: 'consecutive tabs',
+      runs: [
+        { kind: 'tab', text: '\t', width: 3, pmStart: 0, pmEnd: 1 },
+        { kind: 'tab', text: '\t', width: 3, pmStart: 1, pmEnd: 2 },
+      ],
+      fromRun: 0,
+      fromChar: 0,
+      widths: { 0: 24, 1: 48 },
+      positions: [0, 24, 72],
+    },
+  ])('uses line-owned widths for $name caret and hit-testing', ({ runs, fromRun, fromChar, widths, positions }) => {
+    const block = createBlock(runs.map((run) => Object.freeze(run)) as Run[]);
+    Object.freeze(block.runs);
+    const line = baseLine({
+      fromRun,
+      fromChar,
+      toRun: runs.length - 1,
+      toChar: 1,
+      width: positions.at(-1)!,
+      tabWidths: widths as Record<number, number>,
+    });
+    expect(positions.map((_, offset) => measureCharacterX(block, line, offset))).toEqual(positions);
+    for (let offset = 0; offset < positions.length; offset += 1) {
+      expect(findCharacterAtX(block, line, positions[offset], 0).charOffset).toBe(offset);
+    }
+  });
+
+  it('keeps a vanished tab at zero advance despite a stale run width', () => {
+    const block = createBlock([Object.freeze({ kind: 'tab', text: '\t', width: 48, vanish: true })]);
+    const line = baseLine({ toChar: 1, width: 0, tabWidths: { 0: 0 } });
+    expect(measureCharacterX(block, line, 1)).toBe(0);
+  });
+
   it('maps clicks on tabs to correct PM positions', () => {
     const block = createBlock([
       { text: 'A', fontFamily: 'Arial', fontSize: 16, pmStart: 0, pmEnd: 1 },

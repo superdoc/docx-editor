@@ -227,11 +227,16 @@ function measureCharacterXWithoutInlineBoxes(
   const runs = sliceRunsForLine(block, line);
   let currentX = 0;
   let currentCharOffset = 0;
+  let nextTabRunIndex = line.fromRun;
 
   for (const run of runs) {
     if (isTabRun(run)) {
+      // AIDEV-NOTE: Tab slices retain source identity; empty boundary text
+      // slices can disappear, so sliced-array offsets are not line width keys.
+      const sourceRunIndex = block.kind === 'paragraph' ? block.runs.indexOf(run, nextTabRunIndex) : -1;
+      nextTabRunIndex = sourceRunIndex + 1;
       const runLength = TAB_CHAR_LENGTH;
-      const tabWidth = run.width ?? 0;
+      const tabWidth = line.tabWidths?.[sourceRunIndex] ?? run.width ?? 0;
       if (currentCharOffset + runLength >= charOffset) {
         const offsetInRun = charOffset - currentCharOffset;
         return currentX + (offsetInRun <= 0 ? 0 : tabWidth);

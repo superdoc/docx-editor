@@ -12,7 +12,7 @@ import CommentDialog from '@superdoc/components/CommentsLayer/CommentDialog.vue'
 import {
   normalizeFloatingAnchorTop,
   resolveRemovedReviewCardContinuityTarget,
-  resolvePersistentReviewCardTop,
+  resolveOffscreenFloatingCardTop,
   shouldMountFloatingCommentDialog,
 } from './floating-comment-positioning.js';
 
@@ -22,7 +22,7 @@ const SCROLL_OWNER_OVERFLOW_VALUES = new Set(['auto', 'scroll', 'hidden', 'clip'
 
 // Layout algorithm: positions comments in a single column with collision avoidance.
 // When a comment is active it pins at its anchor; neighbors push up/down to avoid overlap.
-// If upward push produces negative tops, everything shifts down to stay on screen.
+// Earlier neighbors may clip above the viewport; the selected anchor stays fixed.
 const resolveCollisions = (positions, activeIndex, gap) => {
   if (activeIndex >= 0) {
     positions[activeIndex].top = positions[activeIndex].anchorTop;
@@ -40,13 +40,6 @@ const resolveCollisions = (positions, activeIndex, gap) => {
       const bottomEdge = cursor - positions[i].height;
       positions[i].top = Math.min(positions[i].anchorTop, bottomEdge);
       cursor = positions[i].top - gap;
-    }
-
-    // Floor: if upward push produced negative tops, shift everything down
-    const minTop = Math.min(...positions.map((p) => p.top));
-    if (minTop < 0) {
-      const shift = Math.abs(minTop);
-      for (const p of positions) p.top += shift;
     }
   } else {
     // No active comment: simple top-to-bottom collision avoidance
@@ -415,7 +408,7 @@ const allPositions = computed(() => {
 
   positions.sort((a, b) => a.anchorTop - b.anchorTop);
 
-  // Persistent review cards whose anchors are outside the viewport remain in
+  // Review cards whose anchors are outside the viewport remain in
   // the bounded output, but they cannot participate in visible-card collision
   // layout. Otherwise they advance the collision cursor and are then restored
   // offscreen, leaving downstream visible cards displaced by rows that no
@@ -423,8 +416,7 @@ const allPositions = computed(() => {
   const collisionPositions = [];
   for (const position of positions) {
     const offscreenTop = position.hasAnchorGeometry
-      ? resolvePersistentReviewCardTop({
-          comment: position.commentRef,
+      ? resolveOffscreenFloatingCardTop({
           anchorTop: position.anchorTop,
           anchorBottom: position.anchorBottom,
           cardHeight: position.height,
@@ -716,6 +708,15 @@ const handleOwnerScroll = () => {
   refreshViewportWindow();
 };
 
+// Contained roots are siblings of the sidebar. Capture only their scrolls,
+// including roots replaced on document reload; nested editor controls do not
+// own document geometry or release review-action continuity.
+const handleDocumentScroll = (event) => {
+  if (event.target instanceof Element && event.target.matches('.superdoc__sub-document')) {
+    handleOwnerScroll();
+  }
+};
+
 const registerOwnerScrollListeners = () => {
   const addTarget = (target) => {
     if (!target?.addEventListener || ownerScrollTargets.has(target)) return;
@@ -727,6 +728,7 @@ const registerOwnerScrollListeners = () => {
   // place SuperDoc inside an outer overflow container, so subscribe to the
   // clipping ancestors that can move this rail as well as the page viewport.
   addTarget(props.parent);
+  props.parent?.addEventListener?.('scroll', handleDocumentScroll, { passive: true, capture: true });
   for (let ancestor = floatingCommentsContainer.value?.parentElement; ancestor; ancestor = ancestor.parentElement) {
     if (SCROLL_OWNER_OVERFLOW_VALUES.has(window.getComputedStyle(ancestor).overflowY)) {
       addTarget(ancestor);
@@ -736,6 +738,7 @@ const registerOwnerScrollListeners = () => {
 };
 
 const unregisterOwnerScrollListeners = () => {
+  props.parent?.removeEventListener?.('scroll', handleDocumentScroll, true);
   for (const target of ownerScrollTargets) {
     target.removeEventListener?.('scroll', handleOwnerScroll);
   }
@@ -958,6 +961,7 @@ watch(activeZoom, () => {
 
 // Track positioned IDs so we can detect additions/removals
 let prevPositionIds = new Set();
+let prevActiveInstanceId = null;
 let prevActiveAnchorTop = null;
 let prevActiveLayoutTop = null;
 
@@ -970,12 +974,19 @@ watch(allPositions, (positions) => {
     typeof activePosition?.anchorTop === 'number' && Number.isFinite(activePosition.anchorTop)
       ? activePosition.anchorTop
       : null;
+  const sameActiveInstance = activeCommentInstanceId.value === prevActiveInstanceId;
   const activeAnchorMoved =
-    activeAnchorTop != null && prevActiveAnchorTop != null && Math.abs(activeAnchorTop - prevActiveAnchorTop) > 1;
+    sameActiveInstance &&
+    activeAnchorTop != null &&
+    prevActiveAnchorTop != null &&
+    Math.abs(activeAnchorTop - prevActiveAnchorTop) > 1;
   const activeLayoutTop =
     typeof activePosition?.top === 'number' && Number.isFinite(activePosition.top) ? activePosition.top : null;
   const activeLayoutMoved =
-    activeLayoutTop != null && prevActiveLayoutTop != null && Math.abs(activeLayoutTop - prevActiveLayoutTop) > 1;
+    sameActiveInstance &&
+    activeLayoutTop != null &&
+    prevActiveLayoutTop != null &&
+    Math.abs(activeLayoutTop - prevActiveLayoutTop) > 1;
   if (activeAnchorMoved && sidebarOffsetY.value !== 0 && !Number.isFinite(instantSidebarAlignmentTargetY.value)) {
     sidebarOffsetY.value = 0;
     setInstantLayoutTransitionsDisabled(false);
@@ -985,12 +996,8 @@ watch(allPositions, (positions) => {
     !Number.isFinite(instantSidebarAlignmentTargetY.value) &&
     !sidebarContinuityAnchor
   ) {
-    // Windowed geometry can add or remove offscreen comment positions while
-    // the active anchor itself stays put. Collision-floor normalization then
-    // changes the active placeholder's document-space top. Preserve its
-    // client-space position by applying the inverse delta to the translated
-    // rail; otherwise the one-shot activation offset becomes stale and sends
-    // an already-visible card offscreen.
+    // Preserve a translated active row when windowed geometry changes its
+    // offscreen placement without moving the same instance's anchor.
     setInstantLayoutTransitionsDisabled(true);
     sidebarOffsetY.value += prevActiveLayoutTop - activeLayoutTop;
     if (activeLayoutContinuityFrame != null) cancelAnimationFrame(activeLayoutContinuityFrame);
@@ -1001,6 +1008,7 @@ watch(allPositions, (positions) => {
       }
     });
   }
+  prevActiveInstanceId = activeCommentInstanceId.value;
   prevActiveAnchorTop = activeAnchorTop;
   prevActiveLayoutTop = activeLayoutTop;
 

@@ -560,7 +560,6 @@ const setFocus = async () => {
   const isTrackedChange = Boolean(props.comment?.trackedChange);
   const targetClientY = getPreferredCommentFocusTargetClientY();
   const isInstanceScopedDialog = props.floatingInstanceId != null;
-  const currentDialogTop = commentDialogElement.value?.getBoundingClientRect?.().top;
   const willChangeActiveDialog =
     !props.comment.resolvedTime &&
     (activeComment.value !== props.comment.commentId ||
@@ -605,8 +604,15 @@ const setFocus = async () => {
     }
     if (willChangeActiveDialog && !isInstanceScopedDialog) {
       requestInstantSidebarAlignment(targetClientY, props.comment.commentId, props.floatingInstanceId ?? null);
-    } else if (willChangeActiveDialog && Number.isFinite(currentDialogTop)) {
-      requestInstantSidebarAlignment(currentDialogTop, props.comment.commentId, props.floatingInstanceId);
+    } else if (isInstanceScopedDialog && !props.comment.resolvedTime) {
+      await nextTick();
+      const { entry } = resolveCommentPositionEntry(props.comment);
+      const anchorClientY = getVisibleThreadAnchorClientY(props.parent, props.floatingPositionEntry ?? entry);
+      if (Number.isFinite(anchorClientY)) {
+        requestInstantSidebarAlignment(anchorClientY, props.comment.commentId, props.floatingInstanceId);
+      } else {
+        clearInstantSidebarAlignment();
+      }
     } else {
       clearInstantSidebarAlignment();
     }

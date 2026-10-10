@@ -1,21 +1,14 @@
 import { describe, expect, it } from 'vite-plus/test';
 import {
   isAnchorOutsideFloatingViewport,
-  isPersistentReviewSidebarItem,
   normalizeFloatingAnchorTop,
   resolveRemovedReviewCardContinuityTarget,
-  resolvePersistentReviewCardTop,
-  shouldKeepPersistentReviewCardAtAnchor,
+  resolveOffscreenFloatingCardTop,
+  shouldKeepFloatingCardAtAnchor,
   shouldMountFloatingCommentDialog,
 } from './floating-comment-positioning.js';
 
 describe('floating comment positioning', () => {
-  it('treats tracked-change review cards as persistent sidebar items', () => {
-    expect(isPersistentReviewSidebarItem({ trackedChange: true })).toBe(true);
-    expect(isPersistentReviewSidebarItem({ trackedChange: false })).toBe(false);
-    expect(isPersistentReviewSidebarItem({})).toBe(false);
-  });
-
   it('keeps ordinary comments anchored at their document position', () => {
     expect(normalizeFloatingAnchorTop(-240, { commentId: 'c-1' })).toBe(-240);
     expect(normalizeFloatingAnchorTop(80, { commentId: 'c-1' })).toBe(80);
@@ -35,9 +28,9 @@ describe('floating comment positioning', () => {
     expect(isAnchorOutsideFloatingViewport(Number.NaN, 0, 620)).toBe(false);
   });
 
-  it('keeps persistent review cards at offscreen anchors instead of collision-packing them into view', () => {
+  it('keeps all review cards at offscreen anchors instead of collision-packing them into view', () => {
     expect(
-      shouldKeepPersistentReviewCardAtAnchor({
+      shouldKeepFloatingCardAtAnchor({
         comment: { commentId: 'tc-1', trackedChange: true },
         anchorTop: -24,
         anchorBottom: -4,
@@ -46,7 +39,7 @@ describe('floating comment positioning', () => {
       }),
     ).toBe(true);
     expect(
-      shouldKeepPersistentReviewCardAtAnchor({
+      shouldKeepFloatingCardAtAnchor({
         comment: { commentId: 'tc-1', trackedChange: true },
         anchorTop: 120,
         anchorBottom: 140,
@@ -55,19 +48,19 @@ describe('floating comment positioning', () => {
       }),
     ).toBe(false);
     expect(
-      shouldKeepPersistentReviewCardAtAnchor({
+      shouldKeepFloatingCardAtAnchor({
         comment: { commentId: 'c-1' },
         anchorTop: -24,
         anchorBottom: -4,
         viewportTop: 0,
         viewportBottom: 620,
       }),
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it('positions persistent review cards outside the viewport once their anchors are fully offscreen', () => {
     expect(
-      resolvePersistentReviewCardTop({
+      resolveOffscreenFloatingCardTop({
         comment: { commentId: 'tc-1', trackedChange: true },
         anchorTop: -26,
         anchorBottom: -8,
@@ -77,7 +70,7 @@ describe('floating comment positioning', () => {
       }),
     ).toBe(-93);
     expect(
-      resolvePersistentReviewCardTop({
+      resolveOffscreenFloatingCardTop({
         comment: { commentId: 'tc-1', trackedChange: true },
         anchorTop: 621,
         anchorBottom: 640,
@@ -87,7 +80,7 @@ describe('floating comment positioning', () => {
       }),
     ).toBe(621);
     expect(
-      resolvePersistentReviewCardTop({
+      resolveOffscreenFloatingCardTop({
         comment: { commentId: 'tc-1', trackedChange: true },
         anchorTop: -10,
         anchorBottom: 8,

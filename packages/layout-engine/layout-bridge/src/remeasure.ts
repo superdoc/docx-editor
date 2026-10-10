@@ -1233,9 +1233,9 @@ const applyTabLayoutToLines = (
         };
       }
 
-      // Set tab run width for rendering
-      if (run && run.kind === 'tab') {
-        (run as { width?: number }).width = Math.max(0, relativeTarget - originX);
+      // Projected runs are immutable; measured geometry belongs to this line.
+      if (run?.kind === 'tab' && tabRunIdx != null) {
+        (line.tabWidths ??= {})[tabRunIdx] = Math.max(0, relativeTarget - originX);
       }
     };
 
@@ -1250,7 +1250,7 @@ const applyTabLayoutToLines = (
       if (!run) continue;
       if (run.kind === 'tab') {
         if (isVanishedRun(run)) {
-          (run as { width?: number }).width = 0;
+          (line.tabWidths ??= {})[runIndex] = 0;
           continue;
         }
         const tabRun = run as TabRun;
@@ -2265,7 +2265,7 @@ export function remeasureParagraph(
     }
   }
 
-  const hasTabRun = runs.some((run) => run?.kind === 'tab' && !isVanishedRun(run));
+  const hasTabRun = runs.some((run) => run?.kind === 'tab');
   const hasTextTab = runs.some(
     (run) =>
       run?.kind === 'text' &&

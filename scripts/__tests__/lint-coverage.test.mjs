@@ -7,9 +7,10 @@ import { fileURLToPath } from 'node:url';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 
-const DIRECTORIES_HOLDING_A_NO_EXPLICIT_ANY_EXEMPTION = ['packages/superdoc/src/core'];
-
-const DIRECTORIES_THAT_LOST_THEIR_NO_EXPLICIT_ANY_EXEMPTION = ['packages/superdoc/src/public/ui'];
+const DIRECTORIES_THAT_LOST_THEIR_NO_EXPLICIT_ANY_EXEMPTION = [
+  'packages/superdoc/src/core',
+  'packages/superdoc/src/public/ui',
+];
 
 const EXPLICIT_ANY_SOURCE = 'export const probe = (value: any) => value;\n';
 
@@ -26,7 +27,7 @@ function lintAnExplicitAnyProbeIn(dir) {
   }
 }
 
-function assertLintRejectsAnExplicitAnyIn(dir, overrideCause) {
+function assertLintRejectsAnExplicitAnyIn(dir) {
   const { status, output } = lintAnExplicitAnyProbeIn(dir);
 
   assert.doesNotMatch(
@@ -39,7 +40,7 @@ function assertLintRejectsAnExplicitAnyIn(dir, overrideCause) {
     output,
     /no-explicit-any/,
     `vp lint did not report typescript(no-explicit-any) for a probe inside ${dir}. Either the rule is ` +
-      `no longer 'error' in vite.config.ts, or ${overrideCause}.\n${output}`,
+      `no longer 'error' in vite.config.ts, or a lint.overrides entry exempted this directory again.\n${output}`,
   );
   assert.notStrictEqual(
     status,
@@ -49,20 +50,8 @@ function assertLintRejectsAnExplicitAnyIn(dir, overrideCause) {
   );
 }
 
-for (const dir of DIRECTORIES_HOLDING_A_NO_EXPLICIT_ANY_EXEMPTION) {
-  test(`vp lint rejects a new explicit any beside the exempted file in ${dir}`, () => {
-    assertLintRejectsAnExplicitAnyIn(
-      dir,
-      'a lint.overrides entry turned it off for more than the single exempted file in this directory',
-    );
-  });
-}
-
 for (const dir of DIRECTORIES_THAT_LOST_THEIR_NO_EXPLICIT_ANY_EXEMPTION) {
   test(`vp lint rejects a new explicit any anywhere in ${dir}`, () => {
-    assertLintRejectsAnExplicitAnyIn(
-      dir,
-      'a lint.overrides entry in vite.config.ts exempted this directory from the rule again',
-    );
+    assertLintRejectsAnExplicitAnyIn(dir);
   });
 }

@@ -93,10 +93,6 @@ export default defineConfig({
         files: ['packages/document-api/src/contract/schemas.ts'],
         rules: { 'unicorn/no-thenable': 'off' },
       },
-      {
-        files: ['packages/superdoc/src/core/SuperDoc.ts'],
-        rules: { 'typescript/no-explicit-any': 'off' },
-      },
     ],
     ignorePatterns: [
       // The old root lint script excluded Vue SFCs and Oxlint would lint them;

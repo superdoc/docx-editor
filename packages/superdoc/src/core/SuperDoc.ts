@@ -356,7 +356,7 @@ type V2ActiveEditorFacade = {
    * promises, including the default worker-backed runtime; SDK/headless
    * document automation stays synchronous on its own surface.
    */
-  doc?: Record<string, any> | null;
+  doc?: Record<string, unknown> | null;
   /** Stable reason `doc` is unavailable; null when live. */
   documentApiUnavailableReason?: string | null;
   save?: (...args: unknown[]) => Promise<unknown>;

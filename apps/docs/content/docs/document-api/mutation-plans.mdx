@@ -34,6 +34,62 @@ Check `doc.capabilities().planEngine.supportedStepOps` before constructing plans
 
 Mutation plans do not accept a per-call `author`, including on individual steps. Use separate tracked plain-text `doc.insert`, `doc.delete`, or `doc.replace` calls when edits need different display authors; unlike a plan, those calls are not atomic as a group.
 
+## Select text across table cells
+
+The `text` returned for a table by `blocks.list({ includeText: true })` is aggregate inspection text. It is not necessarily a searchable text range: concatenating text from several cells does not make it a single `query.match()` or mutation selector. A scoped tracked rewrite whose pattern has no match returns `MATCH_NOT_FOUND`; it does not imply that the table contains hidden tracked text.
+
+For a supported cross-cell rewrite, query the first and last text ranges separately within the table, then combine their returned selection endpoints. This selects all content between those endpoints, including intervening cells. Choose endpoints that describe the intended range and keep them in the same story and document revision.
+
+```ts
+const revision = (await doc.info()).revision;
+const within = { kind: 'block', nodeType: 'table', nodeId: tableId } as const;
+const first = await doc.query.match({
+  select: { type: 'text', pattern: firstCellText },
+  within,
+  require: 'exactlyOne',
+});
+const last = await doc.query.match({
+  select: { type: 'text', pattern: lastCellText },
+  within,
+  require: 'exactlyOne',
+});
+const firstMatch = first.items[0];
+const lastMatch = last.items[0];
+if (firstMatch?.matchKind !== 'text' || lastMatch?.matchKind !== 'text') {
+  throw new Error('Expected text matches for both endpoints');
+}
+const start = firstMatch.target;
+const end = lastMatch.target;
+if (
+  first.evaluatedRevision !== last.evaluatedRevision ||
+  start?.kind !== 'selection' ||
+  end?.kind !== 'selection' ||
+  JSON.stringify(start.story) !== JSON.stringify(end.story)
+) {
+  throw new Error('Resolve both endpoints in the same story and revision');
+}
+const plan = {
+  atomic: true,
+  changeMode: 'tracked' as const,
+  expectedRevision: revision,
+  steps: [
+    {
+      id: 'rewrite-cell-range',
+      op: 'text.rewrite',
+      where: {
+        by: 'target',
+        target: { kind: 'selection', start: start.start, end: end.end, story: start.story },
+      },
+      args: { replacement: { text: replacementText } },
+    },
+  ],
+} satisfies Parameters<typeof doc.mutations.apply>[0];
+const preview = await doc.mutations.preview(plan);
+if (preview.valid) await doc.mutations.apply(plan);
+```
+
+Preview the concrete plan before applying it. This route does not add aggregate-table text matching or scoped hidden tracked-text selection support. An actual hidden tracked-text match with `within` still returns `CAPABILITY_UNSUPPORTED`.
+
 ## Relocate a discussion and decide revisions together
 
 Applications can explicitly relocate a root comment thread before accepting or rejecting exact revision IDs in one mutation. The application chooses which thread to move and its destination. Ordinary revision decisions retain their default behavior.

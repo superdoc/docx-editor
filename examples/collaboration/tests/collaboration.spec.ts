@@ -92,6 +92,63 @@ async function expectDocumentXmlParses(page: Page, documentXml: string): Promise
   ).resolves.toBeNull();
 }
 
+async function documentPageCount(page: Page): Promise<number> {
+  return page.locator('#editor [data-sd-worker-dom-root]:not([data-sd-worker-dom-web]):not([data-sd-worker-dom-capture]) > .superdoc-layout').evaluate((layout) => {
+    let count = 0;
+    for (const child of layout.children) {
+      const extent = child.getAttribute('data-fragment-id')?.match(/^worker-extent-(prefix|gap|suffix)-(\d+)-(\d+)$/);
+      const pageIndex = child.getAttribute('data-page-index');
+      const start = extent
+        ? Number(extent[2])
+        : child.matches('.superdoc-page') && pageIndex !== null && /^\d+$/.test(pageIndex)
+          ? Number(pageIndex)
+          : Number.NaN;
+      const end = extent ? Number(extent[3]) : start + 1;
+      if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start !== count || end <= start ||
+        (extent && child.getAttribute('data-worker-extent') !== extent[1])) {
+        throw new Error('The document page scaffold has an invalid or discontinuous range.');
+      }
+      count = end;
+    }
+    return count;
+  });
+}
+
+async function setPageScaffold(page: Page, children: string): Promise<void> {
+  await page.setContent(`<div id="editor"><div data-sd-worker-dom-root><div class="superdoc-layout">${children}</div></div></div>`);
+}
+
+test('counts logical pages independently of the mounted viewport window', async ({ page }) => {
+  for (const mounted of [0, 9, 16, 25, 64]) {
+    const pages = Array.from({ length: mounted }, (_, index) => `<div class="superdoc-page" data-page-index="${index}"></div>`).join('');
+    const kind = mounted === 0 ? 'prefix' : 'suffix';
+    const suffix = mounted < 64 ? `<div data-worker-extent="${kind}" data-fragment-id="worker-extent-${kind}-${mounted}-64"></div>` : '';
+    await setPageScaffold(page, pages + suffix);
+    expect(await page.locator('.superdoc-page').count()).toBe(mounted);
+    expect(await documentPageCount(page)).toBe(64);
+  }
+  const window = '<div data-worker-extent="prefix" data-fragment-id="worker-extent-prefix-0-9"></div>' +
+    '<div class="superdoc-page" data-page-index="9"></div>' +
+    '<div data-worker-extent="gap" data-fragment-id="worker-extent-gap-10-20"></div>' +
+    '<div class="superdoc-page" data-page-index="20"></div>';
+  await setPageScaffold(page, window + '<div data-worker-extent="suffix" data-fragment-id="worker-extent-suffix-21-64"></div>');
+  expect(await documentPageCount(page)).toBe(64);
+  await setPageScaffold(page, window + '<div data-worker-extent="suffix" data-fragment-id="worker-extent-suffix-21-63"></div>');
+  expect(await documentPageCount(page)).toBe(63);
+});
+
+test('rejects invalid or discontinuous logical page scaffolds', async ({ page }) => {
+  for (const children of [
+    '<div class="superdoc-page" data-page-index="1"></div>',
+    '<div class="superdoc-page" data-page-index="0"></div><div class="superdoc-page" data-page-index="0"></div>',
+    '<div data-worker-extent="suffix" data-fragment-id="worker-extent-suffix-0-0"></div>',
+    '<div class="superdoc-page"></div>',
+  ]) {
+    await setPageScaffold(page, children);
+    await expect(documentPageCount(page)).rejects.toThrow('The document page scaffold has an invalid or discontinuous range.');
+  }
+});
+
 test('synchronizes a DOCX edit between two browser pages', async ({ browser }) => {
   test.setTimeout(300_000);
   const context = await browser.newContext();
@@ -161,14 +218,18 @@ test('renders the same large DOCX page count for a room creator and joiner', asy
 
   await creator.goto('/?mode=create&user=LargeCreator');
   await expect(creator.locator('#status')).toHaveText('Connected.', { timeout: 180_000 });
+  await expect(creator.locator('#editor [data-role="v2-stage"][data-v2-source-coverage]')).toHaveAttribute('data-v2-source-coverage', 'source-complete', { timeout: 180_000 });
+  await expect.poll(() => creator.locator('.superdoc-page').count(), { timeout: 180_000 }).toBeGreaterThan(1);
   const creatorPages = await expect
-    .poll(() => creator.locator('.superdoc-page').count(), { timeout: 180_000 })
+    .poll(() => documentPageCount(creator), { timeout: 180_000 })
     .toBeGreaterThan(1)
-    .then(() => creator.locator('.superdoc-page').count());
+    .then(() => documentPageCount(creator));
 
   await joiner.goto('/?user=LargeJoiner');
   await expect(joiner.locator('#status')).toHaveText('Connected.', { timeout: 180_000 });
-  await expect.poll(() => joiner.locator('.superdoc-page').count(), { timeout: 180_000 }).toBe(creatorPages);
+  await expect(joiner.locator('#editor [data-role="v2-stage"][data-v2-source-coverage]')).toHaveAttribute('data-v2-source-coverage', 'source-complete', { timeout: 180_000 });
+  await expect.poll(() => joiner.locator('.superdoc-page').count(), { timeout: 180_000 }).toBeGreaterThan(1);
+  await expect.poll(() => documentPageCount(joiner), { timeout: 180_000 }).toBe(creatorPages);
 
   const documentXml = await exportDocumentXml(joiner);
   await expectDocumentXmlParses(joiner, documentXml);

@@ -118,7 +118,7 @@ import type {
   StylesGetCatalogResult,
 } from '@superdoc/document-api';
 
-import type { PartialBrowserDocumentApi } from '../browser-document-api.js';
+import type { BrowserDocumentApi, PartialBrowserDocumentApi } from '../browser-document-api.js';
 import type { ExportParams } from '../export-types.js';
 import type { DocumentReplacementResult } from '../document-replacement.js';
 export type { DocumentReplacementResult } from '../document-replacement.js';
@@ -1688,6 +1688,7 @@ export interface SuperDocLike {
    * `destroy()` and a reader cannot call it.
    */
   ui?: BorrowedSuperDocUI;
+  getDocumentApi?(): BrowserDocumentApi | null;
   /** Lifecycle event subscription. */
   on?(event: string, handler: (...args: unknown[]) => void): unknown;
   /** Lifecycle event unsubscription. */

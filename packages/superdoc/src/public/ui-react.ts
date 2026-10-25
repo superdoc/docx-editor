@@ -31,6 +31,7 @@ export {
   useSuperDocToolbar,
   useSuperDocCommand,
   useSuperDocDocument,
+  useSuperDocDocumentApi,
   useSuperDocFontOptions,
   useSuperDocFontSizeOptions,
   useSuperDocZoom,

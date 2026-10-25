@@ -522,7 +522,7 @@ describe('superdoc.ui — sole owner', () => {
       superdoc.on('document-replaced', replaced);
       const pending = superdoc.replaceDocument(replacement);
       const nextEditor = { editorVersion: 2, options: { documentId: 'doc-2' } };
-      Object.defineProperty(superdoc, 'activeEditor', { value: nextEditor, configurable: true });
+      Object.defineProperty(superdoc, 'activeEditor', { value: nextEditor, configurable: true, writable: true });
       finish({ state: 'editing-ready' });
 
       expect(await pending).toEqual({ ok: true });
@@ -580,6 +580,7 @@ describe('superdoc.ui — sole owner', () => {
           },
         },
         configurable: true,
+        writable: true,
       });
       const ready = vi.fn();
       const replaced = vi.fn();
@@ -606,6 +607,7 @@ describe('superdoc.ui — sole owner', () => {
           },
         },
         configurable: true,
+        writable: true,
       });
       const source = new Blob(['next']);
       await expect(superdoc.replaceFile(source)).rejects.toBe(error);
@@ -642,7 +644,7 @@ describe('superdoc.ui — sole owner', () => {
           return { state };
         },
       };
-      Object.defineProperty(superdoc, 'activeEditor', { value: editor, configurable: true });
+      Object.defineProperty(superdoc, 'activeEditor', { value: editor, configurable: true, writable: true });
       return tracker;
     }
 
@@ -698,7 +700,7 @@ describe('superdoc.ui — sole owner', () => {
           return { state: 'editing-ready' };
         },
       };
-      Object.defineProperty(superdoc, 'activeEditor', { value: editor, configurable: true });
+      Object.defineProperty(superdoc, 'activeEditor', { value: editor, configurable: true, writable: true });
 
       const ui = superdoc.ui;
       ui.viewport.observe(() => {});
@@ -723,7 +725,7 @@ describe('superdoc.ui — sole owner', () => {
     /** A legacy (non-v2) editor facade whose replace resolves with `state`. */
     function stubLegacyActiveEditor(superdoc: SuperDocInstance, result: unknown): void {
       const editor = { replaceFile: async () => result };
-      Object.defineProperty(superdoc, 'activeEditor', { value: editor, configurable: true });
+      Object.defineProperty(superdoc, 'activeEditor', { value: editor, configurable: true, writable: true });
     }
 
     it('does not emit when a legacy replace reports a non-ready state', async () => {
@@ -752,6 +754,7 @@ describe('superdoc.ui — sole owner', () => {
       Object.defineProperty(superdoc, 'activeEditor', {
         value: { options: { documentId: 'doc-1' }, replaceFile: async () => ({ state }) },
         configurable: true,
+        writable: true,
       });
       return { superdoc, storedData: () => superdoc.config.documents[0]!['data'] };
     }

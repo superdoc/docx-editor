@@ -47,6 +47,7 @@ import { createBuiltInToolbar } from '../internal/toolbar/index.js';
 import { translateExportDiagnostic } from '../internal/diagnostics/translate-diagnostic.js';
 import { createSuperDocUI } from '../public/ui/create-super-doc-ui.js';
 import type { BorrowedSuperDocUI, SelectionSlice, SuperDocUI } from '../public/ui/types.js';
+import type { BrowserDocumentApi } from '../public/browser-document-api.js';
 import { loadDefaultV2IntegrationOrFallback } from './v2-integration/v2-integration.js';
 
 /**
@@ -1395,6 +1396,10 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
     }
     this.#ensureContentControlActiveChangeBridge();
     return this.#ui;
+  }
+
+  getDocumentApi(): BrowserDocumentApi | null {
+    return this.activeEditor?.doc ?? null;
   }
 
   get diagnostics(): SuperDocDiagnostics {
@@ -4269,6 +4274,8 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
     this.toolbar?.destroy?.();
     this.commentsList?.close();
     this.commentsList = null;
+
+    this.#clearActiveEditorProjection();
 
     // Unmount the app FIRST so editors are destroyed — this triggers each
     // extension's onDestroy() which cancels debounced Y.js writes and

@@ -341,6 +341,7 @@ export default defineConfig(({ mode, command }) => {
           'pdfjs-dist/web/pdf_viewer.mjs',
           'react',
           'react/jsx-runtime',
+          'use-sync-external-store/shim',
           // V2 collaboration/runtime peers the host app provides (kept as one
           // shared copy across the page, matching the v2 external-peer policy).
           'y-protocols',

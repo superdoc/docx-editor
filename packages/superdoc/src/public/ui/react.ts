@@ -12,12 +12,14 @@
  */
 
 import { createContext, createElement, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { useSyncExternalStore } from 'use-sync-external-store/shim';
 import type { MutableRefObject, ReactNode } from 'react';
 
 import { createSuperDocUI } from './create-super-doc-ui.js';
 import { toSliceSource } from './slice-source.js';
 import type { SliceSource } from './slice-source.js';
 
+import type { BrowserDocumentApi } from '../browser-document-api.js';
 import type {
   BorrowedSuperDocUI,
   CommandExecutionResult,
@@ -134,6 +136,25 @@ export function useSuperDocUI(): BorrowedSuperDocUI | null {
 /** Read the raw bound SuperDoc host, or `null` until one is bound. */
 export function useSuperDocHost(): SuperDocHost | null {
   return useContextValue().host;
+}
+
+export function useSuperDocDocumentApi(): BrowserDocumentApi | null {
+  const host = useSuperDocHost();
+  const subscribe = useCallback(
+    (onActiveEditorChange: () => void) => {
+      host?.on?.('active-editor-change', onActiveEditorChange);
+      return () => {
+        host?.off?.('active-editor-change', onActiveEditorChange);
+      };
+    },
+    [host],
+  );
+  const read = () => readDocumentApi(host);
+  return useSyncExternalStore(subscribe, read, read);
+}
+
+function readDocumentApi(host: SuperDocHost | null): BrowserDocumentApi | null {
+  return host?.getDocumentApi?.() ?? null;
 }
 
 /** Get the stable callback used to bind a running SuperDoc instance. */

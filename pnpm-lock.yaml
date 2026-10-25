@@ -48,6 +48,9 @@ catalogs:
     '@types/react-dom':
       specifier: ^19.2.3
       version: 19.2.3
+    '@types/use-sync-external-store':
+      specifier: ^1.7.0
+      version: 1.7.0
     '@types/ws':
       specifier: ^8.18.1
       version: 8.18.1
@@ -159,6 +162,9 @@ catalogs:
     typescript:
       specifier: ^5.9.2
       version: 5.9.3
+    use-sync-external-store:
+      specifier: ^1.7.0
+      version: 1.7.0
     uuid:
       specifier: ^11.1.1
       version: 11.1.1
@@ -1070,6 +1076,9 @@ importers:
       react:
         specifier: '>=16.8.0'
         version: 19.2.4
+      use-sync-external-store:
+        specifier: 'catalog:'
+        version: 1.7.0(react@19.2.4)
       uuid:
         specifier: 'catalog:'
         version: 11.1.1
@@ -1131,6 +1140,9 @@ importers:
       '@types/react':
         specifier: 'catalog:'
         version: 19.2.14
+      '@types/use-sync-external-store':
+        specifier: 'catalog:'
+        version: 1.7.0
       '@vitejs/plugin-vue':
         specifier: 'catalog:'
         version: 6.0.8(vite@7.3.1(@types/node@25.6.0)(jiti@2.7.0)(less@4.4.2)(lightningcss@1.33.0)(sass@1.97.3)(terser@5.46.1)(tsx@4.21.0)(yaml@2.9.0))(vue@3.5.32(typescript@5.9.3))
@@ -4047,6 +4059,9 @@ packages:
 
   '@types/unist@3.0.3':
     resolution: {integrity: sha512-ko/gIFJRv177XgZsZcBwnqJN5x/Gien8qNOn0D5bQU/zAzVf9Zt3BlcUiLqhV9y4ARk0GbT3tnUiPNgnTXzc/Q==}
+
+  '@types/use-sync-external-store@1.7.0':
+    resolution: {integrity: sha512-v8435kzWm3FuxyUa4r8o4sG6b0D+r+uOrzF5MXHxZKW4Haoo6txu/lq56Vio45e2i1nkmFPA+R7myWcmV7Z7Bg==}
 
   '@types/validator@13.15.10':
     resolution: {integrity: sha512-T8L6i7wCuyoK8A/ZeLYt1+q0ty3Zb9+qbSSvrIVitzT3YjZqkTZ40IbRsPanlB4h1QB3JVL1SYCdR6ngtFYcuA==}
@@ -9600,6 +9615,11 @@ packages:
       '@types/react':
         optional: true
 
+  use-sync-external-store@1.7.0:
+    resolution: {integrity: sha512-6L+EeigHMQhdaIPNIFUKwfWJSwWFQ8gJbJ2DLOs5sDIegTwR9fRxvnM3uciHKjIZhFz+KAv2emhWMRvDmMcY8A==}
+    peerDependencies:
+      react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
+
   util-deprecate@1.0.2:
     resolution: {integrity: sha512-EPD5q1uXyFxJpCrLnCc1nHnq3gOa6DZBocAIiI2TaSCA7VCJ1UJDMagCzIkXNsUYfD1daK//LTEQ8xiIbrHtcw==}
 
@@ -12704,6 +12724,8 @@ snapshots:
   '@types/unist@2.0.11': {}
 
   '@types/unist@3.0.3': {}
+
+  '@types/use-sync-external-store@1.7.0': {}
 
   '@types/validator@13.15.10': {}
 
@@ -19297,6 +19319,10 @@ snapshots:
       tslib: 2.8.1
     optionalDependencies:
       '@types/react': 19.2.14
+
+  use-sync-external-store@1.7.0(react@19.2.4):
+    dependencies:
+      react: 19.2.4
 
   util-deprecate@1.0.2: {}
 

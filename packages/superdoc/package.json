@@ -135,6 +135,7 @@
     "konva": "catalog:",
     "pinia": "catalog:",
     "pdfjs-dist": "catalog:",
+    "use-sync-external-store": "catalog:",
     "uuid": "catalog:",
     "vue": "^3.5.11",
     "y-websocket": "catalog:"
@@ -178,6 +179,7 @@
     "@superdoc/painter-dom": "workspace:*",
     "@superdoc/style-engine": "workspace:*",
     "@types/react": "catalog:",
+    "@types/use-sync-external-store": "catalog:",
     "@vitejs/plugin-vue": "catalog:",
     "@vue/test-utils": "catalog:",
     "jszip": "catalog:",

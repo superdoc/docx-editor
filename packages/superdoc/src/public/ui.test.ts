@@ -2952,6 +2952,162 @@ describe('public ui — viewport + metadata geometry', () => {
     expect(ui.metadata.getRect({ id: 'cite-001' }).found).toBe(true);
   });
 
+  describe('viewport.getRect with a tracked-change address', () => {
+    const CHANGE_ID = 'tc-1';
+    const ADDRESS = { kind: 'entity', entityType: 'trackedChange', entityId: CHANGE_ID } as const;
+    const TEXT_TARGET = {
+      kind: 'text',
+      address: ADDRESS,
+      segments: [{ blockId: 'P2', range: { start: 17, end: 40 } }],
+    };
+
+    function trackChangesSuperdoc(get: (input: { id: string }) => unknown, getLocalMutationRevision?: () => number) {
+      const fixture = makeGeometrySuperdoc({ getLocalMutationRevision });
+      const doc = fixture.superdoc.activeEditor.doc as Record<string, unknown>;
+      const getSpy = vi.fn(get);
+      doc.trackChanges = { list: () => ({ items: [] }), get: getSpy };
+      return { ...fixture, get: getSpy };
+    }
+    const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+    it('resolves the change through trackChanges.get and measures its painted text', async () => {
+      const { superdoc, get, getTargetRects } = trackChangesSuperdoc(() =>
+        Promise.resolve({ id: CHANGE_ID, target: TEXT_TARGET }),
+      );
+      const ui = createSuperDocUI({ superdoc });
+
+      expect(ui.viewport.getRect({ target: ADDRESS })).toMatchObject({ found: false, reason: 'not-ready' });
+      await settle();
+      const result = ui.viewport.getRect({ target: ADDRESS });
+
+      expect(get).toHaveBeenCalledWith({ id: CHANGE_ID });
+      expect(getTargetRects).toHaveBeenLastCalledWith({ target: TEXT_TARGET });
+      expect(result).toMatchObject({ found: true, rect: { top: 20 } });
+    });
+
+    it('reads each change once per document revision, however often it is measured', async () => {
+      const { superdoc, get } = trackChangesSuperdoc(() => Promise.resolve({ id: CHANGE_ID, target: TEXT_TARGET }));
+      const ui = createSuperDocUI({ superdoc });
+      for (let i = 0; i < 5; i += 1) {
+        ui.viewport.getRect({ target: ADDRESS });
+        await settle();
+      }
+      expect(get).toHaveBeenCalledTimes(1);
+    });
+
+    it('reads a change again after an edit elsewhere moves it', async () => {
+      let revision = 0;
+      const moved = { ...TEXT_TARGET, segments: [{ blockId: 'P2', range: { start: 3, end: 26 } }] };
+      const { superdoc, get, getTargetRects } = trackChangesSuperdoc(
+        () => Promise.resolve({ id: CHANGE_ID, target: revision === 0 ? TEXT_TARGET : moved }),
+        () => revision,
+      );
+      const ui = createSuperDocUI({ superdoc });
+      ui.viewport.getRect({ target: ADDRESS });
+      await settle();
+
+      revision = 1;
+      expect(ui.viewport.getRect({ target: ADDRESS })).toMatchObject({ found: false, reason: 'not-ready' });
+      await settle();
+      ui.viewport.getRect({ target: ADDRESS });
+
+      expect(get).toHaveBeenCalledTimes(2);
+      expect(getTargetRects).toHaveBeenLastCalledWith({ target: moved });
+    });
+
+    it('notifies viewport observers once a pending change resolves, when it can be measured', async () => {
+      const { superdoc } = trackChangesSuperdoc(() => Promise.resolve({ id: CHANGE_ID, target: TEXT_TARGET }));
+      const ui = createSuperDocUI({ superdoc });
+      const seen: unknown[] = [];
+      ui.viewport.observe(() => seen.push(ui.viewport.getRect({ target: ADDRESS })));
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      seen.length = 0;
+
+      expect(ui.viewport.getRect({ target: ADDRESS })).toMatchObject({ found: false, reason: 'not-ready' });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(seen.at(-1)).toMatchObject({ found: true, rect: { top: 20 } });
+
+      seen.length = 0;
+      ui.viewport.getRect({ target: TEXT_TARGET });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(seen).toEqual([]);
+    });
+
+    it('fails closed for a change with no text geometry or a change that no longer exists', async () => {
+      const formatting = { kind: 'formatting', address: ADDRESS, subtype: 'run' };
+      const paragraphStart = { ...TEXT_TARGET, segments: [{ blockId: 'P2', range: { start: 0, end: 0 } }] };
+      for (const get of [
+        () => Promise.resolve({ id: CHANGE_ID, target: formatting }),
+        () => Promise.resolve({ id: CHANGE_ID, target: paragraphStart }),
+        () => Promise.reject(new Error('gone')),
+      ]) {
+        const { superdoc, getTargetRects } = trackChangesSuperdoc(get);
+        const ui = createSuperDocUI({ superdoc });
+        ui.viewport.getRect({ target: ADDRESS });
+        await settle();
+        expect(ui.viewport.getRect({ target: ADDRESS })).toMatchObject({ found: false, reason: 'unresolved' });
+        expect(getTargetRects).not.toHaveBeenCalled();
+      }
+    });
+  });
+
+  describe('viewport.getRect with a comment address', () => {
+    const ADDRESS = { kind: 'entity', entityType: 'comment', entityId: 'c-1' } as const;
+    const target = (start: number) => ({
+      kind: 'text',
+      segments: [{ blockId: 'P2', range: { start, end: start + 15 } }],
+    });
+    const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+    it('measures the comment where it is now, read again after an edit elsewhere moves it', async () => {
+      let revision = 0;
+      const fixture = makeGeometrySuperdoc({ getLocalMutationRevision: () => revision });
+      const get = vi.fn((input: { commentId: string }) =>
+        Promise.resolve({ commentId: input.commentId, target: target(revision === 0 ? 40 : 17) }),
+      );
+      (fixture.superdoc.activeEditor.doc as Record<string, unknown>).comments = { list: () => ({ items: [] }), get };
+      const ui = createSuperDocUI({ superdoc: fixture.superdoc });
+
+      expect(ui.viewport.getRect({ target: ADDRESS })).toMatchObject({ found: false, reason: 'not-ready' });
+      await settle();
+      expect(ui.viewport.getRect({ target: ADDRESS }).found).toBe(true);
+      expect(get).toHaveBeenCalledWith({ commentId: 'c-1' });
+      expect(fixture.getTargetRects).toHaveBeenLastCalledWith({ target: target(40) });
+
+      revision = 1;
+      expect(ui.viewport.getRect({ target: ADDRESS })).toMatchObject({ found: false, reason: 'not-ready' });
+      await settle();
+      ui.viewport.getRect({ target: ADDRESS });
+      expect(fixture.getTargetRects).toHaveBeenLastCalledWith({ target: target(17) });
+    });
+
+    it('measures a comment anchored at a single point', async () => {
+      const fixture = makeGeometrySuperdoc({});
+      const point = { kind: 'text', segments: [{ blockId: 'P2', range: { start: 4, end: 4 } }] };
+      (fixture.superdoc.activeEditor.doc as Record<string, unknown>).comments = {
+        list: () => ({ items: [] }),
+        get: () => Promise.resolve({ commentId: 'c-1', target: point }),
+      };
+      const ui = createSuperDocUI({ superdoc: fixture.superdoc });
+      ui.viewport.getRect({ target: ADDRESS });
+      await settle();
+      expect(ui.viewport.getRect({ target: ADDRESS })).toMatchObject({ found: true });
+      expect(fixture.getTargetRects).toHaveBeenLastCalledWith({ target: point });
+    });
+
+    it('is unresolved for a comment that no longer exists', async () => {
+      const fixture = makeGeometrySuperdoc({});
+      (fixture.superdoc.activeEditor.doc as Record<string, unknown>).comments = {
+        list: () => ({ items: [] }),
+        get: () => Promise.reject(new Error('TARGET_NOT_FOUND')),
+      };
+      const ui = createSuperDocUI({ superdoc: fixture.superdoc });
+      ui.viewport.getRect({ target: ADDRESS });
+      await settle();
+      expect(ui.viewport.getRect({ target: ADDRESS })).toMatchObject({ found: false, reason: 'unresolved' });
+    });
+  });
+
   it('metadata.scrollIntoView resolves the id and delegates to host.scrollTargetIntoView', async () => {
     const { superdoc, resolve, scrollTargetIntoView } = makeGeometrySuperdoc();
     const ui = createSuperDocUI({ superdoc });

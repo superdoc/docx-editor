@@ -10927,7 +10927,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       if (typeof host?.scrollTargetIntoView !== 'function') {
         return { success: false, ok: false, reason: SUPERDOC_UI_REASONS.hostCapabilityUnavailable };
       }
-      const token = metadataResolutionToken();
+      const token = localContentToken();
       let active = true;
       const current = (): boolean =>
         active &&
@@ -10936,7 +10936,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
         getEditor() === editor &&
         getDoc() === doc &&
         getHost() === host &&
-        metadataResolutionToken() === token;
+        localContentToken() === token;
       const run = async (): Promise<WorkflowScrollResult> => {
         try {
           // bookmarks.get picks the first duplicate; navigation must not silently
@@ -12467,6 +12467,36 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
 
   activeEditorResetHooks.push(rebindGeometryObservers);
 
+  const resolveEntityGeometryTarget = (address: LooseRecord): { target: unknown } | { reason: string } => {
+    const comment = address.entityType === 'comment';
+    const get = hostMethod(comment ? getDoc()?.comments : getDoc()?.trackChanges, 'get');
+    if (!get) return { reason: 'unavailable' };
+    const id = address.entityId as string;
+    const story = comment ? undefined : readEntityRequestStory({ address });
+    const input = comment ? { commentId: id } : { id, ...(story ? { story } : {}) };
+    const { value, status } = readAsync<unknown>(
+      `${address.entityType}:geometry:${id}:${storyLocatorSignature(story ?? null)}`,
+      localContentToken(),
+      () =>
+        Promise.resolve()
+          .then(() => get(input))
+          .catch(() => null),
+      (info) => {
+        const target = readEntityTarget(info) as LooseRecord | null;
+        if (!target || !Array.isArray(target.segments) || target.segments.length === 0) return null;
+        const navigationAnchorOnly =
+          !comment &&
+          (target.segments as Array<{ range?: { start?: unknown; end?: unknown } }>).every(
+            (segment) => segment.range?.start === segment.range?.end,
+          );
+        if (navigationAnchorOnly) return null;
+        return story && !target.story ? { ...target, story } : target;
+      },
+    );
+    if (status !== 'ready') return { reason: 'not-ready' };
+    return value ? { target: value } : { reason: 'unresolved' };
+  };
+
   const viewport: ViewportHandle = {
     getRects: async (input) => {
       const initialHost = getHost();
@@ -12516,6 +12546,19 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       }
     },
     getRect: (input: ViewportGetRectInput): ViewportRectResult => {
+      const requested = input.target as LooseRecord | undefined;
+      if (
+        requested?.kind === 'entity' &&
+        (requested.entityType === 'trackedChange' || requested.entityType === 'comment') &&
+        typeof requested.entityId === 'string'
+      ) {
+        const resolved = resolveEntityGeometryTarget(requested);
+        if ('reason' in resolved) return rectFailure(resolved.reason);
+        return viewport.getRect({
+          target: resolved.target as ViewportGetRectInput['target'],
+          relativeTo: input.relativeTo,
+        });
+      }
       // v2 path: resolve through the v2 host target-geometry surface. This
       // replaces the old v1 entity-rect probe and fails closed (no synthesized
       // boxes) for unmounted / unresolved / unpainted targets.
@@ -12636,7 +12679,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
 
   const metadataResolveKey = (id: string): string => `metadata:resolve:${id}`;
 
-  const metadataResolutionToken = (): string => {
+  const localContentToken = (): string => {
     const host = getHost();
     const localRevision = safeCall<unknown>(() => hostMethod(host, 'getLocalMutationRevision')?.(), null);
     return `${contentToken()}|local:${typeof localRevision === 'number' ? localRevision : 'unknown'}`;
@@ -12649,7 +12692,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     if (!resolveMetadata) return null;
     const { value, status } = readAsync<unknown>(
       metadataResolveKey(id),
-      metadataResolutionToken(),
+      localContentToken(),
       () => resolveMetadata({ id }),
       readMetadataResolvedTarget,
     );
@@ -12661,9 +12704,9 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     const resolveMetadata = hostMethod(doc?.metadata, 'resolve');
     if (!resolveMetadata) return null;
     try {
-      const token = metadataResolutionToken();
+      const token = localContentToken();
       const resolved = await Promise.resolve(resolveMetadata({ id }));
-      if (token !== metadataResolutionToken()) return null;
+      if (token !== localContentToken()) return null;
       const target = readMetadataResolvedTarget(resolved);
       asyncReads.set(metadataResolveKey(id), {
         token,

@@ -117,10 +117,13 @@ afterEach(() => {
 });
 
 /** Wait for an element that an opened toolbar menu renders; menus mount asynchronously. */
-async function waitForElement<T extends Element>(find: () => T | null | undefined): Promise<T> {
+async function waitForElement<T extends Element>(
+  find: () => T | null | undefined,
+  describeMissing?: () => string,
+): Promise<T> {
   return vi.waitFor(() => {
     const element = find();
-    expect(element).toBeTruthy();
+    expect(element, element ? undefined : describeMissing?.()).toBeTruthy();
     return element!;
   });
 }
@@ -798,30 +801,52 @@ describe('BuiltInToolbar', () => {
       selector: normalized.container,
       ...normalized.options,
     });
-    toolbar.pendingSelectionCapture = { target: { kind: 'document' } };
-    vi.spyOn(toolbar.ui.selection, 'restore').mockImplementation(() => {
-      calls.push('restore');
-      return { ok: true, success: true };
-    });
+    const describeMissing = (stage: string) => () =>
+      JSON.stringify({
+        stage,
+        availableWidth: toolbar.getAvailableWidth(),
+        items: [...toolbar.toolbarItems, ...toolbar.overflowItems].map((item) => ({
+          name: item.name.value,
+          expanded: item.expand.value,
+          disabled: item.disabled.value,
+        })),
+        toolbar: toolbarContainer.outerHTML,
+        menus: [...document.querySelectorAll('[data-sd-part="dropdown-menu"]')].map((menu) => menu.outerHTML),
+      });
 
-    const overflow = await waitForElement(() =>
-      toolbarContainer.querySelector<HTMLElement>('[aria-label="Overflow items"]'),
-    );
-    overflow.click();
-    const status = await waitForElement(() => document.querySelector<HTMLElement>('[data-item="btn-status"]'));
-    status.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
-    status.click();
-    const option = await waitForElement(() =>
-      [...document.querySelectorAll<HTMLElement>('.toolbar-dropdown-option')].find((candidate) =>
-        candidate.textContent?.includes('Draft'),
-      ),
-    );
-    expect(toolbarContainer.contains(option)).toBe(false);
+    try {
+      toolbar.pendingSelectionCapture = { target: { kind: 'document' } };
+      vi.spyOn(toolbar.ui.selection, 'restore').mockImplementation(() => {
+        calls.push('restore');
+        return { ok: true, success: true };
+      });
 
-    option.click();
+      const overflow = await waitForElement(
+        () => toolbarContainer.querySelector<HTMLElement>('[aria-label="Overflow items"]'),
+        describeMissing('overflow trigger'),
+      );
+      overflow.click();
+      const status = await waitForElement(
+        () => document.querySelector<HTMLElement>('[data-item="btn-status"]'),
+        describeMissing('nested Status trigger'),
+      );
+      status.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+      status.click();
+      const option = await waitForElement(
+        () =>
+          [...document.querySelectorAll<HTMLElement>('.toolbar-dropdown-option')].find((candidate) =>
+            candidate.textContent?.includes('Draft'),
+          ),
+        describeMissing('Draft option'),
+      );
+      expect(toolbarContainer.contains(option)).toBe(false);
 
-    await vi.waitFor(() => expect(calls).toEqual(['restore', 'select']));
-    toolbar.destroy();
+      option.click();
+
+      await vi.waitFor(() => expect(calls).toEqual(['restore', 'select']));
+    } finally {
+      toolbar.destroy();
+    }
   });
 
   it('keeps a custom dropdown selection when responsive layout rebuilds the toolbar', () => {

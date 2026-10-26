@@ -236,6 +236,31 @@ Native cancellation emits the existing mutation event with `receipt.temporary.ph
 
 Use `replaceTemporary` to switch choices directly; a separate rollback followed by begin would expose two lifecycle operations. This is the temporary lifecycle's publication guarantee, not a general layout-hold API for arbitrary calls.
 
+### Comment on text an earlier operation inserted
+
+Give an operation an `id`, unique within the call, and a later `comments.create` can target its result with `{ kind: 'operationResult', operationId }`. The comment is anchored on the text that insert created, as it is in the temporary document, so you don't compute offsets yourself:
+
+```ts
+await doc.mutations.beginTemporary({
+  tag: 'counter-proposal',
+  operations: [
+    { operation: 'trackChanges.decide', input: { decision: 'reject', target: { kind: 'id', id: changeId } } },
+    {
+      id: 'ours',
+      operation: 'insert',
+      input: { target: { kind: 'selection', start: at, end: at }, value: 'within 30 days' },
+      options: { changeMode: 'tracked', author: { name: 'Reviewer' } },
+    },
+    {
+      operation: 'comments.create',
+      input: { target: { kind: 'operationResult', operationId: 'ours' }, text: 'Our standard term.' },
+    },
+  ],
+});
+```
+
+Each run resolves the reference again, so `replaceTemporary` anchors the comment on the new wording. Currently only a plain-text `insert` that reports one inserted span can be referenced, and only by `comments.create`, with no other edit between them. A reference to a missing, later or duplicate `id`, or across an edit, fails with `INVALID_INPUT` before anything changes; an unsupported operation fails with `CAPABILITY_UNSUPPORTED`. References stay within one call: `commitTemporary({ operations })` cannot target operations from the shown preview.
+
 Supported operations are plain-text `insert`, `replace`, `delete`, whole-revision `trackChanges.decide`, and `comments.create`, with their existing author, tracking, permission, target, and revision checks. Preparation is atomic. HTML, retained snapshots, and collaboration are not currently supported by this lifecycle and return typed failures. Temporary sessions take an exclusive document mutation lease: API writes are rejected until rollback or commit. Native editor writes, Undo and Redo are also rejected by default; `onNativeEdit: 'cancel'` restores the baseline before allowing those native interactions. Reads and rendering remain available. Dispose the editor when abandoning the entire document; otherwise finish the temporary session explicitly.
 
 ## Retain discussions when a revision erases their text

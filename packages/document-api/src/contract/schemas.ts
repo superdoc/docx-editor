@@ -4840,6 +4840,7 @@ const temporaryProgramProperties = {
     maxItems: 200,
     items: objectSchema(
       {
+        id: { type: 'string', minLength: 1 },
         operation: { enum: ['insert', 'replace', 'delete', 'blocks.delete', 'trackChanges.decide', 'comments.create'] },
         input: { type: 'object' },
         options: { type: 'object' },

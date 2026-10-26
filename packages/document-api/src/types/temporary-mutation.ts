@@ -15,15 +15,26 @@ type TemporaryText<Name extends 'insert' | 'replace', Input> =
   | { operation: Name; input: Input; options?: MutationOptions & { author?: never } }
   | { operation: Name; input: Exclude<Input, { target: BodyStoryLocator }>; options: TrackedTextMutationOptions };
 
+export interface TemporaryOperationResultTarget {
+  kind: 'operationResult';
+  operationId: string;
+}
+
+type CommentsCreate = DocumentApiSurface['comments']['create'];
+type TemporaryCommentInput = Omit<Parameters<CommentsCreate>[0], 'target'> & {
+  target?: Parameters<CommentsCreate>[0]['target'] | TemporaryOperationResultTarget;
+};
+
 /** Operations run in order against the temporary document, as one atomic update. */
-export type TemporaryMutationOperation =
+export type TemporaryMutationOperation = { id?: string } & (
   | TemporaryText<'insert', PlainTextInsertInput>
   | TemporaryText<'replace', TextReplaceInput>
   | { operation: 'replace'; input: ParagraphTextReplaceInput; options?: ReplaceMutationOptions }
   | TemporaryCall<'delete', DocumentApiSurface['delete']>
   | TemporaryCall<'blocks.delete', DocumentApiSurface['blocks']['delete']>
   | TemporaryCall<'trackChanges.decide', DocumentApiSurface['trackChanges']['decide']>
-  | TemporaryCall<'comments.create', DocumentApiSurface['comments']['create']>;
+  | { operation: 'comments.create'; input: TemporaryCommentInput; options?: Parameters<CommentsCreate>[1] }
+);
 
 export interface TemporaryMutationInput {
   /** Host tag echoed on every temporary mutation and its rollback/commit receipt. */

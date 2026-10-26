@@ -13,6 +13,7 @@ export type {
   TemporaryMutationReceipt,
   TemporaryMutationMetadata,
   TemporaryMutationOperation,
+  TemporaryOperationResultTarget,
 } from './types/temporary-mutation.js';
 /**
  * Engine-agnostic Document API surface.

@@ -66,6 +66,16 @@ async function counterRedline() {
         options: { changeMode: 'tracked', author: { name: 'Reviewer' } },
       },
       {
+        id: 'ours',
+        operation: 'insert',
+        input: { target: { kind: 'selection', start: at, end: at }, value: 'within 30 days' },
+        options: { changeMode: 'tracked', author: { name: 'Reviewer' } },
+      },
+      {
+        operation: 'comments.create',
+        input: { target: { kind: 'operationResult', operationId: 'ours' }, text: 'Why' },
+      },
+      {
         operation: 'replace',
         input: { target, text: 'Ours' },
         options: { changeMode: 'tracked', author: { name: 'Reviewer' } },
@@ -100,6 +110,8 @@ async function temporaryLimits() {
       { operation: 'insert', input: { value: '<b>x</b>', type: 'html' } },
       // @ts-expect-error temporary replacements are plain text, not HTML
       { operation: 'replace', input: { target, content: '<b>x</b>', type: 'html' } },
+      // @ts-expect-error only a comment can target an operation result
+      { operation: 'replace', input: { target: { kind: 'operationResult', operationId: 'ours' }, text: 'x' } },
     ],
   });
 }

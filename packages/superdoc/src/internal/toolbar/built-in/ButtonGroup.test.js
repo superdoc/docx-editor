@@ -180,6 +180,33 @@ describe('ButtonGroup font-family combobox wiring', () => {
     expect(document.activeElement).toBe(editor);
     editor.remove();
   });
+
+  it('ends the Tab chain at the font-size field even when a later toolbar control could take focus', async () => {
+    const editor = document.createElement('div');
+    editor.className = 'ProseMirror';
+    editor.tabIndex = -1;
+    document.body.appendChild(editor);
+
+    const bold = useToolbarItem({
+      type: 'button',
+      name: 'bold',
+      command: 'bold',
+      defaultLabel: 'Bold',
+      attributes: { ariaLabel: 'Bold' },
+    });
+    mountGroup([...makeFontControls(), bold]);
+
+    const boldButton = document.body.querySelector('[data-item="btn-bold"]');
+    expect(boldButton).not.toBeNull();
+
+    const fontSizeInput = document.getElementById('inlineTextInput-fontSize');
+    fontSizeInput.focus();
+    fontSizeInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }));
+    await nextTick();
+
+    expect(document.activeElement).toBe(editor);
+    editor.remove();
+  });
 });
 
 describe('ButtonGroup overflow menu', () => {

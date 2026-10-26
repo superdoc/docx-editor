@@ -52,15 +52,6 @@
 
 /* --- Search highlights (transient, used in both editor and presentation mode) --- */
 
-/* AIDEV-NOTE: SD-3045. The DomPainter writes `style.backgroundColor = run.highlight`
- * inline on the same span the search DecorationBridge tags. Inline styles win over
- * class selectors, so on every run whose source rPr carries a highlight mark
- * (e.g. `<w:highlight w:val="white"/>`), the search highlight was invisible —
- * the inline background painted over the class's transient yellow/orange.
- * `!important` is the desired semantic here: while a search session is live, the
- * find-match colour must override any source-doc highlight. The class is only
- * present during a search; clearing the session removes it and the original
- * highlight is restored. */
 .superdoc .ProseMirror-search-match:not([data-sd-search-exact-highlight]) {
   background: var(--sd-ui-search-match-bg) !important;
 }

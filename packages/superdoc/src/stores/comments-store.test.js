@@ -1871,6 +1871,42 @@ describe('comments-store v2 tracked-change hydration', () => {
     });
   });
 
+  it('broadcasts UPDATE once for a tracked-change refresh and stays silent when nothing changed', () => {
+    vi.useFakeTimers();
+    const emit = vi.fn();
+    const superdoc = {
+      config: { isInternal: true, modules: {} },
+      isCollaborative: false,
+      emit,
+      user: { id: 'reviewer-1', email: 'reviewer@example.com', name: 'Reviewer' },
+    };
+    store.commentsList = [makeTrackedChangeRow({ commentId: 'tc-first', trackedChangeCanonicalId: 'tc-first' })];
+    const params = {
+      event: 'update',
+      changeId: 'tc-first',
+      documentId: 'doc-1',
+      trackedChangeText: 'meanings',
+      trackedChangeType: 'both',
+      trackedChangeDisplayType: 'both',
+    };
+
+    store.handleTrackedChangeUpdate({ superdoc, documentState: null, broadcastChanges: true, params });
+    vi.runAllTimers();
+
+    const updateEvents = emit.mock.calls
+      .filter(([type]) => type === 'comments-update')
+      .map(([, event]) => event)
+      .filter((event) => event?.type === store.COMMENT_EVENTS.UPDATE);
+    expect(updateEvents).toHaveLength(1);
+    expect(updateEvents[0].comment.commentId).toBe('tc-first');
+
+    emit.mockClear();
+    store.handleTrackedChangeUpdate({ superdoc, documentState: null, broadcastChanges: true, params });
+    vi.runAllTimers();
+
+    expect(emit).not.toHaveBeenCalled();
+  });
+
   it('does not broadcast UPDATE for a resolved duplicate dropped during prune compact', () => {
     const resolvedAt = 1_700_000_000_000;
     store.commentsList = [

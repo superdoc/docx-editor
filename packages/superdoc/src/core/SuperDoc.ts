@@ -4360,8 +4360,6 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
   }
 }
 
-// AIDEV-NOTE: Only the original method can certify independence from rich
-// tracked-change context; an application replacement keeps the canonical read.
 Object.defineProperty(
   SuperDoc.prototype.canPerformPermission,
   Symbol.for('superdoc.internal.permission-method.builtin'),

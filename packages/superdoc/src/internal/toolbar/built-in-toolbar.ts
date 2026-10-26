@@ -559,11 +559,6 @@ export class BuiltInToolbar extends EventEmitter {
     const configuredItemNames = groupComposition
       ? new Set(Object.values(groupComposition).flatMap((items) => items))
       : null;
-    // AIDEV-NOTE: SD-5050 - merge legacy `toolbarButtonsExclude` in here, not
-    // just `excludeItems`. This runs before `makeDefaultItems` partitions
-    // items by width, so both toolbarItems and overflowItems exclude it.
-    // `Toolbar.vue` no longer filters `toolbarButtonsExclude` itself; this is
-    // now the only enforcement point.
     const excludedItemNames = new Set([
       ...(this.config.excludeItems ?? []),
       ...(this.config.toolbarButtonsExclude ?? []),

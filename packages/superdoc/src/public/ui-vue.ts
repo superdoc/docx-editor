@@ -10,11 +10,6 @@
  * subpath. It routes through the local, self-contained v2 Vue layer under
  * `./ui/vue.ts`, which is built on the v2-native controller. No v1 Vue
  * bindings and no private v2 runtime imports.
- *
- * Rules for this file:
- *   - AIDEV-NOTE: Named exports only. No `export *`.
- *   - AIDEV-NOTE: `verify-public-facade-emit.cjs` parses this file and verifies
- *     the emitted declarations expose exactly these named exports.
  */
 
 export {

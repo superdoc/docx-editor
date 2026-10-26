@@ -91,9 +91,6 @@ const isCommentOwnedByCurrentUser = (comment) => {
   const commentName = normalizeActorName(comment?.creatorName);
   return Boolean(currentName && commentName && currentName === commentName);
 };
-// AIDEV-NOTE: Accept/Reject must use the same id/email-first ownership as
-// `classifyOwnership` in editor-core tracked-change identity. Import origin
-// still marks overflow Edit/Delete as other-user via isCommentOwnedByCurrentUser.
 const isTrackedChangeOwnedByCurrentUser = (comment) => {
   const currentUser = proxy.$superdoc.config.user;
   const current = getActorIdentity(currentUser);

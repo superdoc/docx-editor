@@ -247,10 +247,6 @@ const handleComboboxTabOut = (event) => {
   }
 };
 
-// AIDEV-NOTE: Word-style Tab chain ends at the font-size field. Forward Tab from
-// font size lands in the editor body (not the next toolbar control), while
-// Shift+Tab walks back to the previous control (the font-family combobox). This
-// handoff previously lived in ToolbarButton's font-size inline input.
 const handleFontSizeTabOut = (event) => {
   closeDropdowns();
   if (event?.shiftKey) {

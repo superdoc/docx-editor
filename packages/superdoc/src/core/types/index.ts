@@ -152,18 +152,6 @@ interface ToolbarCustomEntryBase {
     /**
      * Appended to the item's class list. Any value Vue's `class` binding
      * takes: a string, an array, a condition map, or a nesting of those.
-     *
-     * AIDEV-NOTE: unconstrained for the same reason as `dropdownStyles`, and
-     * verified rather than assumed. This lands inside an array binding --
-     * `ToolbarButton` renders `:class="['sd-toolbar-item',
-     * attributes.className]"` -- so Vue resolves it, and `string` rejected
-     * `['compact', { active: isActive }]`, the ordinary way to write a
-     * conditional class. There is also nothing to import or mirror:
-     * `@vue/shared` types the input as `normalizeClass(value: unknown)`, so
-     * Vue does not name this shape either, and any union written here would
-     * be narrower than what Vue accepts. A browser test asserts the array and
-     * the condition map both resolve, including that a false branch is
-     * dropped rather than stringified.
      */
     className?: unknown;
     /** Sets `aria-label`, which is otherwise absent on a custom entry. */
@@ -211,11 +199,6 @@ interface ToolbarCustomEntryBase {
  * `label` is not accepted at all. It is the *live* label a built-in item
  * rewrites as state changes, it does not satisfy the affordance check, and a
  * button carrying only `label` is rejected at construction.
- *
- * AIDEV-NOTE: `defaultLabel` renders nothing for a custom button. The check in
- * `use-toolbar-item.js` treats it as an affordance and `ToolbarButton.vue`
- * never draws it. Widening this type to accept `defaultLabel` alone requires
- * fixing that render first, or it re-admits invisible buttons (#1098).
  *
  * @deprecated replaceWith=`ToolbarCustomButtonConfig` removeIn=v3.0
  */
@@ -302,17 +285,6 @@ export type ToolbarCustomDropdownOption =
        * Application metadata. A row carrying `{ type: 'action', label, key }`
        * stays selectable and reaches the command verbatim, so this member is
        * open.
-       *
-       * AIDEV-NOTE: that openness means `{ type: 'render', label, key }` with
-       * no renderer still matches this branch, so the render branch's
-       * required `render` does not catch it (#1098). `Exclude<string,
-       * 'render'>` does not help -- subtracting a literal from the wide
-       * `string` type leaves `string` -- and neither does a branded
-       * intersection, because a plain string literal remains assignable to
-       * both. Closing this needs a literal union of the metadata values the
-       * product supports, which is a contract decision rather than a
-       * transcription. The runtime treats such a row as render-only and draws
-       * a blank, inert row.
        */
       type?: string;
       /** Text rendered for the row. */
@@ -364,17 +336,6 @@ interface ToolbarCustomDropdownBase extends ToolbarCustomEntryBase {
    * one renders no menu rather than breaking -- `ButtonGroup` guards the
    * branch on `nestedOptions.value.length`.
    *
-   * AIDEV-NOTE: this was a nonempty tuple until #1188 review. The tuple did
-   * reject `options: []`, and it also rejected every array TypeScript cannot
-   * see the length of -- `rows.map(...)`, a `Row[]` variable, a function
-   * return. Those are how dropdown rows are normally built; `lineHeight` in
-   * `default-items.js` builds its own rows with `.map()`. The obvious escape,
-   * `readonly T[] & { 0: T }`, rejects all four (measured, not assumed): an
-   * array type carries no index-0 property for the intersection to satisfy.
-   * So please do not reintroduce a tuple here -- and note there is no runtime
-   * check to fall back on either, deliberately, because an empty dropdown is
-   * a legitimate intermediate state.
-   *
    * `readonly` so an `as const` array is accepted: the runtime only iterates
    * this and copies the elements into `nestedOptions`, never mutating the
    * consumer's array.
@@ -401,16 +362,6 @@ interface ToolbarCustomDropdownBase extends ToolbarCustomEntryBase {
    * Not the open panel: `ButtonGroup` styles that separately through
    * `menu-props`, which `customButtons` cannot reach. Widths set here size the
    * control in the toolbar, not the menu it opens.
-   *
-   * AIDEV-NOTE: deliberately unconstrained. Restating Vue's `StyleValue` here
-   * was attempted three times and was wrong each time -- string-valued
-   * objects rejected `{ padding: 0 }`, object-only rejected
-   * `'min-width: 200px'`, and a hand-written union rejected a value already
-   * typed as `CSSProperties`, whose index signature a structural restatement
-   * does not match. The shape set is Vue's to define and moves with Vue, so
-   * mirroring it by hand keeps rejecting working configuration. Importing
-   * `StyleValue` would pull a Vue type into the public surface, which this
-   * package avoids elsewhere.
    */
   dropdownStyles?: unknown;
   /**
@@ -2738,15 +2689,10 @@ export interface Modules {
         /**
          * Custom font list rendered in the font-family dropdown.
          *
-         * AIDEV-NOTE: legacy-public - accepts {@link FontFamilyConfig} entries
-         * alongside dropdown rows. This spelling was typed `FontConfig[]`,
-         * whose index signature let `{ family, label, key }` compile and work,
-         * so narrowing it to rows alone would break installs mid-2.x.
-         * Replaced by `ui.toolbar.fontOptions`, which takes rows only.
-         * Earliest removal: v3.0 (#853).
-         *
          * The runtime uses the list verbatim and reads `label` and `key` off
          * each entry, so a `family`-only entry renders a blank row either way.
+         *
+         * @deprecated replaceWith=`ui.toolbar.fontOptions` removeIn=v3.0
          */
         fonts?: Array<FontConfig | ToolbarFontOption>;
         /** Hide buttons that overflow the available width (default: true). */
@@ -2756,10 +2702,7 @@ export interface Modules {
         /**
          * Custom toolbar buttons appended to the default item set.
          *
-         * AIDEV-NOTE: legacy-public - stays an open record. This spelling was
-         * typed `Array<Record<string, unknown>>`, so narrowing it now would
-         * reject entries that compile and work today. Replaced by
-         * `ui.toolbar.customItems`. Earliest removal: v3.0 (#853).
+         * @deprecated replaceWith=`ui.toolbar.customItems` removeIn=v3.0
          */
         customButtons?: Array<Record<string, unknown>>;
         /**

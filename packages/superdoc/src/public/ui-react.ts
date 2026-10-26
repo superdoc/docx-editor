@@ -10,11 +10,6 @@
  * self-contained v2 React layer under `./ui/react.ts`, which is built on the
  * v2-native controller. No v1 React bindings and no private v2 runtime
  * imports.
- *
- * Rules for this file:
- *   - AIDEV-NOTE: Named exports only. No `export *`.
- *   - AIDEV-NOTE: `verify-public-facade-emit.cjs` parses this file and verifies
- *     the emitted declarations expose exactly these named exports.
  */
 
 export {

@@ -85,8 +85,6 @@ export const createTrackedChangePermissionResolver = (superdoc) => {
           role: superdoc.config.role,
           isInternal: superdoc.config.isInternal,
         });
-  // AIDEV-NOTE: A function alone is not proof of the built-in matrix. Runtime
-  // overrides withdraw the lean-read permission before and after worker awaits.
   Object.defineProperty(resolver, BUILT_IN_PERMISSION_RESOLVER, {
     value: isBuiltInPolicy,
   });

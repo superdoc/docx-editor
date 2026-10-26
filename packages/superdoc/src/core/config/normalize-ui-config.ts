@@ -19,13 +19,6 @@
  *     `superdoc.ui`.
  *   - `ui: { ... }` opts in per surface. An omitted key keeps that surface's
  *     historical default rather than inheriting from its siblings.
- *
- * AIDEV-NOTE: legacy-public - the `modules.*` built-in UI spellings shipped in
- * stable 2.3.0 and stay supported for all of v2, so these branches are load
- * bearing rather than scaffolding. Every built-in surface now has a canonical
- * path: use `ui.*`, `interaction.*`, `surfaces.*`, or `hyperlinks.*`, with
- * comment policy on `interaction.comments` and hyperlink activation on
- * `hyperlinks.onActivate`. Earliest removal: v3.0.
  */
 
 import { firstDefined, mergeDefined } from './merge-defined.js';

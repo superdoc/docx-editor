@@ -1444,9 +1444,6 @@ export const useCommentsStore = defineStore('comments', () => {
           trackedComment.resolvedByName,
         );
         if (wasResolved) clearResolvedMetadata(trackedComment);
-        // AIDEV-NOTE: Targeted tracked-change refresh runs during body typing.
-        // Emit only when the recomputed comment payload changed, otherwise every
-        // keystroke in an unchanged mark can rebroadcast and rerender the sidebar.
         return applyChangedFields(trackedComment) || wasResolved;
       };
 
@@ -2667,8 +2664,6 @@ export const useCommentsStore = defineStore('comments', () => {
         return { ok: false, reason: 'tracked-change-target-mismatch' };
       }
       const story = cloneV2TrackedChangeStory(trackedChangeTarget.story);
-      // AIDEV-NOTE: Review rows are reactive, but the mutation target crosses
-      // a worker boundary and must contain cloneable plain data only.
       normalizedTrackedChangeTarget = {
         kind: 'trackedChange',
         trackedChangeId,

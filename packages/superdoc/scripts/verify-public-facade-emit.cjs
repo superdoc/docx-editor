@@ -71,16 +71,6 @@ try {
   process.exit(1);
 }
 
-// AIDEV-NOTE: The facade source file under `packages/superdoc/src/public/**`
-// IS the export contract. The verifier parses it for named exports and
-// checks the emitted declarations match. No second hand-maintained list
-// to keep in sync. `export *` and `export * as X` are rejected in facade
-// sources so the contract stays explicit and reviewable.
-//
-// Source of truth: the .ts file at FACADE_ENTRIES[*].source.
-// What this script enforces: the emitted .d.ts / .d.cts match it.
-// What it does NOT enforce: no-growth (handled by snapshot.mjs + the
-// closure gate; see packages/superdoc/scripts/README.md).
 const FACADE_ENTRIES = [
   // SD-3212: root facade re-curated from the classification artifact at
   // tests/consumer-typecheck/snapshots/superdoc-root-classification.json.

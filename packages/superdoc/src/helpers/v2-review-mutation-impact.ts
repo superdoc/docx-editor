@@ -105,12 +105,6 @@ export function getV2TrackedChangeMutationImpact(event: unknown): V2TrackedChang
 
 /**
  * Comment ids retired by a committed v2 mutation.
- *
- * AIDEV-NOTE: History commits put invalidated comment ids on `result`; cut and
- * other command receipts use `receipt`. Same origin split as
- * getV2TrackedChangeMutationImpact. Reading the wrong field, or treating a
- * tracked-change entity as a comment, leaves a sidebar card after cut or
- * undo/redo.
  */
 export function collectV2InvalidatedCommentIds(event: unknown): Set<string> {
   const removedIds = new Set<string>();

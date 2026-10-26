@@ -4,15 +4,6 @@
  * The v2 branch exposes a single root package surface plus CSS assets. V1
  * editor, converter, zipper, toolbar, and UI compatibility subpaths are not
  * part of superdoc@2.
- *
- * Rules for this file:
- *   - AIDEV-NOTE: Named exports only. No `export *` (the postbuild gate
- *     parses this file and rejects wildcards). This source export list
- *     IS the facade contract; `verify-public-facade-emit.cjs` derives
- *     the expected names from this file and asserts the emitted .d.ts /
- *     .d.cts match. Changing the surface here also updates the
- *     classification artifact in the same PR; skipping that fails the
- *     consumer-typecheck snapshot.
  */
 
 // The common package is workspace-private. Source imports stay readable here;

@@ -13,15 +13,6 @@
  * SuperDoc events — no v1 editor command/state/view/chain surface and no
  * private v2 runtime packages are imported. SDK/headless document automation
  * remains synchronous on its own surface.
- *
- * Rules for this file:
- *   - AIDEV-NOTE: Named exports only. No `export *`.
- *   - AIDEV-NOTE: Re-export source MUST stay the local `./ui/**` v2-native
- *     controller. Do NOT re-introduce the v1 editor UI subpath — that surface
- *     was removed in `superdoc@2` and `check-private-core.cjs` forbids any v1
- *     editor artifact in the emitted package.
- *   - AIDEV-NOTE: `verify-public-facade-emit.cjs` parses this file and verifies
- *     the emitted declarations expose exactly these named exports.
  */
 
 export { createSuperDocUI } from './ui/create-super-doc-ui.js';

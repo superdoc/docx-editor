@@ -773,9 +773,6 @@ const handleAddComment = async () => {
     return { ok: false, reason: v2WriteCapability.value?.reason ?? 'v2-write-unavailable' };
   }
 
-  // AIDEV-NOTE: A tracked-change review row is not a comment entity. Address
-  // it by the canonical change id and let the store create the first anchored
-  // root only when the Document API confirms that no thread exists yet.
   if (isV2Mode.value && v2CommentsAdapter.value && !isPendingNewComment.value) {
     if (isSubmittingReply.value) {
       return { ok: false, reason: 'reply-submit-in-flight' };

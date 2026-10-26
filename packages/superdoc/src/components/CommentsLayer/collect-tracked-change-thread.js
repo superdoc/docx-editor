@@ -14,10 +14,6 @@ import { trackedChangeThreadParentIdForComment } from './tracked-change-threadin
  *   2. **BFS**: replies-of-replies — any comment whose `parentCommentId`
  *      points to something already in the thread.
  *
- * AIDEV-NOTE: `trackedChangeParentId` is spatial anchor provenance and must
- * never be used as conversation membership. Only explicit thread provenance
- * or a real comment parent can place a comment in this dialog.
- *
  * Pure function — no side effects, no Vue, no store. Extracted from
  * CommentDialog.vue so the logic can be unit-tested in isolation.
  *

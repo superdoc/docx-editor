@@ -1062,6 +1062,7 @@ const SHARED_DEFS: Record<string, JsonSchema> = {
     {
       insertedText: arraySchema(ref('TextMutationEffect')),
       insertedBlocks: arraySchema(ref('BlockMutationEffect')),
+      resultText: ref('TextTarget'),
     },
     [],
   ),

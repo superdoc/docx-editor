@@ -626,6 +626,8 @@ describe('document-api contract catalog', () => {
     const blockEffect = schemas.$defs?.BlockMutationEffect as ContractTestSchemaShape;
     expect(textEffect.properties).toHaveProperty('sourcePath');
     expect(blockEffect.properties).toHaveProperty('sourcePath');
+    const effects = schemas.$defs?.ReceiptEffects as ContractTestSchemaShape;
+    expect(effects.properties?.resultText).toEqual({ $ref: '#/$defs/TextTarget' });
   });
 
   it.each(['format.paragraph.setAlignment', 'sections.setPageMargins'] as const)(

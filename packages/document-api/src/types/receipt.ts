@@ -3,6 +3,7 @@ import type {
   EntityAddress,
   SelectionTarget,
   TextAddress,
+  TextTarget,
   TrackedChangeAddress,
 } from './address.js';
 import type { BlockNodeAddress } from './base.js';
@@ -230,6 +231,7 @@ export interface ReceiptEffects {
   insertedText?: TextMutationEffect[];
   /** Blocks created by the mutation, in document order. */
   insertedBlocks?: BlockMutationEffect[];
+  resultText?: TextTarget;
 }
 
 export type ReceiptSuccess = {

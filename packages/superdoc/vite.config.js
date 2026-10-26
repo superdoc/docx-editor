@@ -12,6 +12,7 @@ import vue from '@vitejs/plugin-vue'
 import layeredCssPlugin from './vite-plugin-layered-css.mjs';
 import { preserveV2WorkerAssetPlugin } from './vite-plugin-v2-worker-asset.mjs';
 import { devNodeGlobalsPlugin } from './vite-plugin-node-polyfills-dev.mjs';
+import { nodeStdlibEntriesPlugin } from './vite-plugin-node-stdlib-entries.mjs';
 
 import { version } from './package.json';
 import sourceResolve from '../../vite.sourceResolve';
@@ -27,16 +28,6 @@ import {
 const cjsRequire = createRequire(import.meta.url);
 const typeSurface = cjsRequire('./scripts/type-surface.config.cjs');
 
-// WORKAROUND: rolldown doesn't support trailing-slash imports (e.g. 'punycode/')
-// which Node.js treats as "resolve the package entry point". node-stdlib-browser's
-// url polyfill uses `import from 'punycode/'` and rolldown tries to open the
-// directory as a file. We resolve the actual entry point here and redirect via a
-// small plugin in optimizeDeps.rollupOptions below.
-// Track: https://github.com/nicolo-ribaudo/tc39-proposal-import-deferral/issues/3
-// TODO: Remove once rolldown supports trailing-slash imports or node-stdlib-browser drops them.
-const require = createRequire(import.meta.url);
-const stdlibRequire = createRequire(require.resolve('node-stdlib-browser/package.json'));
-const punycodeEntry = stdlibRequire.resolve('punycode/punycode.js');
 const nodePolyfillShimAliases = ['buffer', 'global', 'process'].map((name) => ({
   find: `vite-plugin-node-polyfills/shims/${name}`,
   replacement: fileURLToPath(import.meta.resolve(`vite-plugin-node-polyfills/shims/${name}`)),
@@ -137,7 +128,6 @@ export default defineConfig(({ mode, command }) => {
     : path.resolve(__dirname, 'dist');
   const engineDistRoot = v2Resolution.engineInput?.surfaceRoots?.dist ?? path.resolve(V2_ROOT, 'dist');
   const skipDts = internalEsOnly || process.env.SUPERDOC_SKIP_DTS === '1';
-  const stringDecoderEntry = stdlibRequire.resolve('string_decoder/lib/string_decoder.js');
   const plugins = [
     {
       name: 'superdoc-interaction-compile-hints',
@@ -176,19 +166,7 @@ export default defineConfig(({ mode, command }) => {
     },
     headlessImportGuardPlugin(v2Resolution.mode),
     resolveV2DistRelativeImportsPlugin(engineDistRoot),
-    // Rolldown treats trailing-slash imports (`punycode/`, `string_decoder/`) as
-    // directory paths and fails to load them. node-stdlib-browser and
-    // readable-stream use that form. The optimizeDeps fix below only covers dep
-    // pre-bundling (dev); the production build needs the same redirect so the
-    // bundled v2 runtime graph (which pulls these polyfills transitively) builds.
-    {
-      name: 'fix-node-stdlib-trailing-slash',
-      enforce: 'pre',
-      resolveId(source) {
-        if (source === 'punycode/' || source === 'punycode') return { id: punycodeEntry };
-        if (source === 'string_decoder/' || source === 'string_decoder') return { id: stringDecoderEntry };
-      },
-    },
+    nodeStdlibEntriesPlugin(),
     vue(),
     layeredCssPlugin(),
     preserveV2WorkerAssetPlugin(),
@@ -387,20 +365,8 @@ export default defineConfig(({ mode, command }) => {
     },
     optimizeDeps: {
       include: ['yjs', '@hocuspocus/provider'],
-      // Rolldown treats trailing-slash imports as directory paths.
-      // node-stdlib-browser's url polyfill imports 'punycode/' — resolve it to the
-      // actual file since punycode is also a Node.js builtin and pnpm isolates it.
       rollupOptions: {
-        plugins: [
-          {
-            name: 'fix-punycode-trailing-slash',
-            resolveId(source) {
-              if (source === 'punycode/' || source === 'punycode') {
-                return { id: punycodeEntry };
-              }
-            },
-          },
-        ],
+        plugins: [nodeStdlibEntriesPlugin()],
       },
     },
     resolve: {

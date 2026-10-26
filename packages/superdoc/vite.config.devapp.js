@@ -1,9 +1,9 @@
 import path from 'node:path';
-import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import vue from '@vitejs/plugin-vue';
 import { defineConfig } from 'vite';
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
+import { nodeStdlibEntriesPlugin } from './vite-plugin-node-stdlib-entries.mjs';
 
 import { version } from './package.json';
 import { getAliases, getV2Resolution } from './vite.config.js';
@@ -25,15 +25,6 @@ import { getAliases, getV2Resolution } from './vite.config.js';
 // Serve the result with `pnpm run devapp:preview` (vite preview, port 9096).
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-
-// Same trailing-slash workaround as vite.config.js (not exported there):
-// rolldown treats `punycode/` / `string_decoder/` as directory paths.
-// node-stdlib-browser and readable-stream use that form, and the bundled v2
-// runtime graph pulls both in transitively through the node polyfills.
-const require = createRequire(import.meta.url);
-const stdlibRequire = createRequire(require.resolve('node-stdlib-browser/package.json'));
-const punycodeEntry = stdlibRequire.resolve('punycode/punycode.js');
-const stringDecoderEntry = stdlibRequire.resolve('string_decoder/lib/string_decoder.js');
 
 // The dev page imports @superdoc/font-system transitively through layout
 // rendering. vite.config.js only aliases it for `serve`/vitest (an alias
@@ -71,18 +62,7 @@ export default defineConfig(({ command }) => {
       __APP_VERSION__: JSON.stringify(version),
       __IS_DEBUG__: true,
     },
-    plugins: [
-      {
-        name: 'fix-node-stdlib-trailing-slash',
-        enforce: 'pre',
-        resolveId(source) {
-          if (source === 'punycode/' || source === 'punycode') return { id: punycodeEntry };
-          if (source === 'string_decoder/' || source === 'string_decoder') return { id: stringDecoderEntry };
-        },
-      },
-      vue(),
-      nodePolyfills(),
-    ],
+    plugins: [nodeStdlibEntriesPlugin(), vue(), nodePolyfills()],
     resolve: {
       alias: [...fontSystemAliases, ...getAliases(command, v2Resolution)],
       dedupe: ['yjs'],

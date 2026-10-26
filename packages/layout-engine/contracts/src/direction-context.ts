@@ -215,8 +215,7 @@ export function getParagraphInlineDirection(
  *
  * Prefers the resolved {@link TableDirectionContext} when present, falls
  * back to the legacy `tableProperties.rightToLeft` (or `bidiVisual` alias)
- * for compatibility. The AIDEV-NOTE on the fallback branch names the
- * retirement signal.
+ * for compatibility.
  *
  * Per ECMA-376 §17.4.1, `w:bidiVisual` affects only cell ordering and
  * table-visual properties. Cell paragraph inline direction is independent;
@@ -237,8 +236,6 @@ export function getTableVisualDirection(
 ): BaseDirection | undefined {
   const fromContext = attrs?.tableDirectionContext?.visualDirection;
   if (fromContext != null) return fromContext;
-  // AIDEV-NOTE: compat-fallback - used when TableAttrs.tableDirectionContext is absent.
-  // Retire once pm-adapter writes the resolved context onto every TableAttrs site.
   const tp = attrs?.tableProperties;
   if (tp?.rightToLeft === true || tp?.bidiVisual === true) return 'rtl';
   if (tp?.rightToLeft === false || tp?.bidiVisual === false) return 'ltr';

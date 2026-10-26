@@ -131,9 +131,6 @@ export const renderImageFragment = ({
       if (block.imageMutationId) fragmentEl.setAttribute('data-sd-image-mutation-id', block.imageMutationId);
     }
 
-    // AIDEV-NOTE: Keep srcRect crop/zoom transforms on the image element via
-    // applyImageClipPath, and geometry transforms on the fragment wrapper.
-    // Putting both on the same element overwrites clip-path scaling.
     applyImageGeometryTransform(fragmentEl, {
       width: block.width ?? fragment.width,
       height: block.height ?? fragment.height,

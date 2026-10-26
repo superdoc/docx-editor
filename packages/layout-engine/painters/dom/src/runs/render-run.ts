@@ -25,8 +25,6 @@ const renderEmptySdtPlaceholderRun = (run: TextRun, renderContext: RunRenderCont
   }
   if (glyph) {
     elem.classList.add('superdoc-word-checkbox-glyph');
-    // AIDEV-NOTE: The V2 host uses both authored symbols for immediate local
-    // feedback; the source repaint remains authoritative.
     applyCheckboxGlyphMetadata(elem, run);
     elem.textContent = glyph.current;
   } else {

@@ -203,6 +203,71 @@ describe('incrementalLayout progressive execution', () => {
     expect(result.layout).toEqual(cold.layout);
   });
 
+  it('falls back for a body page field a changed block introduces under a retained pagination proof', async () => {
+    const before: FlowBlock[] = Array.from({ length: 60 }, (_, index) => ({
+      kind: 'paragraph',
+      id: `p-${index}`,
+      runs: [{ text: `text-${index}` }],
+    }));
+    const measureShort = async (): Promise<ParagraphMeasure> => ({
+      kind: 'paragraph',
+      totalHeight: 30,
+      lines: [{ fromRun: 0, toRun: 0, fromChar: 0, toChar: 1, width: 20, ascent: 24, descent: 6, lineHeight: 30 }],
+    });
+    const previous = await incrementalLayout([], null, before, options, measureShort);
+    previous.layout.layoutEpoch = 1;
+    const current = before.map((block, index) =>
+      index === 30 ? { ...block, runs: [{ kind: 'text' as const, text: '1', token: 'pageNumber' }] } : block,
+    );
+    const key = (page: Layout['pages'][number]) => {
+      const first = page.fragments[0]!;
+      return `${first.blockId}#${'fromLine' in first ? first.fromLine : 0}#${page.sectionIndex ?? 0}#0`;
+    };
+    const ranges = new Map<string, { firstPage: number; lastPage: number }>();
+    previous.layout.pages.forEach((page, pageIndex) =>
+      page.fragments.forEach((fragment) => {
+        const range = ranges.get(fragment.blockId);
+        if (range) range.lastPage = pageIndex;
+        else ranges.set(fragment.blockId, { firstPage: pageIndex, lastPage: pageIndex });
+      }),
+    );
+    const dirty = computeDirtyRegions(before, current);
+    expect(dirty.changedBlockIds).toContain('p-30');
+    const result = await incrementalLayout(
+      before,
+      previous.layout,
+      current,
+      options,
+      measureShort,
+      undefined,
+      previous.measures,
+      undefined,
+      undefined,
+      {
+        previousLayout: previous.layout,
+        retainedMetadataSourceLayoutEpoch: 1,
+        previousPageStartKeys: previous.layout.pages.map(key),
+        previousPageStartKeyIndex: new Map(previous.layout.pages.map((page, index) => [key(page), [index]])),
+        previousBlockPageIndex: ranges,
+        currentBlockIndexById: new Map(current.map((block, index) => [block.id, index])),
+        dirtyBlockIds: dirty.changedBlockIds,
+        provedDirtyRegion: dirty,
+        dependencyProof: {
+          profile: 'single-section-local-text',
+          blockIdsUnchanged: true,
+          blockIdsUnique: true,
+          globalDependenciesAbsent: true,
+          renderInputsUnchanged: true,
+          pageReferencesAbsent: true,
+        },
+      },
+      undefined,
+      { progressive: { firstBatchPageCount: 1 } },
+    );
+    expect(result.progressive).toBeUndefined();
+    expect(result.progressiveFallbackReason).toBe('body-page-fields');
+  });
+
   it('keeps the proved prefix by identity and exposes only the first changed page before continuing a deep edit', async () => {
     const before: FlowBlock[] = Array.from({ length: 60 }, (_, index) => ({
       kind: 'paragraph',

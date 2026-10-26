@@ -270,6 +270,28 @@ describe('progressive page continuation', () => {
     expect(result.layout).toEqual(engine.layoutDocument(input.blocks, input.measures, settings));
   });
 
+  it.each([
+    ['footnotes', { footnotes: { refs: [], blocksById: new Map([['note-1', []]]) } }],
+    [
+      'footnote-page-flow',
+      {
+        footnotePageFlow: {
+          incomingDemand: () => ({ height: 0, refs: 0 }),
+          completePage: () => {},
+          hasPendingContinuation: () => false,
+        },
+      },
+    ],
+  ])('keeps a %s finalizer on the complete path because it can revise earlier pages', async (blocker, plane) => {
+    const input = paragraph(200);
+    const settings = { ...options, ...plane };
+    const batch = await engine
+      .createLayoutDocumentContinuation(input.blocks, input.measures, settings)
+      .advance({ pageCount: 1 });
+    expect(batch.status).toBe('complete');
+    expect(batch.completeReason).toBe(`post-pagination-dependency:${blocker}`);
+  });
+
   it('publishes one sealed page of a long paragraph before traversing its tail and never replays preparation', async () => {
     const input = paragraph(200);
     const checkpoints: engine.LayoutExecutionCheckpoint[] = [];

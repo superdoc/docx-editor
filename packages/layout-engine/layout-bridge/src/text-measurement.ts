@@ -412,8 +412,6 @@ function measureCharacterXWithoutInlineBoxes(
       continue;
     }
     if (isTabRun(run)) {
-      // AIDEV-NOTE: Tab slices retain source identity; empty boundary text
-      // slices can disappear, so sliced-array offsets are not line width keys.
       const sourceRunIndex = block.kind === 'paragraph' ? block.runs.indexOf(run, nextTabRunIndex) : -1;
       nextTabRunIndex = sourceRunIndex + 1;
       const runLength = TAB_CHAR_LENGTH;

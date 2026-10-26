@@ -142,8 +142,7 @@ const wrapShiftedTextWithBaseBaseline = (
     },
     runContext.resolvePhysical,
   );
-  // AIDEV-NOTE: inline wrappers leave separately authored digits in native bidi
-  // flow. The base-font strut owns the box; relative glyph shifts cannot grow it.
+  // SD-5628: a relatively shifted glyph cannot grow the inline box its base-font strut sizes.
   wrapper.style.display = 'inline';
   wrapper.style.lineHeight = 'normal';
   wrapper.style.verticalAlign = 'bottom';
@@ -763,8 +762,6 @@ export function* renderLineWork({
   // Only a top-aligned, line-expanding image triggers the Word text-bottom
   // workaround. Glyph-like baseline images leave the surrounding text alone.
   const lineContainsLineExpandingImage = runsForLine.some((run) => isLineExpandingImageRun(run, line));
-  // AIDEV-NOTE: keep incompatible native metrics and effect/inline-box extents
-  // on their existing path. Both grouped and bidi baseline boxes need this guard.
   const useTextBaselineBoxes =
     lineContainsLineExpandingImage &&
     !line.inlineBoxes?.length &&

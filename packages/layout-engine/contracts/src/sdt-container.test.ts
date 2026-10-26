@@ -34,6 +34,13 @@ describe('SDT container key helpers', () => {
     expect(hasExplicitSdtContainerKey(sharedSdt)).toBe(false);
   });
 
+  it('keeps separate id-less containers apart when they share display text', () => {
+    const first: SdtMetadata = { type: 'structuredContent', scope: 'block', alias: 'Shared', tag: 'Shared' };
+    const second: SdtMetadata = { type: 'structuredContent', scope: 'block', alias: 'Shared', tag: 'Shared' };
+
+    expect(getSdtContainerKey(first)).not.toBe(getSdtContainerKey(second));
+  });
+
   it('derives keys from any block-like object with SDT attrs', () => {
     const sdt: SdtMetadata = { type: 'structuredContent', scope: 'block', id: 'media-sdt' };
 

@@ -3772,8 +3772,6 @@ function* layoutDocumentBodySteps(
             footnoteAnchorsThisPage: checkpointState.footnoteAnchorsThisPage.map((anchor) => ({ ...anchor })),
           });
 
-          // AIDEV-NOTE: A floating table can move off the old page while its
-          // carrier's first slice advances. Seal that page after relocation.
           deferTableCarrierSealing = onSealedPage != null && (tablesForPara?.length ?? 0) > 0;
           const paragraphSteps = layoutParagraphBlockSteps(
             {
@@ -4801,8 +4799,6 @@ export type LayoutDocumentContinuation = {
 };
 
 function paginationOptionsPublicationBlocker(options: LayoutOptions, includePageBoundary = true): string | null {
-  // AIDEV-NOTE: These finalizers can revise earlier pages after a page boundary.
-  // Their existing cooperative complete path owns publication until their dependency closes.
   const notes = options.footnotes as { refs?: unknown; blocksById?: unknown } | undefined;
   const footnotesAbsent =
     !notes ||
@@ -4825,8 +4821,6 @@ function paginationBlockPublicationBlocker(
   index: number,
   block: FlowBlock,
 ): string | null {
-  // AIDEV-NOTE: A spaced split carrier places its sibling on an earlier
-  // carrier page after paragraph pagination; that page is not sealed yet.
   if (splitLineBreakAnchorCarrierMode(blocks, index) === 'spaced') return 'deferred-spaced-anchor-carrier';
   if (block.kind === 'drawing' && (block.anchor?.isAnchored !== true || block.wrap?.type !== 'None'))
     return 'drawing-wrap';
@@ -4842,7 +4836,6 @@ function paginationBlockPublicationBlocker(
   return null;
 }
 
-/** AIDEV-NOTE: The handle owns one live paginator; advancing never replays a stopped prefix. */
 export function createLayoutDocumentContinuation(
   blocks: FlowBlock[],
   measures: Measure[],

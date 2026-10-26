@@ -3175,9 +3175,6 @@ async function incrementalLayoutComplete(
       const measurement = await measureBlock(block, measurementConstraints);
       actualMeasureTime += performance.now() - measureBlockStart;
       bodyBlocksMeasuredByKind[block.kind] += 1;
-      // AIDEV-NOTE: Proved dirty tables are measured on every edit and retained in the
-      // measure overlay. Admitting them to the global cache hashes the entire table
-      // for an entry that the next dirty-owner invalidation removes before lookup.
       if (block.kind !== 'table') {
         const cacheWriteStart = performance.now();
         measureCache.set(
@@ -4085,8 +4082,6 @@ async function incrementalLayoutComplete(
         block.rows.some((row) => row.cells.some((cell) => furnitureHasPageReferences(cell.blocks ?? [])))
       );
     });
-  // AIDEV-NOTE: Retained pagination profiles exclude body PAGE/NUMPAGES dependencies.
-  // Recheck changed ownership without reopening the producer's unchanged source prefix.
   const retainedBodyFieldProof =
     progressiveSession &&
     layoutReuse?.dependencyProof &&
@@ -5112,9 +5107,6 @@ async function incrementalLayoutComplete(
                     tableWidth,
                   );
 
-                  // AIDEV-NOTE: The footnote band places tables here instead of
-                  // layoutTableBlock. Attach the same fragment metadata that path
-                  // emits so DomPainter can stamp data-table-boundaries.
                   page.fragments.push({
                     kind: 'table',
                     blockId: range.blockId,
@@ -9471,8 +9463,6 @@ async function layoutWithOptionalReuse(input: {
         checkpointConvergenceRejection = 'same-pass-pagination-prefix-has-no-retained-tail';
         continue;
       }
-      // AIDEV-NOTE: A pending source owns only a sealed prefix. Adopting its
-      // apparent tail would discard the current source's unpaginated remainder.
       if (pendingRestart) {
         checkpointConvergenceRejection = 'pending-pagination-prefix-has-no-retained-tail';
         continue;

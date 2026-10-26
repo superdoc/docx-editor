@@ -14,9 +14,6 @@ function getIdlessSdtContainerKey(metadata: SdtMetadata): string {
   const existingKey = idlessSdtContainerKeys.get(metadata);
   if (existingKey) return existingKey;
 
-  // AIDEV-NOTE: Id-less SDT grouping relies on pm-adapter sharing the same
-  // SdtMetadata object across sibling blocks in one container. Do not replace
-  // this with alias/title matching; separate controls can share display text.
   const key = `idlessSdt:${++nextIdlessSdtContainerKey}`;
   idlessSdtContainerKeys.set(metadata, key);
   return key;

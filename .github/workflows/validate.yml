@@ -98,7 +98,7 @@ jobs:
           SUPERDOC_V2_RUNTIME_MODE: package
           VITEST_MAX_WORKERS: '1'
           VITEST_MIN_WORKERS: '1'
-        run: pnpm exec vp test run '--project=!*super-editor*'
+        run: pnpm exec vp test run
       - name: Test Bun packages
         run: |
           pnpm -r --parallel \

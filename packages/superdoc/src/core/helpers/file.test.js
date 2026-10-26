@@ -79,8 +79,6 @@ describe('extractBrowserFile', () => {
 
   it('ignores uid and other extra props on File', () => {
     const rc = new File([new Blob(['x'], { type: DOCX })], 'b.docx', { type: DOCX });
-    // simulate uploader adding uid
-    // @ts-ignore
     rc.uid = 'rc-1';
     const out = extractBrowserFile(rc);
     expect(out).toBe(rc);

@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vite-plus/test';
 import { ref, shallowRef, nextTick } from 'vue';
 import { useFindReplace } from './use-find-replace.js';

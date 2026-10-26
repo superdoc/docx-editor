@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vite-plus/test';
 import { useLinkPopover } from './use-link-popover.js';
 

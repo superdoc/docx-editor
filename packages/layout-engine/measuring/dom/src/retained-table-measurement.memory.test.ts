@@ -84,26 +84,4 @@ describe('retained measurement proof memory', () => {
       Object.defineProperty(WeakSet.prototype, 'add', descriptor);
     }
   });
-
-  it('reuses a warm proof and re-inspects it after independent source generations evict it', () => {
-    let inspections = 0;
-    const cell = new Proxy(frozenGrid(1, 1).rows[0]!.cells[0]!, {
-      getPrototypeOf(target) {
-        inspections++;
-        return Reflect.getPrototypeOf(target);
-      },
-    });
-    const table = Object.freeze({
-      kind: 'table' as const,
-      id: 'observed-proof',
-      rows: Object.freeze([Object.freeze({ cells: Object.freeze([cell]) })]),
-    }) as unknown as TableBlock;
-    certify(table);
-    inspections = 0;
-    certify(table);
-    expect(inspections).toBe(0);
-    for (let generation = 0; generation < 9; generation++) certify(frozenGrid());
-    certify(table);
-    expect(inspections).toBeGreaterThan(0);
-  });
 });

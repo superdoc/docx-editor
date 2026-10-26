@@ -1,6 +1,7 @@
 import { getTableCellTextDirection } from '@superdoc/contracts';
 import type { TableBlock, TableMeasure, TableRowMeasure } from '@superdoc/contracts';
 import type { FontMeasureContext } from '@superdoc/font-system';
+import { createImmutableDataProofCache } from './immutable-data-proof-cache.js';
 import { getSurfaceMeasurementRuntime, type SurfaceMeasurementRuntimeState } from './measurement-runtime-context.js';
 
 export type RetainedTableMeasurement = {
@@ -60,30 +61,6 @@ const measurementIdentities = new WeakMap<object, object>();
 const immutableData = createImmutableDataProofCache();
 const reusableSourceRows = new WeakSet<object>();
 const retainedRowGeometry = new WeakMap<TableRowMeasure, RetainedRowGeometry>();
-
-function createImmutableDataProofCache() {
-  // Large grids certify millions of objects. Bound each backing allocation and
-  // total shortcuts; eviction requires inspection again, never assumed safety.
-  const segments = [new WeakSet<object>()];
-  let writes = 0;
-  return {
-    has(value: object): boolean {
-      for (let index = segments.length - 1; index >= 0; index--) {
-        if (segments[index]!.has(value)) return true;
-      }
-      return false;
-    },
-    add(value: object): void {
-      if (writes === 131072) {
-        if (segments.length === 8) segments.shift();
-        segments.push(new WeakSet<object>());
-        writes = 0;
-      }
-      segments[segments.length - 1]!.add(value);
-      writes++;
-    },
-  };
-}
 
 function measurementIdentity(value: object): object {
   let identity = measurementIdentities.get(value);

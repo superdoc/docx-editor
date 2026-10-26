@@ -139,30 +139,16 @@ export class DirtyTracker {
 
     const resultSet = new Set<number>();
 
-    // Check explicit dirty pages
     for (const pageIndex of this.dirtyPages) {
       if (pageIndex >= viewportStart && pageIndex <= viewportEnd) {
         resultSet.add(pageIndex);
       }
     }
 
-    // Check dirty ranges that might affect viewport
-    // IMPORTANT: Only add pages that are in dirtyPages OR in open-ended ranges
     for (const range of this.dirtyRanges) {
-      if (range.startPage >= 0 && range.endPage >= 0) {
-        const rangeStart = Math.max(range.startPage, viewportStart);
-        const rangeEnd = Math.min(range.endPage === Number.MAX_SAFE_INTEGER ? viewportEnd : range.endPage, viewportEnd);
-
-        if (rangeStart <= rangeEnd) {
-          // For open-ended ranges, generate all pages in viewport
-          if (range.endPage === Number.MAX_SAFE_INTEGER) {
-            for (let i = rangeStart; i <= rangeEnd; i++) {
-              resultSet.add(i);
-            }
-          }
-          // For finite ranges, only include pages that are explicitly dirty
-          // (ranges are just metadata, actual dirty state is in dirtyPages)
-        }
+      if (range.startPage < 0 || range.endPage !== Number.MAX_SAFE_INTEGER) continue;
+      for (let i = Math.max(range.startPage, viewportStart); i <= viewportEnd; i++) {
+        resultSet.add(i);
       }
     }
 

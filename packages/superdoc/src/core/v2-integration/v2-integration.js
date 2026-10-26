@@ -14,6 +14,7 @@
 // constructed (e.g. a non-DOM context); it never selects v1.
 
 import { defineComponent, h, onMounted } from 'vue';
+import { isSyntheticTrackedChangeCommentLaneItem } from '../../helpers/tracked-change-comment-lane.js';
 /** @type {() => Promise<unknown>} */
 let engineModuleLoader = () => import('@superdoc/docx-engine');
 /** @type {Promise<void> | null} */
@@ -87,19 +88,9 @@ export async function loadDefaultV2IntegrationOrFallback() {
 /** Default version for the local stub integration (V1-compatible). */
 export const SUPERDOC_V2_INTEGRATION_VERSION = 1;
 
-const V2_SYNTHETIC_TRACKED_CHANGE_COMMENT_ID_PREFIX = 'tc-comment:';
 const V2_BODY_TRACKED_CHANGE_ANCHOR_PREFIX = 'tc::body::';
 
-/**
- * @param {unknown} item
- * @returns {boolean}
- */
-export function isSyntheticTrackedChangeCommentLaneItem(item) {
-  if (!item || typeof item !== 'object') return false;
-  const id = item.id ?? item.commentId;
-  if (typeof id !== 'string') return false;
-  return id.startsWith(V2_SYNTHETIC_TRACKED_CHANGE_COMMENT_ID_PREFIX);
-}
+export { isSyntheticTrackedChangeCommentLaneItem };
 
 /**
  * @param {{ trackedChange?: unknown, trackedChangeAnchorKey?: unknown } | null | undefined} row

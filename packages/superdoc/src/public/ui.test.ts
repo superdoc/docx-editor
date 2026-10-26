@@ -18801,6 +18801,121 @@ describe('public ui — async browser reads (read coordinator)', () => {
     vi.useRealTimers();
   });
 
+  it('lists only real comments, including one placed on a tracked change', async () => {
+    const realOnChange = { id: 'c-1', commentId: 'c-1', text: 'Why we changed it', trackedChange: true };
+    const changeLane = { id: 'tc-comment:tc-1', commentId: 'tc-comment:tc-1', trackedChange: true };
+    const commentsList = vi.fn(() => Promise.resolve({ items: [realOnChange, changeLane] }));
+    const { superdoc } = makeAsyncSuperdoc({ comments: commentsList });
+    Object.assign(superdoc.activeEditor, {
+      editorVersion: 2,
+      reviewWindow: {
+        getSnapshot: () => ({
+          status: 'ready',
+          routeId: 'window-1',
+          commentItems: [realOnChange, changeLane],
+          trackedChangeItems: [],
+        }),
+        subscribe: () => () => undefined,
+      },
+    });
+    const ui = createSuperDocUI({ superdoc });
+    await flush();
+    expect(ui.comments.getSnapshot().items.map((item) => item.id)).toEqual(['c-1']);
+
+    const seen: ReturnType<typeof ui.comments.getSnapshot>[] = [];
+    const stop = ui.comments.observe((value) => seen.push(value));
+    await flush();
+    expect(seen.at(-1)?.items.map((item) => item.id)).toEqual(['c-1']);
+    expect(seen.at(-1)?.total).toBe(1);
+    stop();
+    ui.destroy();
+  });
+
+  it('does not notify comment observers again when the review window has not changed', async () => {
+    const realOnChange = { id: 'c-1', commentId: 'c-1', text: 'Why' };
+    const changeLane = { id: 'tc-comment:tc-1', commentId: 'tc-comment:tc-1', trackedChange: true };
+    const snapshot = {
+      status: 'ready',
+      routeId: 'window-1',
+      commentItems: [realOnChange, changeLane],
+      trackedChangeItems: [],
+    };
+    const { superdoc } = makeAsyncSuperdoc({ comments: () => new Promise(() => undefined) });
+    Object.assign(superdoc.activeEditor, {
+      editorVersion: 2,
+      reviewWindow: { getSnapshot: () => snapshot, subscribe: () => () => undefined },
+    });
+    const ui = createSuperDocUI({ superdoc });
+    await flush();
+    const first = ui.comments.getSnapshot();
+    let notifications = 0;
+    const stop = ui.comments.subscribe(() => {
+      notifications += 1;
+    });
+    const initial = notifications;
+    ui.zoom.setMode('manual');
+    ui.zoom.set(125);
+    await flush();
+    expect(notifications).toBe(initial);
+    expect(ui.comments.getSnapshot().items).toBe(first.items);
+    expect(first.items.map((item) => item.id)).toEqual(['c-1']);
+    stop();
+    ui.destroy();
+  });
+
+  it('re-filters comments when a host refreshes the same review-window rows in place', async () => {
+    const rows: Record<string, unknown>[] = [
+      { id: 'c-1', commentId: 'c-1', text: 'First' },
+      { id: 'tc-comment:tc-1', commentId: 'tc-comment:tc-1', trackedChange: true },
+    ];
+    const snapshot = { status: 'ready', routeId: 'window-1', commentItems: rows, trackedChangeItems: [] };
+    const listeners = new Set<() => void>();
+    const { superdoc } = makeAsyncSuperdoc({ comments: () => new Promise(() => undefined) });
+    Object.assign(superdoc.activeEditor, {
+      editorVersion: 2,
+      reviewWindow: {
+        getSnapshot: () => snapshot,
+        subscribe: (listener: () => void) => {
+          listeners.add(listener);
+          return () => listeners.delete(listener);
+        },
+      },
+    });
+    const ui = createSuperDocUI({ superdoc });
+    await flush();
+    expect(ui.comments.getSnapshot().items.map((item) => item.id)).toEqual(['c-1']);
+    rows.splice(0, 1, { id: 'c-2', commentId: 'c-2', text: 'Second' });
+    for (const listener of listeners) listener();
+    await flush();
+    expect(ui.comments.getSnapshot().items.map((item) => item.id)).toEqual(['c-2']);
+    ui.destroy();
+  });
+
+  it('re-filters comments when an adapter refreshes the same items array', async () => {
+    const hostEvents: Array<(event: Record<string, unknown>) => void> = [];
+    const rows: Record<string, unknown>[] = [
+      { id: 'c-1', commentId: 'c-1', text: 'First' },
+      { id: 'tc-comment:tc-1', commentId: 'tc-comment:tc-1', trackedChange: true },
+    ];
+    const commentsList = vi.fn(() => Promise.resolve({ items: rows }));
+    const { superdoc } = makeAsyncSuperdoc({ comments: commentsList, hostEvents });
+    const ui = createSuperDocUI({ superdoc });
+    const seen: ReturnType<typeof ui.comments.getSnapshot>[] = [];
+    const stop = ui.comments.observe((value) => seen.push(value));
+    await flush();
+    expect(seen.at(-1)?.items.map((item) => item.id)).toEqual(['c-1']);
+
+    rows.splice(0, 1, { id: 'c-2', commentId: 'c-2', text: 'Second' });
+    hostEvents[0]?.({ type: 'mutation:committed', receipt: { success: true } });
+    await flush();
+
+    expect(commentsList.mock.calls.length).toBeGreaterThan(1);
+    expect(seen.at(-1)?.items.map((item) => item.id)).toEqual(['c-2']);
+    expect(ui.comments.getSnapshot().items.map((item) => item.id)).toEqual(['c-2']);
+    stop();
+    ui.destroy();
+  });
+
   it('uses committed review windows for typing, history, and scrolling without passive directory reads', async () => {
     const hostEvents: Array<(event: Record<string, unknown>) => void> = [];
     const commentsList = vi.fn(() => Promise.resolve({ items: [{ id: 'comment-global' }] }));

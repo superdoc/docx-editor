@@ -28,7 +28,7 @@
     "host": 65,
     "handles": 16,
     "editCommands": 13,
-    "reviewBridge": 22,
+    "reviewBridge": 21,
     "firstParty": 45
   },
   "public/ui/watermark-controller.ts": {

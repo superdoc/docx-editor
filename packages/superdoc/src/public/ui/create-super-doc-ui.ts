@@ -19,6 +19,7 @@ import { createWatermarkController } from './watermark-controller.js';
 import { sdRunPropsToInlineRunPatch, selectionKey } from './format-painter-helpers.js';
 import { getV2TrackedChangeMutationImpact } from '../../helpers/v2-review-mutation-impact.js';
 import { isV2EditableTextMutationEvent } from '../../helpers/v2-typing-mutation-event.js';
+import { isSyntheticTrackedChangeCommentLaneItem } from '../../helpers/tracked-change-comment-lane.js';
 import {
   BUILT_IN_COMMAND_IDS,
   ALL_BUILT_IN_COMMAND_IDS,
@@ -4305,6 +4306,18 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     return selection;
   };
 
+  const realComments = (items: readonly unknown[]): CommentInfo[] =>
+    items.filter((item) => !isSyntheticTrackedChangeCommentLaneItem(item)) as CommentInfo[];
+  let lastWindowComments: { source: readonly unknown[]; rows: readonly unknown[]; real: CommentInfo[] } | null = null;
+  const realCommentsOfWindow = (window: LooseRecord | null): CommentInfo[] | null => {
+    const items: unknown = window?.commentItems;
+    if (!Array.isArray(items)) return null;
+    const last = lastWindowComments;
+    if (last?.source === items && shallowEqual(last.rows, items)) return last.real;
+    lastWindowComments = { source: items, rows: [...items], real: realComments(items) };
+    return lastWindowComments.real;
+  };
+
   const readCommentsDirectory = () => {
     const doc = getDoc();
     const listComments = hostMethod(doc?.comments, 'list');
@@ -4312,7 +4325,10 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       'comments',
       contentToken(),
       () => (listComments ? listComments() : undefined),
-      (raw) => (raw && Array.isArray((raw as LooseRecord).items) ? ((raw as LooseRecord).items as CommentInfo[]) : []),
+      (raw) => {
+        const items: unknown = isPlainObject(raw) ? raw.items : undefined;
+        return Array.isArray(items) ? realComments(items) : [];
+      },
     );
   };
 
@@ -4361,8 +4377,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     const reviewWindow = getV2ReviewWindowSnapshot();
     const hasWindowFeed = hasV2ReviewWindowFeed();
     const catalog = !hasWindowFeed ? readCommentsDirectory() : null;
-    const windowItems =
-      hasWindowFeed && Array.isArray(reviewWindow?.commentItems) ? (reviewWindow.commentItems as CommentInfo[]) : null;
+    const windowItems = hasWindowFeed ? realCommentsOfWindow(reviewWindow) : null;
     const value = hasWindowFeed ? windowItems : catalog!.value;
     const listStatus = hasWindowFeed ? reviewWindowSliceStatus(reviewWindow) : catalog!.status;
     const items = value ?? [];

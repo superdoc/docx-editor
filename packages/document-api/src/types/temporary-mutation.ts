@@ -1,5 +1,9 @@
 import type { DocumentApiSurface } from '../index.js';
-import type { ReceiptSuccess } from './receipt.js';
+import type { ReceiptFailureResult, ReceiptSuccess } from './receipt.js';
+import type { PlainTextInsertInput } from '../insert/insert.js';
+import type { ParagraphTextReplaceInput, ReplaceMutationOptions, TextReplaceInput } from '../replace/replace.js';
+import type { MutationOptions, TrackedTextMutationOptions } from '../write/write.js';
+import type { BodyStoryLocator } from './story.types.js';
 
 type TemporaryCall<Name extends string, Method extends (...args: never[]) => unknown> = {
   operation: Name;
@@ -7,10 +11,15 @@ type TemporaryCall<Name extends string, Method extends (...args: never[]) => unk
   options?: Parameters<Method>[1];
 };
 
+type TemporaryText<Name extends 'insert' | 'replace', Input> =
+  | { operation: Name; input: Input; options?: MutationOptions & { author?: never } }
+  | { operation: Name; input: Exclude<Input, { target: BodyStoryLocator }>; options: TrackedTextMutationOptions };
+
 /** Operations run in order against the temporary document, as one atomic update. */
 export type TemporaryMutationOperation =
-  | TemporaryCall<'insert', DocumentApiSurface['insert']>
-  | TemporaryCall<'replace', DocumentApiSurface['replace']>
+  | TemporaryText<'insert', PlainTextInsertInput>
+  | TemporaryText<'replace', TextReplaceInput>
+  | { operation: 'replace'; input: ParagraphTextReplaceInput; options?: ReplaceMutationOptions }
   | TemporaryCall<'delete', DocumentApiSurface['delete']>
   | TemporaryCall<'blocks.delete', DocumentApiSurface['blocks']['delete']>
   | TemporaryCall<'trackChanges.decide', DocumentApiSurface['trackChanges']['decide']>
@@ -48,7 +57,9 @@ export interface TemporaryMutationMetadata {
   tag: string;
   onNativeEdit?: 'cancel' | 'preserve';
 }
-export type TemporaryMutationReceipt = ReceiptSuccess & {
-  temporary: TemporaryMutationMetadata;
-  revision: { before: string; after: string };
-};
+export type TemporaryMutationReceipt =
+  | (ReceiptSuccess & {
+      temporary: TemporaryMutationMetadata;
+      revision: { before: string; after: string };
+    })
+  | ReceiptFailureResult;

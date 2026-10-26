@@ -62,6 +62,12 @@ export type {
   WatermarksApplyResult,
   WatermarksApplySuccess,
   WatermarksApplyTarget,
+  TemporaryMutationOperation,
+  TemporaryMutationInput,
+  TemporaryMutationReplaceInput,
+  TemporaryMutationHandleInput,
+  TemporaryMutationReceipt,
+  StoryLocator as DocumentStoryLocator,
 } from '@superdoc/document-api';
 
 // Public style-catalogue shapes (`styles.getCatalog`) re-surfaced through

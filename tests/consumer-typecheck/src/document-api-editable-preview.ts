@@ -6,6 +6,7 @@ declare const operations: Parameters<DocumentApi['mutations']['beginTemporary']>
 
 async function editablePreview() {
   const preview = await browserDoc.mutations.beginTemporary({ tag: 'review', onNativeEdit: 'preserve', operations });
+  if (!preview.success) return preview.failure.code;
   const policy: 'cancel' | 'preserve' | undefined = preview.temporary.onNativeEdit;
   await browserDoc.mutations.replaceTemporary({
     tag: 'review',
@@ -15,6 +16,7 @@ async function editablePreview() {
   });
   await browserDoc.mutations.rollbackTemporary({ previewId: preview.temporary.id });
   const native = await doc.mutations.beginTemporary({ tag: 'review', onNativeEdit: 'preserve', operations });
+  if (!native.success) return native.failure.code;
   await doc.mutations.commitTemporary({ previewId: native.temporary.id });
   return policy;
 }

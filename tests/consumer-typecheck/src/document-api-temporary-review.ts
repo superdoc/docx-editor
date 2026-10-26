@@ -21,6 +21,7 @@ async function temporaryReview() {
       { operation: 'comments.create', input: { target, text: 'Explanation' } },
     ],
   });
+  if (!receipt.success) return receipt.failure.code;
   const id: string = receipt.temporary.id;
   const tag: string = receipt.temporary.tag;
   const nativeEditPolicy: 'cancel' | 'preserve' | undefined = receipt.temporary.onNativeEdit;
@@ -52,3 +53,76 @@ async function temporaryReview() {
   doc.trackChanges.decide({ decision: 'accept', target: { kind: 'id', id: 'revision' }, commentRetention: 'discard' });
 }
 void temporaryReview;
+
+async function counterRedline() {
+  const at = { kind: 'text', blockId: 'clause', offset: 0 } as const;
+  await browserDoc.mutations.beginTemporary({
+    tag: 'modify',
+    operations: [
+      { operation: 'trackChanges.decide', input: { decision: 'reject', target: { kind: 'id', id: 'revision' } } },
+      {
+        operation: 'insert',
+        input: { target: { kind: 'selection', start: at, end: at }, value: 'within 30 days' },
+        options: { changeMode: 'tracked', author: { name: 'Reviewer' } },
+      },
+      {
+        operation: 'replace',
+        input: { target, text: 'Ours' },
+        options: { changeMode: 'tracked', author: { name: 'Reviewer' } },
+      },
+    ],
+  });
+}
+void counterRedline;
+
+async function paragraphPreview() {
+  const block = { kind: 'block', nodeType: 'paragraph', nodeId: 'clause' } as const;
+  await browserDoc.mutations.beginTemporary({
+    tag: 'paragraph',
+    operations: [
+      {
+        operation: 'replace',
+        input: { target: block, text: 'Preview' },
+        options: { replaceMode: 'contents', expectedSnapshotId: 'retained' },
+      },
+    ],
+  });
+}
+void paragraphPreview;
+
+async function temporaryLimits() {
+  await browserDoc.mutations.beginTemporary({
+    tag: 'limits',
+    operations: [
+      // @ts-expect-error an author needs `changeMode: 'tracked'`
+      { operation: 'insert', input: { value: 'x' }, options: { changeMode: 'direct', author: { name: 'Reviewer' } } },
+      // @ts-expect-error temporary inserts are plain text, not HTML
+      { operation: 'insert', input: { value: '<b>x</b>', type: 'html' } },
+      // @ts-expect-error temporary replacements are plain text, not HTML
+      { operation: 'replace', input: { target, content: '<b>x</b>', type: 'html' } },
+    ],
+  });
+}
+void temporaryLimits;
+
+import type {
+  DocumentStoryLocator,
+  TemporaryMutationOperation,
+  TemporaryMutationReceipt,
+  TrackChangesItem,
+  ViewportGetRectTarget,
+} from 'superdoc/ui';
+
+declare const change: TrackChangesItem;
+const story: DocumentStoryLocator | undefined = change.address.story;
+const placed: ViewportGetRectTarget = change.address;
+const step: TemporaryMutationOperation = {
+  operation: 'trackChanges.decide',
+  input: { decision: 'accept', target: { kind: 'id', id: change.id } },
+};
+async function namedTypes(): Promise<TemporaryMutationReceipt> {
+  return browserDoc.mutations.beginTemporary({ tag: 'named', operations: [step] });
+}
+void story;
+void placed;
+void namedTypes;

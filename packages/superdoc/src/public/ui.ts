@@ -139,6 +139,7 @@ export type {
   // Viewport geometry
   ViewportRect,
   ViewportGetRectInput,
+  ViewportGetRectTarget,
   ViewportGetRectsInput,
   ViewportGetRectsResult,
   ViewportRectResult,
@@ -180,6 +181,12 @@ export type {
   WatermarksApplyResult,
   WatermarksApplySuccess,
   WatermarksApplyTarget,
+  TemporaryMutationOperation,
+  TemporaryMutationInput,
+  TemporaryMutationReplaceInput,
+  TemporaryMutationHandleInput,
+  TemporaryMutationReceipt,
+  DocumentStoryLocator,
 } from './ui/types.js';
 
 export type { PageMetricsHandle, PageMetricsSnapshot, PageMetricsPage, PageBodyTarget } from './ui/page-metrics.js';

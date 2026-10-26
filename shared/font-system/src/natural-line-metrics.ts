@@ -86,8 +86,6 @@ export function parseSfntNaturalLineMetrics(bytes: ArrayBuffer | ArrayBufferView
   const fsSelection = view.getUint16(os2.offset + OS2_FS_SELECTION_OFFSET);
   let lineHeightUnits: number;
   let source: SfntNaturalLineMetrics['source'];
-  // AIDEV-NOTE: USE_TYPO_METRICS is the OpenType opt-in for typo metrics. Legacy faces instead
-  // need the larger hhea/Windows pitch so text is not clipped on a platform choosing either set.
   if (os2Version >= 4 && (fsSelection & USE_TYPO_METRICS) !== 0) {
     const ascender = view.getInt16(os2.offset + OS2_TYPO_ASCENDER_OFFSET);
     const descender = view.getInt16(os2.offset + OS2_TYPO_DESCENDER_OFFSET);

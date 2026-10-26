@@ -6,6 +6,8 @@ type MetricFontOptions = {
   fsSelection?: number;
   unitsPerEm?: number;
   variableTable?: 'fvar' | 'MVAR';
+  hheaAscender?: number;
+  winAscent?: number;
 };
 
 function metricFont(options: MetricFontOptions = {}): Uint8Array {
@@ -25,7 +27,7 @@ function metricFont(options: MetricFontOptions = {}): Uint8Array {
     view.setUint32(record + 12, tableLengths[tag]);
     if (tag === 'head') view.setUint16(tableOffset + 18, options.unitsPerEm ?? 2048);
     if (tag === 'hhea') {
-      view.setInt16(tableOffset + 4, 1993);
+      view.setInt16(tableOffset + 4, options.hheaAscender ?? 1993);
       view.setInt16(tableOffset + 6, -588);
       view.setInt16(tableOffset + 8, 0);
     }
@@ -35,7 +37,7 @@ function metricFont(options: MetricFontOptions = {}): Uint8Array {
       view.setInt16(tableOffset + 68, 1462);
       view.setInt16(tableOffset + 70, -586);
       view.setInt16(tableOffset + 72, 410);
-      view.setUint16(tableOffset + 74, 1993);
+      view.setUint16(tableOffset + 74, options.winAscent ?? 1993);
       view.setUint16(tableOffset + 76, 588);
     }
     tableOffset += tableLengths[tag];
@@ -60,6 +62,17 @@ describe('parseSfntNaturalLineMetrics', () => {
       lineHeightMultiplier: 2458 / 2048,
       source: 'os2-typo',
     });
+  });
+
+  it('takes the larger of the hhea and Windows pitches for legacy faces', () => {
+    expect(parseSfntNaturalLineMetrics(metricFont({ hheaAscender: 2400 }))?.lineHeightUnits).toBe(2400 + 588);
+    expect(parseSfntNaturalLineMetrics(metricFont({ winAscent: 2400 }))?.lineHeightUnits).toBe(2400 + 588);
+  });
+
+  it('ignores USE_TYPO_METRICS on an OS/2 version that predates it', () => {
+    expect(parseSfntNaturalLineMetrics(metricFont({ os2Version: 3, fsSelection: 1 << 7 }))?.source).toBe(
+      'legacy-win-hhea',
+    );
   });
 
   it('honors ArrayBufferView bounds and rejects malformed or unsupported fonts', () => {

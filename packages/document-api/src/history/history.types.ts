@@ -30,9 +30,6 @@ export type HistoryNoopReason =
   | 'EMPTY_UNDO_STACK'
   | 'EMPTY_REDO_STACK'
   | 'NO_EFFECT'
-  // AIDEV-NOTE: v2 adapter reasons. v1 still emits the legacy
-  // EMPTY_* reasons; v2 returns the dashed forms to make it clear which
-  // adapter produced the noop.
   | 'no-undo-available'
   | 'no-redo-available'
   | 'history-entry-missing'
@@ -58,12 +55,6 @@ export interface SDHistoryCollaborationMeta {
 /**
  * Result of a history.undo or history.redo action.
  * Mirrors PlanReceipt's revision shape for consistency.
- *
- * AIDEV-NOTE: this shape carries optional ref-effect
- * fields. v1 callers leave them undefined; v2 (`V2HistoryAdapter`) populates
- * them from the stored semantic delta of the undone/redone transaction so
- * callers' held refs stay accurate across history actions. Never make any
- * of the new fields required — v1 adapters MUST keep compiling unchanged.
  *
  * The shape also carries three optional collaboration fields:
  * `status`, `diagnosticCode`, and `collaboration`. v1 leaves them

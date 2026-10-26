@@ -23,10 +23,6 @@
 // every pnpm monorepo has: a consumer who vendored this source into their own
 // `packages/fonts/` would otherwise look like us and get a hard failure for a
 // check that cannot apply to them.
-//
-// AIDEV-NOTE: this is the seam #1035 has to repoint when font-system is promoted
-// to `packages/font-system`. One constant here, not six paths across four files,
-// and the monorepo guard turns a wrong path into a failure rather than a skip.
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';

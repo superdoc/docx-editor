@@ -332,13 +332,6 @@ function findFailedReceipt(value: unknown): FailedReceiptRecord | null {
 /**
  * Error shape equivalent to the SDK client's failed-receipt throw: message =
  * failure.message, `.code` = raw failure.code, `.details.failure` preserved.
- *
- * AIDEV-NOTE: the SDK additionally remaps some codes per operation family
- * (`mapFailedReceiptCode`); the canonical mapping lives in
- * apps/cli/src/lib/error-mapping.ts + the SDK runtime and cannot be imported
- * here (dependency direction). Raw codes are used for `expect.failureCode`
- * comparison; if a replay corpus surfaces a remapped-family mismatch, port
- * those specific pairs into a documented table here.
  */
 function failedReceiptToError(receipt: FailedReceiptRecord): Error {
   const failure = asRecord(receipt.failure) ?? {};

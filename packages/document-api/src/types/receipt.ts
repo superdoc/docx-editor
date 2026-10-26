@@ -109,36 +109,7 @@ export type ReceiptFailure = {
   message: string;
   details?: unknown;
 };
-// ---------------------------------------------------------------------------
-// Review warnings
-//
-// AIDEV-NOTE: `ReviewWarning` is the single shared warning carrier
-// for the v2 review features (comments and tracked changes). The shared
-// foundation requires one carrier so comments export and
-// tracked-change export / degradation policy do not invent
-// parallel surfaces. Spec language `warning` maps to `severity: 'warning'`
-// here.
-//
-// Use this lane only for allowed non-exact mappings and non-load-bearing
-// degradations the spec permits, for example:
-//   - non-exact but allowed export mapping
-//   - source had malformed optional sidecar data that was ignored while
-//     preserving core data
-//   - generated fixture uses direct OOXML rather than Word-authored provenance
-//   - Word cannot visually represent a richer v2 headless structural intent
-//     exactly
-//
-// Forbidden semantic loss (e.g. dropping a persisted comment, losing thread
-// topology, deleting an anchor that the cross-feature rules say must survive)
-// MUST fail closed via `Receipt.failure`. Do NOT emit a warning for those
-// cases.
-//
-// The review foundation decides the carrier shape; the first call site that emits
-// real warnings is comment export non-exact mappings.
-// Adapters / kernel paths that want to surface a kernel-side
-// `SDDiagnosticRecord` to this lane MUST do so by projecting through this
-// public type so the lane carrier remains stable across features.
-// ---------------------------------------------------------------------------
+
 export type ReviewWarningFeature = 'comments' | 'trackedChanges';
 export type ReviewWarning = {
   /** Stable warning code (e.g. `comments-export-non-exact`). */

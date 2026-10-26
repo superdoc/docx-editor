@@ -1049,21 +1049,12 @@ importers:
       '@superdoc/docx-engine':
         specifier: 0.26.0-next.3
         version: 0.26.0-next.3(@hocuspocus/provider@2.15.3(y-protocols@1.0.7(yjs@13.6.30))(yjs@13.6.30))(@liveblocks/client@3.15.5(@types/json-schema@7.0.15))(@liveblocks/yjs@3.15.5(@types/json-schema@7.0.15)(yjs@13.6.30))(vue@3.5.32(typescript@5.9.3))(y-websocket@3.0.0(yjs@13.6.30))(yjs@13.6.30)
-      '@types/mdast':
-        specifier: 'catalog:'
-        version: 4.0.4
       '@types/ws':
         specifier: 'catalog:'
         version: 8.18.1
-      buffer-crc32:
-        specifier: 'catalog:'
-        version: 1.0.0
       eventemitter3:
         specifier: 'catalog:'
         version: 5.0.4
-      jsdom:
-        specifier: 27.3.0
-        version: 27.3.0(canvas@3.2.3)
       konva:
         specifier: 'catalog:'
         version: 10.2.5
@@ -1149,6 +1140,9 @@ importers:
       '@vue/test-utils':
         specifier: 'catalog:'
         version: 2.4.6
+      jsdom:
+        specifier: 27.3.0
+        version: 27.3.0(canvas@3.2.3)
       jszip:
         specifier: 'catalog:'
         version: 3.10.1

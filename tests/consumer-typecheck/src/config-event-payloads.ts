@@ -16,7 +16,6 @@ import type {
 
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
 type AssertEqual<A, B> = Equal<A, B> extends true ? true : never;
-// oxlint-disable-next-line @typescript-eslint/no-explicit-any
 type OptionalCallback = ((...args: any) => any) | undefined;
 type ParamOf<F extends OptionalCallback> = Parameters<NonNullable<F>>[0];
 type ReturnOf<F extends OptionalCallback> = ReturnType<NonNullable<F>>;

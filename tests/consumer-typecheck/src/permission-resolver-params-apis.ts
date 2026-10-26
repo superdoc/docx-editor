@@ -4,7 +4,6 @@ import type { Config, Modules, PermissionResolver, PermissionResolverParams } fr
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
 type AssertEqual<A, B> = Equal<A, B> extends true ? true : never;
 
-// oxlint-disable-next-line @typescript-eslint/no-explicit-any
 type ParamOf<F extends ((...args: any) => any) | undefined> = Parameters<NonNullable<F>>[0];
 
 const _topLevelResolverParamsOk: AssertEqual<ParamOf<Config['permissionResolver']>, PermissionResolverParams> = true;

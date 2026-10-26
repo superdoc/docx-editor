@@ -169,7 +169,6 @@ export function createPaginator(opts: PaginatorOptions) {
       throw new PaginationEarlyStop();
     }
     // Allow caller to update state (e.g., apply pending→active) before we snapshot margins/size
-    // oxlint-disable-next-line @typescript-eslint/no-explicit-any
     if (opts.onNewPage) {
       opts.onNewPage(undefined, { applyPendingSection: options.applyPendingSection !== false });
     }

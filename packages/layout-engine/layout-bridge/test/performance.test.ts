@@ -8,7 +8,6 @@ const { Canvas, usingStub } = resolveCanvas();
 
 beforeAll(() => {
   if (usingStub) {
-    // oxlint-disable-next-line no-console
     console.warn(
       '[superdoc] Skipping layout-bridge benchmarks because mock canvas is active; install native deps or use Node 20 for real metrics.',
     );
@@ -57,7 +56,6 @@ describeIfRealCanvas('incremental pipeline benchmarks', () => {
 
     results.forEach((result) => {
       if (process.env.LAYOUT_BENCH_DEBUG) {
-        // oxlint-disable-next-line no-console
         console.log(
           JSON.stringify(
             {

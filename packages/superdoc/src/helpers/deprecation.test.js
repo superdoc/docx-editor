@@ -80,7 +80,6 @@ describe('createDeprecatedEditorProxy', () => {
       const proxy = createDeprecatedEditorProxy(editor);
 
       for (const key of DEPRECATED_KEYS) {
-        // oxlint-disable-next-line no-unused-expressions
         proxy[key];
       }
 
@@ -95,10 +94,8 @@ describe('createDeprecatedEditorProxy', () => {
       const editor = createMockEditor();
       const proxy = createDeprecatedEditorProxy(editor);
 
-      // oxlint-disable-next-line no-unused-expressions
       proxy.state;
       const callCount = console.warn.mock.calls.length;
-      // oxlint-disable-next-line no-unused-expressions
       proxy.state;
       expect(console.warn).toHaveBeenCalledTimes(callCount);
     });
@@ -109,9 +106,7 @@ describe('createDeprecatedEditorProxy', () => {
       const editor = createMockEditor();
       const proxy = createDeprecatedEditorProxy(editor);
 
-      // oxlint-disable-next-line no-unused-expressions
       proxy.doc;
-      // oxlint-disable-next-line no-unused-expressions
       proxy.on;
 
       expect(console.warn).not.toHaveBeenCalled();

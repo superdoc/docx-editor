@@ -994,7 +994,6 @@ describe('layoutParagraphBlock - contextualSpacing', () => {
       const pageState = makePageState();
       pageState.lastParagraphStyleId = 'Normal';
       pageState.lastParagraphContextualSpacing = true;
-      // oxlint-disable-next-line @typescript-eslint/no-explicit-any
       (pageState.trailingSpacing as any) = null;
       pageState.cursorY = 100;
 

@@ -316,6 +316,16 @@ function optionalLevelsArray(value: unknown, field: string, operationName: strin
     }
   }
 }
+function validateCustomFormat(numFmt: unknown, customFormat: unknown, field: string, operationName: string): void {
+  if (customFormat === undefined) return;
+  if ((numFmt !== undefined && numFmt !== 'custom') || typeof customFormat !== 'string' || customFormat.length === 0) {
+    throw new DocumentApiValidationError(
+      'INVALID_INPUT',
+      `${operationName} ${field} requires numFmt custom and a non-empty format string.`,
+      { field, value: customFormat },
+    );
+  }
+}
 function validateListLevelTemplate(entry: unknown, path: string, operationName: string): void {
   if (!isRecord(entry)) {
     throw new DocumentApiValidationError('INVALID_INPUT', `${operationName} ${path} must be an object.`, {
@@ -337,6 +347,7 @@ function validateListLevelTemplate(entry: unknown, path: string, operationName: 
       value: e.numFmt,
     });
   }
+  validateCustomFormat(e.numFmt, e.customFormat, `${path}.customFormat`, operationName);
   if (e.lvlText !== undefined && typeof e.lvlText !== 'string') {
     throw new DocumentApiValidationError('INVALID_INPUT', `${operationName} ${path}.lvlText must be a string.`, {
       field: `${path}.lvlText`,
@@ -841,6 +852,7 @@ export function executeListsSetLevelNumbering(
     });
   }
   optionalInteger(input.start, 'start', 'lists.setLevelNumbering');
+  validateCustomFormat(input.numFmt, input.customFormat, 'customFormat', 'lists.setLevelNumbering');
   optionalBoolean(input.isLgl, 'isLgl', 'lists.setLevelNumbering');
   return adapter.setLevelNumbering(input, normalizeMutationOptions(options));
 }

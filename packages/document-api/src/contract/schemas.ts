@@ -1,3 +1,4 @@
+import { LIST_CUSTOM_NUMBERING_FORMATS } from '../lists/lists.types.js';
 import { COMMAND_CATALOG } from './command-catalog.js';
 import { CONTRACT_VERSION, JSON_SCHEMA_DIALECT, OPERATION_IDS, type OperationId } from './types.js';
 import { NODE_TYPES, BLOCK_NODE_TYPES, DELETABLE_BLOCK_NODE_TYPES, INLINE_NODE_TYPES } from '../types/base.js';
@@ -34,6 +35,12 @@ import {
 } from '../types/content-projection.js';
 import { SD_CONVERSION_FRAGMENT_SCHEMA, SD_CONVERSION_FRAGMENT_SCHEMA_DEFS } from './sd-fragment-schema.js';
 type JsonSchema = Record<string, unknown>;
+const customNumberingFormatInputSchema: JsonSchema = {
+  type: 'string',
+  minLength: 1,
+  examples: [...LIST_CUSTOM_NUMBERING_FORMATS],
+  description: 'New formats use 2–4 digit zero-padded samples; other values must already exist in the document.',
+};
 const trackChangeTypeValues = [
   'insertion',
   'deletion',
@@ -6916,6 +6923,7 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
                 {
                   level: { type: 'integer', minimum: 0, maximum: 8 },
                   numFmt: { type: 'string' },
+                  customFormat: customNumberingFormatInputSchema,
                   lvlText: { type: 'string' },
                   start: { type: 'integer' },
                   alignment: { enum: ['left', 'center', 'right'] },
@@ -7287,6 +7295,7 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
                 {
                   level: { type: 'integer', minimum: 0, maximum: 8 },
                   numFmt: { type: 'string' },
+                  customFormat: customNumberingFormatInputSchema,
                   lvlText: { type: 'string' },
                   start: { type: 'integer' },
                   alignment: { enum: ['left', 'center', 'right'] },
@@ -7370,6 +7379,7 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
                 {
                   level: { type: 'integer', minimum: 0, maximum: 8 },
                   numFmt: { type: 'string' },
+                  customFormat: { type: 'string' },
                   lvlText: { type: 'string' },
                   start: { type: 'integer' },
                   alignment: { enum: ['left', 'center', 'right'] },
@@ -7410,6 +7420,7 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
         target: listItemAddressSchema,
         level: { type: 'integer', minimum: 0, maximum: 8 },
         numFmt: { type: 'string' },
+        customFormat: customNumberingFormatInputSchema,
         lvlText: { type: 'string' },
         start: { type: 'integer' },
         isLgl: { type: 'boolean' },
@@ -7522,6 +7533,7 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
       {
         level: { type: 'integer', minimum: 0, maximum: 8 },
         numFmt: { type: 'string' },
+        customFormat: { type: 'string' },
         lvlText: { type: 'string' },
         start: { type: 'integer' },
         alignment: { enum: ['left', 'center', 'right'] },
@@ -7577,6 +7589,7 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
                 {
                   level: { type: 'integer', minimum: 0, maximum: 8 },
                   numFmt: { type: 'string' },
+                  customFormat: customNumberingFormatInputSchema,
                   lvlText: { type: 'string' },
                   start: { type: 'integer' },
                   alignment: { enum: ['left', 'center', 'right'] },

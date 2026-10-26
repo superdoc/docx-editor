@@ -11,6 +11,7 @@ import { Z_ORDER_RELATIVE_HEIGHT_MAX, Z_ORDER_RELATIVE_HEIGHT_MIN } from '../ima
 import type { TemplatesApplyFailureCode } from '../templates/index.js';
 import type { ReceiptFailureCode } from '../types/index.js';
 import { CAPABILITY_REASON_CODES } from '../capabilities/capabilities.js';
+import { LIST_CUSTOM_NUMBERING_FORMATS } from '../lists/lists.types.js';
 
 const TRACK_CHANGES_DECIDE_RECEIPT_FAILURE_CODES = [
   'NO_OP',
@@ -141,6 +142,26 @@ describe('document-api contract catalog', () => {
     const input = schemas.operations['lists.setLevelNumbering'].input as ContractTestSchemaShape;
     expect(input.properties?.isLgl).toEqual({ type: 'boolean' });
     expect(input.required).not.toContain('isLgl');
+  });
+
+  it('exposes optional custom numbering on the existing per-level operation and nested styles', () => {
+    const schemas = buildInternalContractSchemas();
+    const input = schemas.operations['lists.setLevelNumbering'].input as ContractTestSchemaShape;
+    const customFormat = {
+      type: 'string',
+      minLength: 1,
+      examples: [...LIST_CUSTOM_NUMBERING_FORMATS],
+      description: 'New formats use 2–4 digit zero-padded samples; other values must already exist in the document.',
+    };
+    expect(input.properties?.customFormat).toEqual(customFormat);
+    expect(input.required).not.toContain('customFormat');
+    for (const operation of ['lists.create', 'lists.applyTemplate', 'lists.applyStyle'] as const) {
+      const schema = schemas.operations[operation];
+      expect(JSON.stringify(schema.input)).toContain(`"customFormat":${JSON.stringify(customFormat)}`);
+    }
+    for (const operation of ['lists.captureTemplate', 'lists.getStyle'] as const) {
+      expect(JSON.stringify(schemas.operations[operation].output)).toContain('"customFormat":{"type":"string"}');
+    }
   });
 
   it('publishes Hebrew page-numbering formats for section reads and writes', () => {

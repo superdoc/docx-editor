@@ -31,7 +31,7 @@ import {
   executeListsRemoveV2,
   executeListsRestartV2,
 } from './lists.js';
-import { LIST_PRESET_IDS, LIST_PRESET_MARKERS } from './lists.types.js';
+import { LIST_PRESET_IDS, LIST_PRESET_MARKERS, LIST_CUSTOM_NUMBERING_FORMATS } from './lists.types.js';
 
 const validTarget = { kind: 'block' as const, nodeType: 'listItem' as const, nodeId: 'li-1' };
 
@@ -76,6 +76,68 @@ const stubAdapter = () =>
     setLevelStart: mock(() => ({ success: true })),
     setLevelLayout: mock(() => ({ success: true })),
   }) as any;
+
+describe('custom numbering contract (SD-2513)', () => {
+  const customFormat = '0001, 0002, 0003, ...';
+
+  it('forwards a supported format through the existing style and numbering operations', () => {
+    for (const customFormat of LIST_CUSTOM_NUMBERING_FORMATS) {
+      const adapter = stubAdapter();
+      const style = { version: 1 as const, levels: [{ level: 0, numFmt: 'custom', customFormat, lvlText: '[%1]' }] };
+      executeListsApplyStyle(adapter, { target: validTarget, style });
+      expect(adapter.applyStyle).toHaveBeenCalledWith(
+        { target: validTarget, style },
+        { changeMode: 'direct', dryRun: false, expectedRevision: undefined },
+      );
+      const input = { target: validTarget, level: 0, numFmt: 'custom', customFormat, lvlText: '[%1]' };
+      executeListsSetLevelNumbering(adapter, input);
+      expect(adapter.setLevelNumbering).toHaveBeenCalledWith(input, {
+        changeMode: 'direct',
+        dryRun: false,
+        expectedRevision: undefined,
+      });
+    }
+  });
+
+  it.each(['', 123])('rejects unsupported custom format %j before dispatch', (format) => {
+    const adapter = stubAdapter();
+    const level = { level: 0, numFmt: 'custom', customFormat: format, lvlText: '[%1]' };
+    expect(() =>
+      executeListsApplyStyle(adapter, { target: validTarget, style: { version: 1, levels: [level] } } as any),
+    ).toThrow(/customFormat/);
+    expect(() => executeListsSetLevelNumbering(adapter, { target: validTarget, ...level } as any)).toThrow(
+      /customFormat/,
+    );
+    expect(adapter.applyStyle).not.toHaveBeenCalled();
+    expect(adapter.setLevelNumbering).not.toHaveBeenCalled();
+  });
+
+  it.each(['0001', '01, 03, 05, ...', '00001, 00002, 00003, ...'])(
+    'defers imported custom format %j validation to the document runtime',
+    (format) => {
+      const adapter = stubAdapter();
+      const level = { level: 0, numFmt: 'custom', customFormat: format, lvlText: '[%1]' };
+      executeListsApplyStyle(adapter, { target: validTarget, style: { version: 1, levels: [level] } });
+      executeListsSetLevelNumbering(adapter, { target: validTarget, ...level });
+      expect(adapter.applyStyle).toHaveBeenCalledTimes(1);
+      expect(adapter.setLevelNumbering).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('rejects a custom format combined with a named number format', () => {
+    const adapter = stubAdapter();
+    expect(() =>
+      executeListsSetLevelNumbering(adapter, {
+        target: validTarget,
+        level: 0,
+        numFmt: 'decimal',
+        customFormat,
+        lvlText: '%1.',
+      }),
+    ).toThrow(/customFormat/);
+    expect(adapter.setLevelNumbering).not.toHaveBeenCalled();
+  });
+});
 
 // ---------------------------------------------------------------------------
 // Finding 3: validateListItemTarget is now strict — listItem only

@@ -1754,6 +1754,7 @@ export {
   TRAILING_CHARACTERS,
   LIST_PRESET_IDS,
   LIST_PRESET_MARKERS,
+  LIST_CUSTOM_NUMBERING_FORMATS,
 } from './lists/lists.types.js';
 export type {
   CreateSectionBreakInput,

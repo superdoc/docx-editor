@@ -280,10 +280,17 @@ export interface ListsConvertToTextInput {
 // ---------------------------------------------------------------------------
 // SD-1973 template and formatting types
 // ---------------------------------------------------------------------------
+export const LIST_CUSTOM_NUMBERING_FORMATS = [
+  '01, 02, 03, ...',
+  '001, 002, 003, ...',
+  '0001, 0002, 0003, ...',
+] as const;
+
 /** A captured snapshot of one level's formatting properties. */
 export interface ListLevelTemplate {
   level: number;
   numFmt?: string;
+  customFormat?: string;
   lvlText?: string;
   start?: number;
   alignment?: LevelAlignment;
@@ -354,6 +361,7 @@ export interface ListsSetLevelNumberingInput {
   target: ListItemAddress;
   level: number;
   numFmt: string;
+  customFormat?: string;
   lvlText: string;
   start?: number;
   /** Format numeric placeholders as decimal. False removes legal numbering; omit to preserve it. */

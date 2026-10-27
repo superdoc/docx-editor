@@ -795,7 +795,7 @@ export function* renderTableRowWork(deps: TableRowRenderDependencies): RenderWor
 
     // Never use default borders - cells are either explicitly styled or borderless
     // This prevents gray borders on cells with borders={} (intentionally borderless)
-    const { cellElement } = yield* renderTableCellWork({
+    const { cellElement, reviewMarkers } = yield* renderTableCellWork({
       doc,
       x,
       y,
@@ -871,6 +871,10 @@ export function* renderTableRowWork(deps: TableRowRenderDependencies): RenderWor
 
     container.appendChild(cellElement);
     const appended: Element[] = [cellElement];
+    for (const marker of reviewMarkers ?? []) {
+      container.appendChild(marker);
+      appended.push(marker);
+    }
     const specialBorderOverlay = createCellBorderOverlay(doc, finalBorders, {
       left: cellElement.style.left,
       top: cellElement.style.top,

@@ -32,6 +32,7 @@
  */
 
 import {
+  isPageBreakDeletionAnchorRun,
   Engines,
   getTableCellTextDirection,
   isFinalDeletedTableRow,
@@ -2135,11 +2136,39 @@ async function measureParagraphBlock(
     );
   });
 
+  const pageBreakReviewMarkers = normalizedRuns.flatMap((run, runIndex) =>
+    isPageBreakDeletionAnchorRun(run) ? [{ run, runIndex }] : [],
+  );
+  const emptyContentRuns =
+    pageBreakReviewMarkers.length === 0
+      ? normalizedRuns
+      : normalizedRuns.filter((run) => !isPageBreakDeletionAnchorRun(run));
+  const includePageBreakReviewMarkers = (line: Line): Line => {
+    if (pageBreakReviewMarkers.length === 0) return line;
+    const last = normalizedRuns[normalizedRuns.length - 1];
+    return {
+      ...line,
+      fromRun: 0,
+      fromChar: 0,
+      toRun: normalizedRuns.length - 1,
+      toChar: last && isTextRun(last) ? last.text.length : 0,
+      segments: [
+        ...(line.segments ?? []),
+        ...pageBreakReviewMarkers.map(({ run, runIndex }) => ({
+          runIndex,
+          fromChar: 0,
+          toChar: run.text.length,
+          width: 0,
+        })),
+      ],
+    };
+  };
+
   const simpleEmptyParagraphRun =
-    normalizedRuns.length === 1 &&
-    isEmptyTextRun(normalizedRuns[0] as Run) &&
-    !isEmptySdtPlaceholderRun(normalizedRuns[0] as Run)
-      ? (normalizedRuns[0] as TextRun)
+    emptyContentRuns.length === 1 &&
+    isEmptyTextRun(emptyContentRuns[0] as Run) &&
+    !isEmptySdtPlaceholderRun(emptyContentRuns[0] as Run)
+      ? (emptyContentRuns[0] as TextRun)
       : null;
   const canUseSimpleEmptyPath =
     inlineLineBudgets === undefined &&
@@ -2148,7 +2177,7 @@ async function measureParagraphBlock(
     !block.attrs?.tabs?.length &&
     !block.attrs?.dropCap &&
     !block.attrs?.dropCapDescriptor &&
-    (simpleEmptyParagraphRun != null || normalizedRuns.length === 0);
+    (simpleEmptyParagraphRun != null || emptyContentRuns.length === 0);
   if (canUseSimpleEmptyPath) {
     const spacing = block.attrs?.spacing;
     const fontSize = simpleEmptyParagraphRun?.fontSize ?? DEFAULT_PARAGRAPH_FONT_SIZE;
@@ -2162,14 +2191,14 @@ async function measureParagraphBlock(
     return {
       kind: 'paragraph',
       lines: [
-        {
+        includePageBreakReviewMarkers({
           fromRun: 0,
           fromChar: 0,
           toRun: 0,
           toChar: 0,
           width: 0,
           ...metrics,
-        },
+        }),
       ],
       totalHeight: metrics.lineHeight,
       measuredAtMaxWidth: maxWidth,
@@ -2443,10 +2472,10 @@ async function measureParagraphBlock(
   }
 
   const emptyParagraphRun =
-    normalizedRuns.length === 1 &&
-    isEmptyTextRun(normalizedRuns[0] as Run) &&
-    !isEmptySdtPlaceholderRun(normalizedRuns[0] as Run)
-      ? (normalizedRuns[0] as TextRun)
+    emptyContentRuns.length === 1 &&
+    isEmptyTextRun(emptyContentRuns[0] as Run) &&
+    !isEmptySdtPlaceholderRun(emptyContentRuns[0] as Run)
+      ? (emptyContentRuns[0] as TextRun)
       : null;
   if (emptyParagraphRun) {
     const fontSize = emptyParagraphRun.fontSize ?? DEFAULT_PARAGRAPH_FONT_SIZE;
@@ -2466,7 +2495,7 @@ async function measureParagraphBlock(
       ...metrics,
     };
     addBarTabsToLine(emptyLine);
-    lines.push(emptyLine);
+    lines.push(includePageBreakReviewMarkers(emptyLine));
 
     return {
       kind: 'paragraph',
@@ -2477,7 +2506,7 @@ async function measureParagraphBlock(
     };
   }
 
-  if (normalizedRuns.length === 0) {
+  if (emptyContentRuns.length === 0) {
     const metrics = calculateEmptyParagraphMetrics(
       DEFAULT_PARAGRAPH_FONT_SIZE,
       spacing,
@@ -2494,7 +2523,7 @@ async function measureParagraphBlock(
       ...metrics,
     };
     addBarTabsToLine(emptyLine);
-    lines.push(emptyLine);
+    lines.push(includePageBreakReviewMarkers(emptyLine));
 
     return {
       kind: 'paragraph',
@@ -3013,23 +3042,29 @@ async function measureParagraphBlock(
     const run = runsToProcess[runIndex];
 
     if ((run as Run).kind === 'break') {
-      if (currentLine) {
+      const hasOnlyPageBreakReviewMarkers =
+        currentLine &&
+        currentLine.maxFontSize === 0 &&
+        currentLine.segments.length > 0 &&
+        currentLine.segments.every((segment) => isPageBreakDeletionAnchorRun(runsToProcess[segment.runIndex]));
+      if (currentLine && !hasOnlyPageBreakReviewMarkers) {
         const completedLine: Line = closeLineWithMetrics(currentLine);
         lines.push(completedLine);
         currentLine = null;
       } else {
         const metrics = calculateTypographyMetrics(fallbackFontSize, spacing, fallbackFontInfo, fontContext);
         const emptyLine: Line = {
-          fromRun: runIndex,
+          fromRun: currentLine?.fromRun ?? runIndex,
           fromChar: 0,
           toRun: runIndex,
           toChar: 0,
           width: 0,
-          segments: [],
+          segments: currentLine?.segments ?? [],
           ...metrics,
         };
         addBarTabsToLine(emptyLine);
         lines.push(emptyLine);
+        currentLine = null;
       }
       tabStopCursor = 0;
       pendingTabAlignment = null;

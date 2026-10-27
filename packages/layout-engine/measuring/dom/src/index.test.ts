@@ -713,6 +713,122 @@ describe('measureBlock', () => {
       expect(measure.totalHeight).toBeGreaterThan(0);
     });
 
+    it.each([
+      [false, false],
+      [true, false],
+      [false, true],
+      [true, true],
+    ])(
+      'preserves baseline empty metrics and marker segments for SD-5989 (tabs %s, no original runs %s)',
+      async (withTabs, noOriginalRuns) => {
+        const block: FlowBlock = {
+          kind: 'paragraph',
+          id: 'sd5989-empty-base',
+          runs: noOriginalRuns ? [] : [{ kind: 'text', text: '', fontFamily: 'Arial', fontSize: 14.67 }],
+          attrs: {
+            spacing: { line: 1.15, lineUnit: 'multiplier', lineRule: 'auto' },
+            ...(withTabs ? { tabs: [{ val: 'bar', pos: 30 }] } : {}),
+          },
+        };
+        const marker: TextRun = {
+          kind: 'text',
+          text: '\u200b',
+          vanish: true,
+          fontFamily: 'Arial',
+          fontSize: 72,
+          pmStart: 0,
+          pmEnd: 0,
+          dataAttrs: { 'data-page-break-deletion-anchor': 'true' },
+          trackedChange: { id: 'imported:2', kind: 'delete' },
+        };
+        const baseline = expectParagraphMeasure(await measureBlock(block, 1000));
+        const marked = expectParagraphMeasure(
+          await measureBlock({ ...block, id: 'sd5989-empty-marked', runs: [...block.runs, marker] }, 1000),
+        );
+        expect(marked.totalHeight).toBe(baseline.totalHeight);
+        const metrics = (line: ParagraphMeasure['lines'][number]) => ({
+          width: line.width,
+          lineHeight: line.lineHeight,
+          ascent: line.ascent,
+          descent: line.descent,
+          bars: line.bars,
+        });
+        expect(metrics(marked.lines[0])).toEqual(metrics(baseline.lines[0]));
+        expect(marked.lines[0]).toMatchObject({ fromRun: 0, toRun: block.runs.length, toChar: 1 });
+        expect(marked.lines[0].segments).toContainEqual({
+          runIndex: block.runs.length,
+          fromChar: 0,
+          toChar: 1,
+          width: 0,
+        });
+      },
+    );
+
+    it.each([false, true])(
+      'preserves native break typography with a leading review carrier (visible text %s)',
+      async (withVisibleText) => {
+        const block: FlowBlock = {
+          kind: 'paragraph',
+          id: 'sd5989-leading-break',
+          runs: [
+            { kind: 'break', breakType: 'page', fontFamily: 'Arial', fontSize: 64 },
+            ...(withVisibleText
+              ? [{ kind: 'text' as const, text: 'Live after.', fontFamily: 'Calibri', fontSize: 14.67 }]
+              : []),
+          ],
+        };
+        const marker: TextRun = {
+          kind: 'text',
+          text: '\u200b',
+          vanish: true,
+          fontFamily: 'Arial',
+          fontSize: 64,
+          dataAttrs: { 'data-page-break-deletion-anchor': 'true' },
+          trackedChange: { id: 'imported:2', kind: 'delete' },
+        };
+        const baseline = expectParagraphMeasure(await measureBlock(block, 300));
+        const marked = expectParagraphMeasure(await measureBlock({ ...block, runs: [marker, ...block.runs] }, 300));
+        const metrics = (measure: ParagraphMeasure) => ({
+          height: measure.totalHeight,
+          lines: measure.lines.map((line) => ({
+            width: line.width,
+            height: line.lineHeight,
+            ascent: line.ascent,
+            descent: line.descent,
+          })),
+        });
+        expect(metrics(marked)).toEqual(metrics(baseline));
+        expect(marked.lines[0]).toMatchObject({ fromRun: 0, toRun: 1 });
+        expect(marked.lines[0].segments).toContainEqual({ runIndex: 0, fromChar: 0, toChar: 1, width: 0 });
+      },
+    );
+
+    it('preserves line-break placeholder metrics before a page-break review carrier', async () => {
+      const prefix: Run[] = [
+        { kind: 'text', text: 'Small', fontFamily: 'Arial', fontSize: 12 },
+        { kind: 'text', text: 'Large', fontFamily: 'Arial', fontSize: 32 },
+        { kind: 'lineBreak' },
+      ];
+      const pageBreak: Run = { kind: 'break', breakType: 'page', fontFamily: 'Arial', fontSize: 64 };
+      const marker: TextRun = {
+        kind: 'text',
+        text: '\u200b',
+        vanish: true,
+        fontFamily: 'Arial',
+        fontSize: 64,
+        dataAttrs: { 'data-page-break-deletion-anchor': 'true' },
+      };
+      const block: FlowBlock = { kind: 'paragraph', id: 'sd5989-line-break', runs: [...prefix, pageBreak] };
+      const baseline = expectParagraphMeasure(await measureBlock(block, 300));
+      const marked = expectParagraphMeasure(
+        await measureBlock({ ...block, runs: [...prefix, marker, pageBreak] }, 300),
+      );
+      expect(marked.totalHeight).toBe(baseline.totalHeight);
+      expect(marked.lines.map((line) => [line.width, line.lineHeight, line.ascent, line.descent])).toEqual(
+        baseline.lines.map((line) => [line.width, line.lineHeight, line.ascent, line.descent]),
+      );
+    });
+
     it('uses explicit multiplier line spacing for empty paragraphs', async () => {
       const block: FlowBlock = {
         kind: 'paragraph',

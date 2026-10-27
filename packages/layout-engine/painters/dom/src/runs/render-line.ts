@@ -1,3 +1,4 @@
+import { PAGE_BREAK_DELETION_ANCHOR_ATTR } from '@superdoc/contracts';
 import { completeRenderWork, type RenderWork } from '../render-work.js';
 import type { ImageRun, Line, LineSegment, ParagraphAttrs, ParagraphBlock, Run, TextRun } from '@superdoc/contracts';
 import { resolvePhysicalFamily, type ResolvePhysicalFamily } from '@superdoc/font-system';
@@ -1627,7 +1628,7 @@ function* renderInlineRuns({
         runContext.expandSdtWrapperPmRange(currentInlineSdtWrapper, run.pmStart, run.pmEnd);
       }
       const parent = currentInlineSdtWrapper ?? el;
-      if (useNativeTextGroups && isTextRun(run)) {
+      if (useNativeTextGroups && isTextRun(run) && !elem.hasAttribute(PAGE_BREAK_DELETION_ANCHOR_ATTR)) {
         if (!currentTextGroup) {
           // Keep the native base-font baseline even when this region contains
           // only scripts. The CSS strut has no source or editable DOM text.

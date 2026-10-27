@@ -23,7 +23,7 @@ import type {
   TableBlock,
   TableFragment,
 } from '@superdoc/contracts';
-import { LAYOUT_BOUNDARY_SCHEMA } from '@superdoc/contracts';
+import { DELETED_PAGE_BREAK_LABEL, LAYOUT_BOUNDARY_SCHEMA } from '@superdoc/contracts';
 import type { FragmentRenderContext, PositionMapping } from './renderer.js';
 import { DATASET_KEYS } from '@superdoc/dom-contract';
 import { computeSdtBoundaries } from './sdt/boundaries.js';
@@ -34,6 +34,164 @@ import { CLASS_NAMES, pageStyles, type PageStyles } from './styles.js';
 import { TABLE_ROW_ROLE_ATTRIBUTE } from './table/row-role.js';
 import type { TableFragmentPatchResult } from './table/renderTableFragment.js';
 import { blockUsesDerivedRunTextPlane, type DerivedRunTextPlane } from './derived-run-text-plane.js';
+
+import {
+  PAGE_BREAK_REVIEW_SELECTOR,
+  copyReviewMarkerSourceAttrs,
+  isVisiblePageBreakReviewMarker,
+} from './review-markers.js';
+
+const pageBreakReviewStyleNames = [
+  'left',
+  'top',
+  'width',
+  'height',
+  'font-size',
+  'line-height',
+  'transform',
+  'overflow',
+  'border-top',
+  'border-right',
+  'border-bottom',
+  'border-left',
+  'padding-top',
+  'padding-right',
+  'padding-bottom',
+  'padding-left',
+  'background-color',
+  'box-sizing',
+  'max-width',
+] as const;
+type PageBreakReviewPlacement = {
+  parent: HTMLElement;
+  next: ChildNode | null;
+  styles: string[];
+  relocated: boolean;
+};
+const pageBreakReviewPlacements = new WeakMap<HTMLElement, PageBreakReviewPlacement>();
+const pageBreakReviewClipSignatures = new WeakMap<HTMLElement, string>();
+const pageBreakReviewFragments = new WeakMap<
+  HTMLElement,
+  Map<
+    HTMLElement,
+    {
+      fragment: Fragment;
+      item?: ResolvedPaintItem;
+    }
+  >
+>();
+
+function restorePageBreakReviewMarker(root: HTMLElement, marker: HTMLElement): boolean {
+  const placement = pageBreakReviewPlacements.get(marker);
+  if (!placement?.relocated) return true;
+  if (placement.parent !== root && !root.contains(placement.parent)) {
+    marker.remove();
+    pageBreakReviewPlacements.delete(marker);
+    return false;
+  }
+  pageBreakReviewStyleNames.forEach((name, index) => {
+    const value = placement.styles[index];
+    if (value) marker.style.setProperty(name, value);
+    else marker.style.removeProperty(name);
+  });
+  if (marker.parentElement !== placement.parent) {
+    placement.parent.insertBefore(marker, placement.next?.parentNode === placement.parent ? placement.next : null);
+  }
+  placement.relocated = false;
+  delete marker.dataset.pageBreakDeletionPresentation;
+  return true;
+}
+
+function restorePageBreakReviewMarkers(root: HTMLElement): void {
+  for (const marker of Array.from(root.querySelectorAll<HTMLElement>(PAGE_BREAK_REVIEW_SELECTOR))) {
+    restorePageBreakReviewMarker(root, marker);
+  }
+  pageBreakReviewClipSignatures.delete(root);
+}
+
+function placePageBreakReviewMarkers(
+  root: HTMLElement,
+  fragment: Fragment,
+  page: ResolvedPage,
+  item?: ResolvedPaintItem,
+  pageRoot?: HTMLElement,
+): boolean {
+  const frame = item?.kind === 'fragment' ? item : fragment;
+  const signature = [frame.x, frame.y, frame.width, page.width, page.height].join('|');
+  if (pageBreakReviewClipSignatures.get(root) === signature) return false;
+  const markers = Array.from(root.querySelectorAll<HTMLElement>(PAGE_BREAK_REVIEW_SELECTOR));
+  const visibleMarkers = markers.filter(isVisiblePageBreakReviewMarker);
+  if (pageRoot) {
+    const fragments = pageBreakReviewFragments.get(pageRoot) ?? new Map();
+    if (visibleMarkers.length > 0) {
+      fragments.set(root, { fragment, item });
+      pageBreakReviewFragments.set(pageRoot, fragments);
+    } else fragments.delete(root);
+  }
+  const height = Math.min(14, page.height / visibleMarkers.length);
+  const step = Math.min(18, (page.height - height) / Math.max(1, visibleMarkers.length - 1));
+  const stackHeight = height + step * (visibleMarkers.length - 1);
+  const top = Math.max(0, Math.min(frame.y, page.height - stackHeight));
+  let index = 0;
+  for (const marker of visibleMarkers) {
+    if (!restorePageBreakReviewMarker(root, marker)) continue;
+    let placement = pageBreakReviewPlacements.get(marker);
+    if (!placement) {
+      const line = marker.closest<HTMLElement>('.superdoc-line');
+      if (line && root.contains(line)) marker.style.top = '0px';
+      marker.style.lineHeight = marker.style.height;
+      placement = {
+        parent: marker.parentElement!,
+        next: marker.nextSibling,
+        styles: pageBreakReviewStyleNames.map((name) => marker.style.getPropertyValue(name)),
+        relocated: false,
+      };
+      pageBreakReviewPlacements.set(marker, placement);
+    }
+    const source = marker.closest<HTMLElement>('[data-source-node-id]');
+    if (source && source !== root && source !== marker) {
+      copyReviewMarkerSourceAttrs(marker, source);
+    }
+    root.appendChild(marker);
+    Object.assign(marker.style, {
+      left: `${-frame.x}px`,
+      top: `${top + index * step - frame.y}px`,
+      width: '1px',
+      maxWidth: '1px',
+      height: `${height}px`,
+      fontSize: '0px',
+      lineHeight: '0px',
+      transform: 'none',
+      overflow: 'hidden',
+      border: '0px',
+      padding: '0px',
+      backgroundColor: 'var(--sd-tracked-changes-semantic-color,currentColor)',
+      boxSizing: 'border-box',
+    });
+    marker.title = DELETED_PAGE_BREAK_LABEL;
+    marker.dataset.pageBreakDeletionPresentation = 'page-edge';
+    placement.relocated = true;
+    index += 1;
+  }
+  pageBreakReviewClipSignatures.set(root, signature);
+  return markers.length > 0;
+}
+
+export function refreshPageBreakReviewPlacements(
+  state: PageDomState,
+  page: ResolvedPage,
+  recordChangedRoot?: (root: HTMLElement) => void,
+): void {
+  const fragments = pageBreakReviewFragments.get(state.element);
+  if (!fragments) return;
+  for (const [root, frame] of fragments) {
+    if (!state.element.contains(root)) {
+      fragments.delete(root);
+      continue;
+    }
+    if (placePageBreakReviewMarkers(root, frame.fragment, page, frame.item)) recordChangedRoot?.(root);
+  }
+}
 
 export type FragmentDomState = {
   key: string;
@@ -374,6 +532,7 @@ export function hydratePageContent(
       betweenBorderFlags.get(index),
       resolvedItem,
     );
+    placePageBreakReviewMarkers(fragmentEl, fragment, page, resolvedItem, el);
     el.appendChild(fragmentEl);
     const initSig = resolvedPaintCacheSignature(resolvedItem);
     return [
@@ -429,6 +588,7 @@ const PAINTER_OWNED_CONTENT_SELECTOR = [
  * from the retained list must not survive dehydration.
  */
 export function dehydratePageContent(el: HTMLElement, state: PageDomState): void {
+  pageBreakReviewFragments.delete(el);
   for (const fragmentState of state.fragments) {
     fragmentState.element.remove();
   }
@@ -504,6 +664,8 @@ export function patchPage(
         betweenInfo,
       );
 
+      if (needsRebuild) restorePageBreakReviewMarkers(current.element);
+
       const patched =
         needsRebuild &&
         fragment.kind === 'table' &&
@@ -521,6 +683,7 @@ export function patchPage(
         tableCellsReused += patched.cellsReused;
       } else if (needsRebuild) {
         const replacement = ctx.renderFragment(fragment, contextBase, sdtBoundary, betweenInfo, resolvedItem);
+        pageBreakReviewFragments.get(pageEl)?.delete(current.element);
         pageEl.replaceChild(replacement, current.element);
         ctx.recordChangedRoot?.(replacement);
         current.element = replacement;
@@ -556,6 +719,7 @@ export function patchPage(
       }
 
       ctx.updateFragmentElement(current.element, fragment, contextBase.section, resolvedItem);
+      placePageBreakReviewMarkers(current.element, fragment, page, resolvedItem, pageEl);
       if (sdtBoundary?.widthOverride != null) {
         current.element.style.width = `${sdtBoundary.widthOverride}px`;
       }
@@ -571,6 +735,7 @@ export function patchPage(
     }
 
     const fresh = ctx.renderFragment(fragment, contextBase, sdtBoundary, betweenInfo, resolvedItem);
+    placePageBreakReviewMarkers(fresh, fragment, page, resolvedItem, pageEl);
     pageEl.insertBefore(fresh, getPageContentFragments(pageEl)[index] ?? null);
     ctx.recordChangedRoot?.(fresh);
     fragmentsRendered += 1;
@@ -585,7 +750,10 @@ export function patchPage(
     });
   });
 
-  existing.forEach((stale) => stale.element.remove());
+  existing.forEach((stale) => {
+    pageBreakReviewFragments.get(pageEl)?.delete(stale.element);
+    stale.element.remove();
+  });
 
   reconcileBodyFragmentPaintOrder(pageEl, nextFragments);
 

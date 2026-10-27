@@ -1,3 +1,8 @@
+import {
+  PAGE_BREAK_REVIEW_SELECTOR,
+  copyReviewMarkerSourceAttrs,
+  isVisiblePageBreakReviewMarker,
+} from '../review-markers.js';
 import { completeRenderWork, type RenderWork } from '../render-work.js';
 import type {
   CellBorders,
@@ -831,6 +836,7 @@ type TableCellRenderDependencies = {
 export type TableCellRenderResult = {
   /** The cell container element (with borders, background, sizing, and content as child) */
   cellElement: HTMLElement;
+  reviewMarkers?: HTMLElement[];
 };
 
 /**
@@ -1498,7 +1504,18 @@ export function* renderTableCellWork(deps: TableCellRenderDependencies): RenderW
     }
   }
 
-  return { cellElement: cellEl };
+  const reviewMarkers = Array.from(cellEl.querySelectorAll<HTMLElement>(PAGE_BREAK_REVIEW_SELECTOR)).filter(
+    isVisiblePageBreakReviewMarker,
+  );
+  for (const marker of reviewMarkers) {
+    const source = marker.closest('[data-source-node-id]');
+    if (source) copyReviewMarkerSourceAttrs(marker, source);
+    marker.style.left = `${x + paddingLeft}px`;
+    marker.style.top = `${y}px`;
+    marker.style.zIndex = '1';
+    marker.remove();
+  }
+  return { cellElement: cellEl, ...(reviewMarkers.length ? { reviewMarkers } : {}) };
 }
 
 export const renderTableCell = (deps: TableCellRenderDependencies): TableCellRenderResult =>

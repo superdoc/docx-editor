@@ -206,6 +206,31 @@ describe('renderTextRun', () => {
     expect(element?.style.overflow).toBe('hidden');
   });
 
+  it('renders an SD-5989 page-break deletion label without advancing text flow or enabling formatting marks', () => {
+    const run: TextRun = {
+      kind: 'text',
+      text: '\u200B',
+      fontFamily: 'Arial',
+      fontSize: 16,
+      vanish: true,
+      pmStart: 12,
+      pmEnd: 12,
+      dataAttrs: { 'data-page-break-deletion-anchor': 'true' },
+      trackedChange: { id: 'imported:2', kind: 'delete', author: 'Ada', storyKey: 'body' },
+    };
+    const element = renderTextRun(run, context, makeRunRenderContext(), { enabled: true, mode: 'review' });
+    expect(element?.textContent).toBe('Page break');
+    expect(element?.dataset.trackChangeId).toBe('imported:2');
+    expect(element?.dataset.trackChangeKind).toBe('delete');
+    expect(element?.style.position).toBe('absolute');
+    expect(element?.style.textDecorationLine).toBe('line-through');
+    expect(element?.dataset.pmStart).toBe(element?.dataset.pmEnd);
+    expect(renderTextRun(run, context, makeRunRenderContext(), { enabled: true, mode: 'final' })?.textContent).toBe('');
+    expect(renderTextRun(run, context, makeRunRenderContext(), { enabled: false, mode: 'review' })?.textContent).toBe(
+      '',
+    );
+  });
+
   it('renders synthetic deleted paragraph-mark anchors as review glyphs when formatting marks are shown', () => {
     const run: TextRun = {
       text: '\u200B',

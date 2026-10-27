@@ -9,6 +9,19 @@
 
 import type { FlowBlock, Line, Run, TextRun } from './index.js';
 
+export const PAGE_BREAK_DELETION_ANCHOR_ATTR = 'data-page-break-deletion-anchor';
+export const DELETED_PAGE_BREAK_LABEL = 'Deleted page break';
+
+export function isPageBreakDeletionAnchorRun(
+  run: Run,
+): run is TextRun & { dataAttrs: { [PAGE_BREAK_DELETION_ANCHOR_ATTR]: 'true' } } {
+  return (
+    (run.kind === 'text' || run.kind === undefined) &&
+    'text' in run &&
+    run.dataAttrs?.[PAGE_BREAK_DELETION_ANCHOR_ATTR] === 'true'
+  );
+}
+
 export const NOTE_REFERENCE_MARKER_ATTR = 'data-v2-note-ref';
 export const NOTE_LABEL_MARKER_ATTR = 'data-v2-note-label';
 
@@ -142,7 +155,8 @@ export function sliceRunsForLine(block: FlowBlock, line: Line): Run[] {
       if (
         isBodyNoteReferenceRun(run) ||
         hasZeroWidthMarkerSpan(run) ||
-        run.dataAttrs?.['data-paragraph-mark-deletion-anchor'] === 'true'
+        run.dataAttrs?.['data-paragraph-mark-deletion-anchor'] === 'true' ||
+        isPageBreakDeletionAnchorRun(run)
       ) {
         const slice = text.slice(start, end);
         if (!slice) continue;

@@ -48,6 +48,7 @@ import {
   patchPage,
   planWindowPositionRemap,
   refreshPageShell,
+  refreshPageBreakReviewPlacements,
   renderPageShell,
   resolvedPmInteriorVersion,
   sdtLabelSetsEqual,
@@ -713,6 +714,7 @@ function reconcileContentWindow(
     ) {
       const remap = planWindowPositionRemap(entry.state, packet);
       if (remap.kind !== 'demote') {
+        refreshPageBreakReviewPlacements(entry.state, packet, ctx.contentContext.recordChangedRoot);
         for (const label of expectedSdtLabels) sdtLabelsRendered.add(label);
         let decorationsRefreshed = false;
         if (refreshDecorations) {

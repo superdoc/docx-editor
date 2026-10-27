@@ -229,6 +229,18 @@ describe('sliceRunsForLine', () => {
     },
   );
 
+  it('keeps an SD-5989 page-break review anchor zero-width when slicing a painted line', () => {
+    const marker: TextRun = {
+      ...makeTextRun('\u200b', 100),
+      pmEnd: 100,
+      vanish: true,
+      dataAttrs: { 'data-page-break-deletion-anchor': 'true' },
+      trackedChange: { id: 'deleted-break', kind: 'delete' },
+    };
+    const line = makeLine({ fromRun: 0, fromChar: 0, toRun: 1, toChar: 4 });
+    expect(sliceRunsForLine(makeParagraph([marker, makeTextRun('Live', 100)]), line)[0]).toEqual(marker);
+  });
+
   it('passes middle text runs through unchanged when the line spans multiple runs', () => {
     const first = makeTextRun('foo', 0);
     const middle = makeTextRun('bar', 3);

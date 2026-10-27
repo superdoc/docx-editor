@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vite-plus/test';
 import type { BlockId, ParagraphBlock, TableBlock, TableFragment, TableMeasure } from '@superdoc/contracts';
 import { completeRenderWork } from '../render-work.js';
+import { renderTextRun } from '../runs/text-run.js';
+import type { RunRenderContext } from '../runs/types.js';
 import type { FragmentRenderContext } from '../renderer.js';
 import {
   applyTableFragmentPatchWork,
@@ -421,5 +423,205 @@ describe('in-place table fragment patching', () => {
   it('never patches a container it did not paint', () => {
     const next = grid();
     expect(planTableFragmentPatch(patchInput(doc, doc.createElement('div'), next))).toBeNull();
+  });
+});
+
+describe('SD-5989 table review marker clipping', () => {
+  const doc = document.implementation.createHTMLDocument('table-review');
+  const runContext = {
+    doc,
+    layoutEpoch: 42,
+    showFormattingMarks: false,
+    pendingTooltips: new WeakMap(),
+    applySdtDataset: () => {},
+    applyTrackedChangeDecorations: () => {},
+  } as unknown as RunRenderContext;
+  const renderLine: TableRenderDependencies['renderLine'] = (block, _line, lineContext) => {
+    const line = doc.createElement('div');
+    line.className = 'superdoc-line';
+    for (const run of block.runs) {
+      if (run.kind && run.kind !== 'text') continue;
+      const element = renderTextRun(run, lineContext, runContext, {
+        enabled: true,
+        mode: block.attrs?.trackedChangesMode === 'final' ? 'final' : 'review',
+      });
+      if (element) line.appendChild(element);
+    }
+    return line;
+  };
+  const markedGrid = (nested = false): Grid => {
+    const original = grid();
+    const first = original.table.rows[0].cells[0];
+    const paragraph = first.blocks![0] as ParagraphBlock;
+    const marked: ParagraphBlock = {
+      ...paragraph,
+      sourceAnchor: { sourceNodeId: 'recipient' },
+      runs: [
+        {
+          kind: 'text',
+          text: '\u200b',
+          vanish: true,
+          fontFamily: 'Arial',
+          fontSize: 12,
+          pmStart: 0,
+          pmEnd: 0,
+          dataAttrs: { 'data-page-break-deletion-anchor': 'true', 'data-page-break-deletion-source-node-id': 'donor' },
+          trackedChange: { id: 'canonical-deletion', kind: 'delete', storyKey: 'body', author: 'Ada' },
+        },
+        ...paragraph.runs,
+      ],
+    };
+    const markedMeasure = {
+      ...original.measure.rows[0].cells[0].blocks![0],
+      lines: [
+        {
+          fromRun: 0,
+          toRun: 1,
+          fromChar: 0,
+          toChar: paragraph.runs[0].text.length,
+          width: 40,
+          ascent: 12,
+          descent: 4,
+          lineHeight: ROW_HEIGHT,
+        },
+      ],
+    };
+    const cell = { ...first, attrs: { padding: { top: 0, bottom: 0, left: 0, right: 0 } }, blocks: [marked] };
+    const cellMeasure = { ...original.measure.rows[0].cells[0], blocks: [markedMeasure] };
+    const nestedTable = {
+      ...original.table,
+      id: 'nested-table' as BlockId,
+      rows: [{ id: 'nested-row' as BlockId, cells: [cell] }],
+      columnWidths: [CELL_WIDTH],
+    };
+    const nestedMeasure = {
+      ...original.measure,
+      totalWidth: CELL_WIDTH,
+      totalHeight: ROW_HEIGHT,
+      columnWidths: [CELL_WIDTH],
+      rows: [{ height: ROW_HEIGHT, cells: [cellMeasure] }],
+    };
+    return {
+      table: {
+        ...original.table,
+        rows: original.table.rows.map((row, index) =>
+          index
+            ? row
+            : {
+                ...row,
+                cells: row.cells.map((item, column) =>
+                  column ? item : nested ? { ...cell, id: 'outer-cell' as BlockId, blocks: [nestedTable] } : cell,
+                ),
+              },
+        ),
+      },
+      measure: {
+        ...original.measure,
+        rows: original.measure.rows.map((row, index) =>
+          index
+            ? row
+            : {
+                ...row,
+                cells: row.cells.map((item, column) =>
+                  column ? item : nested ? { ...cellMeasure, blocks: [nestedMeasure] } : cellMeasure,
+                ),
+              },
+        ),
+      },
+    } as Grid;
+  };
+
+  it.each([false, true])('keeps a relocated marker outside cell clipping without moving text (nested=%s)', (nested) => {
+    const input = markedGrid(nested);
+    const container = renderTableFragment(deps(doc, input, { renderLine }));
+    const marker = container.querySelector<HTMLElement>('[data-page-break-deletion-anchor]')!;
+    expect(marker.textContent).toBe('Page break');
+    expect(marker.dataset.trackChangeId).toBe('canonical-deletion');
+    expect(marker.dataset.pageBreakDeletionSourceNodeId).toBe('donor');
+    expect(marker.dataset.pmStart).toBe(marker.dataset.pmEnd);
+    const clippingAncestors: HTMLElement[] = [];
+    for (let parent = marker.parentElement; parent && parent !== container; parent = parent.parentElement) {
+      if (parent.style.overflow === 'hidden') clippingAncestors.push(parent);
+    }
+    expect(clippingAncestors).toEqual([]);
+    const paintedCells = [...container.querySelectorAll<HTMLElement>('[data-superdoc-table-row-role]')];
+    expect(paintedCells.every((cell) => cell.style.overflow === 'hidden')).toBe(true);
+    expect(container.querySelectorAll('[data-page-break-deletion-anchor]')).toHaveLength(1);
+    expect(container.textContent?.replace('Page break', '')).toBe(
+      Array.from({ length: ROWS }, (_, r) => Array.from({ length: COLUMNS }, (_, c) => cellText(r, c)).join('')).join(
+        '',
+      ),
+    );
+    expect(container.style.height).toBe(`${ROW_HEIGHT * ROWS}px`);
+  });
+
+  it.each([false, true])(
+    'keeps each recipient fragment uniquely owned after marker extraction (nested=%s)',
+    (nested) => {
+      const container = renderTableFragment(deps(doc, markedGrid(nested), { renderLine }));
+      const marker = container.querySelector<HTMLElement>('[data-page-break-deletion-anchor]')!;
+      const recipient = container.querySelector<HTMLElement>(
+        '[data-source-node-id="recipient"]:not([data-page-break-deletion-anchor])',
+      )!;
+      const fragmentId = recipient.dataset.layoutFragmentId;
+      expect(fragmentId).toBeTruthy();
+      const owners = [...container.querySelectorAll<HTMLElement>('[data-layout-fragment-id]')].filter(
+        (element) => element.dataset.layoutFragmentId === fragmentId,
+      );
+      expect(owners).toEqual([recipient]);
+      expect(marker.hasAttribute('data-layout-fragment-id')).toBe(false);
+      expect(marker.dataset.sourceNodeId).toBe('recipient');
+      expect(marker.dataset.sourceAnchor).toBe(recipient.dataset.sourceAnchor);
+      expect(marker.dataset.layoutBlockRef).toBe(recipient.dataset.layoutBlockRef);
+      expect(marker.dataset.layoutStory).toBe(recipient.dataset.layoutStory);
+      expect(marker.dataset.pageBreakDeletionSourceNodeId).toBe('donor');
+      expect(marker.dataset.trackChangeId).toBe('canonical-deletion');
+    },
+  );
+
+  it.each(['remove', 'final'])('cleans up the owned marker during a %s table patch', (change) => {
+    const previous = markedGrid();
+    const container = renderTableFragment(deps(doc, previous, { renderLine }));
+    const marker = container.querySelector<HTMLElement>('[data-page-break-deletion-anchor]')!;
+    const ledger = readTablePaintLedger(container)!;
+    expect(ledger.groups[0].elements.some((element) => element === marker || element.contains(marker))).toBe(true);
+    expect(marker.closest('[data-source-node-id]')?.getAttribute('data-source-node-id')).toBe('recipient');
+    const next: Grid = {
+      table: {
+        ...previous.table,
+        rows: previous.table.rows.map((row, index) =>
+          index
+            ? row
+            : {
+                ...row,
+                cells: row.cells.map((cell, column) =>
+                  column
+                    ? cell
+                    : {
+                        ...cell,
+                        blocks: [
+                          {
+                            ...(cell.blocks![0] as ParagraphBlock),
+                            ...(change === 'remove'
+                              ? { runs: (cell.blocks![0] as ParagraphBlock).runs.slice(1) }
+                              : {
+                                  attrs: { ...(cell.blocks![0] as ParagraphBlock).attrs, trackedChangesMode: 'final' },
+                                }),
+                          },
+                        ],
+                      },
+                ),
+              },
+        ),
+      },
+      measure: previous.measure,
+    };
+    const input = patchInput(doc, container, next, { renderLine });
+    const plan = planTableFragmentPatch(input);
+    expect(plan).not.toBeNull();
+    completeRenderWork(applyTableFragmentPatchWork(plan!));
+    expect(container.querySelector('[data-page-break-deletion-anchor][aria-label]')).toBeNull();
+    expect(marker.isConnected).toBe(false);
+    expect(container.textContent).toBe(renderTableFragment(deps(doc, next, { renderLine })).textContent);
   });
 });

@@ -489,8 +489,8 @@ export function* renderTableFragmentWork(deps: TableRenderDependencies): RenderW
 
         const srcCell = block.rows[r]?.cells?.[ci];
         const slice = fragment.mergedCellContent?.find((item) => item.rowIndex === r && item.cellIndex === ci);
-        const ghostDiv = slice
-          ? (yield* renderTableCellWork({
+        const ghostResult = slice
+          ? yield* renderTableCellWork({
               doc,
               x: ghostX,
               y,
@@ -513,8 +513,9 @@ export function* renderTableFragmentWork(deps: TableRenderDependencies): RenderW
               chrome,
               resolvePhysical,
               isRtl,
-            })).cellElement
-          : doc.createElement('div');
+            })
+          : undefined;
+        const ghostDiv = ghostResult?.cellElement ?? doc.createElement('div');
         ghostDiv.setAttribute(TABLE_ROW_ROLE_ATTRIBUTE, 'body');
         ghostDiv.style.position = 'absolute';
         ghostDiv.style.left = `${ghostX}px`;
@@ -579,6 +580,7 @@ export function* renderTableFragmentWork(deps: TableRenderDependencies): RenderW
         }
 
         container.appendChild(ghostDiv);
+        for (const marker of ghostResult?.reviewMarkers ?? []) container.appendChild(marker);
         if (ghostBorderOverlay) container.appendChild(ghostBorderOverlay);
         ghostCells += 1;
       }

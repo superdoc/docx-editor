@@ -1,5 +1,7 @@
 import type { FlowRunLink, Run, TextRun } from '@superdoc/contracts';
 import {
+  DELETED_PAGE_BREAK_LABEL,
+  isPageBreakDeletionAnchorRun,
   formatChapterPageNumberText,
   formatPageNumberFieldValue,
   formatSectionPageNumberText,
@@ -128,7 +130,7 @@ const isReviewableParagraphMarkDeletionAnchor = (
   run.dataAttrs?.[PARAGRAPH_MARK_DELETION_ANCHOR_ATTR] === 'true' &&
   getTrackedChangeLayers(run).length > 0;
 
-const applyParagraphMarkDeletionGlyphMetadata = (element: HTMLElement, run: TextRun): void => {
+const applyReviewGlyphMetadata = (element: HTMLElement, run: TextRun, marker = 'paragraph'): void => {
   const layers = getTrackedChangeLayers(run);
   const meta = run.trackedChange ?? layers[0];
   if (!meta) return;
@@ -136,9 +138,9 @@ const applyParagraphMarkDeletionGlyphMetadata = (element: HTMLElement, run: Text
   element.dataset.trackChangeId = meta.id;
   element.dataset.trackChangeIds = layers.map((layer) => layer.id).join(',');
   element.dataset.trackChangeKind = meta.kind;
-  element.dataset.trackChangeAnchor = 'paragraph-mark';
-  element.dataset.trackChangeStructural = 'paragraph-mark';
-  element.dataset.trackChangeMarker = 'paragraph';
+  element.dataset.trackChangeAnchor = marker === 'paragraph' ? 'paragraph-mark' : marker;
+  element.dataset.trackChangeStructural = marker === 'paragraph' ? 'paragraph-mark' : marker;
+  element.dataset.trackChangeMarker = marker;
   if (meta.type) element.dataset.trackChangeType = meta.type;
   if (meta.subtype) element.dataset.trackChangeSubtype = meta.subtype;
   if (meta.targetKind) element.dataset.trackChangeTargetKind = meta.targetKind;
@@ -262,7 +264,24 @@ export const renderTextRun = (
     elem.setAttribute('aria-hidden', 'true');
     const showParagraphMarkDeletionGlyph = isReviewableParagraphMarkDeletionAnchor(run, renderContext, trackedConfig);
 
-    if (showParagraphMarkDeletionGlyph) {
+    const showPageBreakDeletionGlyph =
+      isPageBreakDeletionAnchorRun(run) &&
+      trackedConfig?.enabled === true &&
+      trackedConfig.mode === 'review' &&
+      getTrackedChangeLayers(run).length > 0;
+
+    if (showPageBreakDeletionGlyph) {
+      elem.removeAttribute('aria-hidden');
+      elem.setAttribute('aria-label', DELETED_PAGE_BREAK_LABEL);
+      elem.textContent = 'Page break';
+      elem.style.position = 'absolute';
+      elem.style.transform = 'translateY(-100%)';
+      elem.style.whiteSpace = 'nowrap';
+      elem.style.textDecorationLine = 'line-through';
+      applyRunStyles(elem, run, false, renderContext.resolvePhysical);
+      elem.style.height = `${run.fontSize * 1.3}px`;
+      elem.style.lineHeight = elem.style.height;
+    } else if (showParagraphMarkDeletionGlyph) {
       elem.classList.add('superdoc-formatting-paragraph-mark', 'superdoc-tracked-paragraph-mark');
       elem.textContent = '¶';
       elem.style.display = 'inline';
@@ -316,8 +335,9 @@ export const renderTextRun = (
       renderContext.applyTrackedChangeDecorations(elem, run, trackedConfig);
     }
     if (showParagraphMarkDeletionGlyph) {
-      applyParagraphMarkDeletionGlyphMetadata(elem, run);
+      applyReviewGlyphMetadata(elem, run);
     }
+    if (showPageBreakDeletionGlyph) applyReviewGlyphMetadata(elem, run, 'page-break');
     renderContext.applySdtDataset(elem, run.sdt);
     return elem;
   }

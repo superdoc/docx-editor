@@ -3958,6 +3958,9 @@ export { isResolvedTableItem, isResolvedImageItem, isResolvedDrawingItem } from 
 // Pure transformations on inline-run shapes (used by pm-adapter, layout-bridge,
 // and painter-dom). Located in contracts to avoid reverse stage dependencies.
 export {
+  PAGE_BREAK_DELETION_ANCHOR_ATTR,
+  DELETED_PAGE_BREAK_LABEL,
+  isPageBreakDeletionAnchorRun,
   expandRunsForInlineNewlines,
   isBodyNoteReferenceRun,
   isZeroWidthMarkerRun,

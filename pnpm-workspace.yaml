@@ -158,7 +158,7 @@ overrides:
   protobufjs@8: '8.6.4'
   superdoc: 'workspace:*'
   '@superdoc/react': 'workspace:*'
-  '@superdoc/sdk': '2.25.0-next.1'
+  '@superdoc/sdk': '2.25.0-next.2'
   '@superdoc/common': 'workspace:*'
   '@superdoc/contracts': 'workspace:*'
   '@superdoc/dom-contract': 'workspace:*'
@@ -195,3 +195,12 @@ peerDependencyRules:
 # AIDEV-NOTE: Configuration gates run before native system dependencies exist;
 # dependency lifecycle scripts belong to the explicit install step.
 verifyDepsBeforeRun: false
+
+minimumReleaseAgeExclude:
+  - '@superdoc/docx-engine@0.27.0-next.2'
+  - '@superdoc/sdk-darwin-arm64@2.25.0-next.2'
+  - '@superdoc/sdk-darwin-x64@2.25.0-next.2'
+  - '@superdoc/sdk-linux-arm64@2.25.0-next.2'
+  - '@superdoc/sdk-linux-x64@2.25.0-next.2'
+  - '@superdoc/sdk-windows-x64@2.25.0-next.2'
+  - '@superdoc/sdk@2.25.0-next.2'

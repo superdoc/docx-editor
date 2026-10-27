@@ -1294,12 +1294,13 @@ function* renderExplicitlyPositionedRuns({
       const segmentText = baseText.slice(segment.fromChar, segment.toChar);
       if (!segmentText) continue;
 
-      const [pmSliceStart, pmSliceEnd] = hasZeroWidthMarkerSpan(baseRun)
-        ? [baseRun.pmStart, baseRun.pmEnd]
-        : [
-            runPmStart != null ? runPmStart + segment.fromChar : undefined,
-            runPmStart != null ? runPmStart + segment.toChar : (fallbackPmEnd ?? undefined),
-          ];
+      const [pmSliceStart, pmSliceEnd] =
+        hasZeroWidthMarkerSpan(baseRun) || typeof baseRun.dataAttrs?.['data-v2-ime-preedit'] === 'string'
+          ? [baseRun.pmStart, baseRun.pmEnd]
+          : [
+              runPmStart != null ? runPmStart + segment.fromChar : undefined,
+              runPmStart != null ? runPmStart + segment.toChar : (fallbackPmEnd ?? undefined),
+            ];
       const segmentOffset = (visibleRunStarts[segment.runIndex] ?? 0) + segment.fromChar - lineVisibleStart;
       const segmentRun = markInlineBoxRun(
         {

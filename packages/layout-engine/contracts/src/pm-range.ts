@@ -94,7 +94,11 @@ export function computeLinePmRange(block: FlowBlock, line: Line): LinePmRange {
     const runPmStart = coercePmStart(run);
     if (runPmStart == null) continue;
 
-    if (isEmptySdtPlaceholderRun(run) || hasZeroWidthMarkerSpan(run)) {
+    if (
+      isEmptySdtPlaceholderRun(run) ||
+      hasZeroWidthMarkerSpan(run) ||
+      (run.kind === 'text' && typeof run.dataAttrs?.['data-v2-ime-preedit'] === 'string')
+    ) {
       const runPmEnd = coercePmEnd(run) ?? runPmStart;
       if (pmStart == null) {
         pmStart = runPmStart;

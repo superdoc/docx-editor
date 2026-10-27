@@ -155,6 +155,7 @@ export function sliceRunsForLine(block: FlowBlock, line: Line): Run[] {
       if (
         isBodyNoteReferenceRun(run) ||
         hasZeroWidthMarkerSpan(run) ||
+        typeof run.dataAttrs?.['data-v2-ime-preedit'] === 'string' ||
         run.dataAttrs?.['data-paragraph-mark-deletion-anchor'] === 'true' ||
         isPageBreakDeletionAnchorRun(run)
       ) {

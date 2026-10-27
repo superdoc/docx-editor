@@ -10,7 +10,8 @@
  * - Edge cases (empty runs, very narrow widths, whitespace-only content)
  */
 
-import { beforeAll, describe, expect, it, vi } from 'vite-plus/test';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
+import { Window } from 'happy-dom';
 import {
   EMPTY_SDT_PLACEHOLDER_TEXT,
   computeLinePmRange,
@@ -19,7 +20,11 @@ import {
   type TabStop,
 } from '@superdoc/contracts';
 import { LIST_MARKER_GAP } from '@superdoc/common/layout-constants';
-import { remeasureParagraph } from '../src/remeasure.ts';
+import { clearRemeasureTextCaches, remeasureParagraph } from '../src/remeasure.ts';
+import { collectSegmentGeometry } from '../src/neutral-segment-geometry.ts';
+import { measureCharacterX } from '../src/text-measurement.ts';
+import { renderLine } from '../../painters/dom/src/runs/render-line.js';
+import type { RunRenderContext } from '../../painters/dom/src/runs/types.js';
 
 describe('single hanging-tab remeasurement', () => {
   it.each([
@@ -280,6 +285,802 @@ beforeAll(() => {
 });
 
 describe('remeasureParagraph', () => {
+  describe('justified float wrap spaces', () => {
+    const regions = [[{ offsetX: 156, width: 140 }], [{ offsetX: 156, width: 140 }]];
+
+    it('keeps the consumed source delimiter outside painted width and justification', () => {
+      const block = createBlock([textRun('Alpha Beta Gamma', { pmStart: 1, pmEnd: 17 })], { alignment: 'justify' });
+      const source = structuredClone(block);
+      const measure = remeasureParagraph(block, 300, 0, regions);
+      const line = measure.lines[0];
+
+      expect(line).toMatchObject({ toRun: 0, toChar: 11, width: 100, maxWidth: 140, spaceCount: 1 });
+      expect(line.segments).toEqual([{ runIndex: 0, fromChar: 0, toChar: 10, width: 100, x: 156 }]);
+      expect(measure.lines[1]).toMatchObject({ fromRun: 0, fromChar: 11 });
+      expect(computeLinePmRange(block, line)).toEqual({ pmStart: 1, pmEnd: 12 });
+      expect(block).toEqual(source);
+      expect([9, 10, 11].map((offset) => measureCharacterX(block, line, offset))).toEqual([286, 296, 296]);
+
+      const geometry = collectSegmentGeometry(
+        {
+          pageSize: { w: 400, h: 800 },
+          pages: [
+            {
+              number: 1,
+              fragments: [{ kind: 'para', blockId: block.id, fromLine: 0, toLine: 2, x: 0, y: 0, width: 300 }],
+            },
+          ],
+        },
+        [block],
+        [measure],
+      );
+      expect(geometry.fragments[0].lines[0].segments[0]).toMatchObject({ fromChar: 0, toChar: 10, x: 156, width: 140 });
+    });
+
+    it('removes a terminal space suffix across styled runs without moving the next source cursor', () => {
+      const block = createBlock(
+        [textRun('Alpha Beta'), textRun(' ', { bold: true }), textRun(' Gamma', { italic: true })],
+        { alignment: 'justify' },
+      );
+      const source = structuredClone(block);
+      const measure = remeasureParagraph(block, 300, 0, regions);
+
+      expect(measure.lines[0]).toMatchObject({ toRun: 2, toChar: 1, width: 100, spaceCount: 1 });
+      expect(measure.lines[0].segments).toEqual([{ runIndex: 0, fromChar: 0, toChar: 10, width: 100, x: 156 }]);
+      expect(measure.lines[1]).toMatchObject({ fromRun: 2, fromChar: 1 });
+      expect([10, 11, 12].map((offset) => measureCharacterX(block, measure.lines[0], offset))).toEqual([296, 296, 296]);
+      expect(block).toEqual(source);
+    });
+
+    it.each([
+      ['space', ' ', false],
+      ['text tab', 'a\tb', false],
+      ['tab run', '\t', true],
+    ] as const)(
+      'keeps paint, neutral geometry, and carets consistent after a vanished %s',
+      (_name, hiddenText, tab) => {
+        const visibleStart = 7 + hiddenText.length;
+        const hidden = tab
+          ? tabRun({ vanish: true, pmStart: 7, pmEnd: visibleStart })
+          : textRun(hiddenText, { vanish: true, pmStart: 7, pmEnd: visibleStart });
+        const block = createBlock(
+          [
+            textRun('Alpha ', { pmStart: 1, pmEnd: 7 }),
+            hidden,
+            textRun('Betaaaa Gamma', { pmStart: visibleStart, pmEnd: visibleStart + 13 }),
+          ],
+          { alignment: 'justify' },
+        );
+        const source = structuredClone(block);
+        const measure = remeasureParagraph(block, 300, 0, regions);
+        const line = measure.lines[0];
+        const paintDocument = new Window().document as unknown as Document;
+        const runContext: RunRenderContext = {
+          doc: paintDocument,
+          layoutEpoch: 0,
+          showFormattingMarks: false,
+          contentControlsChrome: 'default',
+          resolvePhysical: (family) => family,
+          pendingTooltips: new WeakMap(),
+          getNextLinkId: () => 'link-1',
+          applySdtDataset: () => {},
+          buildImageHyperlinkAnchor: (child) => child,
+          resolveTrackedChangesConfig: () => ({ mode: 'final', enabled: false }),
+          applyTrackedChangeDecorations: () => {},
+          resolveRunSdtId: () => null,
+          createInlineSdtWrapper: () => paintDocument.createElement('span'),
+          syncInlineSdtWrapperTypography: () => {},
+          expandSdtWrapperPmRange: () => {},
+        };
+        const painted = renderLine({
+          block,
+          line,
+          context: { pageNumber: 1, totalPages: 1, section: 'body' },
+          runContext,
+        });
+        const lastRun = painted.querySelector<HTMLElement>(`.superdoc-text-run[data-pm-start="${visibleStart}"]`)!;
+        const paintedStart = Number.parseFloat(lastRun.style.left);
+        const paintedEnd = paintedStart + lastRun.textContent!.length * CHAR_WIDTH;
+        const geometry = collectSegmentGeometry(
+          {
+            pageSize: { w: 400, h: 800 },
+            pages: [
+              {
+                number: 1,
+                fragments: [{ kind: 'para', blockId: block.id, fromLine: 0, toLine: 2, x: 0, y: 0, width: 300 }],
+              },
+            ],
+          },
+          [block],
+          [measure],
+        );
+        const lastSegment = geometry.fragments[0].lines[0].segments.at(-1)!;
+        const regionEnd = regions[0][0].offsetX + regions[0][0].width;
+
+        expect.soft(line).toMatchObject({ toRun: 2, toChar: 8, width: 130, maxWidth: 140, spaceCount: 1 });
+        expect
+          .soft(line.segments)
+          .toEqual([
+            { runIndex: 0, fromChar: 0, toChar: 6, width: 60, x: 156 },
+            ...(tab ? [] : [{ runIndex: 1, fromChar: 0, toChar: hiddenText.length, width: 0 }]),
+            { runIndex: 2, fromChar: 0, toChar: 7, width: 70 },
+          ]);
+        expect.soft(measure.lines[1]).toMatchObject({ fromRun: 2, fromChar: 8 });
+        expect.soft(computeLinePmRange(block, line)).toEqual({ pmStart: 1, pmEnd: visibleStart + 8 });
+        expect.soft(block).toEqual(source);
+        expect.soft(painted.style.wordSpacing).toBe('10px');
+        expect.soft(lastRun.textContent).toBe('Betaaaa');
+        expect.soft(paintedStart).toBe(226);
+        expect.soft(paintedStart).toBe(measureCharacterX(block, line, 6 + hiddenText.length));
+        expect.soft(lastSegment).toMatchObject({ runIndex: 2, fromChar: 0, toChar: 7, x: paintedStart, width: 70 });
+        expect.soft(paintedEnd).toBe(lastSegment.x + lastSegment.width);
+        expect.soft(paintedEnd).toBe(measureCharacterX(block, line, 14 + hiddenText.length));
+        expect.soft(paintedEnd).toBeLessThanOrEqual(regionEnd);
+      },
+    );
+
+    it.each([
+      ['150%', 1.5],
+      ['50%', 0.5],
+      ['default', undefined],
+      ['100%', 1],
+    ] as const)(
+      'keeps %s horizontal scale paint, neutral geometry, and carets at the float region edge',
+      (_name, scale) => {
+        const block = createBlock([textRun('Alpha Beta Gamma', { horizontalScale: scale, pmStart: 1, pmEnd: 17 })], {
+          alignment: 'justify',
+        });
+        const source = structuredClone(block);
+        const region = { offsetX: 156, width: 110 * (scale ?? 1) };
+        const regionEnd = region.offsetX + region.width;
+        const measure = remeasureParagraph(block, 500, 0, [[region]]);
+        const line = measure.lines[0];
+        const paintDocument = new Window().document as unknown as Document;
+        const runContext: RunRenderContext = {
+          doc: paintDocument,
+          layoutEpoch: 0,
+          showFormattingMarks: false,
+          contentControlsChrome: 'default',
+          resolvePhysical: (family) => family,
+          pendingTooltips: new WeakMap(),
+          getNextLinkId: () => 'link-1',
+          applySdtDataset: () => {},
+          buildImageHyperlinkAnchor: (child) => child,
+          resolveTrackedChangesConfig: () => ({ mode: 'final', enabled: false }),
+          applyTrackedChangeDecorations: () => {},
+          resolveRunSdtId: () => null,
+          createInlineSdtWrapper: () => paintDocument.createElement('span'),
+          syncInlineSdtWrapperTypography: () => {},
+          expandSdtWrapperPmRange: () => {},
+        };
+        const painted = renderLine({
+          block,
+          line,
+          context: { pageNumber: 1, totalPages: 1, section: 'body' },
+          runContext,
+        });
+        const leaf = painted.querySelector<HTMLElement>('.superdoc-text-run')!;
+        const text = leaf.textContent!;
+        const spacing = Number.parseFloat(leaf.style.wordSpacing || painted.style.wordSpacing) || 0;
+        const paintedScale = Number(leaf.style.transform.match(/scaleX\((.+)\)/)?.[1] ?? 1);
+        const paintedStart = Number.parseFloat(leaf.style.left);
+        const paintedEnd =
+          paintedStart + (text.length * CHAR_WIDTH + (text.match(/ /g)?.length ?? 0) * spacing) * paintedScale;
+        const geometry = collectSegmentGeometry(
+          {
+            pageSize: { w: 800, h: 800 },
+            pages: [
+              {
+                number: 1,
+                fragments: [{ kind: 'para', blockId: block.id, fromLine: 0, toLine: 2, x: 0, y: 0, width: 500 }],
+              },
+            ],
+          },
+          [block],
+          [measure],
+        );
+        const segment = geometry.fragments[0].lines[0].segments[0];
+
+        expect.soft(measure.lines).toHaveLength(2);
+        expect.soft(line).toMatchObject({ fromRun: 0, fromChar: 0, toRun: 0, toChar: 11, maxWidth: region.width });
+        expect.soft(measure.lines[1]).toMatchObject({ fromRun: 0, fromChar: 11, toRun: 0, toChar: 16 });
+        expect.soft(computeLinePmRange(block, line)).toEqual({ pmStart: 1, pmEnd: 12 });
+        expect.soft(block).toEqual(source);
+        expect.soft(line.width).toBe(100 * (scale ?? 1));
+        expect.soft(line.spaceCount).toBe(1);
+        expect.soft(line.segments?.[0].toChar).toBe(10);
+        expect.soft(text).toBe('Alpha Beta');
+        expect.soft(leaf.dataset.pmStart).toBe('1');
+        expect.soft(leaf.dataset.pmEnd).toBe('11');
+        expect.soft(spacing).toBe(10);
+        expect.soft(paintedScale).toBe(scale ?? 1);
+        expect.soft(paintedStart).toBe(region.offsetX);
+        expect.soft(paintedStart).toBe(measureCharacterX(block, line, 0));
+        expect.soft(segment.x).toBe(paintedStart);
+        expect.soft(paintedEnd).toBe(segment.x + segment.width);
+        expect.soft(paintedEnd).toBe(measureCharacterX(block, line, 11));
+        expect.soft(paintedEnd).toBe(regionEnd);
+        expect.soft(paintedEnd).toBeLessThanOrEqual(regionEnd);
+      },
+    );
+
+    it.each([0.5, 1.5])('keeps mixed %s scale spaces consistent across paint and caret geometry', (scale) => {
+      const block = createBlock(
+        [
+          textRun('Alpha ', { horizontalScale: scale, pmStart: 1, pmEnd: 7 }),
+          textRun('Beta Gamma', { pmStart: 7, pmEnd: 17 }),
+        ],
+        { alignment: 'justify' },
+      );
+      const source = structuredClone(block);
+      const region = { offsetX: 156, width: 60 * scale + 80 };
+      const measure = remeasureParagraph(block, 500, 0, [[region]]);
+      const line = measure.lines[0];
+      const paintDocument = new Window().document as unknown as Document;
+      const runContext: RunRenderContext = {
+        doc: paintDocument,
+        layoutEpoch: 0,
+        showFormattingMarks: false,
+        contentControlsChrome: 'default',
+        resolvePhysical: (family) => family,
+        pendingTooltips: new WeakMap(),
+        getNextLinkId: () => 'link-1',
+        applySdtDataset: () => {},
+        buildImageHyperlinkAnchor: (child) => child,
+        resolveTrackedChangesConfig: () => ({ mode: 'final', enabled: false }),
+        applyTrackedChangeDecorations: () => {},
+        resolveRunSdtId: () => null,
+        createInlineSdtWrapper: () => paintDocument.createElement('span'),
+        syncInlineSdtWrapperTypography: () => {},
+        expandSdtWrapperPmRange: () => {},
+      };
+      const painted = renderLine({
+        block,
+        line,
+        context: { pageNumber: 1, totalPages: 1, section: 'body' },
+        runContext,
+      });
+      const leaves = [...painted.querySelectorAll<HTMLElement>('.superdoc-text-run')];
+      const geometry = collectSegmentGeometry(
+        {
+          pageSize: { w: 800, h: 800 },
+          pages: [
+            {
+              number: 1,
+              fragments: [{ kind: 'para', blockId: block.id, fromLine: 0, toLine: 2, x: 0, y: 0, width: 500 }],
+            },
+          ],
+        },
+        [block],
+        [measure],
+      );
+      const neutral = geometry.fragments[0].lines[0].segments;
+      const spacing = Number.parseFloat(leaves[0].style.wordSpacing);
+      const paintedWidth = (60 + spacing) * scale;
+      const nextStart = Number.parseFloat(leaves[1].style.left);
+      const regionEnd = region.offsetX + region.width;
+
+      expect(block).toEqual(source);
+      expect(line).toMatchObject({ toRun: 1, toChar: 5, width: 60 * scale + 40, spaceCount: 1 });
+      expect(leaves.map((leaf) => leaf.textContent)).toEqual(['Alpha ', 'Beta']);
+      expect(paintedWidth).toBeCloseTo(60 * scale + 40, 5);
+      expect(nextStart).toBeCloseTo(region.offsetX + paintedWidth, 5);
+      expect(neutral[0]).toMatchObject({ x: region.offsetX, width: 60 * scale + 40 });
+      expect(neutral[1]).toMatchObject({ x: nextStart, width: 40 });
+      expect(measureCharacterX(block, line, 6)).toBeCloseTo(nextStart, 8);
+      expect(measureCharacterX(block, line, 10)).toBeCloseTo(regionEnd, 8);
+      expect(measureCharacterX(block, line, 11)).toBeCloseTo(regionEnd, 8);
+    });
+
+    it('does not add caret advance when the only source space is the omitted wrap delimiter', () => {
+      const block = createBlock([textRun('Alpha Gamma')], { alignment: 'justify' });
+      const measure = remeasureParagraph(block, 300, 0, [[{ offsetX: 156, width: 80 }]]);
+      const line = measure.lines[0];
+
+      expect(line).toMatchObject({ toChar: 6, width: 50, spaceCount: 0 });
+      expect(line.segments?.[0]).toMatchObject({ toChar: 5, width: 50, x: 156 });
+      expect([4, 5, 6].map((offset) => measureCharacterX(block, line, offset))).toEqual([196, 206, 206]);
+      expect(measure.lines[1].fromChar).toBe(6);
+    });
+
+    it('preserves NBSP in painted content and in its justification count', () => {
+      const block = createBlock([textRun('Alpha\u00a0Beta Gamma')], { alignment: 'justify' });
+      const line = remeasureParagraph(block, 300, 0, regions).lines[0];
+
+      expect(line).toMatchObject({ toChar: 11, width: 100, spaceCount: 1 });
+      expect(line.segments?.[0]).toMatchObject({ toChar: 10, width: 100 });
+    });
+
+    it.each([
+      ['ASCII spaces', ['             ']],
+      ['NBSP and ASCII spaces', ['\u00a0            ']],
+      ['styled NBSP and ASCII spaces', ['\u00a0', '            ']],
+    ] as const)(
+      'preserves painted whitespace and separate source boundaries for %s before a wrapped word',
+      (_name, prefixes) => {
+        let pmStart = 1;
+        const runs = prefixes.map((prefix, index) => {
+          const text = prefix + (index === prefixes.length - 1 ? 'Gamma' : '');
+          const run = textRun(text, { pmStart, pmEnd: pmStart + text.length, bold: index > 0 });
+          pmStart += text.length;
+          return run;
+        });
+        const block = createBlock(runs, { alignment: 'justify' });
+        const source = structuredClone(block);
+        const measure = remeasureParagraph(block, 300, 0, regions);
+        const line = measure.lines[0];
+        const paintDocument = new Window().document as unknown as Document;
+        const runContext: RunRenderContext = {
+          doc: paintDocument,
+          layoutEpoch: 0,
+          showFormattingMarks: true,
+          contentControlsChrome: 'default',
+          resolvePhysical: (family) => family,
+          pendingTooltips: new WeakMap(),
+          getNextLinkId: () => 'link-1',
+          applySdtDataset: () => {},
+          buildImageHyperlinkAnchor: (child) => child,
+          resolveTrackedChangesConfig: () => ({ mode: 'final', enabled: false }),
+          applyTrackedChangeDecorations: () => {},
+          resolveRunSdtId: () => null,
+          createInlineSdtWrapper: () => paintDocument.createElement('span'),
+          syncInlineSdtWrapperTypography: () => {},
+          expandSdtWrapperPmRange: () => {},
+        };
+        const painted = renderLine({
+          block,
+          line,
+          context: { pageNumber: 1, totalPages: 1, section: 'body' },
+          runContext,
+        });
+        const paintedRuns = Array.from(painted.querySelectorAll<HTMLElement>('.superdoc-text-run'));
+        const geometry = collectSegmentGeometry(
+          {
+            pageSize: { w: 400, h: 800 },
+            pages: [
+              {
+                number: 1,
+                fragments: [{ kind: 'para', blockId: block.id, fromLine: 0, toLine: 2, x: 0, y: 0, width: 300 }],
+              },
+            ],
+          },
+          [block],
+          [measure],
+        );
+        const neutralSegments = geometry.fragments[0].lines[0].segments;
+        const carets = Array.from({ length: 14 }, (_, offset) => measureCharacterX(block, line, offset));
+        const spacing = Number.parseFloat(painted.style.wordSpacing);
+        const lastPrefixLength = prefixes[prefixes.length - 1].length;
+        const expectedSpaceMarks = prefixes.join('').startsWith('\u00a0') ? 12 : 13;
+
+        expect
+          .soft(line)
+          .toMatchObject({ toRun: prefixes.length - 1, toChar: lastPrefixLength, width: 130, maxWidth: 140 });
+        expect.soft(measure.lines[1]).toMatchObject({ fromRun: prefixes.length - 1, fromChar: lastPrefixLength });
+        expect.soft(computeLinePmRange(block, line)).toEqual({ pmStart: 1, pmEnd: 14 });
+        expect.soft(block).toEqual(source);
+        expect.soft(paintedRuns.map((run) => run.textContent)).toEqual(prefixes);
+        expect.soft(painted.querySelectorAll('.superdoc-formatting-space-mark')).toHaveLength(expectedSpaceMarks);
+        expect.soft(spacing).toBeCloseTo(10 / 13, 5);
+        expect.soft(neutralSegments).toHaveLength(prefixes.length);
+        let sourceOffset = 0;
+        prefixes.forEach((prefix, index) => {
+          const paintedRun = paintedRuns[index];
+          const segment = neutralSegments[index];
+          expect.soft(paintedRun?.dataset.pmStart).toBe(String(1 + sourceOffset));
+          expect.soft(paintedRun?.dataset.pmEnd).toBe(String(1 + sourceOffset + prefix.length));
+          expect.soft(segment).toMatchObject({ runIndex: index, fromChar: 0, toChar: prefix.length });
+          expect.soft(Number.parseFloat(paintedRun?.style.left ?? '')).toBeCloseTo(carets[sourceOffset], 5);
+          expect.soft(segment?.x).toBeCloseTo(carets[sourceOffset], 8);
+          expect.soft(segment?.width).toBeCloseTo(prefix.length * (CHAR_WIDTH + 10 / 13), 8);
+          const paintedWidth = (paintedRun?.textContent?.length ?? 0) * (CHAR_WIDTH + spacing);
+          expect.soft(paintedWidth).toBeCloseTo(segment?.width ?? 0, 4);
+          sourceOffset += prefix.length;
+          expect.soft((segment?.x ?? 0) + (segment?.width ?? 0)).toBeCloseTo(carets[sourceOffset], 8);
+        });
+        carets.forEach((caret, offset) => {
+          expect.soft(caret).toBeCloseTo(156 + (offset * 140) / 13, 8);
+          if (offset > 0) expect.soft(caret).toBeGreaterThan(carets[offset - 1]);
+        });
+      },
+    );
+
+    describe('zero-width prefixes', () => {
+      beforeEach(() => {
+        const context = document.createElement('canvas').getContext('2d')!;
+        vi.spyOn(context, 'measureText').mockImplementation(
+          (text) => ({ width: text.replace(/[\u200B\u2060]/g, '').length * CHAR_WIDTH }) as TextMetrics,
+        );
+        clearRemeasureTextCaches();
+      });
+
+      afterEach(() => {
+        vi.restoreAllMocks();
+        clearRemeasureTextCaches();
+      });
+
+      it.each([
+        ['authored prefix', ['\u200B', '             '], undefined],
+        ['bookmark marker', ['\u200B', '             '], 'data-bookmark-marker'],
+        ['comment marker', ['\u200B', '             '], 'data-comment-point-marker'],
+        ['same-run prefix', ['\u200B             '], undefined],
+        ['styled spaces', ['\u200B', '      ', '       '], 'data-bookmark-marker'],
+        ['same-run separated controls', ['\u200B      \u200B       '], undefined],
+        ['word joiner prefix', ['\u2060', '             '], undefined],
+        ['visible text after bookmark', ['\u200B', 'Alpha Beta '], 'data-bookmark-marker'],
+        ['visible text after comment', ['\u200B', 'Alpha Beta '], 'data-comment-point-marker'],
+      ] as const)('preserves paint and source geometry for %s', (_name, prefixes, marker) => {
+        let pmStart = 1;
+        const runs = prefixes.map((prefix, index) => {
+          const text = prefix + (index === prefixes.length - 1 ? 'Gamma' : '');
+          const pmEnd = pmStart + (index === 0 && marker ? 0 : text.length);
+          const run = textRun(text, {
+            kind: 'text',
+            pmStart,
+            pmEnd,
+            bold: index > 1,
+            ...(index === 0 && marker ? { dataAttrs: { [marker]: 'start' } } : {}),
+          });
+          pmStart = pmEnd;
+          return run;
+        });
+        const block = createBlock(runs, { alignment: 'justify' });
+        const source = structuredClone(block);
+        const measure = remeasureParagraph(block, 300, 0, regions);
+        const line = measure.lines[0];
+        const paintDocument = new Window().document as unknown as Document;
+        const runContext: RunRenderContext = {
+          doc: paintDocument,
+          layoutEpoch: 0,
+          showFormattingMarks: true,
+          contentControlsChrome: 'default',
+          resolvePhysical: (family) => family,
+          pendingTooltips: new WeakMap(),
+          getNextLinkId: () => 'link-1',
+          applySdtDataset: () => {},
+          buildImageHyperlinkAnchor: (child) => child,
+          resolveTrackedChangesConfig: () => ({ mode: 'final', enabled: false }),
+          applyTrackedChangeDecorations: () => {},
+          resolveRunSdtId: () => null,
+          createInlineSdtWrapper: () => paintDocument.createElement('span'),
+          syncInlineSdtWrapperTypography: () => {},
+          expandSdtWrapperPmRange: () => {},
+        };
+        const painted = renderLine({
+          block,
+          line,
+          context: { pageNumber: 1, totalPages: 1, section: 'body' },
+          runContext,
+        });
+        const paintedRuns = Array.from(painted.querySelectorAll<HTMLElement>('.superdoc-text-run'));
+        const geometry = collectSegmentGeometry(
+          {
+            pageSize: { w: 400, h: 800 },
+            pages: [
+              {
+                number: 1,
+                fragments: [{ kind: 'para', blockId: block.id, fromLine: 0, toLine: 2, x: 0, y: 0, width: 300 }],
+              },
+            ],
+          },
+          [block],
+          [measure],
+        );
+        const neutralSegments = geometry.fragments[0].lines[0].segments;
+        const sourcePrefix = prefixes.join('');
+        const visibleText = sourcePrefix.includes('Alpha');
+        const paintPrefixes = prefixes.map((prefix) => (visibleText ? prefix.trimEnd() : prefix));
+        const spaceCount = visibleText ? 1 : 13;
+        const spacing = visibleText ? 40 : 10 / 13;
+        const carets = Array.from({ length: sourcePrefix.length + 1 }, (_, offset) =>
+          measureCharacterX(block, line, offset),
+        );
+        const lastPrefixLength = prefixes[prefixes.length - 1].length;
+
+        expect.soft(block).toEqual(source);
+        expect.soft(measure.lines).toHaveLength(2);
+        expect.soft(line).toMatchObject({
+          fromRun: 0,
+          fromChar: 0,
+          toRun: prefixes.length - 1,
+          toChar: lastPrefixLength,
+          width: visibleText ? 100 : 130,
+          maxWidth: 140,
+        });
+        expect.soft(line.spaceCount).toBe(visibleText ? 1 : undefined);
+        expect.soft(measure.lines[1]).toMatchObject({ fromRun: prefixes.length - 1, fromChar: lastPrefixLength });
+        expect.soft(computeLinePmRange(block, line)).toEqual({
+          pmStart: 1,
+          pmEnd: 1 + sourcePrefix.length - (marker ? 1 : 0),
+        });
+        expect.soft(paintedRuns.map((run) => run.textContent)).toEqual(paintPrefixes);
+        expect.soft(painted.querySelectorAll('.superdoc-formatting-space-mark')).toHaveLength(spaceCount);
+        expect.soft(neutralSegments).toHaveLength(prefixes.length);
+        let sourceOffset = 0;
+        let paintedX = 156;
+        const paintedSpacing = Number.parseFloat(painted.style.wordSpacing) || 0;
+        paintPrefixes.forEach((prefix, index) => {
+          const paintedRun = paintedRuns[index];
+          const segment = neutralSegments[index];
+          const width = prefix.replace(/[\u200B\u2060]/g, '').length * CHAR_WIDTH;
+          const spaces = prefix.match(/ /g)?.length ?? 0;
+          const run = source.runs[index];
+          expect
+            .soft(line.segments?.[index])
+            .toMatchObject({ runIndex: index, fromChar: 0, toChar: prefix.length, width });
+          expect.soft(paintedRun?.dataset.pmStart).toBe(String(run.pmStart));
+          expect
+            .soft(paintedRun?.dataset.pmEnd)
+            .toBe(String(run.pmStart! + (index === 0 && marker ? 0 : prefix.length)));
+          if (index === 0 && marker) expect.soft(paintedRun?.getAttribute(marker)).toBe('start');
+          expect.soft(segment).toMatchObject({ runIndex: index, fromChar: 0, toChar: prefix.length });
+          expect.soft(Number.parseFloat(paintedRun?.style.left ?? '')).toBeCloseTo(paintedX, 5);
+          expect.soft(segment?.x).toBeCloseTo(carets[sourceOffset], 8);
+          expect.soft(segment?.width).toBeCloseTo(width + spaces * spacing, 8);
+          paintedX += width + spaces * paintedSpacing;
+          sourceOffset += prefixes[index].length;
+          expect.soft((segment?.x ?? 0) + (segment?.width ?? 0)).toBeCloseTo(carets[sourceOffset], 8);
+        });
+        let expectedCaret = 156;
+        expect.soft(carets[0]).toBe(expectedCaret);
+        [...sourcePrefix].forEach((char, index) => {
+          const omittedDelimiter = visibleText && index === sourcePrefix.length - 1;
+          if (char !== '\u200B' && char !== '\u2060' && !omittedDelimiter) {
+            expectedCaret += CHAR_WIDTH + (char === ' ' ? spacing : 0);
+            expect.soft(carets[index + 1]).toBeGreaterThan(carets[index]);
+          }
+          expect.soft(carets[index + 1]).toBeCloseTo(expectedCaret, 8);
+        });
+        expect.soft(carets.at(-1)).toBeCloseTo(296, 8);
+      });
+    });
+
+    describe('empty trailing text runs', () => {
+      const inspectLine = (
+        block: ParagraphBlock,
+        measure: ReturnType<typeof remeasureParagraph>,
+        lineIndex: number,
+      ) => {
+        const paintDocument = new Window().document as unknown as Document;
+        const runContext: RunRenderContext = {
+          doc: paintDocument,
+          layoutEpoch: 0,
+          showFormattingMarks: true,
+          contentControlsChrome: 'default',
+          resolvePhysical: (family) => family,
+          pendingTooltips: new WeakMap(),
+          getNextLinkId: () => 'link-1',
+          applySdtDataset: () => {},
+          buildImageHyperlinkAnchor: (child) => child,
+          resolveTrackedChangesConfig: () => ({ mode: 'final', enabled: false }),
+          applyTrackedChangeDecorations: () => {},
+          resolveRunSdtId: () => null,
+          createInlineSdtWrapper: () => paintDocument.createElement('span'),
+          syncInlineSdtWrapperTypography: () => {},
+          expandSdtWrapperPmRange: () => {},
+        };
+        const painted = renderLine({
+          block,
+          line: measure.lines[lineIndex],
+          context: { pageNumber: 1, totalPages: 1, section: 'body' },
+          runContext,
+        });
+        const geometry = collectSegmentGeometry(
+          {
+            pageSize: { w: 800, h: 800 },
+            pages: [
+              {
+                number: 1,
+                fragments: [
+                  {
+                    kind: 'para',
+                    blockId: block.id,
+                    fromLine: 0,
+                    toLine: measure.lines.length,
+                    x: 0,
+                    y: 0,
+                    width: 500,
+                  },
+                ],
+              },
+            ],
+          },
+          [block],
+          [measure],
+        );
+        return { painted, neutral: geometry.fragments[0].lines[lineIndex] };
+      };
+
+      it.each(['Alpha ', 'Alpha Beta ', 'Alpha Beta  '].flatMap((text) => [0, 1, 2].map((tails) => ({ text, tails }))))(
+        'preserves authored final spaces in "$text" before $tails empty marked runs',
+        ({ text, tails }) => {
+          const pmEnd = text.length + 1;
+          const block = createBlock(
+            [
+              textRun(text, { kind: 'text', pmStart: 1, pmEnd }),
+              ...Array.from({ length: tails }, (_, index) =>
+                textRun('', { kind: 'text', bold: index === 0, italic: index > 0, pmStart: pmEnd, pmEnd }),
+              ),
+            ],
+            { alignment: 'justify' },
+          );
+          const source = structuredClone(block);
+          const measure = remeasureParagraph(
+            block,
+            500,
+            0,
+            Array.from({ length: 4 }, () => [{ offsetX: 156, width: 180 }]),
+          );
+          const line = measure.lines[0];
+          const { painted, neutral } = inspectLine(block, measure, 0);
+          const leaf = painted.querySelector<HTMLElement>('.superdoc-text-run')!;
+          const spaces = text.match(/ /g)!.length;
+
+          expect.soft(block).toEqual(source);
+          expect
+            .soft(line)
+            .toMatchObject({ fromRun: 0, fromChar: 0, toRun: 0, toChar: text.length, width: text.length * CHAR_WIDTH });
+          expect.soft(line.spaceCount).toBeUndefined();
+          expect
+            .soft(line.segments)
+            .toEqual([{ runIndex: 0, fromChar: 0, toChar: text.length, width: text.length * CHAR_WIDTH, x: 156 }]);
+          expect.soft(computeLinePmRange(block, line)).toEqual({ pmStart: 1, pmEnd });
+          expect.soft(leaf.textContent).toBe(text);
+          expect.soft(leaf.dataset.pmStart).toBe('1');
+          expect.soft(leaf.dataset.pmEnd).toBe(String(pmEnd));
+          expect.soft(leaf.dataset.superdocInlineBoxTo).toBe(String(text.length));
+          expect.soft(painted.querySelectorAll('.superdoc-formatting-space-mark')).toHaveLength(spaces);
+          expect.soft(leaf.lastElementChild?.className).toBe('superdoc-formatting-space-mark');
+          expect.soft(leaf.lastElementChild?.textContent).toBe(' ');
+          expect
+            .soft(Number.parseFloat(painted.style.wordSpacing) || 0)
+            .toBe(text.includes('Beta') ? 180 - text.length * CHAR_WIDTH : 0);
+          expect.soft(neutral.segments).toEqual([
+            {
+              segmentIndex: 0,
+              runIndex: 0,
+              fromChar: 0,
+              toChar: text.length,
+              x: 156,
+              width: tails ? 180 : text.length * CHAR_WIDTH,
+            },
+          ]);
+          expect.soft(measureCharacterX(block, line, 0)).toBe(156);
+          expect
+            .soft(measureCharacterX(block, line, text.length))
+            .toBeGreaterThan(measureCharacterX(block, line, text.length - 1));
+          expect.soft(measure.lines).toHaveLength(tails + 1);
+          measure.lines.slice(1).forEach((empty, index) => {
+            expect
+              .soft(empty)
+              .toMatchObject({ fromRun: index + 1, fromChar: 0, toRun: index + 1, toChar: 1, width: 0 });
+            expect.soft(empty.segments).toBeUndefined();
+          });
+        },
+      );
+
+      it.each([0, 1, 2])('normalizes real soft wraps before %i empty marked runs', (tails) => {
+        const text = 'Alpha Beta Gamma ';
+        const pmEnd = text.length + 1;
+        const block = createBlock(
+          [
+            textRun(text, { kind: 'text', pmStart: 1, pmEnd }),
+            ...Array.from({ length: tails }, (_, index) =>
+              textRun('', { kind: 'text', bold: index === 0, italic: index > 0, pmStart: pmEnd, pmEnd }),
+            ),
+          ],
+          { alignment: 'justify' },
+        );
+        const source = structuredClone(block);
+        const measure = remeasureParagraph(
+          block,
+          500,
+          0,
+          Array.from({ length: 5 }, () => [{ offsetX: 156, width: 140 }]),
+        );
+        const line = measure.lines[0];
+        const { painted, neutral } = inspectLine(block, measure, 0);
+        const leaf = painted.querySelector<HTMLElement>('.superdoc-text-run')!;
+        const paintedEnd =
+          Number.parseFloat(leaf.style.left) +
+          leaf.textContent!.length * CHAR_WIDTH +
+          Number.parseFloat(painted.style.wordSpacing);
+
+        expect.soft(block).toEqual(source);
+        expect.soft(line).toMatchObject({ fromRun: 0, fromChar: 0, toRun: 0, toChar: 11, width: 100, spaceCount: 1 });
+        expect.soft(line.segments).toEqual([{ runIndex: 0, fromChar: 0, toChar: 10, width: 100, x: 156 }]);
+        expect.soft(computeLinePmRange(block, line)).toEqual({ pmStart: 1, pmEnd: 12 });
+        expect.soft(leaf.textContent).toBe('Alpha Beta');
+        expect.soft(leaf.dataset.pmStart).toBe('1');
+        expect.soft(leaf.dataset.pmEnd).toBe('11');
+        expect.soft(painted.querySelectorAll('.superdoc-formatting-space-mark')).toHaveLength(1);
+        expect
+          .soft(neutral.segments)
+          .toEqual([{ segmentIndex: 0, runIndex: 0, fromChar: 0, toChar: 10, x: 156, width: 140 }]);
+        expect.soft(paintedEnd).toBe(296);
+        expect.soft(neutral.segments[0].x + neutral.segments[0].width).toBe(paintedEnd);
+        expect
+          .soft([9, 10, 11].map((offset) => measureCharacterX(block, line, offset)))
+          .toEqual([286, paintedEnd, paintedEnd]);
+        expect.soft(measure.lines[1]).toMatchObject({ fromRun: 0, fromChar: 11, toRun: 0, toChar: 17, width: 60 });
+        expect.soft(measure.lines[1].spaceCount).toBeUndefined();
+        expect.soft(computeLinePmRange(block, measure.lines[1])).toEqual({ pmStart: 12, pmEnd });
+        const final = inspectLine(block, measure, 1).painted.querySelector<HTMLElement>('.superdoc-text-run')!;
+        expect.soft(final.textContent).toBe('Gamma ');
+        expect.soft(final.dataset.pmStart).toBe('12');
+        expect.soft(final.dataset.pmEnd).toBe(String(pmEnd));
+        expect.soft(final.querySelectorAll('.superdoc-formatting-space-mark')).toHaveLength(1);
+        expect.soft(measure.lines).toHaveLength(tails + 2);
+        measure.lines.slice(2).forEach((empty, index) => {
+          expect.soft(empty).toMatchObject({ fromRun: index + 1, fromChar: 0, toRun: index + 1, toChar: 1, width: 0 });
+        });
+      });
+    });
+
+    it.each(['   ', 'Alpha Beta '])('preserves authored final spaces in %j', (text) => {
+      const block = createBlock([textRun(text)], { alignment: 'justify' });
+      const line = remeasureParagraph(block, 300, 0, regions).lines[0];
+
+      expect(line.toChar).toBe(text.length);
+      expect(line.width).toBe(text.length * CHAR_WIDTH);
+      expect(line.segments?.[0].toChar).toBe(text.length);
+      expect(line.spaceCount).toBeUndefined();
+    });
+
+    it.each(['start', 'end', 'center', 'decimal'] as const)(
+      'normalizes lines with an unused %s tab definition',
+      (val) => {
+        const block = createBlock([textRun('Alpha Beta Gamma', { pmStart: 1, pmEnd: 17 })], {
+          alignment: 'justify',
+          tabs: [{ val, pos: 360 }],
+        });
+        const source = structuredClone(block);
+        const measure = remeasureParagraph(block, 300, 0, regions);
+        const line = measure.lines[0];
+
+        expect(line).toMatchObject({ toRun: 0, toChar: 11, width: 100, maxWidth: 140, spaceCount: 1 });
+        expect(line.segments).toEqual([{ runIndex: 0, fromChar: 0, toChar: 10, width: 100, x: 156 }]);
+        expect(measure.lines[1]).toMatchObject({ fromRun: 0, fromChar: 11 });
+        expect(computeLinePmRange(block, line)).toEqual({ pmStart: 1, pmEnd: 12 });
+        expect([9, 10, 11].map((offset) => measureCharacterX(block, line, offset))).toEqual([286, 296, 296]);
+        expect(block).toEqual(source);
+      },
+    );
+
+    it.each([
+      ['left', { alignment: 'left' as const }],
+      ['right', { alignment: 'right' as const }],
+      ['center', { alignment: 'center' as const }],
+      [
+        'RTL',
+        {
+          alignment: 'justify' as const,
+          directionContext: { inlineDirection: 'rtl' as const, writingMode: 'horizontal-tb' as const },
+        },
+      ],
+    ])('preserves the %s path', (_name, attrs) => {
+      const block = createBlock([textRun('Alpha Beta Gamma')], attrs);
+      const line = remeasureParagraph(block, 300, 0, regions).lines[0];
+
+      expect(line).toMatchObject({ toChar: 11, width: 110 });
+      expect(line.segments?.[0]).toMatchObject({ toChar: 11, width: 110 });
+      expect(line.spaceCount).toBeUndefined();
+    });
+
+    it.each([
+      [[textRun('Alpha Beta Gamma\t')]],
+      [[textRun('Alpha Beta Gamma'), { kind: 'tab' as const, text: '\t' }]],
+      [[textRun('Alpha Beta Gamma'), { kind: 'lineBreak' as const }, textRun('tail')]],
+      [[textRun('Alpha Beta Gamma', { bidi: { rtl: true } })]],
+    ])('preserves tab, manual-break, and bidi run paths %#', (runs) => {
+      const line = remeasureParagraph(createBlock(runs, { alignment: 'justify' }), 300, 0, regions).lines[0];
+
+      expect(line).toMatchObject({ toChar: 11, width: 110 });
+      expect(line.segments?.[0]).toMatchObject({ toChar: 11, width: 110 });
+      expect(line.spaceCount).toBeUndefined();
+    });
+  });
+
   it('preserves punctuated CJK justification opportunities in fallback measurement', () => {
     const block = {
       kind: 'paragraph' as const,

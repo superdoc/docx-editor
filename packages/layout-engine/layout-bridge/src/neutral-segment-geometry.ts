@@ -202,7 +202,7 @@ const resolveLineSegments = (
     const run = block.runs[segment.runIndex];
     const segmentText = run && 'text' in run && typeof run.text === 'string' ? run.text : undefined;
     const spacesInSegment =
-      justify.extraPerSpace !== 0 && segmentText != null
+      justify.extraPerSpace !== 0 && segmentText != null && !('vanish' in run && run.vanish)
         ? countSpaces(segmentText.slice(segment.fromChar, segment.toChar))
         : 0;
     const segmentCharLength = segment.toChar - segment.fromChar;

@@ -364,6 +364,24 @@ describe('text measurement utility', () => {
     expect(beyondEnd.pmPosition).toBe(102);
   });
 
+  it.each([undefined, 0])('preserves the line width for an omitted terminal tab with spaceCount %s', (spaceCount) => {
+    const block = createBlock([
+      { text: 'Alpha', fontFamily: 'Arial', fontSize: 16 },
+      { kind: 'tab', text: '\t' },
+    ]);
+    const line = baseLine({
+      toRun: 1,
+      toChar: 1,
+      width: 240,
+      spaceCount,
+      hasExplicitTabStops: true,
+      segments: [{ runIndex: 0, fromChar: 0, toChar: 5, width: 50, x: 156 }],
+    });
+
+    expect(measureCharacterX(block, line, 5)).toBe(206);
+    expect(measureCharacterX(block, line, 6)).toBe(240);
+  });
+
   it('handles tab runs with fixed width', () => {
     const block = createBlock([
       { text: 'Before', fontFamily: 'Arial', fontSize: 16, pmStart: 0, pmEnd: 6 },

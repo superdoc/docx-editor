@@ -1315,6 +1315,15 @@ function* renderExplicitlyPositionedRuns({
 
       const elem = renderRun(segmentRun, context, runContext, trackedConfig);
       if (elem) {
+        if (
+          spacingPerSpace !== 0 &&
+          typeof segmentRun.horizontalScale === 'number' &&
+          Number.isFinite(segmentRun.horizontalScale) &&
+          segmentRun.horizontalScale > 0 &&
+          segmentRun.horizontalScale !== 1
+        ) {
+          elem.style.wordSpacing = `${spacingPerSpace / segmentRun.horizontalScale}px`;
+        }
         if (coveredByOverlay) {
           elem.style.textDecorationLine = segmentRun.strike ? 'line-through' : 'none';
         }
@@ -1348,7 +1357,8 @@ function* renderExplicitlyPositionedRuns({
         // Use baseX (without indent) to keep cumulativeX relative to content area,
         // matching how segment.x values are calculated in layout.
         const width = segment.width;
-        const justifyExtraWidth = spacingPerSpace !== 0 ? spacingPerSpace * countSpaces(segmentText) : 0;
+        const justifyExtraWidth =
+          spacingPerSpace !== 0 && !isVanishedTextRun(baseRun) ? spacingPerSpace * countSpaces(segmentText) : 0;
         const visualWidth = width + justifyExtraWidth;
         // Span the visual width so the mark meets the next element (tab or run) flush.
         if (coveredByOverlay && underlineSpanCollector) {

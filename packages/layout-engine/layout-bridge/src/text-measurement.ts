@@ -673,6 +673,21 @@ function measureCharacterXSegmentBased(
     }
   }
 
+  const lastSegment = line.segments.at(-1);
+  if (lastSegment && line.spaceCount != null) {
+    let omittedTail = '';
+    for (let runIndex = lastSegment.runIndex; runIndex <= line.toRun; runIndex += 1) {
+      const run = block.runs[runIndex];
+      if ((run.kind != null && run.kind !== 'text') || typeof run.text !== 'string') return line.width;
+      const fromChar = runIndex === lastSegment.runIndex ? lastSegment.toChar : 0;
+      const toChar = runIndex === line.toRun ? line.toChar : run.text.length;
+      omittedTail += run.text.slice(fromChar, toChar);
+    }
+    if (/^ +$/.test(omittedTail)) {
+      return line.segments.reduce((edge, segment) => (segment.x ?? edge) + segment.width, 0);
+    }
+  }
+
   // Past end of line, return total width
   return line.width;
 }

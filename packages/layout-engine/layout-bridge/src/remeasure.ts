@@ -27,6 +27,7 @@ import {
   sliceRunsForLine,
 } from '@superdoc/contracts';
 import type { WordParagraphLayoutOutput } from '@superdoc/word-layout';
+import { countSpaces } from './line-justify-adjustment.js';
 import {
   LIST_MARKER_GAP as _LIST_MARKER_GAP,
   SPACE_SUFFIX_GAP_PX as _SPACE_SUFFIX_GAP_PX,
@@ -62,7 +63,9 @@ type ParagraphBlockAttrs = {
 let ctx: LayoutMeasurementContext | null = null;
 
 function getCtx(): LayoutMeasurementContext | null {
-  return (ctx ??= createLayoutMeasurementContext());
+  const context = (ctx ??= createLayoutMeasurementContext());
+  if (context) context.fontKerning = 'none';
+  return context;
 }
 
 // ---------------------------------------------------------------------------
@@ -988,6 +991,49 @@ const measureTabAlignmentGroupInLine = (
   return { totalWidth, beforeDecimalWidth };
 };
 
+function normalizeFloatWrapSpaces(line: Line, runs: Run[]): void {
+  const segments = line.segments;
+  if (!segments?.length) return;
+  const hasNonWhitespaceAdvance = segments.some((segment) => {
+    const run = runs[segment.runIndex];
+    const text = runText(run).slice(segment.fromChar, segment.toChar);
+    for (const match of text.matchAll(/\S+/g)) {
+      const fromChar = segment.fromChar + match.index;
+      if (measureRunSliceWidth(run, fromChar, fromChar + match[0].length) > 0) return true;
+    }
+    return false;
+  });
+  if (!hasNonWhitespaceAdvance) return;
+  let terminalIndex = segments.length - 1;
+  let paintEnd = segments[terminalIndex].toChar;
+  while (terminalIndex >= 0) {
+    const segment = segments[terminalIndex];
+    const text = runText(runs[segment.runIndex]);
+    paintEnd = segment.toChar;
+    while (paintEnd > segment.fromChar && text[paintEnd - 1] === ' ') paintEnd -= 1;
+    if (paintEnd > segment.fromChar) break;
+    terminalIndex -= 1;
+  }
+  if (terminalIndex < 0) return;
+  const terminal = segments[terminalIndex];
+  if (terminalIndex === segments.length - 1 && paintEnd === terminal.toChar) return;
+  line.segments = segments.slice(0, terminalIndex + 1);
+  if (paintEnd !== terminal.toChar) {
+    line.segments[terminalIndex] = {
+      ...terminal,
+      toChar: paintEnd,
+      width: measureRunSliceWidth(runs[terminal.runIndex], terminal.fromChar, paintEnd),
+    };
+  }
+  line.width = line.segments.reduce((width, segment) => width + segment.width, 0);
+  if (line.naturalWidth != null) line.naturalWidth = line.width;
+  line.spaceCount = line.segments.reduce((count, segment) => {
+    const run = runs[segment.runIndex];
+    if (isVanishedRun(run)) return count;
+    return count + countSpaces(runText(run).slice(segment.fromChar, segment.toChar));
+  }, 0);
+}
+
 /**
  * Applies tab stop layout to all lines, calculating segment positions and tab leaders.
  *
@@ -1259,6 +1305,10 @@ const applyTabLayoutToLines = (
       const sliceStart = runIndex === line.fromRun ? line.fromChar : 0;
       const sliceEnd = runIndex === line.toRun ? line.toChar : text.length;
       if (sliceStart >= sliceEnd) continue;
+      if (isVanishedRun(run)) {
+        segments.push({ runIndex, fromChar: sliceStart, toChar: sliceEnd, width: 0 });
+        continue;
+      }
 
       let segmentStart = sliceStart;
       for (let i = sliceStart; i < sliceEnd; i += 1) {
@@ -2309,11 +2359,32 @@ export function remeasureParagraph(
   }
 
   if (hasLineRegionOffsets) {
+    const canNormalizeWrapSpaces =
+      attrs?.alignment === 'justify' &&
+      getParagraphInlineDirection(block.attrs) !== 'rtl' &&
+      !lineRegions?.some((regions) => regions.length > 1) &&
+      runs.every(
+        (run) =>
+          (isVanishedRun(run) && (run.kind == null || run.kind === 'text' || run.kind === 'tab')) ||
+          (isTextRun(run) &&
+            (run.kind == null || run.kind === 'text') &&
+            !isEmptySdtPlaceholderRun(run) &&
+            runHorizontalScale(run) > 0 &&
+            run.bidi == null &&
+            typeof run.text === 'string' &&
+            !/[\t\r\n]/.test(run.text)),
+      );
     lines.forEach((line, lineIndex) => {
       const regions = resolvedLineRegions?.[lineIndex];
       if (!regions || regions.length !== 1 || !line.segments?.length) return;
       const offsetX = (regions[0]?.offsetX ?? 0) + (lineIndex === 0 ? floatingTextInset : 0);
       if (!Number.isFinite(offsetX) || Math.abs(offsetX) <= 0.01) return;
+      if (
+        canNormalizeWrapSpaces &&
+        normalizeRegionCursor(runs, { runIndex: line.toRun, charIndex: line.toChar }).runIndex < runs.length
+      ) {
+        normalizeFloatWrapSpaces(line, runs);
+      }
       if (lineIndex === 0 && floatingMarkerOffsetX > 0) line.listMarkerOffsetX = floatingMarkerOffsetX;
 
       const firstSegment = line.segments[0];

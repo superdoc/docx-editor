@@ -56,6 +56,7 @@ import {
   getParagraphInlineDirection,
   interCharacterJustifyAdvanceBeforeOffset,
   sliceRunsForLine,
+  usesPositionedTextGeometry,
 } from '@superdoc/contracts';
 import { calculatePageTopFallback, findBlockIndexByFragmentId } from './position-hit.js';
 import { lineHasComplexBidiContent } from './rtl-text-geometry.js';
@@ -269,12 +270,10 @@ const buildParagraphLineGeometry = (
   const out: NeutralLineGeometry[] = [];
   const alignment = block.attrs?.alignment;
   const isRtl = direction === 'rtl';
-  // List paragraphs paint left-aligned in the DOM for non-justify alignments.
   const isJustified = alignment === 'justify';
-  const alignmentOverride = !isRtl && isListItemFlag && !isJustified ? 'left' : undefined;
   // RTL paragraphs default to visual-right alignment (DomPainter `resolveTextAlign`
   // maps undefined/justify -> 'right' under dir="rtl"); LTR keeps its own default.
-  const effectiveAlignment = isRtl ? (alignment ?? 'right') : (alignmentOverride ?? alignment);
+  const effectiveAlignment = isRtl ? (alignment ?? 'right') : alignment;
 
   const indent = extractParagraphIndent(block.attrs?.indent);
   const wordLayout = getWordLayoutConfig(block);
@@ -293,6 +292,7 @@ const buildParagraphLineGeometry = (
 
     const isFirstLine = reportLineIndex === fragment.fromLine && !fragment.continuesFromPrev;
     const tabAligned = Boolean(line.segments?.some((seg) => seg.x !== undefined));
+    const positionedText = usesPositionedTextGeometry(line, sliceRunsForLine(block, line), isRtl);
 
     const availableWidth = resolveAvailableWidth(
       block,
@@ -315,7 +315,7 @@ const buildParagraphLineGeometry = (
 
     // Justify and tab positioning anchor at 0; center/right shift content.
     const alignmentOffset =
-      tabAligned || isJustified ? 0 : resolveAlignmentOffset(effectiveAlignment, availableWidth, line.width);
+      positionedText || isJustified ? 0 : resolveAlignmentOffset(effectiveAlignment, availableWidth, line.width);
     const originX = fragment.x + indentAdjust;
     const contentLeft = originX + alignmentOffset;
 

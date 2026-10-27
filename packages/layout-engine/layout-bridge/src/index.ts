@@ -711,11 +711,6 @@ export function selectionToRects(
           // Detect list items by checking for marker presence
           const markerWidth = fragment.markerWidth ?? measure.marker?.markerWidth ?? 0;
           const isListItemFlag = isListItem(markerWidth, block);
-          // List items use textAlign: 'left' in the DOM for non-justify alignments.
-          // For justify, we don't override so justify selection rectangles are calculated correctly.
-          const blockAlignment = block.attrs?.alignment;
-          const isJustified = blockAlignment === 'justify';
-          const alignmentOverride = isListItemFlag && !isJustified ? 'left' : undefined;
           const isFirstLine = index === fragment.fromLine && !fragment.continuesFromPrev;
           const fragmentMarkerTextWidth = fragment.markerTextWidth ?? measure.marker?.markerTextWidth ?? undefined;
           const startX = mapPmToX(
@@ -723,7 +718,7 @@ export function selectionToRects(
             line,
             visualCharOffsetFrom,
             fragment.width,
-            alignmentOverride,
+            undefined,
             isFirstLine,
             fragmentMarkerTextWidth,
           );
@@ -732,7 +727,7 @@ export function selectionToRects(
             line,
             visualCharOffsetTo,
             fragment.width,
-            alignmentOverride,
+            undefined,
             isFirstLine,
             fragmentMarkerTextWidth,
           );
@@ -824,7 +819,6 @@ export function selectionToRects(
               marker: measure.marker,
               markerWidth,
               isListItemFlag,
-              alignmentOverride,
               lineSegments: line.segments,
               lineSpaceCount: (line as { spaceCount?: unknown }).spaceCount,
               lineNaturalWidth: (line as { naturalWidth?: unknown }).naturalWidth,
@@ -1012,9 +1006,7 @@ export function selectionToRects(
                 }
               }
               const paragraphMarkerWidth = info.measure.marker?.markerWidth ?? 0;
-              // List items in table cells are also rendered with left alignment
               const cellIsListItem = isListItem(paragraphMarkerWidth, info.block);
-              const alignmentOverride = cellIsListItem ? 'left' : undefined;
               // Extract paragraph indent for text positioning
               const cellIndent = extractParagraphIndent(
                 info.block.kind === 'paragraph' ? info.block.attrs?.indent : undefined,
@@ -1066,7 +1058,7 @@ export function selectionToRects(
                   line,
                   visualCharOffsetFrom,
                   availableWidth,
-                  alignmentOverride,
+                  undefined,
                   isFirstLine,
                   cellMarkerTextWidth,
                 );
@@ -1075,7 +1067,7 @@ export function selectionToRects(
                   line,
                   visualCharOffsetTo,
                   availableWidth,
-                  alignmentOverride,
+                  undefined,
                   isFirstLine,
                   cellMarkerTextWidth,
                 );

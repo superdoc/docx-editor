@@ -1083,11 +1083,7 @@ export function clickToPositionGeometry(
         const firstLineOffset = getFirstLineIndentOffset(block.attrs?.indent, suppressFLI);
         availableWidth = adjustAvailableWidthForTextIndent(availableWidth, firstLineOffset, line.maxWidth);
       }
-      const paraAlignment = block.attrs?.alignment;
-      const isJustified = paraAlignment === 'justify';
-      const alignmentOverride = isListItem && !isJustified ? 'left' : undefined;
-
-      const pos = mapPointToPm(block, line, pageRelativePoint.x - fragment.x, isRTL, availableWidth, alignmentOverride);
+      const pos = mapPointToPm(block, line, pageRelativePoint.x - fragment.x, isRTL, availableWidth);
       if (pos == null) {
         return null;
       }
@@ -1241,11 +1237,7 @@ export function clickToPositionGeometry(
         const firstLineOffset = getFirstLineIndentOffset(cellBlock.attrs?.indent, suppressFLI);
         availableWidth = adjustAvailableWidthForTextIndent(availableWidth, firstLineOffset, line.maxWidth);
       }
-      const cellAlignment = cellBlock.attrs?.alignment;
-      const isJustified = cellAlignment === 'justify';
-      const alignmentOverride = isListItem && !isJustified ? 'left' : undefined;
-
-      const pos = mapPointToPm(cellBlock, line, localX, isRTL, availableWidth, alignmentOverride);
+      const pos = mapPointToPm(cellBlock, line, localX, isRTL, availableWidth);
 
       if (pos != null) {
         return {

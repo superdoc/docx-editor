@@ -176,6 +176,29 @@ describe('collectSegmentGeometry', () => {
     expect(rightAligned.lines[0].segments[0].x).toBe(200);
   });
 
+  for (const alignment of ['center', 'right'] as const) {
+    it(`keeps ${alignment}-aligned horizontally scaled list text at its positioned origin`, () => {
+      const block = paragraphBlock('scaled', [textRun('abcdefghij', 1, { horizontalScale: 0.9 })], {
+        alignment,
+        indent: { left: 36 },
+        numberingProperties: { numId: 1 },
+      } as ParagraphAttrs);
+      const line = makeLine({
+        toChar: 10,
+        width: 65,
+        maxWidth: 364,
+        segments: [{ runIndex: 0, fromChar: 0, toChar: 10, width: 65 }],
+      });
+      const geometry = collectSegmentGeometry(
+        singlePageLayout([paraFragment({ blockId: 'scaled', width: 400 })]),
+        [block],
+        [paragraphMeasure([line])],
+      ).fragments[0].lines[0];
+      expect(geometry.contentLeft).toBe(36);
+      expect(geometry.segments[0].x).toBe(36);
+    });
+  }
+
   it('honors explicit tab/segment positioning and flags the line', () => {
     const block = paragraphBlock('t1', [textRun('a', 1, { pmEnd: 2 }), textRun('b', 3, { pmEnd: 4 })]);
     const line = makeLine({

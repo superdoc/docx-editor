@@ -15,6 +15,7 @@ import ButtonGroup from './ButtonGroup.vue';
 import { preventEditorFocusTransfer } from './toolbar-focus-helpers.js';
 import { RESPONSIVE_BREAKPOINTS } from './constants.js';
 import { getSuperDocUiOwnerId } from '../../../core/superdoc-ui-owner.js';
+import { resolveToolbarCommandId } from '../compatibility-catalog.js';
 
 /**
  * The default font-family to use for toolbar UI surfaces when no custom font is configured.
@@ -172,7 +173,13 @@ const captureSelection = () => {
 };
 
 const handleCommand = ({ item, argument, option }) => {
-  restoreSelection();
+  const commandId = resolveToolbarCommandId(item?.name?.value);
+  const isDirectInlineToggle =
+    item?.type === 'button' &&
+    !item.isCustomToolbarItem &&
+    ['bold', 'italic', 'underline', 'strikethrough'].includes(commandId) &&
+    proxy.$toolbar.snapshot?.commands?.[commandId]?.source === 'builtin';
+  if (!isDirectInlineToggle) restoreSelection();
   proxy.$toolbar.emitCommand({ item, argument, option });
 };
 

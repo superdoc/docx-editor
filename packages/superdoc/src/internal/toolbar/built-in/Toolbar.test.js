@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
 import { mount } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import Toolbar from './Toolbar.vue';
+import ButtonGroup from './ButtonGroup.vue';
 import { getSuperDocUiOwnerId } from '../../../core/superdoc-ui-owner.js';
 import { useToolbarItem } from './use-toolbar-item.js';
 
@@ -156,4 +157,33 @@ describe('Toolbar responsive layout', () => {
     await vi.advanceTimersByTimeAsync(300);
     expect(toolbar.onToolbarResize).toHaveBeenCalledOnce();
   });
+});
+
+describe('Toolbar selection restoration', () => {
+  it.each([
+    { name: 'bold', type: 'button', restored: false },
+    { name: 'italic', type: 'button', restored: false },
+    { name: 'underline', type: 'button', restored: false },
+    { name: 'strike', type: 'button', restored: false },
+    { name: 'watermark', type: 'button', restored: true },
+    { name: 'bold', type: 'dropdown', restored: true },
+    { name: 'bold', type: 'button', custom: true, restored: true },
+    { name: 'bold', type: 'button', source: 'custom', restored: true },
+  ])(
+    '$name $type restores the cached selection: $restored',
+    async ({ name, type, custom, source = 'builtin', restored }) => {
+      const { toolbar } = mountToolbar();
+      const capture = { empty: false };
+      toolbar.activeEditor = {};
+      toolbar.ui = { selection: { capture: vi.fn(() => capture), restore: vi.fn() } };
+      toolbar.emitCommand = vi.fn();
+      toolbar.snapshot = { commands: { [name === 'strike' ? 'strikethrough' : name]: { source } } };
+      const item = useToolbarItem({ type, name, defaultLabel: name });
+      item.isCustomToolbarItem = custom;
+      await wrapper.get('[role="toolbar"]').trigger('mousedown');
+      wrapper.findComponent(ButtonGroup).vm.$emit('command', { item });
+      expect(toolbar.ui.selection.restore).toHaveBeenCalledTimes(restored ? 1 : 0);
+      expect(toolbar.emitCommand).toHaveBeenCalledWith({ item, argument: undefined, option: undefined });
+    },
+  );
 });

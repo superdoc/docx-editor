@@ -1,5 +1,5 @@
 import type { DocumentApiSurface } from '../index.js';
-import type { ReceiptFailureResult, ReceiptSuccess } from './receipt.js';
+import type { ReceiptEntity, ReceiptFailureResult, ReceiptSuccess } from './receipt.js';
 import type { PlainTextInsertInput } from '../insert/insert.js';
 import type { ParagraphTextReplaceInput, ReplaceMutationOptions, TextReplaceInput } from '../replace/replace.js';
 import type { MutationOptions, TrackedTextMutationOptions } from '../write/write.js';
@@ -68,9 +68,12 @@ export interface TemporaryMutationMetadata {
   tag: string;
   onNativeEdit?: 'cancel' | 'preserve';
 }
+export type TemporaryOperationEffects = Partial<Record<string, { inserted: ReceiptEntity[] }>>;
+
 export type TemporaryMutationReceipt =
   | (ReceiptSuccess & {
       temporary: TemporaryMutationMetadata;
       revision: { before: string; after: string };
+      operationEffects?: TemporaryOperationEffects;
     })
   | ReceiptFailureResult;

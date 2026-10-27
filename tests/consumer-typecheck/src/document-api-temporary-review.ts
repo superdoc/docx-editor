@@ -135,6 +135,17 @@ const step: TemporaryMutationOperation = {
 async function namedTypes(): Promise<TemporaryMutationReceipt> {
   return browserDoc.mutations.beginTemporary({ tag: 'named', operations: [step] });
 }
+async function operationEffects() {
+  const receipt = await browserDoc.mutations.beginTemporary({
+    tag: 'named',
+    operations: [{ ...step, id: 'decision' }],
+  });
+  if (!receipt.success) return [];
+  const created: readonly { entityType: string; entityId: string }[] =
+    receipt.operationEffects?.['decision']?.inserted ?? [];
+  return created;
+}
+void operationEffects;
 void story;
 void placed;
 void namedTypes;

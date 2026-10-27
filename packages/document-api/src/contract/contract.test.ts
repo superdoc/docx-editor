@@ -1806,6 +1806,25 @@ describe('document-api contract catalog', () => {
   });
 });
 
+describe('temporary mutation receipts', () => {
+  it.each(['mutations.beginTemporary', 'mutations.replaceTemporary', 'mutations.commitTemporary'] as const)(
+    'publishes per-operation effects on %s success',
+    (operationId) => {
+      const success = buildInternalContractSchemas().operations[operationId].success as ContractTestSchemaShape;
+      expect(success.properties?.operationEffects).toEqual({
+        type: 'object',
+        additionalProperties: {
+          type: 'object',
+          properties: { inserted: { type: 'array', items: { $ref: '#/$defs/EntityAddress' } } },
+          additionalProperties: false,
+          required: ['inserted'],
+        },
+      });
+      expect(success.required).not.toContain('operationEffects');
+    },
+  );
+});
+
 describe('public mutation result vocabulary', () => {
   it('declares optional physical shifts and replay identities on their runtime receipt surfaces', () => {
     const schemas = buildInternalContractSchemas();

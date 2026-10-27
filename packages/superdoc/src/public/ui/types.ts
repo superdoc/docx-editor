@@ -64,6 +64,7 @@ export type {
   WatermarksApplyTarget,
   TemporaryMutationOperation,
   TemporaryOperationResultTarget,
+  TemporaryOperationEffects,
   TemporaryMutationInput,
   TemporaryMutationReplaceInput,
   TemporaryMutationHandleInput,

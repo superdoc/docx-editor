@@ -4854,6 +4854,10 @@ const temporaryReceiptSchema = mutationSuccessSchema(
   {
     success: { const: true },
     revision: objectSchema({ before: { type: 'string' }, after: { type: 'string' } }, ['before', 'after']),
+    operationEffects: {
+      type: 'object',
+      additionalProperties: objectSchema({ inserted: arraySchema(ref('EntityAddress')) }, ['inserted']),
+    },
   },
   ['success', 'temporary', 'revision'],
 );

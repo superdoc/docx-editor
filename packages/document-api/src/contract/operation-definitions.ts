@@ -5584,7 +5584,8 @@ export const OPERATION_DEFINITIONS = {
   'contentControls.validateWordCompatibility': {
     memberPath: 'contentControls.validateWordCompatibility',
     description: 'Validate a content control for Word compatibility issues.',
-    expectedResult: 'Returns a compatibility result with diagnostics.',
+    expectedResult:
+      'Returns read-only diagnostics for incompatible content structure and metadata or configuration issues. `compatible` is false only when a diagnostic has error severity; warnings leave it true.',
     requiresDocumentContext: true,
     metadata: readOperation({ throws: T_CC_READ }),
     referenceDocPath: 'content-controls/validate-word-compatibility.mdx',

@@ -159,7 +159,7 @@ overrides:
   protobufjs@8: '8.6.4'
   superdoc: 'workspace:*'
   '@superdoc/react': 'workspace:*'
-  '@superdoc/sdk': '2.24.0'
+  '@superdoc/sdk': '2.25.0-next.1'
   '@superdoc/common': 'workspace:*'
   '@superdoc/contracts': 'workspace:*'
   '@superdoc/dom-contract': 'workspace:*'
@@ -198,10 +198,10 @@ peerDependencyRules:
 verifyDepsBeforeRun: false
 
 minimumReleaseAgeExclude:
-  - '@superdoc/docx-engine@0.26.0-next.7 || 0.26.0-next.8 || 0.26.0-next.9 || 0.26.0-next.10'
-  - '@superdoc/sdk-darwin-arm64@2.24.0-next.7 || 2.24.0-next.8 || 2.24.0-next.9 || 2.24.0-next.10'
-  - '@superdoc/sdk-darwin-x64@2.24.0-next.7 || 2.24.0-next.8 || 2.24.0-next.9 || 2.24.0-next.10'
-  - '@superdoc/sdk-linux-arm64@2.24.0-next.7 || 2.24.0-next.8 || 2.24.0-next.9 || 2.24.0-next.10'
-  - '@superdoc/sdk-linux-x64@2.24.0-next.7 || 2.24.0-next.8 || 2.24.0-next.9 || 2.24.0-next.10'
-  - '@superdoc/sdk-windows-x64@2.24.0-next.7 || 2.24.0-next.8 || 2.24.0-next.9 || 2.24.0-next.10'
-  - '@superdoc/sdk@2.24.0-next.7 || 2.24.0-next.8 || 2.24.0-next.9 || 2.24.0-next.10'
+  - '@superdoc/docx-engine@0.26.0-next.7 || 0.26.0-next.8 || 0.26.0-next.9 || 0.26.0-next.10 || 0.27.0-next.1'
+  - '@superdoc/sdk-darwin-arm64@2.24.0-next.7 || 2.24.0-next.8 || 2.24.0-next.9 || 2.24.0-next.10 || 2.25.0-next.1'
+  - '@superdoc/sdk-darwin-x64@2.24.0-next.7 || 2.24.0-next.8 || 2.24.0-next.9 || 2.24.0-next.10 || 2.25.0-next.1'
+  - '@superdoc/sdk-linux-arm64@2.24.0-next.7 || 2.24.0-next.8 || 2.24.0-next.9 || 2.24.0-next.10 || 2.25.0-next.1'
+  - '@superdoc/sdk-linux-x64@2.24.0-next.7 || 2.24.0-next.8 || 2.24.0-next.9 || 2.24.0-next.10 || 2.25.0-next.1'
+  - '@superdoc/sdk-windows-x64@2.24.0-next.7 || 2.24.0-next.8 || 2.24.0-next.9 || 2.24.0-next.10 || 2.25.0-next.1'
+  - '@superdoc/sdk@2.24.0-next.7 || 2.24.0-next.8 || 2.24.0-next.9 || 2.24.0-next.10 || 2.25.0-next.1'

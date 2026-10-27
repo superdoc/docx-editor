@@ -10,7 +10,7 @@
     "start:tracked": "tsx tracked.ts"
   },
   "dependencies": {
-    "@superdoc/sdk": "2.24.0-next.11"
+    "@superdoc/sdk": "2.24.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

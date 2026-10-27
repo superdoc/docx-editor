@@ -30,6 +30,13 @@ specific actions can still be blocked by their permission checks or document sta
 | `write`   | Read, create, reply, edit, and delete.                           |
 | `resolve` | All write actions, plus resolve and reopen. This is the default. |
 
+These levels also apply in `documentMode: 'viewing'`. The default `resolve` level allows comment creation, replies,
+editing your own comments and replies, deletion, and resolve/reopen when permission and command checks allow.
+Creating a comment from document text requires `allowSelectionInViewMode: true`. Your `role` and `permissionResolver`
+determine whether you can delete other authors' comments or resolve their threads. Viewing mode keeps document text
+read-only. For a viewer with read-only comments too, set `interaction.comments.level: 'read'`;
+see the [read-only viewer configuration](/editor/document-modes#keep-comments-read-only-too).
+
 Comment levels do not control tracked-change decisions. Set `interaction.trackedChanges.allowDecisions: false` to
 block accept and reject in this instance. Its default is `true`; document mode and command availability can still
 block decisions. Choosing `suggesting` controls how new edits are recorded, not who may decide existing proposals.

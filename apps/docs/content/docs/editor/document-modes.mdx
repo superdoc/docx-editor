@@ -18,7 +18,7 @@ with `60 days`. Switch to Viewing, then use Changes to compare Original, Markup,
 | ------------ | ---------------------------------- | ------------------------------------------------- |
 | `editing`    | The text changes directly.         | Changes should become part of the document.       |
 | `suggesting` | The edit becomes a tracked change. | Another person should review the proposed change. |
-| `viewing`    | Editing is disabled.               | A person should read without changing the DOCX.   |
+| `viewing`    | Text editing is disabled.          | A person should read without editing the text.    |
 
 `editing` is the default. Modes change Editor behavior in the browser. They do not decide who can open or save the
 document.
@@ -45,7 +45,8 @@ but typing should no longer change the document. **Export DOCX** should still do
 
 ## Choose how tracked changes appear
 
-Viewing stays read-only. Its `trackedChanges` option changes how proposals appear without accepting or rejecting them.
+Viewing keeps document text read-only. Its `trackedChanges` option changes how proposals appear without accepting or
+rejecting them.
 
 For the `30 days` to `60 days` proposal in the demo:
 
@@ -64,6 +65,36 @@ options keep their current values.
 
 For review controls, see [Track changes](/editor/track-changes). For comment threads, see
 [Comments](/editor/comments).
+
+## Keep comments read-only too
+
+Comment actions are independent of document mode. `interaction.comments.level` defaults to `resolve`, including in
+viewing mode. When comments are visible and permission and command checks allow, viewers can create comments from a
+selection, reply, edit their own comments and replies, delete comments and replies, and resolve or reopen threads.
+Creating a comment from document text requires `allowSelectionInViewMode: true`. The configured `role` and
+`permissionResolver` determine whether viewers can delete other authors' comments or resolve their threads.
+Use level `write` to allow discussion without resolving or reopening threads.
+
+For a fully read-only viewer in the browser, combine `documentMode: 'viewing'` with `interaction.comments.level: 'read'`.
+Add these options to the existing Editor configuration:
+
+```ts
+const viewerOptions = {
+  documentMode: 'viewing',
+  viewing: { comments: true },
+  interaction: {
+    comments: { level: 'read' },
+    trackedChanges: { allowDecisions: false },
+  },
+} as const;
+```
+
+In Vanilla, spread `viewerOptions` into `new SuperDoc()`. In React, spread it onto `SuperDocEditor`.
+
+This shows existing threads while disabling comment creation, replies, edits, deletion, resolution, and reopening.
+Viewing mode already blocks accepting and rejecting tracked changes; `allowDecisions: false` keeps those actions
+disabled if the mode changes. Your backend must still enforce who may save or collaborate;
+see [Interaction and permissions](/editor/interaction-permissions).
 
 ## Continue to load and save
 

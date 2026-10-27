@@ -17,7 +17,7 @@ describe('CommentDialog', () => {
   let superdocStore;
   let superdocStub;
 
-  const mountDialog = (comment) =>
+  const mountDialog = (comment, stubs = {}) =>
     mount(CommentDialog, {
       attachTo: document.body,
       props: { comment },
@@ -35,6 +35,7 @@ describe('CommentDialog', () => {
           CommentInput: true,
           InternalDropdown: true,
           Avatar: true,
+          ...stubs,
         },
       },
     });
@@ -1264,39 +1265,197 @@ describe('CommentDialog', () => {
     }
   });
 
-  it('reactively disables the v2 reply affordance when document mode switches to viewing (SD-3867)', async () => {
-    superdocStub.activeEditor.editorVersion = 2;
-    superdocStub.activeEditor.v2Comments = {
-      getCapabilityState: vi.fn(() => ({ canWrite: true })),
+  describe('v2 comment write permissions (SD-6050)', () => {
+    const prepare = (documentMode, { canWrite = true, readOnly = false } = {}) => {
+      commentsStore.init({ readOnly, allowResolve: false });
+      commentsStore.setViewingVisibility({ documentMode, commentsVisible: true, trackChangesVisible: true });
+      superdocStub.interactionConfig = {
+        comments: { level: readOnly ? 'read' : 'write', readOnly, allowResolve: false },
+        trackedChanges: { allowDecisions: false },
+      };
+      superdocStub.activeEditor.editorVersion = 2;
+      superdocStub.activeEditor.v2Comments = {
+        getCapabilityState: vi.fn(() => ({ canWrite, reason: canWrite ? null : 'host-state:saving' })),
+        setActiveComment: vi.fn(),
+        focusComment: vi.fn().mockResolvedValue({ ok: true }),
+      };
+      const comment = useComment({
+        commentId: 'comment-owner',
+        creatorId: superdocStore.user.id,
+        creatorEmail: superdocStore.user.email,
+        fileId: 'doc-1',
+        commentText: 'Original owner comment',
+      });
+      commentsStore.commentsList = [comment];
+      commentsStore.activeComment = comment.commentId;
+      return comment;
     };
-    const comment = useComment({
-      commentId: 'comment-viewing-mode',
-      fileId: 'doc-1',
-      commentText: 'Viewing mode comment',
-    });
-    commentsStore.commentsList = [comment];
-    commentsStore.activeComment = comment.commentId;
-    commentsStore.setViewingVisibility({
-      documentMode: 'editing',
-      commentsVisible: true,
-      trackChangesVisible: true,
-    });
 
-    const wrapper = mountDialog(comment);
-    try {
-      expect(wrapper.find('.reply-pill').attributes('disabled')).toBeUndefined();
-
-      commentsStore.setViewingVisibility({ documentMode: 'viewing' });
+    const selectOverflow = async (wrapper, label) => {
+      await wrapper.find('[data-comment-action="overflow"] .comments-dropdown__trigger').trigger('click');
+      const option = [...document.querySelectorAll('.comments-dropdown__option')].find(
+        (element) => element.textContent.trim() === label,
+      );
+      expect(option).toBeDefined();
+      option.click();
       await flushPromises();
+    };
 
-      const replyPill = wrapper.find('.reply-pill');
-      expect(replyPill.attributes('disabled')).toBeDefined();
-      expect(replyPill.attributes('data-disabled-reason')).toBe('review-surface-read-only');
-      await replyPill.trigger('click');
-      expect(wrapper.find('.reply-expanded').exists()).toBe(false);
-    } finally {
-      wrapper.unmount();
-    }
+    it.each(['editing', 'viewing'])('submits one reply to the existing thread in %s mode', async (mode) => {
+      const comment = prepare(mode);
+      const reply = vi.spyOn(commentsStore, 'replyCommentV2').mockResolvedValue({ ok: true });
+      const wrapper = mountDialog(comment, { CommentHeader: false });
+      try {
+        expect(wrapper.find('[data-comment-action="resolve"]').exists()).toBe(false);
+        await wrapper.find('.reply-pill').trigger('click');
+        expect(wrapper.find('.reply-expanded').exists()).toBe(true);
+        commentsStore.currentCommentText = '<p>Owner reply</p>';
+        await flushPromises();
+        await wrapper.find('button.reply-btn-primary').trigger('click');
+        await flushPromises();
+        expect(reply).toHaveBeenCalledExactlyOnceWith({
+          superdoc: superdocStub,
+          parentCommentId: comment.commentId,
+          text: '<p>Owner reply</p>',
+        });
+      } finally {
+        wrapper.unmount();
+      }
+    });
+
+    it.each(['editing', 'viewing'])('edits the own comment through its menu in %s mode', async (mode) => {
+      const comment = prepare(mode);
+      const edit = vi.spyOn(commentsStore, 'editCommentV2').mockResolvedValue({ ok: true });
+      const wrapper = mountDialog(comment, { CommentHeader: false });
+      try {
+        await selectOverflow(wrapper, 'Edit');
+        expect(commentsStore.editingCommentId).toBe(comment.commentId);
+        commentsStore.currentCommentText = '<p>Corrected owner comment</p>';
+        await flushPromises();
+        await wrapper.find('button.reply-btn-primary').trigger('click');
+        await flushPromises();
+        expect(edit).toHaveBeenCalledExactlyOnceWith({
+          superdoc: superdocStub,
+          commentId: comment.commentId,
+          text: '<p>Corrected owner comment</p>',
+        });
+        expect(commentsStore.editingCommentId).toBeNull();
+      } finally {
+        wrapper.unmount();
+      }
+    });
+
+    it.each(['editing', 'viewing'])('deletes the own comment through its menu in %s mode', async (mode) => {
+      const comment = prepare(mode);
+      const remove = vi.spyOn(commentsStore, 'deleteComment').mockResolvedValue({ ok: true });
+      const wrapper = mountDialog(comment, { CommentHeader: false });
+      try {
+        await selectOverflow(wrapper, 'Delete');
+        expect(remove).toHaveBeenCalledExactlyOnceWith({ superdoc: superdocStub, commentId: comment.commentId });
+      } finally {
+        wrapper.unmount();
+      }
+    });
+
+    it('keeps a permitted reply available when switching to viewing mode', async () => {
+      const comment = prepare('editing');
+      const wrapper = mountDialog(comment);
+      try {
+        commentsStore.setViewingVisibility({ documentMode: 'viewing' });
+        await flushPromises();
+        expect(wrapper.find('.reply-pill').attributes('disabled')).toBeUndefined();
+        await wrapper.find('.reply-pill').trigger('click');
+        expect(wrapper.find('.reply-expanded').exists()).toBe(true);
+      } finally {
+        wrapper.unmount();
+      }
+    });
+
+    it.each([
+      { role: 'suggester', options: [] },
+      { role: 'editor', options: ['Delete'] },
+    ])('preserves $role permissions on another author’s viewing-mode comment', async ({ role, options }) => {
+      const comment = prepare('viewing');
+      comment.creatorId = 'other-user';
+      comment.creatorEmail = 'other@example.com';
+      comment.creatorName = superdocStore.user.name;
+      superdocStub.config.role = role;
+      const edit = vi.spyOn(commentsStore, 'editCommentV2');
+      const remove = vi.spyOn(commentsStore, 'deleteComment');
+      const wrapper = mountDialog(comment, { CommentHeader: false });
+      try {
+        const replyPill = wrapper.find('.reply-pill');
+        expect(replyPill.attributes('disabled')).toBeUndefined();
+        const overflow = wrapper.find('[data-comment-action="overflow"]');
+        expect(overflow.exists()).toBe(options.length > 0);
+        if (options.length > 0) {
+          await overflow.find('.comments-dropdown__trigger').trigger('click');
+          expect(
+            [...document.querySelectorAll('.comments-dropdown__option')].map((option) => option.textContent.trim()),
+          ).toEqual(options);
+        }
+        await replyPill.trigger('click');
+        expect(wrapper.find('.reply-expanded').exists()).toBe(true);
+        expect(commentsStore.editingCommentId).toBeNull();
+        expect(edit).not.toHaveBeenCalled();
+        expect(remove).not.toHaveBeenCalled();
+      } finally {
+        wrapper.unmount();
+      }
+    });
+
+    it('keeps host-denied replies and own-comment overflow unavailable in viewing mode', async () => {
+      const comment = prepare('viewing', { canWrite: false });
+      const wrapper = mountDialog(comment, { CommentHeader: false });
+      try {
+        const replyPill = wrapper.find('.reply-pill');
+        expect(replyPill.attributes('disabled')).toBeDefined();
+        expect(replyPill.attributes('data-disabled-reason')).toBe('host-state:saving');
+        await replyPill.trigger('click');
+        expect(wrapper.find('.reply-expanded').exists()).toBe(false);
+        expect(wrapper.find('[data-comment-action="overflow"]').exists()).toBe(false);
+      } finally {
+        wrapper.unmount();
+      }
+    });
+
+    it('keeps read-level comment actions unavailable in viewing mode', async () => {
+      const comment = prepare('viewing', { readOnly: true });
+      const remove = vi.spyOn(commentsStore, 'deleteComment');
+      const wrapper = mountDialog(comment, { CommentHeader: false });
+      try {
+        expect(wrapper.find('.reply-pill').exists()).toBe(false);
+        expect(wrapper.find('[data-comment-action="overflow"]').exists()).toBe(false);
+        const header = wrapper.findComponent({ name: 'CommentHeader' });
+        header.vm.$emit('overflow-select', 'edit');
+        header.vm.$emit('overflow-select', 'delete');
+        await flushPromises();
+        expect(commentsStore.editingCommentId).toBeNull();
+        expect(remove).not.toHaveBeenCalled();
+      } finally {
+        wrapper.unmount();
+      }
+    });
+
+    it.each([true, false])('honors the pending viewing-mode creation capability: %s', async (canCreate) => {
+      const comment = prepare('viewing');
+      commentsStore.pendingComment = comment;
+      commentsStore.currentCommentText = '<p>New viewing-mode comment</p>';
+      const capability = superdocStub.activeEditor.v2Comments.getCapabilityState.mockImplementation((command) => ({
+        canWrite: command === 'comments.createFromSelection' && canCreate,
+        reason: canCreate ? null : 'host-state:saving',
+      }));
+      const add = vi.spyOn(commentsStore, 'addComment').mockResolvedValue({ ok: true });
+      const wrapper = mountDialog(comment);
+      try {
+        await wrapper.find('button.reply-btn-primary').trigger('click');
+        await flushPromises();
+        expect(capability).toHaveBeenCalledWith('comments.createFromSelection');
+        expect(add).toHaveBeenCalledTimes(canCreate ? 1 : 0);
+      } finally {
+        wrapper.unmount();
+      }
+    });
   });
 
   it('coalesces rapid v2 reply clicks while the first submission is pending (SD-3867)', async () => {

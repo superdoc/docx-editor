@@ -884,13 +884,8 @@ watch(
 const v2WriteCapability = computed(() => {
   void v2CapabilityRevision.value;
   if (!v2CommentsAdapter.value) return null;
-  const documentMode = commentsStore.viewingVisibility.documentMode;
   const command = isPendingNewComment.value ? 'comments.createFromSelection' : null;
-  const capability = v2CommentsAdapter.value.getCapabilityState?.(command) ?? null;
-  if (documentMode === 'viewing' && !isPendingNewComment.value) {
-    return { ...(capability ?? {}), canWrite: false, reason: 'review-surface-read-only' };
-  }
-  return capability;
+  return v2CommentsAdapter.value.getCapabilityState?.(command) ?? null;
 });
 const isV2WriteDisabled = computed(() => {
   if (!isV2Mode.value) return false;

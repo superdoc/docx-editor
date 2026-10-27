@@ -44,14 +44,8 @@ const getRunDataAttrs = (run: Run | undefined): Record<string, string> | undefin
 const getRunCharacterLength = (run: Run | undefined): number => {
   if (!run) return 0;
   if (isTabRun(run)) return TAB_CHAR_LENGTH;
-  if (run.kind === 'image') return 1;
-  if (
-    'src' in run ||
-    run.kind === 'lineBreak' ||
-    run.kind === 'break' ||
-    run.kind === 'fieldAnnotation' ||
-    run.kind === 'math'
-  ) {
+  if (run.kind === 'image' || run.kind === 'math') return 1;
+  if ('src' in run || run.kind === 'lineBreak' || run.kind === 'break' || run.kind === 'fieldAnnotation') {
     return 0;
   }
   return run.text?.length ?? 0;
@@ -368,13 +362,8 @@ function measureCharacterXWithoutInlineBoxes(
       1,
       runs.reduce((sum, run) => {
         if (isTabRun(run)) return sum + TAB_CHAR_LENGTH;
-        if (
-          'src' in run ||
-          run.kind === 'lineBreak' ||
-          run.kind === 'break' ||
-          run.kind === 'fieldAnnotation' ||
-          run.kind === 'math'
-        )
+        if (run.kind === 'math') return sum + 1;
+        if ('src' in run || run.kind === 'lineBreak' || run.kind === 'break' || run.kind === 'fieldAnnotation')
           return sum;
         return sum + (run.text ?? '').length;
       }, 0),
@@ -389,12 +378,12 @@ function measureCharacterXWithoutInlineBoxes(
   let nextImageRunIndex = line.fromRun;
 
   for (const run of runs) {
-    if (run.kind === 'image') {
+    if (run.kind === 'image' || run.kind === 'math') {
       const runIndex = block.kind === 'paragraph' ? block.runs.indexOf(run, nextImageRunIndex) : -1;
       nextImageRunIndex = runIndex + 1;
       const imageWidth =
         line.segments?.find((segment) => segment.runIndex === runIndex)?.width ??
-        run.width + (run.distLeft ?? 0) + (run.distRight ?? 0);
+        (run.kind === 'image' ? run.width + (run.distLeft ?? 0) + (run.distRight ?? 0) : 0);
       if (currentCharOffset + 1 >= charOffset) {
         return (
           alignmentOffset +
@@ -426,11 +415,7 @@ function measureCharacterXWithoutInlineBoxes(
     }
 
     const text =
-      'src' in run ||
-      run.kind === 'lineBreak' ||
-      run.kind === 'break' ||
-      run.kind === 'fieldAnnotation' ||
-      run.kind === 'math'
+      'src' in run || run.kind === 'lineBreak' || run.kind === 'break' || run.kind === 'fieldAnnotation'
         ? ''
         : (run.text ?? '');
     const runLength = text.length;
@@ -448,8 +433,7 @@ function measureCharacterXWithoutInlineBoxes(
       'src' in run ||
       run.kind === 'lineBreak' ||
       run.kind === 'break' ||
-      run.kind === 'fieldAnnotation' ||
-      run.kind === 'math'
+      run.kind === 'fieldAnnotation'
         ? undefined
         : run.textTransform;
     const displayText = applyTextTransform(text, transform);
@@ -659,7 +643,10 @@ function measureCharacterXSegmentBased(
         run.kind === 'fieldAnnotation' ||
         run.kind === 'math'
       ) {
-        return segmentBaseX + (offsetInSegment >= segmentChars ? (segment.width ?? 0) : 0);
+        return (
+          segmentBaseX +
+          ((run.kind === 'math' ? offsetInSegment > 0 : offsetInSegment >= segmentChars) ? (segment.width ?? 0) : 0)
+        );
       }
 
       // For text runs, measure up to the target character
@@ -950,7 +937,7 @@ export function findCharacterAtX(
 /**
  * Number of addressable caret offsets on a line (its last caret offset). Mirrors
  * how measureCharacterX advances charOffset: tab runs count as one character,
- * images as one, break/field/math runs as zero, and text runs by their length.
+ * images and math as one, break/field runs as zero, and text runs by their length.
  */
 function lineCharLength(block: FlowBlock, line: Line): number {
   return sliceCaretRunsForLine(block, line).reduce((length, run) => length + getRunCharacterLength(run), 0);

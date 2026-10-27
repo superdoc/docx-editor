@@ -4067,7 +4067,10 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       if (hostSelection && info && typeof info === 'object') selectionHostSnapshots.set(info, hostSelection);
       return info;
     };
-    const result = current({ includeText: true });
+    const result = current({
+      includeText: true,
+      ...(getEditor()?.editorVersion === 2 ? { offsetSpace: 'selection' } : {}),
+    });
     return isPromiseLike(result) ? Promise.resolve(result).then(tag) : tag(result);
   }
 
@@ -4272,7 +4275,10 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
 
     let raw: unknown;
     try {
-      raw = current.call(selectionApi, { includeText: true });
+      raw = current.call(selectionApi, {
+        includeText: true,
+        ...(getEditor()?.editorVersion === 2 ? { offsetSpace: 'selection' } : {}),
+      });
       if (isPromiseLike(raw)) raw = await Promise.resolve(raw);
     } catch {
       raw = null;

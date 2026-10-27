@@ -39,6 +39,10 @@ export type {
   StylesTargetResolution,
   StylesApplyRunInput,
   StylesApplyParagraphInput,
+  StylesApplyStyleRunInput,
+  StylesStyleRunPatch,
+  StylesDocDefaultsResolution,
+  StylesStyleResolution,
   StylesApplyInput,
   StylesApplyOptions,
   StylesStateMap,
@@ -49,7 +53,7 @@ export type {
   NormalizedStylesApplyOptions,
   StylesApi,
 } from './apply.js';
-export { executeStylesApply } from './apply.js';
+export { STYLE_RUN_XML_PATH, executeStylesApply } from './apply.js';
 
 // Create: define or redefine a named style (`styles.create`)
 export type {
@@ -118,4 +122,4 @@ export { executeStylesGetTheme, validateStylesGetThemeInput } from './theme.js';
 
 // Validation: exported for adapter use (excluded-key checking, patch key classification)
 export type { PatchKeyClassification } from './validation.js';
-export { validateValue, classifyPatchKey, validatePatchObject } from './validation.js';
+export { validateValue, classifyPatchKey, validatePatchObject, validateStylesApplyInput } from './validation.js';

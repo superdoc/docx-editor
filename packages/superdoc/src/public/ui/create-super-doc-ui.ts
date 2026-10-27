@@ -16,6 +16,7 @@ import { beginInteraction, recordInteraction } from '../../internal/diagnostics/
 
 import { shallowEqual } from './equality.js';
 import { createWatermarkController } from './watermark-controller.js';
+import { buildStyleMatchPatch, STYLE_MATCH_READ_KEYS } from './style-match-patch.js';
 import { sdRunPropsToInlineRunPatch, selectionKey } from './format-painter-helpers.js';
 import { getV2TrackedChangeMutationImpact } from '../../helpers/v2-review-mutation-impact.js';
 import { isV2EditableTextMutationEvent } from '../../helpers/v2-typing-mutation-event.js';
@@ -82,6 +83,7 @@ import type {
   SearchSnapshot,
   StylesHandle,
   StylesSlice,
+  StylesUpdateToMatchSelectionInput,
   ActiveParagraphStyle,
   StyleCatalogItem,
   StyleCatalogDiagnostic,
@@ -123,6 +125,7 @@ import {
   CLEAR_INLINE_FORMATTING_KEYS,
   INLINE_PROPERTY_BY_KEY,
   isStoryLocator,
+  type FormatReadSelectionResult,
   type InlineRunPatchKey,
   type TextSegment,
 } from '@superdoc/document-api';
@@ -2796,6 +2799,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     failedToken?: string | null;
     failureCount?: number;
     retryAtMs?: number;
+    settled?: Promise<void>;
   };
   const asyncReads = new Map<string, AsyncReadEntry>();
   const coldAsyncReadDeferrals = new Set<string>();
@@ -3650,7 +3654,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       failureCount: retryingSameToken ? (prev.failureCount ?? 0) : 0,
       retryAtMs: 0,
     });
-    Promise.resolve(raw).then(
+    const settled = Promise.resolve(raw).then(
       (resolved) => {
         const entry = asyncReads.get(key);
         if (!entry || entry.inflightToken !== token) return; // superseded by a newer read
@@ -3694,6 +3698,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
         const retryAtMs = Date.now() + retryDelayMs;
         asyncReads.set(key, {
           ...entry,
+          settled: undefined,
           inflightToken: null,
           failedToken: token,
           failureCount,
@@ -3702,6 +3707,8 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
         scheduleAsyncReadFailureRetry(retryAtMs);
       },
     );
+    const entry = asyncReads.get(key);
+    if (entry?.inflightToken === token) entry.settled = settled;
     return null;
   };
 
@@ -13778,6 +13785,113 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     }, 120);
   };
 
+  const updateStyleToMatchSelection = (input?: StylesUpdateToMatchSelectionInput): WorkflowReceipt => {
+    const mode = readDocumentMode();
+    if (mode === 'viewing') return failedReceipt('The document is read-only.', 'DOCUMENT_READONLY');
+    if (mode === 'suggesting') {
+      return failedReceipt('A style definition cannot be changed as a tracked suggestion.', 'PRECONDITION_FAILED');
+    }
+    const sourceToken = contentToken();
+    const readPositionKey = (): string | null => {
+      const snapshot = readHostSelectionSnapshot() as LooseRecord | null;
+      if (!snapshot) return null;
+      return JSON.stringify({
+        story: snapshot.story,
+        tableCells: snapshot.tableCells,
+        points: ['anchor', 'focus'].map((side) => {
+          const point = snapshot[side] as LooseRecord | undefined;
+          return point
+            ? [
+                point.blockId,
+                point.blockOffset,
+                point.trackedBlockOffset,
+                point.story,
+                point.inlineAffinity,
+                point.outsideContentControl,
+                point.visualCaret,
+              ]
+            : null;
+        }),
+      });
+    };
+    const requestedPosition = readPositionKey();
+    const stale = failedReceipt('The selection or document changed while reading its style.', 'REVISION_MISMATCH');
+    return readSelectionInfoFresh().then((selection) => {
+      const selectionToken = selectionKey(selection);
+      const isCurrent = (): boolean =>
+        !disposed &&
+        contentToken() === sourceToken &&
+        readPositionKey() === requestedPosition &&
+        selectionKey(state.selection) === selectionToken &&
+        readDocumentMode() === mode;
+      if (!isCurrent()) return stale;
+      const active = computeActiveParagraphStyle(selection, getStyleCatalog().cache).style;
+      const story = storyLocatorSignature(selectionStory(selection));
+      const keys = [
+        styleCatalogReadKey({ includePreview: true }),
+        ...selectionBlockIds(selection).map((id) => `node:${story}:${id}`),
+      ];
+      const unreadable = failedReceipt('The selection formatting could not be read.', 'PRECONDITION_FAILED');
+      const run = (active: ActiveParagraphStyle): WorkflowReceipt => {
+        const unavailable = keys.some((key) => {
+          const entry = asyncReads.get(key);
+          return entry && (!entry.hasSettled || entry.token !== sourceToken || entry.failedToken === sourceToken);
+        });
+        if (unavailable) return unreadable;
+        const styleId = input?.styleId ?? active.styleId;
+        if (!styleId) {
+          return failedReceipt(
+            'Choose a style to update: the selection does not have a single paragraph style.',
+            'INVALID_TARGET',
+          );
+        }
+        const doc = getDoc();
+        const readSelection = resolveDocOperation(doc, 'format.readSelection');
+        const apply = resolveDocOperation(doc, 'styles.apply');
+        if (!readSelection || !apply) return failedReceipt('Updating a style to match the selection is unavailable.');
+        let reads: [unknown, unknown];
+        try {
+          reads = [
+            readSelection({ selection: 'current', keys: STYLE_MATCH_READ_KEYS, view: 'effective' }),
+            readSelection({ selection: 'current', keys: STYLE_MATCH_READ_KEYS, view: 'direct' }),
+          ];
+        } catch {
+          return unreadable;
+        }
+        return Promise.all(reads).then(
+          ([effective, direct]) => {
+            if (!isCurrent()) return stale;
+            const patch = buildStyleMatchPatch(
+              effective as FormatReadSelectionResult,
+              direct as FormatReadSelectionResult,
+              {
+                selectionUsesStyle: !active.mixed && active.styleId === styleId,
+              },
+            );
+            if (Object.keys(patch).length === 0)
+              return failedReceipt('The selection already matches the style.', 'NO_OP');
+            const fallback = failedReceipt('Updating the style failed.');
+            return safeCall<WorkflowReceipt>(
+              () =>
+                settleWorkflowReceipt(apply({ target: { scope: 'style', styleId, channel: 'run' }, patch }), fallback),
+              fallback,
+            );
+          },
+          () => unreadable,
+        );
+      };
+      const pending = keys.flatMap((key) => {
+        const entry = asyncReads.get(key);
+        return entry?.inflightToken === sourceToken && entry.settled ? [entry.settled] : [];
+      });
+      if (pending.length === 0) return run(active);
+      return Promise.all(pending).then(() => {
+        if (!isCurrent()) return stale;
+        return run(computeActiveParagraphStyle(selection, getStyleCatalog().cache).style);
+      });
+    });
+  };
+
   // -- styles (read-only catalogue + active paragraph style) ----------------
   const stylesSub = sliceHandle((s) => s.styles);
   const stylesSnap = snapshotHandle(stylesSub);
@@ -13793,6 +13907,8 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     getQuickGallery: (): readonly StyleCatalogItem[] => stylesSub.get().quickGallery,
     getActiveParagraphStyle: (): ActiveParagraphStyle =>
       computeActiveParagraphStyle(state.selection, getStyleCatalog().cache).style,
+    updateToMatchSelection: (input?: StylesUpdateToMatchSelectionInput): WorkflowReceipt =>
+      updateStyleToMatchSelection(input),
   };
 
   const openWatermarkSurface = hostMethod(superdoc, 'openSurface');

@@ -802,10 +802,24 @@ export class BuiltInToolbar extends EventEmitter {
   }
 
   #refreshLinkedStyleOptions() {
-    this.ui?.styles?.getCatalog?.({ includePreview: true });
+    const allStyles = this.ui?.styles?.getCatalog?.({ includePreview: true });
     const catalog = this.ui?.styles?.getCatalog?.({ view: 'quickGallery', includePreview: true });
     const options = catalog?.items ?? this.ui?.styles?.getQuickGallery?.() ?? [];
-    if (options !== this._linkedStyleOptions.value) this._linkedStyleOptions.value = options;
+    const activeStyleId = this.ui?.styles?.getActiveParagraphStyle?.()?.styleId;
+    const activeStyle =
+      activeStyleId && !options.some((style) => style.id === activeStyleId)
+        ? allStyles?.styles?.find(
+            (style) => style.id === activeStyleId && (style.type === 'paragraph' || style.type === 'linked'),
+          )
+        : null;
+    const nextOptions = activeStyle ? [activeStyle, ...options] : options;
+    const previousOptions = this._linkedStyleOptions.value;
+    if (
+      nextOptions.length !== previousOptions.length ||
+      nextOptions.some((style, index) => style !== previousOptions[index])
+    ) {
+      this._linkedStyleOptions.value = nextOptions;
+    }
   }
 
   /**
@@ -815,6 +829,18 @@ export class BuiltInToolbar extends EventEmitter {
    */
   getActiveLinkedStyleId(): string | null {
     return this.ui?.styles?.getActiveParagraphStyle?.()?.styleId ?? null;
+  }
+
+  async updateLinkedStyleToMatchSelection(styleId: string) {
+    if (!styleId || typeof this.ui?.styles?.updateToMatchSelection !== 'function') return null;
+    try {
+      return await this.ui.styles.updateToMatchSelection({ styleId });
+    } catch (error) {
+      this.#emitCommandException(error, 'linkedStyles');
+      return null;
+    } finally {
+      this.updateToolbarState();
+    }
   }
 
   /**

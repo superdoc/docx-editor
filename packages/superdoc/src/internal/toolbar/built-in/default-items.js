@@ -1279,6 +1279,13 @@ export const makeDefaultItems = ({
             superToolbar.emitCommand({ item: itemWithCommand, argument: styleId });
           };
 
+          const handleUpdate = (style) => {
+            closeDropdown(linkedStyles);
+            const styleId = typeof style === 'string' ? style : (style?.id ?? null);
+            if (!styleId) return;
+            void superToolbar.updateLinkedStyleToMatchSelection?.(styleId);
+          };
+
           // The dropdown is populated from the shared controller's public
           // `superdoc/ui` style quick gallery (Document API `styles.getCatalog`,
           // qFormat-driven with a v1 alphabetical fallback), never toolbar-local
@@ -1289,6 +1296,8 @@ export const makeDefaultItems = ({
             h(LinkedStyle, {
               styles: superToolbar.getLinkedStyleOptions?.() ?? [],
               onSelect: handleSelect,
+              onUpdate: handleUpdate,
+              updateLabel: toolbarTexts.updateLinkedStyle,
               selectedOption: activeStyleId,
             }),
           ]);

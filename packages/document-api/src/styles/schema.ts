@@ -65,13 +65,18 @@ export function toJsonSchema(schema: ValueSchema): JsonSchema {
  * a schema that advertised them on `docDefaults` would describe an input the
  * validator rejects.
  */
-export function buildPatchSchema(channel: StylesChannel, scope: StylesScope = 'docDefaults'): JsonSchema {
+export function buildPatchSchema(
+  channel: StylesChannel,
+  scope: StylesScope = 'docDefaults',
+  options: { nullable?: boolean } = {},
+): JsonSchema {
   const excluded = EXCLUDED_KEYS_BY_SCOPE[scope][channel];
   const properties: Record<string, JsonSchema> = {};
   for (const def of PROPERTY_REGISTRY) {
     if (def.channel !== channel) continue;
     if (excluded.has(def.key)) continue;
-    properties[def.key] = toJsonSchema(def.schema);
+    const schema = toJsonSchema(def.schema);
+    properties[def.key] = options.nullable ? { oneOf: [schema, { type: 'null' }] } : schema;
   }
   return {
     type: 'object',

@@ -560,3 +560,110 @@ describe('styles.apply validation: manual edge cases', () => {
     );
   });
 });
+
+describe('styles.apply validation: named style target', () => {
+  const styleTarget = { scope: 'style', styleId: 'DemoHeading', channel: 'run' } as const;
+
+  it('passes a style target and its patch through to the adapter unchanged', () => {
+    const adapter = makeAdapter();
+    const input = { target: styleTarget, patch: { bold: true, fontSize: 28 } };
+    executeStylesApply(adapter, input, { dryRun: true });
+    expect(adapter.apply).toHaveBeenCalledWith(input, { dryRun: true, expectedRevision: undefined });
+  });
+
+  it('accepts null to remove a property, so the style inherits it again', () => {
+    const adapter = makeAdapter();
+    expect(() =>
+      executeStylesApply(adapter, { target: styleTarget, patch: { italic: null, color: null, fontFamily: null } }),
+    ).not.toThrow();
+  });
+
+  it('accepts the run keys only a named style allows', () => {
+    const adapter = makeAdapter();
+    expect(() =>
+      executeStylesApply(adapter, { target: styleTarget, patch: { cs: true, rtl: false, highlight: 'yellow' } }),
+    ).not.toThrow();
+  });
+
+  it('still validates non-null values against the registry', () => {
+    const adapter = makeAdapter();
+    expectValidationError(
+      () => executeStylesApply(adapter, { target: styleTarget, patch: { bold: 'yes' as never } }),
+      'INVALID_INPUT',
+      /patch\.bold must be a boolean/,
+    );
+  });
+
+  it('rejects null on docDefaults, which has nothing to inherit from', () => {
+    const adapter = makeAdapter();
+    expectValidationError(
+      () =>
+        executeStylesApply(adapter, {
+          target: { scope: 'docDefaults', channel: 'run' },
+          patch: { bold: null as never },
+        }),
+      'INVALID_INPUT',
+      /patch\.bold must be a boolean/,
+    );
+  });
+
+  it('rejects a missing or empty styleId', () => {
+    const adapter = makeAdapter();
+    for (const styleId of [undefined, '', 42]) {
+      expectValidationError(
+        () =>
+          executeStylesApply(adapter, {
+            target: { scope: 'style', styleId, channel: 'run' } as never,
+            patch: { bold: true },
+          }),
+        'INVALID_TARGET',
+        /target\.styleId must be a non-empty string/,
+      );
+    }
+    expect(adapter.apply).not.toHaveBeenCalled();
+  });
+
+  it('rejects the paragraph channel on a named style', () => {
+    const adapter = makeAdapter();
+    expectValidationError(
+      () =>
+        executeStylesApply(adapter, {
+          target: { scope: 'style', styleId: 'DemoHeading', channel: 'paragraph' } as never,
+          patch: { keepNext: true },
+        }),
+      'INVALID_TARGET',
+      /must be "run" for scope "style"/,
+    );
+  });
+
+  it('rejects styleId on a docDefaults target', () => {
+    const adapter = makeAdapter();
+    expectValidationError(
+      () =>
+        executeStylesApply(adapter, {
+          target: { scope: 'docDefaults', channel: 'run', styleId: 'DemoHeading' } as never,
+          patch: { bold: true },
+        }),
+      'INVALID_INPUT',
+      /Unknown field "target\.styleId"/,
+    );
+  });
+
+  it('rejects an empty patch on a named style', () => {
+    const adapter = makeAdapter();
+    expectValidationError(
+      () => executeStylesApply(adapter, { target: styleTarget, patch: {} }),
+      'INVALID_INPUT',
+      /at least one property/,
+    );
+  });
+
+  it('rejects paragraph keys on a named style run patch', () => {
+    const adapter = makeAdapter();
+    expectValidationError(
+      () => executeStylesApply(adapter, { target: styleTarget, patch: { keepNext: true } as never }),
+      'INVALID_INPUT',
+      /paragraph-channel property/,
+    );
+  });
+});

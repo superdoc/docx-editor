@@ -17996,6 +17996,299 @@ describe('public ui — styles slice (WS4)', () => {
     expect(snap.activeParagraphStyleId).toBeNull();
     expect(snap.sourceStatus).toBeNull();
   });
+
+  describe('updateToMatchSelection (SD-5079)', () => {
+    const uniform = (value: unknown) => ({ state: 'uniform', value });
+    const unset = { state: 'unset' };
+    const KEYS = ['bold', 'italic', 'underline', 'color', 'fontSize', 'rFonts', 'rStyle'];
+
+    function withStyleWrites(
+      opts: Parameters<typeof makeStylesSuperdoc>[0] & {
+        effective?: Record<string, unknown>;
+        direct?: Record<string, unknown>;
+      } = {},
+    ) {
+      const made = makeStylesSuperdoc(opts);
+      const doc = made.superdoc.activeEditor.doc as Record<string, any>;
+      const effective = {
+        bold: uniform(true),
+        italic: uniform(true),
+        underline: uniform(false),
+        color: uniform('C00000'),
+        fontSize: uniform(18),
+        rFonts: uniform({ ascii: 'Arial', hAnsi: 'Arial' }),
+        ...opts.effective,
+      };
+      const direct = {
+        ...Object.fromEntries(KEYS.map((key) => [key, unset])),
+        italic: uniform(true),
+        color: uniform('C00000'),
+        ...opts.direct,
+      };
+      const readSelection = vi.fn(async (input: { view: string }) => ({
+        collapsed: false,
+        properties: input.view === 'effective' ? effective : direct,
+      }));
+      const apply = vi.fn((input: { target: { styleId: string } }) => ({
+        success: true,
+        changed: true,
+        dryRun: false,
+        resolution: { scope: 'style', ...input.target },
+        before: {},
+        after: {},
+      }));
+      doc.format = { readSelection };
+      doc.styles.apply = apply;
+      return { ...made, readSelection, apply };
+    }
+
+    it('reads the selection both ways and redefines the active style with only its direct formatting', async () => {
+      const { superdoc, readSelection, apply } = withStyleWrites();
+      const ui = createSuperDocUI({ superdoc });
+      const receipt = await ui.styles.updateToMatchSelection();
+      expect(receipt).toMatchObject({ success: true, changed: true });
+      expect(readSelection).toHaveBeenCalledWith({ selection: 'current', keys: KEYS, view: 'effective' });
+      expect(readSelection).toHaveBeenCalledWith({ selection: 'current', keys: KEYS, view: 'direct' });
+      expect(apply).toHaveBeenCalledTimes(1);
+      expect(apply).toHaveBeenCalledWith({
+        target: { scope: 'style', styleId: 'Heading1', channel: 'run' },
+        patch: { italic: true, color: { val: 'C00000' } },
+      });
+    });
+
+    it('folds every agreed key into a style the selection does not use', async () => {
+      const { superdoc, apply } = withStyleWrites();
+      const ui = createSuperDocUI({ superdoc });
+      await ui.styles.updateToMatchSelection({ styleId: 'Title' });
+      expect(apply).toHaveBeenCalledWith({
+        target: { scope: 'style', styleId: 'Title', channel: 'run' },
+        patch: {
+          bold: true,
+          italic: true,
+          underline: { val: 'none' },
+          color: { val: 'C00000' },
+          fontSize: 36,
+          fontFamily: { ascii: 'Arial', hAnsi: 'Arial' },
+        },
+      });
+    });
+
+    it('waits for asynchronous paragraph facts before choosing the active style', async () => {
+      const { superdoc, getNodeById, apply } = withStyleWrites();
+      let finish!: (node: unknown) => void;
+      const pending = new Promise((resolve) => {
+        finish = resolve;
+      });
+      getNodeById.mockImplementation(() => pending as never);
+      const ui = createSuperDocUI({ superdoc });
+      const receipt = ui.styles.updateToMatchSelection();
+      expect(apply).not.toHaveBeenCalled();
+      finish({ node: { kind: 'paragraph', paragraph: { styleRef: 'Heading1' } } });
+      expect(await receipt).toMatchObject({ success: true, changed: true });
+      expect(apply).toHaveBeenCalledWith({
+        target: { scope: 'style', styleId: 'Heading1', channel: 'run' },
+        patch: { italic: true, color: { val: 'C00000' } },
+      });
+    });
+
+    it('resolves the live selection before choosing its paragraph style', async () => {
+      const { superdoc, apply } = withStyleWrites();
+      let finish!: (selection: unknown) => void;
+      const pending = new Promise((resolve) => {
+        finish = resolve;
+      });
+      (superdoc.activeEditor.doc as Record<string, any>).selection.current = () => pending;
+      const ui = createSuperDocUI({ superdoc });
+      const receipt = ui.styles.updateToMatchSelection();
+      expect(apply).not.toHaveBeenCalled();
+      finish({
+        empty: false,
+        target: { kind: 'text', segments: [{ blockId: 'P1', range: { start: 0, end: 4 } }] },
+        activeMarks: [],
+        activeCommentIds: [],
+        activeChangeIds: [],
+        text: 'test',
+      });
+      expect(await receipt).toMatchObject({ success: true, changed: true });
+      expect(apply.mock.calls[0][0].target.styleId).toBe('Heading1');
+    });
+
+    it('waits for an asynchronous style catalogue to resolve the default paragraph style', async () => {
+      const { superdoc, getCatalog, apply } = withStyleWrites({ blocks: { P1: {} } });
+      let finish!: (catalog: unknown) => void;
+      const pending = new Promise((resolve) => {
+        finish = resolve;
+      });
+      getCatalog.mockImplementation(() => pending as never);
+      const ui = createSuperDocUI({ superdoc });
+      const receipt = ui.styles.updateToMatchSelection();
+      expect(apply).not.toHaveBeenCalled();
+      finish(CATALOG_ALL_PREVIEW);
+      expect(await receipt).toMatchObject({ success: true, changed: true });
+      expect(apply.mock.calls[0][0].target.styleId).toBe('Normal');
+    });
+
+    it('refuses a write if the document mode changes while paragraph facts are pending', async () => {
+      const { superdoc, getNodeById, readSelection, apply } = withStyleWrites();
+      let finish!: (node: unknown) => void;
+      const pending = new Promise((resolve) => {
+        finish = resolve;
+      });
+      getNodeById.mockImplementation(() => pending as never);
+      const ui = createSuperDocUI({ superdoc });
+      const receipt = ui.styles.updateToMatchSelection();
+      superdoc.config.documentMode = 'viewing';
+      finish({ node: { kind: 'paragraph', paragraph: { styleRef: 'Heading1' } } });
+      expect(await receipt).toMatchObject({ success: false, failure: { code: 'REVISION_MISMATCH' } });
+      expect(readSelection).not.toHaveBeenCalled();
+      expect(apply).not.toHaveBeenCalled();
+    });
+
+    it.each([false, true])('distinguishes a semantic selection move (%s) from a paint refresh', async (moved) => {
+      const { superdoc, readSelection, apply } = withStyleWrites();
+      let snapshot = {
+        anchor: { blockId: 'P1', blockOffset: 0 },
+        focus: { blockId: 'P1', blockOffset: 4 },
+        story: { storyType: 'body' },
+        layoutEpoch: 1,
+        revision: 1,
+      };
+      let notify!: (snapshot: unknown) => void;
+      (superdoc.activeEditor as Record<string, unknown>).host = {
+        getHandles: () => ({
+          editing: {
+            selection: {
+              getSnapshot: () => snapshot,
+              subscribe: (listener: (snapshot: unknown) => void) => {
+                notify = listener;
+                return () => undefined;
+              },
+            },
+          },
+        }),
+      };
+      let finish!: (formatting: unknown) => void;
+      const pending = new Promise((resolve) => {
+        finish = resolve;
+      });
+      readSelection.mockImplementation(() => pending as never);
+      const ui = createSuperDocUI({ superdoc });
+      const receipt = ui.styles.updateToMatchSelection();
+      await vi.waitFor(() => expect(readSelection).toHaveBeenCalledTimes(2));
+      snapshot = { ...snapshot, focus: { blockId: 'P1', blockOffset: moved ? 3 : 4 }, layoutEpoch: 2, revision: 2 };
+      notify(snapshot);
+      finish({ collapsed: false, properties: { italic: uniform(true) } });
+      expect(await receipt).toMatchObject(
+        moved ? { success: false, failure: { code: 'REVISION_MISMATCH' } } : { success: true, changed: true },
+      );
+      expect(apply).toHaveBeenCalledTimes(moved ? 0 : 1);
+      ui.destroy();
+    });
+
+    it('does not reuse an old paragraph style when its refreshed read fails', async () => {
+      const { superdoc, getNodeById, apply } = withStyleWrites();
+      const listeners: Array<(event: { type: string }) => void> = [];
+      (superdoc.activeEditor as Record<string, unknown>).host = {
+        events: {
+          subscribe: (listener: (event: { type: string }) => void) => {
+            listeners.push(listener);
+            return () => undefined;
+          },
+        },
+      };
+      const ui = createSuperDocUI({ superdoc });
+      expect(ui.styles.getActiveParagraphStyle().styleId).toBe('Heading1');
+      getNodeById.mockImplementation(() => Promise.reject(new Error('read failed')) as never);
+      listeners[0]({ type: 'mutation:committed' });
+      const receipt = await ui.styles.updateToMatchSelection();
+      expect(receipt).toMatchObject({ success: false, failure: { code: 'PRECONDITION_FAILED' } });
+      expect(apply).not.toHaveBeenCalled();
+      ui.destroy();
+    });
+
+    it('does not write if the document mode changes while formatting is being read', async () => {
+      const { superdoc, readSelection, apply } = withStyleWrites();
+      let finish!: (value: unknown) => void;
+      const pending = new Promise((resolve) => {
+        finish = resolve;
+      });
+      readSelection.mockImplementation(() => pending as never);
+      const ui = createSuperDocUI({ superdoc });
+      const receipt = ui.styles.updateToMatchSelection();
+      superdoc.config.documentMode = 'viewing';
+      finish({ collapsed: false, properties: { italic: uniform(true) } });
+      expect(await receipt).toMatchObject({ success: false, failure: { code: 'REVISION_MISMATCH' } });
+      expect(apply).not.toHaveBeenCalled();
+    });
+
+    it('reports NO_OP without writing when the selection already matches the style', async () => {
+      const { superdoc, apply } = withStyleWrites({ direct: { italic: unset, color: unset } });
+      const ui = createSuperDocUI({ superdoc });
+      const receipt = await ui.styles.updateToMatchSelection();
+      expect(receipt).toMatchObject({ success: false, failure: { code: 'NO_OP' } });
+      expect(apply).not.toHaveBeenCalled();
+    });
+
+    it('relays a Document API failure receipt unchanged', async () => {
+      const { superdoc, apply } = withStyleWrites();
+      const failure = {
+        success: false,
+        failure: { code: 'TARGET_NOT_FOUND', message: 'No style with id "Quote".' },
+        resolution: { scope: 'style', styleId: 'Quote', channel: 'run' },
+      };
+      apply.mockReturnValue(failure as never);
+      const ui = createSuperDocUI({ superdoc });
+      expect(await ui.styles.updateToMatchSelection({ styleId: 'Quote' })).toEqual(failure);
+    });
+
+    it('fails closed in viewing and suggesting modes without reading or writing', async () => {
+      for (const [mode, code] of [
+        ['viewing', 'DOCUMENT_READONLY'],
+        ['suggesting', 'PRECONDITION_FAILED'],
+      ] as const) {
+        const { superdoc, readSelection, apply } = withStyleWrites({ mode });
+        const ui = createSuperDocUI({ superdoc });
+        expect(await ui.styles.updateToMatchSelection()).toMatchObject({ success: false, failure: { code } });
+        expect(readSelection).not.toHaveBeenCalled();
+        expect(apply).not.toHaveBeenCalled();
+      }
+    });
+
+    it('asks for a style when the selection spans several', async () => {
+      const { superdoc, apply } = withStyleWrites({
+        blocks: { P1: { styleRef: 'Heading1' }, P2: { styleRef: 'Title' } },
+        segments: [
+          { blockId: 'P1', range: { start: 0, end: 2 } },
+          { blockId: 'P2', range: { start: 0, end: 2 } },
+        ],
+      });
+      const ui = createSuperDocUI({ superdoc });
+      expect(await ui.styles.updateToMatchSelection()).toMatchObject({
+        success: false,
+        failure: { code: 'INVALID_TARGET' },
+      });
+      expect(apply).not.toHaveBeenCalled();
+    });
+
+    it('fails closed when the selection read rejects or the styles surface is missing', async () => {
+      const rejected = withStyleWrites();
+      rejected.readSelection.mockRejectedValue(new Error('stale'));
+      const ui = createSuperDocUI({ superdoc: rejected.superdoc });
+      expect(await ui.styles.updateToMatchSelection()).toMatchObject({
+        success: false,
+        failure: { code: 'PRECONDITION_FAILED' },
+      });
+      expect(rejected.apply).not.toHaveBeenCalled();
+
+      const missing = withStyleWrites();
+      delete (missing.superdoc.activeEditor.doc as Record<string, any>).styles.apply;
+      const uiWithout = createSuperDocUI({ superdoc: missing.superdoc });
+      expect(await uiWithout.styles.updateToMatchSelection()).toMatchObject({
+        success: false,
+        failure: { code: 'CAPABILITY_UNAVAILABLE' },
+      });
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------

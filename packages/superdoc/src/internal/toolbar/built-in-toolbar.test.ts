@@ -1710,6 +1710,27 @@ describe('BuiltInToolbar', () => {
     toolbar.destroy();
   });
 
+  it('keeps an active named paragraph style available outside the quick gallery', () => {
+    const toolbar = new BuiltInToolbar({ superdoc: makeHost() });
+    const active = { id: 'DemoHeading', name: 'Demo Heading', type: 'paragraph' };
+    const gallery = [{ id: 'Heading1', name: 'Heading 1', type: 'paragraph' }];
+    toolbar.ui.styles.getCatalog = ((input?: { view?: string }) => ({
+      items: input?.view === 'quickGallery' ? gallery : [active, ...gallery],
+      styles: [active, ...gallery],
+    })) as never;
+    toolbar.ui.styles.getQuickGallery = () => gallery as never;
+    toolbar.ui.styles.getActiveParagraphStyle = () => ({
+      styleId: 'DemoHeading',
+      styleName: 'Demo Heading',
+      mixed: false,
+      diagnostics: [],
+    });
+    const options = toolbar.getLinkedStyleOptions();
+    expect(options.map(({ id }) => id)).toEqual(['DemoHeading', 'Heading1']);
+    expect(toolbar.getLinkedStyleOptions()).toBe(options);
+    toolbar.destroy();
+  });
+
   it('loads and refreshes linked styles when the dropdown opens during document loading', async () => {
     const toolbarContainer = document.createElement('div');
     document.body.append(toolbarContainer);
@@ -1821,6 +1842,30 @@ describe('BuiltInToolbar', () => {
     const mixedVNode = option.render();
     const mixedLinkedStyleVNode = Array.isArray(mixedVNode.children) ? mixedVNode.children[0] : null;
     expect((mixedLinkedStyleVNode?.props as { selectedOption?: string | null }).selectedOption).toBeNull();
+    toolbar.destroy();
+  });
+
+  it('routes a row "Update to match selection" through ui.styles.updateToMatchSelection', async () => {
+    const toolbar = new BuiltInToolbar({ superdoc: makeHost() });
+    const receipt = { success: true, changed: true };
+    const updateToMatchSelection = vi.fn(async () => receipt);
+    toolbar.ui.styles.updateToMatchSelection = updateToMatchSelection as never;
+    toolbar.ui.styles.getQuickGallery = () => [{ id: 'Heading1', name: 'Heading 1' }];
+
+    const option = toolbar.getToolbarItemByName('linkedStyles')?.nestedOptions.value[0] as {
+      render: () => { children?: Array<{ props?: Record<string, unknown> }> };
+    };
+    const vnode = option.render();
+    const props = (Array.isArray(vnode.children) ? vnode.children[0]?.props : null) as {
+      onUpdate?: (style: unknown) => void;
+      updateLabel?: string;
+    };
+    expect(props.updateLabel).toBe('Update to match selection');
+
+    props.onUpdate?.({ id: 'Heading1', name: 'Heading 1' });
+    await vi.waitFor(() => expect(updateToMatchSelection).toHaveBeenCalledWith({ styleId: 'Heading1' }));
+    expect(await toolbar.updateLinkedStyleToMatchSelection('Heading1')).toBe(receipt);
+    expect(await toolbar.updateLinkedStyleToMatchSelection('')).toBeNull();
     toolbar.destroy();
   });
 

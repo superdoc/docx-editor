@@ -1306,14 +1306,14 @@ export const OPERATION_DEFINITIONS = {
   'styles.apply': {
     memberPath: 'styles.apply',
     description:
-      'Apply document-level default style changes to the active Style Definitions part. Targets docDefaults run and paragraph channels with set-style patch semantics.',
+      'Apply style changes to the active Style Definitions part. Targets docDefaults run and paragraph channels, or the run properties of an existing named paragraph style (scope "style"), with set-style patch semantics. Redefining a named style updates every paragraph that references it; its linked character style receives the same patch, null removes a property so the style inherits it again, and an object value replaces that property whole.',
     expectedResult: 'Returns a StylesApplyReceipt with per-channel success/failure details for each property change.',
     requiresDocumentContext: true,
     metadata: mutationOperation({
       idempotency: 'idempotent',
       supportsDryRun: true,
       trackedSupport: 'never',
-      possibleFailureCodes: NONE_FAILURES,
+      possibleFailureCodes: ['TARGET_NOT_FOUND', 'INVALID_TARGET', 'PRECONDITION_FAILED'],
       throws: ['INVALID_TARGET', 'INVALID_INPUT', 'CAPABILITY_UNAVAILABLE', 'REVISION_MISMATCH'],
       historyUnsafe: true,
     }),

@@ -917,6 +917,11 @@ export interface StylesHandle extends SnapshotSubscribable<StylesSlice> {
   getQuickGallery(): readonly StyleCatalogItem[];
   /** Resolve the active paragraph style for the current selection. */
   getActiveParagraphStyle(): ActiveParagraphStyle;
+  updateToMatchSelection(input?: StylesUpdateToMatchSelectionInput): WorkflowReceipt;
+}
+
+export interface StylesUpdateToMatchSelectionInput {
+  styleId?: string;
 }
 
 // ---------------------------------------------------------------------------

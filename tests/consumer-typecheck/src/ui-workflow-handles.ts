@@ -22,6 +22,7 @@ import type {
   SelectionHandle,
   SelectionInfo,
   StylesHandle,
+  StylesUpdateToMatchSelectionInput,
   ActiveParagraphStyle,
   StyleCatalogItem,
   StylesGetCatalogResult,
@@ -224,6 +225,16 @@ const _stylesActiveId: AssertEqual<ActiveParagraphStyle['styleId'], string | nul
 void styles.getCatalog();
 void styles.getQuickGallery();
 void styles.getActiveParagraphStyle();
+const _stylesUpdateParams: AssertEqual<
+  Parameters<StylesHandle['updateToMatchSelection']>,
+  [input?: StylesUpdateToMatchSelectionInput]
+> = true;
+const _stylesUpdateResult: AssertEqual<ReturnType<StylesHandle['updateToMatchSelection']>, WorkflowReceipt> = true;
+const _stylesUpdateStyleId: AssertEqual<StylesUpdateToMatchSelectionInput['styleId'], string | undefined> = true;
+void styles.updateToMatchSelection();
+void styles.updateToMatchSelection({ styleId: 'Heading1' });
+// @ts-expect-error styleId is a string
+void styles.updateToMatchSelection({ styleId: 1 });
 
 // ─── Document (compat) ──────────────────────────────────────────────
 const document: DocumentHandle = ui.document;

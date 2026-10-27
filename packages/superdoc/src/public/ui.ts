@@ -82,6 +82,7 @@ export type {
   DocumentReplacementResult,
   ViewportHandle,
   StylesHandle,
+  StylesUpdateToMatchSelectionInput,
   ActiveParagraphStyle,
   // Slices
   SliceStatus,

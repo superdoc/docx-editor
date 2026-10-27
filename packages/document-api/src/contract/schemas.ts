@@ -6077,7 +6077,17 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
       },
       ['target', 'patch'],
     );
-    const stylesTargetResolutionSchema = objectSchema(
+    const styleRunInputSchema = objectSchema(
+      {
+        target: objectSchema(
+          { scope: { const: 'style' }, styleId: { type: 'string', minLength: 1 }, channel: { const: 'run' } },
+          ['scope', 'styleId', 'channel'],
+        ),
+        patch: buildPatchSchema('run', 'style', { nullable: true }),
+      },
+      ['target', 'patch'],
+    );
+    const docDefaultsResolutionSchema = objectSchema(
       {
         scope: { const: 'docDefaults' },
         channel: { enum: ['run', 'paragraph'] },
@@ -6086,7 +6096,19 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
       },
       ['scope', 'channel', 'xmlPart', 'xmlPath'],
     );
-    const stylesStateSchema = buildStateSchema();
+    const styleResolutionSchema = objectSchema(
+      {
+        scope: { const: 'style' },
+        styleId: { type: 'string' },
+        channel: { const: 'run' },
+        xmlPart: { type: 'string' },
+        xmlPath: { const: 'w:styles/w:style/w:rPr' },
+        linkedStyleId: { type: 'string' },
+      },
+      ['scope', 'styleId', 'channel', 'xmlPart', 'xmlPath'],
+    );
+    const stylesTargetResolutionSchema = { oneOf: [docDefaultsResolutionSchema, styleResolutionSchema] };
+    const stylesStateSchema = { anyOf: [buildStateSchema(), buildStateSchema('style', 'run')] };
     const stylesSuccessSchema = objectSchema(
       {
         success: { const: true },
@@ -6115,7 +6137,7 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
       ['success', 'resolution', 'failure'],
     );
     return {
-      input: { oneOf: [runInputSchema, paragraphInputSchema] },
+      input: { oneOf: [runInputSchema, paragraphInputSchema, styleRunInputSchema] },
       output: { oneOf: [stylesSuccessSchema, stylesFailureSchema] },
       success: stylesSuccessSchema,
       failure: stylesFailureSchema,

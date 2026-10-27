@@ -8,6 +8,7 @@ import {
 } from './create.js';
 import { DocumentApiValidationError } from '../errors.js';
 import { STYLE_XML_PATH } from './create.js';
+import { STYLE_RUN_XML_PATH } from './apply.js';
 import { XML_PATH_BY_CHANNEL } from './registry.js';
 import { buildInternalContractSchemas } from '../contract/schemas.js';
 
@@ -316,6 +317,15 @@ describe('executeStylesCreate validation: patch surface', () => {
     expect(adapter.create).toHaveBeenCalledTimes(1);
   });
 
+  it('rejects null, which only styles.apply on a named style accepts', () => {
+    const adapter = makeAdapter();
+    expectValidationError(
+      () => executeStylesCreate(adapter, { ...MINIMAL, run: { bold: null } as never }),
+      'INVALID_INPUT',
+      /run\.bold must be a boolean/,
+    );
+  });
+
   it('still rejects revision-tracking and self-referential keys', () => {
     const adapter = makeAdapter();
     expectValidationError(
@@ -470,7 +480,8 @@ describe('published xmlPath matches the exported constant', () => {
     const output = schemas[operationId].output as JsonSchemaNode;
     const success = (output.oneOf as JsonSchemaNode[])[0];
     const resolution = (success.properties as Record<string, JsonSchemaNode>).resolution;
-    return resolution.properties as Record<string, JsonSchemaNode>;
+    const variant = resolution.oneOf ? (resolution.oneOf as JsonSchemaNode[])[0] : resolution;
+    return variant.properties as Record<string, JsonSchemaNode>;
   }
 
   it('pins styles.create to STYLE_XML_PATH', () => {
@@ -481,5 +492,15 @@ describe('published xmlPath matches the exported constant', () => {
     const published = resolutionProperties('styles.apply').xmlPath.enum as string[];
 
     expect([...published].sort()).toEqual([XML_PATH_BY_CHANNEL.run, XML_PATH_BY_CHANNEL.paragraph].sort());
+  });
+
+  it('pins the styles.apply named-style resolution to STYLE_RUN_XML_PATH', () => {
+    const output = schemas['styles.apply'].output as JsonSchemaNode;
+    const success = (output.oneOf as JsonSchemaNode[])[0];
+    const resolution = (success.properties as Record<string, JsonSchemaNode>).resolution;
+    const properties = (resolution.oneOf as JsonSchemaNode[])[1].properties as Record<string, JsonSchemaNode>;
+
+    expect(properties.scope.const).toBe('style');
+    expect(properties.xmlPath.const).toBe(STYLE_RUN_XML_PATH);
   });
 });

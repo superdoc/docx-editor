@@ -142,13 +142,15 @@ function validateArrayValue(path: string, value: unknown, itemSchema: ValueSchem
 // Top-level input / options validation
 // ---------------------------------------------------------------------------
 
-export type StylesApplyInputShape = {
-  target: { scope: 'docDefaults'; channel: StylesChannel };
-  patch: Record<string, unknown>;
-};
+export type StylesApplyInputShape =
+  | { target: { scope: 'docDefaults'; channel: StylesChannel }; patch: Record<string, unknown> }
+  | { target: { scope: 'style'; styleId: string; channel: 'run' }; patch: Record<string, unknown> };
 
 const INPUT_ALLOWED_KEYS = new Set(['target', 'patch']);
-const TARGET_ALLOWED_KEYS = new Set(['scope', 'channel']);
+const TARGET_ALLOWED_KEYS_BY_SCOPE: Record<StylesScope, ReadonlySet<string>> = {
+  docDefaults: new Set(['scope', 'channel']),
+  style: new Set(['scope', 'styleId', 'channel']),
+};
 const OPTIONS_ALLOWED_KEYS = new Set(['dryRun', 'expectedRevision']);
 const VALID_CHANNELS = new Set<string>(['run', 'paragraph']);
 
@@ -172,21 +174,39 @@ export function validateStylesApplyInput(input: unknown): asserts input is Style
     });
   }
 
-  assertNoUnknownFields(target, TARGET_ALLOWED_KEYS, 'target');
-
-  if (target.scope !== 'docDefaults') {
+  if (target.scope !== 'docDefaults' && target.scope !== 'style') {
     throw new DocumentApiValidationError(
       'INVALID_TARGET',
-      `target.scope must be "docDefaults", got ${JSON.stringify(target.scope)}.`,
+      `target.scope must be "docDefaults" or "style", got ${JSON.stringify(target.scope)}.`,
       { field: 'target.scope', value: target.scope },
     );
   }
+  const scope = target.scope as StylesScope;
+
+  assertNoUnknownFields(target, TARGET_ALLOWED_KEYS_BY_SCOPE[scope], 'target');
+
   if (!VALID_CHANNELS.has(target.channel as string)) {
     throw new DocumentApiValidationError(
       'INVALID_TARGET',
       `target.channel must be "run" or "paragraph", got ${JSON.stringify(target.channel)}.`,
       { field: 'target.channel', value: target.channel },
     );
+  }
+  if (scope === 'style') {
+    if (typeof target.styleId !== 'string' || target.styleId.length === 0) {
+      throw new DocumentApiValidationError(
+        'INVALID_TARGET',
+        `target.styleId must be a non-empty string, got ${JSON.stringify(target.styleId)}.`,
+        { field: 'target.styleId', value: target.styleId },
+      );
+    }
+    if (target.channel !== 'run') {
+      throw new DocumentApiValidationError(
+        'INVALID_TARGET',
+        `target.channel must be "run" for scope "style"; redefining a style's paragraph properties is not supported yet.`,
+        { field: 'target.channel', value: target.channel },
+      );
+    }
   }
 
   const channel = target.channel as StylesChannel;
@@ -207,7 +227,7 @@ export function validateStylesApplyInput(input: unknown): asserts input is Style
     throw new DocumentApiValidationError('INVALID_INPUT', 'patch must include at least one property.');
   }
 
-  validatePatchObject(patch, channel, 'docDefaults', 'patch');
+  validatePatchObject(patch, channel, scope, 'patch', { allowNull: scope === 'style' });
 }
 
 export function validateStylesApplyOptions(options: unknown): void {
@@ -298,19 +318,12 @@ export function classifyPatchKey(
   return { status: 'unknown' };
 }
 
-/**
- * Validates the keys and values of a patch object against one channel.
- *
- * Shared by `styles.apply` (scope `docDefaults`) and `styles.create` (scope
- * `style`); `field` names the caller's own input path so the error points at
- * `patch` or at `run` / `paragraph` rather than at whichever one happened to
- * write this code.
- */
 export function validatePatchObject(
   patch: Record<string, unknown>,
   channel: StylesChannel,
   scope: StylesScope,
   field: string,
+  options: { allowNull?: boolean } = {},
 ): void {
   const allowedKeys = [...ALLOWED_KEYS_BY_CHANNEL[channel]].filter(
     (key) => !EXCLUDED_KEYS_BY_SCOPE[scope][channel].has(key),
@@ -345,6 +358,7 @@ export function validatePatchObject(
         );
     }
 
+    if (patch[key] === null && options.allowNull) continue;
     const def = getPropertyDefinition(key, channel);
     if (def) validateValue(`${field}.${key}`, patch[key], def.schema);
   }

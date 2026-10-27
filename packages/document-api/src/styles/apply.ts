@@ -1,16 +1,8 @@
-/**
- * `styles.apply`: stylesheet mutation for document-level defaults.
- *
- * Defines the contract types, validation orchestration, and execution entry point.
- * Engine-agnostic: no ProseMirror, Yjs, or converter imports.
- *
- * Imports: registry.ts (types/data), validation.ts (validation functions).
- */
-
 import type { ReceiptFailure } from '../types/receipt.js';
 import type { StylesChannel } from './registry.js';
 import { validateStylesApplyInput, validateStylesApplyOptions } from './validation.js';
 import type { StylesGetCatalogInput, StylesGetCatalogResult } from './catalog.js';
+import type { StyleRunPatch } from './create.js';
 import type { StylesGetThemeInput, StylesGetThemeResult } from './theme.js';
 
 // ---------------------------------------------------------------------------
@@ -116,12 +108,25 @@ export interface StylesParagraphPatch {
 // Resolution Metadata
 // ---------------------------------------------------------------------------
 
-export interface StylesTargetResolution {
+export interface StylesDocDefaultsResolution {
   scope: 'docDefaults';
   channel: StylesChannel;
   xmlPart: string;
   xmlPath: string;
 }
+
+export interface StylesStyleResolution {
+  scope: 'style';
+  styleId: string;
+  channel: 'run';
+  xmlPart: string;
+  xmlPath: typeof STYLE_RUN_XML_PATH;
+  linkedStyleId?: string;
+}
+
+export type StylesTargetResolution = StylesDocDefaultsResolution | StylesStyleResolution;
+
+export const STYLE_RUN_XML_PATH = 'w:styles/w:style/w:rPr';
 
 // ---------------------------------------------------------------------------
 // Input / Output Types
@@ -137,7 +142,14 @@ export interface StylesApplyParagraphInput {
   patch: StylesParagraphPatch;
 }
 
-export type StylesApplyInput = StylesApplyRunInput | StylesApplyParagraphInput;
+export type StylesStyleRunPatch = { [K in keyof StyleRunPatch]?: StyleRunPatch[K] | null };
+
+export interface StylesApplyStyleRunInput {
+  target: { scope: 'style'; styleId: string; channel: 'run' };
+  patch: StylesStyleRunPatch;
+}
+
+export type StylesApplyInput = StylesApplyRunInput | StylesApplyParagraphInput | StylesApplyStyleRunInput;
 
 export interface StylesApplyOptions {
   dryRun?: boolean;
@@ -173,6 +185,7 @@ export type StylesApplyReceipt = StylesApplyReceiptSuccess | StylesApplyReceiptF
 export interface StylesAdapter {
   apply(input: StylesApplyRunInput, options: NormalizedStylesApplyOptions): StylesApplyReceipt;
   apply(input: StylesApplyParagraphInput, options: NormalizedStylesApplyOptions): StylesApplyReceipt;
+  apply(input: StylesApplyStyleRunInput, options: NormalizedStylesApplyOptions): StylesApplyReceipt;
   apply(input: StylesApplyInput, options: NormalizedStylesApplyOptions): StylesApplyReceipt;
   /** Read the normalized style catalogue. See `styles/catalog.ts`. */
   getCatalog?(input?: StylesGetCatalogInput): StylesGetCatalogResult;
@@ -192,6 +205,7 @@ export interface NormalizedStylesApplyOptions {
 export interface StylesApi {
   apply(input: StylesApplyRunInput, options?: StylesApplyOptions): StylesApplyReceipt;
   apply(input: StylesApplyParagraphInput, options?: StylesApplyOptions): StylesApplyReceipt;
+  apply(input: StylesApplyStyleRunInput, options?: StylesApplyOptions): StylesApplyReceipt;
   apply(input: StylesApplyInput, options?: StylesApplyOptions): StylesApplyReceipt;
   /** Read the normalized style catalogue for discovery and quick-gallery UI. */
   getCatalog(input?: StylesGetCatalogInput): StylesGetCatalogResult;

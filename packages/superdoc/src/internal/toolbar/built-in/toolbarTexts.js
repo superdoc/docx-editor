@@ -57,4 +57,5 @@ export const toolbarTexts = {
   documentSuggestingModeDescription: 'Edits become suggestions',
   documentViewingModeDescription: 'View clean version of document only',
   linkedStyles: 'Linked styles',
+  updateLinkedStyle: 'Update to match selection',
 };

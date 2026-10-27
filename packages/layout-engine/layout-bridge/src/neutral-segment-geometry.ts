@@ -314,8 +314,25 @@ const buildParagraphLineGeometry = (
     });
 
     // Justify and tab positioning anchor at 0; center/right shift content.
+    const marker = wordLayout?.marker;
+    const inlineMarker =
+      !isRtl &&
+      isFirstLine &&
+      !positionedText &&
+      markerWidth > 0 &&
+      (markerTextWidth ?? 0) > 0 &&
+      marker != null &&
+      !marker.run?.vanish &&
+      (marker.justification ?? 'left') === 'left' &&
+      (marker.suffix === 'space' || marker.suffix === 'nothing');
+    const explicitTextStart = marker?.textStartX ?? wordLayout?.textStartPx;
+    const effectiveLeft =
+      typeof explicitTextStart === 'number' && Number.isFinite(explicitTextStart)
+        ? Math.max(indent.left, explicitTextStart)
+        : indent.left;
+    const alignmentWidth = inlineMarker ? availableWidth + Math.max(0, effectiveLeft - indentAdjust) : availableWidth;
     const alignmentOffset =
-      positionedText || isJustified ? 0 : resolveAlignmentOffset(effectiveAlignment, availableWidth, line.width);
+      positionedText || isJustified ? 0 : resolveAlignmentOffset(effectiveAlignment, alignmentWidth, line.width);
     const originX = fragment.x + indentAdjust;
     const contentLeft = originX + alignmentOffset;
 

@@ -16,7 +16,7 @@
   "files": [
     "dist",
     "dist-cdn",
-    "AGENTS.md",
+    "README.md",
     "LICENSE",
     "NOTICE"
   ],
@@ -181,7 +181,6 @@
     "jszip": "catalog:",
     "node-stdlib-browser": "catalog:",
     "postcss-nested": "catalog:",
-    "rollup-plugin-copy": "catalog:",
     "sirv": "catalog:",
     "tsx": "catalog:",
     "typescript": "catalog:",

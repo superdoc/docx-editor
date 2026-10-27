@@ -135,9 +135,6 @@ catalogs:
     rollup:
       specifier: ^4.31.0
       version: 4.60.2
-    rollup-plugin-copy:
-      specifier: ^3.5.0
-      version: 3.5.0
     rollup-plugin-visualizer:
       specifier: ^5.12.0
       version: 5.14.0
@@ -1146,9 +1143,6 @@ importers:
       postcss-nested:
         specifier: 'catalog:'
         version: 6.2.0(postcss@8.5.22)
-      rollup-plugin-copy:
-        specifier: 'catalog:'
-        version: 3.5.0
       sirv:
         specifier: 'catalog:'
         version: 3.0.2

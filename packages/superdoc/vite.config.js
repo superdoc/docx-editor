@@ -1,6 +1,5 @@
 import path from 'path';
 import { existsSync } from 'node:fs';
-import copy from 'rollup-plugin-copy'
 import dts from 'vite-plugin-dts'
 import sirv from 'sirv';
 import { defineConfig } from 'vite-plus'
@@ -191,15 +190,6 @@ export default defineConfig(({ mode, command }) => {
       // Keep declaration generation enabled and silence the plugin's diagnostic
       // logger so build:es stays clean while postbuild validates emitted entries.
       logLevel: 'silent',
-    }),
-    copy({
-      targets: [
-        {
-          src: 'node_modules/pdfjs-dist/web/images/*',
-          dest: path.join(npmOutDir, 'images'),
-        },
-      ],
-      hook: 'writeBundle'
     }),
     {
       // Serve dist/ as static files so the docs dev server can load the local UMD build - Development only.

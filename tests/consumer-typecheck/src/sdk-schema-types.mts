@@ -4,6 +4,15 @@ const client = createSuperDocClient({ runtime: 'v2' });
 const document = await client.open({
   collaboration: { providerType: 'y-websocket', url: 'wss://collaboration.example', params: { room: 'quick' } },
 });
+const sdkAuthoredPlan = {
+  atomic: true,
+  changeMode: 'tracked' as const,
+  author: { name: 'AI Reviewer' },
+  steps: [],
+} satisfies Parameters<typeof document.mutations.apply>[0];
+const sdkPlanResult = await document.mutations.apply(sdkAuthoredPlan);
+sdkPlanResult.success satisfies boolean;
+(await document.mutations.preview(sdkAuthoredPlan)).valid satisfies boolean;
 const joinedOpen: typeof document.openResult = {
   active: true,
   contextId: 'synthetic-peer',

@@ -1409,7 +1409,11 @@ test('exports the machine-readable documentation files', async () => {
   assert.doesNotMatch(trackedChangesMarkdown, /<EditorDemo\b/);
   assert.match(mutationPlansMarkdown, /^# Preview and apply mutation plans/m);
   assert.match(mutationPlansMarkdown, /const preview = await doc\.mutations\.preview\(plan\)/);
-  assert.match(mutationPlansMarkdown, /const receipt = await doc\.mutations\.apply\(plan\)/);
+  assert.match(
+    mutationPlansMarkdown,
+    /const receipt = await doc\.mutations\.apply\(\{ \.\.\.plan, expectedRevision: preview\.evaluatedRevision \}\)/,
+  );
+  assert.match(mutationPlansMarkdown, /author: \{ name: 'AI Reviewer' \}/);
   assert.match(mutationPlansMarkdown, /> \*\*Diagram:\*\* Two query references become one atomic plan/);
   assert.doesNotMatch(mutationPlansMarkdown, /<include>/);
   assert.match(reviewMarkdown, /^# Review tracked changes/m);

@@ -16,11 +16,13 @@ Create a browser app with an `#editor` mount element and an explicit container h
 
 <include>../../../snippets/document-api/mutation-plans.ts</include>
 
-The example queries both targets before applying any change. It also confirms that both matches came from the same document revision before building the plan.
+The example queries both targets before applying any change and confirms that both matches came from the same source revision. Its selector steps are resolved together by the plan engine, and apply uses the successful preview revision as its document guard.
 
-## Build the plan from references
+## Choose plan targets
 
-Use `item.handle.ref` for plan steps. Each ref points to content resolved by `query.match()`, and `expectedRevision` binds the plan to the document state that produced those refs.
+A single-step plan can use `item.handle.ref` from `query.match()`. For multiple mutating steps, use selector targets so the engine can resolve each step against the current document. Revision-bound refs cannot be combined in a multi-step plan.
+
+Bind apply to `preview.evaluatedRevision` after a successful preview. A query's `evaluatedRevision` identifies the source used to produce its refs; it is not the mutation-plan revision guard.
 
 Every plan requires:
 
@@ -32,7 +34,45 @@ Every plan requires:
 
 Check `doc.capabilities().planEngine.supportedStepOps` before constructing plans dynamically. The generated reference remains authoritative for each step shape.
 
-Mutation plans do not accept a per-call `author`, including on individual steps. Use separate tracked plain-text `doc.insert`, `doc.delete`, or `doc.replace` calls when edits need different display authors; unlike a plan, those calls are not atomic as a group.
+## Attribute a tracked text plan
+
+Put one display author in the plan input. The same input works with `mutations.preview`, `mutations.apply`, typed `invoke`, and the Node SDK. The second argument to `mutations.apply` remains host cancellation options; an `author` there is rejected.
+
+```ts
+const matches = await doc.query.match({
+  select: { type: 'text', pattern: 'Original clause.' },
+  require: 'exactlyOne',
+});
+const match = matches.items[0];
+if (match?.matchKind !== 'text' || !match.handle?.ref) {
+  throw new Error('Expected the original clause');
+}
+const plan = {
+  atomic: true,
+  changeMode: 'tracked',
+  author: { name: 'AI Reviewer' },
+  steps: [
+    {
+      id: 'revise-clause',
+      op: 'text.rewrite',
+      where: { by: 'ref', ref: match.handle.ref },
+      args: { replacement: { text: 'Revised clause.' } },
+    },
+  ],
+} satisfies Parameters<typeof doc.mutations.apply>[0];
+const preview = await doc.mutations.preview(plan);
+if (preview.valid) {
+  await doc.mutations.apply({ ...plan, expectedRevision: preview.evaluatedRevision });
+}
+```
+
+This example requires a document containing `Original clause.`. Every revision created by the plan uses `AI Reviewer` in the review API, built-in review UI, and exported DOCX. The author is copied when each call is submitted. Editing the caller's object afterward does not change that call's attribution. It does not change the session user, collaboration presence, or permission checks, and it does not affect subsequent human edits or plans without an override.
+
+The accepted author is `{ name: string }` with a non-empty name. Email, initials, and other author fields are rejected; the human session's email is not inherited. An override requires explicit `changeMode: 'tracked'` and supports existing body `text.insert`, `text.delete`, and `text.rewrite` steps, with any supported leading assertions. Individual steps cannot select different authors. Formatting, structural, and review steps cannot be combined with an override. Existing text-write restrictions still apply, including refusal of non-empty structural cross-paragraph replacements with an author. Preview reports those refusals without changing text, revisions, or history, and apply refuses the same plan before writing.
+
+Supported shared-room text plans retain the same author on independent peers and rejoining clients. Display attribution does not create a collaboration actor or grant review permissions. The plan remains one Undo/Redo unit. The usual revision guard still applies between preview and apply; preview does not reserve the document revision.
+
+For different display authors, use separate tracked plain-text `doc.insert`, `doc.delete`, or `doc.replace` calls with `{ changeMode: 'tracked', author: { name } }`. Those calls are not atomic as a group.
 
 ## Select text across table cells
 

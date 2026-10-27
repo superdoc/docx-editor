@@ -4120,12 +4120,14 @@ export function createDocumentApi(adapters: DocumentApiAdapters): DocumentApi {
           );
         return method.call(adapters.mutations, input);
       },
-      preview(input: MutationsPreviewInput): Promise<MutationsPreviewOutput> {
-        return adapters.mutations.preview(input);
+      preview(input: MutationsPreviewInput, ...options: unknown[]): Promise<MutationsPreviewOutput> {
+        rejectMutationPlanAuthorOptions(options[0]);
+        return adapters.mutations.preview(captureMutationPlanAuthor(input));
       },
       apply(input: MutationsApplyInput, options?: OperationCancellation): Promise<PlanReceipt> {
+        rejectMutationPlanAuthorOptions(options);
         assertOperationCanStart(options);
-        return adapters.mutations.apply(input);
+        return adapters.mutations.apply(captureMutationPlanAuthor(input));
       },
     },
     plan: createPlanApi(
@@ -4246,4 +4248,14 @@ export function createDocumentApi(adapters: DocumentApiAdapters): DocumentApi {
   installMutationCorrelation(api);
   const dispatch = buildDispatchTable(api);
   return api;
+}
+
+function captureMutationPlanAuthor<T extends MutationsApplyInput | MutationsPreviewInput>(input: T): T {
+  return input.author ? { ...input, author: { ...input.author } } : { ...input };
+}
+
+function rejectMutationPlanAuthorOptions(options: unknown): void {
+  if (options && typeof options === 'object' && 'author' in options) {
+    throw new DocumentApiValidationError('INVALID_INPUT', 'Put the mutation plan author in the tracked plan input.');
+  }
 }

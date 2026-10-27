@@ -121,5 +121,24 @@ doc.insert({ value: 'Review' }, { changeMode: 'direct', author });
 doc.insert({ value: '<p>Review</p>', type: 'html' }, { changeMode: 'tracked', author });
 // @ts-expect-error Per-call author is not supported for structural content.
 doc.insert(structuralInput, { changeMode: 'tracked', author });
-// @ts-expect-error Per-call author is not supported on mutation plans.
-doc.mutations.apply({ atomic: true, changeMode: 'tracked', steps: [], author });
+const authoredPlan = { atomic: true, changeMode: 'tracked', steps: [], author } satisfies Parameters<
+  typeof doc.mutations.apply
+>[0];
+const planReceipt = doc.mutations.apply(authoredPlan, { signal: new AbortController().signal });
+const browserPlanReceipt: typeof planReceipt = Promise.resolve(browserDoc.mutations.apply(authoredPlan));
+const planPreview = doc.mutations.preview(authoredPlan);
+const browserPlanPreview: typeof planPreview = Promise.resolve(browserDoc.mutations.preview(authoredPlan));
+void browserDoc.invoke({ operationId: 'mutations.apply', input: authoredPlan });
+void doc.invoke({ operationId: 'mutations.preview', input: authoredPlan });
+void planReceipt.then((receipt) => {
+  const success: boolean = receipt.success;
+  const revision: string = receipt.revision.after;
+  return { success, revision };
+});
+void planPreview.then((preview) => {
+  const valid: boolean = preview.valid;
+  return valid;
+});
+type DirectPlan = Extract<Parameters<typeof doc.mutations.apply>[0], { changeMode: 'direct' }>;
+const directPlanRejectsAuthor: Exclude<DirectPlan['author'], undefined> extends never ? true : false = true;
+void [browserPlanReceipt, browserPlanPreview, directPlanRejectsAuthor];

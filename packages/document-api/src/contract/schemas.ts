@@ -8433,6 +8433,11 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
     };
     const mutationsInputProperties = {
       in: storyLocatorSchema,
+      author: {
+        ...objectSchema({ name: { type: 'string', minLength: 1 } }, ['name']),
+        description:
+          'Display author for one tracked body text plan. Accepts only name; does not change the session user or inherit its email. Unsupported step combinations are rejected before mutation.',
+      },
       expectedRevision: {
         type: 'string',
         description:

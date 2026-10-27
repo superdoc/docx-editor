@@ -31,20 +31,28 @@ const superdoc = new SuperDoc({
     }
 
     const plan = {
-      expectedRevision: companyResult.evaluatedRevision,
       atomic: true as const,
       changeMode: 'tracked' as const,
+      author: { name: 'AI Reviewer' },
       steps: [
         {
           id: 'rename-company',
           op: 'text.rewrite' as const,
-          where: { by: 'ref' as const, ref: company.handle.ref },
+          where: {
+            by: 'select' as const,
+            select: { type: 'text' as const, pattern: 'Amazing' },
+            require: 'exactlyOne' as const,
+          },
           args: { replacement: { text: 'Northstar' } },
         },
         {
           id: 'lower-liability-cap',
           op: 'text.rewrite' as const,
-          where: { by: 'ref' as const, ref: liability.handle.ref },
+          where: {
+            by: 'select' as const,
+            select: { type: 'text' as const, pattern: '$500,000' },
+            require: 'exactlyOne' as const,
+          },
           args: { replacement: { text: '$250,000' } },
         },
       ],
@@ -55,7 +63,7 @@ const superdoc = new SuperDoc({
       throw new Error(preview.failures?.map((failure) => failure.message).join('; ') ?? 'Plan preview failed.');
     }
 
-    const receipt = await doc.mutations.apply(plan);
+    const receipt = await doc.mutations.apply({ ...plan, expectedRevision: preview.evaluatedRevision });
     console.log('Applied steps:', receipt.steps);
   },
 });

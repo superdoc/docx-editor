@@ -658,6 +658,20 @@ describe('document-api contract catalog', () => {
     expect(capabilities.properties!.planEngine.properties!.unsupported.items!.required).toEqual(['cell', 'reason']);
   });
 
+  it.each(['mutations.apply', 'mutations.preview'] as const)(
+    'publishes one plan-input display author for %s',
+    (operationId) => {
+      const input = buildInternalContractSchemas().operations[operationId].input as ContractTestSchemaShape;
+      expect(input.properties?.author).toMatchObject({
+        type: 'object',
+        properties: { name: { type: 'string', minLength: 1 } },
+        required: ['name'],
+        additionalProperties: false,
+      });
+      expect(input.required).not.toContain('author');
+    },
+  );
+
   it('publishes tracked and invalidated refs from mutation plans', () => {
     const operation = buildInternalContractSchemas().operations['mutations.apply'];
     for (const schema of [operation.output, operation.success] as ContractTestSchemaShape[]) {

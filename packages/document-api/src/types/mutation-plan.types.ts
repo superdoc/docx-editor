@@ -210,25 +210,27 @@ import type { ChangeMode } from '../write/write.js';
 import type { StoryLocator } from './story.types.js';
 export type { ChangeMode } from '../write/write.js';
 
+type MutationPlanAttribution =
+  | { changeMode: 'direct'; author?: never }
+  | { changeMode: 'tracked'; author?: { name: string } };
+
 export type MutationsApplyInput = {
   /** Target story for the mutation plan. Omit for body (backward compatible). */
   in?: StoryLocator;
   expectedRevision?: string;
   atomic: true;
-  changeMode: ChangeMode;
   steps: MutationStep[];
-};
+} & MutationPlanAttribution;
 
 export type MutationsPreviewInput = {
   /** Target story for the mutation preview. Omit for body (backward compatible). */
   in?: StoryLocator;
   expectedRevision?: string;
   atomic: true;
-  changeMode: ChangeMode;
   steps: MutationStep[];
   /** Optional page over verbose resolved-target details. Defaults to the first 100 targets. */
   detail?: { offset?: number; limit?: number };
-};
+} & MutationPlanAttribution;
 
 // ---------------------------------------------------------------------------
 // Plan output: receipts

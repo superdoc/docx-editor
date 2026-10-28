@@ -2240,6 +2240,7 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
         ...(target.serverUrl ? { serverUrl: target.serverUrl } : {}),
         ...(target.params ? { params: target.params } : {}),
         ...(target.token ? { token: target.token } : {}),
+        ...(target.retry !== undefined ? { retry: target.retry } : {}),
       };
     }
     return {

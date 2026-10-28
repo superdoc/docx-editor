@@ -2170,7 +2170,8 @@ const onV2EditorFailed = (payload) => {
     return;
   }
   const collaborationException = createCollaborationException(reason, documentId);
-  const message = collaborationException?.error.message ?? getV2EditorFailureMessage(reason);
+  const baseMessage = collaborationException?.error.message ?? getV2EditorFailureMessage(reason);
+  const message = reason === 'collaboration-config-invalid' && detail ? `${baseMessage} ${detail}` : baseMessage;
   // plan §Workstream 3: store a renderable terminal failure state for the
   // active document surface. The worker failure detail is content-safe (typed
   // phase/reason, no document bytes or sensitive paths).
@@ -2206,13 +2207,15 @@ const onV2EditorFailed = (payload) => {
   }
   proxy.$superdoc.emit(
     'exception',
-    collaborationException ?? {
-      error: new Error(message),
-      code: reason,
-      ...(documentId ? { documentId } : {}),
-      editor: null,
-      ...(workerFailure ? { workerFailure } : {}),
-    },
+    collaborationException && reason !== 'collaboration-config-invalid'
+      ? collaborationException
+      : {
+          error: new Error(message),
+          code: reason,
+          ...(documentId ? { documentId } : {}),
+          editor: null,
+          ...(workerFailure ? { workerFailure } : {}),
+        },
   );
   // SuperDoc Diagnostics MVP: additive, structured diagnostics alongside the legacy payload above.
   // A single boot failure can produce 1 legacy payload + 0..N diagnostic

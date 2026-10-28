@@ -100,3 +100,32 @@ If the example shows `Connection failed.`, inspect the error reported by `onExce
 ## Show who is editing
 
 Next, [add presence and cursors](/editor/collaboration/presence-and-awareness) so Alex and Sam can identify each other while they work.
+
+## Configure transient recovery
+
+The preview built-in Hocuspocus connection supports `collaboration.retry` without a custom worker or server migration:
+
+```ts
+const collaboration = {
+  providerType: 'hocuspocus',
+  documentId: 'example-room',
+  serverUrl: 'ws://127.0.0.1:1234',
+  retry: {
+    reconnectMinDelayMs: 100,
+    reconnectMaxDelayMs: 1000,
+    delayMs: 1000,
+    factor: 2,
+    minDelayMs: 100,
+    maxDelayMs: 30000,
+    jitter: true,
+  },
+} satisfies DocumentCollaborationConfig;
+```
+
+These values are the defaults. After an established connection drops, each client independently samples an integer wait from 100 through 1000 milliseconds, inclusive. After the first failed attempt, the retry window is 100–1000 ms; later upper bounds grow to 2000, 4000, 8000, 16000 and then the 30000 ms cap. Calculated upper bounds are rounded down to integer milliseconds. Each wait uses a fresh sample, measured after that attempt fails. Individual waits need not increase. Successful recovery resets the retry window for the next outage.
+
+All delay settings use integer milliseconds, bounded by 2147483647. Reconnect bounds may be zero; failed-attempt waits must be positive. Require `reconnectMinDelayMs <= reconnectMaxDelayMs`, `minDelayMs <= delayMs <= maxDelayMs`, a finite `factor >= 1`, and boolean `jitter`. Set `jitter: false` to select each window's upper bound for deterministic timing. Partial settings override the defaults and must still form valid ranges. Invalid settings fail with a configuration error before opening a connection. A retry-disable option is not supported.
+
+A healthy first connection starts immediately; the reconnect window applies only after a connection has been established. `syncTimeoutMs` separately limits the initial synchronization wait. It does not configure retry delay or guarantee recovery within that duration. Transient failures retry automatically; authentication/permission rejection and explicit disconnect or destruction stop pending retries.
+
+To verify with your existing Hocuspocus server, open two editors in the same room, record each client's socket-close and new-connection times, and interrupt their established transports while keeping the room's stored document intact. Keep the endpoint unavailable through each first failed reconnect, then restore it. Measure reconnect from the established close and retry from the failed attempt's close; server request times alone also include connection latency. The two windows should follow your settings, and edits and presence should resume without reloading. Repeat the interruption to observe fresh samples. Random samples can coincide, so a single pair of matching times does not establish shared scheduling. For a deterministic control, use `jitter: false` and a longer reconnect upper bound, then verify that a separate healthy first open remains prompt. The pinned example above does not include these preview settings.

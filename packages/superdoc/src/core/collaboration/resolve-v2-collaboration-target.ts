@@ -1,5 +1,5 @@
 import { DOCX } from '@superdoc/common';
-import type { DocumentCollaborationConfig } from '../types/index.js';
+import type { DocumentCollaborationConfig, HocuspocusRetryOptions } from '../types/index.js';
 
 /**
  * Centralized v2 collaboration target resolver.
@@ -59,6 +59,7 @@ export interface NormalizedV2CollaborationTarget {
   params?: Record<string, string>;
   /** Hocuspocus auth-message token. */
   token?: string | (() => string | Promise<string>);
+  retry?: HocuspocusRetryOptions;
   /** Liveblocks anonymous public key auth mode. */
   publicApiKey?: string;
   /** Liveblocks server-side auth endpoint mode. */
@@ -280,6 +281,9 @@ function resolveWebsocketFamily(
       serverUrl,
       ...(params ? { params } : {}),
       ...(token ? { token } : {}),
+      ...(family === 'hocuspocus' && candidate.retry !== undefined
+        ? { retry: candidate.retry as HocuspocusRetryOptions }
+        : {}),
     },
   };
 }

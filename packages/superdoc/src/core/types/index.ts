@@ -656,8 +656,19 @@ export interface V2YWebsocketCollaborationConfig {
   roomMode?: 'join' | 'create';
 }
 
+export interface HocuspocusRetryOptions {
+  reconnectMinDelayMs?: number;
+  reconnectMaxDelayMs?: number;
+  delayMs?: number;
+  factor?: number;
+  minDelayMs?: number;
+  maxDelayMs?: number;
+  jitter?: boolean;
+}
+
 /** Hocuspocus single-doc provider config. */
 export interface V2HocuspocusCollaborationConfig {
+  retry?: HocuspocusRetryOptions;
   providerType: 'hocuspocus';
   /** Stable shared document identity (used as the v2 root/room identity). */
   documentId: string;

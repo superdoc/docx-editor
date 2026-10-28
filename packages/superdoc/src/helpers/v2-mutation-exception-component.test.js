@@ -17,7 +17,7 @@ vi.mock('../core/v2-integration/v2-integration.js', async (importOriginal) => {
       ...actual.createStubV2Integration(),
       EditorComponent: defineComponent({
         name: 'EditableInputFixture',
-        emits: ['v2-host-event'],
+        emits: ['v2-host-event', 'v2-editor-failed'],
         setup: () => () => h('div'),
       }),
     }),
@@ -46,6 +46,7 @@ async function mountShell(history = { enabled: false }) {
     config,
     uiConfig: normalizeUiConfig(config),
     activeEditor: { editorVersion: 2, documentId: 'doc-a' },
+    setActiveEditor: vi.fn(),
     user: { name: 'Fixture author' },
     users: [],
     colors: [],
@@ -79,6 +80,23 @@ const authorRejection = () => ({
   failure: { code: 'PRECONDITION_FAILED', message: 'no-author-configured' },
   inputKind: 'keydown',
   editableCommandKind: 'delete-backward',
+});
+
+describe('SuperDoc collaboration configuration failures', () => {
+  it('forwards actionable retry validation detail to the host', async () => {
+    const { editor, onException } = await mountShell();
+    editor.vm.$emit('v2-editor-failed', {
+      documentId: 'doc-a',
+      reason: 'collaboration-config-invalid',
+      detail: 'retry.maxDelay is not a supported setting',
+    });
+    await nextTick();
+    expect(onException).toHaveBeenCalledOnce();
+    expect(onException.mock.calls[0][0]).toMatchObject({
+      code: 'collaboration-config-invalid',
+      error: expect.objectContaining({ message: expect.stringContaining('retry.maxDelay is not a supported setting') }),
+    });
+  });
 });
 
 describe('SuperDoc mutation exceptions', () => {

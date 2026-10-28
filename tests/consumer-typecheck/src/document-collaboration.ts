@@ -15,6 +15,15 @@ const collaboration = {
   serverUrl: 'wss://collaboration.example.com',
   roomMode: 'join',
   syncTimeoutMs: 45_000,
+  retry: {
+    reconnectMinDelayMs: 100,
+    reconnectMaxDelayMs: 1000,
+    delayMs: 1000,
+    factor: 2,
+    minDelayMs: 100,
+    maxDelayMs: 30000,
+    jitter: true,
+  },
 } satisfies DocumentCollaborationConfig;
 
 const config = {
@@ -78,3 +87,7 @@ void [
   asyncTokenResolver,
   syncTokenResolver,
 ];
+
+// @ts-expect-error Retry policies have no separate recovery-disable switch.
+const disabledRetry: DocumentCollaborationConfig = { ...collaboration, retry: { enabled: false } };
+void disabledRetry;

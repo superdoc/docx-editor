@@ -188,7 +188,7 @@ describe('public facade (ui)', () => {
     // The public Document API requires an explicit target; the controller passes
     // the resolved selection target rather than a bare value.
     expect(await ui.toolbar.execute('font-family', 'Arial')).toEqual({ success: true });
-    expect(fontFamily).toHaveBeenCalledWith({ target: SELECTION_TARGET, value: 'Arial' }, { offsetSpace: 'selection' });
+    expect(fontFamily).toHaveBeenCalledWith({ target: SELECTION_TARGET, value: 'Arial' }, { offsetSpace: 'kernel' });
   });
 
   it('routes a multi-paragraph inline format as ONE format.* call with the host\u2019s original selectionTarget (SD-3706)', async () => {
@@ -237,10 +237,7 @@ describe('public facade (ui)', () => {
 
     expect(await ui.toolbar.execute('font-family', 'Courier New')).toEqual({ success: true });
     expect(fontFamily).toHaveBeenCalledTimes(1);
-    expect(fontFamily).toHaveBeenCalledWith(
-      { target: CROSS_TARGET, value: 'Courier New' },
-      { offsetSpace: 'selection' },
-    );
+    expect(fontFamily).toHaveBeenCalledWith({ target: CROSS_TARGET, value: 'Courier New' }, { offsetSpace: 'kernel' });
     expect(apply).not.toHaveBeenCalled();
   });
 
@@ -339,13 +336,13 @@ describe('public facade (ui)', () => {
 
     // Mixed selection (bold not active everywhere) -> toggle ON across the range.
     expect(await ui.toolbar.execute('bold')).toEqual({ success: true });
-    expect(bold).toHaveBeenLastCalledWith({ target: CROSS_TARGET, value: true }, { offsetSpace: 'selection' });
+    expect(bold).toHaveBeenLastCalledWith({ target: CROSS_TARGET, value: true }, { offsetSpace: 'kernel' });
 
     // Once the whole selection is bold, the next toggle removes it.
     activeMarks = ['bold'];
     notifySelection();
     expect(await ui.toolbar.execute('bold')).toEqual({ success: true });
-    expect(bold).toHaveBeenLastCalledWith({ target: CROSS_TARGET, value: false }, { offsetSpace: 'selection' });
+    expect(bold).toHaveBeenLastCalledWith({ target: CROSS_TARGET, value: false }, { offsetSpace: 'kernel' });
   });
 
   it('routes inline format commands as tracked mutations in suggesting mode', async () => {
@@ -369,7 +366,7 @@ describe('public facade (ui)', () => {
     expect(await ui.toolbar.execute('font-family', 'Arial')).toEqual({ success: true });
     expect(fontFamily).toHaveBeenCalledWith(
       { target: SELECTION_TARGET, value: 'Arial' },
-      { changeMode: 'tracked', offsetSpace: 'selection' },
+      { changeMode: 'tracked', offsetSpace: 'kernel' },
     );
   });
 
@@ -935,6 +932,70 @@ describe('public facade (ui)', () => {
     });
     return { ui, decide, story };
   }
+
+  it.each(
+    (['accept', 'reject'] as const).flatMap((decision) =>
+      [false, true].map((hasTrackedTarget) => ({ decision, hasTrackedTarget })),
+    ),
+  )(
+    'keeps an image-containing partial $decision bounded (tracked witness: $hasTrackedTarget)',
+    async ({ decision, hasTrackedTarget }) => {
+      const story = { kind: 'story', storyType: 'body' } as const;
+      const trackedTarget = {
+        kind: 'text',
+        story,
+        coordinateSpace: 'tracked',
+        segments: [{ blockId: '57130001', range: { start: 3, end: 18 } }],
+      };
+      const { ui, decide } = reviewSelectionUi(
+        {
+          target: { kind: 'text', story, segments: [{ blockId: '57130001', range: { start: 0, end: 15 } }] },
+          selectionTarget: null,
+          trackedTarget: hasTrackedTarget ? trackedTarget : null,
+          activeChangeIds: ['tc-1'],
+          trackedChangesWhollySelected: false,
+          trackedChangeRangeDecisionSupported: true,
+          text: 'Lead text Alpha',
+        },
+        [{ id: 'tc-1', type: 'insertion', grouping: 'standalone', insertedText: 'Alpha Beta Gamma' }],
+      );
+      const commandId = decision === 'accept' ? BUILT_IN_COMMAND_IDS.acceptChange : BUILT_IN_COMMAND_IDS.rejectChange;
+      if (!hasTrackedTarget) {
+        expect(ui.commands.get(commandId).getState()).toMatchObject({
+          enabled: false,
+          reason: SUPERDOC_UI_REASONS.targetUnresolved,
+        });
+        expect(await ui.toolbar.execute(commandId)).toBe(false);
+        expect(decide).not.toHaveBeenCalled();
+        return;
+      }
+      expect(ui.commands.get(commandId).getState()).toMatchObject({ enabled: true });
+      expect(await ui.toolbar.execute(commandId)).toEqual({ success: true });
+      expect(decide).toHaveBeenCalledExactlyOnceWith({
+        decision,
+        target: { kind: 'range', coordinateSpace: 'tracked', range: trackedTarget },
+      });
+    },
+  );
+
+  it.each(['accept', 'reject'] as const)(
+    'preserves legacy active-change %s without any selection target',
+    async (decision) => {
+      const { ui, decide } = reviewSelectionUi(
+        {
+          target: null,
+          selectionTarget: null,
+          trackedTarget: null,
+          activeChangeIds: ['tc-1'],
+          text: '',
+        },
+        [{ id: 'tc-1', type: 'insertion', grouping: 'standalone' }],
+      );
+      const commandId = decision === 'accept' ? BUILT_IN_COMMAND_IDS.acceptChange : BUILT_IN_COMMAND_IDS.rejectChange;
+      expect(await ui.toolbar.execute(commandId)).toEqual({ success: true });
+      expect(decide).toHaveBeenCalledExactlyOnceWith({ decision, target: { kind: 'id', id: 'tc-1' } });
+    },
+  );
 
   it.each(
     (['accept', 'reject'] as const).flatMap((decision) =>
@@ -2231,6 +2292,172 @@ describe('public facade (ui)', () => {
     return { superdoc, current, apply };
   }
 
+  it.each([false, true])(
+    'ordinary inline color preserves public/native ownership when native catches up: %s',
+    async (settled) => {
+      const body = { kind: 'story', storyType: 'body' } as const;
+      const address = (blockId: string) => ({
+        kind: 'selection',
+        story: body,
+        start: { kind: 'text', blockId, offset: 0 },
+        end: { kind: 'text', blockId, offset: 6 },
+      });
+      const info = (blockId: string) => ({
+        empty: false,
+        target: { kind: 'text', story: body, segments: [{ blockId, range: { start: 0, end: 5 } }] },
+        selectionTarget: null,
+        activeMarks: [],
+        activeCommentIds: [],
+        activeChangeIds: [],
+        text: blockId === 'P1' ? 'older' : 'newer',
+      });
+      let native = address('P1');
+      let held: object = {
+        story: body,
+        anchor: { blockId: 'P1', blockOffset: 0 },
+        focus: { blockId: 'P1', blockOffset: 6 },
+      };
+      let applied = info('P1');
+      const f = makeSelectionSuperdoc({ info: applied });
+      const color = vi.fn(() => ({ success: true }));
+      Object.assign(f.superdoc.activeEditor.doc, { format: { color } });
+      const selectionHandle = {
+        getSnapshot: () => held,
+        toSelectionTarget: () => ({ kind: 'ok', mode: 'range', target: native }),
+        subscribe: () => () => {},
+      };
+      Object.assign(f.superdoc.activeEditor.host, {
+        getHandles: () => ({ selection: selectionHandle, editing: { selection: selectionHandle } }),
+        readAppliedSelectionPresentation: () => ({ selection: applied }),
+      });
+      let release!: (value: unknown) => void;
+      const pending = new Promise<unknown>((resolve) => {
+        release = resolve;
+      });
+      f.current.mockReturnValue(pending);
+      const ui = createSuperDocUI({ superdoc: f.superdoc });
+      try {
+        const command = ui.commands.executeAsync('text-color', '#D2003F');
+        await Promise.resolve();
+        if (settled) {
+          native = address('P2');
+          held = { story: body, anchor: { blockId: 'P2', blockOffset: 0 }, focus: { blockId: 'P2', blockOffset: 6 } };
+          applied = info('P2');
+        }
+        f.current.mockReturnValue(info('P2'));
+        release(info('P2'));
+        const result = await command;
+        if (settled) {
+          expect(result).toEqual({ success: true });
+          expect(color).toHaveBeenCalledExactlyOnceWith(
+            { target: address('P2'), value: '#D2003F' },
+            { offsetSpace: 'selection' },
+          );
+        } else {
+          expect(result).toBe(false);
+          expect(color).not.toHaveBeenCalled();
+        }
+      } finally {
+        ui.destroy();
+      }
+    },
+  );
+
+  it.each([false, true])(
+    'font family retains exact image selection coordinates with canonical target: %s',
+    async (canonical) => {
+      const body = { kind: 'story', storyType: 'body' } as const;
+      const target = (start: number, end: number) => ({
+        kind: 'selection',
+        story: body,
+        start: { kind: 'text', blockId: 'P1', offset: start },
+        end: { kind: 'text', blockId: 'P1', offset: end },
+      });
+      const info = {
+        empty: false,
+        target: { kind: 'text', story: body, segments: [{ blockId: 'P1', range: { start: 26, end: 43 } }] },
+        selectionTarget: canonical ? target(26, 43) : null,
+        activeMarks: [],
+        activeCommentIds: [],
+        activeChangeIds: [],
+        text: 'Northwind Traders',
+      };
+      const f = makeSelectionSuperdoc({ info });
+      const fontFamily = vi.fn(() => ({ success: true }));
+      Object.assign(f.superdoc.activeEditor.doc, { format: { fontFamily } });
+      const held = {
+        story: body,
+        anchor: { blockId: 'P1', blockOffset: 27 },
+        focus: { blockId: 'P1', blockOffset: 44 },
+      };
+      const selection = {
+        getSnapshot: () => held,
+        toSelectionTarget: () => ({ kind: 'ok', mode: 'range', target: target(27, 44) }),
+        subscribe: () => () => {},
+      };
+      Object.assign(f.superdoc.activeEditor.host, {
+        getHandles: () => ({ selection, editing: { selection } }),
+        readAppliedSelectionPresentation: () => ({ selection: info }),
+      });
+      const ui = createSuperDocUI({ superdoc: f.superdoc });
+      try {
+        expect(await ui.toolbar.execute('font-family', 'Arial')).toEqual({ success: true });
+        expect(fontFamily).toHaveBeenCalledExactlyOnceWith(
+          { target: canonical ? target(26, 43) : target(27, 44), value: 'Arial' },
+          { offsetSpace: canonical ? 'kernel' : 'selection' },
+        );
+      } finally {
+        ui.destroy();
+      }
+    },
+  );
+
+  it.each(['editing', 'suggesting'].flatMap((mode) => [false, true].map((tracked) => ({ mode, tracked }))))(
+    'font family preserves tracked selection coordinates in $mode mode (tracked: $tracked)',
+    async ({ mode, tracked }) => {
+      const story = { kind: 'story', storyType: 'body' } as const;
+      const target = {
+        kind: 'selection',
+        story,
+        ...(tracked ? { coordinateSpace: 'tracked' } : {}),
+        start: { kind: 'text', blockId: 'P1', offset: 10 },
+        end: { kind: 'text', blockId: 'P1', offset: tracked ? 30 : 20 },
+      };
+      const { superdoc } = makeSelectionSuperdoc({
+        info: {
+          empty: false,
+          target: { kind: 'text', story, segments: [{ blockId: 'P1', range: { start: 10, end: 20 } }] },
+          selectionTarget: target,
+          activeMarks: [],
+          activeCommentIds: [],
+          activeChangeIds: [],
+          text: 'kept words',
+        },
+        getHostSelection: () => ({
+          story,
+          anchor: { blockId: 'P1', blockOffset: 10, trackedBlockOffset: 10 },
+          focus: { blockId: 'P1', blockOffset: 20, trackedBlockOffset: tracked ? 30 : 20 },
+        }),
+      });
+      superdoc.config.documentMode = mode;
+      const fontFamily = vi.fn(() => ({ success: true }));
+      Object.assign(superdoc.activeEditor.doc, { format: { fontFamily } });
+      const ui = createSuperDocUI({ superdoc });
+      try {
+        expect(await ui.toolbar.execute('font-family', 'Arial')).toEqual({ success: true });
+        expect(fontFamily).toHaveBeenCalledExactlyOnceWith(
+          { target, value: 'Arial' },
+          {
+            ...(mode === 'suggesting' ? { changeMode: 'tracked' } : {}),
+            offsetSpace: tracked ? 'selection' : 'kernel',
+          },
+        );
+      } finally {
+        ui.destroy();
+      }
+    },
+  );
+
   it('computeSelection requests includeText and reflects info.empty + info.text', async () => {
     const { superdoc, current } = makeSelectionSuperdoc();
     const ui = createSuperDocUI({ superdoc });
@@ -2394,6 +2621,241 @@ describe('public facade (ui)', () => {
     },
   );
 
+  it('capture refuses a stale image slice while a different paragraph native refresh is pending', async () => {
+    const story = { kind: 'story', storyType: 'body' } as const;
+    const target = (blockId: string, start: number, end: number) => ({
+      kind: 'selection',
+      story,
+      start: { kind: 'text', blockId, offset: start },
+      end: { kind: 'text', blockId, offset: end },
+    });
+    let held = { anchor: { blockId: 'P1', offset: 0 }, focus: { blockId: 'P1', offset: 6 } };
+    let painted = target('P1', 0, 6);
+    const listeners = new Set<(snapshot: unknown) => void>();
+    const { superdoc, current, apply } = makeSelectionSuperdoc({
+      info: {
+        empty: false,
+        target: { kind: 'text', segments: [{ blockId: 'P1', range: { start: 0, end: 5 } }] },
+        selectionTarget: null,
+        activeMarks: [],
+        activeCommentIds: [],
+        activeChangeIds: [],
+        text: 'hello',
+      },
+    });
+    const selectionHandle = {
+      getSnapshot: () => held,
+      toSelectionTarget: () => ({ kind: 'ok', mode: 'range', target: painted }),
+      subscribe: (listener: (snapshot: unknown) => void) => {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+    };
+    superdoc.activeEditor.host.getHandles = (() => ({
+      selection: selectionHandle,
+      editing: { selection: selectionHandle, selectionTargets: { apply } },
+    })) as any;
+    const ui = createSuperDocUI({ superdoc });
+    expect(ui.selection.getSnapshot()).toMatchObject({ quotedText: 'hello', selectionTarget: null });
+    expect(listeners.size).toBeGreaterThan(0);
+    let finish!: (info: unknown) => void;
+    const pending = new Promise<unknown>((resolve) => {
+      finish = resolve;
+    });
+    current.mockReturnValue(pending);
+    held = { anchor: { blockId: 'P2', offset: 1 }, focus: { blockId: 'P2', offset: 6 } };
+    painted = target('P2', 1, 6);
+    for (const listener of listeners) listener(held);
+    ui.selection.current();
+    await Promise.resolve();
+    expect(current.mock.results.some((result) => result.value === pending)).toBe(true);
+    expect(ui.selection.getSnapshot().quotedText).toBe('hello');
+    const capture = ui.selection.capture();
+    if (capture) ui.selection.restore(capture);
+    expect.soft(capture).toBeNull();
+    expect.soft(apply).not.toHaveBeenCalled();
+    current.mockReturnValue({ empty: true, target: null, selectionTarget: null });
+    finish({ empty: true, target: null, selectionTarget: null });
+    await Promise.resolve();
+    ui.destroy();
+  });
+
+  describe('selection capture native ownership controls', () => {
+    const body = { kind: 'story', storyType: 'body' } as const;
+    const address = (blockId: string, start: number, end: number, story: unknown = body) => ({
+      kind: 'selection',
+      story,
+      start: { kind: 'text', blockId, offset: start },
+      end: { kind: 'text', blockId, offset: end },
+    });
+    function captureFixture(
+      options: { review?: boolean; identity?: boolean; cells?: boolean; canonical?: boolean } = {},
+    ) {
+      let held: object = {
+        anchor: { blockId: 'P1', offset: 0 },
+        focus: { blockId: 'P1', offset: 6 },
+        ...(options.cells ? { tableCells: true } : {}),
+      };
+      let painted = address('P1', 0, 6);
+      let retired = false;
+      const listeners = new Set<(snapshot: unknown) => void>();
+      const { superdoc, current, apply } = makeSelectionSuperdoc({
+        info: {
+          empty: false,
+          target: { kind: 'text', segments: [{ blockId: 'P1', range: { start: 0, end: 5 } }] },
+          selectionTarget: options.canonical ? address('P1', 0, 5) : null,
+          activeMarks: [],
+          activeCommentIds: [],
+          activeChangeIds: [],
+          text: 'hello',
+        },
+      });
+      const selectionHandle = {
+        ...(options.identity === false ? {} : { getSnapshot: () => held }),
+        toSelectionTarget: () => ({ kind: 'ok', mode: 'range', target: painted }),
+        subscribe: (listener: (snapshot: unknown) => void) => {
+          listeners.add(listener);
+          return () => {
+            listeners.delete(listener);
+          };
+        },
+        apply,
+      };
+      superdoc.activeEditor.host.getHandles = (() => {
+        if (retired) throw new Error('host disposed');
+        return {
+          selection: selectionHandle,
+          ...(options.review ? {} : { editing: { selection: selectionHandle, selectionTargets: { apply } } }),
+        };
+      }) as any;
+      if (options.review) superdoc.config.documentMode = 'viewing';
+      const ui = createSuperDocUI({ superdoc });
+      expect(ui.selection.getSnapshot().quotedText).toBe('hello');
+      return {
+        ui,
+        apply,
+        retire: () => {
+          retired = true;
+        },
+        pending: async (blockId: string, start: number, end: number, story: unknown = body) => {
+          let finish!: (value: unknown) => void;
+          const pending = new Promise<unknown>((resolve) => {
+            finish = resolve;
+          });
+          current.mockReturnValue(pending);
+          held = {
+            anchor: { blockId, offset: start },
+            focus: { blockId, offset: end },
+            ...(options.cells ? { tableCells: true } : {}),
+          };
+          painted = address(blockId, start, end, story);
+          for (const listener of listeners) listener(held);
+          ui.selection.current();
+          await Promise.resolve();
+          expect(current.mock.results.some((result) => result.value === pending)).toBe(true);
+          expect(ui.selection.getSnapshot().quotedText).toBe('hello');
+          return async () => {
+            current.mockReturnValue({ empty: true, target: null, selectionTarget: null });
+            finish({ empty: true, target: null, selectionTarget: null });
+            await Promise.resolve();
+          };
+        },
+      };
+    }
+
+    it.each([false, true])('restores a settled image envelope in review mode %s', (review) => {
+      const f = captureFixture({ review });
+      try {
+        const capture = f.ui.selection.capture();
+        expect(capture).not.toBeNull();
+        expect(capture?.quotedText).toBe('hello');
+        expect(capture?.selectionTarget).toBeNull();
+        expect(f.ui.selection.restore(capture!)).toEqual({ ok: true, success: true });
+        expect(f.apply).toHaveBeenCalledWith(address('P1', 0, 6), { offsetSpace: 'selection' });
+      } finally {
+        f.ui.destroy();
+      }
+    });
+
+    it.each([
+      ['unequal offsets', 'P1', 1, 7, body],
+      ['different story', 'P1', 0, 6, { kind: 'story', storyType: 'footnote', noteId: '1' }],
+    ] as const)('refuses a held image slice after native %s', async (_name, blockId, start, end, story) => {
+      const f = captureFixture();
+      const finish = await f.pending(blockId, start, end, story);
+      try {
+        const capture = f.ui.selection.capture();
+        if (capture) f.ui.selection.restore(capture);
+        expect.soft(capture).toBeNull();
+        expect.soft(f.apply).not.toHaveBeenCalled();
+      } finally {
+        await finish();
+        f.ui.destroy();
+      }
+    });
+
+    it('refuses an image envelope without a provable native snapshot', () => {
+      const f = captureFixture({ identity: false });
+      try {
+        expect(f.ui.selection.capture()).toBeNull();
+        expect(f.apply).not.toHaveBeenCalled();
+      } finally {
+        f.ui.destroy();
+      }
+    });
+
+    it('refuses an image envelope after its native host retires', () => {
+      const f = captureFixture();
+      f.retire();
+      try {
+        expect(f.ui.selection.capture()).toBeNull();
+        expect(f.apply).not.toHaveBeenCalled();
+      } finally {
+        f.ui.destroy();
+      }
+    });
+
+    it('restores a settled cell envelope with cell intent', () => {
+      const f = captureFixture({ cells: true });
+      try {
+        const capture = f.ui.selection.capture();
+        expect(capture).not.toBeNull();
+        expect(f.ui.selection.restore(capture!)).toEqual({ ok: true, success: true });
+        expect(f.apply).toHaveBeenCalledWith(address('P1', 0, 6), { tableCells: true });
+      } finally {
+        f.ui.destroy();
+      }
+    });
+
+    it('refuses a held cell slice after the native cell selection moves', async () => {
+      const f = captureFixture({ cells: true });
+      const finish = await f.pending('P2', 1, 6);
+      try {
+        const capture = f.ui.selection.capture();
+        if (capture) f.ui.selection.restore(capture);
+        expect.soft(capture).toBeNull();
+        expect.soft(f.apply).not.toHaveBeenCalled();
+      } finally {
+        await finish();
+        f.ui.destroy();
+      }
+    });
+
+    it('preserves an old canonical text capture after the native selection moves', async () => {
+      const f = captureFixture({ canonical: true });
+      const finish = await f.pending('P2', 1, 6);
+      try {
+        const capture = f.ui.selection.capture();
+        expect(capture?.selectionTarget).toEqual(address('P1', 0, 5));
+        expect(f.ui.selection.restore(capture!)).toEqual({ ok: true, success: true });
+        expect(f.apply).toHaveBeenCalledWith(address('P1', 0, 5));
+      } finally {
+        await finish();
+        f.ui.destroy();
+      }
+    });
+  });
+
   it('restore rebuilds a multi-segment same-story selection when the source exposes only a text target', async () => {
     const { superdoc, apply } = makeSelectionSuperdoc({
       info: {
@@ -2456,12 +2918,17 @@ describe('public facade (ui)', () => {
       };
       const { superdoc, apply } = makeSelectionSuperdoc({ info });
       let cellIntent = true;
+      let cellSnapshot = { tableCells: cellIntent };
+      const getCellSnapshot = () => {
+        if (cellSnapshot.tableCells !== cellIntent) cellSnapshot = { tableCells: cellIntent };
+        return cellSnapshot;
+      };
       const color = vi.fn(() => ({ success: true }));
       Object.assign(superdoc.activeEditor.doc, { format: { color } });
       superdoc.activeEditor.host.getHandles = () =>
         ({
           selection: {
-            getSnapshot: () => ({ tableCells: cellIntent }),
+            getSnapshot: getCellSnapshot,
             toSelectionTarget: () => ({ kind: 'ok', mode: 'range', target: raw }),
           },
           editing: {
@@ -2535,7 +3002,7 @@ describe('public facade (ui)', () => {
       const ui = createSuperDocUI({ superdoc });
 
       expect(await ui.commands.execute('text-color', '#111111')).not.toBe(false);
-      expect(color).toHaveBeenCalledWith({ target: raw, value: '#111111' }, { offsetSpace: 'selection' });
+      expect(color).toHaveBeenCalledWith({ target: raw, value: '#111111' }, { offsetSpace: 'kernel' });
     },
   );
 
@@ -4511,6 +4978,96 @@ describe('public ui — command reason taxonomy', () => {
     expect(ui.commands.get('copy-format').getState().active).toBe(true);
   });
 
+  it.each([
+    'moved native destination',
+    'unchanged stale native destination',
+    'same paragraph different range',
+    'different destination story',
+    'missing native snapshot',
+    'settled image destination',
+    'locked image destination',
+  ] as const)('copy-format keeps native and public destination ownership: %s', async (scenario) => {
+    const body = { kind: 'story', storyType: 'body' } as const;
+    const footnote = { kind: 'story', storyType: 'footnote', noteId: '1' } as const;
+    const address = (blockId: string, start: number, end: number, story: unknown = body) => ({
+      kind: 'selection',
+      story,
+      start: { kind: 'text', blockId, offset: start },
+      end: { kind: 'text', blockId, offset: end },
+    });
+    const info = (blockId: string, start = 0, end = 5, story: unknown = body) => ({
+      empty: false,
+      target: { kind: 'text', story, segments: [{ blockId, range: { start, end } }] },
+      selectionTarget: null,
+      activeMarks: [],
+      activeCommentIds: [],
+      activeChangeIds: [],
+      text: 'world'.slice(start, end),
+    });
+    const fixture = makeFormatPainterSuperdoc({
+      ...(scenario === 'locked image destination' ? { targetLockMode: 'contentLocked' } : {}),
+    });
+    let held: object = {
+      story: body,
+      anchor: { blockId: 'P2', blockOffset: 0 },
+      focus: { blockId: 'P2', blockOffset: 6 },
+    };
+    let native = address('P2', 0, 6);
+    let applied = info('P2');
+    const selectionHandle = {
+      ...(scenario === 'missing native snapshot' ? {} : { getSnapshot: () => held }),
+      toSelectionTarget: () => ({ kind: 'ok', mode: 'range', target: native }),
+    };
+    fixture.superdoc.activeEditor.host = {
+      getHandles: () => ({ selection: selectionHandle, editing: { selection: selectionHandle } }),
+      readAppliedSelectionPresentation: () => ({ selection: applied }),
+    } as any;
+    const ui = createSuperDocUI({ superdoc: fixture.superdoc });
+    try {
+      expect(await ui.commands.executeAsync('copy-format')).toBe(true);
+      fixture.getNode.mockClear();
+      let finish!: (value: unknown) => void;
+      const pending = new Promise<unknown>((resolve) => {
+        finish = resolve;
+      });
+      const current = vi.fn(() => pending);
+      fixture.superdoc.activeEditor.doc.selection.current = current;
+      vi.useFakeTimers();
+      ui.formatPainter.notifyPointerUp();
+      expect(current).toHaveBeenCalled();
+      let destination = info('P2');
+      if (scenario === 'moved native destination' || scenario === 'unchanged stale native destination') {
+        destination = info('P3');
+        if (scenario === 'moved native destination') {
+          held = { story: body, anchor: { blockId: 'P3', blockOffset: 0 }, focus: { blockId: 'P3', blockOffset: 6 } };
+          native = address('P3', 0, 6);
+          applied = destination;
+        }
+      } else if (scenario === 'same paragraph different range') {
+        destination = info('P2', 1, 5);
+      } else if (scenario === 'different destination story') {
+        destination = info('P2', 0, 5, footnote);
+      }
+      current.mockReturnValue(Promise.resolve(destination));
+      finish(destination);
+      await vi.advanceTimersByTimeAsync(200);
+      if (scenario === 'moved native destination' || scenario === 'settled image destination') {
+        const blockId = scenario === 'moved native destination' ? 'P3' : 'P2';
+        expect(fixture.getNode.mock.calls.some(([input]) => input.nodeId === blockId)).toBe(true);
+        expect(fixture.apply).toHaveBeenCalledExactlyOnceWith(
+          { target: address(blockId, 0, 6), inline: { bold: true, color: '#D2003F' } },
+          { offsetSpace: 'selection' },
+        );
+        expect(fixture.getNode.mock.calls.every(([input]) => input.nodeId === blockId)).toBe(true);
+      } else {
+        expect(fixture.apply).not.toHaveBeenCalled();
+        expect(fixture.setAlignment).not.toHaveBeenCalled();
+      }
+    } finally {
+      ui.destroy();
+    }
+  });
+
   it('copy-format apply exits armed mode after pointer-up on a new selection', async () => {
     const { superdoc, apply, setSelection, targetSelection } = makeFormatPainterSuperdoc();
     const ui = createSuperDocUI({ superdoc });
@@ -4531,7 +5088,7 @@ describe('public ui — command reason taxonomy', () => {
         target: targetSelection.selectionTarget,
         inline: { bold: true, color: '#D2003F' },
       },
-      { offsetSpace: 'selection' },
+      { offsetSpace: 'kernel' },
     );
     await vi.waitFor(() => {
       expect(ui.commands.get('copy-format').getState().active).toBe(false);
@@ -4556,7 +5113,7 @@ describe('public ui — command reason taxonomy', () => {
         target: targetSelection.selectionTarget,
         inline: { bold: true, color: '#D2003F' },
       },
-      { changeMode: 'tracked', offsetSpace: 'selection' },
+      { changeMode: 'tracked', offsetSpace: 'kernel' },
     );
   });
 
@@ -4705,7 +5262,7 @@ describe('public ui — command reason taxonomy', () => {
         target: targetSelection.selectionTarget,
         inline: { bold: true, color: '#D2003F' },
       },
-      { offsetSpace: 'selection' },
+      { offsetSpace: 'kernel' },
     );
   });
 
@@ -4819,7 +5376,7 @@ describe('public ui — command reason taxonomy', () => {
         target: targetSelection.selectionTarget,
         inline: { bold: true, fontFamily: 'Cambria', fontSize: 14 },
       },
-      { offsetSpace: 'selection' },
+      { offsetSpace: 'kernel' },
     );
   });
 
@@ -4886,7 +5443,7 @@ describe('public ui — command reason taxonomy', () => {
         expect.objectContaining({
           inline: expect.objectContaining({ fontFamily: 'Georgia', fontSize: 14 }),
         }),
-        { offsetSpace: 'selection' },
+        { offsetSpace: 'kernel' },
       );
       ui.destroy();
     },
@@ -4913,7 +5470,7 @@ describe('public ui — command reason taxonomy', () => {
         target: targetSelection.selectionTarget,
         inline: { bold: true, color: '#D2003F' },
       },
-      { offsetSpace: 'selection' },
+      { offsetSpace: 'kernel' },
     );
     expect(ui.commands.get('copy-format').getState().active).toBe(true);
     expect(ui.toolbar.getSnapshot().copyFormatActive).toBe(true);
@@ -4949,7 +5506,7 @@ describe('public ui — command reason taxonomy', () => {
     await vi.waitFor(() => expect(apply).toHaveBeenCalledTimes(1));
     expect(apply).toHaveBeenCalledWith(
       { target: targetSelection.selectionTarget, inline: { bold: true } },
-      { offsetSpace: 'selection' },
+      { offsetSpace: 'kernel' },
     );
   });
 
@@ -4981,7 +5538,7 @@ describe('public ui — command reason taxonomy', () => {
     await vi.waitFor(() => expect(apply).toHaveBeenCalledTimes(1));
     expect(apply).toHaveBeenCalledWith(
       { target: targetSelection.selectionTarget, inline: { color: '#D2003F' } },
-      { offsetSpace: 'selection' },
+      { offsetSpace: 'kernel' },
     );
   });
 
@@ -5071,7 +5628,7 @@ describe('public ui — command reason taxonomy', () => {
           target: targetSelection.selectionTarget,
           inline: { bold: false, italic: false, underline: false, color: null, highlight: null },
         },
-        { offsetSpace: 'selection' },
+        { offsetSpace: 'kernel' },
       ),
     );
   });
@@ -5120,7 +5677,7 @@ describe('public ui — command reason taxonomy', () => {
           target: targetSelection.selectionTarget,
           inline: { bold: false },
         },
-        { offsetSpace: 'selection' },
+        { offsetSpace: 'kernel' },
       ),
     );
   });
@@ -5199,7 +5756,7 @@ describe('public ui — command reason taxonomy', () => {
           target: targetSelection.selectionTarget,
           inline: { bold: true, italic: false },
         },
-        { offsetSpace: 'selection' },
+        { offsetSpace: 'kernel' },
       ),
     );
   });
@@ -5470,7 +6027,7 @@ describe('public ui — command reason taxonomy', () => {
     // Inline props from the run at caret offset are applied to the text target
     await vi.waitFor(() => expect(apply).toHaveBeenCalledTimes(1));
     expect(apply).toHaveBeenCalledWith(expect.objectContaining({ inline: expect.objectContaining({ bold: true }) }), {
-      offsetSpace: 'selection',
+      offsetSpace: 'kernel',
     });
     // Paragraph formatting is also captured and applied
     await vi.waitFor(() => {
@@ -5554,7 +6111,7 @@ describe('public ui — command reason taxonomy', () => {
         target: targetSelection.selectionTarget,
         inline: { bold: true },
       },
-      { offsetSpace: 'selection' },
+      { offsetSpace: 'kernel' },
     );
   });
 
@@ -5614,7 +6171,7 @@ describe('public ui — command reason taxonomy', () => {
           fitText: { val: 72 },
         },
       },
-      { offsetSpace: 'selection' },
+      { offsetSpace: 'kernel' },
     );
   });
 
@@ -5719,7 +6276,7 @@ describe('public ui — command reason taxonomy', () => {
           highlight: '#ECCF35',
         }),
       },
-      { offsetSpace: 'selection' },
+      { offsetSpace: 'kernel' },
     );
   });
 
@@ -9589,13 +10146,13 @@ describe('public ui — Plan B command catalog (row 747)', () => {
     const ui = createSuperDocUI({ superdoc });
     // "12pt" → numeric 12, passed with the resolved selection target.
     await ui.toolbar.execute('font-size', '12pt');
-    expect(fontSize).toHaveBeenCalledWith({ target: SELECTION_TARGET, value: 12 }, { offsetSpace: 'selection' });
+    expect(fontSize).toHaveBeenCalledWith({ target: SELECTION_TARGET, value: 12 }, { offsetSpace: 'kernel' });
     fontSize.mockClear();
     await ui.toolbar.execute('setFontSize', '14 PT');
-    expect(fontSize).toHaveBeenCalledWith({ target: SELECTION_TARGET, value: 14 }, { offsetSpace: 'selection' });
+    expect(fontSize).toHaveBeenCalledWith({ target: SELECTION_TARGET, value: 14 }, { offsetSpace: 'kernel' });
     fontSize.mockClear();
     await ui.toolbar.execute('font-size', '16');
-    expect(fontSize).toHaveBeenCalledWith({ target: SELECTION_TARGET, value: 16 }, { offsetSpace: 'selection' });
+    expect(fontSize).toHaveBeenCalledWith({ target: SELECTION_TARGET, value: 16 }, { offsetSpace: 'kernel' });
   });
 
   it('routes text-color / highlight-color through inline format ops with a normalized color and selection target', async () => {
@@ -9613,12 +10170,9 @@ describe('public ui — Plan B command catalog (row 747)', () => {
     expect(ui.commands.get('text-color').getState()).toMatchObject({ enabled: true, supported: true });
     // Bare 6-hex normalizes to #RRGGBB.
     expect(await ui.toolbar.execute('text-color', 'ff0000')).toEqual({ success: true });
-    expect(color).toHaveBeenCalledWith({ target: SELECTION_TARGET, value: '#ff0000' }, { offsetSpace: 'selection' });
+    expect(color).toHaveBeenCalledWith({ target: SELECTION_TARGET, value: '#ff0000' }, { offsetSpace: 'kernel' });
     expect(await ui.toolbar.execute('highlight-color', '#00FF00')).toEqual({ success: true });
-    expect(highlight).toHaveBeenCalledWith(
-      { target: SELECTION_TARGET, value: '#00FF00' },
-      { offsetSpace: 'selection' },
-    );
+    expect(highlight).toHaveBeenCalledWith({ target: SELECTION_TARGET, value: '#00FF00' }, { offsetSpace: 'kernel' });
   });
 
   it('publishes an optimistic inline value only after an async mutation settles successfully', async () => {
@@ -9655,10 +10209,7 @@ describe('public ui — Plan B command catalog (row 747)', () => {
 
     expect(ui.commands.get('highlight-color').getState().value).toBeUndefined();
     await ui.toolbar.execute('highlight-color', '#ECCF35');
-    expect(highlight).toHaveBeenCalledWith(
-      { target: SELECTION_TARGET, value: '#ECCF35' },
-      { offsetSpace: 'selection' },
-    );
+    expect(highlight).toHaveBeenCalledWith({ target: SELECTION_TARGET, value: '#ECCF35' }, { offsetSpace: 'kernel' });
     await vi.waitFor(() => {
       expect(ui.commands.get('highlight-color').getState().value).toBe('#ECCF35');
     });
@@ -9727,7 +10278,7 @@ describe('public ui — Plan B command catalog (row 747)', () => {
           dstrike: null,
         }),
       }),
-      { offsetSpace: 'selection' },
+      { offsetSpace: 'kernel' },
     );
   });
 
@@ -9782,7 +10333,7 @@ describe('public ui — Plan B command catalog (row 747)', () => {
     expect(await ui.toolbar.execute('clear-formatting')).toEqual({ success: true });
     expect(apply).toHaveBeenCalledWith(expect.objectContaining({ target: SELECTION_TARGET }), {
       changeMode: 'tracked',
-      offsetSpace: 'selection',
+      offsetSpace: 'kernel',
     });
   });
 
@@ -10030,7 +10581,7 @@ describe('public ui — Plan B command catalog (row 747)', () => {
     // Bold already active at the selection → toggling sends value: false.
     expect(ui.commands.get('bold').getState()).toMatchObject({ enabled: true, active: true });
     await ui.toolbar.execute('bold');
-    expect(bold).toHaveBeenCalledWith({ target: SELECTION_TARGET, value: false }, { offsetSpace: 'selection' });
+    expect(bold).toHaveBeenCalledWith({ target: SELECTION_TARGET, value: false }, { offsetSpace: 'kernel' });
   });
 
   it.each(['editing', 'suggesting'])(
@@ -10074,7 +10625,7 @@ describe('public ui — Plan B command catalog (row 747)', () => {
         expect(current.mock.calls.length).toBeGreaterThan(reads);
         expect(bold).toHaveBeenCalledWith(
           { target: SELECTION_TARGET, value: true },
-          { offsetSpace: 'selection', ...(mode === 'suggesting' ? { changeMode: 'tracked' } : {}) },
+          { offsetSpace: 'kernel', ...(mode === 'suggesting' ? { changeMode: 'tracked' } : {}) },
         );
         expect(setPendingInlineFormat).not.toHaveBeenCalled();
       } finally {
@@ -10173,7 +10724,7 @@ describe('public ui — Plan B command catalog (row 747)', () => {
         active = 1;
         await ui.commands.get('bold').executeAsync();
         if (identity === 'matching' || identity === 'cache-refresh') {
-          expect(bold).toHaveBeenCalledWith({ target: SELECTION_TARGET, value: true }, { offsetSpace: 'selection' });
+          expect(bold).toHaveBeenCalledWith({ target: SELECTION_TARGET, value: true }, { offsetSpace: 'kernel' });
         } else expect(bold).not.toHaveBeenCalled();
         expect(setPendingInlineFormat).not.toHaveBeenCalled();
       } finally {
@@ -10292,7 +10843,7 @@ describe('public ui — Plan B command catalog (row 747)', () => {
     const ui = createSuperDocUI({ superdoc });
     expect(ui.commands.get('bold').getState()).toMatchObject({ enabled: true, active: true });
     await ui.toolbar.execute('bold');
-    expect(bold).toHaveBeenCalledWith({ target: SELECTION_TARGET, value: false }, { offsetSpace: 'selection' });
+    expect(bold).toHaveBeenCalledWith({ target: SELECTION_TARGET, value: false }, { offsetSpace: 'kernel' });
   });
 
   it('keeps effective bold aligned after painted tracked deletions before the selection', async () => {
@@ -10334,7 +10885,7 @@ describe('public ui — Plan B command catalog (row 747)', () => {
 
     expect(ui.commands.get('bold').getState().active).toBe(true);
     await ui.toolbar.execute('bold');
-    expect(bold).toHaveBeenCalledWith({ target, value: false }, { offsetSpace: 'selection' });
+    expect(bold).toHaveBeenCalledWith({ target, value: false }, { offsetSpace: 'kernel' });
   });
 
   it('falls back to the worker-side effective read for style-inherited bold when the mounted projection is unavailable (SD-3860)', async () => {
@@ -10358,7 +10909,7 @@ describe('public ui — Plan B command catalog (row 747)', () => {
     await Promise.resolve();
     expect(ui.commands.get('bold').getState().active).toBe(true);
     expect(readEffectiveInlineUniformity).toHaveBeenCalledWith(
-      expect.objectContaining({ target: SELECTION_TARGET, offsetSpace: 'selection' }),
+      expect.objectContaining({ target: SELECTION_TARGET, offsetSpace: 'kernel' }),
     );
   });
 
@@ -10666,8 +11217,8 @@ describe('public ui — Plan B command catalog (row 747)', () => {
     paintResolvers[0]?.();
     await vi.waitFor(() => expect(bold).toHaveBeenCalledTimes(2));
 
-    expect(bold).toHaveBeenNthCalledWith(1, { target: SELECTION_TARGET, value: true }, { offsetSpace: 'selection' });
-    expect(bold).toHaveBeenNthCalledWith(2, { target: SELECTION_TARGET, value: true }, { offsetSpace: 'selection' });
+    expect(bold).toHaveBeenNthCalledWith(1, { target: SELECTION_TARGET, value: true }, { offsetSpace: 'kernel' });
+    expect(bold).toHaveBeenNthCalledWith(2, { target: SELECTION_TARGET, value: true }, { offsetSpace: 'kernel' });
     expect(ui.commands.get('bold').getState().active).toBe(true);
 
     paintResolvers.slice(1).forEach((resolve) => resolve());
@@ -10766,7 +11317,7 @@ describe('public ui — Plan B command catalog (row 747)', () => {
         await vi.waitFor(() => expect(bold).toHaveBeenCalledTimes(2));
         expect(bold.mock.calls[1]?.[0]).toMatchObject({ target: raw });
         expect(bold.mock.calls[1]?.[1]).toEqual({
-          offsetSpace: 'selection',
+          offsetSpace: queuedCellSelection ? 'selection' : 'kernel',
           ...(queuedCellSelection ? { tableCellSelection: { anchorBlockId: 'CELL0', focusBlockId: 'CELL4' } } : {}),
         });
       } finally {
@@ -10898,11 +11449,11 @@ describe('public ui — Plan B command catalog (row 747)', () => {
     });
     const ui = createSuperDocUI({ superdoc });
     await ui.toolbar.execute('bold', false);
-    expect(bold).toHaveBeenLastCalledWith({ target: SELECTION_TARGET, value: false }, { offsetSpace: 'selection' });
+    expect(bold).toHaveBeenLastCalledWith({ target: SELECTION_TARGET, value: false }, { offsetSpace: 'kernel' });
     await ui.toolbar.execute('bold', { value: true });
-    expect(bold).toHaveBeenLastCalledWith({ target: SELECTION_TARGET, value: true }, { offsetSpace: 'selection' });
+    expect(bold).toHaveBeenLastCalledWith({ target: SELECTION_TARGET, value: true }, { offsetSpace: 'kernel' });
     await ui.toolbar.execute('bold', { value: null });
-    expect(bold).toHaveBeenLastCalledWith({ target: SELECTION_TARGET, value: null }, { offsetSpace: 'selection' });
+    expect(bold).toHaveBeenLastCalledWith({ target: SELECTION_TARGET, value: null }, { offsetSpace: 'kernel' });
   });
 
   it('execute returns the immediate receipt for a sync operation even when paint settlement is pending', async () => {
@@ -12726,7 +13277,7 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
     await Promise.resolve();
     expect(ui.commands.get('font-family').getState().value).toBe('Cambria');
     expect(readEffectiveInlineUniformity).toHaveBeenCalledWith(
-      expect.objectContaining({ target: crossBlockSelection.selectionTarget, offsetSpace: 'selection' }),
+      expect.objectContaining({ target: crossBlockSelection.selectionTarget, offsetSpace: 'kernel' }),
     );
   });
 
@@ -14081,7 +14632,7 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
 
     selectionInfo = SELECTION_INFO;
     expect(await command.executeAsync()).toEqual({ success: true });
-    expect(bold).toHaveBeenCalledWith({ target: SELECTION_TARGET, value: true }, { offsetSpace: 'selection' });
+    expect(bold).toHaveBeenCalledWith({ target: SELECTION_TARGET, value: true }, { offsetSpace: 'kernel' });
     expect(host.setPendingInlineFormat).not.toHaveBeenCalled();
   });
 
@@ -14113,7 +14664,7 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
         expect(result).toEqual({ success: true });
         expect(bold).toHaveBeenCalledExactlyOnceWith(
           { target: SELECTION_TARGET, value: true },
-          { offsetSpace: 'selection' },
+          { offsetSpace: 'kernel' },
         );
       } else {
         expect(result).toBe(false);
@@ -17543,7 +18094,7 @@ describe('public ui — shared custom-button callback context (row 747 / customB
     expect(ctx.documentMode).toBe('editing');
     expect(ctx.selection.quotedText).toBe('hello');
     expect(typeof ctx.execute).toBe('function');
-    expect(bold).toHaveBeenCalledWith({ target: SELECTION_TARGET, value: true }, { offsetSpace: 'selection' });
+    expect(bold).toHaveBeenCalledWith({ target: SELECTION_TARGET, value: true }, { offsetSpace: 'kernel' });
     expect(insert).toHaveBeenCalledWith({
       type: 'text',
       value: ' token',
@@ -19432,7 +19983,7 @@ describe('public ui — async browser reads (read coordinator)', () => {
 
     await expect(pending).resolves.toBe(receipt);
     expect(selection).toHaveBeenCalledWith({ includeText: true });
-    expect(bold).toHaveBeenCalledWith({ target: SELECTION_TARGET, value: true }, { offsetSpace: 'selection' });
+    expect(bold).toHaveBeenCalledWith({ target: SELECTION_TARGET, value: true }, { offsetSpace: 'kernel' });
     expect(ui.commands.get('bold').getState()).toMatchObject({ enabled: true, supported: true });
   });
 

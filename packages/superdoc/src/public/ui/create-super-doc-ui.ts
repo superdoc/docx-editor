@@ -2016,7 +2016,10 @@ function selectionTargetFromTextTarget(
 // Cell captures retain the pointer endpoints because the public text target can
 // be disjoint and its enclosing range would include unselected neighboring cells.
 // Keep this private recipe enumerable so application stores can copy/serialize it.
-type CellSelectionCapture = SelectionCapture & { _tableCellSelectionTarget?: unknown };
+type CellSelectionCapture = SelectionCapture & {
+  _tableCellSelectionTarget?: unknown;
+  _paintedSelectionTarget?: unknown;
+};
 
 type TextSelectionTarget = SelectionTarget & {
   start: Extract<SelectionTarget['start'], { kind: 'text' }>;
@@ -2068,7 +2071,6 @@ function resolveInlineSelectionTarget(selection: SelectionSlice): SelectionTarge
   if (selection.selectionTarget) return selection.selectionTarget;
   const fallback = selectionTargetFromTextTarget(selection.target);
   // A cross-block format target must be the host's own `selectionTarget`
-  // (browser-selection offsets, resolved centrally by the adapter — SD-3706).
   // Deriving one from per-block segments would guess at offsets the host never
   // published, so a host that supplies no selectionTarget for a multi-block
   // range fails closed to the selection-required path instead.
@@ -2316,6 +2318,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     pointerSelecting: false,
     keyboardSelecting: false,
   };
+  const paintedInlineTargets = new WeakSet<object>();
   let painterCaptureEpoch = 0;
   let painterCommandDoc: LooseRecord | null = null;
   const painterModeListeners = new Set<(mode: FormatPainterMode) => void>();
@@ -2429,11 +2432,14 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     sourceToken: string;
     mode: string;
     info: SelectionInfo;
+    nativeSelection: object | null;
   } | null = null;
   const readHostSelectionSnapshot = (): object | null => {
     const handles = safeCall<unknown>(() => hostMethod(getHost(), 'getHandles')?.() ?? null, null);
     const editing = isPlainObject(handles) ? handles.editing : undefined;
-    const getSnapshot = hostMethod(isPlainObject(editing) ? editing.selection : undefined, 'getSnapshot');
+    const getSnapshot =
+      hostMethod(isPlainObject(editing) ? editing.selection : undefined, 'getSnapshot') ??
+      hostMethod(isPlainObject(handles) ? handles.selection : undefined, 'getSnapshot');
     if (!getSnapshot) return null;
     const snapshot = safeCall<unknown>(() => getSnapshot(), null);
     return snapshot && typeof snapshot === 'object' ? snapshot : null;
@@ -4129,19 +4135,101 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
    * Explicit whole-table changes have a complete local source range and also
    * seed clears, so a delayed worker read cannot retain a cleared table target.
    */
+  function captureWholeTableParagraphSeed(
+    host: LooseRecord | null,
+    seed: SelectionInfo,
+    nativeSelection: object | null,
+  ): boolean {
+    const editor = getEditor();
+    const rawLifetime = safeCall<unknown>(() => hostMethod(host, 'getForegroundInteractionLifetime')?.() ?? null, null);
+    const lifetime = hasAbortedFlag(rawLifetime) ? rawLifetime : null;
+    const mount = safeCall<unknown>(() => hostMethod(host, 'getMountedHandle')?.() ?? null, null);
+    const mode = readDocumentMode();
+    if (
+      !host ||
+      !editor ||
+      !mount ||
+      !lifetime ||
+      lifetime.aborted ||
+      mode === null ||
+      seed.empty ||
+      seed.tableSelection?.kind !== 'tableCells' ||
+      seed.tableSelection.type !== 'table' ||
+      seed.target?.kind !== 'text' ||
+      !seed.target.segments.length
+    )
+      return false;
+    if (nativeSelection) {
+      const presentation = safeCall<unknown>(() => hostMethod(host, 'readAppliedSelectionPresentation')?.(), null);
+      const applied = normalizeSelectionInfo(isPlainObject(presentation) ? presentation.selection : null);
+      if (
+        readHostSelectionSnapshot() !== nativeSelection ||
+        !isNonCollapsedHostSelection(nativeSelection) ||
+        !applied ||
+        selectionSignature(selectionSliceFromInfo(applied, 'ready')) !==
+          selectionSignature(selectionSliceFromInfo(seed, 'ready')) ||
+        JSON.stringify(applied.tableSelection) !== JSON.stringify(seed.tableSelection)
+      )
+        return false;
+      const snapshot = nativeSelection as LooseRecord;
+      const first = seed.target.segments[0]?.blockId,
+        last = seed.target.segments.at(-1)?.blockId;
+      const matches = (point: unknown, blockId: string | undefined): boolean =>
+        !!blockId &&
+        isPlainObject(point) &&
+        point.blockId === blockId &&
+        storyLocatorSignature(point.story ?? snapshot.story) === storyLocatorSignature(seed.target?.story);
+      if (
+        !(
+          (matches(snapshot.anchor, first) && matches(snapshot.focus, last)) ||
+          (matches(snapshot.focus, first) && matches(snapshot.anchor, last))
+        )
+      )
+        return false;
+    }
+    wholeTableParagraphSeed = {
+      editor,
+      host,
+      doc: editor.doc,
+      mount,
+      lifetime,
+      sourceToken: contentToken(),
+      mode,
+      info: seed,
+      nativeSelection,
+    };
+    return true;
+  }
+
   const refreshSelectionFromHost = (
     hostSelectionSnapshot?: unknown,
     afterTypingPaint = false,
     wholeTableSelectionChanged = false,
+    initialTableSelection: object | null = null,
   ): void => {
+    const host = getHost();
     const foreground = foregroundMutationState();
+    if (isNonCollapsedHostSelection(hostSelectionSnapshot) && readHostSelectionSnapshot() === hostSelectionSnapshot) {
+      const seed = normalizeSelectionInfo(safeCall(() => hostMethod(host, 'readLiveSelectionSyncSnapshot')?.(), null));
+      if (
+        seed &&
+        !seed.selectionTarget &&
+        captureWholeTableParagraphSeed(host, seed, hostSelectionSnapshot as object)
+      ) {
+        asyncReads.set('selection', {
+          token: asyncReads.get('selection')?.token ?? null,
+          value: seed,
+          hasSettled: true,
+          inflightToken: null,
+        });
+      }
+    }
     if (isNonCollapsedHostSelection(hostSelectionSnapshot) && !(foreground && foreground.active > 0)) {
       typedCaretValidationHeld = false;
       pendingSelectionSeedValidationToken = null;
       issueAsyncRead('selection', selectionReadToken(), selectionCurrentRun, normalizeSelectionInfo);
       return;
     }
-    const host = getHost();
     const read = host?.readLiveSelectionSyncSnapshot;
     if (typeof read !== 'function') return;
     const seed = normalizeSelectionInfo(safeCall(() => (read as AnyFn).call(host), null));
@@ -4150,38 +4238,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       typedCaretValidationHeld = false;
       pendingSelectionSeedValidationToken = null;
       wholeTableParagraphSeed = null;
-      const editor = getEditor();
-      const rawLifetime = safeCall<unknown>(
-        () => hostMethod(host, 'getForegroundInteractionLifetime')?.() ?? null,
-        null,
-      );
-      const lifetime = hasAbortedFlag(rawLifetime) ? rawLifetime : null;
-      const mount = safeCall<unknown>(() => hostMethod(host, 'getMountedHandle')?.() ?? null, null);
-      const mode = readDocumentMode();
-      if (
-        host &&
-        editor &&
-        mount &&
-        lifetime &&
-        !lifetime.aborted &&
-        mode !== null &&
-        !seed.empty &&
-        seed.tableSelection?.kind === 'tableCells' &&
-        seed.tableSelection.type === 'table' &&
-        seed.target?.segments.length &&
-        seed.selectionTarget
-      ) {
-        wholeTableParagraphSeed = {
-          editor,
-          host,
-          doc: editor.doc,
-          mount,
-          lifetime,
-          sourceToken: contentToken(),
-          mode,
-          info: seed,
-        };
-      }
+      captureWholeTableParagraphSeed(host, seed, initialTableSelection);
       const token = selectionReadToken();
       asyncReads.set('selection', { token, value: seed, hasSettled: true, inflightToken: null });
       issueAsyncRead('selection', token, selectionCurrentRun, normalizeSelectionInfo);
@@ -5305,12 +5362,13 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
 
   function effectiveInlineUniformityInput(selection: SelectionSlice): LooseRecord | null {
     const cellTarget = currentCellSelectionTarget();
-    const target = cellTarget ?? selection.selectionTarget;
+    const paintedTarget = cellTarget ? null : currentUnrepresentableSelectionTarget(selection);
+    const target = cellTarget ?? paintedTarget ?? selection.selectionTarget;
     if (!target) return null;
     const tableCellSelection = cellTarget ? tableCellSelectionForTarget(cellTarget) : null;
     return {
       target,
-      offsetSpace: 'selection',
+      offsetSpace: cellTarget || paintedTarget ? 'selection' : 'kernel',
       ...(tableCellSelection ? { tableCellSelection } : {}),
     };
   }
@@ -7315,15 +7373,16 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       const tableSelection = isPlainObject(handles) ? handles.selection : undefined;
       const subscribeWholeTable = hostMethod(tableSelection, 'subscribeWholeTable');
       if (subscribeWholeTable) {
-        const refreshWholeTable = (): void => {
+        const refreshWholeTable = (initial = false): void => {
+          const native = initial ? readHostSelectionSnapshot() : null;
           selectionEpoch += 1;
-          refreshSelectionFromHost(undefined, false, true);
+          refreshSelectionFromHost(undefined, false, true, native);
           recompute('host-selection');
         };
-        const detach = subscribeWholeTable(refreshWholeTable);
+        const detach = subscribeWholeTable(() => refreshWholeTable());
         if (typeof detach === 'function') unsubscribeCallbacks.push(() => detach());
         const nodeId = hostMethod(tableSelection, 'getWholeTableNodeId')?.();
-        if (nodeId) refreshWholeTable();
+        if (nodeId) refreshWholeTable(true);
       }
     } catch {
       currentHostSelectionSource = null;
@@ -8040,11 +8099,14 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
    * ordinary/insertion selections are visible-space, while a selection that
    * reaches painted deleted text is projected in tracked space by the host.
    *
-   * Cross-block coverage must come from the model-backed tracked target;
-   * intermediate block lengths cannot be inferred from the endpoints.
+   * Cross-block and object-containing coverage use the model-backed tracked
+   * target when the explicit text selection cannot represent the range.
    */
   function trackDecisionRangeFromSelection(selection: SelectionSlice): LooseRecord | null {
     if (selection.empty) return null;
+    if (!selection.selectionTarget && selection.trackedTarget) {
+      return { kind: 'range', coordinateSpace: 'tracked', range: selection.trackedTarget };
+    }
     const explicit = selection.selectionTarget as LooseRecord | null;
     const start = explicit?.start as LooseRecord | undefined;
     const end = explicit?.end as LooseRecord | undefined;
@@ -8207,7 +8269,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     if (selection.trackedChangeRangeDecisionSupported === false && route() !== 'id') {
       return { kind: 'blocked', reason: SUPERDOC_UI_REASONS.operationUnavailable };
     }
-    if (!selection.selectionTarget) return null;
+    if (!selection.selectionTarget && !selection.trackedTarget && selection.target?.kind !== 'text') return null;
     const target = trackDecisionRangeFromSelection(selection);
     if (!target && route() !== 'id') {
       return { kind: 'blocked', reason: SUPERDOC_UI_REASONS.targetUnresolved };
@@ -8656,28 +8718,44 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     return combineCommandResults(immediateResults);
   };
 
-  /**
-   * Call an inline `format.*` operation against the live selection. Mirrors
-   * `callEditorMutation` (suggesting mode adds `changeMode: 'tracked'`), and
-   * when the target is the host's own editable `selectionTarget` it also
-   * carries the PRIVATE V2 option `offsetSpace: 'selection'` (browser
-   * selection offsets count an inline object as one caret position). The
-   * option is not part of public `MutationOptions`; this is the same cast
-   * pattern the delete/replace callers use.
-   */
   function currentCellSelectionTarget(): TextSelectionTarget | null {
+    return captureInputSelectionTarget(true);
+  }
+
+  function captureInputSelectionTarget(requireTableCells = false): TextSelectionTarget | null {
     const handles = safeCall<unknown>(() => hostMethod(getHost(), 'getHandles')?.(), null);
     const selection = isPlainObject(handles) ? handles.selection : undefined;
     const held = hostMethod(selection, 'getSnapshot')?.();
-    if (!isPlainObject(held) || !held.tableCells) return null;
+    if (requireTableCells && (!isPlainObject(held) || !held.tableCells)) return null;
     const resolved = hostMethod(selection, 'toSelectionTarget')?.();
     return isPlainObject(resolved) && resolved.kind === 'ok' && resolved.mode === 'range'
       ? capturedTableCellTarget(resolved.target)
       : null;
   }
 
+  function currentUnrepresentableSelectionTarget(selection: SelectionSlice): TextSelectionTarget | null {
+    if (selection.empty || selection.selectionTarget || selection.target?.kind !== 'text') return null;
+    return heldPaintedTextSelectionTarget();
+  }
+
+  function heldPaintedTextSelectionTarget(): TextSelectionTarget | null {
+    const target = captureInputSelectionTarget();
+    if (target) paintedInlineTargets.add(target);
+    return target;
+  }
+
   function resolveInlineCommandTarget(selection: SelectionSlice): SelectionTarget | null {
-    return currentCellSelectionTarget() ?? resolveInlineSelectionTarget(selection);
+    const cells = currentCellSelectionTarget();
+    if (cells) return cells;
+    if (!selection.empty && !selection.selectionTarget && selection.target?.kind === 'text') {
+      const snapshot = readHostSelectionSnapshot();
+      const painted = currentUnrepresentableSelectionTarget(selection);
+      if (painted)
+        return snapshot && appliedSelectionPresentation(selection) && readHostSelectionSnapshot() === snapshot
+          ? painted
+          : null;
+    }
+    return resolveInlineSelectionTarget(selection);
   }
 
   function tableCellSelectionForTarget(
@@ -8712,8 +8790,15 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
         offsetSpace: 'selection',
         tableCellSelection,
       });
+    const paintedTarget = (input as LooseRecord)?.target;
+    if (
+      paintedTarget !== null &&
+      typeof paintedTarget === 'object' &&
+      (paintedInlineTargets.has(paintedTarget) || (paintedTarget as LooseRecord).coordinateSpace === 'tracked')
+    )
+      return op(input, { ...options, offsetSpace: 'selection' });
     if (!(selection as LooseRecord).selectionTarget) return options ? op(input, options) : op(input);
-    return op(input, { ...options, offsetSpace: 'selection' });
+    return op(input, { ...options, offsetSpace: 'kernel' });
   };
 
   /** Build the `format.paragraph.*` / `styles.paragraph.*` input for a block. */
@@ -8838,9 +8923,6 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     if (rangeTarget) {
       const inlineOp = resolveDocOperation(doc, 'format.apply');
       // One cross-block-capable format.apply call for the whole selection
-      // (SD-3706). Editable browser selections thread the private V2
-      // `offsetSpace: 'selection'` option so painted offsets (inline objects
-      // count as one caret position) land on the selected characters.
       if (inlineOp) {
         try {
           record(
@@ -9682,7 +9764,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     );
   };
 
-  const currentWholeTableParagraphSelection = (): boolean => {
+  const currentWholeTableParagraphOwner = () => {
     const owner = wholeTableParagraphSeed,
       host = getHost();
     if (
@@ -9696,7 +9778,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       owner.mode !== readDocumentMode() ||
       safeCall<unknown>(() => hostMethod(host, 'getMountedHandle')?.(), null) !== owner.mount
     )
-      return false;
+      return null;
     const tableId = owner.info.tableSelection?.tableId;
     const activeTable = safeCall<unknown>(() => {
       const handles = hostMethod(host, 'getHandles')?.();
@@ -9709,16 +9791,22 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       state.selection.tableSelection.tableId !== tableId ||
       selectionSignature(state.selection) !== selectionSignature(selectionSliceFromInfo(owner.info, 'ready'))
     )
-      return false;
+      return null;
     // This host read is available only at its current applied source/input
     // frontier. A delayed quoted-text read does not invalidate that paragraph scope.
     const applied = appliedSelectionPresentation(state.selection);
     const info = normalizeSelectionInfo(applied?.selection);
-    return (
-      !!info &&
-      selectionInfoMatchesHost(info) &&
-      JSON.stringify(info.tableSelection) === JSON.stringify(owner.info.tableSelection)
-    );
+    return info && JSON.stringify(info.tableSelection) === JSON.stringify(owner.info.tableSelection)
+      ? { owner, info }
+      : null;
+  };
+
+  const currentWholeTableParagraphSelection = (): boolean => {
+    const current = currentWholeTableParagraphOwner();
+    if (!current) return false;
+    return current.owner.info.selectionTarget
+      ? selectionInfoMatchesHost(current.info)
+      : current.owner.nativeSelection !== null && readHostSelectionSnapshot() === current.owner.nativeSelection;
   };
 
   const commandSelectionIsReady = (id: string, descriptor: CommandDescriptor | null, payload: unknown): boolean => {
@@ -9727,6 +9815,12 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     // Resolve through the ordered worker reader before choosing range vs marks.
     if (foreground && (foreground.active > 0 || foreground.pending > 0)) return false;
     if (descriptor?.blockParagraph && currentWholeTableParagraphSelection()) return true;
+    if (
+      descriptor?.blockParagraph &&
+      state.selection.tableSelection?.type === 'table' &&
+      !state.selection.selectionTarget
+    )
+      return false;
     if (state.selection.status !== 'ready') return false;
     const trackCommand = trackDecisionCommand(id);
     if (trackCommand?.scope === 'id') return true;
@@ -10355,7 +10449,26 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
         typeof selectionApi?.['current'] === 'function'
           ? await Promise.resolve((selectionApi['current'] as (opts: unknown) => unknown)({ includeText: true }))
           : readSelectionInfoLive().value;
-      return { selection: normalizeSelectionInfo(rawSelection), cellTarget, tableCellSelection };
+      const selection = normalizeSelectionInfo(rawSelection);
+      let paintedTarget: TextSelectionTarget | null = null;
+      if (
+        selection &&
+        !selection.empty &&
+        !selection.selectionTarget &&
+        selection.target?.kind === 'text' &&
+        !cellTarget
+      ) {
+        const nativeSelection = readHostSelectionSnapshot();
+        paintedTarget = heldPaintedTextSelectionTarget();
+        if (
+          paintedTarget &&
+          (!nativeSelection ||
+            !appliedSelectionPresentation(selectionSliceFromInfo(selection, 'ready')) ||
+            readHostSelectionSnapshot() !== nativeSelection)
+        )
+          return { selection: null, cellTarget: null, tableCellSelection: null, paintedTarget: null };
+      }
+      return { selection, cellTarget, tableCellSelection, paintedTarget };
     };
     const waitForSelectionSettle = (): Promise<void> => new Promise<void>((resolve) => setTimeout(resolve, 16));
 
@@ -10378,7 +10491,12 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
 
     // Text selection settled: apply inline + paragraph.
     if (selectionRead?.selection && !selectionRead.selection.empty && key !== painter.sourceSelectionKey) {
-      await applyFormatPainter(selectionRead.selection, selectionRead.cellTarget, selectionRead.tableCellSelection);
+      await applyFormatPainter(
+        selectionRead.selection,
+        selectionRead.cellTarget,
+        selectionRead.tableCellSelection,
+        selectionRead.paintedTarget,
+      );
       return;
     }
 
@@ -10390,7 +10508,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       if (!caretSel) return;
       const caretKey = selectionKey(caretSel);
       if (caretKey === painter.sourceSelectionKey) return;
-      await applyFormatPainter(caretSel, caretRead.cellTarget, caretRead.tableCellSelection);
+      await applyFormatPainter(caretSel, caretRead.cellTarget, caretRead.tableCellSelection, caretRead.paintedTarget);
     }
   };
 
@@ -10398,6 +10516,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     selection: SelectionInfo,
     cellTarget: TextSelectionTarget | null,
     tableCellSelection: ReturnType<typeof tableCellSelectionForTarget>,
+    paintedTarget: TextSelectionTarget | null,
   ): Promise<void> => {
     const snap = painter.snapshot;
     if (!snap) {
@@ -10423,7 +10542,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
 
     // TextTarget (segments/blockIds) for paragraph apply; SelectionTarget for inline apply
     const selTarget = selection.target;
-    const selectionTarget = cellTarget ?? selection.selectionTarget;
+    const selectionTarget = cellTarget ?? paintedTarget ?? selection.selectionTarget;
 
     const selectionIsEmpty = selection.empty === true;
 
@@ -10765,15 +10884,22 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       const snapshot = selectionSub.get();
       if (snapshot.empty) return null;
       const cells = currentCellSelectionTarget();
+      const painted = cells ? null : currentUnrepresentableSelectionTarget(snapshot);
+      const hostSelection = selectionHostSnapshots.get(snapshot);
+      if (
+        (cells || painted || (hostSelection && !snapshot.selectionTarget)) &&
+        (!hostSelection || readHostSelectionSnapshot() !== hostSelection)
+      )
+        return null;
       if (!snapshot.target && !snapshot.selectionTarget && !cells) return null;
       const capture: SelectionCapture = {
         ...snapshot,
         capturedAt: Date.now(),
         ...(cells ? { _tableCellSelectionTarget: cells } : {}),
+        ...(painted ? { _paintedSelectionTarget: painted } : {}),
       };
       // Record the host selection the captured slice was resolved from, not
       // the current one: a pending refresh can leave the slice behind the host.
-      const hostSelection = selectionHostSnapshots.get(snapshot);
       if (hostSelection) selectionHostSnapshots.set(capture, hostSelection);
       return capture;
     },
@@ -10797,7 +10923,12 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
         ? capturedTableCellTarget((capture as CellSelectionCapture)._tableCellSelectionTarget)
         : null;
       if (hasCellTarget && !cellTarget) return done({ ok: false, reason: SUPERDOC_UI_REASONS.targetUnresolved });
-      const target = cellTarget ?? selectionTargetForRestore(capture);
+      const hasPaintedTarget = '_paintedSelectionTarget' in capture;
+      const paintedTarget = hasPaintedTarget
+        ? capturedTableCellTarget((capture as CellSelectionCapture)._paintedSelectionTarget)
+        : null;
+      if (hasPaintedTarget && !paintedTarget) return done({ ok: false, reason: SUPERDOC_UI_REASONS.targetUnresolved });
+      const target = cellTarget ?? paintedTarget ?? selectionTargetForRestore(capture);
       if (!target) return done({ ok: false, reason: SUPERDOC_UI_REASONS.targetUnresolved });
       // A tracked-space range whose host selection is still the one it was
       // resolved from is already restored. Rebuilding it from public offsets
@@ -10818,7 +10949,10 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       try {
         return done(
           normalizeHostSelectionApplyResult(
-            hostMethod(resolved.helper, 'apply')?.(target, ...(cellTarget ? [{ tableCells: true }] : [])),
+            hostMethod(resolved.helper, 'apply')?.(
+              target,
+              ...(cellTarget ? [{ tableCells: true }] : paintedTarget ? [{ offsetSpace: 'selection' }] : []),
+            ),
           ),
         );
       } catch {

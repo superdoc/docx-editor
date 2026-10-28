@@ -71,6 +71,10 @@ async function routeSampleDocx(page: Page, docx: Buffer): Promise<void> {
   });
 }
 
+async function pageCount(page: Page): Promise<number> {
+  return page.evaluate(() => window.collaborationExample.activeEditor?.pageMetrics?.getSnapshot().pages.length ?? 0);
+}
+
 async function exportDocumentXml(page: Page): Promise<string> {
   const download = page.waitForEvent('download', { timeout: 120_000 });
   await page.getByRole('button', { name: 'Export DOCX' }).click();

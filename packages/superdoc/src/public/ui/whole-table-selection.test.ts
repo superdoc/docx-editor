@@ -22,7 +22,12 @@ const empty = {
 };
 const table = { ...empty, empty: false, selectionTarget: target };
 
-function heldTableFormatting() {
+function heldTableFormatting(
+  contract: 'text' | 'object' | 'legacy-object' = 'text',
+  initiallySelected = false,
+  priorRange = false,
+  actualTableAtCapture?: 'missing' | 'foreign',
+) {
   const story = target.story;
   const segments = ['first-cell', 'middle-cell', 'last-cell'].map((blockId) => ({
     blockId,
@@ -30,6 +35,12 @@ function heldTableFormatting() {
   }));
   const selected = {
     ...table,
+    selectionTarget:
+      contract === 'object'
+        ? null
+        : contract === 'legacy-object'
+          ? { ...target, end: { ...target.end, offset: 6 } }
+          : target,
     target: { kind: 'text', story, segments },
     tableSelection: {
       kind: 'tableCells',
@@ -49,14 +60,36 @@ function heldTableFormatting() {
       })),
     },
   };
-  let nodeId: string | null = null;
+  let nodeId: string | null = initiallySelected ? 'table' : null;
   let listener: ((nodeId: string | null) => void) | null = null;
-  let hostSelection: object = {
+  let hostSelection: object | null = {
     revision: 1,
     anchor: { blockId: 'first-cell', blockOffset: 0 },
     focus: { blockId: 'last-cell', blockOffset: 5 },
     story,
   };
+  const tableHostSelection =
+    contract === 'text'
+      ? hostSelection
+      : {
+          ...hostSelection,
+          focus: { blockId: 'last-cell', blockOffset: 6 },
+        };
+  if (contract !== 'text')
+    hostSelection = {
+      revision: 0,
+      anchor: { blockId: 'first-cell', blockOffset: 0 },
+      focus: { blockId: 'first-cell', blockOffset: 0 },
+      story,
+    };
+  if (priorRange)
+    hostSelection = {
+      revision: 0,
+      anchor: { blockId: 'first-cell', blockOffset: 1 },
+      focus: { blockId: 'last-cell', blockOffset: 2 },
+      story,
+    };
+  if (initiallySelected) hostSelection = tableHostSelection;
   let mounted = {};
   let lifetime = new AbortController();
   let applied: unknown = selected;
@@ -70,15 +103,28 @@ function heldTableFormatting() {
     return { success: true };
   });
   let selectionListener: ((snapshot: object) => void) | null = null;
-  const selectionSource = {
+  let selectionSource = {
     getSnapshot: () => hostSelection,
     subscribe: (next: typeof selectionListener) => {
       selectionListener = next;
       return () => {};
     },
   };
+  let initialTableRead = initiallySelected;
+  const actualTableReads: Array<string | null> = [];
   const tableSource = {
-    getWholeTableNodeId: () => nodeId,
+    getWholeTableNodeId: () => {
+      const value = initialTableRead
+        ? nodeId
+        : actualTableAtCapture === 'missing'
+          ? null
+          : actualTableAtCapture === 'foreign'
+            ? 'other-table'
+            : nodeId;
+      initialTableRead = false;
+      actualTableReads.push(value);
+      return value;
+    },
     subscribeWholeTable: (next: typeof listener) => {
       listener = next;
       return () => {};
@@ -118,6 +164,7 @@ function heldTableFormatting() {
   const select = () => {
     nodeId = 'table';
     listener!('table');
+    hostSelection = tableHostSelection;
   };
   return {
     ui,
@@ -125,7 +172,17 @@ function heldTableFormatting() {
     setAlignment,
     alignments,
     selected,
-    publishRange: () => selectionListener?.(hostSelection),
+    actualTableReads,
+    rebindToSettledTable: () => {
+      nodeId = 'table';
+      hostSelection = tableHostSelection;
+      selectionSource = { ...selectionSource };
+      superdoc.activeEditor = { ...superdoc.activeEditor };
+      events.get('active-editor-change')?.();
+    },
+    publishRange: () => {
+      if (hostSelection) selectionListener?.(hostSelection);
+    },
     clear: () => {
       nodeId = null;
       listener!(null);
@@ -138,6 +195,23 @@ function heldTableFormatting() {
         story,
       };
     },
+    changeRawIdentity: () => {
+      hostSelection = { ...hostSelection };
+    },
+    loseNative: () => {
+      hostSelection = null;
+    },
+    wrongNativeBlock: () => {
+      hostSelection = { ...tableHostSelection, focus: { blockId: 'other-cell', blockOffset: 6 } };
+      selectionListener?.(hostSelection);
+    },
+    wrongStory: () => {
+      hostSelection = {
+        ...tableHostSelection,
+        story: { kind: 'story', storyType: 'headerFooterPart', refId: 'header' },
+      };
+      selectionListener?.(hostSelection);
+    },
     retire: () => {
       lifetime.abort();
       lifetime = new AbortController();
@@ -145,8 +219,19 @@ function heldTableFormatting() {
     remount: () => {
       mounted = {};
     },
-    sourceChange: () => events.get('document-replaced')?.({ host }),
-    mutateSource: () => hostEvent?.({ type: 'document:mutated' }),
+    sourceChange: () => {
+      applied = null;
+      events.get('document-replaced')?.({ host });
+    },
+    mutateSource: () => {
+      applied = null;
+      hostEvent?.({ type: 'document:mutated' });
+    },
+    applyCurrentSource: () => {
+      applied = selected;
+      hostSelection = { ...tableHostSelection, revision: 2 };
+      selectionListener?.(hostSelection);
+    },
     changeDocument: () => {
       superdoc.activeEditor.doc = { ...doc };
     },
@@ -176,6 +261,170 @@ function heldTableFormatting() {
 }
 
 describe('whole-table host selection subscription', () => {
+  it.each([
+    ['initial attachment', 'missing', true],
+    ['initial attachment', 'foreign', true],
+    ['native publication', 'missing', false],
+    ['native publication', 'foreign', false],
+  ] as const)(
+    'refuses a captured object table from %s when the actual table identity is %s (initially selected: %s)',
+    async (_route, actualTableAtCapture, initiallySelected) => {
+      const h = heldTableFormatting('object', initiallySelected, false, actualTableAtCapture);
+      try {
+        if (!initiallySelected) {
+          h.select();
+          h.publishRange();
+        }
+        expect(h.ui.selection.getSnapshot().tableSelection?.tableId).toBe('table');
+        expect(h.ui.selection.getSnapshot().selectionTarget).toBeNull();
+        const readsBeforeDispatch = h.actualTableReads.length;
+        void executeFirstPartyCommandAsync(h.ui, 'text-align', 'center').catch(() => {});
+        for (let i = 0; i < 8; i++) await Promise.resolve();
+        expect(h.actualTableReads.slice(readsBeforeDispatch)).toContain(
+          actualTableAtCapture === 'missing' ? null : 'other-table',
+        );
+        expect(h.setAlignment).not.toHaveBeenCalled();
+        expect(h.alignments.size).toBe(0);
+      } finally {
+        h.destroy();
+      }
+    },
+  );
+
+  it('reacquires the same object table after its source mutation and current native presentation', async () => {
+    const h = heldTableFormatting('object');
+    try {
+      h.select();
+      h.publishRange();
+      void executeFirstPartyCommandAsync(h.ui, 'text-align', 'center').catch(() => {});
+      await vi.waitFor(() => expect(h.setAlignment).toHaveBeenCalledTimes(3));
+      h.mutateSource();
+      h.applyCurrentSource();
+      void executeFirstPartyCommandAsync(h.ui, 'text-align', 'right').catch(() => {});
+      await vi.waitFor(() => expect(h.setAlignment).toHaveBeenCalledTimes(6));
+      expect([...h.alignments]).toEqual(['first-cell', 'middle-cell', 'last-cell'].map((id) => [id, 'right']));
+    } finally {
+      h.destroy();
+    }
+  });
+
+  it('does not reacquire an object table from a native event before the new source has applied', async () => {
+    const h = heldTableFormatting('object');
+    try {
+      h.select();
+      h.publishRange();
+      h.mutateSource();
+      h.publishRange();
+      void executeFirstPartyCommandAsync(h.ui, 'text-align', 'center').catch(() => {});
+      for (let i = 0; i < 8; i++) await Promise.resolve();
+      expect(h.setAlignment).not.toHaveBeenCalled();
+    } finally {
+      h.destroy();
+    }
+  });
+
+  it.each(['text', 'legacy-object', 'object'] as const)(
+    'attaches to an already applied %s table without requiring another native publication',
+    async (contract) => {
+      const h = heldTableFormatting(contract, true);
+      try {
+        void executeFirstPartyCommandAsync(h.ui, 'text-align', 'center').catch(() => {});
+        await vi.waitFor(() => expect(h.setAlignment).toHaveBeenCalledTimes(3));
+      } finally {
+        h.destroy();
+      }
+    },
+  );
+
+  it.each(['text', 'object'] as const)('rebinds to an already applied %s table', async (contract) => {
+    const h = heldTableFormatting(contract);
+    try {
+      h.rebindToSettledTable();
+      void executeFirstPartyCommandAsync(h.ui, 'text-align', 'center').catch(() => {});
+      await vi.waitFor(() => expect(h.setAlignment).toHaveBeenCalledTimes(3));
+    } finally {
+      h.destroy();
+    }
+  });
+
+  it('does not bind a prior noncollapsed range beside a new table notification', async () => {
+    const h = heldTableFormatting('object', false, true);
+    try {
+      h.select();
+      h.publishRange();
+      void executeFirstPartyCommandAsync(h.ui, 'text-align', 'center').catch(() => {});
+      await vi.waitFor(() => expect(h.setAlignment).toHaveBeenCalledTimes(3));
+    } finally {
+      h.destroy();
+    }
+  });
+
+  it.each(['legacy-object', 'object'] as const)(
+    'aligns every object-bearing table paragraph with the %s public contract while the read is held',
+    async (contract) => {
+      const h = heldTableFormatting(contract);
+      try {
+        h.select();
+        h.publishRange();
+        expect(h.ui.selection.getSnapshot().selectionTarget).toEqual(h.selected.selectionTarget);
+        expect(h.ui.selection.getSnapshot().target?.segments).toHaveLength(3);
+        void executeFirstPartyCommandAsync(h.ui, 'text-align', 'center').catch(() => {});
+        await vi.waitFor(() => expect(h.setAlignment).toHaveBeenCalledTimes(3));
+        expect([...h.alignments]).toEqual(['first-cell', 'middle-cell', 'last-cell'].map((id) => [id, 'center']));
+      } finally {
+        h.destroy();
+      }
+    },
+  );
+
+  it.each([
+    'clear',
+    'changeSelection',
+    'retire',
+    'remount',
+    'sourceChange',
+    'mutateSource',
+    'changeDocument',
+    'changeTable',
+    'unpaint',
+    'changeAppliedTarget',
+    'changeAppliedCells',
+    'queueInput',
+    'changeRawIdentity',
+    'loseNative',
+    'wrongNativeBlock',
+    'wrongStory',
+  ] as const)('does not reuse an object-bearing table paragraph seed after %s', async (change) => {
+    const h = heldTableFormatting('object');
+    try {
+      h.select();
+      h.publishRange();
+      h[change]();
+      void executeFirstPartyCommandAsync(h.ui, 'text-align', 'center').catch(() => {});
+      for (let i = 0; i < 8; i++) await Promise.resolve();
+      expect(h.setAlignment).not.toHaveBeenCalled();
+    } finally {
+      h.destroy();
+    }
+  });
+
+  it.each(['unpublished', 'wrongNativeBlock', 'wrongStory', 'sourceChange'] as const)(
+    'does not bind an object-bearing seed to a mismatched native publication (%s)',
+    async (change) => {
+      const h = heldTableFormatting('object');
+      try {
+        h.select();
+        if (change !== 'unpublished') h[change]();
+        if (change === 'sourceChange') h.publishRange();
+        void executeFirstPartyCommandAsync(h.ui, 'text-align', 'center').catch(() => {});
+        for (let i = 0; i < 8; i++) await Promise.resolve();
+        expect(h.setAlignment).not.toHaveBeenCalled();
+      } finally {
+        h.destroy();
+      }
+    },
+  );
+
   it('aligns every current table paragraph after a range publication makes its held read stale', async () => {
     const h = heldTableFormatting();
     try {

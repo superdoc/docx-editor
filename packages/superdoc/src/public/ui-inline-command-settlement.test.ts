@@ -95,7 +95,7 @@ describe('inline command state settlement', () => {
         await expect(ui.commands.executeAsync('bold')).resolves.toBe(fixture.receipt);
         expect(fixture.bold).toHaveBeenCalledWith(
           { target: selection.selectionTarget, value: !initial },
-          { offsetSpace: 'selection' },
+          { offsetSpace: 'kernel' },
         );
         expect(fixture.readEffectiveInlineUniformity).toHaveBeenCalledTimes(2);
         expect(ui.commands.get('bold').getState().active).toBe(!initial);

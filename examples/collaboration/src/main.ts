@@ -3,6 +3,12 @@ import 'superdoc/style.css';
 import { renderParticipants } from './participants';
 import { demoCredentials } from './demo-credentials';
 
+declare global {
+  interface Window {
+    collaborationExample: SuperDoc;
+  }
+}
+
 const exportButton = document.querySelector<HTMLButtonElement>('#export-docx');
 const status = document.querySelector<HTMLSpanElement>('#status');
 if (!exportButton || !status) throw new Error('The collaboration controls are missing.');
@@ -52,6 +58,8 @@ const superdoc = new SuperDoc({
     console.error(payload.error);
   },
 });
+
+window.collaborationExample = superdoc;
 
 exportButton.addEventListener('click', async () => {
   exportButton.disabled = true;

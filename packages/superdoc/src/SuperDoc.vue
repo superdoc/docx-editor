@@ -1301,6 +1301,9 @@ const onV2EditorReady = (payload) => {
     // `config.extensions` are registered on the active document. Backed by the
     // host extension manager; never exposes the raw manager or command handles.
     extensions: createV2ExtensionsFacet(host),
+    get visuals() {
+      return typeof host?.getHostVisuals === 'function' ? host.getHostVisuals() : null;
+    },
     // Font parity: the active document's font runtime facet (read/write font API + report stream).
     // `SuperDoc.ts` routes `superdoc.fonts.*` and the `fonts-changed` relay through this for v2.
     fonts: fonts ?? host?.getFontRuntime?.() ?? null,

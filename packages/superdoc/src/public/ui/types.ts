@@ -133,6 +133,7 @@ import type {
 
 import type { BrowserDocumentApi, PartialBrowserDocumentApi } from '../browser-document-api.js';
 import type { ExportParams } from '../export-types.js';
+import type { SuperDocVisualHandle, SuperDocVisualOptions } from '../../core/extensions/types.js';
 import type { DocumentReplacementResult } from '../document-replacement.js';
 export type { DocumentReplacementResult } from '../document-replacement.js';
 
@@ -1767,9 +1768,14 @@ export interface SuperDocUIOptions {
  * A disposable subscription scope. Subscriptions created inside the scope are
  * released together when the scope is disposed.
  */
+export interface DecorationsHandle {
+  highlight(id: string, options?: SuperDocVisualOptions): SuperDocVisualHandle;
+}
+
 export interface SuperDocUIScope {
   /** Subscribe within the scope. */
   select<TSlice>(selector: SelectorFn<SuperDocUIState, TSlice>, equality?: EqualityFn<TSlice>): Subscribable<TSlice>;
+  readonly decorations: DecorationsHandle;
   /** Dispose every subscription created within the scope. */
   dispose(): void;
 }
@@ -1807,6 +1813,7 @@ export interface SuperDocUI {
   readonly document: DocumentHandle;
   /** Viewport / geometry surface. */
   readonly viewport: ViewportHandle;
+  readonly decorations: DecorationsHandle;
   /** Metadata geometry/navigation convenience surface. */
   readonly metadata: MetadataHandle;
   /** Table-context surface (shared `table-*` routing truth). */

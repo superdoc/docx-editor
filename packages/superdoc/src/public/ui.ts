@@ -81,6 +81,7 @@ export type {
   DocumentHandle,
   DocumentReplacementResult,
   ViewportHandle,
+  DecorationsHandle,
   StylesHandle,
   StylesUpdateToMatchSelectionInput,
   ActiveParagraphStyle,

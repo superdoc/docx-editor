@@ -25,24 +25,49 @@ either after a reload, export the changed DOCX and save it through your applicat
 | Responsibility                      | Public surface                                | Included in export |
 | ----------------------------------- | --------------------------------------------- | ------------------ |
 | Finding, text anchor, and JSON data | `doc.metadata`                                | Yes                |
-| Risk paint over the resolved text   | `ctx.visuals.highlight()`                     | No                 |
+| Risk paint over the resolved text   | `superdoc.ui.decorations.highlight()`         | No                 |
 | Proposed rewrite for human review   | `doc.replace(..., { changeMode: 'tracked' })` | Yes                |
 
 Metadata does not render by itself. List and resolve findings when the document opens, then paint their current ranges.
 Use tracked changes for edits because SuperDoc already renders and exports them as reviewable revisions.
 
+## Paint highlights from your UI
+
+`superdoc.ui.decorations.highlight(id, options)` creates a render-only highlight layer once the document is ready. It
+needs no extension. Pass your own `id`; the handle keeps it:
+
+```ts
+const finding = superdoc.ui.decorations.highlight('finding-7', { className: 'review-risk' });
+finding.replace([riskTarget]);
+```
+
+It throws if no document is ready, so call it from `onReady` or later. Replacing the document or switching the active
+editor disposes the handles created for the previous document; create them again for the new one. Handles created after
+the replacement are kept. To remove highlights together when a panel closes, create them
+from a scope and dispose the scope:
+
+```ts
+const scope = superdoc.ui.createScope();
+scope.decorations.highlight('finding-7', { className: 'review-risk' }).replace([riskTarget]);
+// Later, when the panel closes:
+scope.dispose();
+```
+
+Extensions keep using `ctx.visuals.highlight()` inside `activate(ctx)`. Both create the same kind of handle.
+
 ## Compose overlapping highlights
 
-A highlight supplies a host CSS class through `ctx.visuals.highlight(id, { className })`. Overlapping highlights keep
+A highlight supplies a host CSS class through `ui.decorations.highlight(id, { className })` or
+`ctx.visuals.highlight(id, { className })`. Overlapping highlights keep
 both classes on their shared text. Define their appearance in your stylesheet; registering a provider later is not a
 visual priority setting. When two classes set the same CSS property, the normal CSS cascade decides the result.
 
 For example, combine a background and an underline so both findings remain visible regardless of registration order.
-Inside your extension's `activate(ctx)`, use public targets from the Document API:
+Use public targets from the Document API:
 
 ```ts
-const risk = ctx.visuals.highlight('risk', { className: 'review-risk' });
-const definedTerm = ctx.visuals.highlight('defined-term', { className: 'review-defined-term' });
+const risk = superdoc.ui.decorations.highlight('risk', { className: 'review-risk' });
+const definedTerm = superdoc.ui.decorations.highlight('defined-term', { className: 'review-defined-term' });
 risk.replace([riskTarget]);
 definedTerm.replace([definedTermTarget]);
 ```
@@ -60,7 +85,7 @@ definedTerm.replace([definedTermTarget]);
 ```
 
 `replace()` changes a handle's targets. `invalidate()` requests that its decoration provider run again, and `dispose()`
-removes that handle. These render-only styles do not add document edits or export to DOCX.
+removes that handle. A disposed handle ignores further calls. These render-only styles do not add document edits or export to DOCX.
 
 The [Track changes](/editor/custom-ui/tracked-changes) page owns navigation and accept/reject controls. Use
 [comments](/editor/custom-ui/comments) instead when people need a Word comment thread.

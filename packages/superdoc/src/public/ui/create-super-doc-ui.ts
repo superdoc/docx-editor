@@ -108,6 +108,7 @@ import type {
   SuperDocUIReceipt,
   SuperDocUIReceiptFailureCode,
   ViewportHandle,
+  DecorationsHandle,
   ViewportRect,
   ViewportRectResult,
   WorkflowActionResult,
@@ -12717,6 +12718,43 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     return value ? { target: value } : { reason: 'unresolved' };
   };
 
+  type HostVisuals = {
+    highlight(id: string, options?: unknown): ReturnType<DecorationsHandle['highlight']>;
+    generation(): number;
+  };
+  type DecorationOwnership = { visuals: HostVisuals; generation: number };
+  const liveDecorations = new Map<ReturnType<DecorationsHandle['highlight']>, DecorationOwnership>();
+  const currentHostVisuals = (): HostVisuals | null => (getEditor()?.visuals as HostVisuals | null | undefined) ?? null;
+  documentResetHooks.push(() => {
+    const current = currentHostVisuals();
+    for (const [handle, owner] of Array.from(liveDecorations)) {
+      if (owner.visuals !== current || owner.generation !== current.generation()) handle.dispose();
+    }
+  });
+  const createDecorationsHandle = (track?: (handle: { dispose(): void }) => void): DecorationsHandle => ({
+    highlight: (id, options) => {
+      if (disposed) throw new Error('ui.decorations.highlight called on a destroyed UI controller.');
+      const visuals = currentHostVisuals();
+      if (!visuals) throw new Error('ui.decorations.highlight requires a ready document.');
+      const inner = visuals.highlight(id, options);
+      const handle: ReturnType<DecorationsHandle['highlight']> = {
+        id: inner.id,
+        replace: (targets) => inner.replace(targets),
+        add: (targets) => inner.add(targets),
+        clear: () => inner.clear(),
+        invalidate: () => inner.invalidate(),
+        dispose: () => {
+          liveDecorations.delete(handle);
+          inner.dispose();
+        },
+      };
+      liveDecorations.set(handle, { visuals, generation: visuals.generation() });
+      track?.(handle);
+      return handle;
+    },
+  });
+  const decorations = createDecorationsHandle();
+
   const viewport: ViewportHandle = {
     getRects: async (input) => {
       const initialHost = getHost();
@@ -14118,6 +14156,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
   const createScope = (): SuperDocUIScope => {
     const scopeUnsubs: Array<() => void> = [];
     return {
+      decorations: createDecorationsHandle((handle) => scopeUnsubs.push(() => handle.dispose())),
       select: (selector, equality) => {
         const sub = select(selector, equality);
         return {
@@ -14139,6 +14178,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     if (disposed) return;
     watermark.destroy();
     clearContentControlHighlight();
+    for (const handle of Array.from(liveDecorations.keys())) handle.dispose();
     disposed = true;
     completedFallbackSearch = null;
     if (searchRefreshTimer !== null) clearTimeout(searchRefreshTimer);
@@ -14235,6 +14275,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     zoom,
     document: documentHandle,
     viewport,
+    decorations,
     metadata,
     tables,
     search,

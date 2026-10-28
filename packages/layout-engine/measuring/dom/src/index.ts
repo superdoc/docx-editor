@@ -2309,7 +2309,10 @@ async function measureParagraphBlock(
         return {
           markerWidth: markerBoxWidth,
           markerTextWidth: glyphWidth,
-          indentLeft: wordLayout.indentLeftPx ?? 0,
+          indentLeft:
+            wordLayout.textStartMode === 'paragraph'
+              ? (block.attrs?.indent?.left ?? 0)
+              : (wordLayout.indentLeftPx ?? 0),
           // For tab sizing in the renderer: expose gutter for word-layout lists
           gutterWidth: gutter,
         } as ParagraphMeasure['marker'];
@@ -2348,7 +2351,7 @@ async function measureParagraphBlock(
   const indentRight = sanitizeIndent(indent?.right);
   const firstLine = indent?.firstLine ?? 0;
   const hanging = indent?.hanging ?? 0;
-  const isWordLayoutList = Boolean(wordLayout?.marker);
+  const isWordLayoutList = Boolean(wordLayout?.marker) && wordLayout?.textStartMode !== 'paragraph';
   // Word quirk: justified paragraphs ignore first-line indent. The pm-adapter sets
   // suppressFirstLineIndent=true for these cases.
   const suppressFirstLine = (block.attrs as Record<string, unknown>)?.suppressFirstLineIndent === true;
@@ -6007,7 +6010,10 @@ async function measureListBlock(
       const { font: markerFont } = buildFontString(markerFontRun, fontContext);
       markerTextWidth = marker.markerText ? measureText(marker.markerText, markerFont, ctx) : 0;
       markerWidth = 0;
-      indentLeft = (wordLayout as WordParagraphLayoutOutput).indentLeftPx ?? 0;
+      indentLeft =
+        (wordLayout as WordParagraphLayoutOutput).textStartMode === 'paragraph'
+          ? (item.paragraph.attrs?.indent?.left ?? 0)
+          : ((wordLayout as WordParagraphLayoutOutput).indentLeftPx ?? 0);
     } else {
       // Fallback: legacy behavior for backwards compatibility
       const markerFontRun = getPrimaryRun(item.paragraph);

@@ -7,6 +7,37 @@ import {
 } from './list-marker-utils.js';
 import { LIST_MARKER_GAP, SPACE_SUFFIX_GAP_PX, DEFAULT_TAB_INTERVAL_PX } from './layout-constants.js';
 
+describe('historical prefixes at the current paragraph text start', () => {
+  for (const suffix of ['nothing', 'space', 'tab'] as const) {
+    for (const textStart of [-14, 0, 82, 144]) {
+      it(`preserves ${textStart}px text start for a ${suffix} prefix of either measured width`, () => {
+        for (const glyphWidth of [10, 60]) {
+          const reference: MinimalWordLayout = {
+            indentLeftPx: 96,
+            hangingPx: 24,
+            firstLinePx: 0,
+            tabsPx: [144],
+            marker: { markerText: 'LONG.', justification: 'left', suffix },
+          };
+          const original = resolveListMarkerGeometry(reference, 96, 0, 24, () => glyphWidth)!;
+          const current = { ...reference, textStartMode: 'paragraph' as const };
+          const geometry = resolveListMarkerGeometry(
+            current,
+            96,
+            Math.max(textStart - 96, 0),
+            Math.max(96 - textStart, 0),
+            () => glyphWidth,
+          )!;
+          expect(geometry.textStartPx).toBe(textStart);
+          expect(geometry.markerTextWidthPx).toBe(glyphWidth);
+          expect(geometry.suffixWidthPx).toBe(original.suffixWidthPx);
+          expect(geometry.markerStartPx - original.markerStartPx).toBe(textStart - original.textStartPx);
+        }
+      });
+    }
+  }
+});
+
 describe('resolveListTextStartPx', () => {
   const mockMeasureMarkerText = (text: string): number => text.length * 8; // 8px per character
   const twipsToPx = (twips: number): number => twips / 15;

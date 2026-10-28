@@ -102,6 +102,7 @@ export type WordListMarkerLayout = {
 };
 
 export type WordParagraphLayoutOutput = {
+  textStartMode?: 'paragraph';
   indentLeftPx: number;
   hangingPx: number;
   firstLinePx?: number;

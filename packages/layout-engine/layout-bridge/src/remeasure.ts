@@ -1794,6 +1794,7 @@ export function remeasureParagraph(
   const attrs = block.attrs as ParagraphBlockAttrs | undefined;
   const indent = attrs?.indent;
   const wordLayout = attrs?.wordLayout;
+  const isWordLayoutList = Boolean(wordLayout?.marker) && wordLayout?.textStartMode !== 'paragraph';
   const spacing = attrs?.spacing;
   // Preserve finite negative indents for paragraph width geometry. This mirrors
   // measuring/dom: negative indents expand the usable line width into the margin
@@ -1817,8 +1818,8 @@ export function remeasureParagraph(
   // Avoid widening the first line when a negative LEFT indent already expands the content area.
   // Negative right indent doesn't cause this problem — it only extends rightward.
   const hasNegativeLeftIndent = rawIndentLeft < 0;
-  const allowNegativeFirstLineOffset = !wordLayout?.marker && !hasNegativeLeftIndent && baseFirstLineOffset < 0;
-  const effectiveFirstLineOffset = wordLayout?.marker
+  const allowNegativeFirstLineOffset = !isWordLayoutList && !hasNegativeLeftIndent && baseFirstLineOffset < 0;
+  const effectiveFirstLineOffset = isWordLayoutList
     ? 0
     : allowNegativeFirstLineOffset
       ? baseFirstLineOffset
@@ -1863,7 +1864,7 @@ export function remeasureParagraph(
   // text starts at indentLeft. Applying the negative hanging offset again when
   // resolving inline tabs shifts every authored stop to the right by that amount.
   // Positive first-line list layouts still resolve tabs from their in-flow origin.
-  const firstLineTabOffset = wordLayout?.marker && baseFirstLineOffset < 0 ? 0 : baseFirstLineOffset;
+  const firstLineTabOffset = isWordLayoutList && baseFirstLineOffset < 0 ? 0 : baseFirstLineOffset;
   // A left float can displace the first-line list prefix. Keep split regions
   // and other marker directions on their existing layout path.
   const firstRegions = resolvedLineRegions?.[0];
@@ -1871,6 +1872,7 @@ export function remeasureParagraph(
   const floatingMarkerOffsetX =
     firstRegion &&
     firstRegion.offsetX > 0 &&
+    isWordLayoutList &&
     wordLayout?.marker &&
     getParagraphInlineDirection(block.attrs) !== 'rtl' &&
     (wordLayout.marker.justification ?? 'left') === 'left'
@@ -2355,7 +2357,7 @@ export function remeasureParagraph(
       indentLeft,
       firstLineTabOffset,
       maxWidth,
-      Boolean(wordLayout?.marker),
+      isWordLayoutList,
     );
   }
 

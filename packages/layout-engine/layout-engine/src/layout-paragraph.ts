@@ -123,6 +123,7 @@ export type FootnoteAnchorRef = {
  * This is a subset of the WordParagraphLayoutOutput from @superdoc/word-layout.
  */
 type WordLayoutAttrs = {
+  textStartMode?: 'paragraph';
   /** List marker layout information */
   marker?: {
     /** Width of the marker box in pixels */
@@ -349,7 +350,7 @@ function calculateFirstLineIndent(block: ParagraphBlock, measure: ParagraphMeasu
   const wordLayout = block.attrs?.wordLayout as WordLayoutAttrs | undefined;
 
   // Only apply first line indent in firstLineIndentMode
-  if (!wordLayout?.firstLineIndentMode) {
+  if (!wordLayout?.firstLineIndentMode || wordLayout.textStartMode === 'paragraph') {
     return 0;
   }
 

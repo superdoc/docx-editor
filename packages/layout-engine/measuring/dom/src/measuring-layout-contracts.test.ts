@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vite-plus/test';
 import { measureBlock, type TableMeasurementObservation } from './index.js';
-import type { DrawingBlock, FlowBlock, ListBlock, Measure, TableBlock } from '@superdoc/contracts';
+import type { DrawingBlock, FlowBlock, ListBlock, Measure, TableBlock, ParagraphBlock } from '@superdoc/contracts';
 
 const textRun = (text: string, fontSize = 16) => ({
   kind: 'text' as const,
@@ -18,6 +18,34 @@ const expectMeasureKind = <TKind extends Measure['kind']>(
 };
 
 describe('Measuring to Layout contract', () => {
+  it.each([-14, 48])('wraps a historical prefix exactly like plain text with first-line delta %i', async (delta) => {
+    const make = (): ParagraphBlock => ({
+      kind: 'paragraph',
+      id: 'retained-paragraph',
+      attrs: { indent: { left: 96, ...(delta < 0 ? { hanging: -delta } : { firstLine: delta }) } },
+      runs: [
+        textRun('Alpha'),
+        { kind: 'tab' },
+        textRun('Every following word preserves the authored tab and wraps predictably. '.repeat(10)),
+      ],
+    });
+    const plain = make(),
+      historical = make();
+    historical.attrs!.wordLayout = {
+      textStartMode: 'paragraph',
+      indentLeftPx: 96,
+      hangingPx: 24,
+      firstLinePx: 0,
+      tabsPx: [],
+      marker: { markerText: 'LONG.', justification: 'left', suffix: 'tab', run: { fontFamily: 'Arial', fontSize: 16 } },
+    };
+    const before = expectMeasureKind(await measureBlock(plain, 400), 'paragraph');
+    const after = expectMeasureKind(await measureBlock(historical, 400), 'paragraph');
+    expect(before.lines.length).toBeGreaterThan(1);
+    expect(after.lines).toEqual(before.lines);
+    expect(after.totalHeight).toBe(before.totalHeight);
+  });
+
   it('produces paragraph line geometry and total height for layout', async () => {
     const block: FlowBlock = {
       kind: 'paragraph',

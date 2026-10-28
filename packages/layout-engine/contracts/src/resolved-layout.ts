@@ -513,6 +513,7 @@ export type ResolvedHeaderFooterLayout = {
 
 /** Resolved list marker rendering data with pre-computed positioning. */
 export type ResolvedListMarkerItem = {
+  textStartPx?: number;
   /** Marker text content (e.g., "1.", "a)", bullet). */
   text: string;
   /** Horizontal justification. */

@@ -1,8 +1,87 @@
 import { describe, expect, it } from 'vite-plus/test';
 import { createFontResolver, resolvePhysicalFamily } from '@superdoc/font-system';
-import { createListMarkerElement, renderLegacyListMarker, renderResolvedListMarker } from './list-marker.js';
+import {
+  createListMarkerElement,
+  renderLegacyListMarker,
+  renderResolvedListMarker,
+  resolvePainterListMarkerGeometry,
+} from './list-marker.js';
 import type { ResolvedListMarkerItem } from '@superdoc/contracts';
 import type { MarkerTrackedChangeView } from './marker-tracked-change.js';
+
+describe.each(['measured', 'resolved'] as const)('historical marker %s painting', (renderer) => {
+  for (const textStartPx of [-14, 0, 82, 144]) {
+    it.each(['left', 'right', 'center'] as const)(
+      `keeps body text at ${textStartPx}px with %s historical justification`,
+      (justification) => {
+        const doc = document.implementation.createHTMLDocument('historical-prefix');
+        const lineEl = doc.createElement('div');
+        lineEl.textContent = 'Body text';
+        const run = { fontFamily: 'Arial', fontSize: 16 };
+        const marker = {
+          markerText: 'LONG.',
+          justification,
+          suffix: 'tab' as const,
+          run,
+          trackedChange: { id: 'historic-list', kind: 'delete' as const },
+        };
+        const wordLayout = {
+          textStartMode: 'paragraph' as const,
+          indentLeftPx: 96,
+          hangingPx: 24,
+          firstLinePx: 0,
+          marker,
+          tabsPx: [],
+        };
+        const indentLeftPx = 96,
+          firstLineIndentPx = Math.max(textStartPx - 96, 0),
+          hangingIndentPx = Math.max(96 - textStartPx, 0);
+        const geometry = resolvePainterListMarkerGeometry({
+          wordLayout,
+          indentLeftPx,
+          firstLineIndentPx,
+          hangingIndentPx,
+          markerTextWidthPx: 25,
+        })!;
+        if (renderer === 'measured')
+          renderLegacyListMarker({
+            doc,
+            lineEl,
+            wordLayout,
+            markerLayout: marker,
+            markerMeasure: { markerWidth: 24, markerTextWidth: 25 },
+            indentLeftPx,
+            firstLineIndentPx,
+            hangingIndentPx,
+          });
+        else
+          renderResolvedListMarker({
+            doc,
+            lineEl,
+            marker: {
+              text: 'LONG.',
+              justification,
+              suffix: 'tab',
+              run,
+              textStartPx,
+              markerStartPx: geometry.markerStartPx,
+              suffixWidthPx: geometry.suffixWidthPx,
+              firstLinePaddingLeftPx: 0,
+              trackedChange: marker.trackedChange,
+            },
+          });
+        expect(lineEl.style.paddingLeft).toBe(`${Math.max(textStartPx, 0)}px`);
+        expect(lineEl.style.textIndent).toBe(`${Math.min(textStartPx, 0)}px`);
+        const glyph = lineEl.querySelector<HTMLElement>('.superdoc-list-marker')!;
+        expect(glyph.style.position).toBe('absolute');
+        expect(glyph.style.left).toBe(`${geometry.markerStartPx}px`);
+        expect(glyph.style.textIndent).toBe('0px');
+        expect(glyph.textContent).toBe('LONG.');
+        expect(lineEl.querySelector('.superdoc-marker-suffix-tab')).toBeNull();
+      },
+    );
+  }
+});
 
 it('SD-5992 defaults an omitted measured marker justification to inline left', () => {
   const doc = document.implementation.createHTMLDocument('default-list-anchor');

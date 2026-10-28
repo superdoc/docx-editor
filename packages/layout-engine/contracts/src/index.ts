@@ -2567,6 +2567,7 @@ export type WordLayoutMarker = {
  * ```
  */
 export type WordLayoutConfig = {
+  textStartMode?: 'paragraph';
   /**
    * Whether this list uses first-line indent mode (true for input-rule-created lists).
    * When true, text positioning uses textStartPx instead of standard hanging indent calculations.

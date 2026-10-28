@@ -171,6 +171,50 @@ export const createListMarkerElement = (
   return markerContainer;
 };
 
+const renderMarkerAtParagraphTextStart = (params: {
+  doc: Document;
+  lineEl: HTMLElement;
+  text: string;
+  run: MarkerRunStyle;
+  markerStartPx: number;
+  textStartPx: number;
+  isRtl?: boolean;
+  sourceAnchor?: SourceAnchor;
+  resolvePhysical?: ResolvePhysicalFamily;
+  trackedChange?: MarkerTrackedChangeView;
+  trackedChangesConfig?: TrackedChangesRenderConfig;
+}): void => {
+  const {
+    doc,
+    lineEl,
+    text,
+    run,
+    markerStartPx,
+    textStartPx,
+    isRtl,
+    sourceAnchor,
+    resolvePhysical,
+    trackedChange,
+    trackedChangesConfig,
+  } = params;
+  lineEl.style[isRtl ? 'paddingRight' : 'paddingLeft'] = `${Math.max(textStartPx, 0)}px`;
+  lineEl.style.textIndent = `${Math.min(textStartPx, 0)}px`;
+  if (run.vanish) return;
+  const element = createListMarkerElement(
+    doc,
+    text,
+    run,
+    sourceAnchor,
+    resolvePhysical,
+    trackedChange,
+    trackedChangesConfig,
+  );
+  element.style.position = 'absolute';
+  element.style.textIndent = '0px';
+  element.style[isRtl ? 'right' : 'left'] = `${markerStartPx}px`;
+  lineEl.prepend(element);
+};
+
 export const renderLegacyListMarker = (params: {
   doc: Document;
   lineEl: HTMLElement;
@@ -204,6 +248,32 @@ export const renderLegacyListMarker = (params: {
     trackedChangesConfig,
   } = params;
   const markerTextWidth = markerTextWidthPx ?? markerMeasure?.markerTextWidth ?? 0;
+  if (wordLayout?.textStartMode === 'paragraph') {
+    const geometry = resolvePainterListMarkerGeometry({
+      wordLayout,
+      indentLeftPx,
+      hangingIndentPx,
+      firstLineIndentPx,
+      markerTextWidthPx: markerTextWidth,
+      markerOffsetX,
+    });
+    if (geometry) {
+      renderMarkerAtParagraphTextStart({
+        doc,
+        lineEl,
+        text: markerLayout.markerText ?? '',
+        run: markerLayout.run ?? {},
+        markerStartPx: geometry.markerStartPx,
+        textStartPx: geometry.textStartPx,
+        isRtl,
+        sourceAnchor,
+        resolvePhysical,
+        trackedChange: markerLayout.trackedChange,
+        trackedChangesConfig,
+      });
+      return;
+    }
+  }
   const shouldUseSharedInlinePrefixGeometry =
     markerLayout?.justification === 'left' &&
     wordLayout?.firstLineIndentMode !== true &&
@@ -317,6 +387,22 @@ export const renderResolvedListMarker = (params: {
   trackedChangesConfig?: TrackedChangesRenderConfig;
 }): void => {
   const { doc, lineEl, marker, isRtl, sourceAnchor, resolvePhysical, trackedChangesConfig } = params;
+  if (marker.textStartPx != null && Number.isFinite(marker.textStartPx)) {
+    renderMarkerAtParagraphTextStart({
+      doc,
+      lineEl,
+      text: marker.text,
+      run: { ...marker.run, vanish: marker.vanish },
+      markerStartPx: marker.markerStartPx,
+      textStartPx: marker.textStartPx,
+      isRtl,
+      sourceAnchor: marker.sourceAnchor ?? sourceAnchor,
+      resolvePhysical,
+      trackedChange: marker.trackedChange,
+      trackedChangesConfig,
+    });
+    return;
+  }
   if (isRtl) {
     lineEl.style.paddingRight = `${Math.max(marker.firstLinePaddingLeftPx, 0)}px`;
   } else {

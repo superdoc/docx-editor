@@ -869,7 +869,11 @@ function* renderMeasuredLines(
   } = resolveMarkerIndent(paraIndent, isRtl);
   const wordLayoutIndentLeft = (wordLayout as { indentLeftPx?: number } | undefined)?.indentLeftPx;
   const tableMarkerIndentLeft =
-    measure.marker?.indentLeft ?? wordLayoutIndentLeft ?? (typeof paraIndent?.left === 'number' ? paraIndent.left : 0);
+    wordLayout?.textStartMode === 'paragraph'
+      ? paraMarkerAnchorIndent
+      : (measure.marker?.indentLeft ??
+        wordLayoutIndentLeft ??
+        (typeof paraIndent?.left === 'number' ? paraIndent.left : 0));
   const suppressFirstLineIndent = block.attrs?.suppressFirstLineIndent === true;
   const firstLineOffset = suppressFirstLineIndent ? 0 : (paraIndent?.firstLine ?? 0) - (paraIndent?.hanging ?? 0);
   const expandedRunsForBlock = containerKind === 'body-fragment' ? expandRunsForInlineNewlines(block.runs) : undefined;
@@ -906,7 +910,9 @@ function* renderMeasuredLines(
     const isFirstLine = lineIdx === 0 && !continuesFromPrev;
     const isListFirstLine = Boolean(lineIdx === 0 && !continuesFromPrev && legacyMarkerWidth && markerLayout);
     const shouldUseResolvedListTextStart =
-      isListFirstLine && explicitSegmentPositioning && listFirstLineTextStartPx != null;
+      isListFirstLine &&
+      (explicitSegmentPositioning || wordLayout?.textStartMode === 'paragraph') &&
+      listFirstLineTextStartPx != null;
     const globalLineIndex = lineIndexOffset + lineIdx;
     const isLastLineOfParagraph =
       (linesOverride

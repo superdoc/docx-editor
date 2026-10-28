@@ -105,6 +105,9 @@ export type MinimalMarker = {
  * Contains the subset of word layout properties needed to determine text positioning.
  */
 export type MinimalWordLayout = {
+  textStartMode?: 'paragraph';
+  firstLinePx?: number;
+  hangingPx?: number;
   /** Whether this list uses first-line indent mode (input-rule created lists) */
   firstLineIndentMode?: boolean;
   /** Pre-calculated horizontal position where text should start */
@@ -298,6 +301,20 @@ export function resolveListMarkerGeometry(
   const marker = wordLayout?.marker;
   if (!marker) {
     return undefined;
+  }
+
+  if (wordLayout?.textStartMode === 'paragraph') {
+    const reference = resolveListMarkerGeometry(
+      { ...wordLayout, textStartMode: undefined },
+      wordLayout.indentLeftPx ?? indentLeft,
+      wordLayout.firstLinePx ?? 0,
+      wordLayout.hangingPx ?? 0,
+      measureMarkerText,
+      markerOffsetX,
+    );
+    if (!reference) return undefined;
+    const textStartPx = indentLeft + firstLine - hanging;
+    return { ...reference, textStartPx, markerStartPx: reference.markerStartPx + textStartPx - reference.textStartPx };
   }
 
   const markerTextWidthPx = getMarkerTextWidthPx(marker, measureMarkerText);

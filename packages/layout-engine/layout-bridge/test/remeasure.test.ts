@@ -26,6 +26,43 @@ import { measureCharacterX } from '../src/text-measurement.ts';
 import { renderLine } from '../../painters/dom/src/runs/render-line.js';
 import type { RunRenderContext } from '../../painters/dom/src/runs/types.js';
 
+describe('historical prefix remeasurement', () => {
+  it.each([-14, 48])('preserves plain body tab geometry with a first-line delta of %i', (delta) => {
+    const make = (): ParagraphBlock => ({
+      kind: 'paragraph',
+      id: 'historical-tab',
+      attrs: {
+        indent: { left: 96, ...(delta < 0 ? { hanging: -delta } : { firstLine: delta }) },
+        tabs: [{ val: 'start', pos: 2160 }],
+      },
+      runs: [
+        { text: 'Alpha', fontFamily: 'Arial', fontSize: 16 },
+        { kind: 'tab', text: '\t' },
+        {
+          text: 'Every following word preserves the authored tab and wraps predictably. '.repeat(5),
+          fontFamily: 'Arial',
+          fontSize: 16,
+        },
+      ],
+    });
+    const plain = make(),
+      historical = make();
+    historical.attrs!.wordLayout = {
+      textStartMode: 'paragraph',
+      indentLeftPx: 96,
+      hangingPx: 24,
+      firstLinePx: 0,
+      tabsPx: [],
+      marker: { markerText: 'LONG.', justification: 'left', suffix: 'tab', run: { fontFamily: 'Arial', fontSize: 16 } },
+    };
+    const before = remeasureParagraph(plain, 400);
+    const after = remeasureParagraph(historical, 400);
+    expect(before.lines.length).toBeGreaterThan(1);
+    expect(after.lines).toEqual(before.lines);
+    expect(after.totalHeight).toBe(before.totalHeight);
+  });
+});
+
 describe('single hanging-tab remeasurement', () => {
   it.each([
     ['hanging start', 'start', undefined, false, 720, true],

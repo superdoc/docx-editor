@@ -141,8 +141,8 @@ export function resolveParagraphContent(
   const shouldUseSharedInlinePrefixGeometry =
     !fragment.continuesFromPrev &&
     fragment.markerWidth &&
-    wordLayout?.marker?.justification === 'left' &&
-    wordLayout.firstLineIndentMode !== true &&
+    (wordLayout?.textStartMode === 'paragraph' ||
+      (wordLayout?.marker?.justification === 'left' && wordLayout.firstLineIndentMode !== true)) &&
     typeof fragment.markerTextWidth === 'number' &&
     Number.isFinite(fragment.markerTextWidth) &&
     fragment.markerTextWidth >= 0;
@@ -236,6 +236,12 @@ export function resolveParagraphContent(
       // The `@superdoc/common` marker type mirrors the contracts shape; narrow
       // it to the canonical `MarkerTrackedChange` at this single boundary.
       ...(m.trackedChange ? { trackedChange: m.trackedChange as MarkerTrackedChange } : {}),
+      ...(wordLayout?.textStartMode === 'paragraph' && listFirstLineMarkerGeometry
+        ? {
+            textStartPx: listFirstLineMarkerGeometry.textStartPx,
+            markerStartPx: listFirstLineMarkerGeometry.markerStartPx,
+          }
+        : {}),
     };
   }
 
@@ -265,7 +271,9 @@ export function resolveParagraphContent(
     const hasListFirstLineMarker =
       index === 0 && !fragment.continuesFromPrev && fragment.markerWidth && wordLayout?.marker;
     const shouldUseResolvedListTextStart =
-      hasListFirstLineMarker && hasExplicitSegmentPositioning && listFirstLineTextStartPx != null;
+      hasListFirstLineMarker &&
+      (hasExplicitSegmentPositioning || wordLayout?.textStartMode === 'paragraph') &&
+      listFirstLineTextStartPx != null;
 
     // --- Available width ---
     const positiveIndentReduction = Math.max(0, paraIndentLeft) + Math.max(0, paraIndentRight);

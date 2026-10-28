@@ -19,7 +19,7 @@ const superdocClassSrc = readFileSync(resolve(SUPERDOC_SRC, 'core', 'SuperDoc.ts
 describe('SuperDoc API contract', () => {
   describe('package exports', () => {
     it('exports SuperDoc class from main entry point', () => {
-      const indexSrc = readFileSync(resolve(SUPERDOC_SRC, 'index.js'), 'utf-8');
+      const indexSrc = readFileSync(resolve(SUPERDOC_SRC, 'public', 'index.ts'), 'utf-8');
       expect(indexSrc).toMatch(/export\s*\{[^}]*SuperDoc[^}]*\}/s);
     });
 

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vite-plus/test';
 import SuperDoc from './cdn-entry.js';
-import * as namespace from './index.js';
+import * as namespace from './public/index.ts';
 import { resolveDocxEngineCdnBaseUrl } from './core/v2-integration/cdn-engine-loader.js';
 
 describe('cdn-entry', () => {

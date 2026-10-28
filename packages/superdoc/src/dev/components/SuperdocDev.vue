@@ -4,7 +4,7 @@ import '../dev-styles.css';
 import '../themes/neon-night.css';
 import { nextTick, onMounted, onBeforeUnmount, ref, shallowRef, computed, watch } from 'vue';
 
-import { SuperDoc } from '@superdoc/index.js';
+import { SuperDoc } from '@superdoc/public/index.ts';
 import { DOCX } from '@superdoc/common';
 import { getFileObject } from '@superdoc/common';
 import { superdocFonts } from '@superdoc/fonts';

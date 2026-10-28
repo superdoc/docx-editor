@@ -129,11 +129,6 @@ const SHARED_COMMON_DTS_TARGETS = typeSurface.sharedCommonDtsTargets;
 // as a CJS declaration importing an ESM declaration and raises TS1479.
 const cjsDeclarationShims = [
   {
-    file: path.join(distRoot, 'superdoc/src/index.d.cts'),
-    source: path.join(distRoot, 'superdoc/src/index.d.ts'),
-    target: './index.js',
-  },
-  {
     file: path.join(distRoot, 'superdoc/src/public/index.d.cts'),
     source: path.join(distRoot, 'superdoc/src/public/index.d.ts'),
     target: './index.js',
@@ -235,12 +230,12 @@ function emitCjsDeclarationShim({ file, source, target, typeOnly = false }) {
   fs.writeFileSync(file, `${importLines.concat(exportLines).join('\n')}\n`);
 }
 
-const indexPath = path.join(distRoot, 'superdoc/src/index.d.ts');
+const indexPath = path.join(distRoot, 'superdoc/src/public/index.d.ts');
 let content = fs.readFileSync(indexPath, 'utf8');
 
 const hasSuperDocExport = /export\s+\{[^}]*\bSuperDoc\b[^}]*\}/m.test(content);
 if (!hasSuperDocExport) {
-  console.error(`[ensure-types] SuperDoc export missing in superdoc/src/index.d.ts`);
+  console.error(`[ensure-types] SuperDoc export missing in superdoc/src/public/index.d.ts`);
   process.exit(1);
 }
 
@@ -287,10 +282,7 @@ function inlineCommonRuntimeDeclarations(filePath) {
   return true;
 }
 
-const commonInlineTargets = [
-  path.join(distRoot, 'superdoc/src/index.d.ts'),
-  path.join(distRoot, 'superdoc/src/public/index.d.ts'),
-];
+const commonInlineTargets = [path.join(distRoot, 'superdoc/src/public/index.d.ts')];
 const inlinedCommonTargets = commonInlineTargets.filter((target) => fs.existsSync(target) && inlineCommonRuntimeDeclarations(target));
 if (inlinedCommonTargets.length) {
   console.log(`[ensure-types] ✓ Inlined @superdoc/common runtime declarations in ${inlinedCommonTargets.length} entry point(s)`);

@@ -7,7 +7,7 @@
 // from Quill / Chart.js.
 
 import { SuperDoc } from './core/SuperDoc.js';
-import * as namespace from './index.js';
+import * as namespace from './public/index.ts';
 import { configureCdnEngineLoader } from './core/v2-integration/cdn-engine-loader.js';
 
 configureCdnEngineLoader({

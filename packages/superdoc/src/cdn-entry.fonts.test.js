@@ -6,7 +6,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vite-plus/test'
 // SuperDoc graph is stubbed so re-evaluation stays cheap and isolated; @superdoc/font-system is
 // left real (vite.config aliases it to source under Vitest) so the real module state is observed.
 vi.mock('./core/SuperDoc.js', () => ({ SuperDoc: class SuperDoc {} }));
-vi.mock('./index.js', () => ({}));
+vi.mock('./public/index.ts', () => ({}));
 
 describe('cdn-entry is baseline-by-default (ships and activates no fonts)', () => {
   beforeEach(async () => {

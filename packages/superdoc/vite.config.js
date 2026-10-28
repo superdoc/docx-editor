@@ -61,7 +61,7 @@ function resolveV2DistRelativeImportsPlugin(v2DistRoot) {
 // Rolldown doesn't support regex capture groups ($1) in alias replacements,
 // so we list these explicitly instead of using /^@superdoc\/(.*)$/.
 // Update this list when adding new src/ subdirectories imported via @superdoc/.
-const superdocSrcAliases = ['components', 'composables', 'core', 'helpers', 'stores', 'dev', 'icons.js', 'index.js'];
+const superdocSrcAliases = ['components', 'composables', 'core', 'helpers', 'stores', 'dev', 'icons.js', 'public'];
 
 // V2 branch: the customer `superdoc` package consumes the internal v2 runtime
 // through the stable `@superdoc/docx-engine` contract. `superdoc/v2` is a SEPARATE pnpm
@@ -263,7 +263,6 @@ export default defineConfig(({ mode, command }) => {
         include: ['src/**'],
         exclude: [
           'src/dev/**',
-          'src/index.js',
           'src/main.js',
           // Pure JSDoc typedef files (body is `export {}`, no runtime code)
           'src/core/types/**',
@@ -276,7 +275,7 @@ export default defineConfig(({ mode, command }) => {
       target: 'es2022',
       cssCodeSplit: false,
       lib: {
-        entry: "src/index.js",
+        entry: "src/public/index.ts",
         name: "SuperDoc",
         cssFileName: 'style',
       },
@@ -285,8 +284,8 @@ export default defineConfig(({ mode, command }) => {
       reportCompressedSize: process.env.SUPERDOC_EVAL_FAST_BUILD !== '1',
       sourcemap: false,
       rollupOptions: {
-        input: internalEsOnly ? { 'superdoc': 'src/index.js' } : {
-          'superdoc': 'src/index.js',
+        input: internalEsOnly ? { 'superdoc': 'src/public/index.ts' } : {
+          'superdoc': 'src/public/index.ts',
           // v2-native public UI controller + framework bindings. Emitted as
           // their own bundles so `superdoc/ui`, `superdoc/ui/react`, and
           // `superdoc/ui/vue` resolve without dragging in the app-shell/main

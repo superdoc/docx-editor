@@ -88,7 +88,7 @@ const REACHABILITY_EXEMPT_CHECKED_FILES = new Set(REACHABILITY_EXEMPT_LIST);
 // package exposes only the root entry plus stylesheet assets; removed v1
 // compatibility subpaths are intentionally absent.
 const PUBLIC_ENTRY_FILES = [
-  'packages/superdoc/src/index.js',
+  'packages/superdoc/src/public/index.ts',
 ];
 
 const SOURCE_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.vue'];

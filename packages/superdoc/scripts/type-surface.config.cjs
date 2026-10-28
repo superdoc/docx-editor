@@ -47,8 +47,8 @@
  */
 
 const requiredEntryPoints = [
-  'superdoc/src/index.d.ts',
-  'superdoc/src/index.d.cts',
+  'superdoc/src/public/index.d.ts',
+  'superdoc/src/public/index.d.cts',
   // v2-native public UI facade entries (`./ui`, `./ui/react`, `./ui/vue`).
   // Both the ESM `.d.ts` (emitted by vite-plugin-dts) and the CJS `.d.cts`
   // shim (emitted by ensure-types) must exist after build so the conditional

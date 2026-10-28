@@ -6,6 +6,8 @@
  * part of superdoc@2.
  */
 
+import '../core/v2-integration/browser-peer-runtime.js';
+
 // The common package is workspace-private. Source imports stay readable here;
 // ensure-types.cjs strips and inlines the emitted declarations so consumers
 // never resolve @superdoc/common from the packed package.

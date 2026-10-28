@@ -9024,16 +9024,19 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     pendingCommandSettlement = (async (): Promise<CommandExecutionResult> => {
       const plans = await Promise.all(blockIds.map((blockId) => planBlock(blockId).catch(() => null)));
       const allListItems = plans.length === blockIds.length && plans.every((plan) => plan?.kind === 'list');
-      // A list selection is one user action: keep its mutation, repaint, and
-      // undo history atomic just like Tab/Shift+Tab. Tracked range indentation
-      // remains unsupported, so suggesting mode retains the per-item path.
-      if (allListItems && readDocumentMode() !== 'suggesting') {
+      const preserveFirstItemLevel = blockIds.length === 1 && story.storyType === 'body';
+      if (allListItems && (readDocumentMode() !== 'suggesting' || preserveFirstItemLevel)) {
         const rangeRoute = mode === 'indent' ? 'lists.indentRange' : 'lists.outdentRange';
         const rangeOp = resolveDocOperation(doc, rangeRoute);
         if (rangeOp) {
           try {
-            return await settleOperationResult(callEditorMutation(rangeRoute, rangeOp, { paraIds: blockIds, story }))
-              .settled;
+            return await settleOperationResult(
+              callEditorMutation(rangeRoute, rangeOp, {
+                paraIds: blockIds,
+                story,
+                ...(preserveFirstItemLevel ? { preserveFirstItemLevel: true } : {}),
+              }),
+            ).settled;
           } catch {
             return false;
           }

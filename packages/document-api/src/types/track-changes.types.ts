@@ -640,7 +640,15 @@ export interface TrackChangeInfo {
   author?: string;
   authorEmail?: string;
   authorImage?: string;
-  /** Author initials (spec §3 required field, when provided by the source). */
+  /**
+   * Author initials (spec §3 required field, when known). Read from the revision
+   * wrapper: SuperDoc writes them as `initials` in the `urn:superdoc:tracked-change:1`
+   * namespace (behind `mc:Ignorable`, like `authorEmail`), so they survive save, reopen
+   * and collaboration; a `w:initials` attribute from an older source file is also read.
+   * When the wrapper carries neither, the initials of a comment by the same author
+   * name in the document are used. SuperDoc never writes `w:initials` on revision
+   * wrappers; source wrappers it keeps verbatim are left as they are.
+   */
   initials?: string;
   date?: string;
   /**
@@ -775,7 +783,7 @@ export interface TrackChangeDomain {
   author?: string;
   authorEmail?: string;
   authorImage?: string;
-  /** Author initials. */
+  /** Author initials, resolved as on {@link TrackChangeInfo.initials}. */
   initials?: string;
   date?: string;
   excerpt?: string;

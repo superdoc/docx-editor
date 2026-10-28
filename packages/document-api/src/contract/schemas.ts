@@ -17,7 +17,11 @@ import {
 } from '../paragraphs/paragraphs.js';
 import { buildPatchSchema, buildStateSchema } from '../styles/index.js';
 import { Z_ORDER_RELATIVE_HEIGHT_MAX, Z_ORDER_RELATIVE_HEIGHT_MIN } from '../images/z-order.js';
-import { SD_EXPORT_MODES } from '../export/export.types.js';
+import {
+  SD_EXPORT_MODES,
+  SD_COMMENT_EXPORT_POLICIES,
+  SD_CONTENT_CONTROL_EXPORT_POLICIES,
+} from '../export/export.types.js';
 import { TEXT_REPLACEMENT_GRANULARITIES } from '../replace/replace.js';
 import { CAPABILITY_REASON_CODES } from '../capabilities/capabilities.js';
 import {
@@ -11334,6 +11338,11 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
   'export.toDocx': {
     input: objectSchema({
       mode: { enum: [...SD_EXPORT_MODES] },
+      policies: objectSchema({
+        trackedChanges: { enum: [...SD_EXPORT_MODES] },
+        comments: { enum: [...SD_COMMENT_EXPORT_POLICIES] },
+        contentControls: { enum: [...SD_CONTENT_CONTROL_EXPORT_POLICIES] },
+      }),
     }),
     output: objectSchema(
       {

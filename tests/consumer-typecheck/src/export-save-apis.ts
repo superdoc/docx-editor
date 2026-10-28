@@ -48,11 +48,10 @@ const _exportedBlob: Promise<Blob> = sd.export({ commentsType: 'external', trigg
 void _exportedBlob;
 
 // ─── exportEditorsToDOCX ────────────────────────────────────────────
-// Inline options shape (the source param is not aliased to a named
-// public type). The return is the post-tightening Promise<Blob[]>.
 type ExportEditorsOpts = {
-  commentsType?: string;
+  commentsType?: ExportParams['commentsType'];
   isFinalDoc?: boolean;
+  policies?: ExportParams['policies'];
   fieldsHighlightColor?: string | null;
 };
 const _exportEditorsParamsOk: AssertEqual<

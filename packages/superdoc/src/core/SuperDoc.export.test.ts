@@ -111,10 +111,40 @@ describe('SuperDoc.export', () => {
     await expect(instance.export({ triggerDownload: false })).resolves.toBe(edited);
 
     expect(editor.exportDocx).toHaveBeenCalledExactlyOnceWith({
-      commentsType: 'external',
-      isFinalDoc: false,
+      commentsType: undefined,
+      isFinalDoc: undefined,
+      policies: undefined,
       fieldsHighlightColor: null,
     });
+  });
+
+  it('forwards independent policies without injecting conflicting legacy defaults', async () => {
+    const instance = createInstance();
+    const exported = createDocxBlob();
+    const editor = { editorVersion: 2, exportDocx: vi.fn().mockResolvedValue(exported) };
+    (instance as unknown as { superdocStore: { documents: unknown[] } }).superdocStore = {
+      documents: [{ id: 'edited-docx', type: DOCX, data: createDocxBlob(), getEditor: () => editor }],
+    };
+    const policies = { trackedChanges: 'final', comments: 'resolve', contentControls: 'flatten' } as const;
+    await expect(instance.export({ policies, triggerDownload: false })).resolves.toBe(exported);
+    expect(editor.exportDocx).toHaveBeenCalledWith({
+      policies,
+      commentsType: undefined,
+      isFinalDoc: undefined,
+      fieldsHighlightColor: null,
+    });
+    await expect(instance.export({ policies, isFinalDoc: false })).rejects.toThrow(/conflict/);
+    expect(editor.exportDocx).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects policies when no V2 exporter is available instead of returning the original file', async () => {
+    const instance = createInstance();
+    (instance as unknown as { superdocStore: { documents: unknown[] } }).superdocStore = {
+      documents: [{ id: 'contract-1', type: DOCX, data: createDocxBlob(), getEditor: () => null }],
+    };
+    await expect(instance.export({ policies: { contentControls: 'flatten' }, triggerDownload: false })).rejects.toThrow(
+      /V2/,
+    );
   });
 
   it.each([

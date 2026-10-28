@@ -30,6 +30,7 @@ export { executeHistoryGet, executeHistoryUndo, executeHistoryRedo } from './his
 export type { DiffAdapter, DiffApi } from './diff/diff.js';
 export * from './diff/diff.types.js';
 export type { ExportAdapter, ExportApi } from './export/export.js';
+export { resolveDocxExportPolicies } from './export/export.js';
 export * from './export/export.types.js';
 export type {
   SelectionMutationAdapter,

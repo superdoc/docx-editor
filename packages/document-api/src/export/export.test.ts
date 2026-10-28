@@ -20,6 +20,35 @@ function stubAdapter(): { adapter: ExportAdapter; calls: SDExportMode[] } {
 }
 
 describe('executeExportToDocx', () => {
+  it('forwards independent policies with preserving defaults', () => {
+    let received: unknown;
+    const adapter: ExportAdapter = {
+      toDocx(input) {
+        received = input;
+        return stubAdapter().adapter.toDocx(input);
+      },
+    };
+    executeExportToDocx(adapter, { policies: { comments: 'resolve', contentControls: 'flatten' } });
+    expect(received).toEqual({
+      mode: 'review-preserving',
+      policies: { trackedChanges: 'review-preserving', comments: 'resolve', contentControls: 'flatten' },
+    });
+  });
+
+  it.each([
+    { policies: { comments: 'banana' } },
+    { policies: { contentControls: 'remove' } },
+    { policies: { trackedChanges: 'accept' } },
+    { policies: { fields: 'flatten' } },
+    { policies: null },
+    { policies: [] },
+    { mode: 'final', policies: { trackedChanges: 'original' } },
+  ])('rejects invalid or conflicting policies before dispatch: %j', (input) => {
+    const { adapter, calls } = stubAdapter();
+    expect(() => executeExportToDocx(adapter, input as never)).toThrow(DocumentApiValidationError);
+    expect(calls).toEqual([]);
+  });
+
   it('defaults to review-preserving when no mode is supplied', () => {
     const { adapter, calls } = stubAdapter();
     const result = executeExportToDocx(adapter, {});

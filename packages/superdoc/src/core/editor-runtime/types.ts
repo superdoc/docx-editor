@@ -268,6 +268,7 @@ export interface EditorRuntimeSaveOptions {
 }
 
 export interface EditorRuntimeExportOptions {
+  readonly policies?: import('../../public/export-types.js').DocxExportPolicies;
   /** Optional adapter-defined export hint, JSON-safe. */
   readonly hint?: RuntimeJsonObject;
   /** Public comment export policy forwarded by `SuperDoc.export(...)`. */

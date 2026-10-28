@@ -270,7 +270,7 @@ test('lifecycle export retries restore the current document state', async () => 
   }
 });
 
-test('export guide examples select download, bytes, clean comments, and paired attachments', async () => {
+test('export guide examples select download, bytes, independent policies, and paired attachments', async () => {
   const page = await readFile(new URL('../content/docs/editor/export-options.mdx', import.meta.url), 'utf8');
   const examples = [...page.matchAll(/```ts\n([\s\S]*?)```/gu)].map((match) => match[1]);
   assert.equal(examples.length, 5);
@@ -290,7 +290,10 @@ test('export guide examples select download, bytes, clean comments, and paired a
   assert.deepEqual(calls.slice(0, 3), [
     { exportedName: 'sample-edited' },
     { triggerDownload: false },
-    { triggerDownload: false, commentsType: 'clean' },
+    {
+      triggerDownload: false,
+      policies: { trackedChanges: 'review-preserving', comments: 'resolve', contentControls: 'flatten' },
+    },
   ]);
   const bundle = calls[3];
   assert.equal(bundle.exportedName, 'sample-edited');

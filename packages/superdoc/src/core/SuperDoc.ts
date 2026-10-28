@@ -35,6 +35,7 @@ import { WhiteboardRenderer } from './whiteboard/WhiteboardRenderer';
 import { SurfaceManager } from './surface-manager.js';
 import { createDeprecatedEditorProxy, warnOnce } from '../helpers/deprecation.js';
 import { normalizeTrackChangesConfig } from './helpers/normalize-track-changes-config.js';
+import { resolveV2DocxExportOptions } from './helpers/resolve-docx-export.js';
 import { DEFAULT_SUPERDOC_USER as DEFAULT_USER, normalizeSuperDocUser } from './helpers/normalize-user.js';
 import { normalizeUiConfig } from './config/normalize-ui-config.js';
 import { normalizeInteractionConfig } from './config/normalize-interaction-config.js';
@@ -3882,11 +3883,12 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
   async export(
     {
       exportType = ['docx'],
-      commentsType = 'external',
+      commentsType,
       exportedName,
       additionalFiles = [],
       additionalFileNames = [],
-      isFinalDoc = false,
+      isFinalDoc,
+      policies,
       triggerDownload = true,
       fieldsHighlightColor = null,
     }: ExportParams = {} as ExportParams,
@@ -3897,7 +3899,7 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
 
     // Get the docx files first
     const baseFileName = exportedName ? cleanName(exportedName) : cleanName(this.config.title as string);
-    const docxFiles = await this.exportEditorsToDOCX({ commentsType, isFinalDoc, fieldsHighlightColor });
+    const docxFiles = await this.exportEditorsToDOCX({ commentsType, isFinalDoc, policies, fieldsHighlightColor });
     const blobsToZip = [...additionalFiles];
     const filenames = [...additionalFileNames];
 
@@ -4005,8 +4007,10 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
   async exportEditorsToDOCX({
     commentsType,
     isFinalDoc,
+    policies,
     fieldsHighlightColor,
-  }: { commentsType?: string; isFinalDoc?: boolean; fieldsHighlightColor?: string | null } = {}) {
+  }: Pick<ExportParams, 'commentsType' | 'isFinalDoc' | 'policies' | 'fieldsHighlightColor'> = {}) {
+    if (policies !== undefined) resolveV2DocxExportOptions({ policies, commentsType, isFinalDoc });
     // The export's job is to pick the correct source of truth for
     // comments. There are three branches; the third had a latent
     // ambiguity that resurrected deleted comments and is the
@@ -4080,54 +4084,63 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
 
     this.on('exception', rememberBridgedExportError);
     try {
-      const docxPromises = this.#requireSuperdocStore('exportEditorsToDOCX').documents.map(
-        async (doc: RuntimeDocument) => {
-          if (!doc || doc.type !== DOCX) return null;
+      const documents = this.#requireSuperdocStore('exportEditorsToDOCX').documents;
+      if (
+        policies !== undefined &&
+        documents.some((doc: RuntimeDocument) => {
+          if (doc.type !== DOCX) return false;
+          const editor = doc.getEditor?.();
+          return editor?.editorVersion !== 2 || typeof editor.exportDocx !== 'function';
+        })
+      )
+        throw new Error('Independent DOCX export policies require a mounted V2 exporter for every document.');
+      const docxPromises = documents.map(async (doc: RuntimeDocument) => {
+        if (!doc || doc.type !== DOCX) return null;
 
-          const editor = typeof doc.getEditor === 'function' ? doc.getEditor() : null;
-          const fallbackDocx = () => {
-            if (isBlobAcrossRealms(doc.data)) {
-              if (doc.data.type && doc.data.type !== DOCX) return null;
-              return doc.data;
-            }
-            if (isDocumentByteSource(doc.data)) return this.#savedDocxToBlob(doc.data);
-            return null;
-          };
-
-          if (!editor || typeof editor.exportDocx !== 'function') return fallbackDocx();
-
-          const isV2Editor = editor.editorVersion === 2;
-          try {
-            const exported = await editor.exportDocx(
-              isV2Editor
-                ? {
-                    // v2 export authority is the v2 session serializer. No
-                    // legacy `comments` payload — `commentsType` is the policy.
-                    isFinalDoc,
-                    commentsType,
-                    fieldsHighlightColor,
-                  }
-                : {
-                    isFinalDoc,
-                    comments: getLegacyCommentsForV1() as Comment[] | undefined,
-                    commentsType,
-                    fieldsHighlightColor,
-                  },
-            );
-            if (exported) return exported;
-          } catch (error) {
-            if (!error || typeof error !== 'object' || !bridgedExportErrors.has(error)) {
-              this.emit('exception', { error, document: doc });
-              this.emit('exception', translateExportDiagnostic(error, { documentId: doc.id, editor: null }));
-            }
-            if (isV2Editor) {
-              throw error;
-            }
+        const editor = typeof doc.getEditor === 'function' ? doc.getEditor() : null;
+        const fallbackDocx = () => {
+          if (isBlobAcrossRealms(doc.data)) {
+            if (doc.data.type && doc.data.type !== DOCX) return null;
+            return doc.data;
           }
+          if (isDocumentByteSource(doc.data)) return this.#savedDocxToBlob(doc.data);
+          return null;
+        };
 
-          return fallbackDocx();
-        },
-      );
+        if (!editor || typeof editor.exportDocx !== 'function') return fallbackDocx();
+
+        const isV2Editor = editor.editorVersion === 2;
+        try {
+          const exported = await editor.exportDocx(
+            isV2Editor
+              ? {
+                  // v2 export authority is the v2 session serializer. No
+                  // legacy `comments` payload — `commentsType` is the policy.
+                  isFinalDoc,
+                  commentsType,
+                  policies,
+                  fieldsHighlightColor,
+                }
+              : {
+                  isFinalDoc,
+                  comments: getLegacyCommentsForV1() as Comment[] | undefined,
+                  commentsType,
+                  fieldsHighlightColor,
+                },
+          );
+          if (exported) return exported;
+        } catch (error) {
+          if (!error || typeof error !== 'object' || !bridgedExportErrors.has(error)) {
+            this.emit('exception', { error, document: doc });
+            this.emit('exception', translateExportDiagnostic(error, { documentId: doc.id, editor: null }));
+          }
+          if (isV2Editor) {
+            throw error;
+          }
+        }
+
+        return fallbackDocx();
+      });
 
       const docxFiles = await Promise.all(docxPromises);
       // Type-predicate filter so callers see `Blob[]` instead of `(Blob | null)[]`.

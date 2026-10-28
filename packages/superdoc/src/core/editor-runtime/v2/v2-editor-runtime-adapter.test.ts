@@ -29,6 +29,35 @@ function createReadyHost(overrides: Record<string, unknown> = {}) {
 }
 
 describe('createV2EditorRuntimeAdapter viewing preferences route', () => {
+  it('exports independent policies and rejects legacy conflicts before saving', async () => {
+    const host = createReadyHost();
+    const { runtime } = createV2EditorRuntimeAdapter({
+      id: 'v2-runtime',
+      documentId: 'doc-1',
+      root: document.createElement('div'),
+      host,
+    });
+    await runtime.exportDocx({
+      policies: { trackedChanges: 'original', comments: 'resolve', contentControls: 'flatten' },
+    });
+    expect(host.save).toHaveBeenLastCalledWith({
+      format: 'docx',
+      mode: 'original',
+      commentExportMode: 'resolve',
+      contentControlExportMode: 'flatten',
+    });
+    await runtime.exportDocx({ isFinalDoc: true });
+    expect(host.save).toHaveBeenLastCalledWith({
+      format: 'docx',
+      mode: 'final',
+      commentExportMode: 'preserve',
+      contentControlExportMode: 'preserve',
+    });
+    expect(() => runtime.exportDocx({ isFinalDoc: false, policies: { trackedChanges: 'final' } })).toThrow(/conflict/);
+    expect(() => runtime.exportDocx({ commentsType: 'clean', policies: { comments: 'resolve' } })).toThrow(/conflict/);
+    expect(host.save).toHaveBeenCalledTimes(2);
+  });
+
   it('routes local formatting marks to the mounted host without document commands', () => {
     const host = createReadyHost();
     const { runtime } = createV2EditorRuntimeAdapter({

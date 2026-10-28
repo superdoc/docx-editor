@@ -1178,7 +1178,9 @@ test('exports storage, version, and configuration guidance for the v2 Editor', a
   assert.match(versionHistory, /## Restore shared documents separately/u);
   assert.match(versionHistory, /\[Save and restore a room\]\(\/editor\/collaboration\/save-and-restore-a-room\)/u);
   assert.match(exportOptions, /set it to `false` to return a `Blob` or ZIP/);
-  assert.match(exportOptions, /does not apply `isFinalDoc`/);
+  assert.match(exportOptions, /`isFinalDoc` flag is deprecated: `true` maps to\s+`trackedChanges: 'final'`, and `false` maps to `review-preserving`/);
+  assert.match(exportOptions, /does not select a comment or control\s+policy/);
+  assert.match(exportOptions, /Supplying an alias and a conflicting policy rejects; matching values are accepted/);
   assert.doesNotMatch(exportOptions, /isFinalDoc: true/);
   assert.match(configuration, /structured document carrying `collaboration`/);
   assert.doesNotMatch(configuration, /`modules` configures[^\n]*collaboration/);

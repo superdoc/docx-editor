@@ -42,25 +42,43 @@ For one document without additional files, the result is a DOCX `Blob`. Export d
 Use the [Load and save guide](/editor/load-and-save-documents) to send those bytes to your backend and report success
 only after storage confirms the write.
 
-## Check comments and tracked changes
+## Choose independent DOCX policies
 
-Export preserves comments by default. To return a separate copy without comments, set
-`commentsType: 'clean'`. This export does not remove comments from the open document:
+V2 exports preserve tracked revisions, comment text and resolution status, and content controls by default.
+Choose policies for the exported copy without changing the open document or a collaborative room:
 
 ```ts
-const withoutComments = await superdoc.export({
+const redline = await superdoc.export({
   triggerDownload: false,
-  commentsType: 'clean',
+  policies: {
+    trackedChanges: 'review-preserving',
+    comments: 'resolve',
+    contentControls: 'flatten',
+  },
 });
 ```
 
-The v2 worker supports this option for the resident document save path. A source-fenced large-document
-save can reject clean export when removing comment markers would require rewriting the fenced main story.
-Handle the rejected promise; do not report the preserving export as a clean copy.
+| Policy            | Values                                             | Effect                                                                                                                                     |
+| ----------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `trackedChanges`  | `review-preserving` (default), `final`, `original` | Retain supported revisions, accept them, or reject them in the copy.                                                                       |
+| `comments`        | `preserve` (default), `resolve`, `remove`          | Keep thread status; resolve every open thread while retaining text, replies, and anchors; or remove comments and their package references. |
+| `contentControls` | `preserve` (default), `flatten`                    | Keep controls or unwrap them while retaining their content and formatting.                                                                 |
 
-If you need final text, finish the
-[review workflow](/editor/track-changes) before exporting. The v2 Editor does not apply `isFinalDoc`
-during export; do not use that option as a review decision.
+The standalone Document API accepts the same `policies` object through `doc.export.toDocx({ policies })`
+and returns base64 bytes plus a warning report. Its `mode` alias selects `trackedChanges`.
+Document API export rejects collaborative sessions; use `superdoc.export()` or the active editor's
+`exportDocx()` for browser collaboration.
+
+Unknown values and conflicting aliases reject before export. Unsupported property or structural revision
+decisions, a decision that would discard a preserved comment anchor, and transformations of a fenced
+large document also reject. Handle the error without treating it as a successful export. Review-preserving
+export remains available for supported documents with those revisions.
+
+Prefer `policies` in new integrations. The legacy browser `isFinalDoc` flag is deprecated: `true` maps to
+`trackedChanges: 'final'`, and `false` maps to `review-preserving`. It does not select a comment or control
+policy. The deprecated `commentsType: 'external'` maps to `comments: 'preserve'`, and `clean` maps to
+`remove`. Supplying an alias and a conflicting policy rejects; matching values are accepted. These options
+affect the exported copy, so use the [review workflow](/editor/track-changes) to decide revisions in the live document.
 
 ## Include related files
 
@@ -83,12 +101,12 @@ in the same order, with one filename for each file. Omit `triggerDownload: false
 
 ## Choose options for the next export
 
-| Option                                    | Default      | Effect                                                                                     |
-| ----------------------------------------- | ------------ | ------------------------------------------------------------------------------------------ |
-| `exportedName`                            | Editor title | Name the DOCX or ZIP without its extension.                                                |
-| `triggerDownload`                         | `true`       | Download the result; set it to `false` to return a `Blob` or ZIP without downloading.      |
-| `commentsType`                            | `'external'` | Preserve comments; `'clean'` returns a separate comment-free copy on supported save paths. |
-| `additionalFiles` / `additionalFileNames` | Empty arrays | Include related files in a ZIP.                                                            |
+| Option                                    | Default      | Effect                                                                                |
+| ----------------------------------------- | ------------ | ------------------------------------------------------------------------------------- |
+| `exportedName`                            | Editor title | Name the DOCX or ZIP without its extension.                                           |
+| `triggerDownload`                         | `true`       | Download the result; set it to `false` to return a `Blob` or ZIP without downloading. |
+| `policies`                                | Preserve all | Select tracked-change, comment, and content-control behavior independently.           |
+| `additionalFiles` / `additionalFileNames` | Empty arrays | Include related files in a ZIP.                                                       |
 
 `exportType` defaults to `['docx']`, the browser Editor's supported export format.
 The v2 Editor does not apply `fieldsHighlightColor` during export.

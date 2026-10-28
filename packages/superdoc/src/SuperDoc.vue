@@ -83,6 +83,7 @@ import { useLinkPopover } from './composables/use-link-popover.js';
 import { createV2EditorRuntimeAdapter } from './core/editor-runtime/v2/v2-editor-runtime-adapter.js';
 import { createV2SessionShortcutRoutes } from './core/editor-runtime/v2/v2-session-shortcut-routes.js';
 import { createV2SaveQueue } from './core/editor-runtime/v2/v2-save-queue.js';
+import { resolveV2DocxExportOptions } from './core/helpers/resolve-docx-export.js';
 import { markRuntimeRoot, unmarkRuntimeRoot } from './core/editor-runtime/root-marker.js';
 import { resolveV2Integration } from './core/v2-integration/v2-integration.js';
 import { resolveV2CollaborationTarget } from './core/collaboration/resolve-v2-collaboration-target.js';
@@ -914,14 +915,8 @@ const onV2EditorReady = (payload) => {
     }
     return host.save(saveOptions);
   });
-  // Map the public `commentsType` contract onto the v2 serializer's comment
-  // export policy. `clean` strips comments; everything else (default /
-  // `external`) preserves them. v2 export authority lives in the v2 session
-  // serializer — we never route v2 comments through the disabled v1
-  // editor-backed comment serialization path.
   const exportV2Docx = async (options = {}) => {
-    const commentExportMode = options?.commentsType === 'clean' ? 'strip' : 'preserve';
-    const bytes = await saveV2Bytes({ format: 'docx', commentExportMode });
+    const bytes = await saveV2Bytes({ format: 'docx', ...resolveV2DocxExportOptions(options) });
     return new Blob([bytes], { type: DOCX });
   };
   const replaceV2File = async (source) => {

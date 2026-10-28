@@ -7018,11 +7018,13 @@ export const OPERATION_DEFINITIONS = {
   'export.toDocx': {
     memberPath: 'export.toDocx',
     description:
-      'Serialize the current document to DOCX bytes under an explicit tracked-change export mode. ' +
-      '`review-preserving` (default) keeps open tracked changes as Word revision markup, `final` resolves ' +
-      'them as accepted, and `original` resolves them as rejected. Returns the exported bytes plus a ' +
-      'structured degradation report of allowed warnings. An invalid mode fails closed with INVALID_INPUT ' +
-      'before any work happens.',
+      'Serialize a copy of the current document with independent policies for trackedChanges ' +
+      '(review-preserving, final, original), comments (preserve, resolve, remove), and contentControls ' +
+      '(preserve, flatten). Defaults preserve all three. Resolve closes every open comment thread in the copy. ' +
+      'The mode alias selects trackedChanges; conflicting values and unknown policies reject with INVALID_INPUT. ' +
+      'Unsupported revision semantics, loss of preserved comment anchors, and collaborative Document API export ' +
+      'reject with CAPABILITY_UNSUPPORTED before returning bytes. Use browser export for collaborative sessions. ' +
+      'Returns exported bytes and a structured report of allowed warnings without changing the live document.',
     expectedResult:
       'Returns an ExportToDocxResult with the resolved mode, base64 DOCX bytes, byte length, and a report.warnings array.',
     requiresDocumentContext: true,

@@ -21,6 +21,8 @@ import type {
   EditorRuntimeUnsubscribe,
 } from '../index.js';
 
+import { resolveV2DocxExportOptions } from '../../helpers/resolve-docx-export.js';
+
 type HostLifecycleState = EditorRuntimeState | 'ready';
 
 type HostCommandKind =
@@ -177,7 +179,7 @@ interface ModeAwareHostLike {
   setTrackedChangesRenderOptions(options?: { mode?: 'review' | 'original' | 'final' | 'off'; enabled?: boolean }): void;
   setShowFormattingMarks(show: boolean): void;
   dispatch(command: HostCommandLike): Promise<HostDispatchResultLike>;
-  save(options?: { format?: 'docx'; commentExportMode?: 'preserve' | 'strip' }): Promise<ArrayBuffer>;
+  save(options?: { format?: 'docx' } & ReturnType<typeof resolveV2DocxExportOptions>): Promise<ArrayBuffer>;
   dispose(): Promise<void>;
   getHandles(): HostHandlesLike;
   getDocumentFacade?(): DocumentFacadeResultLike;
@@ -826,7 +828,7 @@ export function createV2EditorRuntimeAdapter(options: V2EditorRuntimeAdapterOpti
     exportDocx: (options?: EditorRuntimeExportOptions) =>
       host.save({
         format: 'docx',
-        commentExportMode: options?.commentsType === 'clean' ? 'strip' : 'preserve',
+        ...resolveV2DocxExportOptions(options),
       }),
 
     async setZoom(percent) {

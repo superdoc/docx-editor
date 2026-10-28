@@ -1,3 +1,6 @@
+import type { DocxExportPolicies } from '@superdoc/document-api';
+export type { DocxExportPolicies } from '@superdoc/document-api';
+
 /** Browser export format. DOCX is the only supported output. */
 export type ExportType = 'docx';
 
@@ -6,6 +9,7 @@ export type CommentsType = 'external' | 'clean';
 
 /** Options accepted by `SuperDoc.export()` and `ui.document.export()`. */
 export interface ExportParams {
+  policies?: DocxExportPolicies;
   /** Browser export format. DOCX is the only supported output. */
   exportType?: readonly [ExportType];
   /** How to handle comments. */

@@ -26,10 +26,20 @@ export type SDExportMode = (typeof SD_EXPORT_MODES)[number];
 /** Default mode for modeful DOCX export. */
 export const DEFAULT_SD_EXPORT_MODE: SDExportMode = 'review-preserving';
 
+export const SD_COMMENT_EXPORT_POLICIES = ['preserve', 'resolve', 'remove'] as const;
+export const SD_CONTENT_CONTROL_EXPORT_POLICIES = ['preserve', 'flatten'] as const;
+
+export interface DocxExportPolicies {
+  trackedChanges?: SDExportMode;
+  comments?: (typeof SD_COMMENT_EXPORT_POLICIES)[number];
+  contentControls?: (typeof SD_CONTENT_CONTROL_EXPORT_POLICIES)[number];
+}
+
 /** Input for `export.toDocx`. */
 export interface ExportToDocxInput {
   /** Tracked-change export mode. Defaults to `review-preserving`. */
   mode?: SDExportMode;
+  policies?: DocxExportPolicies;
 }
 
 /** Structured degradation report for an export. */

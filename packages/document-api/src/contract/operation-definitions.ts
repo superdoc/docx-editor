@@ -2518,7 +2518,7 @@ export const OPERATION_DEFINITIONS = {
   'lists.captureTemplate': {
     memberPath: 'lists.captureTemplate',
     description:
-      'Advanced alias for lists.getStyle. Capture list formatting from the abstract definition only (does not merge lvlOverride formatting).',
+      'Capture reusable effective list formatting, including full level overrides and Word defaults, without instance continuation checkpoints (startOverride).',
     expectedResult: 'Returns a ListsCaptureTemplateResult containing the captured template.',
     requiresDocumentContext: true,
     metadata: readOperation({
@@ -2675,14 +2675,21 @@ export const OPERATION_DEFINITIONS = {
   'lists.applyStyle': {
     memberPath: 'lists.applyStyle',
     description:
-      'Apply a reusable list style to the target list. Sequence-local: if the abstract definition is shared with other lists, it is cloned first to avoid affecting them.',
-    expectedResult: 'Returns a ListsMutateItemResult receipt; reports NO_OP if all levels already match.',
+      'Apply a reusable list style to the target list. Sequence-local: preserves other sequences and levels. V2 returns CAPABILITY_UNAVAILABLE when existing numbering cannot be preserved.',
+    expectedResult:
+      'Returns a ListsMutateItemResult receipt with changed: false and no transaction when all levels already match.',
     requiresDocumentContext: true,
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
       trackedSupport: 'never',
-      possibleFailureCodes: ['NO_OP', 'INVALID_TARGET', 'INVALID_INPUT', 'LEVEL_OUT_OF_RANGE'],
+      possibleFailureCodes: [
+        'NO_OP',
+        'CAPABILITY_UNAVAILABLE',
+        'INVALID_TARGET',
+        'INVALID_INPUT',
+        'LEVEL_OUT_OF_RANGE',
+      ],
       throws: [...T_NOT_FOUND_CAPABLE, 'INVALID_TARGET', 'INVALID_INPUT'],
     }),
     referenceDocPath: 'lists/apply-style.mdx',
@@ -2707,14 +2714,22 @@ export const OPERATION_DEFINITIONS = {
   'lists.setLevelNumberStyle': {
     memberPath: 'lists.setLevelNumberStyle',
     description:
-      'Set the numbering style (e.g. decimal, lowerLetter, upperRoman) for a specific list level. Rejects "bullet": use setLevelBullet instead. Sequence-local: clones shared definitions.',
-    expectedResult: 'Returns a ListsMutateItemResult receipt; reports NO_OP if the value already matches.',
+      'Set the numbering style (e.g. decimal, lowerLetter, upperRoman) for a specific list level. Rejects "bullet": use setLevelBullet instead. Sequence-local: preserves other sequences and levels. V2 returns CAPABILITY_UNAVAILABLE for numberInDash and inherited, mixed-counter, or nested-restart continuations whose numbering cannot be preserved.',
+    expectedResult:
+      'Returns a ListsMutateItemResult receipt with changed: false and no transaction when the effective value already matches.',
     requiresDocumentContext: true,
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
       trackedSupport: 'never',
-      possibleFailureCodes: ['NO_OP', 'INVALID_TARGET', 'INVALID_INPUT', 'LEVEL_OUT_OF_RANGE', 'LEVEL_NOT_FOUND'],
+      possibleFailureCodes: [
+        'NO_OP',
+        'INVALID_TARGET',
+        'INVALID_INPUT',
+        'LEVEL_OUT_OF_RANGE',
+        'LEVEL_NOT_FOUND',
+        'CAPABILITY_UNAVAILABLE',
+      ],
       throws: [...T_NOT_FOUND_CAPABLE, 'INVALID_TARGET', 'INVALID_INPUT'],
     }),
     referenceDocPath: 'lists/set-level-number-style.mdx',
@@ -2723,14 +2738,22 @@ export const OPERATION_DEFINITIONS = {
   'lists.setLevelText': {
     memberPath: 'lists.setLevelText',
     description:
-      'Set the level text pattern (e.g. "%1.", "(%1)") for a specific list level. Uses OOXML level-placeholder syntax. Sequence-local: clones shared definitions.',
-    expectedResult: 'Returns a ListsMutateItemResult receipt; reports NO_OP if the value already matches.',
+      'Set the level text pattern (e.g. "%1.", "(%1)") for a specific list level. Uses OOXML level-placeholder syntax. Sequence-local: preserves other sequences and levels. V2 returns CAPABILITY_UNAVAILABLE when existing numbering cannot be preserved.',
+    expectedResult:
+      'Returns a ListsMutateItemResult receipt with changed: false and no transaction when the value already matches.',
     requiresDocumentContext: true,
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
       trackedSupport: 'never',
-      possibleFailureCodes: ['NO_OP', 'INVALID_TARGET', 'INVALID_INPUT', 'LEVEL_OUT_OF_RANGE', 'LEVEL_NOT_FOUND'],
+      possibleFailureCodes: [
+        'NO_OP',
+        'CAPABILITY_UNAVAILABLE',
+        'INVALID_TARGET',
+        'INVALID_INPUT',
+        'LEVEL_OUT_OF_RANGE',
+        'LEVEL_NOT_FOUND',
+      ],
       throws: [...T_NOT_FOUND_CAPABLE, 'INVALID_TARGET'],
     }),
     referenceDocPath: 'lists/set-level-text.mdx',
@@ -2739,14 +2762,22 @@ export const OPERATION_DEFINITIONS = {
   'lists.setLevelStart': {
     memberPath: 'lists.setLevelStart',
     description:
-      'Set the start value for a specific list level. Rejects bullet levels and non-positive values. Sequence-local: clones shared definitions.',
-    expectedResult: 'Returns a ListsMutateItemResult receipt; reports NO_OP if the value already matches.',
+      'Set the start value for a specific list level. Rejects bullet levels and non-positive values. Sequence-local: preserves other sequences and levels. V2 returns CAPABILITY_UNAVAILABLE when existing numbering cannot be preserved.',
+    expectedResult:
+      'Returns a ListsMutateItemResult receipt with changed: false and no transaction when the value already matches.',
     requiresDocumentContext: true,
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
       trackedSupport: 'never',
-      possibleFailureCodes: ['NO_OP', 'INVALID_TARGET', 'INVALID_INPUT', 'LEVEL_OUT_OF_RANGE', 'LEVEL_NOT_FOUND'],
+      possibleFailureCodes: [
+        'NO_OP',
+        'CAPABILITY_UNAVAILABLE',
+        'INVALID_TARGET',
+        'INVALID_INPUT',
+        'LEVEL_OUT_OF_RANGE',
+        'LEVEL_NOT_FOUND',
+      ],
       throws: [...T_NOT_FOUND_CAPABLE, 'INVALID_TARGET', 'INVALID_INPUT'],
     }),
     referenceDocPath: 'lists/set-level-start.mdx',
@@ -2755,14 +2786,22 @@ export const OPERATION_DEFINITIONS = {
   'lists.setLevelLayout': {
     memberPath: 'lists.setLevelLayout',
     description:
-      'Set the layout properties (alignment, indentation, trailing character, tab stop) for a specific list level. Accepts partial updates: omitted fields are left unchanged. Sequence-local: clones shared definitions.',
-    expectedResult: 'Returns a ListsMutateItemResult receipt; reports NO_OP if all values already match.',
+      'Set the layout properties (alignment, indentation, trailing character, tab stop) for a specific list level. Accepts partial updates: omitted fields are left unchanged. Sequence-local: preserves other sequences and levels. V2 returns CAPABILITY_UNAVAILABLE when existing numbering cannot be preserved.',
+    expectedResult:
+      'Returns a ListsMutateItemResult receipt with changed: false and no transaction when all values already match.',
     requiresDocumentContext: true,
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
       trackedSupport: 'never',
-      possibleFailureCodes: ['NO_OP', 'INVALID_TARGET', 'INVALID_INPUT', 'LEVEL_OUT_OF_RANGE', 'LEVEL_NOT_FOUND'],
+      possibleFailureCodes: [
+        'NO_OP',
+        'CAPABILITY_UNAVAILABLE',
+        'INVALID_TARGET',
+        'INVALID_INPUT',
+        'LEVEL_OUT_OF_RANGE',
+        'LEVEL_NOT_FOUND',
+      ],
       throws: [...T_NOT_FOUND_CAPABLE, 'INVALID_TARGET', 'INVALID_INPUT'],
     }),
     referenceDocPath: 'lists/set-level-layout.mdx',

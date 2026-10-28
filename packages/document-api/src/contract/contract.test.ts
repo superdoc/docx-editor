@@ -1235,6 +1235,33 @@ describe('document-api contract catalog', () => {
     );
   });
 
+  it('declares named numbering no-op and capability failures in metadata and schemas', () => {
+    const codes = ['CAPABILITY_UNAVAILABLE', 'NO_OP'];
+    const schemas = buildInternalContractSchemas();
+    for (const operationId of [
+      'lists.setLevelNumberStyle',
+      'lists.setLevelText',
+      'lists.setLevelStart',
+      'lists.setLevelLayout',
+      'lists.applyStyle',
+    ] as const) {
+      expect(OPERATION_EXPECTED_RESULT_MAP[operationId]).toContain('changed: false');
+      expect(OPERATION_DESCRIPTION_MAP[operationId]).toContain('CAPABILITY_UNAVAILABLE');
+      expect(OPERATION_DESCRIPTION_MAP[operationId]).not.toContain('clon');
+      expectArrayToIncludeValues(
+        COMMAND_CATALOG[operationId].possibleFailureCodes,
+        codes,
+        `${operationId} possibleFailureCodes`,
+      );
+      const schema = schemas.operations[operationId].failure as ContractTestSchemaShape;
+      expectArrayToIncludeValues(
+        schema.properties?.failure?.properties?.code?.enum as string[] | undefined,
+        codes,
+        `${operationId} failure schema enum`,
+      );
+    }
+  });
+
   it('declares every templates.apply receipt failure code in command metadata', () => {
     expectArrayToIncludeValues(
       COMMAND_CATALOG['templates.apply'].possibleFailureCodes,

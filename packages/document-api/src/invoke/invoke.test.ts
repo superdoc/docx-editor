@@ -535,6 +535,15 @@ describe('invoke', () => {
       expect(invoked).toEqual(direct);
     });
 
+    it('getNodeById: forwards a story hint through invoke', () => {
+      const { adapters } = makeAdapters();
+      const api = createDocumentApi(adapters);
+      const story = { kind: 'story', storyType: 'headerFooterPart', refId: 'rId7' } as const;
+      const direct = api.getNodeById({ nodeId: 'p1', story });
+      expect(api.invoke({ operationId: 'getNodeById', input: { nodeId: 'p1', story } })).toEqual(direct);
+      expect(adapters.getNode!.getNodeById).toHaveBeenLastCalledWith({ nodeId: 'p1', story });
+    });
+
     it('insert: invoke returns same result as direct call', () => {
       const { adapters } = makeAdapters();
       const api = createDocumentApi(adapters);

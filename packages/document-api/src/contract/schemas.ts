@@ -4927,6 +4927,7 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
       {
         nodeId: { type: 'string' },
         nodeType: { enum: [...blockNodeTypeValues] },
+        story: storyLocatorSchema,
       },
       ['nodeId'],
     ),

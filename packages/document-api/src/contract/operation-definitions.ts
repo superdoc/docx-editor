@@ -809,19 +809,20 @@ export const OPERATION_DEFINITIONS = {
     requiresDocumentContext: true,
     metadata: readOperation({
       idempotency: 'idempotent',
-      throws: [...T_NOT_FOUND, 'ADDRESS_STALE'],
+      throws: [...T_NOT_FOUND, 'ADDRESS_STALE', 'AMBIGUOUS_TARGET'],
     }),
     referenceDocPath: 'get-node.mdx',
     referenceGroup: 'core',
   },
   getNodeById: {
     memberPath: 'getNodeById',
-    description: 'Retrieve a single node by its unique ID.',
+    description:
+      'Resolve a block ID across the body, linked headers/footers, and supported textboxes, optionally restricted by story. Paragraphs at every table-cell depth and top-level body/header/footer tables are supported; notes, comments, glossary, and nested table containers are excluded.',
     expectedResult: 'Returns an SDNodeResult envelope with the projected SDM/1 node and canonical address.',
     requiresDocumentContext: true,
     metadata: readOperation({
       idempotency: 'idempotent',
-      throws: T_NOT_FOUND,
+      throws: [...T_NOT_FOUND, 'AMBIGUOUS_TARGET', 'CAPABILITY_UNAVAILABLE'],
     }),
     referenceDocPath: 'get-node-by-id.mdx',
     referenceGroup: 'core',

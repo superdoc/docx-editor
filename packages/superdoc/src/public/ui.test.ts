@@ -5371,6 +5371,41 @@ describe('public ui — command reason taxonomy', () => {
     });
   });
 
+  it.each([undefined, { kind: 'story', storyType: 'headerFooterPart', refId: 'rId8' }])(
+    'copy-format scopes its async ID fallback to the source story %s',
+    async (story) => {
+      const { superdoc, setAlignment, setSelection, targetSelection } = makeFormatPainterSuperdoc({
+        story,
+        sourceParagraphProps: { alignment: story ? 'right' : 'center' },
+      });
+      const doc = superdoc.activeEditor.doc as Record<string, unknown>;
+      const getNode = doc.getNode as (input: { nodeId: string; story?: unknown }) => unknown;
+      delete doc.getNode;
+      const getNodeById = vi.fn(async (input: { nodeId: string; story?: unknown }) => {
+        if (!input.story) throw Object.assign(new Error('Duplicate body/header ID'), { code: 'AMBIGUOUS_TARGET' });
+        return getNode.call(doc, input);
+      });
+      doc.getNodeById = getNodeById;
+      const ui = createSuperDocUI({ superdoc });
+
+      expect(await ui.commands.executeAsync('copy-format')).toBe(true);
+      setSelection(targetSelection);
+      ui.formatPainter.notifyPointerUp();
+
+      await vi.waitFor(() => {
+        expect(setAlignment).toHaveBeenCalledWith({
+          target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P2', ...(story ? { story } : {}) },
+          alignment: story ? 'right' : 'center',
+        });
+      });
+      expect(getNodeById).toHaveBeenCalledWith({
+        nodeId: 'P1',
+        nodeType: 'paragraph',
+        story: story ?? { kind: 'story', storyType: 'body' },
+      });
+    },
+  );
+
   it('copy-format keeps header/footer story on paragraph apply targets', async () => {
     const headerStory = { kind: 'story', storyType: 'headerFooterPart', refId: 'rId8' };
     const { superdoc, setAlignment, setSelection, targetSelection } = makeFormatPainterSuperdoc({
@@ -11387,19 +11422,27 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
     });
   });
 
-  it('text-align reports a uniform direct paragraph alignment from body nodes', () => {
-    const getNodeById = vi.fn(() => ({
-      node: { kind: 'paragraph', paragraph: { props: { alignment: 'center' } } },
-    }));
+  it.each([false, true])('text-align scopes colliding body/header IDs with async=%s', async (asyncRead) => {
+    const bodyStory = { kind: 'story', storyType: 'body' } as const;
+    const getNodeById = vi.fn(({ story }: { story?: { storyType: string } }) => {
+      if (!story) throw Object.assign(new Error('Duplicate body/header ID'), { code: 'AMBIGUOUS_TARGET' });
+      const result = {
+        node: {
+          kind: 'paragraph',
+          paragraph: { props: { alignment: story.storyType === 'body' ? 'center' : 'right' } },
+        },
+      };
+      return asyncRead ? Promise.resolve(result) : result;
+    });
     const superdoc = makeBlockSuperdoc({
       getNodeById,
       format: { paragraph: { setAlignment: vi.fn() } },
     });
     const ui = createSuperDocUI({ superdoc });
 
-    expect(ui.commands.get('text-align').getState().value).toBe('center');
-    expect(getNodeById).toHaveBeenCalledWith({ nodeId: 'P1', nodeType: 'paragraph' });
-    expect(getNodeById).toHaveBeenCalledWith({ nodeId: 'P2', nodeType: 'paragraph' });
+    await vi.waitFor(() => expect(ui.commands.get('text-align').getState().value).toBe('center'));
+    expect(getNodeById).toHaveBeenCalledWith({ nodeId: 'P1', nodeType: 'paragraph', story: bodyStory });
+    expect(getNodeById).toHaveBeenCalledWith({ nodeId: 'P2', nodeType: 'paragraph', story: bodyStory });
   });
 
   it.each(['center', 'right'] as const)(
@@ -14853,9 +14896,11 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
     const getState = vi.fn(async () => ({ success: true, isListItem: false, seed: null }));
     // Each block has a different existing left indent; the awaited node read must
     // be consulted per block so the +720twip step builds on the block's own value.
-    const getNodeById = vi.fn(async ({ nodeId }: { nodeId: string }) => ({
-      node: { kind: 'paragraph', paragraph: { props: { indent: { left: nodeId === 'P1' ? 36 : 72 } } } },
-    }));
+    const getNodeById = vi.fn(async ({ nodeId, story }: { nodeId: string; story?: { storyType: string } }) => {
+      if (!story) throw Object.assign(new Error('Duplicate body/header ID'), { code: 'AMBIGUOUS_TARGET' });
+      const left = story.storyType === 'body' ? (nodeId === 'P1' ? 36 : 72) : 108;
+      return { node: { kind: 'paragraph', paragraph: { props: { indent: { left } } } } };
+    });
     const superdoc = makeBlockSuperdoc({
       lists: { indent, getState },
       format: { paragraph: { setIndentation } },
@@ -17810,17 +17855,22 @@ describe('public ui — styles slice (WS4)', () => {
     expect(active).toMatchObject({ styleId: 'Heading1', styleName: 'Heading 1', mixed: false });
   });
 
-  it('resolves active paragraph styles per story when block ids collide', async () => {
+  it.each([false, true])('keeps active styles scoped for colliding IDs with async=%s', async (asyncRead) => {
     const bodyStory = { kind: 'story', storyType: 'body' } as const;
     const headerStory = { kind: 'story', storyType: 'headerFooterPart', refId: 'rId6' } as const;
     let activeStory: typeof bodyStory | typeof headerStory = bodyStory;
     let notifySelection = () => undefined;
-    const getNodeById = vi.fn(() => ({
-      node: { kind: 'paragraph', paragraph: { styleRef: 'Heading1' } },
-    }));
-    const getNode = vi.fn(() => ({
-      node: { kind: 'paragraph', paragraph: { styleRef: 'Title' } },
-    }));
+    const getNodeById = vi.fn(({ story }: { story?: { storyType: string } }) => {
+      if (!story) throw Object.assign(new Error('Duplicate body/header ID'), { code: 'AMBIGUOUS_TARGET' });
+      const result = {
+        node: { kind: 'paragraph', paragraph: { styleRef: story.storyType === 'body' ? 'Heading1' : 'Title' } },
+      };
+      return asyncRead ? Promise.resolve(result) : result;
+    });
+    const getNode = vi.fn(() => {
+      const result = { node: { kind: 'paragraph', paragraph: { styleRef: 'Title' } } };
+      return asyncRead ? Promise.resolve(result) : result;
+    });
     const superdoc = {
       activeEditor: {
         doc: {
@@ -17829,7 +17879,11 @@ describe('public ui — styles slice (WS4)', () => {
           selection: {
             current: () => ({
               empty: true,
-              target: { kind: 'text', segments: [{ blockId: 'P1', range: { start: 0, end: 0 } }], story: activeStory },
+              target: {
+                kind: 'text',
+                segments: [{ blockId: 'P1', range: { start: 0, end: 0 } }],
+                story: activeStory,
+              },
               activeMarks: [],
               activeCommentIds: [],
               activeChangeIds: [],
@@ -17861,13 +17915,13 @@ describe('public ui — styles slice (WS4)', () => {
     };
     const ui = createSuperDocUI({ superdoc });
 
-    expect(ui.styles.getSnapshot().activeParagraphStyleId).toBe('Heading1');
-    expect(getNodeById).toHaveBeenCalledWith({ nodeId: 'P1', nodeType: 'paragraph' });
+    await vi.waitFor(() => expect(ui.styles.getSnapshot().activeParagraphStyleId).toBe('Heading1'));
+    expect(getNodeById).toHaveBeenCalledWith({ nodeId: 'P1', nodeType: 'paragraph', story: bodyStory });
 
     activeStory = headerStory;
     notifySelection();
 
-    expect(ui.styles.getSnapshot().activeParagraphStyleId).toBe('Title');
+    await vi.waitFor(() => expect(ui.styles.getSnapshot().activeParagraphStyleId).toBe('Title'));
     expect(getNode).toHaveBeenCalledWith({
       kind: 'block',
       nodeType: 'paragraph',

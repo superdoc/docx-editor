@@ -34,6 +34,16 @@ The result separates human-readable context from mutation-ready locations:
 
 Use `item.matchKind` before reading text-only fields. Node queries return a different item shape.
 
+To read the full containing block, pass `item.address` to `doc.getNode()`. If you already have a block ID, use `doc.getNodeById({ nodeId })` without guessing its type. The result includes the projected node and a canonical address you can pass back to `getNode()`.
+
+ID resolution supports body paragraphs, linked header/footer paragraphs, supported textbox paragraphs, and paragraphs inside table cells at any depth. Top-level body and header/footer tables are also supported. Nested table containers, notes, comments, glossary stories, and unsupported textbox forms are excluded. This read is available in standalone documents and shared rooms after the peer has synchronized the committed content.
+
+A complete address with a duplicated ID inside its story also throws `AMBIGUOUS_TARGET` from `getNode()`.
+
+An absent ID throws `TARGET_NOT_FOUND`. An ID duplicated within or across supported stories throws `AMBIGUOUS_TARGET`. Pass `story` to restrict the lookup, for example `doc.getNodeById({ nodeId, story: { kind: 'story', storyType: 'headerFooterPart', refId: 'rId7' } })`. A scoped miss throws `TARGET_NOT_FOUND`; an unsupported story hint throws `CAPABILITY_UNAVAILABLE`.
+
+Generated IDs such as `__sd:paragraph:0` are local to a story and can repeat in a header or textbox. When the story is known, include it: `doc.getNodeById({ nodeId, story: { kind: 'story', storyType: 'body' } })` for a body block. Keep the returned address, including its story, for subsequent `getNode()` reads.
+
 ## 3. Choose the expected number of matches
 
 Set `require` according to what makes the operation safe:

@@ -5481,7 +5481,13 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     const getNode = hostMethod(doc, 'getNode');
     const getNodeById = hostMethod(doc, 'getNodeById');
     const raw = await Promise.resolve(
-      getNode ? getNode(address) : getNodeById?.({ nodeId: address['nodeId'], nodeType: address['nodeType'] }),
+      getNode
+        ? getNode(address)
+        : getNodeById?.({
+            nodeId: address['nodeId'],
+            nodeType: address['nodeType'],
+            story: address['story'] ?? { kind: 'story', storyType: 'body' },
+          }),
     );
     return isPlainObject(raw) ? raw : undefined;
   };
@@ -6265,7 +6271,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       token,
       () =>
         isBodyStory
-          ? (doc.getNodeById as AnyFn)({ nodeId: blockId, nodeType: 'paragraph' })
+          ? (doc.getNodeById as AnyFn)({ nodeId: blockId, nodeType: 'paragraph', story })
           : (doc.getNode as AnyFn)(paragraphTarget(blockId, story)),
       (raw) => (raw && typeof raw === 'object' ? (raw as LooseRecord) : null),
     );
@@ -6546,7 +6552,11 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
         story && typeof doc.getNode === 'function'
           ? await (doc.getNode as AnyFn)(paragraphTarget(blockId, story))
           : isBodyStory && typeof doc.getNodeById === 'function'
-            ? await (doc.getNodeById as AnyFn)({ nodeId: blockId, nodeType: 'paragraph' })
+            ? await (doc.getNodeById as AnyFn)({
+                nodeId: blockId,
+                nodeType: 'paragraph',
+                story: { kind: 'story', storyType: 'body' },
+              })
             : null;
       return readParagraphIndentationFromResult(raw && typeof raw === 'object' ? raw : null);
     } catch {

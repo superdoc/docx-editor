@@ -201,6 +201,17 @@ describe('document-api contract catalog', () => {
     expect(output.properties?.blocks?.items?.properties?.tabCount).toMatchObject({ type: 'integer', minimum: 0 });
   });
 
+  it('publishes optional story hints and deterministic node ID lookup failures', () => {
+    const input = buildInternalContractSchemas().operations.getNodeById.input as ContractTestSchemaShape;
+    expect(input.properties?.story).toBeDefined();
+    expect(input.required).toEqual(['nodeId']);
+    expect(OPERATION_DEFINITIONS.getNodeById.inputAliases).toEqual({ id: 'nodeId' });
+    expect(OPERATION_DEFINITIONS.getNode.metadata.throws.preApply).toContain('AMBIGUOUS_TARGET');
+    expect(OPERATION_DEFINITIONS.getNodeById.metadata.throws.preApply).toEqual(
+      expect.arrayContaining(['TARGET_NOT_FOUND', 'AMBIGUOUS_TARGET', 'CAPABILITY_UNAVAILABLE']),
+    );
+  });
+
   it('accepts tracked definition-replay blockers in diff payloads across compare and apply', () => {
     const operations = buildInternalContractSchemas().operations;
     const compareOutput = operations['diff.compare'].output as ContractTestSchemaShape;

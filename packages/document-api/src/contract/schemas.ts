@@ -1302,7 +1302,7 @@ const textWatermarkSchema = objectSchema(
     fontSizePt: { oneOf: [{ const: 'auto' }, { type: 'number', exclusiveMinimum: 0 }] },
     bold: { type: 'boolean' },
     italic: { type: 'boolean' },
-    color: { type: 'string', pattern: '^#[0-9A-Fa-f]{6}$' },
+    color: { type: 'string', pattern: '^#?[0-9A-Fa-f]{6}$' },
     opacity: { type: 'number', minimum: 0, maximum: 1 },
     orientation: { enum: ['horizontal', 'diagonal'] },
     placement: watermarkPlacementSchema,

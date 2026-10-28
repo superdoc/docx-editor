@@ -147,6 +147,14 @@ describe('cascade - combineRunProperties', () => {
     expect(result.color).toEqual({ val: '00FF00' });
   });
 
+  it('replaces inherited run shading as a whole, dropping its theme fill', () => {
+    const result = combineRunProperties([
+      { shading: { val: 'clear', fill: 'FFFFFF', themeFill: 'light1' } },
+      { shading: { val: 'clear', color: 'auto', fill: 'auto' } },
+    ]);
+    expect(result.shading).toEqual({ val: 'clear', color: 'auto', fill: 'auto' });
+  });
+
   it('deep merges other properties not in fullOverrideProps', () => {
     const result = combineRunProperties([
       { fontSize: 22, bold: true },

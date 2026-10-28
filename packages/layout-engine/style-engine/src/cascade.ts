@@ -149,7 +149,7 @@ function dropConflictingFontSlots(
 
 export function combineRunProperties(propertiesArray: RunProperties[]): RunProperties {
   return combineProperties(propertiesArray, {
-    fullOverrideProps: ['color'],
+    fullOverrideProps: ['color', 'shading'],
     specialHandling: {
       fontFamily: (target: Record<string, unknown>, source: Record<string, unknown>): unknown => {
         const fontFamilySource = omitInheritedFontFamilies(source.fontFamily as RunFontFamilyProperties);

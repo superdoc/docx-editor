@@ -31,6 +31,8 @@ export interface WatermarksApi {
 
 export type WatermarksAdapter = WatermarksApi;
 
+const HEX_COLOR = /^#?[0-9A-Fa-f]{6}$/;
+
 const SCALE_VALUES = new Set<PictureWatermarkInput['scalePercent']>(['auto', 50, 100, 150, 200, 500]);
 
 function invalid(message: string, details?: Record<string, unknown>): never {
@@ -104,8 +106,11 @@ function validateTextWatermark(value: TextWatermark, operation: string): void {
   if (value.fontSizePt !== undefined && value.fontSizePt !== 'auto') {
     assertFinite(value.fontSizePt, `${operation}.watermark.fontSizePt`, true);
   }
-  if (value.color !== undefined && !/^#[0-9A-Fa-f]{6}$/.test(value.color)) {
-    invalid(`${operation}.watermark.color must be a six-digit hexadecimal color.`);
+  if (value.color !== undefined && (typeof value.color !== 'string' || !HEX_COLOR.test(value.color))) {
+    invalid(
+      `${operation}.watermark.color must be a six-digit hexadecimal color such as #C0C0C0 (the leading # is optional).`,
+      { field: `${operation}.watermark.color`, value: value.color },
+    );
   }
   if (value.orientation !== undefined && value.orientation !== 'horizontal' && value.orientation !== 'diagonal') {
     invalid(`${operation}.watermark.orientation must be horizontal or diagonal.`);

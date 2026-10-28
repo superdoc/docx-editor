@@ -368,11 +368,22 @@ const trackedChangeDecisionDisabledOutcome = () => ({
 const isReplying = ref(false);
 const isSubmittingReply = ref(false);
 const isSubmittingNewComment = ref(false);
+const commentSaveFailure = ref('');
+const commentSaveFailureMessage = (outcome, hasDraft = true) => {
+  const reason =
+    outcome?.detail === 'document-mode-read-only'
+      ? ' because the document or connection is read-only'
+      : outcome?.code === 'PERMISSION_DENIED'
+        ? ' because you do not have permission'
+        : '';
+  return `Your comment could not be saved${reason}.${hasDraft ? ' Your draft is still here. Try again or cancel.' : ' Try again.'}`;
+};
 const startReply = () => {
   if (commentsAreReadOnly()) return readOnlyMutationOutcome();
   if (isV2WriteDisabled.value) {
     return { ok: false, reason: v2WriteCapability.value?.reason ?? 'v2-write-unavailable' };
   }
+  commentSaveFailure.value = '';
   isReplying.value = true;
   nextTick(() => {
     commentInput.value?.focus?.();
@@ -779,6 +790,7 @@ const handleAddComment = async () => {
     }
 
     isSubmittingReply.value = true;
+    commentSaveFailure.value = '';
     try {
       const parentCommentId = getV2ExistingReplyParentId(props.comment);
       const trackedChangeTarget = getV2TrackedChangeCommentTarget(props.comment);
@@ -790,6 +802,7 @@ const handleAddComment = async () => {
         ...(trackedChangeTarget ? { trackedChangeTarget } : {}),
       });
       if (!outcome?.ok) {
+        commentSaveFailure.value = commentSaveFailureMessage(outcome);
         // Plan §4.1: keep reply editor open and typed text intact for retry.
         nextTick(() => emit('resize'));
         return outcome;
@@ -812,6 +825,7 @@ const handleAddComment = async () => {
       return { ok: false, reason: 'comment-submit-in-flight' };
     }
     isSubmittingNewComment.value = true;
+    commentSaveFailure.value = '';
   }
 
   const options = {
@@ -837,7 +851,13 @@ const handleAddComment = async () => {
   // legacy/v1 branch) rejects instead of escaping before the flag resets.
   Promise.resolve()
     .then(() => addComment({ superdoc: proxy.$superdoc, comment }))
+    .then((outcome) => {
+      if (isPendingNewComment.value && outcome?.ok === false) {
+        commentSaveFailure.value = commentSaveFailureMessage(outcome);
+      }
+    })
     .catch((err) => {
+      commentSaveFailure.value = commentSaveFailureMessage();
       console.error('[SuperDoc] addComment failed', err);
     })
     .finally(() => {
@@ -1142,7 +1162,11 @@ const handleResolve = async () => {
       superdoc: proxy.$superdoc,
       commentId: props.comment.commentId,
     });
-    if (!outcome?.ok) return;
+    if (!outcome?.ok) {
+      commentSaveFailure.value = commentSaveFailureMessage(outcome, false);
+      return outcome;
+    }
+    commentSaveFailure.value = '';
   } else {
     props.comment.resolveComment({
       id: superdocStore.user.id,
@@ -1187,7 +1211,11 @@ const handleReopen = async () => {
     superdoc: proxy.$superdoc,
     commentId: props.comment.commentId,
   });
-  if (!outcome?.ok) return;
+  if (!outcome?.ok) {
+    commentSaveFailure.value = commentSaveFailureMessage(outcome, false);
+    return outcome;
+  }
+  commentSaveFailure.value = '';
   nextTick(() => {
     commentsStore.lastUpdate = new Date();
     commentsStore.setActiveComment(proxy.$superdoc, activeComment.value);
@@ -1195,7 +1223,7 @@ const handleReopen = async () => {
   });
 };
 
-const handleOverflowSelect = (value, comment) => {
+const handleOverflowSelect = async (value, comment) => {
   if (commentsAreReadOnly()) return readOnlyMutationOutcome();
 
   switch (value) {
@@ -1214,7 +1242,10 @@ const handleOverflowSelect = (value, comment) => {
       });
       break;
     case 'delete':
-      deleteComment({ superdoc: proxy.$superdoc, commentId: comment.commentId });
+      {
+        const outcome = await deleteComment({ superdoc: proxy.$superdoc, commentId: comment.commentId });
+        commentSaveFailure.value = outcome?.ok ? '' : commentSaveFailureMessage(outcome, false);
+      }
       break;
   }
 };
@@ -1242,7 +1273,6 @@ const handleCommentUpdate = async (comment) => {
       commentId: comment.commentId,
       text: draft,
     });
-    if (!outcome?.ok) return outcome;
     if (
       session?.owner !== editSessionOwner ||
       commentEditSessions.get(commentsStore) !== session ||
@@ -1256,6 +1286,11 @@ const handleCommentUpdate = async (comment) => {
       currentCommentText.value !== draft
     )
       return outcome;
+    if (!outcome?.ok) {
+      commentSaveFailure.value = commentSaveFailureMessage(outcome);
+      return outcome;
+    }
+    commentSaveFailure.value = '';
     retireOwnEditSession();
     editingCommentId.value = null;
     removePendingComment(proxy.$superdoc);
@@ -1292,6 +1327,7 @@ const getProcessedDate = (timestamp) => {
 };
 
 const handleCancel = (comment) => {
+  commentSaveFailure.value = '';
   retireOwnEditSession();
   editingCommentId.value = null;
   isReplying.value = false;
@@ -1423,6 +1459,7 @@ watch(isV2WriteDisabled, (isDisabled) => {
           :include-header="false"
         />
       </div>
+      <p v-if="commentSaveFailure" class="tracked-change-decision-alert" role="alert">{{ commentSaveFailure }}</p>
       <div class="reply-actions">
         <button class="sd-button reply-btn-cancel" @click.stop.prevent="handleCancel">Cancel</button>
         <button
@@ -1453,6 +1490,8 @@ watch(isV2WriteDisabled, (isDisabled) => {
           @select="handleInternalExternalSelect"
         />
       </div>
+
+      <p v-if="commentSaveFailure" class="tracked-change-decision-alert" role="alert">{{ commentSaveFailure }}</p>
 
       <!-- Comments and their threaded (sub) comments are rendered here -->
       <div v-for="(comment, index) in visibleComments" :key="comment.commentId" class="conversation-item">

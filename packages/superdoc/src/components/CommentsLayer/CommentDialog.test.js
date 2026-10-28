@@ -1345,6 +1345,52 @@ describe('CommentDialog', () => {
       }
     });
 
+    it('shows a refusal for an edit while retaining the draft', async () => {
+      const comment = prepare('editing');
+      vi.spyOn(commentsStore, 'editCommentV2').mockResolvedValue({ ok: false, code: 'PERMISSION_DENIED' });
+      const wrapper = mountDialog(comment, { CommentHeader: false });
+      try {
+        await selectOverflow(wrapper, 'Edit');
+        commentsStore.currentCommentText = '<p>Unsaved edit</p>';
+        await flushPromises();
+        await wrapper.find('button.reply-btn-primary').trigger('click');
+        await flushPromises();
+        expect(wrapper.find('[role="alert"]').text()).toContain('you do not have permission');
+        expect(commentsStore.currentCommentText).toBe('<p>Unsaved edit</p>');
+        expect(commentsStore.editingCommentId).toBe(comment.commentId);
+      } finally {
+        wrapper.unmount();
+      }
+    });
+
+    it('shows a refusal when resolving fails', async () => {
+      const comment = prepare('editing');
+      commentsStore.init({ readOnly: false, allowResolve: true });
+      superdocStub.interactionConfig.comments.allowResolve = true;
+      vi.spyOn(commentsStore, 'resolveCommentV2').mockResolvedValue({ ok: false, code: 'PERMISSION_DENIED' });
+      const wrapper = mountDialog(comment);
+      try {
+        wrapper.findComponent({ name: 'CommentHeader' }).vm.$emit('resolve');
+        await flushPromises();
+        expect(wrapper.find('[role="alert"]').text()).toContain('you do not have permission');
+      } finally {
+        wrapper.unmount();
+      }
+    });
+
+    it('shows a refusal when deletion fails', async () => {
+      const comment = prepare('editing');
+      vi.spyOn(commentsStore, 'deleteComment').mockResolvedValue({ ok: false, code: 'PERMISSION_DENIED' });
+      const wrapper = mountDialog(comment, { CommentHeader: false });
+      try {
+        await selectOverflow(wrapper, 'Delete');
+        await flushPromises();
+        expect(wrapper.find('[role="alert"]').text()).toContain('you do not have permission');
+      } finally {
+        wrapper.unmount();
+      }
+    });
+
     it.each(['editing', 'viewing'])('deletes the own comment through its menu in %s mode', async (mode) => {
       const comment = prepare(mode);
       const remove = vi.spyOn(commentsStore, 'deleteComment').mockResolvedValue({ ok: true });
@@ -1499,6 +1545,56 @@ describe('CommentDialog', () => {
     }
   });
 
+  it.each([
+    ['PERMISSION_DENIED', 'you do not have permission'],
+    ['INTERNAL_ERROR', 'Try again or cancel'],
+  ])('explains a refused v2 reply and clears feedback when retried or canceled (%s)', async (code, message) => {
+    superdocStub.activeEditor.editorVersion = 2;
+    superdocStub.activeEditor.v2Comments = {
+      getCapabilityState: vi.fn(() => ({ canWrite: true })),
+    };
+    const comment = useComment({ commentId: 'reply-denied', fileId: 'doc-1', commentText: 'Parent' });
+    commentsStore.commentsList = [comment];
+    commentsStore.activeComment = comment.commentId;
+    commentsStore.currentCommentText = '<p>Keep my reply</p>';
+    let settleRetry;
+    const retry = new Promise((resolve) => {
+      settleRetry = resolve;
+    });
+    vi.spyOn(commentsStore, 'replyCommentV2')
+      .mockResolvedValueOnce({ ok: false, code })
+      .mockReturnValueOnce(retry)
+      .mockResolvedValue({ ok: false, code });
+    const wrapper = mountDialog(comment);
+    try {
+      await wrapper.find('.reply-pill').trigger('click');
+      await wrapper.find('button.reply-btn-primary').trigger('click');
+      await flushPromises();
+      expect(wrapper.find('[role="alert"]').exists()).toBe(true);
+      expect(wrapper.find('[role="alert"]').text()).toContain(message);
+      expect(commentsStore.currentCommentText).toBe('<p>Keep my reply</p>');
+      expect(wrapper.find('.reply-expanded').exists()).toBe(true);
+      await wrapper.find('button.reply-btn-primary').trigger('click');
+      expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+      settleRetry({ ok: true });
+      await flushPromises();
+      expect(wrapper.find('.reply-expanded').exists()).toBe(false);
+      expect(commentsStore.currentCommentText).toBe('');
+      await wrapper.find('.reply-pill').trigger('click');
+      commentsStore.currentCommentText = '<p>Another reply</p>';
+      await flushPromises();
+      await wrapper.find('button.reply-btn-primary').trigger('click');
+      await flushPromises();
+      expect(wrapper.find('[role="alert"]').exists()).toBe(true);
+      await wrapper.find('button.reply-btn-cancel').trigger('click');
+      await wrapper.find('.reply-pill').trigger('click');
+      expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+    } finally {
+      settleRetry?.({ ok: true });
+      wrapper.unmount();
+    }
+  });
+
   it('coalesces rapid new-comment clicks while the first submission is pending', async () => {
     superdocStub.activeEditor.editorVersion = 2;
     superdocStub.activeEditor.v2Comments = {
@@ -1534,6 +1630,38 @@ describe('CommentDialog', () => {
       expect(submitButton.attributes('disabled')).toBeUndefined();
     } finally {
       settleAdd?.({ ok: true });
+      wrapper.unmount();
+    }
+  });
+
+  it('shows a permission refusal without discarding the pending new-comment draft', async () => {
+    superdocStub.activeEditor.editorVersion = 2;
+    superdocStub.activeEditor.v2Comments = {
+      getCapabilityState: vi.fn(() => ({ canWrite: true })),
+    };
+    const pendingDraft = useComment({
+      commentId: 'pending-new-comment-denied',
+      fileId: 'doc-1',
+      commentText: '',
+    });
+    commentsStore.pendingComment = pendingDraft;
+    commentsStore.currentCommentText = '<p>Keep my draft</p>';
+    vi.spyOn(commentsStore, 'addComment').mockResolvedValue({
+      ok: false,
+      reason: 'receipt-failure',
+      code: 'PERMISSION_DENIED',
+      detail: 'document-mode-read-only',
+    });
+    const wrapper = mountDialog(pendingDraft);
+    try {
+      expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+      await wrapper.find('button.reply-btn-primary').trigger('click');
+      await flushPromises();
+      expect(wrapper.find('[role="alert"]').text()).toContain('document or connection is read-only');
+      expect(commentsStore.currentCommentText).toBe('<p>Keep my draft</p>');
+      expect(commentsStore.pendingComment).not.toBeNull();
+      expect(wrapper.find('button.reply-btn-primary').attributes('disabled')).toBeUndefined();
+    } finally {
       wrapper.unmount();
     }
   });

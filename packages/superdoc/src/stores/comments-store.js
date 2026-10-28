@@ -2112,6 +2112,8 @@ export const useCommentsStore = defineStore('comments', () => {
             rejected: true,
             comment: comment.getValues(),
             reason: outcome?.reason ?? 'v2-delete-failed',
+            ...(outcome?.code !== undefined ? { code: outcome.code } : {}),
+            ...(outcome?.detail !== undefined ? { detail: outcome.detail } : {}),
             ...(outcome?.committed ? { committed: true } : {}),
           });
           return outcome;

@@ -563,6 +563,41 @@ const EXEMPT_PATHS = new Map([
     },
   ],
   [
+    'packages/sdk/langs/node/src/__tests__/full-preset-anchor-occurrence.integration.test.ts',
+    {
+      reason: 'integration test against the private engine build; skipped when absent',
+      allow: /^(?:\.\.\/){7}v2\/headless\/dist\/index\.js$/,
+    },
+  ],
+  [
+    'packages/sdk/langs/node/src/__tests__/full-preset-compare.integration.test.ts',
+    {
+      reason: 'integration test against the private engine build; skipped when absent',
+      allow: /^(?:\.\.\/){7}v2\/headless\/dist\/index\.js$/,
+    },
+  ],
+  [
+    'packages/sdk/langs/node/src/__tests__/full-preset-heading-adoption.integration.test.ts',
+    {
+      reason: 'integration test against the private engine build; skipped when absent',
+      allow: /^(?:\.\.\/){7}v2\/headless\/dist\/index\.js$/,
+    },
+  ],
+  [
+    'packages/sdk/langs/node/src/__tests__/full-preset-style-replace.integration.test.ts',
+    {
+      reason: 'integration test against the private engine build; skipped when absent',
+      allow: /^(?:\.\.\/){7}v2\/headless\/dist\/index\.js$/,
+    },
+  ],
+  [
+    'packages/sdk/langs/node/src/__tests__/full-preset-tracked-policy.integration.test.ts',
+    {
+      reason: 'integration test against the private engine build; skipped when absent',
+      allow: /^(?:\.\.\/){7}v2\/headless\/dist\/index\.js$/,
+    },
+  ],
+  [
     'apps/cli/src/__tests__/lib/collaboration/v2-error-mapping.test.ts',
     {
       reason: 'asserts the private engine diagnostics contract; skipped when absent',

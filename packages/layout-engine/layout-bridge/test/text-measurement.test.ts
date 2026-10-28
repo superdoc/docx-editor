@@ -906,6 +906,97 @@ describe('text measurement utility', () => {
       expect([4, 6, 9].map((offset) => measureCharacterX(block, line, offset))).toEqual([48, 68, 98]);
     });
 
+    it('keeps the end of ordinary justified text at the painted edge before a suppressed wrap space', () => {
+      const block = createBlock([
+        { text: 'A B C ', fontFamily: 'Arial', fontSize: 16 },
+        { text: 'Tail', fontFamily: 'Arial', fontSize: 16 },
+      ]);
+      if (block.kind !== 'paragraph') throw new Error('Expected paragraph');
+      block.attrs = { alignment: 'justify' };
+      const line = baseLine({
+        toChar: 6,
+        width: 50,
+        maxWidth: 100,
+        spaceCount: 2,
+        segments: [{ runIndex: 0, fromChar: 0, toChar: 5, width: 50 }],
+      });
+
+      expect([4, 5, 6].map((offset) => measureCharacterX(block, line, offset))).toEqual([90, 100, 100]);
+    });
+
+    it('preserves trailing spaces retained by the measured segments of a justified line', () => {
+      const block = createBlock([
+        { text: 'A B C ', fontFamily: 'Arial', fontSize: 16 },
+        { text: 'Tail', fontFamily: 'Arial', fontSize: 16 },
+      ]);
+      if (block.kind !== 'paragraph') throw new Error('Expected paragraph');
+      block.attrs = { alignment: 'justify' };
+      const line = baseLine({
+        toChar: 6,
+        width: 60,
+        maxWidth: 100,
+        spaceCount: 3,
+        segments: [{ runIndex: 0, fromChar: 0, toChar: 6, width: 60 }],
+      });
+
+      expect(measureCharacterX(block, line, 5)).toBeCloseTo(50 + (40 / 3) * 2);
+      expect(measureCharacterX(block, line, 6)).toBe(100);
+    });
+
+    it('suppresses collapsed terminal spaces retained in measured segment ranges', () => {
+      const block = createBlock([
+        { text: 'A B C ', fontFamily: 'Arial', fontSize: 16 },
+        { kind: 'lineBreak' },
+        { text: 'Tail', fontFamily: 'Arial', fontSize: 16 },
+      ]);
+      if (block.kind !== 'paragraph') throw new Error('Expected paragraph');
+      block.attrs = { alignment: 'justify' };
+      const line = baseLine({
+        toChar: 6,
+        width: 50,
+        maxWidth: 100,
+        spaceCount: 2,
+        segments: [{ runIndex: 0, fromChar: 0, toChar: 6, width: 50 }],
+      });
+
+      expect([5, 6].map((offset) => measureCharacterX(block, line, offset))).toEqual([100, 100]);
+    });
+
+    it('suppresses wrap spaces split into a separately styled trailing run', () => {
+      const block = createBlock([
+        { text: 'A B C', fontFamily: 'Arial', fontSize: 16 },
+        { text: '  ', fontFamily: 'Arial', fontSize: 16, italic: true },
+        { text: 'Tail', fontFamily: 'Arial', fontSize: 16 },
+      ]);
+      if (block.kind !== 'paragraph') throw new Error('Expected paragraph');
+      block.attrs = { alignment: 'justify' };
+      const line = baseLine({ toRun: 1, toChar: 2, width: 50, maxWidth: 100, spaceCount: 2 });
+
+      expect([5, 6, 7].map((offset) => measureCharacterX(block, line, offset))).toEqual([100, 100, 100]);
+    });
+
+    it.each(['left', 'justify'])('preserves trailing spaces on a true last %s line', (alignment) => {
+      const block = createBlock([{ text: 'A B C ', fontFamily: 'Arial', fontSize: 16 }]);
+      if (block.kind !== 'paragraph') throw new Error('Expected paragraph');
+      block.attrs = { alignment: alignment as 'left' | 'justify' };
+      const line = baseLine({ toChar: 6, width: 60, maxWidth: 100, spaceCount: 3 });
+
+      expect([5, 6].map((offset) => measureCharacterX(block, line, offset))).toEqual([50, 60]);
+    });
+
+    it('retains a nonbreaking space at the end of a justified line', () => {
+      const block = createBlock([
+        { text: 'A B C\u00a0', fontFamily: 'Arial', fontSize: 16 },
+        { text: 'Tail', fontFamily: 'Arial', fontSize: 16 },
+      ]);
+      if (block.kind !== 'paragraph') throw new Error('Expected paragraph');
+      block.attrs = { alignment: 'justify' };
+      const line = baseLine({ toChar: 6, width: 60, maxWidth: 100, spaceCount: 3 });
+
+      expect(measureCharacterX(block, line, 5)).toBeCloseTo(50 + (40 / 3) * 2);
+      expect(measureCharacterX(block, line, 6)).toBe(100);
+    });
+
     it('does not distribute justification into a trimmed wrap-point space', () => {
       const { block, line } = hangingTabLine(false);
       if (block.kind !== 'paragraph') throw new Error('Expected paragraph');
@@ -1420,16 +1511,20 @@ describe('text measurement utility', () => {
     });
   });
 
-  it('retains justified word spacing before and inside an inline box', () => {
+  it.each([
+    ['A B C', 5],
+    ['A B C ', 5],
+    ['A B C ', 6],
+  ] as const)('retains justified inline-box spacing for %j with box end %s', (text, boxEnd) => {
     const block = createBlock([
-      { text: 'A B C', fontFamily: 'Arial', fontSize: 16, pmStart: 0, pmEnd: 5 },
+      { text, fontFamily: 'Arial', fontSize: 16, pmStart: 0, pmEnd: text.length },
       { text: 'next line', fontFamily: 'Arial', fontSize: 16, pmStart: 5, pmEnd: 14 },
     ]);
     (block as any).attrs = { alignment: 'justify' };
     const line = baseLine({
       fromRun: 0,
       toRun: 0,
-      toChar: 5,
+      toChar: text.length,
       width: 56,
       maxWidth: 100,
       spaceCount: 2,
@@ -1441,7 +1536,7 @@ describe('text measurement utility', () => {
         {
           id: 'citation',
           from: 2,
-          to: 5,
+          to: boxEnd,
           x: 20,
           width: 36,
           top: 0,
@@ -1463,6 +1558,9 @@ describe('text measurement utility', () => {
 
     expect(measureCharacterX(block, line, 2, 100)).toBe(45);
     expect(measureCharacterX(block, line, 4, 100)).toBe(87);
+    expect(measureCharacterX(block, line, 5, 100)).toBe(boxEnd === 6 ? 97 : 100);
+    if (text.endsWith(' ')) expect(measureCharacterX(block, line, 6, 100)).toBe(100);
+    if (boxEnd === 6) expect(findCharacterAtX(block, line, 96, 0, 100).charOffset).toBe(5);
     expect(findCharacterAtX(block, line, 45, 0, 100).charOffset).toBe(2);
     expect(findCharacterAtX(block, line, 87, 0, 100).charOffset).toBe(4);
   });

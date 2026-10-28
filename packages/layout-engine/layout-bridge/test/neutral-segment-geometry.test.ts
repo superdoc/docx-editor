@@ -199,6 +199,28 @@ describe('collectSegmentGeometry', () => {
     });
   }
 
+  it('centers a regular first-line indent within its measured remaining width', () => {
+    const block = paragraphBlock('first-line-center', [textRun('test', 1)], {
+      alignment: 'center',
+      indent: { firstLine: 24 },
+    } as ParagraphAttrs);
+    const line = makeLine({
+      toChar: 4,
+      width: 100,
+      maxWidth: 276,
+      segments: [{ runIndex: 0, fromChar: 0, toChar: 4, width: 100 }],
+    });
+    const layout = singlePageLayout([paraFragment({ blockId: block.id, x: 30, width: 300 })]);
+
+    const fragment = collectSegmentGeometry(layout, [block], [paragraphMeasure([line])]).fragments[0];
+    expect(fragment.diagnostics).toBeUndefined();
+    expect(fragment.lines[0].contentWidth).toBe(100);
+    expect(fragment.lines[0].contentLeft).toBe(30 + 24 + (276 - 100) / 2);
+    expect(fragment.lines[0].segments).toEqual([
+      { segmentIndex: 0, runIndex: 0, fromChar: 0, toChar: 4, x: 142, width: 100 },
+    ]);
+  });
+
   it('honors explicit tab/segment positioning and flags the line', () => {
     const block = paragraphBlock('t1', [textRun('a', 1, { pmEnd: 2 }), textRun('b', 3, { pmEnd: 4 })]);
     const line = makeLine({
@@ -654,6 +676,130 @@ describe('collectSegmentGeometry', () => {
       { x: 60, width: 30 },
       { x: 240, width: 30 },
     ]);
+  });
+
+  it.each([624, 672, undefined])('preserves negative-left justified line bounds with maxWidth %s', (maxWidth) => {
+    const text = 'Alpha beta Gamma delta Tail';
+    const block = paragraphBlock('negative-left-justify', [textRun(text, 1)], {
+      alignment: 'justify',
+      indent: { left: -48 },
+    });
+    const lines = [
+      makeLine({
+        toChar: 11,
+        width: 200,
+        maxWidth,
+        segments: [{ runIndex: 0, fromChar: 0, toChar: 11, width: 200 }],
+      }),
+      makeLine({
+        fromChar: 11,
+        toChar: 23,
+        width: 200,
+        maxWidth,
+        segments: [{ runIndex: 0, fromChar: 11, toChar: 23, width: 200 }],
+      }),
+      makeLine({
+        fromChar: 23,
+        toChar: text.length,
+        width: 40,
+        maxWidth,
+        segments: [{ runIndex: 0, fromChar: 23, toChar: text.length, width: 40 }],
+      }),
+    ];
+    const layout = singlePageLayout([paraFragment({ blockId: block.id, x: 96, width: 624, toLine: 3 })]);
+    const geometry = collectSegmentGeometry(layout, [block], [paragraphMeasure(lines)]).fragments[0];
+
+    for (const line of geometry.lines.slice(0, 2)) {
+      expect(line.contentLeft).toBe(48);
+      expect(line.contentLeft + line.contentWidth).toBe(720);
+      expect(line.segments[0].x + line.segments[0].width).toBe(720);
+    }
+    expect(geometry.lines[2].contentLeft).toBe(48);
+    expect(geometry.lines[2].contentWidth).toBe(40);
+    expect(geometry.lines[2].segments[0]).toMatchObject({ x: 48, width: 40 });
+  });
+
+  it('preserves the negative indent origin for explicitly positioned tab segments', () => {
+    const block = paragraphBlock('negative-left-tab', [textRun('Label\tValue', 1)], {
+      indent: { left: -48 },
+    });
+    const line = makeLine({
+      toChar: 11,
+      width: 200,
+      maxWidth: 672,
+      segments: [
+        { runIndex: 0, fromChar: 0, toChar: 5, width: 40, x: 48 },
+        { runIndex: 0, fromChar: 6, toChar: 11, width: 60, x: 144 },
+      ],
+    });
+    const layout = singlePageLayout([paraFragment({ blockId: block.id, x: 96, width: 624 })]);
+    const geometry = collectSegmentGeometry(layout, [block], [paragraphMeasure([line])]).fragments[0];
+
+    expect(geometry.lines[0].segments[0]).toMatchObject({ x: 96, width: 40 });
+    expect(geometry.lines[0].segments[1]).toMatchObject({ x: 192, width: 60 });
+  });
+
+  it('caps justified list geometry at the measured width after the first-line marker and suffix', () => {
+    const text = 'Alpha beta Gamma delta Tail';
+    const block = paragraphBlock('numbered-justify', [textRun(text, 1)], {
+      alignment: 'justify',
+      indent: { left: 24 },
+      numberingProperties: { numId: 1, level: 1 },
+      wordLayout: {
+        marker: { markerText: '(a)', markerX: 24, suffix: 'space', run: { fontFamily: 'Arial', fontSize: 16 } },
+      },
+    } as ParagraphAttrs);
+    const lines = [
+      makeLine({
+        toChar: 11,
+        width: 200,
+        maxWidth: 571.78,
+        segments: [
+          { runIndex: 0, fromChar: 0, toChar: 6, width: 100 },
+          { runIndex: 0, fromChar: 6, toChar: 11, width: 100 },
+        ],
+      }),
+      makeLine({
+        fromChar: 11,
+        toChar: 23,
+        width: 200,
+        maxWidth: 600,
+        segments: [{ runIndex: 0, fromChar: 11, toChar: 23, width: 200 }],
+      }),
+      makeLine({
+        fromChar: 23,
+        toChar: text.length,
+        width: 40,
+        maxWidth: 600,
+        segments: [{ runIndex: 0, fromChar: 23, toChar: text.length, width: 40 }],
+      }),
+    ];
+    const layout = singlePageLayout([
+      paraFragment({
+        blockId: block.id,
+        x: 96,
+        width: 624,
+        toLine: 3,
+        markerWidth: 28.22,
+        markerTextWidth: 24.22,
+      }),
+    ]);
+
+    const fragment = collectSegmentGeometry(layout, [block], [paragraphMeasure(lines)]).fragments[0];
+    expect(fragment.diagnostics).toBeUndefined();
+    const [first, continuation, last] = fragment.lines;
+    expect(first.contentLeft).toBeCloseTo(148.22);
+    expect(first.contentWidth).toBeCloseTo(571.78);
+    expect(first.contentLeft + first.contentWidth).toBeCloseTo(720);
+    expect(first.segments[0].width).toBeCloseTo(285.89);
+    expect(first.segments[1].x).toBeCloseTo(434.11);
+    expect(first.segments[1].width).toBeCloseTo(285.89);
+    expect(continuation.contentLeft).toBe(120);
+    expect(continuation.contentWidth).toBe(600);
+    expect(continuation.segments[0].width).toBe(600);
+    expect(last.contentLeft).toBe(120);
+    expect(last.contentWidth).toBe(40);
+    expect(last.segments[0].width).toBe(40);
   });
 
   it('stretches segment width, not just x, for inter-character (no-space, e.g. CJK) justify boundaries inside a segment', () => {

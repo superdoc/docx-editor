@@ -255,6 +255,67 @@ export function measureInlineImageCaretTextBox(
     : null;
 }
 
+const normalizeJustifiedCaretLine = (
+  block: FlowBlock,
+  line: Line,
+  charOffset: number,
+  availableWidthOverride?: number,
+  alignmentOverride?: string,
+): { line: Line; charOffset: number } => {
+  if (
+    block.kind !== 'paragraph' ||
+    line.segments?.some(
+      (segment) =>
+        segment.x !== undefined ||
+        (segment.toChar > segment.fromChar && block.runs[segment.runIndex]?.kind === 'image'),
+    )
+  )
+    return { line, charOffset };
+  const justify = getJustifyAdjustment({ block, line, availableWidthOverride, alignmentOverride });
+  if (justify.totalSpaces === 0 && justify.interCharacterBoundaries.length === 0) return { line, charOffset };
+  const runs = sliceCaretRunsForLine(block, line);
+  const lastSegment = line.segments?.at(-1);
+  const sourceSpaces = runs.reduce(
+    (sum, run) => sum + (!isVanishedRun(run) && 'text' in run ? countSpaces(run.text ?? '') : 0),
+    0,
+  );
+  if (
+    lastSegment?.runIndex === line.toRun &&
+    lastSegment.toChar === line.toChar &&
+    (line.spaceCount == null || line.spaceCount === sourceSpaces)
+  )
+    return { line, charOffset };
+  if (!runs.some((run) => (run.kind === 'text' || run.kind === undefined) && 'text' in run && run.text?.trim()))
+    return { line, charOffset };
+
+  let trailingSpaces = 0;
+  for (let i = runs.length - 1; i >= 0; i -= 1) {
+    const run = runs[i];
+    if ((run.kind !== 'text' && run.kind !== undefined) || !('text' in run)) break;
+    const text = run.text ?? '';
+    const count = / +$/.exec(text)?.[0].length ?? 0;
+    trailingSpaces += count;
+    if (count < text.length) break;
+  }
+  if (trailingSpaces === 0) return { line, charOffset };
+
+  let toRun = line.toRun;
+  let toChar = line.toChar;
+  let remaining = trailingSpaces;
+  while (remaining > 0) {
+    const length = toChar - (toRun === line.fromRun ? line.fromChar : 0);
+    if (remaining < length) {
+      toChar -= remaining;
+      break;
+    }
+    remaining -= length;
+    toRun -= 1;
+    toChar = getRunCharacterLength(block.runs[toRun]);
+  }
+  const charsInLine = runs.reduce((sum, run) => sum + getRunCharacterLength(run), 0);
+  return { line: { ...line, toRun, toChar }, charOffset: Math.min(charOffset, charsInLine - trailingSpaces) };
+};
+
 /**
  * Measure the X position for a specific character offset within a line.
  * Uses Canvas measureText for pixel-perfect accuracy.
@@ -548,6 +609,14 @@ export function measureCharacterX(
   alignmentOverride?: string,
   fontContext: FontMeasureContext = DEFAULT_FONT_MEASURE_CONTEXT,
 ): number {
+  const sourceCharOffset = charOffset;
+  ({ line, charOffset } = normalizeJustifiedCaretLine(
+    block,
+    line,
+    charOffset,
+    availableWidthOverride,
+    alignmentOverride,
+  ));
   const measuredTextX = measureCharacterXWithoutInlineBoxes(
     block,
     line,
@@ -563,7 +632,7 @@ export function measureCharacterX(
       : inlineTextX +
         measuredTextX -
         measureCharacterXWithoutInlineBoxes(block, line, charOffset, line.width, 'left', fontContext);
-  return textX + inlineBoxAdvanceAtOffset(line, charOffset);
+  return textX + inlineBoxAdvanceAtOffset(line, sourceCharOffset);
 }
 
 /**

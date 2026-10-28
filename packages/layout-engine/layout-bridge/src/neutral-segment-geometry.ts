@@ -115,7 +115,10 @@ const resolveAvailableWidth = (
   }
 
   const fallbackAvailableWidth = Math.max(0, fragmentWidth - (effectiveLeft + indent.right));
-  let availableWidth = line.maxWidth != null ? Math.min(line.maxWidth, fallbackAvailableWidth) : fallbackAvailableWidth;
+  let availableWidth =
+    line.maxWidth != null && indent.left >= 0
+      ? Math.min(line.maxWidth, fallbackAvailableWidth)
+      : fallbackAvailableWidth;
 
   // Mirror mapPmToX: on the first line, account for the first-line indent the
   // same way the painter does, unless a rendered list marker already consumed it.

@@ -16,6 +16,7 @@ test('rechecks new text, replaces a dictionary typo, and ignores a word', async 
   await page.keyboard.press('End');
   await page.keyboard.type(' workng');
   await expect(page.locator('#editor')).toContainText('don’t mispelled workng');
+  await waitForSpellingHighlight(page.locator('#editor'), 'workng');
 
   const typoPoint = await textPoint(page.locator('#editor'), 'workng');
   await page.mouse.click(typoPoint.x, typoPoint.y, { button: 'right' });
@@ -26,6 +27,7 @@ test('rechecks new text, replaces a dictionary typo, and ignores a word', async 
 
   await expect(page.locator('#editor')).toContainText('mispelled working', { timeout: 120_000 });
   await expect(page.locator('#editor')).not.toContainText('workng');
+  await waitForSpellingHighlight(page.locator('#editor'), 'mispelled');
 
   const ignoredPoint = await textPoint(page.locator('#editor'), 'mispelled');
   await page.mouse.click(ignoredPoint.x, ignoredPoint.y, { button: 'right' });
@@ -44,6 +46,13 @@ test('rechecks new text, replaces a dictionary typo, and ignores a word', async 
   await expect(page.locator('[data-sd-context-menu-section="proofing"]')).toHaveCount(0);
   expect(errors).toEqual([]);
 });
+
+async function waitForSpellingHighlight(editor: Locator, word: string) {
+  await expect.poll(() => editor.evaluate((root, target) =>
+    [...(CSS.highlights.get('sd-proofing-spelling') ?? [])].some(range =>
+      root.contains(range.startContainer) && range.toString() === target), word),
+  { timeout: 120_000 }).toBe(true);
+}
 
 async function textPoint(editor: Locator, text: string) {
   return editor.evaluate((root, target) => {

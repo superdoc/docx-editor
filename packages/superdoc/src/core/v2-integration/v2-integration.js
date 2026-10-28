@@ -202,17 +202,6 @@ export function createDefaultV2Integration() {
 }
 
 /**
- * Backwards-compatible alias. The v2 branch no longer reads any customer
- * config; the parameter is ignored and retained only so existing call sites do
- * not need to change in lockstep with this internalization.
- *
- * @returns {SuperDocV2Integration}
- */
-export function resolveV2Integration() {
-  return createDefaultV2Integration();
-}
-
-/**
  * @param {SuperDocV2Integration | null | undefined} integration
  * @returns {boolean}
  */

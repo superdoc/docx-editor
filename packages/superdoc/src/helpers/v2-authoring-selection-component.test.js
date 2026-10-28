@@ -12,7 +12,7 @@ vi.mock('../core/v2-integration/v2-integration.js', async (importOriginal) => {
   const actual = await importOriginal();
   return {
     ...actual,
-    resolveV2Integration: () => ({
+    createDefaultV2Integration: () => ({
       ...actual.createStubV2Integration(),
       EditorComponent: defineComponent({
         name: 'AuthoringSelectionFixture',

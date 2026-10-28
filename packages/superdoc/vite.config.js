@@ -61,7 +61,7 @@ function resolveV2DistRelativeImportsPlugin(v2DistRoot) {
 // Rolldown doesn't support regex capture groups ($1) in alias replacements,
 // so we list these explicitly instead of using /^@superdoc\/(.*)$/.
 // Update this list when adding new src/ subdirectories imported via @superdoc/.
-const superdocSrcAliases = ['components', 'composables', 'core', 'helpers', 'stores', 'dev', 'icons.js', 'public'];
+const superdocSrcAliases = ['components', 'composables', 'core', 'helpers', 'stores', 'icons.js', 'public'];
 
 // V2 branch: the customer `superdoc` package consumes the internal v2 runtime
 // through the stable `@superdoc/docx-engine` contract. `superdoc/v2` is a SEPARATE pnpm

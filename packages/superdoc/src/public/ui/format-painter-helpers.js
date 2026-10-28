@@ -116,18 +116,6 @@ function projectBorderToInlinePatch(border) {
 }
 
 /**
- * Returns true when a selection segment spans the full visible text of its block.
- * A collapsed caret is NOT a full paragraph.
- *
- * @param {{ range: { start: number; end: number } }} segment
- * @param {number | null | undefined} blockVisibleLength
- */
-export function isFullParagraph(segment, blockVisibleLength) {
-  if (!segment || blockVisibleLength == null) return false;
-  return segment.range.start === 0 && segment.range.end >= blockVisibleLength;
-}
-
-/**
  * Serializes a selection to a stable string key used to detect whether
  * the target selection is the same as the source (skip apply in that case).
  *

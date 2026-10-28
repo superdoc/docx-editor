@@ -224,13 +224,3 @@ export const TABLE_ACTION_COMMAND_MAP = {
 };
 
 export const TABLE_ACTION_COMMAND_IDS = Object.values(TABLE_ACTION_COMMAND_MAP);
-
-export const HEADLESS_TOOLBAR_COMMANDS = [
-  ...new Set([...Object.values(HEADLESS_ITEM_MAP), ...TABLE_ACTION_COMMAND_IDS]),
-];
-
-const NON_HEADLESS_EXECUTE_ITEM_NAMES = new Set(['link']);
-
-export const HEADLESS_EXECUTE_ITEMS = new Set(
-  Object.keys(HEADLESS_ITEM_MAP).filter((itemName) => !NON_HEADLESS_EXECUTE_ITEM_NAMES.has(itemName)),
-);

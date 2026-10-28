@@ -125,7 +125,3 @@ export const icons = [
     makeColorOption('#A91DFF', 'neon purple'),
   ],
 ];
-
-export const getAvailableColorOptions = () => {
-  return icons.flat().map((item) => item.value);
-};

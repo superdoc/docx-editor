@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vite-plus/test';
 import {
   createDefaultV2Integration,
   loadDefaultV2Integration,
-  resolveV2Integration,
   createStubV2Integration,
   hasRealV2Integration,
   isSyntheticTrackedChangeCommentLaneItem,
@@ -20,25 +19,6 @@ describe('createDefaultV2Integration', () => {
     expect(hasRealV2Integration(integration)).toBe(true);
     expect(typeof integration.createGeometryPublisher).toBe('function');
     expect(typeof integration.createReviewWindowController).toBe('function');
-  });
-
-  it('ignores any legacy customer config (no editorIntegration is consulted)', async () => {
-    await loadDefaultV2Integration();
-    const injected = { version: 99, EditorComponent: { name: 'CustomerInjected' } };
-    const integration = resolveV2Integration({ editorIntegration: injected, editorVersion: 1 });
-    // The DOCX Engine runtime is always used; customer-provided objects are never
-    // wired in, and v1 can never be selected.
-    expect(integration.version).toBe(3);
-    expect(integration.EditorComponent).not.toBe(injected.EditorComponent);
-    expect(hasRealV2Integration(integration)).toBe(true);
-  });
-
-  it('resolveV2Integration is a config-ignoring alias of createDefaultV2Integration', async () => {
-    await loadDefaultV2Integration();
-    const a = resolveV2Integration();
-    const b = createDefaultV2Integration();
-    expect(a.version).toBe(b.version);
-    expect(hasRealV2Integration(a)).toBe(true);
   });
 });
 

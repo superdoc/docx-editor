@@ -85,7 +85,7 @@ import { createV2SessionShortcutRoutes } from './core/editor-runtime/v2/v2-sessi
 import { createV2SaveQueue } from './core/editor-runtime/v2/v2-save-queue.js';
 import { resolveV2DocxExportOptions } from './core/helpers/resolve-docx-export.js';
 import { markRuntimeRoot, unmarkRuntimeRoot } from './core/editor-runtime/root-marker.js';
-import { resolveV2Integration } from './core/v2-integration/v2-integration.js';
+import { createDefaultV2Integration } from './core/v2-integration/v2-integration.js';
 import { resolveV2CollaborationTarget } from './core/collaboration/resolve-v2-collaboration-target.js';
 import { createCollaborationException } from './core/collaboration/collaboration-exception.js';
 import { createDocumentOpenTelemetry } from './core/document-open-telemetry.js';
@@ -231,7 +231,7 @@ const documentOpenTelemetry = createDocumentOpenTelemetry(proxy.$superdoc.config
 
 // Resolve the single v2 integration object. superdoc@2 source-resolves the
 // private v2 browser shell locally; customers do not provide a runtime switch.
-const resolvedEditorIntegration = resolveV2Integration(proxy.$superdoc.config);
+const resolvedEditorIntegration = createDefaultV2Integration();
 // ui-phase2-001: the v2 DOCX editor wrapper comes from the private integration.
 const V2DocumentEditor = markRaw(resolvedEditorIntegration.EditorComponent);
 // ui-phase4-002: v2 ruler (optional). Falls back to the stub editor component's

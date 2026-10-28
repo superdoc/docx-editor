@@ -21,7 +21,7 @@ vi.mock('../core/v2-integration/v2-integration.js', async (importOriginal) => {
   const { createSuperDocV2Integration } = await import('@superdoc/v2-browser-shell/superdoc');
   return {
     ...actual,
-    resolveV2Integration: () => ({
+    createDefaultV2Integration: () => ({
       ...createSuperDocV2Integration(),
       EditorComponent: defineComponent({
         name: 'ReviewGeometryFixture',

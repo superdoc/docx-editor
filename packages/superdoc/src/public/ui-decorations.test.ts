@@ -114,3 +114,30 @@ describe('ui.decorations', () => {
     expect(first.disposed).toEqual(['old-editor']);
   });
 });
+
+describe('ui.decorations.subscribe', () => {
+  it('stops delivering events after unsubscribe and on destroy', () => {
+    const { visuals } = fakeHostVisuals();
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const removeListener = vi.spyOn(container, 'removeEventListener');
+    const superdoc = {
+      activeEditor: { doc: {}, host: { getHostVisuals: () => visuals }, mount: { container } },
+      config: { documentMode: 'editing' },
+      on: vi.fn(),
+      off: vi.fn(),
+    };
+    const ui = createSuperDocUI({ superdoc });
+
+    const unsubscribe = ui.decorations.subscribe(() => {});
+    unsubscribe();
+    expect(removeListener).toHaveBeenCalledWith('click', expect.any(Function));
+
+    ui.decorations.subscribe(() => {});
+    removeListener.mockClear();
+    ui.destroy();
+    expect(removeListener).toHaveBeenCalledWith('click', expect.any(Function));
+    expect(() => ui.decorations.subscribe(() => {})).toThrow('destroyed');
+    container.remove();
+  });
+});

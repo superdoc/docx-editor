@@ -515,7 +515,7 @@ export interface ContextMenuItem {
 }
 
 export interface ViewportEntityHit {
-  type: 'trackedChange' | 'comment' | 'contentControl' | 'citation' | (string & {});
+  type: 'trackedChange' | 'comment' | 'contentControl' | 'citation' | 'decoration' | (string & {});
   id: string;
   tag?: string;
   scope?: 'block' | 'inline';
@@ -1768,8 +1768,17 @@ export interface SuperDocUIOptions {
  * A disposable subscription scope. Subscriptions created inside the scope are
  * released together when the scope is disposed.
  */
+export interface DecorationPointerEvent {
+  type: 'click' | 'hover-enter' | 'hover-leave';
+  id: string;
+  data?: SuperDocVisualOptions['data'];
+  clientX: number;
+  clientY: number;
+}
+
 export interface DecorationsHandle {
   highlight(id: string, options?: SuperDocVisualOptions): SuperDocVisualHandle;
+  subscribe(listener: (event: DecorationPointerEvent) => void): () => void;
 }
 
 export interface SuperDocUIScope {

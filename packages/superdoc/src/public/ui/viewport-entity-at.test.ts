@@ -66,6 +66,9 @@ function makeHitStub(
     activeEditor: {
       mount: { container },
       ...(editorHost ? { host: editorHost } : {}),
+      ...(typeof editorHost?.getHostVisuals === 'function'
+        ? { visuals: (editorHost.getHostVisuals as () => unknown)() }
+        : {}),
       doc: {
         comments: { list: () => ({ items: [] }) },
         selection: { current: () => null },
@@ -1451,5 +1454,37 @@ describe('contextMenu.open / contextMenu.close — host surface availability', (
     } finally {
       bare.destroy();
     }
+  });
+});
+
+describe('entityAt decorations', () => {
+  const ownerHost = (owners: Record<string, { id: string }>) => ({
+    getHostVisuals: () => ({
+      highlight: vi.fn(),
+      generation: () => 0,
+      providerOwner: (providerId: string) => owners[providerId] ?? null,
+      ownerById: () => null,
+    }),
+  });
+
+  it('reports a public highlight by the caller id, never the provider id', () => {
+    const span = document.createElement('span');
+    span.setAttribute('data-superdoc-extension-decoration', 'superdoc.host.finding-7');
+    const ui = createSuperDocUI({
+      superdoc: makeHitStub(span, [], undefined, ownerHost({ 'superdoc.host.finding-7': { id: 'finding-7' } }))
+        .superdoc,
+    });
+    withElementFromPoint(span, () => {
+      expect(ui.viewport.entityAt({ x: 1, y: 1 })).toEqual([{ type: 'decoration', id: 'finding-7' }]);
+    });
+  });
+
+  it('omits extension decorations that have no public owner', () => {
+    const span = document.createElement('span');
+    span.setAttribute('data-superdoc-extension-decoration', 'acme.review.risk');
+    const ui = createSuperDocUI({ superdoc: makeHitStub(span, [], undefined, ownerHost({})).superdoc });
+    withElementFromPoint(span, () => {
+      expect(ui.viewport.entityAt({ x: 1, y: 1 })).toEqual([]);
+    });
   });
 });

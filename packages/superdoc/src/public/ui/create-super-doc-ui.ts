@@ -109,6 +109,7 @@ import type {
   SuperDocUIReceiptFailureCode,
   ViewportHandle,
   DecorationsHandle,
+  DecorationPointerEvent,
   ViewportRect,
   ViewportRectResult,
   WorkflowActionResult,
@@ -12484,6 +12485,15 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     const seen = new Set<string>();
     const hits: ViewportEntityHit[] = [];
     for (const hit of rawHits) {
+      if (hit.type === 'decoration') {
+        const owner = decorationOwnerForProvider(hit.id);
+        if (!owner) continue;
+        const key = `decoration:${owner.id}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        hits.push({ type: 'decoration', id: owner.id });
+        continue;
+      }
       if (hit.type !== 'trackedChange') {
         const layoutStory = hit.type === 'contentControl' ? layoutStoryDatasetToStoryLocator(hit.story) : undefined;
         const story =
@@ -12724,28 +12734,131 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
   };
   type DecorationOwnership = { visuals: HostVisuals; generation: number };
   const liveDecorations = new Map<ReturnType<DecorationsHandle['highlight']>, DecorationOwnership>();
+  const decorationOwnerForProvider = (providerId: string): { id: string; data?: unknown } | null => {
+    const owner = (currentHostVisuals() as { providerOwner?: (id: string) => unknown } | null)?.providerOwner?.(
+      providerId,
+    );
+    return isPlainObject(owner) && typeof owner.id === 'string' ? (owner as { id: string; data?: unknown }) : null;
+  };
   const currentHostVisuals = (): HostVisuals | null => (getEditor()?.visuals as HostVisuals | null | undefined) ?? null;
+  const decorationListeners = new Set<(event: DecorationPointerEvent) => void>();
+  let detachDecorationPointer: (() => void) | null = null;
+  let hoveredDecorations: ReadonlyArray<{ id: string; data?: DecorationPointerEvent['data'] }> = [];
+  let lastPointer = { clientX: 0, clientY: 0 };
+  const decorationIdsAt = (x: number, y: number): string[] =>
+    pointEntityHits(x, y)
+      .filter((hit) => hit.type === 'decoration')
+      .map((hit) => hit.id);
+  const decorationData = (id: string): DecorationPointerEvent['data'] | undefined => {
+    const owner = (
+      currentHostVisuals() as { ownerById?: (id: string) => { data?: unknown } | null } | null
+    )?.ownerById?.(id);
+    return isPlainObject(owner?.data) ? (owner!.data as DecorationPointerEvent['data']) : undefined;
+  };
+  const emitDecorationEvent = (
+    type: DecorationPointerEvent['type'],
+    decoration: { id: string; data?: DecorationPointerEvent['data'] },
+    point: { clientX: number; clientY: number },
+  ): void => {
+    const payload: DecorationPointerEvent = {
+      type,
+      id: decoration.id,
+      ...(decoration.data ? { data: decoration.data } : {}),
+      clientX: point.clientX,
+      clientY: point.clientY,
+    };
+    for (const listener of Array.from(decorationListeners)) safeCall(() => listener(payload), undefined);
+  };
+  const leaveHoveredDecorations = (onlyId?: string): void => {
+    const leaving = hoveredDecorations.filter((decoration) => onlyId === undefined || decoration.id === onlyId);
+    hoveredDecorations = hoveredDecorations.filter((decoration) => !leaving.includes(decoration));
+    for (const decoration of leaving) emitDecorationEvent('hover-leave', decoration, lastPointer);
+  };
+  const attachDecorationPointer = (): void => {
+    if (detachDecorationPointer || decorationListeners.size === 0) return;
+    const host = resolveVisibleHost();
+    if (!host) return;
+    const onClick = (event: MouseEvent): void => {
+      for (const id of decorationIdsAt(event.clientX, event.clientY)) {
+        emitDecorationEvent('click', { id, data: decorationData(id) }, event);
+      }
+    };
+    const onMove = (event: MouseEvent): void => {
+      lastPointer = { clientX: event.clientX, clientY: event.clientY };
+      const nextIds = decorationIdsAt(event.clientX, event.clientY);
+      const leaving = hoveredDecorations.filter((decoration) => !nextIds.includes(decoration.id));
+      const kept = hoveredDecorations.filter((decoration) => nextIds.includes(decoration.id));
+      const entering = nextIds
+        .filter((id) => !kept.some((decoration) => decoration.id === id))
+        .map((id) => ({ id, data: decorationData(id) }));
+      hoveredDecorations = [...kept, ...entering];
+      for (const decoration of leaving) emitDecorationEvent('hover-leave', decoration, event);
+      for (const decoration of entering) emitDecorationEvent('hover-enter', decoration, event);
+    };
+    const onLeave = (event: MouseEvent): void => {
+      lastPointer = { clientX: event.clientX, clientY: event.clientY };
+      leaveHoveredDecorations();
+    };
+    host.addEventListener('click', onClick);
+    host.addEventListener('pointermove', onMove);
+    host.addEventListener('pointerleave', onLeave);
+    detachDecorationPointer = () => {
+      host.removeEventListener('click', onClick);
+      host.removeEventListener('pointermove', onMove);
+      host.removeEventListener('pointerleave', onLeave);
+      leaveHoveredDecorations();
+      detachDecorationPointer = null;
+    };
+  };
+  const subscribeDecorationPointer = (listener: (event: DecorationPointerEvent) => void): (() => void) => {
+    if (disposed) throw new Error('ui.decorations.subscribe called on a destroyed UI controller.');
+    decorationListeners.add(listener);
+    attachDecorationPointer();
+    return () => {
+      decorationListeners.delete(listener);
+      if (decorationListeners.size === 0) detachDecorationPointer?.();
+    };
+  };
   documentResetHooks.push(() => {
+    leaveHoveredDecorations();
     const current = currentHostVisuals();
     for (const [handle, owner] of Array.from(liveDecorations)) {
       if (owner.visuals !== current || owner.generation !== current.generation()) handle.dispose();
     }
   });
+  activeEditorResetHooks.push(() => {
+    detachDecorationPointer?.();
+    attachDecorationPointer();
+  });
+
   const createDecorationsHandle = (track?: (handle: { dispose(): void }) => void): DecorationsHandle => ({
+    subscribe: (listener) => {
+      const unsubscribe = subscribeDecorationPointer(listener);
+      track?.({ dispose: unsubscribe });
+      return unsubscribe;
+    },
     highlight: (id, options) => {
       if (disposed) throw new Error('ui.decorations.highlight called on a destroyed UI controller.');
       const visuals = currentHostVisuals();
       if (!visuals) throw new Error('ui.decorations.highlight requires a ready document.');
       const inner = visuals.highlight(id, options);
+      let handleDisposed = false;
       const handle: ReturnType<DecorationsHandle['highlight']> = {
         id: inner.id,
         replace: (targets) => inner.replace(targets),
         add: (targets) => inner.add(targets),
-        clear: () => inner.clear(),
+        clear: () => {
+          if (handleDisposed) return;
+          inner.clear();
+          leaveHoveredDecorations(inner.id);
+        },
         invalidate: () => inner.invalidate(),
         dispose: () => {
+          if (handleDisposed) return;
+          handleDisposed = true;
           liveDecorations.delete(handle);
           inner.dispose();
+          leaveHoveredDecorations(inner.id);
         },
       };
       liveDecorations.set(handle, { visuals, generation: visuals.generation() });
@@ -14179,6 +14292,8 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     watermark.destroy();
     clearContentControlHighlight();
     for (const handle of Array.from(liveDecorations.keys())) handle.dispose();
+    detachDecorationPointer?.();
+    decorationListeners.clear();
     disposed = true;
     completedFallbackSearch = null;
     if (searchRefreshTimer !== null) clearTimeout(searchRefreshTimer);

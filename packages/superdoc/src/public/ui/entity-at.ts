@@ -25,6 +25,20 @@ export interface CollectedEntityHit extends ViewportEntityHit {
   storyKey?: string;
 }
 
+function readDecorationProviders(node: { getAttribute(name: string): string | null }): string[] {
+  const encoded = node.getAttribute('data-superdoc-extension-decorations');
+  if (encoded) {
+    try {
+      const parsed = JSON.parse(encoded) as unknown;
+      if (Array.isArray(parsed)) return parsed.filter((id): id is string => typeof id === 'string');
+    } catch {
+      return [];
+    }
+  }
+  const single = node.getAttribute('data-superdoc-extension-decoration');
+  return single ? [single] : [];
+}
+
 function parseCommaSeparatedIds(value: string): string[] {
   return value
     .split(',')
@@ -111,6 +125,13 @@ export function collectEntityHitsFromChain(start: Element | null, stopAt?: Eleme
       // gathered below it; stamp it and stop tracking those hits.
       for (const hit of pendingStory) hit.story = layoutStory;
       pendingStory = [];
+    }
+    for (const decorationProvider of readDecorationProviders(node)) {
+      const key = `decoration:${decorationProvider}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        hits.push({ type: 'decoration', id: decorationProvider });
+      }
     }
     const citationId = node.getAttribute('data-citation-id');
     if (citationId) {

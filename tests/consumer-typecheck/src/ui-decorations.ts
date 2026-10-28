@@ -1,5 +1,5 @@
 import type { SuperDocVisualHandle } from 'superdoc';
-import type { DecorationsHandle, SuperDocUI } from 'superdoc/ui';
+import type { DecorationPointerEvent, DecorationsHandle, SuperDocUI } from 'superdoc/ui';
 
 declare const ui: SuperDocUI;
 
@@ -13,6 +13,14 @@ handle.dispose();
 const scope = ui.createScope();
 scope.decorations.highlight('scoped').add([{ kind: 'text', blockId: 'paragraph-1', range: { start: 0, end: 1 } }]);
 scope.dispose();
+
+const unsubscribe: () => void = decorations.subscribe((event: DecorationPointerEvent) => {
+  const kind: 'click' | 'hover-enter' | 'hover-leave' = event.type;
+  const findingId: string = event.id;
+  void kind;
+  void findingId;
+});
+unsubscribe();
 
 // @ts-expect-error A highlight needs an id.
 decorations.highlight();

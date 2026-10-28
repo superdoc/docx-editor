@@ -19,7 +19,7 @@ Use the method that matches where your interface's target comes from:
 | Position UI from a capture or query result           | `viewport.getRect({ target })`                        |
 | Identify supported document entities under a pointer | `viewport.entityAt({ x, y })`                         |
 
-`entityAt()` identifies comments, tracked changes, content controls, and citations. It does not return an arbitrary text
+`entityAt()` identifies comments, tracked changes, content controls, citations, and highlights created with `superdoc.ui.decorations`. It does not return an arbitrary text
 position. Use [Context menu](/editor/custom-ui/context-menus) for a complete pointer and keyboard interaction.
 
 `selection.apply()` takes a `SelectionTarget` — the explicit start/end form. `selection.current()` carries both shapes:

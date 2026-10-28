@@ -53,7 +53,22 @@ scope.decorations.highlight('finding-7', { className: 'review-risk' }).replace([
 scope.dispose();
 ```
 
-Extensions keep using `ctx.visuals.highlight()` inside `activate(ctx)`. Both create the same kind of handle.
+To open a finding when someone clicks or hovers its highlight, subscribe to pointer events. Each event carries the id
+and `data` you passed to `highlight()`:
+
+```ts
+const unsubscribe = superdoc.ui.decorations.subscribe((event) => {
+  if (event.type === 'click') openFindingCard(event.id);
+  if (event.type === 'hover-enter') emphasizeCard(event.id);
+  if (event.type === 'hover-leave') clearCardEmphasis(event.id);
+});
+```
+
+`superdoc.ui.viewport.entityAt({ x, y })` also reports these highlights as `{ type: 'decoration', id }`, so a custom
+context menu can tell which finding was right-clicked.
+
+Extensions keep using `ctx.visuals.highlight()` inside `activate(ctx)`. Both create the same kind of handle; pointer
+events and `entityAt` report highlights created through `superdoc.ui`.
 
 ## Compose overlapping highlights
 

@@ -63,7 +63,10 @@ const ensureDocumentStub = (): void => {
           nativeTextBoxDescent: 3,
         } as TextMetrics;
       return {
-        width: text.length * charWidth - kerningAdjustment,
+        width:
+          text.length * charWidth -
+          kerningAdjustment +
+          (this.font.includes('small-caps') ? (text.match(/[a-z]/g)?.length ?? 0) * 5 : 0),
         fontBoundingBoxAscent: 14,
         fontBoundingBoxDescent: 4,
       } as TextMetrics;
@@ -1535,5 +1538,17 @@ describe('text measurement utility', () => {
       const result = findCharacterAtX(block, line, 77, 0, 200);
       expect(result.charOffset).toBeLessThanOrEqual(1);
     });
+  });
+});
+
+describe('small-caps caret geometry', () => {
+  it('uses the variant for forward and inverse positions while retaining the trailing-space offset', () => {
+    const run: Run = { text: 'Test ', fontFamily: 'Arial', fontSize: 16, smallCaps: true };
+    const block = createBlock([run]);
+    const line = baseLine({ toChar: 5, width: 65 });
+    expect(getRunFontString(run)).toContain('small-caps');
+    expect(measureCharacterX(block, line, 4)).toBe(55);
+    expect(measureCharacterX(block, line, 5)).toBe(65);
+    expect(findCharacterAtX(block, line, 50, 0).charOffset).toBe(4);
   });
 });

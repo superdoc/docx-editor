@@ -168,6 +168,71 @@ describe('applyTextEffects', () => {
     expect(element.style.getPropertyValue('--sd-text-reflection-blur')).toBe('0.66px');
   });
 
+  it.each([
+    {
+      fontVariantCaps: 'small-caps',
+      translateY: 76,
+      fadeStart: 10,
+      fadeEnd: 22,
+    },
+    {
+      fontVariantCaps: '',
+      translateY: 91.2,
+      fadeStart: 2,
+      fadeEnd: 17,
+    },
+  ])('uses the painted $fontVariantCaps variant for reflection ink bounds', (testCase) => {
+    const context = { font: '', measureText: vi.fn() };
+    context.measureText.mockImplementation(() => {
+      const smallCaps = context.font.includes('small-caps');
+      return {
+        width: smallCaps ? 60 : 65,
+        actualBoundingBoxAscent: smallCaps ? 24 : 22,
+        actualBoundingBoxDescent: smallCaps ? 0 : 8,
+        actualBoundingBoxLeft: 0,
+        actualBoundingBoxRight: smallCaps ? 60 : 65,
+        fontBoundingBoxAscent: 40,
+        fontBoundingBoxDescent: 10,
+      };
+    });
+    const getContext = vi
+      .spyOn(HTMLCanvasElement.prototype, 'getContext')
+      .mockReturnValue(context as unknown as CanvasRenderingContext2D);
+    const element = document.createElement('span');
+    element.textContent = 'gyp ';
+    element.style.fontFamily = 'Arial, sans-serif';
+    element.style.fontSize = '40px';
+    element.style.fontVariantCaps = testCase.fontVariantCaps;
+
+    try {
+      applyTextEffects(element, {
+        reflection: {
+          blurRadius: 0,
+          distance: 0,
+          direction: 90,
+          startAlpha: 0.5,
+          startPosition: 0,
+          endAlpha: 0,
+          endPosition: 0.5,
+          scaleX: 1,
+          scaleY: -0.9,
+        },
+      });
+    } finally {
+      getContext.mockRestore();
+    }
+
+    expect(element.style.getPropertyValue('--sd-text-reflection-transform')).toBe(
+      `translate(0px, ${testCase.translateY}px) scale(1, -0.9)`,
+    );
+    expect(element.style.getPropertyValue('--sd-text-reflection-mask')).toBe(
+      `linear-gradient(to top, rgba(0, 0, 0, 0.5) ${testCase.fadeStart}px, rgba(0, 0, 0, 0) ${testCase.fadeEnd}px, transparent 100%)`,
+    );
+    expect(context.measureText).toHaveBeenCalledWith('gyp ');
+    expect(element.textContent).toBe('gyp ');
+    expect(element.dataset.superdocReflectionText).toBe('gyp ');
+  });
+
   it('fails closed for an unsupported gradient outline instead of inventing a stroke color', () => {
     const element = document.createElement('span');
     applyTextEffects(element, {

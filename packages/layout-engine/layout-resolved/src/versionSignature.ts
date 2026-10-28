@@ -485,6 +485,7 @@ export const deriveBlockVersion = (block: FlowBlock, fontConfigVersion?: number)
           textRun.italic ? 1 : 0,
           textRun.vanish ? 1 : 0,
           textRun.textTransform ?? '',
+          textRun.smallCaps ? 1 : 0,
           textRun.color ?? '',
           textRun.underline?.style ?? '',
           textRun.underline?.color ?? '',

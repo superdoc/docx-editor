@@ -210,7 +210,8 @@ function fontString(run: Run): string {
   const family = textRun?.fontFamily ?? 'Arial';
   const italic = textRun?.italic ? 'italic ' : '';
   const bold = textRun?.bold ? 'bold ' : '';
-  return `${italic}${bold}${size}px ${family}`.trim();
+  const variant = textRun?.smallCaps ? 'small-caps ' : '';
+  return `${italic}${bold}${variant}${size}px ${family}`.trim();
 }
 
 /**

@@ -2383,3 +2383,21 @@ describe('MeasureCache', () => {
     });
   });
 });
+
+describe('small-caps measure cache', () => {
+  it('misses when a run gains small caps', () => {
+    const cache = new MeasureCache<{ totalHeight: number }>();
+    const plain: ParagraphBlock = {
+      kind: 'paragraph',
+      id: 'small-caps-cache',
+      runs: [{ text: 'Test ', fontFamily: 'Arial', fontSize: 16 }],
+    };
+    const caps: ParagraphBlock = {
+      ...plain,
+      runs: [{ text: 'Test ', fontFamily: 'Arial', fontSize: 16, smallCaps: true }],
+    };
+    const key = cache.prepareKey(plain, 400, 600);
+    cache.setPrepared(key, plain.id, { totalHeight: 20 });
+    expect(cache.get(caps, 400, 600)).toBeUndefined();
+  });
+});

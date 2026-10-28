@@ -10263,3 +10263,46 @@ describe('inline box measurement', () => {
     }
   });
 });
+
+describe('small-caps measurement', () => {
+  it.each([false, true])(
+    'keeps variant widths distinct within a paragraph (small caps first: %s)',
+    async (capsFirst) => {
+      const prototype = Object.getPrototypeOf(document.createElement('canvas').getContext('2d'));
+      const original = prototype.measureText;
+      const spy = vi.spyOn(prototype, 'measureText').mockImplementation(function (text: string) {
+        const metrics = original.call(this, text);
+        metrics.width =
+          text.length * 10 + (this.font.includes('small-caps') ? (text.match(/[a-z]/g)?.length ?? 0) * 5 : 0);
+        return metrics;
+      });
+      const runs: TextRun[] = [capsFirst, !capsFirst].map((smallCaps) => ({
+        text: 'Test ',
+        fontFamily: 'Arial',
+        fontSize: 16,
+        smallCaps,
+      }));
+      const block: FlowBlock = { kind: 'paragraph', id: 'small-caps-measure', runs };
+      try {
+        clearMeasurementCache();
+        clearTextMeasurementCaches();
+        const measure = expectParagraphMeasure(await measureBlock(block, 1000));
+        expect(measure.lines).toHaveLength(1);
+        expect(measure.lines[0].segments?.map((segment) => segment.width)).toEqual(capsFirst ? [65, 50] : [50, 65]);
+        expect(extractLineText(block, measure.lines[0])).toBe('Test Test ');
+        const uppercase = (smallCaps: boolean): FlowBlock => ({
+          kind: 'paragraph',
+          id: 'small-caps-uppercase',
+          runs: [{ text: 'HOCHFORMAT', fontFamily: 'Arial', fontSize: 16, smallCaps }],
+        });
+        expect(expectParagraphMeasure(await measureBlock(uppercase(true), 1000)).lines[0].width).toBe(
+          expectParagraphMeasure(await measureBlock(uppercase(false), 1000)).lines[0].width,
+        );
+      } finally {
+        spy.mockRestore();
+        clearMeasurementCache();
+        clearTextMeasurementCaches();
+      }
+    },
+  );
+});

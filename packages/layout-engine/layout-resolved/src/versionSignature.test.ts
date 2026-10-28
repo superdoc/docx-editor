@@ -371,6 +371,29 @@ describe('deriveBlockVersion - text transform', () => {
   });
 });
 
+describe('deriveBlockVersion - small caps', () => {
+  it.each(['paragraph', 'table'] as const)('invalidates %s paint reuse when only small caps changes', (kind) => {
+    const block = (smallCaps?: boolean): FlowBlock => {
+      const paragraph: ParagraphBlock = {
+        kind: 'paragraph',
+        id: 'small-caps-version',
+        runs: [{ text: 'Test ', fontFamily: 'Arial', fontSize: 16, smallCaps }],
+      };
+      return kind === 'paragraph'
+        ? paragraph
+        : {
+            kind: 'table',
+            id: 'small-caps-table',
+            columnWidths: [200],
+            rows: [{ id: 'row', cells: [{ id: 'cell', blocks: [paragraph] }] }],
+          };
+    };
+
+    expect(deriveBlockVersion(block(true))).not.toBe(deriveBlockVersion(block()));
+    expect(deriveBlockVersion(block(false))).toBe(deriveBlockVersion(block()));
+  });
+});
+
 describe('deriveBlockVersion - tracked-change colors', () => {
   const makeParagraph = (color: string, trackedChange: Partial<TrackedChangeMeta> = {}): ParagraphBlock => ({
     kind: 'paragraph',

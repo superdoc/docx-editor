@@ -556,6 +556,7 @@ export type RunMarks = {
   bold?: boolean;
   /** Italic text styling. */
   italic?: boolean;
+  smallCaps?: boolean;
   /** Additional letter spacing in pixels (positive for expanded, negative for condensed). */
   letterSpacing?: number;
   /** Horizontal glyph scale as a unitless multiplier (`1` = 100%, `0.9` = 90%). */

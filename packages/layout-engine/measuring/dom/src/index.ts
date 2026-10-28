@@ -819,7 +819,7 @@ function faceOf(run: { bold?: boolean; italic?: boolean }): FaceKey {
  * ```
  */
 function buildFontString(
-  run: { fontFamily: string; fontSize: number; bold?: boolean; italic?: boolean },
+  run: { fontFamily: string; fontSize: number; bold?: boolean; italic?: boolean; smallCaps?: boolean },
   fontContext: FontMeasureContext,
   resolvedPhysicalFamily?: string,
 ): {
@@ -830,6 +830,7 @@ function buildFontString(
 
   if (run.italic) parts.push('italic');
   if (run.bold) parts.push('bold');
+  if (run.smallCaps) parts.push('small-caps');
   parts.push(`${run.fontSize}px`);
 
   // Resolve the logical family (e.g. "Calibri") to the physical render family
@@ -2223,9 +2224,10 @@ async function measureParagraphBlock(
     fontSize: number;
     bold?: boolean;
     italic?: boolean;
+    smallCaps?: boolean;
   }): { font: string; fontFamily: string } => {
     const physicalFamily = resolveParagraphPhysicalFamily(run);
-    const key = `${physicalFamily}\u0000${run.fontSize}\u0000${run.bold ? 1 : 0}\u0000${run.italic ? 1 : 0}`;
+    const key = `${physicalFamily}\u0000${run.fontSize}\u0000${run.bold ? 1 : 0}\u0000${run.italic ? 1 : 0}\u0000${run.smallCaps ? 1 : 0}`;
     const cached = paragraphFontStrings.get(key);
     if (cached) return cached;
     const resolved = buildFontString(run, fontContext, physicalFamily);

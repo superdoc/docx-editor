@@ -15,6 +15,7 @@ import type { Run } from '@superdoc/contracts';
 export const hashRunVisualMarks = (run: Run): string => {
   const bold = 'bold' in run ? run.bold : false;
   const italic = 'italic' in run ? run.italic : false;
+  const smallCaps = 'smallCaps' in run ? run.smallCaps : false;
   const underline = 'underline' in run ? run.underline : undefined;
   const strike = 'strike' in run ? run.strike : false;
   const color = 'color' in run ? run.color : undefined;
@@ -34,6 +35,7 @@ export const hashRunVisualMarks = (run: Run): string => {
   return [
     bold ? 'b' : '',
     italic ? 'i' : '',
+    smallCaps ? 'sc:1' : '',
     underline ? `u:${JSON.stringify(underline)}` : '',
     strike ? 's' : '',
     color ?? '',

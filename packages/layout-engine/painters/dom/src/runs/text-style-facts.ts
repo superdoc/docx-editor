@@ -18,8 +18,9 @@ export function resolveRunTypographyStyles(
       style: run.italic ? 'italic' : 'normal',
     }),
     'font-size': `${run.fontSize}px`,
+    'font-variant-caps': run.smallCaps ? 'small-caps' : 'normal',
     'font-kerning': 'none',
-    'font-synthesis': 'weight style',
+    'font-synthesis': run.smallCaps ? 'weight style small-caps' : 'weight style',
   };
   if (run.bold) styles['font-weight'] = 'bold';
   if (run.italic) styles['font-style'] = 'italic';

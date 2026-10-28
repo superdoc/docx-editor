@@ -105,9 +105,10 @@ function measureTextInk(element: HTMLElement): TextInkMetrics | null {
     if (!context) return null;
 
     const fontStyle = element.style.fontStyle || 'normal';
+    const fontVariantCaps = element.style.fontVariantCaps || 'normal';
     const fontWeight = element.style.fontWeight || '400';
     const fontFamily = element.style.fontFamily || 'sans-serif';
-    context.font = `${fontStyle} ${fontWeight} ${fontSize}px ${fontFamily}`;
+    context.font = `${fontStyle} ${fontVariantCaps} ${fontWeight} ${fontSize}px ${fontFamily}`;
     const metrics = context.measureText(text);
     const actualAscent = metrics.actualBoundingBoxAscent;
     const actualDescent = metrics.actualBoundingBoxDescent;

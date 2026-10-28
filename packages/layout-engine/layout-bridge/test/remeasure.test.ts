@@ -175,7 +175,10 @@ const ensureDocumentStub = (): void => {
     font: '',
     measureText(text: string) {
       // Simple proportional width: each character = CHAR_WIDTH pixels
-      return { width: text.length * CHAR_WIDTH } as TextMetrics;
+      return {
+        width:
+          text.length * CHAR_WIDTH + (this.font.includes('small-caps') ? (text.match(/[a-z]/g)?.length ?? 0) * 5 : 0),
+      } as TextMetrics;
     },
   };
 
@@ -3174,5 +3177,18 @@ describe('remeasureParagraph', () => {
       expect(texts.join('')).toBe(text);
       expect(texts[0].length).toBeGreaterThan('甲方 '.length);
     });
+  });
+});
+
+describe('small-caps remeasurement', () => {
+  it('wraps using variant glyph advances without changing source offsets', () => {
+    const run: Run = { text: 'Test Test ', fontFamily: 'Arial', fontSize: 16, smallCaps: true };
+    const block: ParagraphBlock = { kind: 'paragraph', id: 'small-caps-wrap', runs: [run] };
+    const wide = remeasureParagraph(block, 200);
+    expect(wide.lines[0].width).toBe(130);
+    const narrow = remeasureParagraph(block, 110);
+    expect(narrow.lines).toHaveLength(2);
+    expect(narrow.lines.at(-1)?.toChar).toBe(10);
+    expect(run.text).toBe('Test Test ');
   });
 });

@@ -1209,3 +1209,36 @@ describe('table-autofit-metrics', () => {
     expect(baseKey).not.toBe(shiftedKey);
   });
 });
+
+describe('small-caps table intrinsic width', () => {
+  it('measures tokens in their painted variant', async () => {
+    const prototype = Object.getPrototypeOf(document.createElement('canvas').getContext('2d'));
+    const original = prototype.measureText;
+    const spy = vi.spyOn(prototype, 'measureText').mockImplementation(function (text: string) {
+      const metrics = original.call(this, text);
+      metrics.width =
+        text.length * 10 + (this.font.includes('small-caps') ? (text.match(/[a-z]/g)?.length ?? 0) * 5 : 0);
+      return metrics;
+    });
+    const cell = (smallCaps: boolean): TableCell => ({
+      id: 'small-caps-cell',
+      attrs: { padding: { left: 0, right: 0, top: 0, bottom: 0 } },
+      blocks: [
+        {
+          kind: 'paragraph',
+          id: 'small-caps-cell-para',
+          runs: [{ text: 'Test', fontFamily: 'Arial', fontSize: 16, smallCaps }],
+        },
+      ],
+    });
+    try {
+      clearTableAutoFitMeasurementCaches();
+      const plain = await measureTableCellContentMetrics(cell(false), { maxWidth: 400, measureBlock });
+      const caps = await measureTableCellContentMetrics(cell(true), { maxWidth: 400, measureBlock });
+      expect(caps.minWidthPx - plain.minWidthPx).toBe(15);
+    } finally {
+      spy.mockRestore();
+      clearTableAutoFitMeasurementCaches();
+    }
+  });
+});

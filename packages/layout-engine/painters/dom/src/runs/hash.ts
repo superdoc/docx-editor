@@ -154,6 +154,7 @@ export const textRunMergeSignature = (run: TextRun): string =>
     fontSize: run.fontSize,
     bold: run.bold ?? false,
     italic: run.italic ?? false,
+    smallCaps: run.smallCaps ?? false,
     letterSpacing: run.letterSpacing ?? null,
     horizontalScale: run.horizontalScale ?? null,
     color: run.color ?? null,

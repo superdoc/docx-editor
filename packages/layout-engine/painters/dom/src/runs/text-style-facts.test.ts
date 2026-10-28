@@ -22,6 +22,7 @@ describe('worker-safe paint decisions retain existing DOM contracts', () => {
     expect(resolveRunTypographyStyles(run, resolve)).toEqual({
       'font-family': 'Carlito',
       'font-size': '20px',
+      'font-variant-caps': 'normal',
       'font-kerning': 'none',
       'font-synthesis': 'weight style',
       'font-weight': 'bold',
@@ -35,6 +36,17 @@ describe('worker-safe paint decisions retain existing DOM contracts', () => {
     expect(element.style.fontFamily).toBe('Carlito');
     expect(element.style.verticalAlign).toBe('2pt');
     expect(element.style.getPropertyValue('font-synthesis')).toBe('weight style');
+  });
+
+  it('retains small caps and synthesis in cloneable typography for worker painting', () => {
+    const run: TextRun = { text: 'Test ', fontFamily: 'Arial', fontSize: 16, smallCaps: true };
+    const styles = structuredClone(resolveRunTypographyStyles(run, (family) => family));
+    expect(styles['font-variant-caps']).toBe('small-caps');
+    expect(styles['font-synthesis']).toBe('weight style small-caps');
+    expect(resolveRunTypographyStyles({ ...run, smallCaps: false }, (family) => family)).toMatchObject({
+      'font-variant-caps': 'normal',
+      'font-synthesis': 'weight style',
+    });
   });
 
   it('preserves underline and strike as independent inline CSS properties', () => {

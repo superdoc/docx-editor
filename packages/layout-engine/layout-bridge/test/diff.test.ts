@@ -769,3 +769,18 @@ describe('computeDirtyRegions', () => {
     });
   });
 });
+
+describe('small-caps dirty regions', () => {
+  it('marks a paragraph dirty when only small caps changes', () => {
+    const plain: ParagraphBlock = {
+      kind: 'paragraph',
+      id: 'small-caps-diff',
+      runs: [{ text: 'Test ', fontFamily: 'Arial', fontSize: 16 }],
+    };
+    const caps: ParagraphBlock = {
+      ...plain,
+      runs: [{ text: 'Test ', fontFamily: 'Arial', fontSize: 16, smallCaps: true }],
+    };
+    expect(computeDirtyRegions([plain], [caps]).firstDirtyIndex).toBe(0);
+  });
+});

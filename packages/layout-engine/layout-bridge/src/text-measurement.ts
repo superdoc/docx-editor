@@ -153,7 +153,8 @@ export function getRunFontString(run: Run, fontContext: FontMeasureContext = DEF
   const weight = run.bold ? 'bold' : 'normal';
   const fontSize = run.fontSize ?? 16;
   const fontFamily = fontContext.resolvePhysical(run.fontFamily ?? 'Arial', faceOf(run));
-  return `${style} ${weight} ${fontSize}px ${fontFamily}`;
+  const variant = run.smallCaps ? ' small-caps' : '';
+  return `${style} ${weight}${variant} ${fontSize}px ${fontFamily}`;
 }
 
 /** Native caret text box for inline-image paragraphs, including wrapped text lines. */

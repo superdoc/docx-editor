@@ -309,3 +309,35 @@ describe('applyRunStyles', () => {
     expect(element.style.transformOrigin).toBe('left center');
   });
 });
+
+describe('small-caps text runs', () => {
+  it.each(['Test ', 'HOCHFORMAT'])('paints %s without changing authored text or offsets', (text) => {
+    const run: TextRun = {
+      text,
+      fontFamily: 'Arial',
+      fontSize: 16,
+      smallCaps: true,
+      pmStart: 7,
+      pmEnd: 7 + text.length,
+    };
+    const element = renderTextRun(run, { pageNumber: 1, totalPages: 1, section: 'body' }, makeRunRenderContext())!;
+
+    expect(element.textContent).toBe(text);
+    expect(element.dataset.pmStart).toBe('7');
+    expect(element.dataset.pmEnd).toBe(String(7 + text.length));
+    expect(element.style.fontSize).toBe('16px');
+    expect(element.style.fontVariantCaps).toBe('small-caps');
+    expect(element.style.getPropertyValue('font-synthesis').split(' ')).toContain('small-caps');
+  });
+
+  it('keeps adjacent plain and small-caps runs distinct and clears a reused variant', () => {
+    const run: TextRun = { text: 'Test ', fontFamily: 'Arial', fontSize: 16 };
+    expect(textRunMergeSignature({ ...run, smallCaps: true })).not.toBe(textRunMergeSignature(run));
+    expect(textRunMergeSignature({ ...run, smallCaps: false })).toBe(textRunMergeSignature(run));
+    const element = document.createElement('span');
+    element.style.fontVariantCaps = 'small-caps';
+    applyRunStyles(element, { ...run, smallCaps: false });
+    expect(element.style.fontVariantCaps).toBe('normal');
+    expect(element.style.getPropertyValue('font-synthesis')).toBe('weight style');
+  });
+});

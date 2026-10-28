@@ -1032,12 +1032,14 @@ function buildFontString(
     fontSize?: number | string;
     bold?: boolean;
     italic?: boolean;
+    smallCaps?: boolean;
   },
   fontContext: FontMeasureContext,
 ): string {
   const parts: string[] = [];
   if (run.italic) parts.push('italic');
   if (run.bold) parts.push('bold');
+  if (run.smallCaps) parts.push('small-caps');
   parts.push(`${normalizeFontSize(run.fontSize)}px`);
   const face = {
     weight: run.bold ? ('700' as const) : ('400' as const),

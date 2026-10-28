@@ -19,11 +19,26 @@ export async function mapNativeBuilds(targets, build, jobs = 1) {
   return results;
 }
 
-export function runNativeCompiler(command, args, options) {
+const TOOLCHAIN_DOWNLOAD_FAILURE = /Failed to download '[^']+': (ConnectionRefused|ConnectionResetByPeer|ConnectionTimedOut|NetworkUnreachable|Timeout)|Network error downloading executable for '[^']+'/;
+
+function runOnce(command, args, options) {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { stdio: 'inherit', ...options });
+    const child = spawn(command, args, { ...options, stdio: ['inherit', 'inherit', 'pipe'] });
+    let stderr = '';
+    child.stderr.on('data', chunk => { stderr += chunk; process.stderr.write(chunk); });
     child.once('error', reject);
     child.once('close', (code, signal) => code === 0 ? resolve() :
-      reject(new Error(`${command} failed: ${signal ?? code}`)));
+      reject(Object.assign(new Error(`${command} failed: ${signal ?? code}`), { stderr })));
   });
+}
+
+export async function runNativeCompiler(command, args, options, { attempts = 3, wait = ms => new Promise(r => setTimeout(r, ms)), run = runOnce } = {}) {
+  for (let attempt = 1; ; attempt++) {
+    try { return await run(command, args, options); }
+    catch (error) {
+      if (attempt >= attempts || !TOOLCHAIN_DOWNLOAD_FAILURE.test(error.stderr ?? '')) throw error;
+      console.error(`Retrying ${command} after a toolchain download failure (attempt ${attempt + 1} of ${attempts}).`);
+      await wait(5_000 * attempt);
+    }
+  }
 }

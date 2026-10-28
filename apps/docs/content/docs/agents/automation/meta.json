@@ -1,4 +1,4 @@
 {
   "title": "Automation",
-  "pages": ["node-sdk", "python-sdk", "cli"]
+  "pages": ["node-sdk", "python-sdk", "rust-sdk", "cli"]
 }

@@ -1,0 +1,214 @@
+---
+title: Automate a DOCX with Rust (Beta)
+navTitle: Rust SDK (Beta)
+description: Accept tracked changes and save a separate DOCX from Rust.
+---
+
+<Callout variant='warning' title='Beta'>
+  The Rust SDK is in beta. Its API can change between releases, so pin the exact crate version.
+</Callout>
+
+Use the Rust SDK when application code already knows which document operation to run. This guide accepts every
+tracked change in a DOCX and writes the result to a separate file. Later sections build on the same project.
+
+## 1. Install the Rust SDK
+
+The SDK requires Rust 1.85 or newer and uses Tokio. Create a project and add the crate:
+
+```bash
+cargo new accept-changes
+cd accept-changes
+cargo add superdoc-sdk@=0.1.0-next.beta.31
+cargo add serde_json@1
+cargo add tokio@1 --features macros,rt
+```
+
+Cargo installs prerelease crates only when you name the version, so keep the `=` pin.
+
+## 2. Prepare a document
+
+Download the [tracked-changes fixture](/fixtures/tracked-changes.docx) and save it as `contract.docx` in the project
+directory. It contains one tracked change.
+
+<FileDownload
+  href='/fixtures/tracked-changes.docx'
+  label='Download the tracked-changes fixture'
+  description='Synthetic NDA with one tracked change'
+  fileType='DOCX'
+/>
+
+<Callout variant='warning' title='Keep the source file'>
+  Write the first result to a separate path so you can compare the output with the original document.
+</Callout>
+
+## 3. Accept the changes and save
+
+Replace `src/main.rs` with:
+
+<include>../../../../snippets/headless/rust-accept-changes.rs</include>
+
+Run it from the directory containing `contract.docx`:
+
+```bash
+cargo run
+```
+
+The program does four things:
+
+1. **Installs the runtime.** The SDK drives a native SuperDoc process. `resolve` uses the runtime already in
+   `.superdoc-runtime`. On the first run nothing is there, so `install` downloads the runtime that matches the crate
+   (about 90 MB) and verifies it. Add `.superdoc-runtime` to `.gitignore`.
+2. **Opens the document.** `Client::connect` starts the process. `client.open` loads `contract.docx` into a document
+   session.
+3. **Accepts and saves.** `accept_all` accepts every tracked change and writes `contract.accepted.docx`. If an operation
+   fails, it returns an error instead of a receipt. `with_force(true)` replaces an output file left by a previous run.
+4. **Cleans up.** `accept_contract` closes the session even when `accept_all` fails, and `main` stops the process
+   even when opening or closing the document fails. `with_discard(true)` closes the session without saving its changes
+   back to `contract.docx`.
+
+## 4. Verify the output
+
+Open `contract.accepted.docx` in Microsoft Word or the SuperDoc editor. Every tracked change should be accepted.
+The original `contract.docx` should remain unchanged.
+
+<Callout variant='success' title='Verification target'>
+  The output contains the same document content and formatting with no pending tracked changes. The source file remains
+  unchanged.
+</Callout>
+
+## Call any Document API operation
+
+`accept_all` called one operation from the shared [Document API reference](/document-api/reference). Every operation
+in that reference has a Rust method on `document.api()`, with namespaces and names in snake case:
+
+| Reference                      | Rust                                               |
+| ------------------------------ | -------------------------------------------------- |
+| `doc.trackChanges.decide(...)` | `document.api().track_changes().decide(...).await` |
+| `doc.comments.create(...)`     | `document.api().comments().create(...).await`      |
+| `doc.getText(...)`             | `document.api().get_text(...).await`               |
+| `doc.query.match(...)`         | `document.api().query().match_(...).await`         |
+
+`match` is a Rust keyword, so that method is `match_`.
+
+Each method takes a generated parameter type. Build simple ones with the constructor and `with_*` methods, as
+`DocSaveBoundParams` does in the quickstart. For inputs with nested targets, copy the JSON from the reference into
+`json!` and convert it with `serde_json::from_value`, as `accept_all` does. Keep the reference's camelCase keys, such as
+`trackedChangeId`, inside `json!`.
+
+The [Rust API reference on docs.rs](https://docs.rs/superdoc-sdk/latest/superdoc_sdk/) lists every generated type and
+method. Select the docs.rs version that matches your pin.
+
+## Add several comments in one request
+
+Each method call is one request to the SuperDoc process. To make many related edits, send them together with
+`document.api().plan().execute(...)`. Save this function as `src/comments.rs`:
+
+<include>../../../../snippets/headless/rust-batch-comments.rs</include>
+
+In `src/main.rs`, add `mod comments;` below the `use` lines. Then call the function in `accept_all`, before the save:
+
+```rust
+comments::add_review_comments(
+    document,
+    &[
+        ("Confidential Information", "Is this definition broad enough?"),
+        ("Receiving Party", "Confirm the legal name."),
+    ],
+)
+.await?;
+```
+
+Run `cargo run` again. `contract.accepted.docx` now has two comments.
+
+Each entry in a plan runs as its own transaction. The plan stops at the first entry that fails, and the entries before
+it stay applied, so check `failure` before you save. For a group of text or formatting edits that must succeed or fail
+together, use `document.api().mutations().apply(...)` instead. See [Mutation plans](/document-api/mutation-plans).
+
+<Callout variant='warning' title='Comment on a tracked change one call at a time'>
+  A comment that targets a tracked change by its ID does not resolve inside `plan.execute`. Create those comments with
+  individual `document.api().comments().create(...)` calls.
+</Callout>
+
+## Handle errors
+
+When the document rejects an operation, the method returns a `superdoc_sdk::Error`. Match on its `code` to handle the
+cases your application expects. This function adds a comment only when the quoted text exists:
+
+<include>../../../../snippets/headless/rust-handle-errors.rs</include>
+
+The [Receipts and errors](/document-api/receipts-and-errors) page lists the codes each operation can return. An error
+also carries `operation_id`, `details`, and the original `host_message`. `Display` leaves out the host message because it
+can contain document text.
+
+If a request times out or is cancelled after a write was sent, `outcome_unknown` is `true`: the edit may or may not
+have been applied. The SDK never retries a write, so read the document again before you decide to retry.
+
+## Run in a service
+
+The quickstart starts one SuperDoc process, makes one edit, and stops. A service should start the process once and keep
+it:
+
+- **Keep one client.** `Client::connect` starts a process, which is the slowest step. Connect when the service starts,
+  not for each request.
+- **Keep documents open between edits.** Each `client.open` returns a document session. One client can hold several.
+- **Use a small pool for parallel work.** One client runs one operation at a time. Give each concurrent workflow its own
+  client.
+- **Close everything explicitly.** Dropping a `Document` does not save it. Call `close`, then
+  `client.shutdown()` when the service stops.
+- **Re-query after edits.** A `query.match` result points at the document as it was when you ran the query. Run the
+  query again after a change. Block `nodeId` values stay stable across edits.
+
+<Callout variant='warning' title='Rust does not restart the process'>
+  If the SuperDoc process exits, every request on that client fails. Connect a new client and open the documents again.
+  Changes that were not saved are lost.
+</Callout>
+
+## Install the runtime before deployment
+
+The quickstart downloads the runtime the first time it runs. In production, install it during the build instead, so
+the service starts without downloading anything:
+
+<include>../../../../snippets/headless/rust-provision-runtime.rs</include>
+
+Call `install_runtime` in a build step or Docker layer. At startup, `connect_installed_runtime` uses
+`resolve`, which verifies the installed files and never downloads. Both functions block, so call them before other async
+work starts or wrap them in `tokio::task::spawn_blocking`. For a machine without network access, copy the runtime
+archive there and call `manifest.install_archive(cache, target, archive_path)`.
+
+Published runtimes support macOS (Apple Silicon and Intel), Linux with glibc (x64 and ARM64), and Windows x64. musl,
+WASM, and Windows ARM64 are not supported.
+
+## Open a collaboration document
+
+To edit a document that people are also editing in the browser, join its collaboration room. This function connects to
+a Hocuspocus server with a token your application issued:
+
+<include>../../../../snippets/headless/rust-collaboration.rs</include>
+
+Call it with the server URL, the room's document ID, and the token:
+
+```rust
+let document = join_collaboration_document(
+    &client,
+    "wss://collaboration.example.com",
+    "contract-123",
+    &token,
+)
+.await?;
+```
+
+The returned `Document` supports the same `document.api()` operations as a local file. For a y-websocket server, set
+`providerType` to `y-websocket`. Token authentication is not available for Liveblocks or `HostMode::Document`.
+
+`roomMode: "join"` expects the room to exist. To create a room from a DOCX, add `"doc": "./contract.docx"` and use
+`"roomMode": "create"` in one worker only. See [Coordinate room creation](/editor/collaboration/coordinate-room-creation).
+The SDK does not include a collaboration server, and closing a document does not mean the server has stored it. See
+[Run a collaboration server](/editor/collaboration/run-a-server) and
+[Save and restore a room](/editor/collaboration/save-and-restore-a-room).
+
+## Next steps
+
+- Read the [Document API mental model](/document-api/mental-model) for how targets, receipts, and revisions work.
+- Find operations in the [Document API reference](/document-api/reference).
+- Use the [Node.js SDK](/agents/automation/node-sdk) or [Python SDK](/agents/automation/python-sdk) for the same
+  workflow in those languages.

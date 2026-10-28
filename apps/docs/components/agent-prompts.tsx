@@ -2,57 +2,9 @@
 
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
+import { AGENT_TASKS, type AgentTask } from '@/lib/agent-tasks';
 import { getMarkdownUrl } from '@/lib/markdown-url';
 import styles from './agent-prompts.module.css';
-
-type AgentTask = {
-  id: string;
-  title: string;
-  summary: string;
-  guideHref: string;
-  instruction: string;
-};
-
-/**
- * Each prompt points the agent at the guide's Markdown route, which serves the
- * page as text without site chrome, and tells it to prefer that guide over its
- * own recollection. That instruction is the point: the failure these prompts
- * exist to prevent is a model writing remembered v1 APIs.
- */
-const AGENT_TASKS: readonly AgentTask[] = [
-  {
-    id: 'editor',
-    title: 'Add a DOCX editor',
-    summary: 'Open, edit, and export a DOCX in your app',
-    guideHref: '/editor/quickstart',
-    instruction:
-      'Then add a SuperDoc editor to this project: load a local .docx, let me edit it, and add a button that exports the result.',
-  },
-  {
-    id: 'redline',
-    title: 'Build a DOCX agent',
-    summary: 'Give your product an agent that proposes reviewable edits',
-    guideHref: '/agents/build/build-an-agent',
-    instruction:
-      'Then build an agent with the SuperDoc SDK that proposes a tracked edit to a .docx and saves the result to a separate file I can review.',
-  },
-  {
-    id: 'resolve',
-    title: 'Resolve changes with Node.js',
-    summary: 'Accept or reject existing changes from Node.js',
-    guideHref: '/agents/automation/node-sdk',
-    instruction:
-      'Then write a Node.js script that opens a .docx, accepts every tracked change, and saves the result to a new file.',
-  },
-  {
-    id: 'resolve-python',
-    title: 'Resolve changes with Python',
-    summary: 'Accept or reject existing changes from Python',
-    guideHref: '/agents/automation/python-sdk',
-    instruction:
-      'Then write a Python script that opens a .docx, accepts every tracked change, and saves the result to a new file.',
-  },
-];
 
 /**
  * Absolute once the origin is known, so the prompt survives being pasted into

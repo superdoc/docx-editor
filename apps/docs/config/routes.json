@@ -4,6 +4,7 @@
     "/agents/automation/cli/",
     "/agents/automation/node-sdk/",
     "/agents/automation/python-sdk/",
+    "/agents/automation/rust-sdk/",
     "/agents/build/actions/",
     "/agents/build/build-an-agent/",
     "/agents/build/custom-actions/",

@@ -4918,3 +4918,25 @@ test('derives search terms from a requested path', async () => {
   assert.equal(searchTermsFromPath('/md/editor/quickstart.md'), 'md editor quickstart');
   assert.equal(searchTermsFromPath('/'), '');
 });
+
+test('homepage agent prompts link to published guides and their Markdown routes', async () => {
+  const { AGENT_TASKS } = await import('../lib/agent-tasks.ts');
+  const { getMarkdownUrl } = await import('../lib/markdown-url.ts');
+  const { routes } = JSON.parse(await readFile(new URL('../config/routes.json', import.meta.url), 'utf8'));
+  const guides = Object.fromEntries(AGENT_TASKS.map((task) => [task.id, task.guideHref]));
+
+  assert.equal(guides['resolve'], '/agents/automation/node-sdk');
+  assert.equal(guides['resolve-python'], '/agents/automation/python-sdk');
+  assert.equal(guides['resolve-rust'], '/agents/automation/rust-sdk');
+
+  for (const task of AGENT_TASKS) {
+    assert.ok(routes.includes(`${task.guideHref}/`), `${task.id} links to an unpublished route ${task.guideHref}`);
+    const slug = getMarkdownUrl(task.guideHref).replace(/^\/md\//u, '').replace(/\.md$/u, '');
+    const sources = [`${slug}.mdx`, `${slug}/index.mdx`].map((path) => new URL(path, contentRoot));
+    const found = await Promise.any(sources.map((source) => access(source))).then(
+      () => true,
+      () => false,
+    );
+    assert.ok(found, `${task.id} prompt points agents at a missing Markdown guide for ${task.guideHref}`);
+  }
+});

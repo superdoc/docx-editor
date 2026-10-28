@@ -83,6 +83,7 @@ const routes = [
   ['agents/build/legacy-tools/index.html', 'Legacy tools'],
   ['agents/automation/node-sdk/index.html', 'Automate a DOCX with Node.js'],
   ['agents/automation/python-sdk/index.html', 'Automate a DOCX with Python'],
+  ['agents/automation/rust-sdk/index.html', 'Automate a DOCX with Rust (Beta)'],
   ['agents/automation/cli/index.html', 'Automate a DOCX from the CLI'],
   ['agents/workflows/review-tracked-changes/index.html', 'Review tracked changes'],
   ['agents/operate/safety/index.html', 'Safety'],
@@ -1458,6 +1459,24 @@ test('presence exports the working example and the local-user boundary', async (
   assert.match(page, /list\.replaceChildren\(\.\.\.items\)/);
   assert.match(page, /his edits remain/);
   assert.doesNotMatch(page, /<CollaborationDemo|<include>/);
+});
+
+test('Rust automation exports its runnable source, shared reference, and discovery links', async () => {
+  const markdown = await readFile(new URL('../out/md/agents/automation/rust-sdk.md', import.meta.url), 'utf8');
+  assert.match(markdown, /RuntimeManifest::pinned/u);
+  assert.match(markdown, /track_changes\(\)\.decide\(&decision\)\.await/u);
+  assert.match(markdown, /client\.shutdown\(\)\.await/u);
+  assert.match(markdown, /pub async fn add_review_comments/u);
+  assert.match(markdown, /comments::add_review_comments\(/u);
+  assert.match(markdown, /error\.code == "TARGET_NOT_FOUND"/u);
+  assert.match(markdown, /\.resolve\(cache, host_target\(\)\?\)/u);
+  assert.match(markdown, /pub async fn join_collaboration_document/u);
+  assert.match(markdown, /"roomMode": "join"/u);
+  assert.match(markdown, /collaboration_auth: Some\(CollaborationAuth::token\(token\)\?\)/u);
+  assert.match(markdown, /\/document-api\/reference/u);
+  assert.doesNotMatch(markdown, /<include>/u);
+  const home = await readFile(new URL('../out/index.html', import.meta.url), 'utf8');
+  assert.match(home, /Resolve changes with Rust \(Beta\)/u);
 });
 
 test('initialization explains create, join, and reopening without promising persistence', async () => {

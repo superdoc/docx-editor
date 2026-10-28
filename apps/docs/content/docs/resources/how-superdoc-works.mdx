@@ -25,12 +25,12 @@ This is the no-conversion boundary: OOXML remains the source of document meaning
 
 ![People, services, CI, and agents use different SuperDoc surfaces that share the Document API and DOCX engine.](./_media/how-superdoc-works/surface-map.svg)
 
-| Caller        | Surface              | What the surface owns                                   | Start with                                              |
-| ------------- | -------------------- | ------------------------------------------------------- | ------------------------------------------------------- |
-| Person        | Browser Editor       | Rendering, input, selection, navigation, and review UI  | [Editor overview](/editor)                              |
-| Service or CI | Node.js, Python, CLI | Sessions, files, batches, retries, and process failures | [Agents & automation](/agents/overview)                 |
-| Agent         | SDK agent tools      | Tool definitions, prompts, dispatch, and review handoff | [Build an agent](/agents/build/build-an-agent)          |
-| Any code      | Document API         | Structured reads, mutations, receipts, and errors       | [Document API mental model](/document-api/mental-model) |
+| Caller        | Surface                           | What the surface owns                                   | Start with                                              |
+| ------------- | --------------------------------- | ------------------------------------------------------- | ------------------------------------------------------- |
+| Person        | Browser Editor                    | Rendering, input, selection, navigation, and review UI  | [Editor overview](/editor)                              |
+| Service or CI | Node.js, Python, Rust (Beta), CLI | Sessions, files, batches, retries, and process failures | [Agents & automation](/agents/overview)                 |
+| Agent         | SDK agent tools                   | Tool definitions, prompts, dispatch, and review handoff | [Build an agent](/agents/build/build-an-agent)          |
+| Any code      | Document API                      | Structured reads, mutations, receipts, and errors       | [Document API mental model](/document-api/mental-model) |
 
 Headless code does not have a toolbar, viewport, DOM selection, or visual review surface. Choose the surface by who or what drives the document.
 

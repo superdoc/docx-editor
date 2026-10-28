@@ -28,6 +28,10 @@ pnpm --filter @superdoc/docs check:redirects
 pnpm --filter @superdoc/docs test:export
 ```
 
+`typecheck` also compiles the included Rust examples with the SDK's pinned Rust
+toolchain. This checks the examples against workspace types; running them against
+the published crate and its native runtime is separate verification.
+
 ## Structure
 
 - `content/docs` owns authored pages and page-local media.

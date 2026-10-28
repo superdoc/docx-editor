@@ -116,6 +116,63 @@ describe('ui.decorations', () => {
 });
 
 describe('ui.decorations.subscribe', () => {
+  it('reports overlapping highlights without measuring unrelated tracked markers', () => {
+    const wrapper = document.createElement('div');
+    wrapper.setAttribute('data-superdoc-extension-decoration', 'outside-provider');
+    const container = document.createElement('div');
+    const paragraph = document.createElement('p');
+    const highlight = document.createElement('span');
+    highlight.setAttribute(
+      'data-superdoc-extension-decorations',
+      JSON.stringify(['outer-provider', 'inner provider', 'extension-only-provider']),
+    );
+    paragraph.setAttribute('data-superdoc-extension-decoration', 'outer-provider');
+    paragraph.appendChild(highlight);
+    container.appendChild(paragraph);
+    const markerRect = vi.fn(() => ({ left: 100, top: 100, right: 110, bottom: 110 }) as DOMRect);
+    for (let index = 0; index < 1000; index += 1) {
+      const marker = document.createElement('span');
+      marker.setAttribute('data-track-change-marker', 'true');
+      marker.getBoundingClientRect = markerRect;
+      container.appendChild(marker);
+    }
+    wrapper.appendChild(container);
+    document.body.appendChild(wrapper);
+    const originalElementFromPoint = document.elementFromPoint;
+    const originalElementsFromPoint = document.elementsFromPoint;
+    document.elementFromPoint = () => highlight;
+    document.elementsFromPoint = () => [highlight, paragraph, container, wrapper];
+    const visuals = {
+      ...fakeHostVisuals().visuals,
+      providerOwner: (provider: string) =>
+        provider === 'extension-only-provider'
+          ? null
+          : { id: provider === 'inner provider' ? 'inner' : provider.replace('-provider', '') },
+      ownerById: (id: string) => ({ data: { id } }),
+    };
+    const superdoc = {
+      activeEditor: { doc: {}, visuals, host: { getHostVisuals: () => visuals }, mount: { container } },
+      config: { documentMode: 'editing' },
+      on: vi.fn(),
+      off: vi.fn(),
+    };
+    const ui = createSuperDocUI({ superdoc });
+    const events: string[] = [];
+    try {
+      ui.decorations.subscribe((event) => events.push(`${event.type}:${event.id}`));
+      for (const type of ['pointermove', 'pointermove', 'click']) {
+        highlight.dispatchEvent(new MouseEvent(type, { bubbles: true, clientX: 10, clientY: 10 }));
+      }
+      expect(events).toEqual(['hover-enter:outer', 'hover-enter:inner', 'click:outer', 'click:inner']);
+      expect(markerRect).not.toHaveBeenCalled();
+    } finally {
+      ui.destroy();
+      document.elementFromPoint = originalElementFromPoint;
+      document.elementsFromPoint = originalElementsFromPoint;
+      wrapper.remove();
+    }
+  });
+
   it('stops delivering events after unsubscribe and on destroy', () => {
     const { visuals } = fakeHostVisuals();
     const container = document.createElement('div');

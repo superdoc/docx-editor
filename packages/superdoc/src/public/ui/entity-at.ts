@@ -39,6 +39,15 @@ function readDecorationProviders(node: { getAttribute(name: string): string | nu
   return single ? [single] : [];
 }
 
+export function collectDecorationProvidersFromChain(start: Element | null, stopAt: Element): string[] {
+  const providers = new Set<string>();
+  for (let element = start; element; element = element.parentElement) {
+    for (const provider of readDecorationProviders(element)) providers.add(provider);
+    if (element === stopAt) break;
+  }
+  return [...providers];
+}
+
 function parseCommaSeparatedIds(value: string): string[] {
   return value
     .split(',')

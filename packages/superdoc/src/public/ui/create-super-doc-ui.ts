@@ -118,7 +118,7 @@ import type {
   ZoomHandle,
   ZoomSlice,
 } from './types.js';
-import { collectEntityHitsFromChain } from './entity-at.js';
+import { collectDecorationProvidersFromChain, collectEntityHitsFromChain } from './entity-at.js';
 import { decodeLayoutStoryDataset } from '@superdoc/dom-contract';
 import { getParagraphInlineDirection } from '@superdoc/contracts';
 import { isPlainObject } from '../../helpers/object-guards.js';
@@ -12368,20 +12368,23 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
   // `event.target.closest(...)` in contextmenu handlers. Centralizing the
   // lookup here keeps the painter's attribute names an implementation detail
   // and surfaces a typed `ViewportEntityHit[]` consumers can switch on.
-  const pointEntityHits = (x: unknown, y: unknown): readonly ViewportEntityHit[] => {
-    if (typeof x !== 'number' || typeof y !== 'number' || !Number.isFinite(x) || !Number.isFinite(y)) return [];
+  const pointHitElements = (
+    x: unknown,
+    y: unknown,
+  ): { container: HTMLElement; elements: Element[]; x: number; y: number } | null => {
+    if (typeof x !== 'number' || typeof y !== 'number' || !Number.isFinite(x) || !Number.isFinite(y)) return null;
     // The DOM `document` is reached through `globalThis.document` because the
     // local `document: DocumentHandle` shadows it for type-checking. Guard SSR /
     // non-browser stubs explicitly so the call doesn't throw without a DOM.
     const dom = (globalThis as { document?: Document }).document;
-    if (!dom || typeof dom.elementFromPoint !== 'function') return [];
+    if (!dom || typeof dom.elementFromPoint !== 'function') return null;
     // Scope the lookup to THIS controller's visible host (mount container, else
     // the SuperDoc root) so a page with two mounted instances never cross-reads
     // the other's painted DOM. Null host (pre-mount / post-destroy / SSR) -> [].
     const container = resolveVisibleHost();
-    if (!container) return [];
+    if (!container) return null;
     const startEl = dom.elementFromPoint(x, y);
-    if (!startEl || !container.contains(startEl)) return [];
+    if (!startEl || !container.contains(startEl)) return null;
 
     // Primary start elements to walk: the `elementFromPoint` hit plus any stacked
     // hittable carriers `elementsFromPoint` reports inside the host. All scoped to
@@ -12405,6 +12408,13 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       }
       for (const el of stacked) addPrimaryEl(el);
     }
+    return { container, elements: primaryEls, x, y };
+  };
+
+  const pointEntityHits = (x: unknown, y: unknown): readonly ViewportEntityHit[] => {
+    const point = pointHitElements(x, y);
+    if (!point) return [];
+    const { container, elements: primaryEls } = point;
     // Pointer-inert markers (e.g. list-marker glyphs with `pointer-events:none`)
     // are skipped by BOTH elementFromPoint and elementsFromPoint, yet they carry
     // the tracked-change dataset, so find them geometrically: any
@@ -12425,7 +12435,9 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       } catch {
         return false;
       }
-      return rect != null && x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+      return (
+        rect != null && point.x >= rect.left && point.x <= rect.right && point.y >= rect.top && point.y <= rect.bottom
+      );
     };
     for (const el of primaryEls) {
       const queryAll = (
@@ -12745,10 +12757,18 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
   let detachDecorationPointer: (() => void) | null = null;
   let hoveredDecorations: ReadonlyArray<{ id: string; data?: DecorationPointerEvent['data'] }> = [];
   let lastPointer = { clientX: 0, clientY: 0 };
-  const decorationIdsAt = (x: number, y: number): string[] =>
-    pointEntityHits(x, y)
-      .filter((hit) => hit.type === 'decoration')
-      .map((hit) => hit.id);
+  const decorationIdsAt = (x: number, y: number): string[] => {
+    const point = pointHitElements(x, y);
+    if (!point) return [];
+    const ids = new Set<string>();
+    for (const element of point.elements) {
+      for (const provider of collectDecorationProvidersFromChain(element, point.container)) {
+        const owner = decorationOwnerForProvider(provider);
+        if (owner) ids.add(owner.id);
+      }
+    }
+    return [...ids];
+  };
   const decorationData = (id: string): DecorationPointerEvent['data'] | undefined => {
     const owner = (
       currentHostVisuals() as { ownerById?: (id: string) => { data?: unknown } | null } | null

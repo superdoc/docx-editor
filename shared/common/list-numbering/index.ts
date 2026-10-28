@@ -1,6 +1,6 @@
 type NumberingHandler = (path: number[], lvlText: string, customFormat?: string) => string | null;
 
-type NumberFormatter = (value: number, idx?: number) => string;
+type NumberFormatter = (value: number) => string;
 
 const handleDecimal: NumberingHandler = (path, lvlText) => generateNumbering(path, lvlText, numberToStringFormatter);
 const handleRoman: NumberingHandler = (path, lvlText) => generateNumbering(path, lvlText, intToRoman);
@@ -67,15 +67,11 @@ export const generateOrderedListIndex = ({
 
 const createNumbering = (values: string[], lvlText: string): string => {
   if (typeof lvlText !== 'string') return '';
-  return values.reduce<string>((acc, value, index) => {
-    return Number(value) > 9
-      ? acc.replace(/^0/, '').replace(`%${index + 1}`, value)
-      : acc.replace(`%${index + 1}`, value);
-  }, lvlText);
+  return values.reduce<string>((acc, value, index) => acc.replace(`%${index + 1}`, value), lvlText);
 };
 
 const generateNumbering = (path: number[], lvlText: string, formatter: NumberFormatter): string => {
-  const formattedValues = path.map((entry, idx) => formatter(entry, idx));
+  const formattedValues = path.map((entry) => formatter(entry));
   return createNumbering(formattedValues, lvlText);
 };
 
@@ -174,8 +170,8 @@ const cardinalTextFormatter: NumberFormatter = (value) => {
   return String(value);
 };
 
-const decimalZeroFormatter: NumberFormatter = (value, idx) => {
-  if (value >= 10 || idx === 0) return String(value);
+const decimalZeroFormatter: NumberFormatter = (value) => {
+  if (value >= 10) return String(value);
   return `0${value}`;
 };
 

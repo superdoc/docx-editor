@@ -2,13 +2,14 @@ import { describe, expect, it } from 'bun:test';
 import { generateOrderedListIndex, intToJapaneseCounting, normalizeLvlTextChar } from './index';
 
 describe('generateOrderedListIndex', () => {
-  it('formats decimal markers with multi-digit replacements', () => {
+  // SD-5466: Word reproduces every non-placeholder lvlText character verbatim, leading zero included.
+  it('formats decimal markers with multi-digit replacements and keeps literal text', () => {
     const result = generateOrderedListIndex({
       listLevel: [12, 4],
       lvlText: '0.%1.%2)',
       listNumberingType: 'decimal',
     });
-    expect(result).toBe('.12.4)');
+    expect(result).toBe('0.12.4)');
   });
 
   it('formats decimalZero markers with leading zeros for single digits', () => {
@@ -17,14 +18,33 @@ describe('generateOrderedListIndex', () => {
       lvlText: '%1.%2',
       listNumberingType: 'decimalZero',
     });
-    expect(singleDigit).toBe('1.01');
+    expect(singleDigit).toBe('01.01');
 
     const doubleDigit = generateOrderedListIndex({
       listLevel: [1, 10],
       lvlText: '%1.%2',
       listNumberingType: 'decimalZero',
     });
-    expect(doubleDigit).toBe('1.10');
+    expect(doubleDigit).toBe('01.10');
+  });
+
+  it('pads decimalZero markers on the first list level', () => {
+    const at = (n: number) =>
+      generateOrderedListIndex({ listLevel: [n], lvlText: '%1.', listNumberingType: 'decimalZero' });
+    expect(at(1)).toBe('01.');
+    expect(at(2)).toBe('02.');
+    expect(at(9)).toBe('09.');
+    expect(at(10)).toBe('10.');
+    expect(at(12)).toBe('12.');
+  });
+
+  it('keeps a padded ancestor when a deeper level reaches two digits', () => {
+    const result = generateOrderedListIndex({
+      listLevel: [1, 12],
+      lvlText: '%1.%2',
+      listNumberingType: 'decimalZero',
+    });
+    expect(result).toBe('01.12');
   });
 
   it('formats lower roman numerals', () => {

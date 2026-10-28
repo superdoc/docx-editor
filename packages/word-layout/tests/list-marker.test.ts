@@ -469,13 +469,98 @@ describe('computeWordListMarker', () => {
     expect(r.listRenderingAttrs.markerText).toBe('1.א');
   });
 
-  it('formats decimalZero custom zero-padding (path > 1 entry)', () => {
+  // SD-5466: without levelNumberingFormats the level's own numFmt is all the engine knows, so it pads both.
+  it('formats decimalZero zero-padding across every entry of the path', () => {
     const manager = createNumberingManager();
     const lvl0 = baseDef({ ilvl: 0, lvlText: '%1', numFmt: 'decimal' });
     const lvl1 = baseDef({ ilvl: 1, lvlText: '%1.%2', numFmt: 'decimalZero' });
     computeWordListMarker({ definition: lvl0, manager, paragraphOrdinal: 1 });
     const r = computeWordListMarker({ definition: lvl1, manager, paragraphOrdinal: 2 });
-    // Path is [1,1]; first entry (idx 0) is unpadded, second entry pads.
+    expect(r.listRenderingAttrs.markerText).toBe('01.01');
+  });
+
+  it('pads only the decimalZero level when the referenced level formats are known', () => {
+    const manager = createNumberingManager();
+    const levelNumberingFormats = [
+      { ilvl: 0, numFmt: 'decimal' },
+      { ilvl: 1, numFmt: 'decimalZero' },
+    ];
+    const lvl0 = baseDef({ ilvl: 0, lvlText: '%1', numFmt: 'decimal', levelNumberingFormats });
+    const lvl1 = baseDef({ ilvl: 1, lvlText: '%1.%2', numFmt: 'decimalZero', levelNumberingFormats });
+    computeWordListMarker({ definition: lvl0, manager, paragraphOrdinal: 1 });
+    const r = computeWordListMarker({ definition: lvl1, manager, paragraphOrdinal: 2 });
     expect(r.listRenderingAttrs.markerText).toBe('1.01');
+  });
+
+  it('pads a decimalZero first level and leaves a decimal child unpadded', () => {
+    const manager = createNumberingManager();
+    const levelNumberingFormats = [
+      { ilvl: 0, numFmt: 'decimalZero' },
+      { ilvl: 1, numFmt: 'decimal' },
+    ];
+    const lvl0 = baseDef({ ilvl: 0, lvlText: '%1.', numFmt: 'decimalZero', levelNumberingFormats });
+    const lvl1 = baseDef({ ilvl: 1, lvlText: '%1.%2', numFmt: 'decimal', levelNumberingFormats });
+    const first = computeWordListMarker({ definition: lvl0, manager, paragraphOrdinal: 1 });
+    const second = computeWordListMarker({ definition: lvl0, manager, paragraphOrdinal: 2 });
+    const nested = computeWordListMarker({ definition: lvl1, manager, paragraphOrdinal: 3 });
+    expect(first.listRenderingAttrs.markerText).toBe('01.');
+    expect(second.listRenderingAttrs.markerText).toBe('02.');
+    expect(nested.listRenderingAttrs.markerText).toBe('02.1');
+  });
+
+  // SD-5466: isLgl converts the levels in lvlText to their decimal equivalent; decimalZero already is one.
+  it('keeps decimalZero padding under legal numbering and still converts roman ancestors', () => {
+    const manager = createNumberingManager();
+    const levelNumberingFormats = [
+      { ilvl: 0, numFmt: 'upperRoman' },
+      { ilvl: 1, numFmt: 'decimalZero' },
+    ];
+    const lvl0 = baseDef({ ilvl: 0, lvlText: 'Article %1', numFmt: 'upperRoman', levelNumberingFormats });
+    const lvl1 = baseDef({
+      ilvl: 1,
+      lvlText: 'SECTION %1.%2',
+      numFmt: 'decimalZero',
+      isLegal: true,
+      levelNumberingFormats,
+    });
+    const article = computeWordListMarker({ definition: lvl0, manager, paragraphOrdinal: 1 });
+    expect(article.listRenderingAttrs.markerText).toBe('Article I');
+    const markers: string[] = [];
+    for (let ordinal = 2; ordinal <= 11; ordinal += 1) {
+      markers.push(
+        computeWordListMarker({ definition: lvl1, manager, paragraphOrdinal: ordinal }).listRenderingAttrs.markerText,
+      );
+    }
+    expect(markers).toEqual([
+      'SECTION 1.01',
+      'SECTION 1.02',
+      'SECTION 1.03',
+      'SECTION 1.04',
+      'SECTION 1.05',
+      'SECTION 1.06',
+      'SECTION 1.07',
+      'SECTION 1.08',
+      'SECTION 1.09',
+      'SECTION 1.10',
+    ]);
+  });
+
+  it('converts a decimalZero ancestor under legal numbering without padding other formats', () => {
+    const manager = createNumberingManager();
+    const levelNumberingFormats = [
+      { ilvl: 0, numFmt: 'decimalZero' },
+      { ilvl: 1, numFmt: 'lowerLetter' },
+    ];
+    const lvl0 = baseDef({ ilvl: 0, lvlText: '%1.', numFmt: 'decimalZero', levelNumberingFormats });
+    const lvl1 = baseDef({
+      ilvl: 1,
+      lvlText: '%1.%2',
+      numFmt: 'lowerLetter',
+      isLegal: true,
+      levelNumberingFormats,
+    });
+    computeWordListMarker({ definition: lvl0, manager, paragraphOrdinal: 1 });
+    const nested = computeWordListMarker({ definition: lvl1, manager, paragraphOrdinal: 2 });
+    expect(nested.listRenderingAttrs.markerText).toBe('01.1');
   });
 });

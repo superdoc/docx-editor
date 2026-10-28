@@ -5220,7 +5220,7 @@ export const OPERATION_DEFINITIONS = {
   'create.contentControl': {
     memberPath: 'create.contentControl',
     description:
-      'Create a new content control (SDT) in the document, optionally seeded with plain text or structured block preset content.',
+      'Create a new content control (SDT) in the document, optionally seeded with plain text or structured block preset content. Inline plain-text creation at a selection inherits the document run formatting at the caret or first selected character when inline is omitted; pending browser caret overrides are excluded. To include pending overrides, capture format.readSelection({ selection: "current" }) and pass its uniform values through inline. An explicit inline payload supplies fontFamily, fontSize, bold, italic, underline and strike values instead, with unspecified properties inheriting from the destination paragraph. It requires explicit content and commits formatting, content, tag and lockMode in one undoable operation. If inherited formatting cannot be resolved, creation returns CAPABILITY_UNAVAILABLE without changing the document or history; pass explicit inline values to bypass automatic inheritance.',
     expectedResult: 'Returns a ContentControlMutationResult with the created content control target.',
     requiresDocumentContext: true,
     metadata: mutationOperation({

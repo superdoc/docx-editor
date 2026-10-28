@@ -38,6 +38,66 @@ call targets an empty paragraph and replaces it with the supplied HTML content:
 The example obtains the selection from the Editor-owned UI controller after readiness. The helper needs a current
 selection target, not the selected text alone. Check the creation receipt before treating the field as available.
 
+## Replace a selection with a formatted locked value
+
+For an inline replacement or insertion, pass `content`. When `inline` is omitted, the new text inherits the
+destination's document run formatting: insertion uses the run formatting at the caret, and replacement uses the first
+selected character's formatting. Character-style references are retained, so inherited styles continue to apply.
+Automatic inheritance excludes pending browser caret overrides, such as italic toggled before typing.
+
+```ts
+const target = (await editor.doc.selection.current()).selectionTarget;
+if (!target) throw new Error('Select text or place the caret first.');
+const receipt = await editor.doc.create.contentControl({
+  kind: 'inline',
+  controlType: 'text',
+  at: target,
+  content: '12,345',
+  tag: 'linked-value',
+  lockMode: 'contentLocked',
+});
+if (!receipt.success) throw new Error('The linked value could not be created.');
+```
+
+The creation call commits the inherited or explicit formatting, text, tag, and lock in one undo entry. One Undo restores the
+original content; Redo restores the complete control. `contentLocked` prevents content edits and permits removing
+the wrapper. `inline` requires explicit plain-text `content` and `kind: 'inline'`; wrapping an existing selection
+without replacement preserves its existing formatting.
+
+To supply formatting explicitly, pass `inline` with `fontFamily`, `fontSize`, `bold`, `italic`, `underline`, or `strike`,
+using the same value shapes as `format.apply`. An explicit payload replaces automatic run-format inheritance;
+properties omitted from that payload inherit paragraph formatting.
+
+To capture pending caret overrides or reject mixed formatting, read the current browser selection and pass its uniform
+values through `inline`:
+
+```ts
+const target = (await editor.doc.selection.current()).selectionTarget;
+if (!target) throw new Error('Select text or place the caret first.');
+const keys = ['fontFamily', 'fontSize', 'bold', 'italic', 'underline', 'strike'] as const;
+const captured = await editor.doc.format.readSelection({ selection: 'current', keys: [...keys] });
+const inline = {};
+for (const key of keys) {
+  const property = captured.properties[key];
+  if (property?.state !== 'uniform') throw new Error(`Cannot resolve ${key}.`);
+  Object.assign(inline, { [key]: property.value });
+}
+const receipt = await editor.doc.create.contentControl({
+  kind: 'inline',
+  controlType: 'text',
+  at: target,
+  content: '12,345',
+  inline,
+  tag: 'linked-value',
+  lockMode: 'contentLocked',
+});
+if (!receipt.success) throw new Error('The linked value could not be created.');
+```
+
+Keep the formatting read and selection target at the same document revision. If automatic inheritance cannot resolve
+the destination's formatting, creation returns `CAPABILITY_UNAVAILABLE` without changing the document or history.
+Pass explicit `inline` values to bypass automatic inheritance.
+
 ## Keep the fields in your template
 
 Export the DOCX from the standalone example and reopen it. Confirm that the client name is an inline text control and

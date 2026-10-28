@@ -4,6 +4,7 @@ import { CONTRACT_VERSION, JSON_SCHEMA_DIALECT, OPERATION_IDS, type OperationId 
 import { NODE_TYPES, BLOCK_NODE_TYPES, DELETABLE_BLOCK_NODE_TYPES, INLINE_NODE_TYPES } from '../types/base.js';
 import { SELECTION_EDGE_NODE_TYPES } from '../types/address.js';
 import { INLINE_PROPERTY_REGISTRY, buildInlineRunPatchSchema } from '../format/inline-run-patch.js';
+import { CONTENT_CONTROL_INLINE_FORMAT_KEYS } from '../content-controls/content-controls.types.js';
 import { TABLE_COLOR_PATTERN_SOURCE } from '../tables/color-formats.js';
 import { INLINE_DIRECTIVES } from '../types/style-policy.types.js';
 import {
@@ -3995,6 +3996,16 @@ function buildContentControlSchemas(): Record<ContentControlOperationId, Operati
             content: { type: 'string' },
             html: { type: 'string' },
             json: sdFragmentSchema,
+            inline: {
+              type: 'object',
+              properties: Object.fromEntries(
+                INLINE_PROPERTY_REGISTRY.filter((entry) =>
+                  (CONTENT_CONTROL_INLINE_FORMAT_KEYS as readonly string[]).includes(entry.key),
+                ).map((entry) => [entry.key, entry.schema]),
+              ),
+              additionalProperties: false,
+              minProperties: 1,
+            },
           },
           ['kind'],
         ),
@@ -4012,6 +4023,10 @@ function buildContentControlSchemas(): Record<ContentControlOperationId, Operati
           {
             if: { properties: { kind: { const: 'inline' } }, required: ['kind'] },
             then: { not: { anyOf: [{ required: ['html'] }, { required: ['json'] }] } },
+          },
+          {
+            if: { required: ['inline'] },
+            then: { properties: { kind: { const: 'inline' } }, required: ['content'] },
           },
         ],
       },

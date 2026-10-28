@@ -10,6 +10,16 @@ import type { SelectionTarget } from '../types/address.js';
 import type { SDFragment } from '../types/fragment.js';
 import type { ReceiptFailure, ReceiptInsert, ReceiptSuccess } from '../types/receipt.js';
 import type { StoryLocator } from '../types/story.types.js';
+import type { InlineRunPatch } from '../format/inline-run-patch.js';
+
+export const CONTENT_CONTROL_INLINE_FORMAT_KEYS = [
+  'fontFamily',
+  'fontSize',
+  'bold',
+  'italic',
+  'underline',
+  'strike',
+] as const;
 
 // ---------------------------------------------------------------------------
 // Enums and constants
@@ -291,9 +301,17 @@ type CreateContentControlPlacement =
 
 type CreateContentControlPayload =
   | {
+      kind: 'inline';
+      content: string;
+      inline?: Pick<InlineRunPatch, (typeof CONTENT_CONTROL_INLINE_FORMAT_KEYS)[number]>;
+      html?: never;
+      json?: never;
+    }
+  | {
       kind: NodeKind;
       /** Plain-text initial content. */
       content?: string;
+      inline?: never;
       html?: never;
       json?: never;
     }
@@ -303,6 +321,7 @@ type CreateContentControlPayload =
       /** Initial block content authored from HTML. */
       html: string;
       json?: never;
+      inline?: never;
     }
   | {
       kind: Extract<NodeKind, 'block'>;
@@ -310,6 +329,7 @@ type CreateContentControlPayload =
       html?: never;
       /** Initial block content authored from an SDFragment-compatible value. */
       json: SDFragment | Record<string, unknown> | Array<Record<string, unknown>>;
+      inline?: never;
     };
 
 export type CreateContentControlInput = CreateContentControlCommonInput &

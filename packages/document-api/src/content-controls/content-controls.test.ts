@@ -824,6 +824,32 @@ describe('create.contentControl validation', () => {
     expect(adapter.create).toHaveBeenCalled();
   });
 
+  it('passes supported inline formatting to creation in the same call', () => {
+    const adapter = { create: mock(noop) } as any;
+    const input = {
+      kind: 'inline' as const,
+      at: validAt,
+      content: '12,345',
+      lockMode: 'contentLocked' as const,
+      inline: { fontFamily: 'Arial', fontSize: 11, bold: false, italic: true, underline: false, strike: false },
+    };
+    executeCreateContentControl(adapter, input);
+    expect(adapter.create).toHaveBeenCalledWith(input, undefined);
+  });
+
+  it.each([
+    { kind: 'block', content: 'value', inline: { bold: true } },
+    { kind: 'inline', inline: { bold: true } },
+    { kind: 'inline', content: 'value', inline: {} },
+    { kind: 'inline', content: 'value', inline: { bold: 'false' } },
+    { kind: 'inline', content: 'value', inline: { fontSize: '11pt' } },
+    { kind: 'inline', content: 'value', inline: { color: 'FF0000' } },
+  ])('rejects invalid inline creation formatting without invoking the adapter: %j', (input) => {
+    const adapter = { create: mock(noop) } as any;
+    expect(() => executeCreateContentControl(adapter, input as any)).toThrow();
+    expect(adapter.create).not.toHaveBeenCalled();
+  });
+
   it('accepts a list item as a node-edge selection boundary', () => {
     const adapter = { create: mock(noop) } as any;
     executeCreateContentControl(adapter, {

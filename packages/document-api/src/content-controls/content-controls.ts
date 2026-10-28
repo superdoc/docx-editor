@@ -12,7 +12,13 @@ import { isRecord } from '../object-guards.js';
 import { validateDocumentFragment } from '../validation/fragment-validator.js';
 import { isSelectionTarget } from '../validation/selection-target-validator.js';
 import { validateStoryLocator } from '../validation/story-validator.js';
-import { LOCK_MODES, CONTENT_CONTROL_TYPES, CONTENT_CONTROL_APPEARANCES } from './content-controls.types.js';
+import {
+  LOCK_MODES,
+  CONTENT_CONTROL_TYPES,
+  CONTENT_CONTROL_APPEARANCES,
+  CONTENT_CONTROL_INLINE_FORMAT_KEYS,
+} from './content-controls.types.js';
+import { validateInlineRunPatch } from '../format/inline-run-patch.js';
 import type { NodeKind } from '../types/base.js';
 import { NODE_KINDS } from '../types/base.js';
 import type {
@@ -1112,6 +1118,25 @@ export function executeCreateContentControl(
       `create.contentControl content must be a string, got ${typeof input.content}.`,
       { field: 'content', value: input.content },
     );
+  }
+  if (input.inline !== undefined) {
+    if (input.kind !== 'inline' || input.content === undefined) {
+      throw new DocumentApiValidationError(
+        'INVALID_INPUT',
+        'create.contentControl inline formatting requires an inline control with explicit content.',
+      );
+    }
+    validateInlineRunPatch(input.inline);
+    const allowed = new Set<string>(CONTENT_CONTROL_INLINE_FORMAT_KEYS);
+    for (const key of Object.keys(input.inline)) {
+      if (!allowed.has(key)) {
+        throw new DocumentApiValidationError(
+          'INVALID_INPUT',
+          `create.contentControl inline formatting does not support ${key}.`,
+          { field: 'inline', key },
+        );
+      }
+    }
   }
   if (input.html !== undefined && typeof input.html !== 'string') {
     throw new DocumentApiValidationError(

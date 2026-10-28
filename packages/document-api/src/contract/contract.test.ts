@@ -805,6 +805,7 @@ describe('document-api contract catalog', () => {
     expect(createContentControlInput.required).toEqual(['kind']);
     expect((createContentControlInput.properties?.html as { type?: string }).type).toBe('string');
     expect(createContentControlInput.properties).toHaveProperty('json');
+    expect(createContentControlInput.properties).toHaveProperty('inline');
     expect(createContentControlInput.allOf).toEqual([
       { not: { required: ['at', 'target'] } },
       {
@@ -815,6 +816,10 @@ describe('document-api contract catalog', () => {
       {
         if: { properties: { kind: { const: 'inline' } }, required: ['kind'] },
         then: { not: { anyOf: [{ required: ['html'] }, { required: ['json'] }] } },
+      },
+      {
+        if: { required: ['inline'] },
+        then: { properties: { kind: { const: 'inline' } }, required: ['content'] },
       },
     ]);
     expect(contentControlInfo.properties).toHaveProperty('selectionTarget');

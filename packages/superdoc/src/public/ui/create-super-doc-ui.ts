@@ -2705,7 +2705,10 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
   };
   const hasPendingTrackChangeRevealFocus = (focus: ExplicitActiveChange): boolean =>
     Array.from(pendingTrackChangeRevealFocuses).some((pendingFocus) => explicitActiveChangesEqual(pendingFocus, focus));
-  const mirrorTrackedChangeFocusToHost = (next: ExplicitActiveChange | null): void => {
+  const mirrorReviewFocusToHost = (
+    entityType: 'comment' | 'trackedChange',
+    next: { id: string; paintedEntityId?: string; story?: unknown } | null,
+  ): void => {
     const readHandles = hostMethod(getHost(), 'getHandles');
     if (!readHandles) return;
     const handles = safeCall<unknown>(() => readHandles(), null);
@@ -2719,12 +2722,12 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       safeCall(
         () =>
           setActiveReviewTarget({
-            entityType: 'trackedChange',
+            entityType,
             entityId: next.id,
             ...(next.paintedEntityId ? { paintedEntityId: next.paintedEntityId } : {}),
             origin: 'panel',
             layoutEpoch: typeof layout?.generation === 'number' ? layout.generation : 0,
-            story: next.story ?? { kind: 'story', storyType: 'body' },
+            ...(entityType === 'trackedChange' ? { story: next.story ?? { kind: 'story', storyType: 'body' } } : {}),
           }),
         null,
       );
@@ -2735,15 +2738,26 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     const clearActiveReviewTarget = hostMethod(review, 'clearActiveReviewTarget');
     if (!getActiveReviewTarget || !clearActiveReviewTarget) return;
     const activeTarget = safeCall<unknown>(() => getActiveReviewTarget(), null);
-    if (isPlainObject(activeTarget) && activeTarget.entityType === 'trackedChange') {
+    if (isPlainObject(activeTarget) && activeTarget.entityType === entityType) {
       safeCall(() => clearActiveReviewTarget(), undefined);
     }
+  };
+  const mirrorTrackedChangeFocusToHost = (next: ExplicitActiveChange | null): void =>
+    mirrorReviewFocusToHost('trackedChange', next);
+  type ReviewFocus = { change: ExplicitActiveChange | null; commentId: string | null };
+  const readReviewFocus = (): ReviewFocus => ({ change: explicitActiveChange, commentId: explicitActiveCommentId });
+  const restoreReviewFocus = (previous: ReviewFocus): void => {
+    setExplicitActiveChange(previous.change, { invalidateQueuedNavigation: false });
+    explicitActiveCommentId = previous.commentId;
+    if (previous.commentId) mirrorReviewFocusToHost('comment', { id: previous.commentId });
+    else mirrorTrackedChangeFocusToHost(previous.change);
   };
   const setExplicitActiveChange = (
     next: ExplicitActiveChange | null,
     options?: { invalidateQueuedNavigation?: boolean },
   ): void => {
     explicitActiveChange = next;
+    if (next) explicitActiveCommentId = null;
     explicitActiveChangeRevision += 1;
     trackChangeRevealInvalidation += 1;
     if (options?.invalidateQueuedNavigation !== false) {
@@ -4407,9 +4421,9 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     if (
       explicitActiveCommentId &&
       activeValidationItems &&
-      !activeValidationItems.some((item) => readEntityId(item) === explicitActiveCommentId)
+      (activeValidationItems !== items || listStatus === 'ready')
     ) {
-      explicitActiveCommentId = null;
+      explicitActiveCommentId = resolveActiveCommentId(activeValidationItems, explicitActiveCommentId);
     }
     const activeId = explicitActiveCommentId ?? activeIds[0] ?? null;
     return {
@@ -7340,6 +7354,16 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
         origin: unknown;
       }
     | undefined;
+  const isRepublishedHostReviewTarget = (left: unknown, right: unknown): boolean =>
+    left === right ||
+    (isPlainObject(left) &&
+      isPlainObject(right) &&
+      left.layoutEpoch !== right.layoutEpoch &&
+      left.origin === right.origin &&
+      left.entityType === right.entityType &&
+      left.entityId === right.entityId &&
+      left.paintedEntityId === right.paintedEntityId &&
+      storyLocatorSignature(left.story) === storyLocatorSignature(right.story));
 
   const syncTrackedChangeFocusFromHostReviewTarget = (rawTarget: unknown, rawSnapshot?: unknown): boolean => {
     const snapshot = rawSnapshot && typeof rawSnapshot === 'object' ? (rawSnapshot as LooseRecord) : null;
@@ -7350,8 +7374,24 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       typeof rejection === 'object' &&
       (rejection as LooseRecord).code === 'review-target-invalidated' &&
       (rejection as LooseRecord).detail === 'not-painted';
-    if (paintInvalidation && explicitActiveChange) return false;
+    if (paintInvalidation && (explicitActiveChange || explicitActiveCommentId)) return false;
     const target = rawTarget && typeof rawTarget === 'object' ? (rawTarget as LooseRecord) : null;
+    if (target?.entityType === 'comment' && typeof target.entityId === 'string' && target.entityId.length > 0) {
+      const commentId = resolveActiveCommentId(state?.comments.items ?? [], target.entityId) ?? target.entityId;
+      const republished = isRepublishedHostReviewTarget(rawTarget, lastPublishedHostReviewTarget?.raw);
+      lastPublishedHostReviewTarget = { raw: rawTarget, focus: null, origin: target.origin };
+      if (republished || (explicitActiveCommentId === commentId && !explicitActiveChange)) return false;
+      setExplicitActiveChange(null);
+      explicitActiveCommentId = commentId;
+      return true;
+    }
+    const previousTarget = lastPublishedHostReviewTarget?.raw;
+    if (!target && isPlainObject(previousTarget) && previousTarget.entityType === 'comment') {
+      lastPublishedHostReviewTarget = { raw: rawTarget, focus: null, origin: undefined };
+      if (!explicitActiveCommentId) return false;
+      explicitActiveCommentId = null;
+      return true;
+    }
     let next: ExplicitActiveChange | null = null;
     if (target?.entityType === 'trackedChange' && typeof target.entityId === 'string' && target.entityId.length > 0) {
       const targetStory = target.story && typeof target.story === 'object' ? target.story : undefined;
@@ -7395,7 +7435,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     const previousPublication = lastPublishedHostReviewTarget;
     if (
       previousPublication &&
-      (rawTarget === previousPublication.raw ||
+      (isRepublishedHostReviewTarget(rawTarget, previousPublication.raw) ||
         (target?.origin === 'panel' &&
           previousPublication.origin === 'panel' &&
           next &&
@@ -11257,6 +11297,10 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
   const commentsSub = sliceHandle((s) => s.comments);
   const commentsDirectorySub = select((s) => computeCommentsDirectorySnapshot(s.selection, s.comments));
   const commentsSnap = directorySnapshotHandle(commentsSub, commentsDirectorySub, 'comments');
+  documentResetHooks.push(() => {
+    setExplicitActiveChange(null);
+    explicitActiveCommentId = null;
+  });
   const comments: CommentsHandle = {
     get: commentsSnap.get,
     getSnapshot: commentsSnap.getSnapshot,
@@ -11387,6 +11431,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       // `null` clears the explicit focus; clearing is always accepted.
       if (commentId == null) {
         explicitActiveCommentId = null;
+        mirrorReviewFocusToHost('comment', null);
         recompute();
         return true;
       }
@@ -11420,7 +11465,9 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       // reentrant call's outcome instead of this request's own acceptance.
       const accepted = items.some((entry) => readEntityId(entry) === resolvedId);
       if (!accepted) return false;
+      setExplicitActiveChange(null);
       explicitActiveCommentId = resolvedId;
+      mirrorReviewFocusToHost('comment', { id: resolvedId });
       recompute();
       return true;
     },
@@ -11513,7 +11560,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     requestedAtInvalidation: number,
   ): Promise<ScrollIntoViewOutput> => {
     if (queuedTrackChangeNavigationInvalidation !== requestedAtInvalidation) return { success: false };
-    const previousActiveChange = explicitActiveChange;
+    const previousFocus = readReviewFocus();
     const activeId = navigateTrackChange(step, { invalidateQueuedNavigation: false });
     if (activeId == null) return { success: false };
     const optimisticActiveChange = explicitActiveChange;
@@ -11524,7 +11571,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       explicitActiveChangeRevision === optimisticRevision;
     const rollback = (): void => {
       if (!isCurrent()) return;
-      setExplicitActiveChange(previousActiveChange, { invalidateQueuedNavigation: false });
+      restoreReviewFocus(previousFocus);
       recompute();
     };
     if (optimisticActiveChange) pendingTrackChangeRevealFocuses.add(optimisticActiveChange);
@@ -11555,7 +11602,6 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
         if (!isCurrent()) return { success: false };
         if (!result.ok && result.reason !== SUPERDOC_UI_REASONS.targetNotVisible) {
           rollback();
-          mirrorTrackedChangeFocusToHost(previousActiveChange);
         } else {
           if (result.ok) await restampVisibleTrackedChangeCarrierAliases(activeId);
           if (!isCurrent()) return { success: false };
@@ -11753,7 +11799,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       // row's own story (undefined for an explicit or implicit body request).
       const story = matchStory ? requestedStory : readEntityRequestStory(matchingRow);
       const importedId = deriveTrackedChangeImportedId(matchingRow);
-      const previousActiveChange = explicitActiveChange;
+      const previousFocus = readReviewFocus();
       const requestedActiveChange: ExplicitActiveChange = {
         id: publicId,
         ...(story ? { story } : {}),
@@ -11781,7 +11827,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
           explicitActiveChangeRevision === optimisticRevision;
         const rollback = (): void => {
           if (!isCurrent()) return;
-          setExplicitActiveChange(previousActiveChange, { invalidateQueuedNavigation: false });
+          restoreReviewFocus(previousFocus);
           recompute();
         };
         recompute();
@@ -11794,7 +11840,6 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
           if (!isCurrent()) return { success: false, ok: false };
           if (!result.ok && result.reason !== SUPERDOC_UI_REASONS.targetNotVisible) {
             rollback();
-            mirrorTrackedChangeFocusToHost(previousActiveChange);
           } else {
             if (result.ok) await restampVisibleTrackedChangeCarrierAliases(publicId);
             if (!isCurrent()) return { success: false, ok: false };

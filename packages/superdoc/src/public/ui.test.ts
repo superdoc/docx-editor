@@ -18683,8 +18683,8 @@ describe('public ui — async browser reads (read coordinator)', () => {
     ]);
     expect(ui.trackChanges.getSnapshot().items.map((item) => item.id)).toEqual(['tc-visible', 'tc-move']);
     expect(ui.comments.setActive('global-comment')).toBe(true);
-    expect(ui.trackChanges.setActive('global-tc')).toBe(true);
     expect(ui.comments.getSnapshot().activeId).toBe('global-comment');
+    expect(ui.trackChanges.setActive('global-tc')).toBe(true);
     expect(ui.trackChanges.getSnapshot().activeId).toBe('global-tc');
 
     snapshot = {

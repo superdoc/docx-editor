@@ -67,6 +67,7 @@ const targetedReplacement: ReplaceTextArgs = {
   edits: [{ find: 'shall', replace: 'may', occurrence: 2 }],
   expectedRevision: blocks.revision,
   changeMode: 'tracked',
+  granularity: 'range',
 };
 const targetedResult: Promise<unknown> = dispatchSuperDocTool(
   document,

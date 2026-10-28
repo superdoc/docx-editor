@@ -542,6 +542,27 @@ const EXEMPT_PATHS = new Map([
     },
   ],
   [
+    'packages/sdk/langs/node/src/__tests__/contextual-formatting.integration.test.ts',
+    {
+      reason: 'integration test against the private engine build; skipped when absent',
+      allow: /(?:^|\/)v2\/headless\/dist\//,
+    },
+  ],
+  [
+    'packages/sdk/langs/node/src/__tests__/replace-granularity.integration.test.ts',
+    {
+      reason: 'integration test against the private engine build; skipped when absent',
+      allow: /(?:^|\/)v2\/headless\/dist\//,
+    },
+  ],
+  [
+    'packages/sdk/langs/node/src/__tests__/style-table.integration.test.ts',
+    {
+      reason: 'integration test against the private engine build; skipped when absent',
+      allow: /(?:^|\/)v2\/headless\/dist\//,
+    },
+  ],
+  [
     'apps/cli/src/__tests__/lib/collaboration/v2-error-mapping.test.ts',
     {
       reason: 'asserts the private engine diagnostics contract; skipped when absent',

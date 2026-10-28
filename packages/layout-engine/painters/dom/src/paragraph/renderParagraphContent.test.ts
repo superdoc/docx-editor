@@ -14,6 +14,106 @@ describe('renderParagraphContent', () => {
     lineHeight: 20,
   });
 
+  describe.each(['measured-table', 'resolved-body'] as const)('SD-5992 %s paragraph geometry', (path) => {
+    it.each([false, true])('preserves wrapped and positioned text coordinates (continuation=%s)', (continuation) => {
+      const doc = document.implementation.createHTMLDocument('hanging-list-content');
+      const frameEl = doc.createElement('div');
+      const marker = {
+        markerText: '1.2',
+        justification: 'left' as const,
+        suffix: 'tab' as const,
+        run: { fontFamily: 'Arial', fontSize: 16 },
+      };
+      const block: ParagraphBlock = {
+        kind: 'paragraph',
+        id: 'hanging-list-content',
+        attrs: { indent: { left: 48, hanging: 96 }, wordLayout: { marker } },
+        runs: [{ text: 'abc', fontFamily: 'Arial', fontSize: 16 }],
+      };
+      const lines = [line(0), line(1), line(2)];
+      lines[0].segments = [{ runIndex: 0, fromChar: 0, toChar: 1, width: 10, x: 48 }];
+      const measure: ParagraphMeasure = {
+        kind: 'paragraph',
+        lines,
+        marker: { markerWidth: 96, markerTextWidth: 20, indentLeft: 48 },
+        totalHeight: 60,
+      };
+      const firstLine = continuation ? 1 : 0;
+      const resolvedContent: ResolvedParagraphContent | undefined =
+        path === 'resolved-body'
+          ? {
+              continuesFromPrev: continuation,
+              lines: lines.slice(firstLine).map((input, index) => ({
+                line: input,
+                lineIndex: firstLine + index,
+                availableWidth: 152,
+                skipJustify: true,
+                paddingLeftPx: index === 0 && !continuation ? 0 : 48,
+                paddingRightPx: 0,
+                textIndentPx: 0,
+                isListFirstLine: index === 0 && !continuation,
+                hasExplicitSegmentPositioning: index === 0 && !continuation,
+                resolvedListTextStartPx: index === 0 && !continuation ? 48 : undefined,
+                indentOffset: 48,
+              })),
+              marker: {
+                text: '1.2',
+                justification: 'left',
+                suffix: 'tab',
+                markerStartPx: -48,
+                firstLinePaddingLeftPx: -48,
+                suffixWidthPx: 76,
+                run: marker.run,
+              },
+            }
+          : undefined;
+      const positionedStarts: Array<number | undefined> = [];
+
+      renderParagraphContent({
+        doc,
+        frameEl,
+        block,
+        measure,
+        containerKind: path === 'measured-table' ? 'table-cell' : 'body-fragment',
+        width: 200,
+        localStartLine: firstLine,
+        localEndLine: 3,
+        wordLayout: { marker },
+        continuesFromPrev: continuation,
+        resolvedContent,
+        applySdtDataset: () => {},
+        renderLine: (input) => {
+          positionedStarts.push(input.resolvedListTextStartPx);
+          const lineEl = doc.createElement('div');
+          lineEl.style.position = 'relative';
+          if (input.lineIndex === 0) {
+            const positionedRun = doc.createElement('span');
+            positionedRun.style.position = 'absolute';
+            positionedRun.style.left = `${input.line.segments?.[0].x}px`;
+            lineEl.appendChild(positionedRun);
+          }
+          return lineEl;
+        },
+      });
+
+      const painted = Array.from(frameEl.children) as HTMLElement[];
+      expect(painted).toHaveLength(3 - firstLine);
+      expect(painted.map((element) => element.style.left)).toEqual(Array(3 - firstLine).fill(''));
+      expect(painted.map((element) => parseFloat(element.style.textIndent || '0'))).toEqual(
+        Array(3 - firstLine).fill(0),
+      );
+      if (continuation) {
+        expect(frameEl.querySelector('.superdoc-list-marker')).toBeNull();
+        expect(painted.map((element) => element.style.paddingLeft)).toEqual(['48px', '48px']);
+      } else {
+        expect(painted.map((element) => element.style.paddingLeft)).toEqual(['0px', '48px', '48px']);
+        expect(frameEl.querySelector<HTMLElement>('.superdoc-list-marker')?.style.marginLeft).toBe('-48px');
+        expect(painted[0].querySelector<HTMLElement>('[style*="position: absolute"]')?.style.left).toBe('48px');
+        expect(positionedStarts).toEqual([48, undefined, undefined]);
+      }
+    });
+  });
+
   it('keeps partial body fragments at their rendered line height', () => {
     const doc = document.implementation.createHTMLDocument('paragraph-content');
     const frameEl = doc.createElement('div');

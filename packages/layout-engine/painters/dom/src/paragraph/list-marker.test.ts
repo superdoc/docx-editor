@@ -1,7 +1,153 @@
 import { describe, expect, it } from 'vite-plus/test';
 import { createFontResolver, resolvePhysicalFamily } from '@superdoc/font-system';
-import { createListMarkerElement } from './list-marker.js';
+import { createListMarkerElement, renderLegacyListMarker, renderResolvedListMarker } from './list-marker.js';
+import type { ResolvedListMarkerItem } from '@superdoc/contracts';
 import type { MarkerTrackedChangeView } from './marker-tracked-change.js';
+
+it('SD-5992 defaults an omitted measured marker justification to inline left', () => {
+  const doc = document.implementation.createHTMLDocument('default-list-anchor');
+  const lineEl = doc.createElement('div');
+  renderLegacyListMarker({
+    doc,
+    lineEl,
+    markerLayout: { markerText: '1.2', suffix: 'nothing' },
+    markerMeasure: { markerWidth: 20, markerTextWidth: 20 },
+    indentLeftPx: 48,
+    hangingIndentPx: 96,
+    firstLineIndentPx: 0,
+  });
+  expect(lineEl.style.paddingLeft).toBe('0px');
+  expect(lineEl.querySelector<HTMLElement>('.superdoc-list-marker')?.style.marginLeft).toBe('-48px');
+});
+
+describe.each(['measured', 'resolved'] as const)('SD-5992 %s list marker anchors', (renderer) => {
+  const paint = ({
+    anchor = -48,
+    isRtl = false,
+    justification = 'left',
+    suffix = 'tab',
+    vanish = false,
+    firstLineIndentMode = false,
+  }: {
+    anchor?: number;
+    isRtl?: boolean;
+    justification?: 'left' | 'right' | 'center';
+    suffix?: 'tab' | 'space' | 'nothing';
+    vanish?: boolean;
+    firstLineIndentMode?: boolean;
+  } = {}) => {
+    const doc = document.implementation.createHTMLDocument('signed-list-anchor');
+    const lineEl = doc.createElement('div');
+    lineEl.textContent = 'Beta';
+    const run = { fontFamily: 'Arial', fontSize: 16, bold: true, color: '#123456', vanish };
+    if (renderer === 'measured') {
+      const markerLayout = { markerText: '1.2', justification, suffix, run };
+      renderLegacyListMarker({
+        doc,
+        lineEl,
+        markerLayout,
+        markerMeasure: { markerWidth: 96, markerTextWidth: 20 },
+        wordLayout: { marker: markerLayout, firstLineIndentMode },
+        indentLeftPx: anchor + 96,
+        hangingIndentPx: 96,
+        firstLineIndentPx: 0,
+        isRtl,
+      });
+    } else {
+      const marker: ResolvedListMarkerItem = {
+        text: '1.2',
+        justification,
+        suffix,
+        firstLinePaddingLeftPx: anchor,
+        markerStartPx: anchor - (justification === 'right' ? 20 : justification === 'center' ? 10 : 0),
+        centerPaddingAdjustPx: justification === 'center' ? 10 : undefined,
+        suffixWidthPx: suffix === 'tab' ? 76 : suffix === 'space' ? 4 : 0,
+        run,
+        vanish,
+      };
+      renderResolvedListMarker({ doc, lineEl, marker, isRtl });
+    }
+    return { lineEl, markerEl: lineEl.querySelector<HTMLElement>('.superdoc-list-marker') };
+  };
+
+  it.each([false, true])('moves a negative inline anchor through its leading margin (RTL=%s)', (isRtl) => {
+    const { lineEl, markerEl } = paint({ isRtl });
+    expect(lineEl.style[isRtl ? 'paddingRight' : 'paddingLeft']).toBe('0px');
+    expect(lineEl.style[isRtl ? 'paddingLeft' : 'paddingRight']).toBe('');
+    expect(markerEl?.style[isRtl ? 'marginRight' : 'marginLeft']).toBe('-48px');
+    expect(markerEl?.style[isRtl ? 'marginLeft' : 'marginRight']).toBe('');
+    expect(markerEl?.style.position).toBe('relative');
+    expect(markerEl?.style.left).toBe('');
+    expect(markerEl?.textContent).toBe('1.2');
+    expect(markerEl?.firstElementChild?.getAttribute('style')).toContain('font-weight: bold');
+    expect(lineEl.querySelector<HTMLElement>('.superdoc-marker-suffix-tab')?.style.width).toBe('76px');
+    expect(lineEl.lastChild?.textContent).toBe('Beta');
+  });
+
+  it.each([0, 24])('preserves a nonnegative anchor of %spx', (anchor) => {
+    const { lineEl, markerEl } = paint({ anchor });
+    expect(lineEl.style.paddingLeft).toBe(`${anchor}px`);
+    expect(markerEl?.style.marginLeft).toBe('');
+    expect(markerEl?.style.marginRight).toBe('');
+  });
+
+  it.each(['space', 'nothing'] as const)('preserves the %s suffix at a negative anchor', (suffix) => {
+    const { lineEl, markerEl } = paint({ suffix });
+    expect(markerEl?.style.marginLeft).toBe('-48px');
+    expect(lineEl.querySelector('.superdoc-marker-suffix-tab')).toBeNull();
+    expect(lineEl.querySelector('.superdoc-marker-suffix-space')?.textContent ?? '').toBe(
+      suffix === 'space' ? '\u00a0' : '',
+    );
+    expect(lineEl.children.length).toBe(suffix === 'space' ? 2 : 1);
+  });
+
+  describe.each(['right', 'center'] as const)('%s absolute markers', (justification) => {
+    for (const isRtl of [false, true]) {
+      it.each(['tab', 'space', 'nothing'] as const)(
+        `moves the negative anchor with the %s suffix (RTL=${isRtl})`,
+        (suffix) => {
+          const { lineEl, markerEl } = paint({ justification, isRtl, suffix });
+          const suffixEl = lineEl.querySelector<HTMLElement>(`.superdoc-marker-suffix-${suffix}`);
+          expect(markerEl?.style.position).toBe('absolute');
+          expect(markerEl?.style[isRtl ? 'right' : 'left']).toBe('-68px');
+          expect(markerEl?.style.marginLeft).toBe('');
+          expect(markerEl?.style.marginRight).toBe('');
+          expect(lineEl.style[isRtl ? 'paddingRight' : 'paddingLeft']).toBe(
+            justification === 'center' ? '10px' : '0px',
+          );
+          expect(suffixEl?.style[isRtl ? 'marginRight' : 'marginLeft']).toBe('-48px');
+          expect(suffixEl?.style[isRtl ? 'marginLeft' : 'marginRight']).toBe('');
+          expect(lineEl.lastChild?.textContent).toBe('Beta');
+          if (suffix === 'nothing') {
+            expect(suffixEl?.textContent).toBe('');
+            expect(suffixEl?.style.width).toBe('0px');
+          }
+        },
+      );
+    }
+
+    it.each([0, 24])('preserves a nonnegative anchor of %spx', (anchor) => {
+      const { lineEl, markerEl } = paint({ anchor, justification });
+      expect(lineEl.style.paddingLeft).toBe(`${anchor + (justification === 'center' ? 10 : 0)}px`);
+      expect(markerEl?.style.marginLeft).toBe('');
+      expect(lineEl.querySelector<HTMLElement>('.superdoc-marker-suffix-tab')?.style.marginLeft).toBe('');
+    });
+  });
+
+  it('preserves hidden marker behavior', () => {
+    const { lineEl, markerEl } = paint({ vanish: true });
+    expect(markerEl).toBeNull();
+    expect(lineEl.children.length).toBe(0);
+    expect(lineEl.style.paddingLeft).toBe('0px');
+    expect(lineEl.textContent).toBe('Beta');
+  });
+
+  it('uses the same inline anchor in first-line indent mode', () => {
+    const { lineEl, markerEl } = paint({ firstLineIndentMode: true });
+    expect(lineEl.style.paddingLeft).toBe('0px');
+    expect(markerEl?.style.marginLeft).toBe('-48px');
+  });
+});
 
 describe('createListMarkerElement per-document paint isolation', () => {
   const makeDoc = (): Document => document.implementation.createHTMLDocument('list-marker');

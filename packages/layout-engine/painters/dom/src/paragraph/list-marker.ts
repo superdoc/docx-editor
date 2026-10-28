@@ -90,6 +90,27 @@ type MarkerRunStyle = {
 const isMarkerSuffix = (suffix: unknown): suffix is 'tab' | 'space' | 'nothing' =>
   suffix === 'tab' || suffix === 'space' || suffix === 'nothing';
 
+const applyNegativeInlineMarkerAnchor = (
+  lineEl: HTMLElement,
+  inlinePrefix: HTMLElement | undefined,
+  anchor: number,
+  isRtl?: boolean,
+): void => {
+  if (!(anchor < 0)) return;
+  if (!inlinePrefix) {
+    inlinePrefix = lineEl.ownerDocument.createElement('span');
+    inlinePrefix.classList.add('superdoc-marker-suffix-nothing');
+    inlinePrefix.style.display = 'inline-block';
+    inlinePrefix.style.width = '0px';
+    lineEl.prepend(inlinePrefix);
+  }
+  if (isRtl) {
+    inlinePrefix.style.marginRight = `${anchor}px`;
+  } else {
+    inlinePrefix.style.marginLeft = `${anchor}px`;
+  }
+};
+
 export const createListMarkerElement = (
   doc: Document,
   markerText: string,
@@ -233,9 +254,9 @@ export const renderLegacyListMarker = (params: {
   }
 
   if (isRtl) {
-    lineEl.style.paddingRight = `${anchorPoint}px`;
+    lineEl.style.paddingRight = `${Math.max(anchorPoint, 0)}px`;
   } else {
-    lineEl.style.paddingLeft = `${anchorPoint}px`;
+    lineEl.style.paddingLeft = `${Math.max(anchorPoint, 0)}px`;
   }
 
   if ((markerLayout?.run as MarkerRunStyle | undefined)?.vanish) {
@@ -270,12 +291,18 @@ export const renderLegacyListMarker = (params: {
     }
   }
 
-  prependMarkerSuffix(
+  const suffixEl = prependMarkerSuffix(
     doc,
     lineEl,
     isMarkerSuffix(suffix) ? suffix : undefined,
     suffixWidthPx,
     markerLayout?.run?.fontSize,
+  );
+  applyNegativeInlineMarkerAnchor(
+    lineEl,
+    markerJustification === 'left' ? markerContainer : suffixEl,
+    anchorPoint,
+    isRtl,
   );
   lineEl.prepend(markerContainer);
 };
@@ -291,9 +318,9 @@ export const renderResolvedListMarker = (params: {
 }): void => {
   const { doc, lineEl, marker, isRtl, sourceAnchor, resolvePhysical, trackedChangesConfig } = params;
   if (isRtl) {
-    lineEl.style.paddingRight = `${marker.firstLinePaddingLeftPx}px`;
+    lineEl.style.paddingRight = `${Math.max(marker.firstLinePaddingLeftPx, 0)}px`;
   } else {
-    lineEl.style.paddingLeft = `${marker.firstLinePaddingLeftPx}px`;
+    lineEl.style.paddingLeft = `${Math.max(marker.firstLinePaddingLeftPx, 0)}px`;
   }
 
   if (marker.vanish) {
@@ -329,7 +356,13 @@ export const renderResolvedListMarker = (params: {
     }
   }
 
-  prependMarkerSuffix(doc, lineEl, marker.suffix, marker.suffixWidthPx, marker.run.fontSize);
+  const suffixEl = prependMarkerSuffix(doc, lineEl, marker.suffix, marker.suffixWidthPx, marker.run.fontSize);
+  applyNegativeInlineMarkerAnchor(
+    lineEl,
+    marker.justification === 'left' ? markerContainer : suffixEl,
+    marker.firstLinePaddingLeftPx,
+    isRtl,
+  );
   lineEl.prepend(markerContainer);
 };
 
@@ -339,7 +372,7 @@ const prependMarkerSuffix = (
   suffix: 'tab' | 'space' | 'nothing' | undefined,
   suffixWidthPx: number,
   fontSize?: number,
-): void => {
+): HTMLElement | undefined => {
   if (suffix === 'tab') {
     const tabEl = doc.createElement('span');
     tabEl.classList.add('superdoc-tab', 'superdoc-marker-suffix-tab');
@@ -351,6 +384,7 @@ const prependMarkerSuffix = (
     tabEl.style.wordSpacing = '0px';
     tabEl.style.width = `${suffixWidthPx}px`;
     lineEl.prepend(tabEl);
+    return tabEl;
   } else if (suffix === 'space') {
     const spaceEl = doc.createElement('span');
     spaceEl.classList.add('superdoc-marker-suffix-space');
@@ -360,5 +394,6 @@ const prependMarkerSuffix = (
     spaceEl.style.wordSpacing = '0px';
     spaceEl.textContent = '\u00A0';
     lineEl.prepend(spaceEl);
+    return spaceEl;
   }
 };

@@ -117,18 +117,6 @@ export const V1_RUNTIME_UNAVAILABLE_OPERATION_IDS = [
   'tables.moveColumn',
 ] as const;
 
-const V2_BACKED_ONLY_DESCRIPTION_NOTE =
-  ' Available on v2-backed sessions only; v1-backed sessions currently return `CAPABILITY_UNAVAILABLE`.';
-
-function v2BackedOnlyDescription(description: string): string {
-  return `${description}${V2_BACKED_ONLY_DESCRIPTION_NOTE}`;
-}
-
-const FOOTNOTE_STRUCTURED_BODY_V1_NOTE =
-  ' Structured `body` content is currently available on v2-backed sessions only; v1-backed sessions return `CAPABILITY_UNAVAILABLE` for those shapes.';
-
-const FIELD_PRESERVE_CACHED_V1_NOTE =
-  ' The current v1 runtime supports rebuild flows; `cachedResultText` / `updatePolicy: "preserveCached"` currently return `CAPABILITY_UNAVAILABLE`.';
 export const INTENT_GROUP_META: Record<string, IntentGroupMeta> = {
   search: {
     toolName: 'superdoc_search',
@@ -1197,9 +1185,8 @@ export const OPERATION_DEFINITIONS = {
   },
   'blocks.split': {
     memberPath: 'blocks.split',
-    description: v2BackedOnlyDescription(
+    description:
       'Split a paragraph at a visible-text offset, producing two paragraphs. Preserves unambiguous simple run properties around the cut. Rejects when the paragraph contains fields, content controls, drawings, equations, or unsupported tracked-change wrappers.',
-    ),
     expectedResult:
       'Returns a BlocksSplitResult; on success carries the new tail paragraph address, affectedStories, and (for engines that report them) story-absolute textRangeShifts and a txId for history correlation.',
     requiresDocumentContext: true,
@@ -1222,9 +1209,8 @@ export const OPERATION_DEFINITIONS = {
   },
   'blocks.merge': {
     memberPath: 'blocks.merge',
-    description: v2BackedOnlyDescription(
+    description:
       'Merge two adjacent paragraphs in the same story. The first paragraph keeps its pPr; the second paragraph is removed. Rejects when either paragraph carries a w:sectPr or when their numbering definitions differ.',
-    ),
     expectedResult:
       'Returns a BlocksMergeResult; on success carries the removed paragraph address plus affectedStories, textRangeShifts, and a txId.',
     requiresDocumentContext: true,
@@ -1247,9 +1233,8 @@ export const OPERATION_DEFINITIONS = {
   },
   'blocks.move': {
     memberPath: 'blocks.move',
-    description: v2BackedOnlyDescription(
+    description:
       'Move a paragraph within the same story to a new anchor paragraph (before or after). Cross-story and relationship-bearing moves reject with named reasons. Tracked-mode authoring emits paired `<w:moveFrom>` / `<w:moveTo>` review state with explicit move range marker identity; safe content (no comment/bookmark/permission anchors and no pre-existing tracked wrappers) is required for tracked authoring.',
-    ),
     expectedResult:
       'Returns a BlocksMoveResult; on success carries the moved paragraph address plus affectedStories and a txId. Tracked-mode results include `trackedChangeRefs` pointing at the paired move review entity.',
     requiresDocumentContext: true,
@@ -2065,9 +2050,8 @@ export const OPERATION_DEFINITIONS = {
   },
   'format.paragraph.setMarkRunProps': {
     memberPath: 'format.paragraph.setMarkRunProps',
-    description: v2BackedOnlyDescription(
+    description:
       "Set the paragraph mark's run properties (w:pPr/w:rPr), e.g. the font size or specVanish carried by the paragraph-end mark.",
-    ),
     expectedResult:
       'Returns a ParagraphMutationResult; reports NO_OP if the encoded mark run properties already match.',
     requiresDocumentContext: true,
@@ -2811,9 +2795,8 @@ export const OPERATION_DEFINITIONS = {
   // v2 numbering-aware list operation surface.
   'lists.getState': {
     memberPath: 'lists.getState',
-    description: v2BackedOnlyDescription(
+    description:
       'Read the numbering-aware list state for a paragraph (numId, ilvl, abstract reference, level format). Returns null when the target is not a list item.',
-    ),
     expectedResult:
       'Returns a ListsGetStateResult with `isListItem` plus numId/ilvl/abstract/numFmt metadata when present.',
     requiresDocumentContext: true,
@@ -2826,9 +2809,8 @@ export const OPERATION_DEFINITIONS = {
   },
   'lists.apply': {
     memberPath: 'lists.apply',
-    description: v2BackedOnlyDescription(
+    description:
       'Apply a numbering definition to a paragraph. When `/word/numbering.xml` is absent it is materialized atomically together with the package content-type override and document relationship. Seeds bullet or ordered single-level definitions when no `reuseNumId` is provided.',
-    ),
     expectedResult:
       'Returns a ListsMutateItemResult receipt with txId; partsChanged includes numbering / content-types / rels when first-list materialization fires.',
     requiresDocumentContext: true,
@@ -2850,9 +2832,8 @@ export const OPERATION_DEFINITIONS = {
   },
   'lists.continue': {
     memberPath: 'lists.continue',
-    description: v2BackedOnlyDescription(
+    description:
       "Continue from the previous compatible list item in the same story. Adopts the previous paragraph's numId+ilvl. Rejects with named reasons when no compatible previous item exists or when an intervening structural boundary blocks the continuation.",
-    ),
     expectedResult: 'Returns a ListsMutateItemResult receipt with txId.',
     requiresDocumentContext: true,
     metadata: mutationOperation({
@@ -2867,9 +2848,8 @@ export const OPERATION_DEFINITIONS = {
   },
   'lists.restart': {
     memberPath: 'lists.restart',
-    description: v2BackedOnlyDescription(
+    description:
       'Restart numbering at a list item. Creates a new `<w:num>` that references the existing `<w:abstractNumId>` with a `<w:lvlOverride><w:startOverride/></w:lvlOverride>`. Distant paragraphs sharing the old numId are intentionally untouched.',
-    ),
     expectedResult: 'Returns a ListsMutateItemResult receipt with txId; partsChanged includes /word/numbering.xml.',
     requiresDocumentContext: true,
     metadata: mutationOperation({
@@ -2890,9 +2870,8 @@ export const OPERATION_DEFINITIONS = {
   },
   'lists.remove': {
     memberPath: 'lists.remove',
-    description: v2BackedOnlyDescription(
+    description:
       'Strip the `<w:numPr>` from a list-item paragraph. The numbering definition in `/word/numbering.xml` is intentionally NOT modified; orphan cleanup is handled by the export-side stripper.',
-    ),
     expectedResult: 'Returns a ListsMutateItemResult receipt with txId.',
     requiresDocumentContext: true,
     metadata: mutationOperation({
@@ -3127,9 +3106,7 @@ export const OPERATION_DEFINITIONS = {
   },
   'selection.releaseSnapshot': {
     memberPath: 'selection.releaseSnapshot',
-    description: v2BackedOnlyDescription(
-      'Release a retained exact-selection snapshot without changing document content or Undo history.',
-    ),
+    description: 'Release a retained exact-selection snapshot without changing document content or Undo history.',
     expectedResult: 'Returns released=true when a same-session handle was removed; otherwise false.',
     requiresDocumentContext: true,
     metadata: readOperation({ throws: ['CAPABILITY_UNAVAILABLE', 'INVALID_INPUT'] }),
@@ -3543,7 +3520,7 @@ export const OPERATION_DEFINITIONS = {
   },
   'tables.moveRow': {
     memberPath: 'tables.moveRow',
-    description: v2BackedOnlyDescription('Move a row to a new position within the same table.'),
+    description: 'Move a row to a new position within the same table.',
     expectedResult:
       'Returns a TableMutationResult receipt; reports NO_OP if the row is already at the requested position.',
     requiresDocumentContext: true,
@@ -3648,9 +3625,8 @@ export const OPERATION_DEFINITIONS = {
   },
   'tables.moveColumn': {
     memberPath: 'tables.moveColumn',
-    description: v2BackedOnlyDescription(
+    description:
       'Move a column to a new position within the same table. Direct mode only; tables with vertical merges, nested tables, or irregular column coverage are rejected, and tracked (suggesting) mode is not supported yet.',
-    ),
     expectedResult:
       'Returns a TableMutationResult receipt; reports NO_OP if the column is already at the requested position.',
     requiresDocumentContext: true,
@@ -5087,9 +5063,8 @@ export const OPERATION_DEFINITIONS = {
   },
   'headerFooters.pageNumbers.get': {
     memberPath: 'headerFooters.pageNumbers.get',
-    description: v2BackedOnlyDescription(
+    description:
       "Read where a section shows page numbers, their alignment, the first-page choice, and the section's number style and start.",
-    ),
     expectedResult:
       'Returns the header and footer placements that show a PAGE field (empty when none), first-page visibility, the number format, and the start number or null when numbering continues.',
     requiresDocumentContext: true,
@@ -5102,9 +5077,8 @@ export const OPERATION_DEFINITIONS = {
   },
   'headerFooters.pageNumbers.insert': {
     memberPath: 'headerFooters.pageNumbers.insert',
-    description: v2BackedOnlyDescription(
+    description:
       "Atomically number a section's pages with a live PAGE field in its header or footer, with alignment, a first-page choice, and an optional number style and start.",
-    ),
     expectedResult:
       'Returns the numbered header/footer parts and whether the section uses a distinct first page; PRECONDITION_FAILED with reason page-number-exists when the target already shows a page number.',
     requiresDocumentContext: true,
@@ -5121,9 +5095,8 @@ export const OPERATION_DEFINITIONS = {
   },
   'headerFooters.pageNumbers.set': {
     memberPath: 'headerFooters.pageNumbers.set',
-    description: v2BackedOnlyDescription(
+    description:
       "Atomically add a section's page numbers or change them: move them between header and footer, realign them, show or hide them on the first page, and set the number style and start.",
-    ),
     expectedResult:
       'Returns the numbered header/footer parts and whether the section uses a distinct first page; PRECONDITION_FAILED with reason page-number-has-content when a moved or hidden number shares its paragraph with other text or fields.',
     requiresDocumentContext: true,
@@ -5140,9 +5113,8 @@ export const OPERATION_DEFINITIONS = {
   },
   'headerFooters.pageNumbers.remove': {
     memberPath: 'headerFooters.pageNumbers.remove',
-    description: v2BackedOnlyDescription(
+    description:
       "Atomically remove a section's PAGE fields from its header, footer, or both, keeping other header and footer content.",
-    ),
     expectedResult:
       'Returns the header/footer parts that lost a PAGE field; a paragraph left with only whitespace is removed. NO_OP when the section shows no page number.',
     requiresDocumentContext: true,
@@ -5162,9 +5134,8 @@ export const OPERATION_DEFINITIONS = {
   // =========================================================================
   'watermarks.apply': {
     memberPath: 'watermarks.apply',
-    description: v2BackedOnlyDescription(
+    description:
       'Atomically insert, replace, or remove selected watermarks in explicit scopes while preserving surrounding headers.',
-    ),
     expectedResult:
       'Returns the resulting watermarks, changed header slots, preserved boundaries, and evaluated revision.',
     requiresDocumentContext: true,
@@ -5189,9 +5160,7 @@ export const OPERATION_DEFINITIONS = {
   },
   'watermarks.list': {
     memberPath: 'watermarks.list',
-    description: v2BackedOnlyDescription(
-      'List Word-compatible text and picture watermarks and their effective header scopes.',
-    ),
+    description: 'List Word-compatible text and picture watermarks and their effective header scopes.',
     expectedResult:
       'Returns a paginated WatermarksListResult with stable watermark identities and Word placement settings.',
     requiresDocumentContext: true,
@@ -5201,7 +5170,7 @@ export const OPERATION_DEFINITIONS = {
   },
   'watermarks.insert': {
     memberPath: 'watermarks.insert',
-    description: v2BackedOnlyDescription('Insert a Word-compatible text or picture watermark into a header scope.'),
+    description: 'Insert a Word-compatible text or picture watermark into a header scope.',
     expectedResult: 'Returns the inserted watermark, including its stable identity and effective header scopes.',
     requiresDocumentContext: true,
     metadata: mutationOperation({
@@ -5216,9 +5185,7 @@ export const OPERATION_DEFINITIONS = {
   },
   'watermarks.replace': {
     memberPath: 'watermarks.replace',
-    description: v2BackedOnlyDescription(
-      'Replace an existing watermark while retaining its stable identity and owner scope.',
-    ),
+    description: 'Replace an existing watermark while retaining its stable identity and owner scope.',
     expectedResult: 'Returns the replaced watermark, or TARGET_NOT_FOUND when its identity is stale.',
     requiresDocumentContext: true,
     metadata: mutationOperation({
@@ -5233,7 +5200,7 @@ export const OPERATION_DEFINITIONS = {
   },
   'watermarks.remove': {
     memberPath: 'watermarks.remove',
-    description: v2BackedOnlyDescription('Remove a watermark without removing unrelated header content.'),
+    description: 'Remove a watermark without removing unrelated header content.',
     expectedResult: 'Returns the removed watermark identity, or TARGET_NOT_FOUND when its identity is stale.',
     requiresDocumentContext: true,
     metadata: mutationOperation({
@@ -6105,7 +6072,7 @@ export const OPERATION_DEFINITIONS = {
   },
   'footnotes.insert': {
     memberPath: 'footnotes.insert',
-    description: `Insert a new footnote or endnote at a target location or the current selection.${FOOTNOTE_STRUCTURED_BODY_V1_NOTE}`,
+    description: 'Insert a new footnote or endnote at a target location or the current selection.',
     expectedResult: 'Returns a FootnoteMutationResult indicating success with the footnote address or a failure.',
     requiresDocumentContext: true,
     metadata: mutationOperation({
@@ -6120,7 +6087,7 @@ export const OPERATION_DEFINITIONS = {
   },
   'footnotes.update': {
     memberPath: 'footnotes.update',
-    description: `Update the content of an existing footnote or endnote.${FOOTNOTE_STRUCTURED_BODY_V1_NOTE}`,
+    description: 'Update the content of an existing footnote or endnote.',
     expectedResult:
       'Returns a FootnoteMutationResult indicating success with the updated footnote address or a failure.',
     requiresDocumentContext: true,
@@ -6570,7 +6537,7 @@ export const OPERATION_DEFINITIONS = {
   },
   'fields.insert': {
     memberPath: 'fields.insert',
-    description: `Insert a raw field code at a target location, optionally preserving cached result text.${FIELD_PRESERVE_CACHED_V1_NOTE}`,
+    description: 'Insert a raw field code at a target location, optionally preserving cached result text.',
     expectedResult: 'Returns a FieldMutationResult indicating success with the field address or a failure.',
     requiresDocumentContext: true,
     metadata: mutationOperation({

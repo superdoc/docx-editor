@@ -4881,14 +4881,19 @@ export const OPERATION_DEFINITIONS = {
     memberPath: 'hyperlinks.insert',
     description: 'Insert new linked text at a target position.',
     expectedResult:
-      'Returns a HyperlinkMutationResult with the created hyperlink address on success, or a failure code.',
+      'Returns a HyperlinkMutationResult with the created hyperlink address on success, or a failure code. ' +
+      'Inside a pending insertion, direct mode splits the insertion around an untracked link; ' +
+      'tracked mode adds the link to the insertion when the same session made it. ' +
+      'INVALID_CONTEXT is returned in tracked mode for a position inside another pending insertion (including one from an earlier session), ' +
+      'and in both modes for a position inside a moved range, a comment range, or a field. ' +
+      'A dry run reports the same result without changing the document.',
     requiresDocumentContext: true,
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
       trackedSupport: 'always',
       deterministicTargetResolution: true,
-      possibleFailureCodes: ['NO_OP', 'INVALID_TARGET'],
+      possibleFailureCodes: ['NO_OP', 'INVALID_TARGET', 'INVALID_CONTEXT'],
       throws: [...T_NOT_FOUND_CAPABLE, 'INVALID_TARGET', 'INVALID_INPUT'],
     }),
     referenceDocPath: 'hyperlinks/insert.mdx',

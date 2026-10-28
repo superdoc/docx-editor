@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { createPinia, setActivePinia } from 'pinia';
+import { vClickOutside } from '@superdoc/common';
 import { flushPromises, mount } from '@vue/test-utils';
 import CommentDialogSource from './CommentDialog.vue?raw';
 import CommentDialog from './CommentDialog.vue';
@@ -17,7 +18,7 @@ describe('CommentDialog', () => {
   let superdocStore;
   let superdocStub;
 
-  const mountDialog = (comment, stubs = {}) =>
+  const mountDialog = (comment, stubs = {}, directives = { 'click-outside': {} }) =>
     mount(CommentDialog, {
       attachTo: document.body,
       props: { comment },
@@ -27,9 +28,7 @@ describe('CommentDialog', () => {
             $superdoc: superdocStub,
           },
         },
-        directives: {
-          'click-outside': {},
-        },
+        directives,
         stubs: {
           CommentHeader: true,
           CommentInput: true,
@@ -66,6 +65,72 @@ describe('CommentDialog', () => {
       },
     };
   });
+
+  it.each(['comment-tool', 'other-tool', 'outside'])(
+    'keeps cancellation scoped to the activating comment tool or an actual %s click',
+    async (surface) => {
+      let finishCapture;
+      const capture = new Promise((resolve) => {
+        finishCapture = resolve;
+      });
+      const target = { kind: 'text', segments: [{ blockId: 'paragraph', start: 6, end: 12 }] };
+      const adapter = {
+        documentId: 'doc-1',
+        getCapabilityState: () => ({ canWrite: true }),
+        captureCurrentSelection: vi
+          .fn()
+          .mockResolvedValueOnce({ ok: true, target })
+          .mockImplementationOnce(() => capture),
+      };
+      Object.assign(superdocStub.activeEditor, {
+        editorVersion: 2,
+        v2Comments: adapter,
+        options: { documentId: 'doc-1' },
+      });
+      superdocStub.config.documentMode = 'editing';
+      commentsStore.setV2CommentsAdapter(adapter);
+      expect(await commentsStore.showAddComment(superdocStub)).toEqual({ ok: true });
+      const firstId = commentsStore.pendingComment.commentId;
+      const cancel = vi.spyOn(commentsStore, 'cancelComment');
+      const wrapper = mountDialog(commentsStore.pendingComment, {}, { 'click-outside': vClickOutside });
+      const tool = document.createElement('div');
+      tool.className = 'superdoc__tools';
+      const action = document.createElement('div');
+      action.dataset.id = 'is-tool';
+      const icon = document.createElement('span');
+      action.append(icon);
+      const otherAction = document.createElement('div');
+      otherAction.dataset.id = 'other-tool';
+      tool.append(action, otherAction);
+      document.body.append(tool);
+      const outside = document.createElement('button');
+      document.body.append(outside);
+      const clicked = surface === 'comment-tool' ? icon : surface === 'other-tool' ? otherAction : outside;
+      const originalElementFromPoint = document.elementFromPoint;
+      document.elementFromPoint = () => clicked;
+      try {
+        const next = commentsStore.showAddComment(superdocStub);
+        expect(adapter.captureCurrentSelection).toHaveBeenCalledTimes(2);
+        clicked.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, clientX: 800, clientY: 10 }));
+        finishCapture({ ok: true, target });
+        expect(await next).toEqual(
+          surface === 'comment-tool' ? { ok: true } : { ok: false, reason: 'pending-comment-superseded' },
+        );
+        expect(cancel).toHaveBeenCalledTimes(surface === 'comment-tool' ? 0 : 1);
+        if (surface === 'comment-tool') {
+          expect(commentsStore.pendingComment.commentId).not.toBe(firstId);
+          expect(commentsStore.activeComment).toBe(commentsStore.pendingComment.commentId);
+        } else expect(commentsStore.pendingComment).toBeNull();
+      } finally {
+        wrapper.unmount();
+        tool.remove();
+        outside.remove();
+        cancel.mockRestore();
+        if (originalElementFromPoint) document.elementFromPoint = originalElementFromPoint;
+        else delete document.elementFromPoint;
+      }
+    },
+  );
 
   describe('posted comment URLs', () => {
     it('renders a long closing-delimiter suffix promptly while preserving the comment', () => {

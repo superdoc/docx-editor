@@ -503,6 +503,10 @@ const getPendingCommentTargetClientY = () => {
 };
 
 const handleCommentToolClick = async () => {
+  if (isV2Mode.value) {
+    cancelScheduledV2DomSelectionSync();
+    if (applyCurrentV2DomSelection()?.ok === false) return;
+  }
   const result = await showAddComment(proxy.$superdoc, getPendingCommentTargetClientY());
   if (result?.ok === false) return;
   if (!isV2Mode.value) return;
@@ -1550,7 +1554,7 @@ const applyCurrentV2DomSelection = () => {
   const result = handles?.selection?.applyDomSelection?.(selection);
   if (!result?.ok || result.mode !== 'range') {
     clearV2SelectionToolbarState();
-    return;
+    return { ok: false };
   }
 
   v2DomMirroredRange.value = true;

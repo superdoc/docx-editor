@@ -4684,6 +4684,217 @@ describe('comments-store committed review-window apply', () => {
   });
 });
 
+describe('comments-store pending selection event snapshots', () => {
+  let store;
+  let superdocStore;
+  const snapshot = { target: { kind: 'text', segments: [{ blockId: 'paragraph', start: 0, end: 4 }] }, empty: false };
+
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    superdocStore = useSuperdocStore();
+    superdocStore.documents = [
+      { id: 'doc-1', type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' },
+    ];
+    superdocStore.activeSelection = { source: 'document-editor', documentId: 'doc-1', page: 1, selectionBounds: {} };
+    store = useCommentsStore();
+  });
+
+  function captureAdapter(read = async () => snapshot) {
+    return {
+      documentId: 'doc-1',
+      getCapabilityState: () => ({ canWrite: true }),
+      captureCurrentSelection: vi.fn(async ({ beforeReady } = {}) => {
+        const info = await read();
+        await beforeReady?.(info);
+        return { ok: true, target: info.target };
+      }),
+    };
+  }
+
+  function editor(current, adapter = null) {
+    const superdoc = makeSuperdoc(adapter);
+    superdoc.config = { isInternal: true };
+    Object.assign(superdoc.activeEditor, {
+      editorVersion: adapter ? 2 : 1,
+      options: { documentId: 'doc-1' },
+      doc: { selection: { current } },
+      commands: { insertComment: vi.fn() },
+    });
+    if (adapter) store.setV2CommentsAdapter(adapter);
+    return superdoc;
+  }
+
+  it('keeps synchronous snapshots and v1 pending events synchronous before inserting a mark', () => {
+    const superdoc = editor(vi.fn(() => snapshot));
+    superdoc.emit.mockImplementation(() => expect(superdoc.activeEditor.commands.insertComment).not.toHaveBeenCalled());
+    expect(store.showAddComment(superdoc)).toEqual({ ok: true });
+    expect(superdoc.emit).toHaveBeenCalledWith('comments-update', { type: 'pending', pendingSelection: snapshot });
+    expect(superdoc.activeEditor.commands.insertComment).toHaveBeenCalledTimes(1);
+  });
+
+  it('finishes an async v1 snapshot event before the pending mark changes selection', async () => {
+    const read = deferred();
+    const superdoc = editor(vi.fn(() => read.promise));
+    const pending = store.showAddComment(superdoc);
+    expect(superdoc.emit).not.toHaveBeenCalled();
+    expect(superdoc.activeEditor.commands.insertComment).not.toHaveBeenCalled();
+    read.resolve(snapshot);
+    expect(await pending).toEqual({ ok: true });
+    expect(superdoc.emit).toHaveBeenCalledWith('comments-update', { type: 'pending', pendingSelection: snapshot });
+    expect(superdoc.activeEditor.commands.insertComment).toHaveBeenCalledTimes(1);
+  });
+
+  it('consumes a rejected v1 snapshot without putting a Promise in the event', async () => {
+    const superdoc = editor(
+      vi.fn(async () => {
+        throw new Error('snapshot unavailable');
+      }),
+    );
+    expect(await store.showAddComment(superdoc)).toEqual({ ok: true });
+    expect(superdoc.emit).toHaveBeenCalledWith('comments-update', { type: 'pending', pendingSelection: null });
+  });
+
+  it('uses the one validated v2 capture snapshot without starting a redundant public selection read', async () => {
+    const read = deferred(),
+      current = vi.fn(() => {
+        throw new Error('redundant selection read');
+      });
+    const adapter = captureAdapter(() => read.promise);
+    const superdoc = editor(current, adapter);
+    const pending = store.showAddComment(superdoc);
+    expect(adapter.captureCurrentSelection).toHaveBeenCalledTimes(1);
+    expect(current).not.toHaveBeenCalled();
+    expect(superdoc.emit).not.toHaveBeenCalled();
+    expect(store.pendingComment).toBeNull();
+    read.resolve(snapshot);
+    expect(await pending).toEqual({ ok: true });
+    expect(superdoc.emit).toHaveBeenCalledWith('comments-update', { type: 'pending', pendingSelection: snapshot });
+    expect(store.pendingComment).not.toBeNull();
+    expect(superdoc.activeEditor.commands.insertComment).not.toHaveBeenCalled();
+    expect(current).not.toHaveBeenCalled();
+  });
+
+  it.each(['refusal', 'rejection'])('does not emit a pending event or card for v2 capture %s', async (kind) => {
+    const current = vi.fn(async () => {
+      throw new Error('redundant read');
+    });
+    const adapter = {
+      documentId: 'doc-1',
+      getCapabilityState: () => ({ canWrite: true }),
+      captureCurrentSelection: vi.fn(async () => {
+        if (kind === 'rejection') throw new Error('native admission rejected');
+        return { ok: false, reason: 'document-api-threw', detail: 'native admission rejected' };
+      }),
+    };
+    const superdoc = editor(current, adapter);
+    expect(await store.showAddComment(superdoc)).toMatchObject({ ok: false });
+    expect(current).not.toHaveBeenCalled();
+    expect(superdoc.emit).not.toHaveBeenCalled();
+    expect(store.pendingComment).toBeNull();
+  });
+
+  it('keeps a synchronous v2 capability refusal free of selection reads and pending events', () => {
+    const current = vi.fn();
+    const adapter = captureAdapter();
+    adapter.getCapabilityState = () => ({ canWrite: false, reason: 'read-only' });
+    const superdoc = editor(current, adapter);
+    expect(store.showAddComment(superdoc)).toEqual({ ok: false, reason: 'read-only' });
+    expect(current).not.toHaveBeenCalled();
+    expect(adapter.captureCurrentSelection).not.toHaveBeenCalled();
+    expect(superdoc.emit).not.toHaveBeenCalled();
+  });
+
+  it('keeps the newer pending event and card when an earlier capture read finishes last', async () => {
+    const olderRead = deferred();
+    const newer = { target: { kind: 'text', segments: [{ blockId: 'newer', start: 8, end: 13 }] }, empty: false };
+    const read = vi.fn().mockReturnValueOnce(olderRead.promise).mockResolvedValueOnce(newer);
+    const superdoc = editor(vi.fn(), captureAdapter(read));
+    const older = store.showAddComment(superdoc);
+    expect(await store.showAddComment(superdoc)).toEqual({ ok: true });
+    const newerCard = store.pendingComment;
+    olderRead.resolve(snapshot);
+    expect(await older).toMatchObject({ ok: false, reason: 'pending-comment-superseded' });
+    expect(store.pendingComment).toBe(newerCard);
+    expect(superdoc.emit).toHaveBeenCalledTimes(1);
+    expect(superdoc.emit).toHaveBeenCalledWith('comments-update', { type: 'pending', pendingSelection: newer });
+  });
+
+  it.each(['cancel', 'adapter-reset'])(
+    'retires a held v2 capture on %s without a later event or card',
+    async (action) => {
+      const read = deferred();
+      const superdoc = editor(
+        vi.fn(),
+        captureAdapter(() => read.promise),
+      );
+      const pending = store.showAddComment(superdoc);
+      if (action === 'cancel') store.cancelComment(superdoc);
+      else store.setV2CommentsAdapter(null);
+      read.resolve(snapshot);
+      expect(await pending).toMatchObject({ ok: false, reason: 'pending-comment-superseded' });
+      expect(superdoc.emit).not.toHaveBeenCalledWith('comments-update', expect.objectContaining({ type: 'pending' }));
+      expect(store.pendingComment).toBeNull();
+    },
+  );
+
+  it('retires a held v2 capture if another editor becomes active without changing the old host', async () => {
+    const read = deferred();
+    const superdoc = editor(
+      vi.fn(),
+      captureAdapter(() => read.promise),
+    );
+    const pending = store.showAddComment(superdoc);
+    superdoc.activeEditor = { ...superdoc.activeEditor };
+    read.resolve(snapshot);
+    expect(await pending).toEqual({ ok: false, reason: 'document-replaced' });
+    expect(superdoc.emit).not.toHaveBeenCalled();
+    expect(store.pendingComment).toBeNull();
+  });
+
+  it.each(['editor', 'adapter'])(
+    'does not publish a card when the pending listener replaces the %s',
+    async (changed) => {
+      const superdoc = editor(vi.fn(), captureAdapter());
+      superdoc.emit.mockImplementation(() => {
+        if (changed === 'editor') superdoc.activeEditor = { ...superdoc.activeEditor };
+        else store.setV2CommentsAdapter(null);
+      });
+      expect(await store.showAddComment(superdoc)).toMatchObject({ ok: false });
+      expect(superdoc.emit).toHaveBeenCalledTimes(1);
+      expect(store.pendingComment).toBeNull();
+    },
+  );
+
+  it('retires an async v1 pending request when its editor is replaced', async () => {
+    const read = deferred();
+    const superdoc = editor(vi.fn(() => read.promise));
+    const originalEditor = superdoc.activeEditor;
+    const pending = store.showAddComment(superdoc);
+    superdoc.activeEditor = { ...originalEditor, commands: { insertComment: vi.fn() } };
+    read.resolve(snapshot);
+    expect(await pending).toEqual({ ok: false, reason: 'document-replaced' });
+    expect(originalEditor.commands.insertComment).not.toHaveBeenCalled();
+    expect(superdoc.activeEditor.commands.insertComment).not.toHaveBeenCalled();
+  });
+
+  it.each(['pdf', 'other-document'])(
+    'emits a synchronous null v1 snapshot for %s without reading editor selection',
+    (source) => {
+      const current = vi.fn(() => snapshot);
+      const superdoc = editor(current);
+      superdocStore.activeSelection = {
+        source: source === 'pdf' ? 'pdf' : 'document-editor',
+        documentId: source === 'pdf' ? 'doc-1' : 'doc-other',
+        page: 1,
+        selectionBounds: {},
+      };
+      expect(store.showAddComment(superdoc)).toEqual({ ok: true });
+      expect(superdoc.emit).toHaveBeenCalledWith('comments-update', { type: 'pending', pendingSelection: null });
+      expect(current).not.toHaveBeenCalled();
+    },
+  );
+});
+
 describe('comments-store v2 pending document comments', () => {
   let store;
   let superdocStore;
@@ -4736,6 +4947,88 @@ describe('comments-store v2 pending document comments', () => {
       expect(clear).not.toHaveBeenCalled();
       expect(store.pendingComment).toBeNull();
       expect(store.activeComment).toBe('created');
+    },
+  );
+
+  it.each(['editing', 'viewing'])(
+    'keeps a newer %s capture live when an earlier submitted pending comment finishes',
+    async (documentMode) => {
+      const creation = deferred();
+      const capture = deferred();
+      const target = { kind: 'text', segments: [{ blockId: 'paragraph', start: 6, end: 12 }] };
+      const adapter = {
+        documentId: 'doc-1',
+        getCapabilityState: () => ({ canWrite: true }),
+        captureCurrentSelection: vi
+          .fn()
+          .mockResolvedValueOnce({ ok: true, target })
+          .mockImplementationOnce(() => capture.promise),
+        setActiveComment: vi.fn(async () => ({ ok: true })),
+        commitPendingComment: vi.fn(() => creation.promise),
+        mapV2CommentToUseCommentInput: (item) => item,
+      };
+      const superdoc = makeSuperdoc(adapter);
+      const clear = vi.fn();
+      superdoc.config = { isInternal: true, documentMode };
+      superdoc.activeEditor.host = { getHandles: () => ({ selection: { clear } }) };
+      store.setViewingVisibility({ documentMode });
+      store.setV2CommentsAdapter(adapter);
+      expect(await store.showAddComment(superdoc)).toEqual({ ok: true });
+      const firstPendingId = store.pendingComment.commentId;
+      store.currentCommentText = 'First coincident comment';
+      const first = store.addComment({ superdoc, comment: store.pendingComment });
+      const second = store.showAddComment(superdoc);
+      expect(adapter.captureCurrentSelection).toHaveBeenCalledTimes(2);
+      creation.resolve({
+        ok: true,
+        createdCommentId: 'created-first',
+        items: [{ commentId: 'created-first', fileId: 'doc-1', commentText: 'First coincident comment' }],
+      });
+      expect(await first).toMatchObject({ ok: true });
+      expect(store.pendingComment).toBeNull();
+      capture.resolve({ ok: true, target });
+      expect(await second).toEqual({ ok: true });
+      expect(store.pendingComment.commentId).not.toBe(firstPendingId);
+      expect(store.activeComment).toBe(store.pendingComment.commentId);
+      expect(store.commentsList.map((row) => row.commentId)).toContain('created-first');
+      expect(clear).not.toHaveBeenCalled();
+      expect(adapter.setActiveComment).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['cancel', 'adapter-reset'])(
+    'does not revive a newer capture after %s when an earlier submission finishes',
+    async (retirement) => {
+      const creation = deferred();
+      const capture = deferred();
+      const target = { kind: 'text', segments: [{ blockId: 'paragraph', start: 6, end: 12 }] };
+      const adapter = {
+        documentId: 'doc-1',
+        getCapabilityState: () => ({ canWrite: true }),
+        captureCurrentSelection: vi
+          .fn()
+          .mockResolvedValueOnce({ ok: true, target })
+          .mockImplementationOnce(() => capture.promise),
+        setActiveComment: vi.fn(async () => ({ ok: true })),
+        commitPendingComment: vi.fn(() => creation.promise),
+        mapV2CommentToUseCommentInput: (item) => item,
+      };
+      const superdoc = makeSuperdoc(adapter);
+      superdoc.config = { isInternal: true };
+      store.setV2CommentsAdapter(adapter);
+      expect(await store.showAddComment(superdoc)).toEqual({ ok: true });
+      store.currentCommentText = 'First coincident comment';
+      const firstPending = store.pendingComment;
+      const first = store.addComment({ superdoc, comment: store.pendingComment });
+      const second = store.showAddComment(superdoc);
+      if (retirement === 'cancel') store.cancelComment(superdoc);
+      else store.setV2CommentsAdapter(null);
+      creation.resolve({ ok: true, items: [] });
+      await first;
+      capture.resolve({ ok: true, target });
+      expect(await second).toEqual({ ok: false, reason: 'pending-comment-superseded' });
+      if (retirement === 'cancel') expect(store.pendingComment).toBeNull();
+      else expect(store.pendingComment).toBe(firstPending);
     },
   );
 

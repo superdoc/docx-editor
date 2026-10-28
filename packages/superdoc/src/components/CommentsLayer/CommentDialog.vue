@@ -125,6 +125,7 @@ const trackedChangeImagePreviewStyle = (preview) => {
   };
 };
 const CLICK_OUTSIDE_IGNORED_SELECTORS = [
+  '.superdoc__tools [data-id="is-tool"]',
   '.comments-dropdown__option-label',
   '.comments-dropdown__menu',
   '.comments-dropdown__option',

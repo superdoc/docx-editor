@@ -105,10 +105,68 @@ async function mountShell() {
 
   editor.vm.$emit('v2-render', { epoch: 1, mountContainer });
   await flushFrames();
-  return { anchor, store, syncSelection, wrapper };
+  return { anchor, frames, mountContainer, store, superdoc, syncSelection, wrapper };
 }
 
 describe('V2 floating comment action selection continuity', () => {
+  it.each([true, false])(
+    'flushes the latest native viewing range before comment capture and honors admission %s',
+    async (admitted) => {
+      const { anchor, frames, mountContainer, superdoc, syncSelection, wrapper } = await mountShell();
+      const order = [];
+      const target = {
+        kind: 'selection',
+        start: { kind: 'text', blockId: 'b1', offset: 0 },
+        end: { kind: 'text', blockId: 'b1', offset: 4 },
+      };
+      const applyDomSelection = vi.fn((selection) => {
+        expect(selection.toString()).toBe('need');
+        order.push('apply-native');
+        return { ok: admitted, mode: 'range' };
+      });
+      superdoc.config.documentMode = 'viewing';
+      superdoc.activeEditor.host = {
+        getHandles: () => ({
+          selection: {
+            applyDomSelection,
+            getSnapshot: () => ({
+              anchor: { fragmentId: 'checkbox-fragment', blockOffset: 0 },
+              focus: { fragmentId: 'checkbox-fragment', blockOffset: 1 },
+            }),
+            toSelectionTarget: () => ({ kind: 'ok', mode: 'range', target }),
+          },
+        }),
+      };
+      superdoc.activeEditor.v2Comments = {
+        documentId: 'doc-a',
+        getCapabilityState: () => ({ canWrite: true }),
+        captureCurrentSelection: vi.fn(async () => {
+          order.push('capture');
+          return { ok: true, target };
+        }),
+      };
+      document.body.append(wrapper.element);
+      wrapper.element.append(mountContainer);
+      anchor.textContent = 'need';
+      try {
+        await syncSelection(true);
+        const range = document.createRange();
+        range.selectNodeContents(anchor);
+        window.getSelection().removeAllRanges();
+        window.getSelection().addRange(range);
+        document.dispatchEvent(new Event('selectionchange'));
+        expect(frames.size).toBeGreaterThan(0);
+        await wrapper.find('.superdoc__tools .tools-item[data-id="is-tool"]').trigger('mousedown');
+        await flushPromises();
+        expect(order.slice(0, 2)).toEqual(admitted ? ['apply-native', 'capture'] : ['apply-native']);
+        expect(superdoc.activeEditor.v2Comments.captureCurrentSelection).toHaveBeenCalledTimes(admitted ? 1 : 0);
+      } finally {
+        window.getSelection().removeAllRanges();
+        wrapper.element.remove();
+      }
+    },
+  );
+
   it('keeps the comment action mounted through a checkbox repaint with no painted geometry, then clears it when the host range ends', async () => {
     const { anchor, store, syncSelection, wrapper } = await mountShell();
 

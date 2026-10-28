@@ -323,6 +323,7 @@ export const useCommentsStore = defineStore('comments', () => {
 
   const pendingComment = ref(null);
   const pendingV2CommentTarget = shallowRef(null);
+  let pendingCommentRequest = 0;
   const isViewingMode = computed(() => viewingVisibility.documentMode === 'viewing');
 
   // Single reactive authority for whether review (comment / tracked-change)
@@ -346,6 +347,7 @@ export const useCommentsStore = defineStore('comments', () => {
   // store; we never read reactive properties off it.
   const v2CommentsAdapter = shallowRef(null);
   const setV2CommentsAdapter = (adapter) => {
+    if (v2CommentsAdapter.value !== (adapter ?? null)) pendingCommentRequest += 1;
     v2CommentsAdapter.value = adapter ?? null;
   };
   const getV2CommentsAdapter = (superdoc) => {
@@ -1597,17 +1599,25 @@ export const useCommentsStore = defineStore('comments', () => {
     if (typeof currentSelection !== 'function') return null;
 
     try {
-      return currentSelection();
+      const snapshot = currentSelection();
+      return typeof snapshot?.then === 'function' ? Promise.resolve(snapshot).catch(() => null) : snapshot;
     } catch {
       return null;
     }
   };
 
   const showAddComment = (superdoc, targetClientY = null) => {
+    const request = ++pendingCommentRequest;
+    const editor = superdoc?.activeEditor;
     const v2Adapter = getV2CommentsAdapter(superdoc);
-    const pendingSelection = getPendingSelectionSnapshot(superdoc, superdocStore.activeSelection);
-    const event = { type: COMMENT_EVENTS.PENDING, pendingSelection };
-    superdoc.emit('comments-update', event);
+    const ownsRequest = () => pendingCommentRequest === request;
+    const emitPending = (snapshot) => {
+      if (!ownsRequest()) return;
+      superdoc.emit('comments-update', {
+        type: COMMENT_EVENTS.PENDING,
+        pendingSelection: superdoc?.activeEditor === editor ? snapshot : null,
+      });
+    };
 
     if (v2Adapter) {
       // ui-phase3-002: v2 mode uses a Vue-only pending sidebar row backed by
@@ -1615,14 +1625,21 @@ export const useCommentsStore = defineStore('comments', () => {
       // through v1 `insertComment`; commit later dispatches
       // `comments.createFromSelection` after the user submits text.
       const cap = v2Adapter.getCapabilityState?.();
-      if (cap && cap.canWrite === false) {
-        return { ok: false, reason: cap.reason };
-      }
-      return Promise.resolve(v2Adapter.captureCurrentSelection?.())
+      if (cap && cap.canWrite === false) return { ok: false, reason: cap.reason };
+      return Promise.resolve(
+        v2Adapter.captureCurrentSelection?.({
+          beforeReady: (snapshot) => {
+            if (superdoc?.activeEditor === editor && getV2CommentsAdapter(superdoc) === v2Adapter)
+              emitPending(snapshot);
+          },
+        }),
+      )
         .then((capture) => {
-          if (!capture?.ok) {
+          if (!ownsRequest()) return { ok: false, reason: 'pending-comment-superseded' };
+          if (superdoc?.activeEditor !== editor || getV2CommentsAdapter(superdoc) !== v2Adapter)
+            return { ok: false, reason: 'document-replaced' };
+          if (!capture?.ok)
             return { ok: false, reason: capture?.reason ?? 'editing-range-required', detail: capture?.detail };
-          }
           pendingV2CommentTarget.value = capture.target ?? null;
           const docId = v2Adapter.documentId ?? superdoc?.activeEditor?.options?.documentId ?? null;
           pendingComment.value = getPendingComment({
@@ -1644,32 +1661,55 @@ export const useCommentsStore = defineStore('comments', () => {
         .catch((err) => ({ ok: false, reason: 'selection-capture-failed', detail: err?.message ?? String(err) }));
     }
 
-    const selection = { ...superdocStore.activeSelection };
-    selection.selectionBounds = { ...selection.selectionBounds };
+    const pendingSelection = getPendingSelectionSnapshot(superdoc, superdocStore.activeSelection);
+    const asyncSnapshot = typeof pendingSelection?.then === 'function';
+    if (!asyncSnapshot) emitPending(pendingSelection);
 
-    if (superdocStore.selectionPosition?.source && superdocStore.selectionPosition.source !== 'pdf') {
-      superdocStore.selectionPosition.source = null;
-    }
+    const showLegacyPending = (selection) => {
+      selection.selectionBounds = { ...selection.selectionBounds };
 
-    pendingComment.value = getPendingComment({ selection, documentId: selection.documentId, parentCommentId: null });
-    if (!superdoc.config.isInternal) pendingComment.value.isInternal = false;
+      if (superdocStore.selectionPosition?.source && superdocStore.selectionPosition.source !== 'pdf') {
+        superdocStore.selectionPosition.source = null;
+      }
 
-    if (superdoc.activeEditor?.commands) {
-      superdoc.activeEditor.commands.insertComment({
-        ...pendingComment.value.getValues(),
-        commentId: 'pending',
-        skipEmit: true,
+      pendingComment.value = getPendingComment({ selection, documentId: selection.documentId, parentCommentId: null });
+      if (!superdoc.config.isInternal) pendingComment.value.isInternal = false;
+
+      if (superdoc.activeEditor?.commands) {
+        superdoc.activeEditor.commands.insertComment({
+          ...pendingComment.value.getValues(),
+          commentId: 'pending',
+          skipEmit: true,
+        });
+      }
+
+      if (
+        pendingComment.value.selection.source === DOCUMENT_EDITOR_SELECTION_SOURCE &&
+        superdocStore.selectionPosition
+      ) {
+        superdocStore.selectionPosition.source = DOCUMENT_EDITOR_SELECTION_SOURCE;
+      }
+
+      requestInstantSidebarAlignment(targetClientY, 'pending');
+      setActiveFloatingCommentInstance(null);
+      activeComment.value = pendingComment.value.commentId;
+      return { ok: true };
+    };
+    if (asyncSnapshot) {
+      const selection = { ...superdocStore.activeSelection };
+      selection.selectionBounds = { ...selection.selectionBounds };
+      return pendingSelection.then((snapshot) => {
+        if (!ownsRequest()) return { ok: false, reason: 'pending-comment-superseded' };
+        emitPending(snapshot);
+        if (!ownsRequest()) return { ok: false, reason: 'pending-comment-superseded' };
+        return superdoc?.activeEditor === editor
+          ? showLegacyPending(selection)
+          : { ok: false, reason: 'document-replaced' };
       });
     }
-
-    if (pendingComment.value.selection.source === DOCUMENT_EDITOR_SELECTION_SOURCE && superdocStore.selectionPosition) {
-      superdocStore.selectionPosition.source = DOCUMENT_EDITOR_SELECTION_SOURCE;
-    }
-
-    requestInstantSidebarAlignment(targetClientY, 'pending');
-    setActiveFloatingCommentInstance(null);
-    activeComment.value = pendingComment.value.commentId;
-    return { ok: true };
+    return ownsRequest()
+      ? showLegacyPending({ ...superdocStore.activeSelection })
+      : { ok: false, reason: 'pending-comment-superseded' };
   };
 
   /**
@@ -1878,7 +1918,7 @@ export const useCommentsStore = defineStore('comments', () => {
    *
    * @returns {void}
    */
-  const removePendingComment = (superdoc) => {
+  const resetPendingCommentState = (superdoc, clearViewingSelection = true) => {
     const hadPending = !!pendingComment.value;
     currentCommentText.value = '';
     currentCommentMentions.value = [];
@@ -1901,7 +1941,7 @@ export const useCommentsStore = defineStore('comments', () => {
     if (isV2EditorActive(superdoc)) {
       // Editable selection belongs to native input. Creation may finish after
       // the user has already selected another range for their next edit.
-      if (hadPending && isViewingMode.value) {
+      if (hadPending && clearViewingSelection && isViewingMode.value) {
         try {
           superdoc?.activeEditor?.host?.getHandles?.()?.selection?.clear?.();
         } catch {
@@ -1911,6 +1951,11 @@ export const useCommentsStore = defineStore('comments', () => {
       return;
     }
     superdoc?.activeEditor?.commands?.removeComment({ commentId: 'pending' });
+  };
+
+  const removePendingComment = (superdoc) => {
+    pendingCommentRequest += 1;
+    resetPendingCommentState(superdoc);
   };
 
   const getV2CreatedComment = ({ outcome, reconciled, documentId }) => {
@@ -1953,6 +1998,7 @@ export const useCommentsStore = defineStore('comments', () => {
       // `host.getHandles().comments.list()`. This keeps the sidebar
       // receipt-driven; rejected mutations never produce orphan sidebar rows.
       const submittedPendingComment = pendingComment.value;
+      const submittedPendingRequest = pendingCommentRequest;
       const text = normalizeV2CommentDraftText(
         submittedPendingComment ? currentCommentText.value : comment.commentText,
       );
@@ -2001,13 +2047,17 @@ export const useCommentsStore = defineStore('comments', () => {
         const created = getV2CreatedComment({ outcome, reconciled, documentId: v2Adapter.documentId });
         const hadPendingComment =
           submittedPendingComment != null && pendingComment.value?.commentId === submittedPendingComment.commentId;
-        if (hadPendingComment) removePendingComment(superdoc);
+        const ownsSubmittedRequest = pendingCommentRequest === submittedPendingRequest;
+        if (hadPendingComment) {
+          if (ownsSubmittedRequest) removePendingComment(superdoc);
+          else resetPendingCommentState(superdoc, false);
+        }
         // Hand off activeComment/instance to the newly created comment instead
         // of leaving it null, so the floating sidebar keeps treating this row
         // as active (viewport exemption, dialog mount, collision pinning) and
         // never observes an intermediate null in the same reactive flush.
         const createdId = created?.commentId ?? null;
-        if (hadPendingComment && createdId) {
+        if (hadPendingComment && ownsSubmittedRequest && createdId) {
           setActiveComment(superdoc, createdId);
           setActiveFloatingCommentInstance(createdId);
         }

@@ -3791,6 +3791,7 @@ const hyperlinkTargetSchema: JsonSchema = objectSchema(
     kind: { const: 'inline' },
     nodeType: { const: 'hyperlink' },
     anchor: ref('InlineAnchor'),
+    story: storyLocatorSchema,
   },
   ['kind', 'nodeType', 'anchor'],
 );
@@ -10404,6 +10405,7 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
   // --- hyperlinks.* ---
   'hyperlinks.list': {
     input: objectSchema({
+      in: storyLocatorSchema,
       within: blockNodeAddressSchema,
       hrefPattern: { type: 'string' },
       anchor: { type: 'string' },

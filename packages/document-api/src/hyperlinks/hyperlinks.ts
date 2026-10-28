@@ -3,6 +3,7 @@ import { normalizeMutationOptions } from '../write/write.js';
 import { DocumentApiValidationError } from '../errors.js';
 import { isTextAddress } from '../validation-primitives.js';
 import { isRecord } from '../object-guards.js';
+import { validateStoryLocator } from '../validation/story-validator.js';
 import type {
   HyperlinkTarget,
   HyperlinksListQuery,
@@ -136,6 +137,9 @@ function validatePatch(patch: unknown, operationName: string): asserts patch is 
 // ---------------------------------------------------------------------------
 
 export function executeHyperlinksList(adapter: HyperlinksAdapter, query?: HyperlinksListQuery): HyperlinksListResult {
+  if (query?.in !== undefined) {
+    validateStoryLocator(query.in, 'hyperlinks.list.in');
+  }
   const result = { ...adapter.list(query) } as HyperlinksListResult & { stories?: unknown };
   // Adapter-only story catalogs belong to the host surface, outside discovery.
   delete result.stories;

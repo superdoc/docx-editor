@@ -4834,12 +4834,16 @@ export const OPERATION_DEFINITIONS = {
   // -------------------------------------------------------------------------
   'hyperlinks.list': {
     memberPath: 'hyperlinks.list',
-    description: 'List all hyperlinks in the document, with optional filtering by href, anchor, or display text.',
+    description:
+      'List the hyperlinks of one story, with optional filtering by href, anchor, or display text. ' +
+      'The body is listed by default; pass `in` with a footnote or endnote story to list that note.',
     expectedResult:
-      'Returns a HyperlinksListResult with an array of hyperlink discovery items and pagination metadata.',
+      'Returns a HyperlinksListResult with an array of hyperlink discovery items and pagination metadata. ' +
+      'Addresses of links outside the body carry their story.',
     requiresDocumentContext: true,
     metadata: readOperation({
       idempotency: 'idempotent',
+      throws: ['INVALID_INPUT', 'INVALID_TARGET', 'TARGET_NOT_FOUND'],
     }),
     referenceDocPath: 'hyperlinks/list.mdx',
     referenceGroup: 'hyperlinks',

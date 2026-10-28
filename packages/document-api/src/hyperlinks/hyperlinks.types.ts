@@ -2,6 +2,7 @@ import type { BlockNodeAddress, InlineNodeAddress } from '../types/base.js';
 import type { TextAddress } from '../types/address.js';
 import type { DiscoveryOutput } from '../types/discovery.js';
 import type { ReceiptFailure, ReceiptSuccess } from '../types/receipt.js';
+import type { StoryLocator } from '../types/story.types.js';
 
 // ---------------------------------------------------------------------------
 // Addressing
@@ -131,6 +132,7 @@ export type HyperlinksListResult = DiscoveryOutput<HyperlinkDomain>;
 // ---------------------------------------------------------------------------
 
 export interface HyperlinksListQuery {
+  in?: StoryLocator;
   within?: BlockNodeAddress;
   hrefPattern?: string;
   anchor?: string;

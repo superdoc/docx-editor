@@ -112,6 +112,21 @@ describe('executeHyperlinksList', () => {
     executeHyperlinksList(adapter, query);
     expect(adapter.list).toHaveBeenCalledWith(query);
   });
+
+  it('passes a note story through unchanged', () => {
+    const adapter = makeAdapter();
+    const query = { in: { kind: 'story', storyType: 'footnote', noteId: '1' } } as const;
+    executeHyperlinksList(adapter, query);
+    expect(adapter.list).toHaveBeenCalledWith(query);
+  });
+
+  it('rejects a malformed story before reaching the adapter', () => {
+    const adapter = makeAdapter();
+    expect(() => executeHyperlinksList(adapter, { in: { kind: 'story', storyType: 'footnote' } as never })).toThrow(
+      expect.objectContaining({ code: 'INVALID_INPUT' }),
+    );
+    expect(adapter.list).not.toHaveBeenCalled();
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -181,6 +181,11 @@ export type {
   TemporaryMutationHandleInput,
   TemporaryMutationReceipt,
   DocumentStoryLocator,
+  OperationId,
+  OperationCall,
+  OperationInput,
+  OperationOptions,
+  OperationOutput,
 } from './ui/types.js';
 
 export type { PageMetricsHandle, PageMetricsSnapshot, PageMetricsPage, PageBodyTarget } from './ui/page-metrics.js';

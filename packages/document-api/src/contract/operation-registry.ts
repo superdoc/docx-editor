@@ -91,6 +91,15 @@ export type InvokeResult<T extends OperationId> = T extends 'mutations.preview' 
     ? OperationRegistry[T]['output'] | Promise<OperationRegistry[T]['output']>
     : OperationRegistry[T]['output'];
 
+export type OperationCall<T extends OperationId> =
+  InvokeRequest<T> extends infer Request ? (Request extends unknown ? Omit<Request, 'operationId'> : never) : never;
+
+export type OperationInput<T extends OperationId> = InvokeRequest<T>['input'];
+
+export type OperationOptions<T extends OperationId> = Exclude<InvokeRequest<T>['options'], undefined>;
+
+export type OperationOutput<T extends OperationId> = Awaited<InvokeResult<T>>;
+
 /** Loose request for callers that resolve operation identity at runtime. */
 export type DynamicInvokeRequest = {
   operationId: OperationId;

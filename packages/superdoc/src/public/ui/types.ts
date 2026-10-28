@@ -70,6 +70,11 @@ export type {
   TemporaryMutationHandleInput,
   TemporaryMutationReceipt,
   StoryLocator as DocumentStoryLocator,
+  OperationId,
+  OperationCall,
+  OperationInput,
+  OperationOptions,
+  OperationOutput,
 } from '@superdoc/document-api';
 
 // Public style-catalogue shapes (`styles.getCatalog`) re-surfaced through

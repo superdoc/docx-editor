@@ -31,6 +31,7 @@ const _uiConfigOk: SuperDoc['uiConfig'] = sd.uiConfig;
 const _uiEnabledOk: AssertEqual<typeof sd.uiConfig.enabled, boolean> = true;
 const _uiToolbarEnabledOk: AssertEqual<typeof sd.uiConfig.toolbar.enabled, boolean> = true;
 const _uiCommentsEnabledOk: AssertEqual<typeof sd.uiConfig.comments.enabled, boolean> = true;
+const _uiCommentsHighlightsOk: AssertEqual<typeof sd.uiConfig.comments.highlights, boolean> = true;
 
 // The ruler and link popover carry `suppressed` alongside `enabled`: the first
 // is the consumer forbidding the surface, the second only its starting state.
@@ -64,6 +65,7 @@ void [
   _uiEnabledOk,
   _uiToolbarEnabledOk,
   _uiCommentsEnabledOk,
+  _uiCommentsHighlightsOk,
   _uiRulerSuppressedOk,
   _uiLinkPopoverSuppressedOk,
   _interactionConfigOk,

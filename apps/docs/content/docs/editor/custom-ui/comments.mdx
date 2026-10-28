@@ -62,6 +62,48 @@ Use `ui.comments.createFromSelection()` only for an immediate action that does n
 reconstruct a comment target from DOM ranges. See [Selection and viewport](/editor/custom-ui/selection-and-viewport)
 when you also need to position an application-owned popover.
 
+## Paint comment highlights yourself
+
+SuperDoc keeps highlighting commented text when its comments panel is off. To draw your own highlights, set
+`ui.comments` to `{ panel: false, highlights: false }`. Then paint each thread's `target` with
+[`ui.decorations`](/editor/custom-ui/review-highlights#paint-highlights-from-your-ui) from the same `ui.comments`
+observer that renders your panel. A click on a highlight opens its thread through `setActive()`:
+
+```ts
+const superdoc = new SuperDoc({
+  selector: '#editor',
+  document: '/sample.docx',
+  ui: { comments: { panel: false, highlights: false } },
+  onReady: ({ superdoc }) => {
+    const { ui } = superdoc;
+    let highlights: SuperDocVisualHandle[] = [];
+    ui.comments.observe(({ items }) => {
+      for (const handle of highlights) handle.dispose();
+      highlights = [];
+      for (const comment of items) {
+        if (!comment.target) continue;
+        const handle = ui.decorations.highlight(`comment:${comment.id}`, {
+          className: 'my-comment',
+          data: { commentId: comment.id },
+        });
+        handle.replace([comment.target]);
+        highlights.push(handle);
+      }
+    });
+    ui.decorations.subscribe((event) => {
+      const commentId = event.data?.['commentId'];
+      if (event.type === 'click' && typeof commentId === 'string') ui.comments.setActive(commentId);
+    });
+  },
+});
+```
+
+The comments stay in the DOCX, and `ui.comments`, `ui.viewport.entityAt()` and the Document API keep reporting them.
+Each update repaints every thread, so removed comments and a replaced document leave no stale highlights. `ui: false`
+keeps SuperDoc's highlights and cannot be combined with `comments` options. To turn off every built-in surface and
+the highlights, pass a `ui` object that sets each surface to `false` and `comments` to
+`{ panel: false, highlights: false }`.
+
 ## Match the configured actions
 
 With the built-in panel disabled, `ui.comments.layout` no longer affects your markup. The configured

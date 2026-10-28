@@ -160,6 +160,19 @@ describe('uiConfig reaches the runtime', () => {
     it('keeps comments on for the default config', () => {
       expect(normalizeUiConfig({ selector: '#e' }).comments.enabled).toBe(true);
     });
+
+    it('panel: false hides the built-in panel and highlights reach the painter separately', async () => {
+      const { SuperDoc } = await import('../SuperDoc.js');
+      const selector = document.createElement('div');
+      document.body.append(selector);
+      const superdoc = new SuperDoc({ selector, telemetry: { enabled: false }, ui: { comments: { panel: false } } });
+
+      expect(superdoc.config.modules.comments).toBe(false);
+      expect(superdoc.uiConfig.comments.highlights).toBe(true);
+      expect(SuperDocSource).toContain('commentHighlights: proxy.$superdoc.uiConfig.comments.highlights');
+      superdoc.destroy?.();
+      document.body.innerHTML = '';
+    });
   });
 
   describe('the legacy comments sentinel still carries policy', () => {

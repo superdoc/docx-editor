@@ -18,7 +18,7 @@ type DeprecatedCommentInteractionField = 'readOnly' | 'allowResolve';
 type CommentsField = Exclude<keyof CommentsConfig, DeprecatedCommentsField | UnavailableCommentsField | 'responsive'>;
 type CommentsResponsiveField = keyof CommentsResponsiveConfig;
 type CommentInteractionField = Exclude<keyof CommentInteractionConfig, DeprecatedCommentInteractionField>;
-type CommentsGroupId = 'layout' | 'responsive' | 'actions';
+type CommentsGroupId = 'display' | 'layout' | 'responsive' | 'actions';
 type CommentsPresentation = {
   group: CommentsGroupId;
   summary: string;
@@ -27,6 +27,18 @@ type CommentsPresentation = {
 };
 
 const commentsPresentation = {
+  panel: option(
+    'display',
+    'Show the built-in comments panel. Same as setting ui.comments to false when off.',
+    'false',
+    'true',
+  ),
+  highlights: option(
+    'display',
+    'Highlight commented text. Turn off to paint your own with ui.decorations.',
+    'false',
+    'true',
+  ),
   layout: option(
     'layout',
     'Place threads in a sidebar, inline with the document, or according to available width.',
@@ -62,6 +74,7 @@ export const commentsConfigExplorer: ConfigExplorerData = {
   path: [],
   copyMode: 'selected-field',
   groups: [
+    { id: 'display', label: 'Display', path: ['ui', 'comments'] },
     { id: 'layout', label: 'Layout', path: ['ui', 'comments'] },
     { id: 'responsive', label: 'Responsive', path: ['ui', 'comments', 'responsive'] },
     { id: 'actions', label: 'Actions', path: ['interaction', 'comments'] },

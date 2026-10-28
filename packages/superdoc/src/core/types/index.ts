@@ -1393,8 +1393,19 @@ export interface CommentsResponsiveConfig {
   breakpoint?: number;
 }
 
-/** Startup options for the built-in comments UI rendered by `ui.comments`. */
+/**
+ * Startup options for the built-in comments UI rendered by `ui.comments`.
+ *
+ * `panel` (default `true`) is SuperDoc's comments panel: thread cards, the
+ * add-comment bubble and the comment dialog. `ui.comments: false` is the same
+ * as `{ panel: false }`. `highlights` (default `true`) is the highlight SuperDoc
+ * paints on commented text. Set it to `false` to paint your own with
+ * `superdoc.ui.decorations`. Comments, `ui.comments`, the Document API and
+ * `ui.viewport.entityAt` comment hits keep working either way.
+ */
 export interface CommentsConfig {
+  panel?: boolean;
+  highlights?: boolean;
   /**
    * Where comment threads render (default: `'sidebar'`). `auto` uses the
    * available width to choose between sidebar and inline.

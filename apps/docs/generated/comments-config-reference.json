@@ -11,6 +11,20 @@
   ],
   "fields": [
     {
+      "name": "panel",
+      "type": "boolean",
+      "required": false,
+      "description": "",
+      "group": "other"
+    },
+    {
+      "name": "highlights",
+      "type": "boolean",
+      "required": false,
+      "description": "",
+      "group": "other"
+    },
+    {
       "name": "layout",
       "type": "\"auto\" | \"sidebar\" | \"inline\"",
       "required": false,

@@ -4046,7 +4046,7 @@ test('the Comments configuration explorer keeps layout and actions in their cano
 
   assert.deepEqual(
     generatedCommentsConfig.fields.map((candidate) => candidate.name),
-    ['layout', 'responsive'],
+    ['panel', 'highlights', 'layout', 'responsive'],
   );
   assert.deepEqual(
     generatedCommentsResponsiveConfig.fields.map((candidate) => candidate.name),
@@ -4059,6 +4059,8 @@ test('the Comments configuration explorer keeps layout and actions in their cano
   assert.deepEqual(
     commentsConfigExplorer.fields.map((candidate) => candidate.name),
     [
+      'ui.comments.panel',
+      'ui.comments.highlights',
       'ui.comments.layout',
       'ui.comments.responsive.target',
       'ui.comments.responsive.breakpoint',
@@ -4072,6 +4074,8 @@ test('the Comments configuration explorer keeps layout and actions in their cano
     'CommentInteractionConfig',
   ]);
   assert.equal(field('ui.comments.layout')?.default, "'sidebar'");
+  assert.equal(field('ui.comments.panel')?.default, 'true');
+  assert.equal(field('ui.comments.highlights')?.default, 'true');
   assert.equal(field('interaction.comments.level')?.default, "'resolve'");
 
   const level = field('interaction.comments.level');

@@ -31,13 +31,21 @@
 /**
  * Story locator mirror. Structurally compatible with the Document API
  * `StoryLocator` discriminated union (body, header/footer, footnote, endnote,
- * textbox). The open index signature absorbs the per-variant fields without
- * pulling the private Document API union into the public surface.
+ * textbox), so a Document API target such as a comment's `target` can be
+ * painted directly. Variant fields are optional because `storyType` decides
+ * which one is present.
  */
 export interface SuperDocStoryLocator {
   kind: 'story';
   storyType: 'body' | 'headerFooterSlot' | 'headerFooterPart' | 'footnote' | 'endnote' | 'textbox';
-  [key: string]: unknown;
+  section?: { kind: 'section'; sectionId: string };
+  headerFooterKind?: 'header' | 'footer';
+  variant?: 'default' | 'first' | 'even';
+  resolution?: 'effective' | 'explicit';
+  onWrite?: 'materializeIfInherited' | 'editResolvedPart' | 'error';
+  refId?: string;
+  noteId?: string;
+  textboxId?: string;
 }
 
 /** Char range within a story's flattened text model (UTF-16 code units). */

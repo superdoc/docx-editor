@@ -67,6 +67,7 @@ describe('normalizeUiConfig', () => {
       expect(ui.comments.enabled).toBe(true);
       expect(ui.contextMenu.enabled).toBe(true);
       expect(ui.contentControls.enabled).toBe(true);
+      expect(ui.comments.highlights).toBe(true);
     });
 
     it('draws the loading overlay', () => {
@@ -143,6 +144,42 @@ describe('normalizeUiConfig', () => {
       expect(ui.ruler.enabled).toBe(false);
       expect(ui.search.enabled).toBe(false);
       expect(ui.linkPopover.enabled).toBe(false);
+    });
+  });
+
+  describe('ui.comments panel and highlights', () => {
+    it('comments: false hides the panel and keeps the highlights', () => {
+      const ui = normalizeUiConfig({ ui: { comments: false } });
+
+      expect(ui.comments.enabled).toBe(false);
+      expect(ui.comments.highlights).toBe(true);
+    });
+
+    it('ui: false keeps the comment highlights', () => {
+      expect(normalizeUiConfig({ ui: false }).comments.highlights).toBe(true);
+    });
+
+    it('panel: false is the same as comments: false', () => {
+      const ui = normalizeUiConfig({ ui: { comments: { panel: false, layout: 'auto' } } });
+
+      expect(ui.comments.enabled).toBe(false);
+      expect(ui.comments.highlights).toBe(true);
+      expect(ui.comments.options).toEqual({ layout: 'auto' });
+    });
+
+    it('highlights: false turns off only the highlights', () => {
+      const ui = normalizeUiConfig({ ui: { comments: { highlights: false } } });
+
+      expect(ui.comments.enabled).toBe(true);
+      expect(ui.comments.highlights).toBe(false);
+      expect(ui.comments.options).toEqual({});
+    });
+
+    it('panel: false and highlights: false turn off both', () => {
+      const ui = normalizeUiConfig({ ui: { comments: { panel: false, highlights: false } } });
+
+      expect(ui.comments.enabled).toBe(false);
+      expect(ui.comments.highlights).toBe(false);
     });
   });
 

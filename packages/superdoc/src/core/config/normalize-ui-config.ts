@@ -45,7 +45,7 @@ type SurfaceContainer = string | HTMLElement | null;
 type NormalizedUiConfig = {
   enabled: boolean;
   toolbar: { enabled: boolean; container: SurfaceContainer; options: Record<string, unknown> };
-  comments: { enabled: boolean; options: Record<string, unknown> };
+  comments: { enabled: boolean; highlights: boolean; options: Record<string, unknown> };
   contextMenu: { enabled: boolean; suppressed: boolean; options: Record<string, unknown> };
   loading: { enabled: boolean };
   search: { enabled: boolean; options: Record<string, unknown> };
@@ -151,6 +151,12 @@ function resolveOptions<K extends BuiltInSurface>(ui: UIConfig | undefined, key:
  * field and its deprecated `modules.comments` fallback.
  */
 const COMMENT_POLICY_FIELDS = Object.freeze(['level', 'readOnly', 'allowResolve', 'permissionResolver']);
+
+function withoutSwitches(options: Record<string, unknown>): Record<string, unknown> {
+  if (!('panel' in options) && !('highlights' in options)) return options;
+  const { panel: _panel, highlights: _highlights, ...rest } = options;
+  return rest;
+}
 
 /**
  * Drop policy fields from a presentation options bag.
@@ -651,7 +657,10 @@ export function normalizeUiConfig(config: UiConfigSource = {}): NormalizedUiConf
     comments: {
       // An explicit `ui.comments` wins; `modules.comments: false` only
       // disables when the consumer said nothing in the new shape.
-      enabled: explicit('comments') ?? (!allDisabled && config.modules?.comments !== false),
+      enabled:
+        (explicit('comments') ?? (!allDisabled && config.modules?.comments !== false)) &&
+        options('comments').panel !== false,
+      highlights: options('comments').highlights !== false,
       // Presentation settings only. `modules.comments` also carries interaction
       // policy and collaboration state, and the runtime keeps mutating that
       // object after this runs, so the live block stays the base layer and the
@@ -661,7 +670,9 @@ export function normalizeUiConfig(config: UiConfigSource = {}): NormalizedUiConf
       //
       // Validate this block with the same rules used for `modules.comments` so
       // invalid canonical values cannot reach the layout code.
-      options: allDisabled ? {} : normalizeCommentsUiConfig(withoutCommentPolicy(options('comments'))) || {},
+      options: allDisabled
+        ? {}
+        : normalizeCommentsUiConfig(withoutCommentPolicy(withoutSwitches(options('comments')))) || {},
     },
 
     contextMenu: {

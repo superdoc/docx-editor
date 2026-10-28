@@ -2459,6 +2459,7 @@ const editorOptions = (doc) => {
           // that legacy field carries `'none'` as a disable sentinel, and
           // re-reading it would let it outrank an explicit `ui.contentControls`.
           contentControlsChrome: proxy.$superdoc.uiConfig.contentControls.options.chrome,
+          commentHighlights: proxy.$superdoc.uiConfig.comments.highlights,
           resolveTrackedChangeColor: composeAuthorColorResolver(
             proxy.$superdoc.config.modules?.trackChanges?.authorColors,
           ),

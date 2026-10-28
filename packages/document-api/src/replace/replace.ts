@@ -34,7 +34,23 @@ import { textReceiptToSDReceipt } from '../receipt-bridge.js';
 
 // Text replacement input (new shape)
 
-export type TextReplacementGranularity = 'word' | 'phrase' | 'range';
+export const TEXT_REPLACEMENT_GRANULARITIES = ['word', 'phrase', 'range'] as const;
+
+export type TextReplacementGranularity = (typeof TEXT_REPLACEMENT_GRANULARITIES)[number];
+
+export function isTextReplacementGranularity(value: unknown): value is TextReplacementGranularity {
+  return (TEXT_REPLACEMENT_GRANULARITIES as readonly unknown[]).includes(value);
+}
+
+export function isSingleParagraphVisibleTextSelection(target: unknown): target is SelectionTarget {
+  return (
+    isSelectionTarget(target) &&
+    target.start.kind === 'text' &&
+    target.end.kind === 'text' &&
+    target.start.blockId === target.end.blockId &&
+    target.coordinateSpace !== 'tracked'
+  );
+}
 
 /** Text replacement input: uses SelectionTarget / ref, or the complete main body. */
 export type TextReplaceInput =
@@ -344,14 +360,9 @@ function validateTextReplaceInput(input: Record<string, unknown>, contents = fal
   validateBodyReplaceShape(input);
 
   if (input.replacementGranularity !== undefined) {
-    const target = input.target;
     if (
-      !['word', 'phrase', 'range'].includes(input.replacementGranularity as string) ||
-      !isSelectionTarget(target) ||
-      target.start.kind !== 'text' ||
-      target.end.kind !== 'text' ||
-      target.start.blockId !== target.end.blockId ||
-      target.coordinateSpace === 'tracked'
+      !isTextReplacementGranularity(input.replacementGranularity) ||
+      !isSingleParagraphVisibleTextSelection(input.target)
     ) {
       throw new DocumentApiValidationError(
         'INVALID_INPUT',

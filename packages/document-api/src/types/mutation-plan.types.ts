@@ -13,6 +13,7 @@ import type { InlineRunPatch } from '../format/inline-run-patch.js';
 import type { SDFragment } from './fragment.js';
 import type { Placement, NestingPolicy } from './placement.js';
 import type { AffectedRef, ReceiptSuccess } from './receipt.js';
+import type { TextReplacementGranularity } from '../replace/replace.js';
 
 // ---------------------------------------------------------------------------
 // Universal targeting model
@@ -92,6 +93,7 @@ export type TextRewriteStep = {
     replacementMode?: 'literal' | 'regex-template';
     /** Preserve the matched text's casing pattern instead of using replacement casing verbatim. */
     caseHandling?: 'exact' | 'preserve-match';
+    replacementGranularity?: TextReplacementGranularity;
     /**
      * Style policy for the replacement text.
      * When omitted, uses the native preserve policy:

@@ -1901,7 +1901,14 @@ export type {
   SnapshotReplaceInput,
   ParagraphTextReplaceInput,
 } from './replace/replace.js';
-export { executeReplace, isStructuralReplaceInput, isRichContentReplaceInput } from './replace/replace.js';
+export {
+  executeReplace,
+  isStructuralReplaceInput,
+  isRichContentReplaceInput,
+  TEXT_REPLACEMENT_GRANULARITIES,
+  isTextReplacementGranularity,
+  isSingleParagraphVisibleTextSelection,
+} from './replace/replace.js';
 export { executeFind } from './find/find.js';
 export { validateDocumentFragment, validateSDFragment } from './validation/fragment-validator.js';
 export type { DeleteInput } from './delete/delete.js';

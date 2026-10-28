@@ -672,6 +672,18 @@ describe('document-api contract catalog', () => {
     },
   );
 
+  it('publishes optional replacementGranularity on text.rewrite step args', () => {
+    const schemas = buildInternalContractSchemas();
+    const input = schemas.operations['mutations.apply'].input as ContractTestSchemaShape;
+    const rewrite = input.properties!.steps.items!.oneOf!.find((step) => step.properties!.op.const === 'text.rewrite')!;
+    expect(rewrite.properties!.args.properties!.replacementGranularity).toMatchObject({
+      enum: ['word', 'phrase', 'range'],
+      type: 'string',
+    });
+    expect(rewrite.properties!.args.required).toEqual(['replacement']);
+    expect(rewrite.properties!.args.additionalProperties).toBe(false);
+  });
+
   it('publishes tracked and invalidated refs from mutation plans', () => {
     const operation = buildInternalContractSchemas().operations['mutations.apply'];
     for (const schema of [operation.output, operation.success] as ContractTestSchemaShape[]) {

@@ -17,6 +17,7 @@ import {
 import { buildPatchSchema, buildStateSchema } from '../styles/index.js';
 import { Z_ORDER_RELATIVE_HEIGHT_MAX, Z_ORDER_RELATIVE_HEIGHT_MIN } from '../images/z-order.js';
 import { SD_EXPORT_MODES } from '../export/export.types.js';
+import { TEXT_REPLACEMENT_GRANULARITIES } from '../replace/replace.js';
 import { CAPABILITY_REASON_CODES } from '../capabilities/capabilities.js';
 import {
   SD_CONVERSION_CONSTRUCTS,
@@ -5192,7 +5193,7 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
                     'Require exact selected text before mutation. Only explicit single-paragraph text selections support this guard.',
                 },
                 replacementGranularity: {
-                  enum: ['word', 'phrase', 'range'],
+                  enum: [...TEXT_REPLACEMENT_GRANULARITIES],
                   description:
                     'Tracked revision boundaries for an explicit single-paragraph text selection. word (default) preserves matching tokens; phrase joins edits separated only by spaces; range replaces the complete selection. Requires changeMode: tracked.',
                 },
@@ -8292,6 +8293,12 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
             replacement: replacementPayloadSchema,
             replacementMode: { enum: ['literal', 'regex-template'], type: 'string' },
             caseHandling: { enum: ['exact', 'preserve-match'], type: 'string' },
+            replacementGranularity: {
+              enum: [...TEXT_REPLACEMENT_GRANULARITIES],
+              type: 'string',
+              description:
+                'Tracked revision boundaries for each rewritten range. word (default) preserves matching tokens; phrase joins edits separated only by spaces; range replaces the complete range. Requires changeMode: tracked and a single-paragraph text range in visible coordinates; by:"ref" steps do not accept it.',
+            },
             style: stylePolicySchema,
           },
           ['replacement'],

@@ -7,6 +7,68 @@ import {
   translateSsigParseDiagnostic,
 } from './translate-diagnostic.js';
 
+describe('worker render error identity', () => {
+  it('retains original worker details without changing diagnostic classification', () => {
+    const error = {
+      name: 'TypeError',
+      message: 'worker render failure',
+      stack: 'TypeError: worker render failure\n    at originalWorkerThrow (worker.js:23:7)',
+    };
+    const result = translateRenderReadinessDiagnostic({
+      code: 'worker-dom.failed',
+      reason: 'TypeError: worker render failure',
+      severity: 'error',
+      error,
+    });
+    expect(result.error).toMatchObject(error);
+    expect(result).toMatchObject({
+      diagnosticCode: 'RENDER_ERROR',
+      diagnosticStage: 'render',
+      internalCode: 'worker-dom.failed',
+    });
+  });
+
+  it.each([
+    {
+      label: 'missing worker stack',
+      details: { error: { name: 'RangeError', message: 'original worker message' } },
+      name: 'RangeError',
+      message: 'original worker message',
+    },
+    {
+      label: 'legacy diagnostic without error details',
+      details: {},
+      name: 'Error',
+      message: 'worker failure reason',
+    },
+    {
+      label: 'non-string error fields',
+      details: { error: { name: { value: 'TypeError' }, message: 42, stack: false } },
+      name: 'Error',
+      message: 'worker failure reason',
+    },
+  ])('provides a useful public exception for $label', ({ details, name, message }) => {
+    const result = translateRenderReadinessDiagnostic({
+      code: 'worker-dom.failed',
+      reason: 'worker failure reason',
+      severity: 'error',
+      ...details,
+    });
+
+    expect(result.error).toBeInstanceOf(Error);
+    expect(result.error).toMatchObject({ name, message });
+    expect(typeof result.error.stack).toBe('string');
+    expect(result.error.stack).toContain(message);
+    expect(result).toMatchObject({
+      diagnosticCode: 'RENDER_ERROR',
+      diagnosticStage: 'render',
+      internalCode: 'worker-dom.failed',
+      severity: 'error',
+      message: 'worker failure reason',
+    });
+  });
+});
+
 describe('translateUnzipDiagnostic', () => {
   it('maps an error-severity package-integrity code to PARSE_ERROR/unzip', () => {
     const result = translateUnzipDiagnostic({

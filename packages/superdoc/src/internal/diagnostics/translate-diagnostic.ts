@@ -36,6 +36,7 @@ type RenderReadinessDiagnostic = {
   code?: string;
   reason?: string;
   severity?: string;
+  error?: { name?: string; message?: string; stack?: string };
 };
 
 // Package-open codes that are size/count/depth caps, not content-integrity
@@ -153,8 +154,11 @@ export function translateRenderReadinessDiagnostic(
   }
 
   const message = reason || code;
+  const error = new Error(typeof diag.error?.message === 'string' ? diag.error.message : message);
+  if (typeof diag.error?.name === 'string') error.name = diag.error.name;
+  if (typeof diag.error?.stack === 'string') error.stack = diag.error.stack;
   return {
-    error: new Error(message),
+    error,
     diagnosticCode,
     diagnosticStage: unusableFurniture ? 'parse' : 'render',
     severity,

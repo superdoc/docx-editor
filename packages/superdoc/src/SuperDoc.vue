@@ -31,15 +31,15 @@ import {
 } from 'vue';
 import { storeToRefs } from 'pinia';
 
-import CommentDialog from '@superdoc/components/CommentsLayer/CommentDialog.vue';
-import FloatingComments from '@superdoc/components/CommentsLayer/FloatingComments.vue';
-import PdfCommentsLayer from '@superdoc/components/CommentsLayer/PdfCommentsLayer.vue';
+import CommentDialog from './components/CommentsLayer/CommentDialog.vue';
+import FloatingComments from './components/CommentsLayer/FloatingComments.vue';
+import PdfCommentsLayer from './components/CommentsLayer/PdfCommentsLayer.vue';
 import { useWhiteboard } from './components/Whiteboard/use-whiteboard';
 import WhiteboardLayer from './components/Whiteboard/WhiteboardLayer.vue';
-import useSelection from '@superdoc/helpers/use-selection';
+import useSelection from './helpers/use-selection';
 
-import { useSuperdocStore } from '@superdoc/stores/superdoc-store';
-import { useCommentsStore } from '@superdoc/stores/comments-store';
+import { useSuperdocStore } from './stores/superdoc-store';
+import { useCommentsStore } from './stores/comments-store';
 
 import { DOCX, PDF } from '@superdoc/common';
 import { composeAuthorColorResolver } from '@superdoc/contracts';

@@ -10,13 +10,14 @@
 import { describe, expect, it, vi } from 'vite-plus/test';
 import type {
   FlowBlock,
-  ParagraphBlock,
   Layout,
   Measure,
+  ParagraphBlock,
   ResolvedLayout,
   ResolvedPage,
   TableBlock,
   TableMeasure,
+  WordLayoutMarker,
 } from '@superdoc/contracts';
 import { resolveLayout } from '@superdoc/layout-resolved';
 import { persistentPageVersionKey } from './page-content.js';
@@ -147,6 +148,53 @@ function noteMarkerResolved(markerText: string, pageCount = 1): ResolvedLayout {
     flowMode: 'paginated',
     blocks,
     measures: blocks.map(() => paraMeasure([[0, markerText.length]])),
+  });
+}
+
+function numberedResolved(run: Partial<WordLayoutMarker['run']>): ResolvedLayout {
+  const texts = ['Numbered item', 'Unchanged item'];
+  const blocks: ParagraphBlock[] = texts.map((text, index) => ({
+    kind: 'paragraph',
+    id: `numbered-${index}`,
+    runs: [{ text, fontFamily: 'Arial', fontSize: 12, pmStart: index * 20, pmEnd: index * 20 + text.length }],
+    attrs: {
+      numberingProperties: { numId: 1, ilvl: 0 },
+      wordLayout: {
+        marker: {
+          markerText: `${index + 1}.`,
+          markerBoxWidthPx: 24,
+          suffix: 'nothing',
+          run: { fontFamily: 'Arial', fontSize: 12, ...(index === 0 ? run : {}) },
+        },
+      },
+    },
+  }));
+  const layout: Layout = {
+    pageSize: REAL_PAGE,
+    pages: [
+      {
+        number: 1,
+        fragments: blocks.map((block, index) => ({
+          kind: 'para',
+          blockId: block.id,
+          fromLine: 0,
+          toLine: 1,
+          x: 20,
+          y: 30 + index * 20,
+          width: 320,
+          markerWidth: 24,
+          markerTextWidth: 12,
+          pmStart: index * 20,
+          pmEnd: index * 20 + texts[index]!.length,
+        })),
+      },
+    ],
+  };
+  return resolveLayout({
+    layout,
+    flowMode: 'paginated',
+    blocks,
+    measures: texts.map((text) => paraMeasure([[0, text.length]])),
   });
 }
 
@@ -562,6 +610,41 @@ describe('persistent page scaffold publication', () => {
 });
 
 describe('persistent content hydration and dehydration', () => {
+  it.each([
+    { property: 'bold', before: false, after: true, style: 'fontWeight', expected: 'bold' },
+    { property: 'bold', before: true, after: false, style: 'fontWeight', expected: '' },
+    { property: 'italic', before: false, after: true, style: 'fontStyle', expected: 'italic' },
+    { property: 'italic', before: true, after: false, style: 'fontStyle', expected: '' },
+  ] as const)(
+    'refreshes marker $property from $before to $after on a warmed persistent page without editing text',
+    ({ property, before, after, style, expected }) => {
+      const mount = document.createElement('div');
+      const painter = createDomPainter({ layoutMode: 'vertical', pageGap: GAP_PX });
+      const previous = numberedResolved({ [property]: before });
+      const scaffold = realScaffold(previous, 0);
+      painter.paintPersistentPages(persistentInput(scaffold, packetsFor(previous.pages), [0]), mount);
+      painter.consumePaintWorkSummary();
+      const pageBefore = shellsOf(mount)[0]!;
+      const markersBefore = mount.querySelectorAll<HTMLElement>('.superdoc-paragraph-marker');
+      expect(markersBefore).toHaveLength(2);
+      expect(markersBefore[0]!.style[style]).toBe(before ? (property === 'bold' ? 'bold' : 'italic') : '');
+      const neighborBefore = markersBefore[1]!.outerHTML;
+      const textBefore = mount.textContent;
+
+      const changed = numberedResolved({ [property]: after });
+      painter.paintPersistentPages(persistentInput(scaffold, packetsFor(changed.pages), [0]), mount);
+      const markersAfter = mount.querySelectorAll<HTMLElement>('.superdoc-paragraph-marker');
+
+      expect(markersAfter[0]!.style[style]).toBe(expected);
+      expect(markersAfter[1]!.outerHTML).toBe(neighborBefore);
+      expect(mount.textContent).toBe(textBefore);
+      expect(shellsOf(mount)[0]).toBe(pageBefore);
+      const textRuns = mount.querySelectorAll<HTMLElement>('.superdoc-text-run');
+      expect(textRuns.length).toBeGreaterThan(0);
+      expect([...textRuns].every((text) => text.style.fontWeight === '' && text.style.fontStyle === '')).toBe(true);
+    },
+  );
+
   it('hydration renders content into existing roots and preserves every root attribute', () => {
     const mount = document.createElement('div');
     const painter = createDomPainter({ layoutMode: 'vertical', pageGap: GAP_PX });

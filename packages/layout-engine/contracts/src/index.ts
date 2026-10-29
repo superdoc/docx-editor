@@ -2501,6 +2501,17 @@ export type WordLayoutMarker = {
   trackedChange?: MarkerTrackedChange;
 };
 
+export const markerRunSignature = (run: WordLayoutMarker['run'] | undefined): string =>
+  JSON.stringify([
+    run?.fontFamily ?? null,
+    run?.fontSize ?? null,
+    Boolean(run?.bold),
+    Boolean(run?.italic),
+    run?.color ?? null,
+    run?.letterSpacing ?? 0,
+    Boolean(run?.vanish),
+  ]);
+
 /**
  * Word layout configuration for list items created via input rules.
  *

@@ -23,9 +23,8 @@ import type {
   ParagraphFrame,
   TableBlock,
 } from '@superdoc/contracts';
-import { getParagraphInlineDirection, trackedChangeMetaSignature } from '@superdoc/contracts';
+import { getParagraphInlineDirection, markerRunSignature, trackedChangeMetaSignature } from '@superdoc/contracts';
 import { fieldAnnotationKey } from './field-annotation-key.js';
-import { markerRunMeasureKey } from './marker-run-key.js';
 import { inlineBoxKey } from './inline-box-key.js';
 import { hashRunVisualMarks } from './run-visual-marks.js';
 import { hasTrackedChange, resolveTrackedChangesEnabled } from './tracked-changes-utils.js';
@@ -553,7 +552,7 @@ const paragraphBlocksEqual = (a: FlowBlock & { kind: 'paragraph' }, b: FlowBlock
   const bMarker = b.attrs?.wordLayout?.marker;
   if ((aMarker?.markerText ?? null) !== (bMarker?.markerText ?? null)) return false;
   if ((aMarker?.justification ?? null) !== (bMarker?.justification ?? null)) return false;
-  if (markerRunMeasureKey(aMarker?.run) !== markerRunMeasureKey(bMarker?.run)) return false;
+  if (markerRunSignature(aMarker?.run) !== markerRunSignature(bMarker?.run)) return false;
 
   // Check paragraph-level visual attributes (alignment, spacing, indent, borders, etc.)
   if (!paragraphAttrsEqual(a.attrs, b.attrs)) return false;

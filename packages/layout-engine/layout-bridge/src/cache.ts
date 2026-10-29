@@ -2,6 +2,7 @@ import {
   getParagraphInlineDirection,
   getTableCellTextDirection,
   isNumberedNoteMarkerRun,
+  markerRunSignature,
   trackedChangeMetaSignature,
   type DrawingBlock,
   type FlowBlock,
@@ -25,7 +26,6 @@ import { hashParagraphBorders, hashTableBorders, hashCellBorders } from './parag
 import { hashRunVisualMarks } from './run-visual-marks.js';
 import { noteMarkerMeasureKey } from './note-marker-measure-key.js';
 import { Utf16Sha256 } from './utf16-sha256.js';
-import { markerRunMeasureKey } from './marker-run-key.js';
 
 /**
  * Comment annotation structure attached to runs.
@@ -424,7 +424,7 @@ const writeTableHash = (tableBlock: TableBlock, write: HashWriter, capabilities?
               numbering.numId ?? null,
               numbering.ilvl ?? 0,
               marker ? (marker.markerText ?? null) : null,
-              markerRunMeasureKey(marker?.run),
+              markerRunSignature(marker?.run),
             ])}`,
           );
 
@@ -670,7 +670,8 @@ const hashRuns = (block: FlowBlock, capabilities?: FontMeasureCapabilities): str
         const markerText = attrs.wordLayout.marker.markerText;
         markerTextKey = markerText === '' ? '<EMPTY>' : (markerText ?? '<NULL>');
       }
-      numberingKey = `|num:${np.numId ?? ''}:${np.ilvl ?? 0}:${markerTextKey}:${markerRunMeasureKey(attrs.wordLayout?.marker?.run)}`;
+      const markerRun = attrs.wordLayout?.marker?.run;
+      numberingKey = `|num:${np.numId ?? ''}:${np.ilvl ?? 0}:${markerTextKey}:${markerRunSignature(markerRun)}`;
     }
   }
 

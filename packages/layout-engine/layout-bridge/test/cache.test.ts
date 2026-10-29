@@ -1,14 +1,15 @@
 import { describe, it, expect, beforeEach } from 'vite-plus/test';
-import { MeasureCache } from '../src/cache';
+import { hashMeasureContent, MeasureCache } from '../src/cache';
+import { computeDirtyRegions } from '../src/diff';
 import type {
   FlowBlock,
-  WordLayoutMarker,
   ImageBlock,
   ImageRun,
   ParagraphBlock,
   TableBlock,
   TableCell,
   VectorShapeDrawing,
+  WordLayoutMarker,
 } from '@superdoc/contracts';
 
 const block = (id: string, text: string): FlowBlock => ({
@@ -34,6 +35,120 @@ const paragraphBlock = (id: string, text: string): ParagraphBlock => ({
   kind: 'paragraph',
   id,
   runs: [{ text, fontFamily: 'Arial', fontSize: 12 }],
+});
+
+describe('list marker run properties measurement cache', () => {
+  const paragraph = (run: Partial<WordLayoutMarker['run']> = {}): ParagraphBlock => ({
+    ...paragraphBlock('numbered', 'Numbered item'),
+    attrs: {
+      numberingProperties: { numId: 1, ilvl: 1 },
+      wordLayout: {
+        marker: {
+          markerText: '1.2',
+          markerBoxWidthPx: 24,
+          run: { fontFamily: 'Arial', fontSize: 12, ...run },
+        },
+      },
+    },
+  });
+
+  it.each([
+    { property: 'bold', before: false, after: true },
+    { property: 'bold', before: true, after: false },
+    { property: 'italic', before: false, after: true },
+    { property: 'italic', before: true, after: false },
+    { property: 'fontFamily', before: 'Arial', after: 'Courier New' },
+    { property: 'fontFamily', before: 'Courier New', after: 'Arial' },
+    { property: 'fontSize', before: 12, after: 24 },
+    { property: 'fontSize', before: 24, after: 12 },
+    { property: 'color', before: '#000000', after: '#ff0000' },
+    { property: 'color', before: '#ff0000', after: '#000000' },
+    { property: 'letterSpacing', before: 0, after: 2 },
+    { property: 'letterSpacing', before: 2, after: 0 },
+    { property: 'vanish', before: false, after: true },
+    { property: 'vanish', before: true, after: false },
+  ])('misses a warmed measure when $property changes from $before to $after', ({ property, before, after }) => {
+    const cache = new MeasureCache<{ totalHeight: number }>();
+    const previous = paragraph({ [property]: before });
+    const changed = paragraph({ [property]: after });
+    cache.set(previous, 400, 600, { totalHeight: 20 });
+
+    expect(cache.get(previous, 400, 600)).toEqual({ totalHeight: 20 });
+    expect(cache.get(changed, 400, 600)).toBeUndefined();
+    expect(hashMeasureContent(changed)).not.toBe(hashMeasureContent(previous));
+  });
+
+  it.each(['bold', 'italic', 'vanish'] as const)('reuses a measure for omitted and false %s', (property) => {
+    const cache = new MeasureCache<{ totalHeight: number }>();
+    const previous = paragraph();
+    const equivalent = paragraph({ [property]: false });
+    cache.set(previous, 400, 600, { totalHeight: 20 });
+
+    expect(cache.get(equivalent, 400, 600)).toEqual({ totalHeight: 20 });
+    expect(hashMeasureContent(equivalent)).toBe(hashMeasureContent(previous));
+  });
+
+  describe.each(['blocks', 'paragraph', 'nested'] as const)('table cells using %s', (storage) => {
+    const table = (item: ParagraphBlock): TableBlock => {
+      const inner = tableWithCellBlocks('numbered-table', [item]);
+      if (storage === 'paragraph') {
+        const cell = inner.rows[0]!.cells[0]!;
+        cell.paragraph = item;
+        delete cell.blocks;
+      }
+      return storage === 'nested' ? tableWithCellBlocks('parent-table', [inner]) : inner;
+    };
+
+    it.each([
+      { property: 'bold', before: false, after: true },
+      { property: 'bold', before: true, after: false },
+      { property: 'italic', before: false, after: true },
+      { property: 'italic', before: true, after: false },
+      { property: 'fontFamily', before: 'Arial', after: 'Courier New' },
+      { property: 'fontFamily', before: 'Courier New', after: 'Arial' },
+      { property: 'fontSize', before: 12, after: 24 },
+      { property: 'fontSize', before: 24, after: 12 },
+      { property: 'color', before: '#000000', after: '#ff0000' },
+      { property: 'color', before: '#ff0000', after: '#000000' },
+      { property: 'letterSpacing', before: 0, after: 2 },
+      { property: 'letterSpacing', before: 2, after: 0 },
+      { property: 'vanish', before: false, after: true },
+      { property: 'vanish', before: true, after: false },
+    ])('misses a warmed table measure when $property changes from $before to $after', ({ property, before, after }) => {
+      const cache = new MeasureCache<{ totalHeight: number }>();
+      const previous = table(paragraph({ [property]: before }));
+      const changed = table(paragraph({ [property]: after }));
+      cache.set(previous, 400, 600, { totalHeight: 20 }, 'fonts');
+
+      expect(cache.get(previous, 400, 600, 'fonts')).toEqual({ totalHeight: 20 });
+      expect(computeDirtyRegions([previous], [changed]).changedBlockIds).toEqual([changed.id]);
+      expect.soft(hashMeasureContent(changed)).not.toBe(hashMeasureContent(previous));
+      expect(cache.get(changed, 400, 600, 'fonts')).toBeUndefined();
+    });
+
+    it.each(['bold', 'italic', 'vanish'] as const)('reuses a table measure for omitted and false %s', (property) => {
+      const cache = new MeasureCache<{ totalHeight: number }>();
+      const previous = table(paragraph());
+      const equivalent = table(paragraph({ [property]: false }));
+      cache.set(previous, 400, 600, { totalHeight: 20 }, 'fonts');
+
+      expect(computeDirtyRegions([previous], [equivalent]).changedBlockIds).toEqual([]);
+      expect(hashMeasureContent(equivalent)).toBe(hashMeasureContent(previous));
+      expect(cache.get(equivalent, 400, 600, 'fonts')).toEqual({ totalHeight: 20 });
+    });
+
+    it('reuses a table measure when only computed word layout output changes', () => {
+      const cache = new MeasureCache<{ totalHeight: number }>();
+      const previous = table(paragraph({ bold: true }));
+      const changedParagraph = paragraph({ bold: true });
+      changedParagraph.attrs!.wordLayout!.lines = 2;
+      const equivalent = table(changedParagraph);
+      cache.set(previous, 400, 600, { totalHeight: 20 }, 'fonts');
+
+      expect(hashMeasureContent(equivalent)).toBe(hashMeasureContent(previous));
+      expect(cache.get(equivalent, 400, 600, 'fonts')).toEqual({ totalHeight: 20 });
+    });
+  });
 });
 
 const inlineBoxParagraph = (paddingInlineStart = 4, backgroundColor = '#eef2ff'): ParagraphBlock => ({

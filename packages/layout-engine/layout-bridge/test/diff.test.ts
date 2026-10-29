@@ -28,6 +28,55 @@ const paragraphWithRuns = (id: string, runs: ParagraphBlock['runs']) => ({
   runs,
 });
 
+describe('list marker run properties dirty regions', () => {
+  const paragraph = (run: Partial<WordLayoutMarker['run']> = {}): ParagraphBlock => ({
+    ...block('numbered', 'Numbered item'),
+    attrs: {
+      numberingProperties: { numId: 1, ilvl: 1 },
+      wordLayout: {
+        marker: {
+          markerText: '1.2',
+          markerBoxWidthPx: 24,
+          run: { fontFamily: 'Arial', fontSize: 16, ...run },
+        },
+      },
+    },
+  });
+
+  it.each([
+    { property: 'bold', before: false, after: true },
+    { property: 'bold', before: true, after: false },
+    { property: 'italic', before: false, after: true },
+    { property: 'italic', before: true, after: false },
+    { property: 'fontFamily', before: 'Arial', after: 'Courier New' },
+    { property: 'fontFamily', before: 'Courier New', after: 'Arial' },
+    { property: 'fontSize', before: 12, after: 24 },
+    { property: 'fontSize', before: 24, after: 12 },
+    { property: 'color', before: '#000000', after: '#ff0000' },
+    { property: 'color', before: '#ff0000', after: '#000000' },
+    { property: 'letterSpacing', before: 0, after: 2 },
+    { property: 'letterSpacing', before: 2, after: 0 },
+    { property: 'vanish', before: false, after: true },
+    { property: 'vanish', before: true, after: false },
+  ])('invalidates only the target when $property changes from $before to $after', ({ property, before, after }) => {
+    const neighbor = block('neighbor', 'Unchanged');
+    const result = computeDirtyRegions(
+      [neighbor, paragraph({ [property]: before })],
+      [neighbor, paragraph({ [property]: after })],
+    );
+
+    expect(result.changedBlockIds).toEqual(['numbered']);
+    expect(result.stableBlockIds).toEqual(new Set(['neighbor']));
+  });
+
+  it.each(['bold', 'italic', 'vanish'] as const)('treats omitted and false %s as equivalent', (property) => {
+    const result = computeDirtyRegions([paragraph()], [paragraph({ [property]: false })]);
+
+    expect(result.changedBlockIds).toEqual([]);
+    expect(result.stableBlockIds).toEqual(new Set(['numbered']));
+  });
+});
+
 const inlineBoxParagraph = (paddingInlineStart = 4, backgroundColor = '#eef2ff'): ParagraphBlock => ({
   ...block('inline-box-diff', 'Citation'),
   inlineBoxes: [

@@ -3,7 +3,6 @@ import { describe, expect, it, vi } from 'vite-plus/test';
 import { deriveBlockVersion, derivePmInteriorVersion, sourceAnchorSignature } from './versionSignature.js';
 import type {
   FlowBlock,
-  WordLayoutMarker,
   ImageBlock,
   ImageRun,
   MarkerTrackedChange,
@@ -14,7 +13,65 @@ import type {
   TabRun,
   TextRun,
   TrackedChangeMeta,
+  WordLayoutMarker,
 } from '@superdoc/contracts';
+
+describe('deriveBlockVersion - list marker run properties', () => {
+  const paragraph = (run: Partial<WordLayoutMarker['run']> = {}): ParagraphBlock => ({
+    kind: 'paragraph',
+    id: 'numbered',
+    runs: [{ text: 'Numbered item', fontFamily: 'Arial', fontSize: 12 }],
+    attrs: {
+      numberingProperties: { numId: 1, ilvl: 1 },
+      wordLayout: {
+        marker: {
+          markerText: '1.2',
+          markerBoxWidthPx: 24,
+          run: { fontFamily: 'Arial', fontSize: 12, ...run },
+        },
+      },
+    },
+  });
+  const table = (block: ParagraphBlock): TableBlock => ({
+    kind: 'table',
+    id: 'table-with-numbered-item',
+    rows: [{ id: 'row', cells: [{ id: 'cell', blocks: [block] }] }],
+  });
+
+  it.each([
+    { property: 'bold', before: false, after: true },
+    { property: 'bold', before: true, after: false },
+    { property: 'italic', before: false, after: true },
+    { property: 'italic', before: true, after: false },
+    { property: 'fontFamily', before: 'Arial', after: 'Courier New' },
+    { property: 'fontFamily', before: 'Courier New', after: 'Arial' },
+    { property: 'fontSize', before: 12, after: 24 },
+    { property: 'fontSize', before: 24, after: 12 },
+    { property: 'color', before: '#000000', after: '#ff0000' },
+    { property: 'color', before: '#ff0000', after: '#000000' },
+    { property: 'letterSpacing', before: 0, after: 2 },
+    { property: 'letterSpacing', before: 2, after: 0 },
+    { property: 'vanish', before: false, after: true },
+    { property: 'vanish', before: true, after: false },
+  ])(
+    'changes paragraph and table versions when $property changes from $before to $after',
+    ({ property, before, after }) => {
+      const previous = paragraph({ [property]: before });
+      const changed = paragraph({ [property]: after });
+
+      expect(deriveBlockVersion(changed)).not.toBe(deriveBlockVersion(previous));
+      expect(deriveBlockVersion(table(changed))).not.toBe(deriveBlockVersion(table(previous)));
+    },
+  );
+
+  it.each(['bold', 'italic', 'vanish'] as const)('treats omitted and false %s as equivalent', (property) => {
+    const previous = paragraph();
+    const equivalent = paragraph({ [property]: false });
+
+    expect(deriveBlockVersion(equivalent)).toBe(deriveBlockVersion(previous));
+    expect(deriveBlockVersion(table(equivalent))).toBe(deriveBlockVersion(table(previous)));
+  });
+});
 
 describe('sourceAnchorSignature', () => {
   it('is stable for equivalent source anchors with different object key order', () => {

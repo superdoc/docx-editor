@@ -3,6 +3,7 @@ import {
   getParagraphInlineDirection,
   getTableCellTextDirection,
   inlineBoxStyleSignature,
+  markerRunSignature,
   type DrawingBlock,
   type FieldAnnotationRun,
   type FlowBlock,
@@ -16,7 +17,6 @@ import {
   type ListBlock,
   type ParagraphAttrs,
   type ParagraphBlock,
-  type ResolvedListMarkerItem,
   type SdtMetadata,
   type ShapeGroupDrawing,
   type SourceAnchor,
@@ -385,21 +385,8 @@ export const resolveFragmentLayoutIdentity = (fragment: Fragment, story?: Layout
 // ---------------------------------------------------------------------------
 
 const markerRunVisualVersion = (
-  run: Partial<WordLayoutMarker['run'] & ResolvedListMarkerItem['run']> | undefined,
-): string =>
-  run
-    ? JSON.stringify([
-        run.fontFamily ?? null,
-        run.fontSize ?? null,
-        run.bold === true,
-        run.italic === true,
-        run.color ?? null,
-        run.letterSpacing ?? 0,
-        run.allCaps === true,
-        run.smallCaps === true,
-        run.vanish === true,
-      ])
-    : '';
+  run: (WordLayoutMarker['run'] & { allCaps?: boolean; smallCaps?: boolean }) | undefined,
+): string => JSON.stringify([markerRunSignature(run), run?.allCaps === true, run?.smallCaps === true]);
 
 /**
  * Derives a version string for a flow block based on its content and styling properties.

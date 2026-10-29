@@ -664,19 +664,6 @@ export const useCommentsStore = defineStore('comments', () => {
     comment.trackedChangeDecision = null;
   };
 
-  const restoreResolvedMetadata = (comment) => {
-    if (!comment) return false;
-    const snapshot = trackedChangeResolutionSnapshots.get(comment);
-    if (!snapshot) return false;
-
-    comment.resolvedTime = snapshot.resolvedTime ?? Date.now();
-    comment.resolvedById = snapshot.resolvedById ?? null;
-    comment.resolvedByEmail = snapshot.resolvedByEmail ?? null;
-    comment.resolvedByName = snapshot.resolvedByName ?? null;
-    comment.trackedChangeDecision = snapshot.trackedChangeDecision ?? null;
-    return true;
-  };
-
   const getCommentEventPayload = (comment) =>
     typeof comment?.getValues === 'function' ? comment.getValues() : { ...comment };
 
@@ -696,81 +683,19 @@ export const useCommentsStore = defineStore('comments', () => {
   const isTrackedChangeThread = (comment) =>
     Boolean(comment?.trackedChange) || Boolean(trackedChangeThreadParentIdForComment(comment));
 
-  const collectStandardCommentDocumentState = (editor) => {
-    const doc = editor?.state?.doc;
-    if (!doc || typeof doc.descendants !== 'function') return null;
-
-    const liveMarkIds = new Set();
-    const resolvedAnchorIds = new Set();
-
-    doc.descendants((node) => {
-      node.marks
-        ?.filter((mark) => mark?.type?.name === 'commentMark')
-        .forEach((mark) => {
-          [mark.attrs?.commentId, mark.attrs?.importedId]
-            .map((id) => normalizeCommentId(id))
-            .filter(Boolean)
-            .forEach((id) => liveMarkIds.add(id));
-        });
-
-      const typeName = node.type?.name;
-      if (typeName !== 'commentRangeStart' && typeName !== 'commentRangeEnd') return;
-      const anchorId = normalizeCommentId(node.attrs?.['w:id']);
-      if (anchorId) resolvedAnchorIds.add(anchorId);
-    });
-
-    return { liveMarkIds, resolvedAnchorIds };
-  };
-
-  /**
-   * Fall back to a live editor when the caller has none (the store watchers).
-   * `editorCommentPositions` refreshes asynchronously, so a positions-based
-   * decision taken mid-undo/redo can act on STALE keys — e.g. clearing the
-   * resolved metadata that the redo restore just wrote back. The document
-   * itself is the source of truth; prefer it whenever an editor is reachable.
-   */
-  const getFallbackCommentsEditor = () => {
-    const docs = superdocStore.documents;
-    if (!Array.isArray(docs)) return null;
-    for (const doc of docs) {
-      const editor = typeof doc?.getEditor === 'function' ? doc.getEditor() : null;
-      if (editor?.state?.doc) return editor;
-    }
-    return null;
-  };
-
-  const syncResolvedCommentsWithDocument = ({ editor } = {}) => {
+  const syncResolvedCommentsWithDocument = () => {
     // V2 comment lifecycle is owned by the browser Document API list refresh
     // after a committed mutation. The legacy DOM/position heuristic can lag a
     // paint behind and clear only the root, creating an open-root/resolved-reply
     // split after a coherent v2 refresh.
     if (v2CommentsAdapter.value) return 0;
-    const effectiveEditor = editor ?? getFallbackCommentsEditor();
-    const documentState = collectStandardCommentDocumentState(effectiveEditor);
     const docPositions = editorCommentPositions.value || {};
     const activeKeys = new Set(Object.keys(docPositions));
-    if (!documentState && !activeKeys.size) return 0;
+    if (!activeKeys.size) return 0;
 
     let changed = 0;
     commentsList.value.forEach((comment) => {
       if (!isEditorBackedComment(comment) || isTrackedChangeThread(comment)) return;
-
-      if (documentState) {
-        const aliasIds = getCommentAliasIds(comment);
-        const hasLiveMark = aliasIds.some((id) => documentState.liveMarkIds.has(id));
-        const hasResolvedAnchor = aliasIds.some((id) => documentState.resolvedAnchorIds.has(id));
-
-        if (hasLiveMark && comment.resolvedTime != null) {
-          clearResolvedMetadata(comment);
-          changed += 1;
-          return;
-        }
-
-        if (!hasLiveMark && hasResolvedAnchor && comment.resolvedTime == null && restoreResolvedMetadata(comment)) {
-          changed += 1;
-        }
-        return;
-      }
 
       const { key } = resolveCommentPositionEntry(comment);
       if (!key) return;
@@ -802,21 +727,6 @@ export const useCommentsStore = defineStore('comments', () => {
   );
 
   /**
-   * Normalize a position object to a consistent { start, end } format.
-   * Handles different editor position schemas (start/end, pos/to, from/to).
-   *
-   * @param {Object | null | undefined} position The position object
-   * @returns {{ start: number, end: number } | null} The normalized range or null
-   */
-  const getCommentPositionRange = (position) => {
-    if (!position) return null;
-    const start = position.start ?? position.pos ?? position.from;
-    const end = position.end ?? position.to ?? start;
-    if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
-    return { start, end };
-  };
-
-  /**
    * Get the editor position data for a comment.
    *
    * @param {Object | string} commentOrId The comment object or comment ID
@@ -824,51 +734,6 @@ export const useCommentsStore = defineStore('comments', () => {
    */
   const getCommentPosition = (commentOrId) => {
     return resolveCommentPositionEntry(commentOrId).entry ?? null;
-  };
-
-  /**
-   * Get the text that a comment is anchored to in the document.
-   *
-   * @param {Object | string} commentOrId The comment object or comment ID
-   * @param {Object} [options] Options for text extraction
-   * @param {string} [options.separator=' '] Separator for textBetween when crossing nodes
-   * @param {boolean} [options.trim=true] Whether to trim whitespace from the result
-   * @returns {string | null} The anchored text or null if unavailable
-   */
-  const getCommentAnchoredText = (commentOrId, options = {}) => {
-    const comment = typeof commentOrId === 'object' ? commentOrId : getComment(commentOrId);
-    if (!comment) return null;
-
-    const position = resolveCommentPositionEntry(commentOrId).entry ?? null;
-    const range = getCommentPositionRange(position);
-    if (!range) return null;
-
-    const doc = superdocStore.getDocument(comment.fileId);
-    const editor = doc?.getEditor?.();
-    const docNode = editor?.state?.doc;
-    if (!docNode?.textBetween) return null;
-
-    const separator = options.separator ?? ' ';
-    const text = docNode.textBetween(range.start, range.end, separator, separator);
-    return options.trim === false ? text : text?.trim();
-  };
-
-  /**
-   * Get both position and anchored text data for a comment.
-   *
-   * @param {Object | string} commentOrId The comment object or comment ID
-   * @param {Object} [options] Options passed to getCommentAnchoredText
-   * @param {string} [options.separator=' '] Separator for textBetween when crossing nodes
-   * @param {boolean} [options.trim=true] Whether to trim whitespace from the result
-   * @returns {{ position: Object, anchoredText: string | null } | null} The anchor data or null
-   */
-  const getCommentAnchorData = (commentOrId, options = {}) => {
-    const position = getCommentPosition(commentOrId);
-    if (!position) return null;
-    return {
-      position,
-      anchoredText: getCommentAnchoredText(commentOrId, options),
-    };
   };
 
   const isThreadVisible = (comment) => {
@@ -4788,8 +4653,6 @@ export const useCommentsStore = defineStore('comments', () => {
     getTrackedChangeThread,
     getCommentPositionKey,
     getCommentPosition,
-    getCommentAnchoredText,
-    getCommentAnchorData,
     resolveCommentPositionEntry,
     getCommentDocumentId,
     belongsToDocument,

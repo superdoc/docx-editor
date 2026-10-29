@@ -89,7 +89,6 @@ export function resolveRunProperties(
   resolvedPpr: ParagraphProperties | null | undefined,
   tableInfo: TableInfo | null | undefined = null,
   isListNumber = false,
-  numberingDefinedInline = false,
 ): RunProperties {
   if (!params.translatedLinkedStyles?.styles) {
     return inlineRpr ?? {};
@@ -141,11 +140,6 @@ export function resolveRunProperties(
     let numberingProps: RunProperties = {} as RunProperties;
     if (numId != null && numId !== 0) {
       numberingProps = getNumberingProperties('runProperties', params, numberingProperties?.ilvl ?? 0, numId);
-    }
-
-    if (!numberingDefinedInline) {
-      // If numbering is not defined inline, we need to ignore the inline rPr
-      inlineRpr = {} as RunProperties;
     }
 
     // Inline underlines are ignored for list numbers

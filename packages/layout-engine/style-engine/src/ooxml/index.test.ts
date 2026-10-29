@@ -356,7 +356,7 @@ describe('ooxml - resolveRunProperties', () => {
     expect(result.color).toEqual({ val: 'FF0000' });
   });
 
-  it('ignores inline rPr for list numbers when numbering is not inline', () => {
+  it('keeps numbering overrides and excludes mark underline', () => {
     const params = buildParams({
       translatedNumbering: {
         definitions: { '1': { abstractNumId: 10 } },
@@ -375,11 +375,37 @@ describe('ooxml - resolveRunProperties', () => {
       { numberingProperties: { numId: 1, ilvl: 0 } },
       null,
       true,
-      false,
     );
     expect(result.bold).toBe(false);
     expect(result.underline).toBeUndefined();
     expect(result.color).toEqual({ val: '00FF00' });
+  });
+
+  it.each([false, true])('applies mark bold=%s over inherited bold without mutating the mark', (bold) => {
+    const params = buildParams({
+      translatedLinkedStyles: {
+        ...emptyStyles,
+        styles: { Heading: { runProperties: { bold: !bold } } },
+      },
+      translatedNumbering: {
+        definitions: { '1': { abstractNumId: 10 } },
+        abstracts: { '10': { levels: { '0': {} } } },
+      },
+    });
+    const mark = { bold, underline: { val: 'single' }, vanish: true, specVanish: true };
+    const original = structuredClone(mark);
+    const result = resolveRunProperties(
+      params,
+      mark,
+      { styleId: 'Heading', numberingProperties: { numId: 1, ilvl: 0 } },
+      null,
+      true,
+    );
+    expect(result.bold).toBe(bold);
+    expect(result.underline).toBeUndefined();
+    expect(result.vanish).toBeUndefined();
+    expect(result.specVanish).toBeUndefined();
+    expect(mark).toEqual(original);
   });
 
   it('applies table cell run properties in cascade order', () => {

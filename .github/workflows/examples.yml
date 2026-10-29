@@ -44,6 +44,7 @@ jobs:
               - 'packages/superdoc/**'
               - 'packages/sdk/**'
               - 'scripts/check-examples.mjs'
+              - 'scripts/check-examples-dev.mjs'
               - 'scripts/__tests__/check-examples.test.mjs'
               - 'scripts/check-go-links.mjs'
               - 'scripts/__tests__/check-go-links.test.mjs'

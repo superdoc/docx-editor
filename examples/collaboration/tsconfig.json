@@ -11,5 +11,5 @@
     "isolatedModules": true,
     "verbatimModuleSyntax": true
   },
-  "include": ["src", "tests", "playwright*.config.ts", "server.ts", "local-storage*.ts", "edit-attribution.ts", "demo-access.ts", "docs-access-server.ts"]
+  "include": ["src", "tests", "playwright*.config.ts", "vite.config.ts", "server.ts", "local-storage*.ts", "edit-attribution.ts", "demo-access.ts", "docs-access-server.ts"]
 }

@@ -22,3 +22,15 @@ Every example is typechecked and has a behavior test for the outcome its README 
 - [Search](https://go.superdoc.dev/examples/search) — enable the built-in find surface and navigate matches.
 - [Proofing](https://go.superdoc.dev/examples/proofing) — add local spell checking with suggestions and Ignore.
 - [Collaboration](https://go.superdoc.dev/examples/collaboration) — synchronize one DOCX between two browser pages.
+
+## Run an example in this repository
+
+Inside this repository, examples use the workspace packages instead of the published ones. Build them before you run `pnpm dev` or `pnpm test` in an example:
+
+```bash
+pnpm install
+pnpm build:superdoc
+pnpm --filter @superdoc/react run build # React example only
+```
+
+A copied example installs its `superdoc` version from npm and needs neither build.

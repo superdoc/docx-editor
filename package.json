@@ -38,7 +38,7 @@
     "prepare": "if [ -z \"$CI\" ] && command -v vp >/dev/null 2>&1; then vp config --no-agent; fi",
     "watch": "pnpm --prefix packages/superdoc run watch:es",
     "check:all": "pnpm run format && pnpm run lint:fix && pnpm run test",
-    "check:examples": "node --test scripts/__tests__/check-examples.test.mjs && node scripts/check-examples.mjs && pnpm --recursive --filter './examples/*' run typecheck && pnpm --recursive --filter './examples/*' run test",
+    "check:examples": "node --test scripts/__tests__/check-examples.test.mjs && node scripts/check-examples.mjs && pnpm --recursive --filter './examples/*' run typecheck && node scripts/check-examples-dev.mjs && pnpm --recursive --filter './examples/*' run test",
     "check:go-links": "node --test scripts/__tests__/check-go-links.test.mjs && node scripts/check-go-links.mjs",
     "check:public-contract": "pnpm run check:public:superdoc",
     "report:public-contract": "pnpm run report:public:superdoc",

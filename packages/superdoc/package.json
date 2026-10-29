@@ -182,13 +182,11 @@
     "node-stdlib-browser": "catalog:",
     "postcss-nested": "catalog:",
     "sirv": "catalog:",
-    "tsx": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:",
     "vite-plugin-dts": "catalog:",
     "vite-plugin-node-polyfills": "catalog:",
     "vite-plus": "catalog:",
-    "vitest": "catalog:",
-    "xml-js": "catalog:"
+    "vitest": "catalog:"
   }
 }

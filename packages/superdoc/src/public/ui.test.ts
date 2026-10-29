@@ -9901,8 +9901,6 @@ describe('public ui — document control parity (row 742)', () => {
       superdoc: { activeEditor: { doc, host }, config: { documentMode: 'editing' }, on: vi.fn(), off: vi.fn() },
     });
     expect(ui.document.getSnapshot().dirty).toBe(false);
-    // A `create.table` result never emits `mutation:committed`; the dedicated
-    // signal is the only thing that fires.
     hostEventListeners.at(-1)?.({ type: 'document:mutated', source: 'facade', revision: 1 });
     expect(ui.document.getSnapshot().dirty).toBe(true);
   });

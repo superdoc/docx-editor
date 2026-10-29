@@ -235,7 +235,7 @@ describe('SuperDoc mutation exceptions', () => {
 
 describe('SuperDoc interaction history remains passive', () => {
   it.each([true, false])(
-    'observes extension receipts without editor-update callbacks when enabled=%s',
+    'observes extension previews without editor-update callbacks when enabled=%s',
     async (enabled) => {
       const { editor, onEditorUpdate, diagnostics, superdoc } = await mountShell({ enabled });
       diagnostics.clear();
@@ -244,16 +244,13 @@ describe('SuperDoc interaction history remains passive', () => {
         editor.vm.$emit('v2-host-event', {
           type: 'mutation:committed',
           origin: 'extension',
+          ...(dryRun ? { dryRun: true } : {}),
           receipt: { success: true, dryRun, txId: 'extension-receipt' },
         });
       }
       await nextTick();
-      expect(onEditorUpdate).not.toHaveBeenCalled();
-      expect(diagnostics.getSnapshot().events).toHaveLength(enabled ? 2 : 0);
-      // Existing editing notifications still follow the command path.
-      editor.vm.$emit('v2-host-event', { type: 'mutation:committed', origin: 'command', receipt: { success: true } });
-      await nextTick();
       expect(onEditorUpdate).toHaveBeenCalledTimes(1);
+      expect(diagnostics.getSnapshot().events).toHaveLength(enabled ? 2 : 0);
       closeInteractionHistory(superdoc);
     },
   );

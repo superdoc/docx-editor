@@ -25,6 +25,7 @@ import type {
 } from '@superdoc/contracts';
 import { getParagraphInlineDirection, trackedChangeMetaSignature } from '@superdoc/contracts';
 import { fieldAnnotationKey } from './field-annotation-key.js';
+import { markerRunMeasureKey } from './marker-run-key.js';
 import { inlineBoxKey } from './inline-box-key.js';
 import { hashRunVisualMarks } from './run-visual-marks.js';
 import { hasTrackedChange, resolveTrackedChangesEnabled } from './tracked-changes-utils.js';
@@ -548,12 +549,11 @@ const paragraphBlocksEqual = (a: FlowBlock & { kind: 'paragraph' }, b: FlowBlock
   // marker.markerText is the canvas measurement input, so we treat a change
   // as a dirty signal rather than relying on `paragraphAttrsEqual`'s
   // wordLayout exclusion.
-  const aMarker = (a.attrs as { wordLayout?: { marker?: { markerText?: string; justification?: string } } } | undefined)
-    ?.wordLayout?.marker;
-  const bMarker = (b.attrs as { wordLayout?: { marker?: { markerText?: string; justification?: string } } } | undefined)
-    ?.wordLayout?.marker;
+  const aMarker = a.attrs?.wordLayout?.marker;
+  const bMarker = b.attrs?.wordLayout?.marker;
   if ((aMarker?.markerText ?? null) !== (bMarker?.markerText ?? null)) return false;
   if ((aMarker?.justification ?? null) !== (bMarker?.justification ?? null)) return false;
+  if (markerRunMeasureKey(aMarker?.run) !== markerRunMeasureKey(bMarker?.run)) return false;
 
   // Check paragraph-level visual attributes (alignment, spacing, indent, borders, etc.)
   if (!paragraphAttrsEqual(a.attrs, b.attrs)) return false;

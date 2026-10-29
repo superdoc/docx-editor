@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vite-plus/test';
 import { deriveBlockVersion, derivePmInteriorVersion, sourceAnchorSignature } from './versionSignature.js';
 import type {
   FlowBlock,
+  WordLayoutMarker,
   ImageBlock,
   ImageRun,
   MarkerTrackedChange,
@@ -1191,4 +1192,52 @@ describe('deriveBlockVersion - recorded font epoch', () => {
       }
     },
   );
+});
+
+const numberedMarkParagraph = (
+  run: Partial<WordLayoutMarker['run'] & Pick<TextRun, 'allCaps' | 'smallCaps'>> = {},
+): ParagraphBlock => ({
+  kind: 'paragraph',
+  id: 'selected-mark',
+  runs: [{ text: 'Beta.', fontFamily: 'Arial', fontSize: 16 }],
+  attrs: {
+    numberingProperties: { numId: 1, ilvl: 1 },
+    wordLayout: {
+      marker: {
+        markerText: '1.2',
+        justification: 'left',
+        suffix: 'tab',
+        markerBoxWidthPx: 48,
+        run: { fontFamily: 'Arial', fontSize: 16, ...run },
+      },
+    },
+  },
+});
+
+describe('SD-5988 marker visual version', () => {
+  it.each([
+    { bold: true },
+    { italic: true },
+    { fontFamily: 'Times New Roman' },
+    { fontSize: 24 },
+    { letterSpacing: 2 },
+    { color: '#123456' },
+    { vanish: true },
+    { allCaps: true },
+    { smallCaps: true },
+  ])('changes for a marker-only visual input %o', (run) => {
+    const before = numberedMarkParagraph();
+    const after = numberedMarkParagraph(run);
+    expect(after.runs).toEqual(before.runs);
+    expect(deriveBlockVersion(after)).not.toBe(deriveBlockVersion(before));
+  });
+
+  it('keeps source anchors separate and accepts equal marker style in any key order', () => {
+    const before = numberedMarkParagraph({ bold: true, italic: true });
+    const after = {
+      ...numberedMarkParagraph({ italic: true, bold: true }),
+      sourceAnchor: { sourceNodeId: 'new-anchor' },
+    };
+    expect(deriveBlockVersion(after)).toBe(deriveBlockVersion(before));
+  });
 });

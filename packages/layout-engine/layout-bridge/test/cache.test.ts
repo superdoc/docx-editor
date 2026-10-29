@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vite-plus/test';
 import { MeasureCache } from '../src/cache';
 import type {
   FlowBlock,
+  WordLayoutMarker,
   ImageBlock,
   ImageRun,
   ParagraphBlock,
@@ -2400,4 +2401,101 @@ describe('small-caps measure cache', () => {
     cache.setPrepared(key, plain.id, { totalHeight: 20 });
     expect(cache.get(caps, 400, 600)).toBeUndefined();
   });
+});
+
+const numberedMarkParagraph = (run: Partial<WordLayoutMarker['run']> = {}): ParagraphBlock => ({
+  kind: 'paragraph',
+  id: 'selected-mark',
+  runs: [{ text: 'Beta.', fontFamily: 'Arial', fontSize: 16 }],
+  attrs: {
+    numberingProperties: { numId: 1, ilvl: 1 },
+    wordLayout: {
+      marker: {
+        markerText: '1.2',
+        justification: 'left',
+        suffix: 'tab',
+        markerBoxWidthPx: 48,
+        run: { fontFamily: 'Arial', fontSize: 16, ...run },
+      },
+    },
+  },
+});
+
+const wrapMarkParagraph = (
+  paragraph: ParagraphBlock,
+  kind: 'paragraph' | 'list' | 'table' | 'nested-table',
+): FlowBlock => {
+  if (kind === 'paragraph') return paragraph;
+  if (kind === 'list')
+    return {
+      kind: 'list',
+      id: 'list',
+      listType: 'number',
+      items: [{ id: 'item', marker: { kind: 'number', level: 1, text: '1.2' }, paragraph }],
+    };
+  const cellBlock: FlowBlock = kind === 'nested-table' ? wrapMarkParagraph(paragraph, 'table') : paragraph;
+  return { kind: 'table', id: kind, rows: [{ id: 'row', cells: [{ id: 'cell', blocks: [cellBlock] }] }] };
+};
+
+describe('SD-5988 marker measurement identity', () => {
+  it.each(['paragraph', 'list', 'table', 'nested-table'] as const)(
+    '%s misses changed marker metrics and reuses equal inputs',
+    (kind) => {
+      const cache = new MeasureCache();
+      const before = wrapMarkParagraph(numberedMarkParagraph(), kind);
+      const measure = { kind: 'paragraph' as const, lines: [], totalHeight: 20 };
+      cache.set(before, 300, 500, measure, 'known-font');
+      expect(cache.get(structuredClone(before), 300, 500, 'known-font')).toEqual(measure);
+      for (const run of [
+        { bold: true },
+        { italic: true },
+        { fontFamily: 'Times New Roman' },
+        { fontSize: 24 },
+        { letterSpacing: 2 },
+      ]) {
+        expect
+          .soft(cache.get(wrapMarkParagraph(numberedMarkParagraph(run), kind), 300, 500, 'known-font'))
+          .toBeUndefined();
+      }
+      expect(cache.get(before, 301, 500, 'known-font')).toBeUndefined();
+      expect(cache.get(before, 300, 500, 'other-font')).toBeUndefined();
+    },
+  );
+
+  it.each(['paragraph', 'list', 'table', 'nested-table'] as const)(
+    '%s preserves absent, empty, no-numbering and source-only marker controls',
+    (kind) => {
+      const cache = new MeasureCache();
+      const before = numberedMarkParagraph();
+      const measure = { kind: 'paragraph' as const, lines: [], totalHeight: 20 };
+      const variants = [
+        before,
+        { ...before, attrs: { numberingProperties: { numId: 1, ilvl: 1 } } },
+        {
+          ...before,
+          attrs: { ...before.attrs, wordLayout: { marker: { ...before.attrs!.wordLayout!.marker!, markerText: '' } } },
+        },
+        { ...before, attrs: {} },
+      ];
+      for (const variant of variants) {
+        cache.clear();
+        cache.set(wrapMarkParagraph(variant, kind), 300, 500, measure);
+        expect(cache.get(wrapMarkParagraph(structuredClone(variant), kind), 300, 500)).toEqual(measure);
+        for (const other of variants.filter((other) => other !== variant))
+          expect(cache.get(wrapMarkParagraph(other, kind), 300, 500)).toBeUndefined();
+      }
+      cache.clear();
+      cache.set(wrapMarkParagraph(before, kind), 300, 500, measure);
+      expect(
+        cache.get(wrapMarkParagraph({ ...before, sourceAnchor: { sourceNodeId: 'new-anchor' } }, kind), 300, 500),
+      ).toEqual(measure);
+      expect(
+        cache.get(
+          wrapMarkParagraph(numberedMarkParagraph({ bold: false, italic: false, letterSpacing: 0 }), kind),
+          300,
+          500,
+        ),
+      ).toEqual(measure);
+    },
+  );
 });

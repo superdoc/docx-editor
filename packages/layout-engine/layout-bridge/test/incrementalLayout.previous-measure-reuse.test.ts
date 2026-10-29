@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
-import type { FlowBlock, ParagraphMeasure, SectionBreakBlock } from '@superdoc/contracts';
+import type { FlowBlock, ParagraphBlock, ParagraphMeasure, SectionBreakBlock } from '@superdoc/contracts';
+import { createDomMeasurementRuntime } from '@superdoc/measuring-dom';
+import { resolveCanvas } from '@superdoc/measuring-dom/canvas-resolver';
 import { incrementalLayout, measureCache } from '../src/incrementalLayout';
 
 const makeParagraph = (id: string, text: string): FlowBlock => ({
@@ -455,4 +457,93 @@ describe('incrementalLayout previous-measure reuse', () => {
     expect(warm.layout.pages).toEqual(reference.layout.pages);
     expect(warmReads).toBeLessThan(count * 32);
   });
+});
+
+describe('SD-5988 previous marker metrics', () => {
+  it.each([
+    { text: 'iii.', run: { bold: true } },
+    { text: '1.2', run: { fontSize: 24 } },
+  ])(
+    'remeasures marker-only %o before stable-block reuse and matches fresh Canvas2D geometry',
+    async ({ text, run }) => {
+      const { Canvas, usingStub } = resolveCanvas();
+      expect(usingStub).toBe(false);
+      const canvas = new Canvas(1, 1).getContext('2d');
+      canvas.font = '16px Arial';
+      const regularWidth = canvas.measureText(text).width;
+      canvas.font = `${run.bold ? 'bold ' : ''}${run.fontSize ?? 16}px Arial`;
+      expect(canvas.measureText(text).width).not.toBe(regularWidth);
+      const runtime = createDomMeasurementRuntime({ createCanvasContext: () => canvas });
+      const oracle = createDomMeasurementRuntime({ createCanvasContext: () => new Canvas(1, 1).getContext('2d') });
+      const fontContext = { fontSignature: 'sd5988-actual-arial', resolvePhysical: (family: string) => family };
+      const options = { pageSize: { w: 300, h: 400 }, margins: { top: 20, right: 20, bottom: 20, left: 20 } };
+      const before: ParagraphBlock = {
+        kind: 'paragraph',
+        id: 'marker',
+        runs: [{ text: 'Beta.', fontFamily: 'Arial', fontSize: 16 }],
+        attrs: {
+          numberingProperties: { numId: 1, ilvl: 1 },
+          indent: { left: 48, hanging: 48 },
+          wordLayout: {
+            marker: {
+              markerText: text,
+              suffix: 'tab',
+              justification: 'left',
+              markerBoxWidthPx: 48,
+              run: { fontFamily: 'Arial', fontSize: 16 },
+            },
+          },
+        },
+      };
+      const after = structuredClone(before);
+      Object.assign(after.attrs!.wordLayout!.marker!.run, run);
+      const sibling = makeParagraph('untouched', 'Gamma.');
+      try {
+        measureCache.clear();
+        const firstPass = runtime.beginPass(fontContext);
+        const first = await incrementalLayout(
+          [],
+          null,
+          [before, sibling],
+          options,
+          (block, constraints) => firstPass.measureBlock(block, constraints),
+          undefined,
+          undefined,
+          { fontContext },
+        );
+        firstPass.finish();
+        measureCache.clear();
+        const nextPass = runtime.beginPass(fontContext);
+        const measure = vi.fn((block: FlowBlock, constraints: { maxWidth: number; maxHeight: number }) =>
+          nextPass.measureBlock(block, constraints),
+        );
+        const next = await incrementalLayout(
+          [before, sibling],
+          first.layout,
+          [after, sibling],
+          options,
+          measure,
+          undefined,
+          first.measures,
+          { fontContext, previousFontSignature: fontContext.fontSignature },
+        );
+        nextPass.finish();
+        const freshPass = oracle.beginPass(fontContext);
+        const fresh = await freshPass.measureBlock(after, { maxWidth: 260, maxHeight: 360 });
+        freshPass.finish();
+        expect(fresh.kind).toBe('paragraph');
+        expect.soft(measure.mock.calls.map(([block]) => block.id)).toEqual(['marker']);
+        expect.soft(next.measures[0]).toEqual(fresh);
+        expect
+          .soft((next.measures[0] as ParagraphMeasure).marker?.markerTextWidth)
+          .not.toBe((first.measures[0] as ParagraphMeasure).marker?.markerTextWidth);
+        expect(next.measures[1]).toBe(first.measures[1]);
+        expect(after.runs).toEqual(before.runs);
+      } finally {
+        runtime.dispose();
+        oracle.dispose();
+        measureCache.clear();
+      }
+    },
+  );
 });

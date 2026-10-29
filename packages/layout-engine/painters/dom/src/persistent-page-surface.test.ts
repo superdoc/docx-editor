@@ -10,6 +10,7 @@
 import { describe, expect, it, vi } from 'vite-plus/test';
 import type {
   FlowBlock,
+  ParagraphBlock,
   Layout,
   Measure,
   ResolvedLayout,
@@ -18,6 +19,7 @@ import type {
   TableMeasure,
 } from '@superdoc/contracts';
 import { resolveLayout } from '@superdoc/layout-resolved';
+import { persistentPageVersionKey } from './page-content.js';
 import { createDomPainter } from './index.js';
 import { DomPainter } from './renderer.js';
 import type { DerivedRunTextPlane } from './derived-run-text-plane.js';
@@ -1380,5 +1382,92 @@ describe('persistent surface stability and rollback', () => {
     expect(() =>
       painter.paintPersistentPages(persistentInput(uniformScaffold(1, 1), packetsFor(pages), []), mount),
     ).toThrow(/semantic flow/);
+  });
+});
+
+describe('SD-5988 persistent numbered marker', () => {
+  it('changes resolved fragment and page identity and paints marker style without replacing the page root', () => {
+    const block = (bold: boolean): ParagraphBlock => ({
+      kind: 'paragraph',
+      id: 'selected-mark',
+      runs: [{ text: 'Beta.', fontFamily: 'Arial', fontSize: 16, pmStart: 0, pmEnd: 5 }],
+      attrs: {
+        numberingProperties: { numId: 1, ilvl: 1 },
+        wordLayout: {
+          marker: {
+            markerText: '1.2',
+            justification: 'left',
+            suffix: 'tab',
+            markerBoxWidthPx: 48,
+            run: { fontFamily: 'Arial', fontSize: 16, bold },
+          },
+        },
+      },
+      sourceAnchor: { sourceNodeId: 'sentinel-mark' },
+    });
+    const layout: Layout = {
+      pageSize: REAL_PAGE,
+      layoutEpoch: 7,
+      pages: [
+        {
+          number: 1,
+          fragments: [
+            {
+              kind: 'para',
+              blockId: 'selected-mark',
+              fromLine: 0,
+              toLine: 1,
+              x: 20,
+              y: 30,
+              width: 320,
+              pmStart: 0,
+              pmEnd: 5,
+              markerWidth: 48,
+              markerTextWidth: 24,
+            },
+          ],
+        },
+      ],
+    };
+    const resolved = (bold: boolean) =>
+      resolveLayout({ layout, flowMode: 'paginated', blocks: [block(bold)], measures: [paraMeasure([[0, 5]])] });
+    const before = resolved(false),
+      after = resolved(true);
+    const previousItem = before.pages[0]!.items[0]!,
+      nextItem = after.pages[0]!.items[0]!;
+    if (previousItem.kind !== 'fragment' || nextItem.kind !== 'fragment')
+      throw new Error('Requires resolved paragraph fragments');
+    expect.soft(nextItem.paintCacheVersion).not.toBe(previousItem.paintCacheVersion);
+    expect
+      .soft(persistentPageVersionKey(after.pages[0]!, 1, 1))
+      .not.toBe(persistentPageVersionKey(before.pages[0]!, 1, 1));
+    const painter = createDomPainter({ flowMode: 'paginated' });
+    const mount = document.createElement('div');
+    const scaffold = realScaffold(before, 7);
+    try {
+      painter.paintPersistentPages(persistentInput(scaffold, packetsFor(before.pages), [0]), mount);
+      const page = mount.firstElementChild;
+      const marker = () => mount.querySelector<HTMLElement>('.superdoc-paragraph-marker')!;
+      expect(marker().textContent).toBe('1.2');
+      expect(marker().style.fontWeight).toBe('');
+      const bodyBefore = [...mount.querySelectorAll<HTMLElement>('[data-pm-start]')]
+        .filter((el) => el.textContent === 'Beta.')
+        .map((el) => el.outerHTML);
+      expect(bodyBefore).toHaveLength(1);
+      painter.consumePaintWorkSummary();
+      painter.paintPersistentPages(persistentInput(scaffold, packetsFor(after.pages), [0]), mount);
+      expect.soft(marker().style.fontWeight).toBe('bold');
+      expect(mount.firstElementChild).toBe(page);
+      expect(marker().dataset.sourceNodeId).toBe('sentinel-mark');
+      expect(
+        [...mount.querySelectorAll<HTMLElement>('[data-pm-start]')]
+          .filter((el) => el.textContent === 'Beta.')
+          .map((el) => el.outerHTML),
+      ).toEqual(bodyBefore);
+      expect.soft(painter.consumePaintWorkSummary().contentUntouched).toBe(0);
+    } finally {
+      painter.dispose();
+      mount.remove();
+    }
   });
 });

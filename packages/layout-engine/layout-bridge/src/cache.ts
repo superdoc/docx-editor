@@ -25,6 +25,7 @@ import { hashParagraphBorders, hashTableBorders, hashCellBorders } from './parag
 import { hashRunVisualMarks } from './run-visual-marks.js';
 import { noteMarkerMeasureKey } from './note-marker-measure-key.js';
 import { Utf16Sha256 } from './utf16-sha256.js';
+import { markerRunMeasureKey } from './marker-run-key.js';
 
 /**
  * Comment annotation structure attached to runs.
@@ -415,6 +416,17 @@ const writeTableHash = (tableBlock: TableBlock, write: HashWriter, capabilities?
         }
 
         const paragraphBlock = cellBlock;
+        const marker = paragraphBlock.attrs?.wordLayout?.marker;
+        const numbering = paragraphBlock.attrs?.numberingProperties;
+        if (numbering)
+          append(
+            `num:${JSON.stringify([
+              numbering.numId ?? null,
+              numbering.ilvl ?? 0,
+              marker ? (marker.markerText ?? null) : null,
+              markerRunMeasureKey(marker?.run),
+            ])}`,
+          );
 
         // Safety: Check that runs array exists before iterating
         if (!paragraphBlock.runs) {
@@ -591,6 +603,12 @@ const hashRuns = (block: FlowBlock, capabilities?: FontMeasureCapabilities): str
   // pair the new image block with the previous image's cached fragments.
   if (block.kind === 'image') return `${block.id}:image:${hashImageLikeBlock(block)}`;
 
+  if (block.kind === 'list') {
+    const parts: string[] = [];
+    writeListBlock(block, (chunk) => parts.push(chunk), capabilities);
+    return `${block.id}:list:${parts.join('')}`;
+  }
+
   if (block.kind !== 'paragraph') return block.id;
   const trackedMode =
     (block.attrs && 'trackedChangesMode' in block.attrs && block.attrs.trackedChangesMode) || 'review';
@@ -638,10 +656,7 @@ const hashRuns = (block: FlowBlock, capabilities?: FontMeasureCapabilities): str
   // Include list/numbering properties in hash to invalidate cache when list status changes
   let numberingKey = '';
   if (block.attrs) {
-    const attrs = block.attrs as {
-      numberingProperties?: { numId?: number | string; ilvl?: number };
-      wordLayout?: { marker?: { markerText?: string } };
-    };
+    const attrs = block.attrs as ParagraphAttrs;
     if (attrs.numberingProperties) {
       const np = attrs.numberingProperties;
       // Use distinct sentinel values to avoid hash collision:
@@ -655,7 +670,7 @@ const hashRuns = (block: FlowBlock, capabilities?: FontMeasureCapabilities): str
         const markerText = attrs.wordLayout.marker.markerText;
         markerTextKey = markerText === '' ? '<EMPTY>' : (markerText ?? '<NULL>');
       }
-      numberingKey = `|num:${np.numId ?? ''}:${np.ilvl ?? 0}:${markerTextKey}`;
+      numberingKey = `|num:${np.numId ?? ''}:${np.ilvl ?? 0}:${markerTextKey}:${markerRunMeasureKey(attrs.wordLayout?.marker?.run)}`;
     }
   }
 

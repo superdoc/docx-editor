@@ -382,6 +382,21 @@ export const resolveFragmentLayoutIdentity = (fragment: Fragment, story?: Layout
 // deriveBlockVersion
 // ---------------------------------------------------------------------------
 
+const markerRunVisualVersion = (run: (Partial<TextRun> & { vanish?: boolean }) | undefined): string =>
+  run
+    ? JSON.stringify([
+        run.fontFamily ?? null,
+        run.fontSize ?? null,
+        run.bold === true,
+        run.italic === true,
+        run.color ?? null,
+        run.letterSpacing ?? 0,
+        run.allCaps === true,
+        run.smallCaps === true,
+        run.vanish === true,
+      ])
+    : '';
+
 /**
  * Derives a version string for a flow block based on its content and styling properties.
  *
@@ -397,7 +412,7 @@ export const deriveBlockVersion = (block: FlowBlock, fontConfigVersion?: number)
       ? trackedChangeMetaSignature(block.attrs.wordLayout.marker.trackedChange)
       : '';
     const markerVersion = hasListMarkerProperties(block.attrs)
-      ? `marker:${block.attrs.numberingProperties.numId ?? ''}:${block.attrs.numberingProperties.ilvl ?? 0}:${block.attrs.wordLayout?.marker?.markerText ?? ''}:${markerTrackedChangeVersion}`
+      ? `marker:${block.attrs.numberingProperties.numId ?? ''}:${block.attrs.numberingProperties.ilvl ?? 0}:${block.attrs.wordLayout?.marker?.markerText ?? ''}:${markerTrackedChangeVersion}:${markerRunVisualVersion(block.attrs.wordLayout?.marker?.run)}`
       : '';
 
     const runsVersion = block.runs

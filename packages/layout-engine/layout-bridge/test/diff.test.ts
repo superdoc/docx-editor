@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vite-plus/test';
-import type { ImageRun, ParagraphBlock, TableBlock, VectorShapeDrawing } from '@superdoc/contracts';
+import type {
+  WordLayoutMarker,
+  FlowBlock,
+  ImageRun,
+  ParagraphBlock,
+  TableBlock,
+  VectorShapeDrawing,
+} from '@superdoc/contracts';
 import { computeDirtyRegions } from '../src/diff';
 
 const block = (id: string, text: string) => ({
@@ -782,5 +789,70 @@ describe('small-caps dirty regions', () => {
       runs: [{ text: 'Test ', fontFamily: 'Arial', fontSize: 16, smallCaps: true }],
     };
     expect(computeDirtyRegions([plain], [caps]).firstDirtyIndex).toBe(0);
+  });
+});
+
+const numberedMarkParagraph = (run: Partial<WordLayoutMarker['run']> = {}): ParagraphBlock => ({
+  kind: 'paragraph',
+  id: 'selected-mark',
+  runs: [{ text: 'Beta.', fontFamily: 'Arial', fontSize: 16 }],
+  attrs: {
+    numberingProperties: { numId: 1, ilvl: 1 },
+    wordLayout: {
+      marker: {
+        markerText: '1.2',
+        justification: 'left',
+        suffix: 'tab',
+        markerBoxWidthPx: 48,
+        run: { fontFamily: 'Arial', fontSize: 16, ...run },
+      },
+    },
+  },
+});
+
+const wrapMarkParagraph = (
+  paragraph: ParagraphBlock,
+  kind: 'paragraph' | 'list' | 'table' | 'nested-table',
+): FlowBlock => {
+  if (kind === 'paragraph') return paragraph;
+  if (kind === 'list')
+    return {
+      kind: 'list',
+      id: 'list',
+      listType: 'number',
+      items: [{ id: 'item', marker: { kind: 'number', level: 1, text: '1.2' }, paragraph }],
+    };
+  const cellBlock: FlowBlock = kind === 'nested-table' ? wrapMarkParagraph(paragraph, 'table') : paragraph;
+  return { kind: 'table', id: kind, rows: [{ id: 'row', cells: [{ id: 'cell', blocks: [cellBlock] }] }] };
+};
+
+describe('SD-5988 marker dirty classification', () => {
+  it.each(['paragraph', 'list', 'table', 'nested-table'] as const)(
+    '%s dirties only the changed marker owner',
+    (kind) => {
+      const before = wrapMarkParagraph(numberedMarkParagraph(), kind);
+      const sibling = block('untouched', 'Gamma.');
+      for (const run of [
+        { bold: true },
+        { italic: true },
+        { fontFamily: 'Times New Roman' },
+        { fontSize: 24 },
+        { letterSpacing: 2 },
+      ]) {
+        const after = wrapMarkParagraph(numberedMarkParagraph(run), kind);
+        const dirty = computeDirtyRegions([before, sibling], [after, structuredClone(sibling)]);
+        expect.soft(dirty.changedBlockIds).toEqual([after.id]);
+        expect.soft(dirty.stableBlockIds.has(after.id)).toBe(false);
+        expect(dirty.stableBlockIds.has(sibling.id)).toBe(true);
+      }
+    },
+  );
+
+  it('keeps equal visual markers and source-anchor-only changes stable', () => {
+    const before = numberedMarkParagraph();
+    const after = { ...structuredClone(before), sourceAnchor: { sourceNodeId: 'new-anchor' } };
+    const dirty = computeDirtyRegions([before], [after]);
+    expect(dirty.changedBlockIds).toEqual([]);
+    expect(dirty.stableBlockIds.has(before.id)).toBe(true);
   });
 });

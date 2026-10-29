@@ -44,8 +44,10 @@ import type {
 
 import {
   ALL_BUILT_IN_TOOLBAR_ITEM_NAMES,
-  resolveToolbarCommandId,
+  TABLE_ACTION_COMMAND_IDS,
+  tableActionCommandId,
   getBuiltInToolbarItem,
+  resolveBuiltInItemCommandId,
 } from './compatibility-catalog.js';
 import { TOOLBAR_ITEM_ALIASES } from './toolbar-item-aliases.js';
 import { createImageFilePicker, resolveImageSrc } from './image-upload.js';
@@ -55,12 +57,7 @@ import { makeDefaultItems, withLinkHref } from './built-in/default-items.js';
 import { useToolbarItem } from './built-in/use-toolbar-item.js';
 import { toolbarIcons } from './built-in/toolbarIcons.js';
 import { toolbarTexts } from './built-in/toolbarTexts.js';
-import {
-  mapFontFamilyOptionsToToolbar,
-  HEADLESS_ITEM_MAP,
-  TABLE_ACTION_COMMAND_IDS,
-  TABLE_ACTION_COMMAND_MAP,
-} from './built-in/constants.js';
+import { mapFontFamilyOptionsToToolbar } from './built-in/constants.js';
 import { renderColorOptions } from './built-in/color-dropdown-helpers.js';
 import { findElementBySelector } from './built-in/general.js';
 
@@ -145,9 +142,6 @@ type BuiltInToolbarOptions = {
 
 type DocumentModeUi = { label: unknown; icon: unknown };
 
-const HEADLESS_COMMAND_IDS: Readonly<Record<string, string | undefined>> = HEADLESS_ITEM_MAP;
-const TABLE_ACTION_COMMANDS: Readonly<Record<string, string | undefined>> = TABLE_ACTION_COMMAND_MAP;
-
 function isThenable(value: unknown): value is PromiseLike<unknown> {
   return (
     (typeof value === 'object' || typeof value === 'function') &&
@@ -184,16 +178,6 @@ function isListenerTarget(value: unknown): value is ListenerTarget {
 
 function hasClosest(target: EventTarget | null): target is EventTarget & Pick<Element, 'closest'> {
   return target !== null && 'closest' in target && typeof target.closest === 'function';
-}
-
-/**
- * Resolve a legacy built-in item name to its canonical V2 controller command
- * id. The compatibility catalog is the primary truth; a small supplemental map
- * (`HEADLESS_ITEM_MAP`) covers documented items the renderer can surface that
- * are not modeled as catalog rows yet (e.g. table-of-contents, direction).
- */
-function resolveCommandId(name: string): string | null {
-  return resolveToolbarCommandId(name) ?? HEADLESS_COMMAND_IDS[name] ?? null;
 }
 
 function executeCommand(
@@ -985,7 +969,7 @@ export class BuiltInToolbar extends EventEmitter {
       return true;
     }
 
-    const commandId = resolveCommandId(name);
+    const commandId = resolveBuiltInItemCommandId(name);
     if (!commandId) return false;
 
     const commandState = this.snapshot?.commands?.[commandId];
@@ -1188,7 +1172,7 @@ export class BuiltInToolbar extends EventEmitter {
     if (name === 'tableActions') {
       const tableAction =
         typeof argument === 'object' && argument !== null && 'command' in argument ? argument.command : undefined;
-      const commandId = typeof tableAction === 'string' ? TABLE_ACTION_COMMANDS[tableAction] : undefined;
+      const commandId = typeof tableAction === 'string' ? tableActionCommandId(tableAction) : undefined;
       if (!commandId) return false;
       return executeCommand(this.ui, commandId, undefined, callbacks);
     }
@@ -1199,7 +1183,7 @@ export class BuiltInToolbar extends EventEmitter {
       return true;
     }
 
-    const commandId = resolveCommandId(name);
+    const commandId = resolveBuiltInItemCommandId(name);
     if (!commandId) return false;
     return executeCommand(this.ui, commandId, argument, callbacks);
   }

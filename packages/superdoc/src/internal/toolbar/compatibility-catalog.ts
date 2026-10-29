@@ -70,6 +70,26 @@ export interface BuiltInToolbarItemEntry {
   readonly note?: string;
 }
 
+export const TABLE_ACTION_COMMAND_IDS_BY_OPTION = {
+  addRowBefore: 'table-add-row-before',
+  addRowAfter: 'table-add-row-after',
+  deleteRow: 'table-delete-row',
+  addColumnBefore: 'table-add-column-before',
+  addColumnAfter: 'table-add-column-after',
+  deleteColumn: 'table-delete-column',
+  deleteTable: 'table-delete',
+  deleteCellAndTableBorders: 'table-remove-borders',
+  mergeCells: 'table-merge-cells',
+  splitCell: 'table-split-cell',
+  fixTables: 'table-fix',
+} as const satisfies Record<string, string>;
+
+export const TABLE_ACTION_COMMAND_IDS: readonly string[] = Object.values(TABLE_ACTION_COMMAND_IDS_BY_OPTION);
+
+export function tableActionCommandId(option: string): string | undefined {
+  return (TABLE_ACTION_COMMAND_IDS_BY_OPTION as Readonly<Record<string, string | undefined>>)[option];
+}
+
 /**
  * Member controller command ids the legacy `tableActions` dropdown fans out
  * into. These are real V2 `tables.*` operations now routed through the shared
@@ -78,18 +98,17 @@ export interface BuiltInToolbarItemEntry {
  * and fails closed with `table-context-unavailable` otherwise. The dropdown
  * itself is shell chrome; its members are controller-routed.
  */
-const TABLE_ACTION_COMMAND_IDS = [
-  'table-add-row-before',
-  'table-add-row-after',
-  'table-delete-row',
-  'table-add-column-before',
-  'table-add-column-after',
-  'table-delete-column',
-  'table-delete',
-  'table-merge-cells',
-  'table-split-cell',
-  'table-remove-borders',
-] as const;
+const ROUTED_TABLE_ACTION_COMMAND_IDS = TABLE_ACTION_COMMAND_IDS.filter(
+  (commandId) => getCommandDescriptor(commandId)?.disposition === 'routed',
+);
+
+const UNCATALOGED_ITEM_COMMAND_IDS: Readonly<Record<string, string | undefined>> = {
+  ruler: 'ruler',
+  formattingMarks: 'formatting-marks',
+  tableOfContents: 'table-of-contents-insert',
+  directionLtr: 'direction-ltr',
+  directionRtl: 'direction-rtl',
+};
 
 /**
  * The built-in toolbar compatibility catalog. Order groups items the way the
@@ -233,7 +252,7 @@ export const BUILT_IN_TOOLBAR_CATALOG: readonly BuiltInToolbarItemEntry[] = [
     instanceMethod: null,
     disposition: 'shell-owned',
     group: 'center',
-    memberCommandIds: TABLE_ACTION_COMMAND_IDS,
+    memberCommandIds: ROUTED_TABLE_ACTION_COMMAND_IDS,
     note: 'table editing dropdown is shell chrome; its member commands are controller-routed through the shared table-context facade (ui.tables / host.getTableContext()) and fail closed with table-context-unavailable when the caret is not in a table',
   },
 
@@ -332,6 +351,10 @@ export function listBuiltInToolbarItemsByGroup(group: ToolbarGroup): BuiltInTool
 export function resolveToolbarCommandId(name: string): string | null {
   const entry = CATALOG_BY_NAME.get(name);
   return entry?.disposition === 'controller-routed' ? entry.commandId : null;
+}
+
+export function resolveBuiltInItemCommandId(name: string): string | null {
+  return resolveToolbarCommandId(name) ?? UNCATALOGED_ITEM_COMMAND_IDS[name] ?? null;
 }
 
 /**

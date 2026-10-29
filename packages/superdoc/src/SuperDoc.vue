@@ -15,7 +15,6 @@ import '@superdoc/common/styles/common-styles.css';
 import { superdocIcons } from './icons.js';
 //prettier-ignore
 import {
-  getCurrentInstance,
   inject,
   ref,
   shallowRef,
@@ -46,6 +45,7 @@ import { composeAuthorColorResolver } from '@superdoc/contracts';
 import useComment from './components/CommentsLayer/use-comment';
 import { collectRemovedCommentIds } from './components/CommentsLayer/collect-removed-comment-ids.js';
 import { useHighContrastMode } from './composables/use-high-contrast-mode';
+import { useSuperDocInstance } from './composables/use-superdoc-instance';
 import { useCommentSmallScreen } from './composables/use-comment-small-screen.js';
 import { useCompactCommentPopover } from './composables/use-compact-comment-popover.js';
 import { getVisibleThreadAnchorClientY } from './helpers/comment-focus.js';
@@ -223,9 +223,9 @@ const {
   peekInstantSidebarAlignment,
   clearInstantSidebarAlignment,
 } = commentsStore;
-const { proxy } = getCurrentInstance();
+const { proxy, superdoc } = useSuperDocInstance();
 commentsStore.proxy = proxy;
-const documentOpenTelemetry = createDocumentOpenTelemetry(proxy.$superdoc.config);
+const documentOpenTelemetry = createDocumentOpenTelemetry(superdoc.config);
 
 // Resolve the single v2 integration object. superdoc@2 source-resolves the
 // private v2 browser shell locally; customers do not provide a runtime switch.
@@ -416,7 +416,7 @@ const linkPopover = useLinkPopover({
   },
 });
 
-const pdfConfig = proxy.$superdoc.config.modules?.pdf || {};
+const pdfConfig = superdoc.config.modules?.pdf || {};
 
 const handleDocumentReady = (documentId, container) => {
   const doc = getDocument(documentId);

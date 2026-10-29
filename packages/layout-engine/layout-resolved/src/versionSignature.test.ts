@@ -1241,3 +1241,29 @@ describe('SD-5988 marker visual version', () => {
     expect(deriveBlockVersion(after)).toBe(deriveBlockVersion(before));
   });
 });
+
+describe('SD-6584 equation paint versions', () => {
+  const paragraph = (text: string, ommlJson: unknown): ParagraphBlock => ({
+    kind: 'paragraph',
+    id: 'equation',
+    runs: [{ kind: 'math', textContent: text, ommlJson, width: 24, height: 20 }],
+  });
+
+  it('invalidates equal-length equation content without a geometry change', () => {
+    expect(deriveBlockVersion(paragraph('z', { name: 'm:t', elements: [{ type: 'text', text: 'z' }] }))).not.toBe(
+      deriveBlockVersion(paragraph('w', { name: 'm:t', elements: [{ type: 'text', text: 'w' }] })),
+    );
+  });
+
+  it('invalidates OMML structure changes with identical fallback text and dimensions', () => {
+    expect(deriveBlockVersion(paragraph('xy', { name: 'm:sSup', elements: [] }))).not.toBe(
+      deriveBlockVersion(paragraph('xy', { name: 'm:sSub', elements: [] })),
+    );
+  });
+
+  it('retains a version for equivalent equation payloads', () => {
+    expect(deriveBlockVersion(paragraph('z', { name: 'm:t', elements: [{ type: 'text', text: 'z' }] }))).toBe(
+      deriveBlockVersion(paragraph('z', { elements: [{ text: 'z', type: 'text' }], name: 'm:t' })),
+    );
+  });
+});

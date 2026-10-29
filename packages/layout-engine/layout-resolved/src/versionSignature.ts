@@ -421,6 +421,18 @@ export const deriveBlockVersion = (block: FlowBlock, fontConfigVersion?: number)
           return renderedInlineImageRunVersion(run as ImageRun);
         }
 
+        if (run.kind === 'math') {
+          return stableSerializeEvidenceValue([
+            'math',
+            hashStableValue(2166136261, run.ommlJson).toString(16),
+            run.textContent,
+            run.width,
+            run.height,
+            fontConfigVersion ?? getFontConfigVersion(),
+            getSdtMetadataVersion(run.sdt),
+          ]);
+        }
+
         if (run.kind === 'lineBreak') {
           return [
             'linebreak',

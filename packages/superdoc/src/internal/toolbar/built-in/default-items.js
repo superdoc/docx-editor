@@ -21,6 +21,7 @@ import { executeFirstPartyCommandAsync, readFirstPartyPageNumbers } from '../../
 
 import checkIconSvg from '@superdoc/common/icons/check.svg?raw';
 import { RESPONSIVE_BREAKPOINTS, TOOLBAR_FONTS, TOOLBAR_FONT_SIZES } from './constants.js';
+import { tableActionCommandId } from '../compatibility-catalog.js';
 
 const closeDropdown = (dropdown) => {
   dropdown.expand.value = false;
@@ -808,7 +809,10 @@ export const makeDefaultItems = ({
 
   function renderTableActions(tableActionsItem) {
     return h(TableActions, {
-      options: tableActionsOptions,
+      options: tableActionsOptions.map((option) => ({
+        ...option,
+        disabled: !superToolbar.isCommandEnabled(tableActionCommandId(option.command)),
+      })),
       onSelect: (event) => {
         closeDropdown(tableActionsItem);
         const { command } = event;

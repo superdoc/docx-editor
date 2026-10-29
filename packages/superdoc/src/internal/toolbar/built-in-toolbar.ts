@@ -927,21 +927,25 @@ export class BuiltInToolbar extends EventEmitter {
     return Boolean(commandState) && commandState?.disabled === false && commandState?.value == null;
   }
 
+  isCommandEnabled(commandId: string | undefined): boolean {
+    if (!commandId) return false;
+    const commandState = this.snapshot?.commands?.[commandId];
+    return Boolean(commandState && !commandState.disabled);
+  }
+
   #applyHeadlessState(item: ToolbarItem): boolean {
     const name = item.name.value;
 
     if (item.isCustomToolbarItem && typeof item.command === 'string') {
       const commandState = this.snapshot?.commands?.[item.command];
-      item.setDisabled(item.initiallyDisabled || !commandState || Boolean(commandState.disabled));
+      item.setDisabled(item.initiallyDisabled || !this.isCommandEnabled(item.command));
       if (commandState?.active) item.activate();
       else item.deactivate();
       return true;
     }
 
     if (name === 'tableActions') {
-      const tableActionStates = TABLE_ACTION_COMMAND_IDS.map((commandId) => this.snapshot?.commands?.[commandId]);
-      const hasAnyEnabled = tableActionStates.some((state) => state && !state.disabled);
-      item.setDisabled(!hasAnyEnabled);
+      item.setDisabled(!TABLE_ACTION_COMMAND_IDS.some((commandId) => this.isCommandEnabled(commandId)));
       return true;
     }
 

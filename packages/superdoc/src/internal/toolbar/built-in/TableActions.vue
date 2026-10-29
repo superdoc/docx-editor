@@ -8,6 +8,7 @@ const props = defineProps({
 });
 
 const handleClick = (item) => {
+  if (item.disabled) return;
   emit('select', { command: item.command });
 };
 </script>
@@ -16,7 +17,8 @@ const handleClick = (item) => {
   <div class="toolbar-table-actions">
     <div
       class="toolbar-table-actions__item"
-      :class="{ 'toolbar-table-actions__item--border': option.bottomBorder }"
+      :class="{ 'toolbar-table-actions__item--border': option.bottomBorder, 'sd-disabled': option.disabled }"
+      :aria-disabled="option.disabled ? 'true' : undefined"
       v-for="option in options"
       @click="handleClick(option)"
       :data-item="option.props?.['data-item'] || ''"
@@ -60,8 +62,13 @@ const handleClick = (item) => {
   position: relative;
 }
 
-.toolbar-table-actions__item:hover {
+.toolbar-table-actions__item:not(.sd-disabled):hover {
   background-color: var(--sd-ui-dropdown-hover-bg, #d8dee5);
+}
+
+.toolbar-table-actions__item.sd-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .toolbar-table-actions__item--border:after {

@@ -36,7 +36,7 @@
     },
     {
       "name": "provider",
-      "type": "{\n  id: string;\n  getCapabilities?: () => ProofingCapabilities | Promise<ProofingCapabilities>;\n  check: (request: ProofingCheckRequest) => Promise<ProofingCheckResult>;\n  dispose?: () => void | Promise<void>;\n} | null",
+      "type": "{\n  id: string;\n  getCapabilities?: () => ProofingCapabilities | Promise<ProofingCapabilities>;\n  check: (request: ProofingCheckRequest) => Promise<ProofingCheckResult>;\n  suggest?: (request: ProofingSuggestRequest) => Promise<ProofingSuggestResult>;\n  dispose?: () => void | Promise<void>;\n} | null",
       "typeName": "ProofingProvider | null",
       "required": false,
       "description": "Checks the text segments SuperDoc supplies and returns spelling, grammar, or style issues.",

@@ -39,10 +39,38 @@ Use the [proofing example](https://go.superdoc.dev/examples/proofing) for a loca
 checking require a provider that detects those issue kinds; enabling proofing alone does not add them.
 
 SuperDoc sends text segments to the provider after edits. Return each issue with its `segmentId` and zero-based UTF-16
-offsets into that segment, with an exclusive `end`. Return suggestions in `replacements`; do not edit the document
-inside `check()`. Honor the request's `signal` so SuperDoc can cancel stale or timed-out checks.
+offsets into that segment, with an exclusive `end`. Return suggestions in `replacements`, or load them when the menu
+opens as described below; do not edit the document inside `check()`. Honor the request's `signal` so SuperDoc can
+cancel stale or timed-out checks.
 
 Report provider failures through `onProofingError`. A failed check does not mean the document has no mistakes.
+
+## Load suggestions when the menu opens
+
+Some checkers find a misspelling quickly but take much longer to compute replacements.
+Return those issues from `check()` without `replacements`, or with an empty array, and add a `suggest()` method to the provider.
+SuperDoc calls `suggest()` for one issue when a user opens its menu, and shows **Loading suggestions…** until it resolves.
+
+```ts
+const provider = {
+  id: 'local-dictionary',
+  check: async ({ segments, signal }) => ({ issues: findMisspellings(segments, signal) }),
+  suggest: async ({ text, maxSuggestions = 3, signal }) => {
+    signal.throwIfAborted();
+    return { replacements: dictionary.suggest(text, maxSuggestions) };
+  },
+};
+```
+
+The request carries the flagged `text`, the `issue` as `check()` returned it, and the `segment` that contains it, for providers that need context.
+SuperDoc aborts `signal` when the menu closes, another menu opens, or `timeoutMs` elapses.
+An empty `replacements` array shows **No suggestions**, and reopening that menu does not call `suggest()` again until the next check.
+A rejected promise, an invalid result, or a timeout shows **Suggestions unavailable** and reports the failure through `onProofingError` without removing underlines.
+The menu shows up to five replacements.
+Issues that already include `replacements` show them immediately, and providers without `suggest()` keep working unchanged.
+
+SuperDoc applies a chosen suggestion only if the flagged text is unchanged.
+If the text moved or changed after the menu opened, for example through a collaborator's edit, the document stays as it is.
 
 ## Save corrected text
 

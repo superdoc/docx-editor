@@ -889,6 +889,20 @@ export interface ProofingCheckResult {
   issues: ProofingIssue[];
 }
 
+export interface ProofingSuggestRequest {
+  documentId?: string | null;
+  defaultLanguage?: string | null;
+  maxSuggestions?: number;
+  segment: ProofingSegment;
+  issue: Omit<ProofingIssue, 'replacements'>;
+  text: string;
+  signal: AbortSignal;
+}
+
+export interface ProofingSuggestResult {
+  replacements: string[];
+}
+
 /**
  * Provider-agnostic proofing engine. SuperDoc owns segment extraction,
  * scheduling, and rendering; providers only inspect text and return ranges.
@@ -897,6 +911,7 @@ export interface ProofingProvider {
   id: string;
   getCapabilities?: () => Promise<ProofingCapabilities> | ProofingCapabilities;
   check: (request: ProofingCheckRequest) => Promise<ProofingCheckResult>;
+  suggest?: (request: ProofingSuggestRequest) => Promise<ProofingSuggestResult>;
   dispose?: () => Promise<void> | void;
 }
 

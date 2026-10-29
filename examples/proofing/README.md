@@ -12,6 +12,7 @@ pnpm dev
 ```
 
 Type a misspelling, then right-click its underline to replace or ignore it. The dictionary runs in the browser and does not send document text over the network.
+Checking only finds misspellings; the provider computes replacements in `suggest()` when you open an underline's menu, because Typo.js suggestions are much slower than lookups.
 
 ## Verify it
 

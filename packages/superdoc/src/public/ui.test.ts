@@ -9812,14 +9812,138 @@ describe('public ui — document control parity (row 742)', () => {
     ]);
     expect(new Set(changes.map((change) => change.documentEpoch))).toEqual(new Set([first!.documentEpoch]));
 
+    emit({
+      type: 'mutation:committed',
+      origin: 'command',
+      cause: 'api',
+      documentReplaced: true,
+      receipt: { success: true, txId: 'tx-replace' },
+    });
     instanceEventListeners.get('document-replaced')?.({ editor: superdoc.activeEditor, host });
     emit({ type: 'mutation:committed', origin: 'command', cause: 'api', receipt: { success: true, txId: 'tx-5' } });
+    expect(changes).toHaveLength(5);
     expect(changes.at(-1)).toMatchObject({ seq: 1, txId: 'tx-5' });
     expect(changes.at(-1)!.documentEpoch).not.toBe(first!.documentEpoch);
 
     stop();
     emit({ type: 'mutation:committed', origin: 'command', cause: 'api', receipt: { success: true, txId: 'tx-6' } });
     expect(changes).toHaveLength(5);
+  });
+
+  it("keeps each document's change sequence across active-editor switches", () => {
+    const listenersByHost = new Map<object, (event: Record<string, unknown>) => void>();
+    const instanceEventListeners = new Map<string, (payload?: unknown) => void>();
+    const makeHost = () => {
+      const host: Record<string, unknown> = {};
+      host.events = {
+        subscribe: (listener: (event: Record<string, unknown>) => void) => {
+          listenersByHost.set(host, listener);
+          return () => listenersByHost.delete(host);
+        },
+      };
+      return host;
+    };
+    const doc = {
+      comments: { list: () => ({ items: [] }) },
+      trackChanges: { list: () => ({ items: [] }) },
+      selection: { current: () => null },
+    };
+    const hostA = makeHost();
+    const hostB = makeHost();
+    const superdoc = {
+      activeEditor: { doc, host: hostA },
+      config: { documentMode: 'editing' },
+      on: vi.fn((event: string, listener: (payload?: unknown) => void) => {
+        instanceEventListeners.set(event, listener);
+      }),
+      off: vi.fn(),
+    };
+    const ui = createSuperDocUI({ superdoc });
+    const changes: SuperDocDocumentChange[] = [];
+    ui.document.onChange((change) => changes.push(change));
+    const commit = (host: object) =>
+      listenersByHost.get(host)?.({
+        type: 'mutation:committed',
+        origin: 'command',
+        cause: 'user',
+        receipt: { success: true },
+      });
+    const activate = (host: object) => {
+      superdoc.activeEditor = { doc, host: host as typeof hostA };
+      instanceEventListeners.get('active-editor-change')?.();
+    };
+
+    commit(hostA);
+    activate(hostB);
+    commit(hostB);
+    activate(hostA);
+    commit(hostA);
+
+    expect(changes.map(({ documentEpoch, seq }) => [documentEpoch, seq])).toEqual([
+      [changes[0]!.documentEpoch, 1],
+      [changes[1]!.documentEpoch, 1],
+      [changes[0]!.documentEpoch, 2],
+    ]);
+    expect(changes[1]!.documentEpoch).not.toBe(changes[0]!.documentEpoch);
+  });
+
+  it('starts a new document epoch for a replacement that completed while its editor was inactive', () => {
+    const listenersByHost = new Map<object, (event: Record<string, unknown>) => void>();
+    const instanceEventListeners = new Map<string, (payload?: unknown) => void>();
+    const replacements = new Map<object, number>();
+    const makeHost = () => {
+      const host: Record<string, unknown> = {};
+      replacements.set(host, 0);
+      host.getDocumentReplacementVersion = () => replacements.get(host);
+      host.events = {
+        subscribe: (listener: (event: Record<string, unknown>) => void) => {
+          listenersByHost.set(host, listener);
+          return () => listenersByHost.delete(host);
+        },
+      };
+      return host;
+    };
+    const doc = {
+      comments: { list: () => ({ items: [] }) },
+      trackChanges: { list: () => ({ items: [] }) },
+      selection: { current: () => null },
+    };
+    const hostA = makeHost();
+    const hostB = makeHost();
+    const superdoc = {
+      activeEditor: { doc, host: hostA },
+      config: { documentMode: 'editing' },
+      on: vi.fn((event: string, listener: (payload?: unknown) => void) => {
+        instanceEventListeners.set(event, listener);
+      }),
+      off: vi.fn(),
+    };
+    const ui = createSuperDocUI({ superdoc });
+    const changes: SuperDocDocumentChange[] = [];
+    ui.document.onChange((change) => changes.push(change));
+    const commit = (host: object) =>
+      listenersByHost.get(host)?.({
+        type: 'mutation:committed',
+        origin: 'command',
+        cause: 'user',
+        receipt: { success: true },
+      });
+    const activate = (host: object) => {
+      superdoc.activeEditor = { doc, host: host as typeof hostA };
+      instanceEventListeners.get('active-editor-change')?.();
+    };
+
+    commit(hostA);
+    activate(hostB);
+    replacements.set(hostA, 1);
+    commit(hostB);
+    activate(hostA);
+    commit(hostA);
+
+    const [beforeReplace, onB, afterReplace] = changes;
+    expect(afterReplace).toMatchObject({ seq: 1 });
+    expect(afterReplace!.documentEpoch).not.toBe(beforeReplace!.documentEpoch);
+    expect(onB).toMatchObject({ seq: 1 });
   });
 
   it('stops delivering document changes when the owning scope or controller is disposed', () => {

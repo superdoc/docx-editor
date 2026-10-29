@@ -7651,22 +7651,32 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
   // re-lists on slice change would stay stale.
   let scheduleActiveSearchRefresh = (): void => {};
   const documentChangeListeners = new Set<(change: SuperDocDocumentChange) => void>();
-  let documentChangeEpoch = 0;
-  let documentChangeSeq = 0;
-  const startDocumentChangeEpoch = (): void => {
-    documentChangeEpoch += 1;
-    documentChangeSeq = 0;
+  type DocumentChangeCounter = { epoch: string; seq: number; replacement: unknown };
+  const documentChangeCounters = new WeakMap<object, DocumentChangeCounter>();
+  let documentEpochCount = 0;
+  const readDocumentReplacement = (host: object): unknown =>
+    safeCall<unknown>(() => hostMethod(host as LooseRecord, 'getDocumentReplacementVersion')?.(), null);
+  const startDocumentChangeEpoch = (host: object): DocumentChangeCounter => {
+    documentEpochCount += 1;
+    const counter = { epoch: `document-${documentEpochCount}`, seq: 0, replacement: readDocumentReplacement(host) };
+    documentChangeCounters.set(host, counter);
+    return counter;
   };
-  const publishDocumentChange = (event: LooseRecord): void => {
+  const currentDocumentChangeCounter = (host: object): DocumentChangeCounter => {
+    const counter = documentChangeCounters.get(host);
+    return counter && counter.replacement === readDocumentReplacement(host) ? counter : startDocumentChangeEpoch(host);
+  };
+  const publishDocumentChange = (host: object, event: LooseRecord): void => {
+    if (event.type === 'collaboration:document-replaced' || event.documentReplaced === true) {
+      startDocumentChangeEpoch(host);
+      return;
+    }
     if (documentChangeListeners.size === 0) return;
     const facts = documentChangeFromHostEvent(event);
     if (!facts) return;
-    documentChangeSeq += 1;
-    const change: SuperDocDocumentChange = {
-      documentEpoch: `document-${documentChangeEpoch}`,
-      seq: documentChangeSeq,
-      ...facts,
-    };
+    const counter = currentDocumentChangeCounter(host);
+    counter.seq += 1;
+    const change: SuperDocDocumentChange = { documentEpoch: counter.epoch, seq: counter.seq, ...facts };
     for (const listener of Array.from(documentChangeListeners)) safeCall(() => listener(change), undefined);
   };
   const syncHostEventsSubscription = (): void => {
@@ -7692,8 +7702,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
         'subscribe',
       )?.((event: LooseRecord) => {
         const type = event?.type;
-        if (type === 'collaboration:document-replaced') startDocumentChangeEpoch();
-        publishDocumentChange(event);
+        if (host) publishDocumentChange(host, event);
         const isStandaloneDocumentMutation = type === 'document:mutated' && event.hasCommitEvent !== true;
         if (
           type === 'collaboration:document-replaced' ||
@@ -12420,7 +12429,6 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       return () => documentChangeListeners.delete(listener);
     },
   };
-  documentResetHooks.push(startDocumentChangeEpoch);
 
   // Resolve THIS controller's visible host element: the editor mount container
   // when the host exposes one, else the SuperDoc root element. Scopes point

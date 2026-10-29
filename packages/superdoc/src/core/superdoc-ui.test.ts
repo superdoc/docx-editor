@@ -482,7 +482,6 @@ describe('superdoc.ui — sole owner', () => {
       'shares the confirmed %s source identity between the V2 host and document store',
       async (kind) => {
         const { superdoc, storedData } = mountWithStoredDocument('editing-ready');
-        Object.assign(superdoc.activeEditor!, { editorVersion: 2 });
         const bytes = new Uint8Array([0, 1, 2, 3, 0]).subarray(1, 4);
         const source = kind === 'bytes' ? bytes : kind === 'buffer' ? bytes.slice().buffer : new Blob([bytes]);
         let hostSource: unknown;
@@ -506,7 +505,6 @@ describe('superdoc.ui — sole owner', () => {
 
     it('persists a deferred replacement only to its originating document after an active-editor switch', async () => {
       const { superdoc } = mountWithStoredDocument('editing-ready');
-      Object.assign(superdoc.activeEditor!, { editorVersion: 2 });
       const origin = superdoc.activeEditor;
       const replacement = new Blob(['next']);
       const nextDocument = { id: 'doc-2', type: 'docx', data: new Blob(['other']) };
@@ -531,41 +529,6 @@ describe('superdoc.ui — sole owner', () => {
       expect(nextDocument.data).not.toBe(replacement);
       expect(superdoc.activeEditor).toBe(nextEditor);
       expect(replaced).toHaveBeenCalledWith(expect.objectContaining({ editor: origin }));
-    });
-
-    it.each([undefined, null, true, 'ok', {}, { state: 'editing-ready' }])(
-      'keeps legacy raw results and exposes the same confirmation: %j',
-      async (raw) => {
-        const superdoc = mount();
-        stubLegacyActiveEditor(superdoc, raw);
-        const replaced = vi.fn();
-        superdoc.on('document-replaced', replaced);
-        const source = new Blob(['next']);
-        expect(await superdoc.replaceFile(source)).toBe(raw);
-        expect(await superdoc.replaceDocument(source)).toEqual({ ok: true });
-        expect(replaced).toHaveBeenCalledTimes(2);
-      },
-    );
-
-    it('preserves a legacy refusal without publishing replacement data or events', async () => {
-      const { superdoc, storedData } = mountWithStoredDocument('failed');
-      const raw = { state: 'failed', reason: 'open-failed', detail: 'Corrupt zip' };
-      Object.defineProperty(superdoc.activeEditor, 'replaceFile', { value: async () => raw });
-      const replaced = vi.fn();
-      superdoc.on('document-replaced', replaced);
-      const source = new Blob(['bad']);
-
-      expect(await superdoc.replaceFile(source)).toBe(raw);
-      expect(storedData()).toBe('ORIGINAL');
-      expect(replaced).not.toHaveBeenCalled();
-
-      expect(await superdoc.replaceDocument(source)).toEqual({
-        ok: false,
-        reason: 'open-failed',
-        detail: 'Corrupt zip',
-      });
-      expect(storedData()).toBe('ORIGINAL');
-      expect(replaced).not.toHaveBeenCalled();
     });
 
     it('reports failed replacement even when readiness fires for recovery', async () => {
@@ -625,6 +588,24 @@ describe('superdoc.ui — sole owner', () => {
       const superdoc = mount();
       stubActiveEditor(superdoc, undefined);
       expect(await superdoc.replaceDocument(new Blob(['next']))).toEqual({ ok: false });
+    });
+
+    it('rejects a replace on an editor that is not the v2 facade without persisting or emitting', async () => {
+      const { superdoc, storedData } = mountWithStoredDocument('editing-ready');
+      const replaceFile = vi.fn(async () => ({ state: 'editing-ready' }));
+      Object.defineProperty(superdoc, 'activeEditor', {
+        value: { options: { documentId: 'doc-1' }, replaceFile },
+        configurable: true,
+        writable: true,
+      });
+      const replaced = vi.fn();
+      superdoc.on('document-replaced', replaced);
+
+      await expect(superdoc.replaceFile(new Blob(['next']))).rejects.toThrow('replaceFile is unavailable');
+
+      expect(replaceFile).not.toHaveBeenCalled();
+      expect(storedData()).toBe('ORIGINAL');
+      expect(replaced).not.toHaveBeenCalled();
     });
 
     it.each(['editing-ready', 'failed'])('persists only confirmed replacement bytes: %s', async (state) => {
@@ -722,26 +703,6 @@ describe('superdoc.ui — sole owner', () => {
       expect(observeGeometry).toHaveBeenCalledTimes(1);
     });
 
-    /** A legacy (non-v2) editor facade whose replace resolves with `state`. */
-    function stubLegacyActiveEditor(superdoc: SuperDocInstance, result: unknown): void {
-      const editor = { replaceFile: async () => result };
-      Object.defineProperty(superdoc, 'activeEditor', { value: editor, configurable: true, writable: true });
-    }
-
-    it('does not emit when a legacy replace reports a non-ready state', async () => {
-      const superdoc = mount();
-      stubLegacyActiveEditor(superdoc, { state: 'failed' });
-      const seen: unknown[] = [];
-      superdoc.on('document-replaced', (payload) => seen.push(payload));
-
-      await superdoc.replaceFile(new Blob([new Uint8Array([1, 2, 3])]));
-
-      // The v2 branch has always gated on state; the legacy branch emitted
-      // unconditionally, so an adapter reporting failure without throwing still
-      // got a UI reset it had not earned.
-      expect(seen).toEqual([]);
-    });
-
     /**
      * Seeds a config document so `#replaceActiveDocumentData()` has something to
      * write to. Without one it early-returns and any assertion about the stored
@@ -752,46 +713,12 @@ describe('superdoc.ui — sole owner', () => {
       const superdoc = mount() as SuperDocInstance & { config: { documents: Array<Record<string, unknown>> } };
       superdoc.config.documents = [{ id: 'doc-1', type: 'docx', data: 'ORIGINAL' }];
       Object.defineProperty(superdoc, 'activeEditor', {
-        value: { options: { documentId: 'doc-1' }, replaceFile: async () => ({ state }) },
+        value: { editorVersion: 2, options: { documentId: 'doc-1' }, replaceFile: async () => ({ state }) },
         configurable: true,
         writable: true,
       });
       return { superdoc, storedData: () => superdoc.config.documents[0]!['data'] };
     }
-
-    it('does not persist bytes for a legacy replace that reports a non-ready state', async () => {
-      const { superdoc, storedData } = mountWithStoredDocument('failed');
-
-      await superdoc.replaceFile(new Blob([new Uint8Array([1, 2, 3])]));
-
-      // The v2 branch has always gated the data write and the emit together.
-      // Gating only the emit persists an unconfirmed replacement into config and
-      // the store, which survives past the failed attempt.
-      expect(storedData()).toBe('ORIGINAL');
-    });
-
-    it('persists bytes for a legacy replace that reports no state', async () => {
-      const { superdoc, storedData } = mountWithStoredDocument(undefined);
-
-      await superdoc.replaceFile(new Blob([new Uint8Array([1, 2, 3])]));
-
-      // Every legacy adapter predating the state field returns nothing, so a
-      // missing state has to keep counting as confirmed.
-      expect(storedData()).not.toBe('ORIGINAL');
-    });
-
-    it('emits for a legacy replace that reports no state at all', async () => {
-      const superdoc = mount();
-      stubLegacyActiveEditor(superdoc, undefined);
-      const seen: unknown[] = [];
-      superdoc.on('document-replaced', (payload) => seen.push(payload));
-
-      await superdoc.replaceFile(new Blob([new Uint8Array([1, 2, 3])]));
-
-      // Every legacy adapter predating the state field returns nothing, so a
-      // missing state has to keep counting as confirmed.
-      expect(seen).toHaveLength(1);
-    });
 
     it('names the editor whose replacement completed', async () => {
       const superdoc = mount();

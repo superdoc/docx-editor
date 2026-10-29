@@ -12,7 +12,7 @@
     "handles": 2
   },
   "core/SuperDoc.ts": {
-    "host": 2,
+    "host": 1,
     "reviewBridge": 3
   },
   "internal/toolbar/built-in-toolbar.ts": {
@@ -38,7 +38,7 @@
     "host": 1,
     "handles": 1,
     "reviewBridge": 3,
-    "v1": 29
+    "v1": 17
   },
   "SuperDoc.vue": {
     "host": 1,

@@ -212,9 +212,7 @@ const {
   showAddComment,
   handleEditorLocationsUpdate,
   handleTrackedChangeUpdate,
-  refreshTrackedChangeCommentsByIds,
   syncTrackedChangePositionsWithDocument,
-  syncTrackedChangeComments,
   addComment,
   addHydratedComment,
   getComment,
@@ -326,7 +324,6 @@ const superdocRoot = ref(null);
 const layers = ref(null);
 const rightSidebarRef = ref(null);
 const pdfViewerRef = ref(null);
-const pendingReplayTrackedChangeSync = ref(false);
 const toolsMenuPosition = reactive({ top: null, right: '-25px', zIndex: 101 });
 const {
   superdocContainerWidth,
@@ -420,62 +417,6 @@ const linkPopover = useLinkPopover({
 });
 
 const pdfConfig = proxy.$superdoc.config.modules?.pdf || {};
-
-const flushPendingReplayTrackedChangeSync = () => {
-  if (!pendingReplayTrackedChangeSync.value) return;
-  pendingReplayTrackedChangeSync.value = false;
-  syncTrackedChangeComments({ superdoc: proxy.$superdoc, editor: proxy.$superdoc?.activeEditor });
-};
-
-let queuedTrackedChangeCommentResync = null;
-let isTrackedChangeCommentResyncQueued = false;
-
-const flushQueuedTrackedChangeCommentResync = () => {
-  isTrackedChangeCommentResyncQueued = false;
-
-  const pendingResync = queuedTrackedChangeCommentResync;
-  queuedTrackedChangeCommentResync = null;
-  if (!pendingResync?.editor) return;
-
-  if (pendingResync.fullResync) {
-    syncTrackedChangeComments({
-      superdoc: proxy.$superdoc,
-      editor: pendingResync.editor,
-      broadcastChanges: pendingResync.broadcastChanges,
-    });
-    return;
-  }
-
-  refreshTrackedChangeCommentsByIds({
-    superdoc: proxy.$superdoc,
-    editor: pendingResync.editor,
-    changeIds: Array.from(pendingResync.changeIds ?? []),
-    broadcastChanges: pendingResync.broadcastChanges,
-  });
-};
-
-const queueTrackedChangeCommentResync = ({ editor, changeIds = null, broadcastChanges = true } = {}) => {
-  if (!editor || (changeIds && !changeIds.size)) return;
-
-  const existingChangeIds = queuedTrackedChangeCommentResync?.changeIds ?? new Set();
-  queuedTrackedChangeCommentResync = {
-    editor,
-    fullResync: !changeIds || Boolean(queuedTrackedChangeCommentResync?.fullResync),
-    changeIds: changeIds ? new Set([...existingChangeIds, ...changeIds]) : existingChangeIds,
-    broadcastChanges: Boolean(queuedTrackedChangeCommentResync?.broadcastChanges) || Boolean(broadcastChanges),
-  };
-
-  if (isTrackedChangeCommentResyncQueued) return;
-  isTrackedChangeCommentResyncQueued = true;
-  queueMicrotask(flushQueuedTrackedChangeCommentResync);
-};
-
-const scheduleReplayTrackedChangeSync = () => {
-  pendingReplayTrackedChangeSync.value = true;
-  nextTick(() => {
-    flushPendingReplayTrackedChangeSync();
-  });
-};
 
 const handleDocumentReady = (documentId, container) => {
   const doc = getDocument(documentId);
@@ -1872,7 +1813,6 @@ const onV2RenderCleared = (payload) => {
   v2PageMetricsSnapshot.value = null;
   const clearedDocumentId = payload?.documentId == null ? null : String(payload.documentId);
   clearV2MutationRejectionNotifications(clearedDocumentId);
-  commentsStore.cancelImportedTrackedChangeBootstrap?.(clearedDocumentId ?? undefined);
   if (clearedDocumentId) v2MountStagesByDocumentId.delete(clearedDocumentId);
   if (
     latestV2MountStage &&
@@ -2659,10 +2599,6 @@ const onEditorCommentsUpdate = (params = {}) => {
     };
   };
 
-  if (type === 'replayCompleted') {
-    scheduleReplayTrackedChangeSync();
-  }
-
   if (COMMENT_EVENTS?.ADD && type === COMMENT_EVENTS.ADD && commentPayload) {
     commentPayload = normalizeReplayCommentModelPayload(commentPayload);
 
@@ -3119,7 +3055,6 @@ function handleContainerKeydown(e) {
 }
 
 onBeforeUnmount(() => {
-  commentsStore.cancelImportedTrackedChangeBootstrap?.();
   passwordPrompt.destroy();
   findReplace.destroy();
   linkPopover.destroy();

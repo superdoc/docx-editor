@@ -204,7 +204,6 @@ import type {
   CanPerformPermissionParams,
   CollaborationConfig,
   CollaborationProvider,
-  Comment,
   Config,
   ContentControlActiveChangePayload,
   ContentControlClickPayload,
@@ -3977,27 +3976,6 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
       return { raw: result, confirmed };
     }
 
-    const legacyReplaceFile =
-      activeEditor && !isV2ActiveEditorFacade(activeEditor)
-        ? (activeEditor as { replaceFile?: (source: File | Blob | ArrayBuffer | Uint8Array) => Promise<unknown> })
-            .replaceFile
-        : null;
-    if (typeof legacyReplaceFile === 'function') {
-      const result = await legacyReplaceFile.call(activeEditor, source);
-      // Unlike v2, older adapters confirm by resolving without a state field.
-      const legacyState = result && typeof result === 'object' ? (result as { state?: unknown }).state : undefined;
-      const legacyConfirmed =
-        legacyState === undefined ||
-        legacyState === null ||
-        legacyState === 'review-ready' ||
-        legacyState === 'editing-ready';
-      if (legacyConfirmed) {
-        this.#replaceActiveDocumentData(activeEditor, source);
-        this.emit('document-replaced', { editor: activeEditor, host: (activeEditor as { host?: unknown })?.host });
-      }
-      return { raw: result, confirmed: legacyConfirmed };
-    }
-
     throw new Error('SuperDoc: replaceFile is unavailable for the active editor');
   }
 
@@ -4012,70 +3990,6 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
     fieldsHighlightColor,
   }: Pick<ExportParams, 'commentsType' | 'isFinalDoc' | 'policies' | 'fieldsHighlightColor'> = {}) {
     if (policies !== undefined) resolveV2DocxExportOptions({ policies, commentsType, isFinalDoc });
-    // The export's job is to pick the correct source of truth for
-    // comments. There are three branches; the third had a latent
-    // ambiguity that resurrected deleted comments and is the
-    // reason this logic looks so fiddly.
-    //
-    // 1. `commentsType === 'clean'`: strip everything. Pass `[]`,
-    //    which `Editor.exportDocx`'s
-    //    `effectiveComments = comments ?? this.converter.comments ?? []`
-    //    treats as authoritative-empty (`??` falls through on
-    //    `null`/`undefined` only).
-    //
-    // 2. `modules.comments === false` (UI store NEVER hydrates).
-    //    The store is not the source of truth because it never
-    //    held comments at all. Pass `undefined` so the engine
-    //    fallback to `converter.comments` fires and
-    //    DOCX-imported comments survive the round-trip. This is
-    //    the Custom UI story: consumers driving `ui.comments` from
-    //    their own React tree shouldn't lose imports just because
-    //    the built-in floating UI is hidden.
-    //
-    // 3. UI store IS hydrated (`modules.comments` truthy or
-    //    omitted). The store is authoritative: a user who deleted
-    //    every comment through the built-in UI ends up with an
-    //    empty store, and the export MUST honor that as
-    //    "no comments" rather than silently resurrect them from
-    //    `converter.comments` (which the legacy delete path doesn't
-    //    clear today; tracked separately under SD-2839). Pass
-    //    whatever the store returns, including `[]`.
-    // v1 and v2 own comment export differently:
-    //
-    //  - v1/legacy editors keep the legacy `comments` payload built from the
-    //    sidebar store (`translateCommentsForExport()`), which can instantiate
-    //    the disabled v1 `Editor` shim. That payload is computed LAZILY and
-    //    only for v1 editors so a pure-v2 export never touches it.
-    //  - v2 editors own comment export inside the v2 session serializer. They
-    //    receive `commentsType` directly and never get a legacy `comments`
-    //    payload (`comments-spec.md` §14; the plan's Workstream 2). Passing the
-    //    legacy array would route v2 comments through the disabled v1 path.
-    const commentsModuleConfig = this.config?.modules?.comments;
-    const uiStoreHydrated = commentsModuleConfig !== false;
-    let legacyComments: unknown[] | undefined;
-    let legacyCommentsComputed = false;
-    const getLegacyCommentsForV1 = (): unknown[] | undefined => {
-      if (legacyCommentsComputed) return legacyComments;
-      legacyCommentsComputed = true;
-      if (commentsType === 'clean') {
-        // Clean export: strip everything. `[]` is authoritative-empty for the
-        // v1 engine fallback (`comments ?? converter.comments ?? []`).
-        legacyComments = [];
-      } else if (
-        uiStoreHydrated &&
-        this.commentsStore &&
-        typeof this.commentsStore.translateCommentsForExport === 'function'
-      ) {
-        // UI store is the source of truth; trust whatever it says,
-        // including an authoritative-empty array.
-        legacyComments = this.commentsStore.translateCommentsForExport();
-        if (!Array.isArray(legacyComments)) legacyComments = [];
-      }
-      // else: UI store unhydrated → leave undefined and let the engine's
-      // `converter.comments` fallback fire.
-      return legacyComments;
-    };
-
     const bridgedExportErrors = new WeakSet<object>();
     const rememberBridgedExportError = (payload: SuperDocExceptionPayload) => {
       if ('editor' in payload && payload.error && typeof payload.error === 'object') {
@@ -4091,7 +4005,7 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
         documents.some((doc: RuntimeDocument) => {
           if (doc.type !== DOCX) return false;
           const editor = doc.getEditor?.();
-          return editor?.editorVersion !== 2 || typeof editor.exportDocx !== 'function';
+          return !isV2ActiveEditorFacade(editor) || typeof editor.exportDocx !== 'function';
         })
       )
         throw new Error('Independent DOCX export policies require a mounted V2 exporter for every document.');
@@ -4108,36 +4022,17 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
           return null;
         };
 
-        if (!editor || typeof editor.exportDocx !== 'function') return fallbackDocx();
+        if (!isV2ActiveEditorFacade(editor) || typeof editor.exportDocx !== 'function') return fallbackDocx();
 
-        const isV2Editor = editor.editorVersion === 2;
         try {
-          const exported = await editor.exportDocx(
-            isV2Editor
-              ? {
-                  // v2 export authority is the v2 session serializer. No
-                  // legacy `comments` payload — `commentsType` is the policy.
-                  isFinalDoc,
-                  commentsType,
-                  policies,
-                  fieldsHighlightColor,
-                }
-              : {
-                  isFinalDoc,
-                  comments: getLegacyCommentsForV1() as Comment[] | undefined,
-                  commentsType,
-                  fieldsHighlightColor,
-                },
-          );
+          const exported = await editor.exportDocx({ isFinalDoc, commentsType, policies, fieldsHighlightColor });
           if (exported) return exported;
         } catch (error) {
           if (!error || typeof error !== 'object' || !bridgedExportErrors.has(error)) {
             this.emit('exception', { error, document: doc });
             this.emit('exception', translateExportDiagnostic(error, { documentId: doc.id, editor: null }));
           }
-          if (isV2Editor) {
-            throw error;
-          }
+          throw error;
         }
 
         return fallbackDocx();

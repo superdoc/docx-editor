@@ -20,6 +20,7 @@ import {
   createDevCollaborationAutoUrl,
   createDevDocumentConfig,
   createDevV2CollaborationConfig,
+  resolveDevCollaborationProvider,
   resolveDevCollaborationRoomMode,
   resolveDevCollaborationServerUrl,
 } from '../collaboration-config';
@@ -112,6 +113,8 @@ const toolbarIncludeItems = (urlParams.get('toolbarInclude') || '')
 const useCollaboration = urlParams.get('collab') === '1';
 const collabRoom = urlParams.get('room') || 'superdoc-dev-room';
 const collabUrl = resolveDevCollaborationServerUrl(urlParams.get('collabUrl'));
+const collabProvider = resolveDevCollaborationProvider(urlParams.get('collabProvider'));
+const liveblocksUrl = urlParams.get('liveblocksUrl')?.trim() || undefined;
 const collabRoomMode = ref(useCollaboration ? resolveDevCollaborationRoomMode(urlParams.get('collabRoomMode')) : null);
 const activeCollaborationRoomMode = ref(
   useCollaboration && collabRoomMode.value === 'auto' ? 'join' : collabRoomMode.value,
@@ -562,7 +565,9 @@ const init = async () => {
     : currentFile.value;
   const v2Collaboration = createDevV2CollaborationConfig({
     enabled: useCollaboration,
+    provider: collabProvider,
     serverUrl: collabUrl,
+    liveblocksUrl,
     documentId: collabRoom,
     roomMode: getCollaborationOpenRoomMode(),
     userId: user.id || user.email || user.name,

@@ -7,6 +7,7 @@ import {
   createDevCollaborationAutoUrl,
   createDevDocumentConfig,
   createDevV2CollaborationConfig,
+  resolveDevCollaborationProvider,
   resolveDevCollaborationRoomMode,
   resolveDevCollaborationServerUrl,
 } from './collaboration-config';
@@ -56,6 +57,31 @@ describe('dev v2 collaboration config', () => {
         roomMode: 'create',
         params: { userId: 'dev-user' },
       },
+    });
+  });
+
+  test('selects the provider from the URL and rejects unknown ones', () => {
+    expect(resolveDevCollaborationProvider(null)).toBe('y-websocket');
+    expect(resolveDevCollaborationProvider('liveblocks')).toBe('liveblocks');
+    expect(() => resolveDevCollaborationProvider('hocuspocus')).toThrow('Expected "y-websocket" or "liveblocks"');
+  });
+
+  test('targets the local Liveblocks dev server with its public key', () => {
+    expect(
+      createDevV2CollaborationConfig({
+        enabled: true,
+        provider: 'liveblocks',
+        serverUrl: 'ws://localhost:8081/v2/collaboration',
+        documentId: 'room-1',
+        roomMode: 'join',
+        userId: 'dev-user',
+      }),
+    ).toEqual({
+      providerType: 'liveblocks',
+      baseUrl: 'http://localhost:1153',
+      publicApiKey: 'pk_localdev',
+      documentId: 'room-1',
+      roomMode: 'join',
     });
   });
 

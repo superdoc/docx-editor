@@ -100,7 +100,11 @@ const ORIGIN_MAIN_CATALOG_COMMAND_IDS = {
   rejectTrackedChangeOnSelection: 'track-changes-reject-selection',
 };
 
+const NO_LONGER_BUILT_IN_ITEM_NAMES = new Set(['directionLtr', 'directionRtl']);
+const HOST_ROUTED_ITEM_NAMES = new Set(['ruler', 'formattingMarks']);
+
 function originMainResolve(name: string): string | null {
+  if (NO_LONGER_BUILT_IN_ITEM_NAMES.has(name) || HOST_ROUTED_ITEM_NAMES.has(name)) return null;
   const catalogId = (ORIGIN_MAIN_CATALOG_COMMAND_IDS as Record<string, string | undefined>)[name];
   return catalogId ?? (ORIGIN_MAIN_HEADLESS_ITEM_MAP as Record<string, string | undefined>)[name] ?? null;
 }

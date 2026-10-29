@@ -103,11 +103,7 @@ const ROUTED_TABLE_ACTION_COMMAND_IDS = TABLE_ACTION_COMMAND_IDS.filter(
 );
 
 const UNCATALOGED_ITEM_COMMAND_IDS: Readonly<Record<string, string | undefined>> = {
-  ruler: 'ruler',
-  formattingMarks: 'formatting-marks',
   tableOfContents: 'table-of-contents-insert',
-  directionLtr: 'direction-ltr',
-  directionRtl: 'direction-rtl',
 };
 
 /**

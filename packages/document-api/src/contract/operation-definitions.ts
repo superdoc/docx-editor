@@ -779,7 +779,7 @@ export const OPERATION_DEFINITIONS = {
     description:
       'Search the document for text or node matches using SDM/1 selectors. Returns discovery-grade results: for mutation targeting, use query.match instead.',
     expectedResult:
-      'Returns an SDFindResult envelope ({ total, limit, offset, items }). Each item is an SDNodeResult ({ node, address }). Text hits contain only the matched text; use getNode or getNodeById for the full containing node. Node selectors return full node projections.',
+      'Returns an SDFindResult envelope ({ total, limit, offset, items }). Each item is an SDNodeResult ({ node, address }). Text hits contain only the matched text; use getNode or getNodeById for the full containing node. Node selectors return full node projections. Bookmark selectors return the bookmarks of the searched story in document order: each address is an inline bookmark address whose anchor spans the bookmark range, and each node is an ext.bookmark node whose bookmark.address resolves through bookmarks.get.',
     requiresDocumentContext: true,
     metadata: readOperation({
       idempotency: 'idempotent',

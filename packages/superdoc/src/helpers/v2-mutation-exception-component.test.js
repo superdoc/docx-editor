@@ -69,7 +69,7 @@ async function mountShell(history = { enabled: false }) {
   await nextTick();
   const editor = wrapper.findComponent({ name: 'EditableInputFixture' });
   expect(editor.exists()).toBe(true);
-  return { wrapper, editor, onException, onEditorUpdate, diagnostics, superdoc };
+  return { wrapper, editor, onException, onEditorUpdate, diagnostics, superdoc, store };
 }
 
 const authorRejection = () => ({
@@ -83,6 +83,64 @@ const authorRejection = () => ({
 });
 
 describe('SuperDoc collaboration configuration failures', () => {
+  it.each([
+    ['collaboration-session-invalidated', true, true],
+    ['collaboration-session-invalidated', true, false],
+    ['open-failed', false, true],
+  ])('keeps guarded export ownership: %s / retained=%s / active=%s', async (reason, retainsExporter, isActive) => {
+    const { editor, superdoc, store } = await mountShell();
+    const failure = Object.assign(new Error('reopen the shared document with join'), {
+      code: 'COLLAB_V2_SESSION_INVALIDATED',
+    });
+    const retiredEditor = { editorVersion: 2, documentId: 'doc-a', exportDocx: vi.fn().mockRejectedValue(failure) };
+    let exporter = retiredEditor;
+    const document = store.documents[0];
+    document.isReady = true;
+    document.getEditor = () => exporter;
+    document.setEditor = (next) => {
+      exporter = next;
+    };
+    const healthyEditor = { editorVersion: 2, documentId: 'doc-b' };
+    const healthyDocument = {
+      id: 'doc-b',
+      type: DOCX,
+      data: new Uint8Array(),
+      isReady: true,
+      getEditor: () => healthyEditor,
+    };
+    store.documents.push(healthyDocument);
+    superdoc.activeEditor = isActive ? retiredEditor : healthyEditor;
+    editor.vm.$emit('v2-editor-failed', { documentId: 'doc-a', reason, detail: failure.message });
+    await nextTick();
+    expect(document.isReady).toBe(false);
+    if (isActive) expect(superdoc.setActiveEditor).toHaveBeenCalledWith(null);
+    else {
+      expect(superdoc.setActiveEditor).not.toHaveBeenCalled();
+      expect(superdoc.activeEditor).toBe(healthyEditor);
+      expect(healthyDocument.isReady).toBe(true);
+      expect(healthyDocument.getEditor()).toBe(healthyEditor);
+    }
+    if (retainsExporter) {
+      expect(document.getEditor()).toBe(retiredEditor);
+      await expect(document.getEditor().exportDocx()).rejects.toBe(failure);
+    } else expect(document.getEditor()).toBeNull();
+  });
+
+  it('reports a retired collaboration session as an actionable condition', async () => {
+    const { editor, onException } = await mountShell();
+    editor.vm.$emit('v2-editor-failed', {
+      documentId: 'doc-a',
+      reason: 'collaboration-session-invalidated',
+      detail: 'shared document content is no longer current in this editor; reopen the shared document with join',
+    });
+    await nextTick();
+    expect(onException).toHaveBeenCalledOnce();
+    expect(onException.mock.calls[0][0]).toMatchObject({
+      code: 'collaboration-session-invalidated',
+      error: expect.objectContaining({ message: expect.stringMatching(/reopen.*join/) }),
+    });
+  });
+
   it('forwards actionable retry validation detail to the host', async () => {
     const { editor, onException } = await mountShell();
     editor.vm.$emit('v2-editor-failed', {

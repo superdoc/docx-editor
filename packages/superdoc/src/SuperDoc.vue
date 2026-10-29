@@ -2138,6 +2138,8 @@ const getV2EditorFailureMessage = (reason) => {
       return 'SuperDoc v2 could not find a committed v2 collaboration room. No changes were made. Use roomMode: "create" only when creating a new room.';
     case 'collaboration-v2-room-already-exists':
       return 'SuperDoc v2 was asked to create a collaboration room that already exists. Use roomMode: "join" to open it.';
+    case 'collaboration-session-invalidated':
+      return 'This collaboration session is no longer current. Please reopen the shared document with roomMode: "join".';
     case 'collaboration-v2-room-initializing':
       return 'The SuperDoc v2 collaboration room has not completed initialization. This open attempt did not modify it.';
     case 'collaboration-v2-room-bootstrap-stalled':
@@ -2156,11 +2158,18 @@ const normalizeV2EditorFailureDetail = (detail) =>
 
 const onV2EditorFailed = (payload) => {
   documents.value.find((doc) => doc.id === payload?.documentId)?.loadScope?.finish();
-  clearActiveV2EditorFacade(payload?.documentId ?? null);
   const reason = typeof payload?.reason === 'string' && payload.reason.length > 0 ? payload.reason : 'open-failed';
   const detail = normalizeV2EditorFailureDetail(payload?.detail);
   const documentId =
     typeof payload?.documentId === 'string' && payload.documentId.length > 0 ? payload.documentId : null;
+  const retiredDocument = reason === 'collaboration-session-invalidated' && documentId ? getDocument(documentId) : null;
+  const retiredExporter = retiredDocument?.getEditor?.();
+  clearActiveV2EditorFacade(payload?.documentId ?? null);
+  if (retiredExporter?.editorVersion === 2 && typeof retiredExporter.exportDocx === 'function') {
+    retiredDocument.isReady = false;
+    if (v2Runtimes.has(documentId)) clearV2RuntimeRegistration(documentId);
+    retiredDocument.setEditor?.(retiredExporter);
+  }
   if (reason === 'worker-transport-failed') {
     proxy.$superdoc.emit('exception', {
       error: new Error('Worker transport failed.'),
@@ -2198,6 +2207,7 @@ const onV2EditorFailed = (payload) => {
     reason === 'collaboration-room-corrupt' ||
     reason === 'collaboration-v2-room-missing' ||
     reason === 'collaboration-v2-room-already-exists' ||
+    reason === 'collaboration-session-invalidated' ||
     reason === 'collaboration-v2-room-initializing' ||
     reason === 'collaboration-v2-room-bootstrap-stalled' ||
     reason === 'collaboration-open-intent-invalid' ||

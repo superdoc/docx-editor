@@ -237,6 +237,67 @@ describe.each(['data-bookmark-marker', 'data-comment-point-marker'])('zero-span 
   }
 });
 
+describe.each(['data-v2-generated-field-result', 'data-v2-dynamic-field-result'])(
+  'zero-span %s paint ranges',
+  (attribute) => {
+    it.each([false, true])(
+      'preserves generated coordinates with positioned=%s and leaves neighboring source ranges unchanged',
+      (positioned) => {
+        const block: ParagraphBlock = {
+          kind: 'paragraph',
+          id: 'generated',
+          runs: [
+            { kind: 'text', text: 'abc', fontFamily: 'Arial', fontSize: 12, pmStart: 1, pmEnd: 4 },
+            {
+              kind: 'text',
+              text: '1.1.',
+              fontFamily: 'Arial',
+              fontSize: 12,
+              pmStart: 4,
+              pmEnd: 4,
+              dataAttrs: { [attribute]: 'true' },
+            },
+            { kind: 'text', text: ' tail', fontFamily: 'Arial', fontSize: 12, pmStart: 4, pmEnd: 9 },
+          ],
+        };
+        const element = renderLine({
+          block,
+          line: {
+            fromRun: 0,
+            toRun: 2,
+            fromChar: 0,
+            toChar: 5,
+            width: 80,
+            ascent: 12,
+            descent: 3,
+            lineHeight: 15,
+            ...(positioned
+              ? {
+                  segments: [
+                    { runIndex: 0, fromChar: 0, toChar: 3, width: 30, x: 0 },
+                    { runIndex: 1, fromChar: 0, toChar: 4, width: 20, x: 30 },
+                    { runIndex: 2, fromChar: 0, toChar: 5, width: 30, x: 50 },
+                  ],
+                }
+              : {}),
+          },
+          context: { pageNumber: 1, totalPages: 1, section: 'body' },
+          runContext: makeRunContext(),
+        });
+        expect(element.querySelector<HTMLElement>(`[${attribute}]`)?.dataset).toMatchObject({
+          pmStart: '4',
+          pmEnd: '4',
+        });
+        expect(element.dataset.pmEnd).toBe('9');
+        expect(Array.from(element.querySelectorAll<HTMLElement>('[data-pm-start]')).at(-1)?.dataset).toMatchObject({
+          pmStart: '4',
+          pmEnd: '9',
+        });
+      },
+    );
+  },
+);
+
 describe('renderLine native text baselines beside expanding images', () => {
   const text = (value: string, overrides: Partial<TextRun> = {}): TextRun => ({
     kind: 'text',

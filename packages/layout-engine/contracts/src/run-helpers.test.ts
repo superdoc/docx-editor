@@ -101,6 +101,18 @@ describe('zero-width marker recognition', () => {
 });
 
 describe('sliceRunsForLine', () => {
+  it.each(['data-v2-generated-field-result', 'data-v2-dynamic-field-result'])(
+    'preserves the zero source span of %s through partial line slicing',
+    (attribute) => {
+      const field = { ...makeTextRun('1.1.', 4), pmEnd: 4, dataAttrs: { [attribute]: 'true' } };
+      expect(hasZeroWidthMarkerSpan(field)).toBe(true);
+      expect(hasZeroWidthMarkerSpan({ ...field, pmEnd: 8 })).toBe(false);
+      const block = makeParagraph([field]);
+      const line = { ...makeLine(), fromRun: 0, toRun: 0, fromChar: 1, toChar: 3 };
+      expect(sliceRunsForLine(block, line)).toEqual([{ ...field, text: '.1' }]);
+    },
+  );
+
   it.each([
     { markerAttr: 'data-bookmark-marker', span: 0 },
     { markerAttr: 'data-bookmark-marker', span: 1 },

@@ -40,7 +40,16 @@ export function isZeroWidthMarkerRun(run: Run): boolean {
 }
 
 export function hasZeroWidthMarkerSpan(run: Run): boolean {
-  return isZeroWidthMarkerRun(run) && run.pmStart != null && run.pmStart === run.pmEnd;
+  const generatedField = (run.kind === 'text' || run.kind === undefined) && isGeneratedFieldResultRun(run);
+  return (isZeroWidthMarkerRun(run) || generatedField) && run.pmStart != null && run.pmStart === run.pmEnd;
+}
+
+export function isGeneratedFieldResultRun(run: Run): boolean {
+  return (
+    'dataAttrs' in run &&
+    (run.dataAttrs?.['data-v2-generated-field-result'] === 'true' ||
+      run.dataAttrs?.['data-v2-dynamic-field-result'] === 'true')
+  );
 }
 
 /** Synthetic note-band or appended-endnote label keyed to its source note. */

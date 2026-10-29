@@ -3967,6 +3967,7 @@ export {
   expandRunsForInlineNewlines,
   isBodyNoteReferenceRun,
   isZeroWidthMarkerRun,
+  isGeneratedFieldResultRun,
   hasZeroWidthMarkerSpan,
   isNoteLabelRun,
   isNumberedNoteMarkerRun,

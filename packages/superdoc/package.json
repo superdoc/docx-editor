@@ -105,7 +105,7 @@
     "smoke:v2-resolver": "node ./scripts/smoke-v2-runtime-mode.mjs",
     "build": "node ./scripts/build-public-superdoc.mjs",
     "build:npm": "node ./scripts/build-public-superdoc.mjs --surface npm",
-    "build:dev": "SUPERDOC_SKIP_DTS=1 vp build",
+    "build:dev": "SUPERDOC_SKIP_DTS=1 SUPERDOC_NPM_FORMAT=es vp build && SUPERDOC_NPM_FORMAT=cjs vp build",
     "build:collaboration-upgrade-engine": "vp build --config vite.config.collaboration-upgrade-engine.js",
     "verify:npm": "node ./scripts/verify-public-npm.mjs",
     "audit:publish": "node ./scripts/audit-public-output.cjs",

@@ -8,7 +8,11 @@ const path = require('node:path');
 const { npmDistRoot: distRoot } = require('./build-output-paths.cjs');
 const { auditInternalVue } = require('./audit-internal-vue.cjs');
 const prosemirrorFingerprint = 'ProseMirror expects the CSS white-space property to be set';
+const bundledKonvaFingerprint = /Several Konva instances detected|node_modules\/(?:\.pnpm\/)?konva[@/]/;
+const esKonvaImport = /\bfrom\s*["']konva["']/;
+const cjsKonvaRequire = /\brequire\(\s*["']konva(?:\/[^"']*)?["']\s*\)/;
 const failures = [];
+let cjsBundlesKonva = false;
 
 if (!fs.existsSync(distRoot)) {
   throw new Error('Missing dist directory');
@@ -32,7 +36,19 @@ for (const file of walkFiles(distRoot)) {
   const source = fs.readFileSync(file, 'utf8');
   const copies = source.split(prosemirrorFingerprint).length - 1;
   if (copies > 1) failures.push(`${relative} contains ${copies} copies of prosemirror-view`);
+  if (file.endsWith('.cjs')) {
+    if (cjsKonvaRequire.test(source)) failures.push(`${relative} requires the ES-module-only konva package`);
+    if (bundledKonvaFingerprint.test(source)) cjsBundlesKonva = true;
+  } else if (bundledKonvaFingerprint.test(source)) {
+    failures.push(`${relative} bundles konva instead of importing the dependency`);
+  }
 }
+
+const esEntry = path.join(distRoot, 'superdoc.es.js');
+if (fs.existsSync(esEntry) && !esKonvaImport.test(fs.readFileSync(esEntry, 'utf8'))) {
+  failures.push('superdoc.es.js does not import the konva dependency');
+}
+if (!cjsBundlesKonva) failures.push('CommonJS output does not include konva for the whiteboard renderer');
 
 for (const budget of [
   { file: 'superdoc.es.js', soft: 3_145_728, hard: 4_194_304 },

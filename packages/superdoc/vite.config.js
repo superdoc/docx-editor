@@ -126,7 +126,13 @@ export default defineConfig(({ mode, command }) => {
     ? path.resolve(process.env.SUPERDOC_PUBLIC_NPM_OUT_DIR)
     : path.resolve(__dirname, 'dist');
   const engineDistRoot = v2Resolution.engineInput?.surfaceRoots?.dist ?? path.resolve(V2_ROOT, 'dist');
-  const skipDts = internalEsOnly || process.env.SUPERDOC_SKIP_DTS === '1';
+  const npmFormatPass = process.env.SUPERDOC_NPM_FORMAT ?? null;
+  if (npmFormatPass !== null && !['es', 'cjs'].includes(npmFormatPass)) {
+    throw new Error(`SUPERDOC_NPM_FORMAT must be es or cjs, got ${npmFormatPass}`);
+  }
+  const npmFormats = npmFormatPass ? [npmFormatPass] : internalEsOnly ? ['es'] : ['es', 'cjs'];
+  const importsKonvaDependency = !npmFormats.includes('cjs');
+  const skipDts = internalEsOnly || npmFormatPass === 'cjs' || process.env.SUPERDOC_SKIP_DTS === '1';
   const plugins = [
     {
       name: 'superdoc-interaction-compile-hints',
@@ -272,6 +278,7 @@ export default defineConfig(({ mode, command }) => {
     },
     build: {
       outDir: npmOutDir,
+      emptyOutDir: npmFormatPass !== 'cjs',
       target: 'es2022',
       cssCodeSplit: false,
       lib: {
@@ -301,6 +308,7 @@ export default defineConfig(({ mode, command }) => {
           return [
           ...(v2Resolution.mode === 'package' ? [/^@superdoc\/docx-engine(?:\/.*)?$/] : []),
           'yjs',
+          ...(importsKonvaDependency ? [/^konva(?:\/.*)?$/] : []),
           '@hocuspocus/provider',
           'pdfjs-dist',
           'pdfjs-dist/build/pdf.mjs',
@@ -320,36 +328,20 @@ export default defineConfig(({ mode, command }) => {
           '@liveblocks/yjs',
           ].some((entry) => typeof entry === 'string' ? id === entry : entry.test(id));
         },
-        output: [
-          {
-            format: 'es',
-            paths: { 'superdoc-entry-vue': 'vue' },
-            entryFileNames: '[name].es.js',
-            chunkFileNames: 'chunks/[name]-[hash].es.js',
-            manualChunks(id) {
-              if (id.includes('/node_modules/vue/')) return 'vue';
-              if (id.includes('/node_modules/jszip/')) return 'jszip';
-              if (id.includes('/node_modules/eventemitter3/')) return 'eventemitter3';
-              if (id.includes('/node_modules/uuid/')) return 'uuid';
-              if (id.includes('/node_modules/xml-js/')) return 'xml-js';
-              if (id.includes('blank.docx')) return 'blank-docx';
-            }
-          },
-          ...(!internalEsOnly ? [{
-            format: 'cjs',
-            paths: { 'superdoc-entry-vue': 'vue' },
-            entryFileNames: '[name].cjs',
-            chunkFileNames: 'chunks/[name]-[hash].cjs',
-            manualChunks(id) {
-              if (id.includes('/node_modules/vue/')) return 'vue';
-              if (id.includes('/node_modules/jszip/')) return 'jszip';
-              if (id.includes('/node_modules/eventemitter3/')) return 'eventemitter3';
-              if (id.includes('/node_modules/uuid/')) return 'uuid';
-              if (id.includes('/node_modules/xml-js/')) return 'xml-js';
-              if (id.includes('blank.docx')) return 'blank-docx';
-            }
-          }] : [])
-        ],
+        output: npmFormats.map((format) => ({
+          format,
+          paths: { 'superdoc-entry-vue': 'vue' },
+          entryFileNames: format === 'es' ? '[name].es.js' : '[name].cjs',
+          chunkFileNames: format === 'es' ? 'chunks/[name]-[hash].es.js' : 'chunks/[name]-[hash].cjs',
+          manualChunks(id) {
+            if (id.includes('/node_modules/vue/')) return 'vue';
+            if (id.includes('/node_modules/jszip/')) return 'jszip';
+            if (id.includes('/node_modules/eventemitter3/')) return 'eventemitter3';
+            if (id.includes('/node_modules/uuid/')) return 'uuid';
+            if (id.includes('/node_modules/xml-js/')) return 'xml-js';
+            if (id.includes('blank.docx')) return 'blank-docx';
+          }
+        })),
       }
     },
     optimizeDeps: {

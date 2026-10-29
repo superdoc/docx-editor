@@ -37,6 +37,7 @@ await run('link-engine-styles.cjs');
 await run('verify-public-facade-emit.cjs');
 await settle([
   'audit-npm-bundle.cjs',
+  'smoke-npm-whiteboard.mjs',
   'audit-collaboration-upgrade-engine.cjs',
   'audit-declarations.cjs',
   'check-export-coverage.cjs',

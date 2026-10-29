@@ -172,7 +172,10 @@ async function main() {
         const npmHandle = timing.startStage('npm', { label: 'public npm surface' });
         try {
           await timing.stage('npm/vite', { parentId: 'npm', command: 'vp build' }, async () =>
-            run('pnpm', ['exec', 'vp', 'build'], { env: buildEnv }),
+            run('pnpm', ['exec', 'vp', 'build'], { env: { ...buildEnv, SUPERDOC_NPM_FORMAT: 'es' } }),
+          );
+          await timing.stage('npm/vite-cjs', { parentId: 'npm', command: 'vp build' }, async () =>
+            run('pnpm', ['exec', 'vp', 'build'], { env: { ...buildEnv, SUPERDOC_NPM_FORMAT: 'cjs' } }),
           );
           await timing.stage('npm/collaboration-bridge', { parentId: 'npm' }, async () =>
             run('pnpm', ['run', 'build:collaboration-upgrade-engine'], { env: buildEnv }),

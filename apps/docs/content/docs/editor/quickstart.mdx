@@ -93,6 +93,19 @@ example opens the original sample again.
 The complete projects are available for [Vanilla](https://go.superdoc.dev/examples/vanilla) and
 [React](https://go.superdoc.dev/examples/react).
 
+## Try it without a build step
+
+To try SuperDoc on CodePen or in a single HTML file, load it from a CDN. This page opens the sample document:
+
+<CdnQuickstart />
+
+- Serve the file from a local server, such as `npx serve`. Opening it directly from disk with a `file://` URL does
+  not work.
+- Use a regular `<script>` tag, not `type="module"`. The script defines `SuperDoc` as a global.
+- Keep the exact version in both URLs. The CSS and JavaScript must come from the same release.
+- If your page sets a Content Security Policy, allow the CDN as described in
+  [Load the Editor from a CDN](/editor/secure-integration#load-the-editor-from-a-cdn).
+
 ## Continue to configuration
 
 [Configure the Editor](/editor/configuration) to add user information and choose a document mode. Keep this project,

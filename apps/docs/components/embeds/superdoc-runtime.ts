@@ -2,6 +2,7 @@
 
 import runtime from '@/config/editor-demo-runtime.json';
 import type { Config } from 'superdoc';
+import { runtimeCdnBaseUrl as runtimeBaseUrl, runtimePackageUrl } from '@/lib/editor-runtime-url';
 
 /**
  * Loading the pinned SuperDoc runtime for documentation embeds.
@@ -16,8 +17,6 @@ import type { Config } from 'superdoc';
  * two embeds on one page must not race to load the same assets.
  */
 
-const runtimePackageUrl = `${runtime.cdnOrigin}/${runtime.runtimePackage}@${runtime.runtimeVersion}`;
-const runtimeBaseUrl = `${runtimePackageUrl}/dist-cdn`;
 const localEngineUrl =
   process.env.NODE_ENV === 'development' ? process.env.NEXT_PUBLIC_DOCS_ENGINE_URL?.replace(/\/+$/, '') : undefined;
 const engineBaseUrl = `${localEngineUrl || `${runtime.cdnOrigin}/${runtime.enginePackage}@${runtime.engineVersion}`}/dist-cdn`;

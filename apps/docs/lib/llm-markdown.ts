@@ -10,6 +10,7 @@ import { hyperlinksConfigExplorer } from './hyperlinks-config-explorer';
 import { loadingConfigExplorer } from './loading-config-explorer';
 import { renderBuiltInUiMapMarkdown } from './built-in-ui-map';
 import { renderBuiltInEditorDemoMarkdown } from './built-in-editor-demos';
+import { renderCdnQuickstartMarkdown } from './cdn-quickstart';
 import { renderClauseLibraryMarkdown } from './clause-library';
 import { renderContentControlAuthoringMarkdown } from './content-control-authoring';
 import { renderContentControlLocksMarkdown } from './content-control-locks';
@@ -29,6 +30,7 @@ export const llmPlaceholderComponents = [
   'BuiltInUiMap',
   'Card',
   'Cards',
+  'CdnQuickstart',
   'ClauseLibraryDemo',
   'CommandStateDemo',
   'ContentControlAuthoringDemo',
@@ -124,6 +126,9 @@ export function renderLLMMarkdown(markdown: string) {
     },
     BuiltInUiMap() {
       return renderBuiltInUiMapMarkdown();
+    },
+    CdnQuickstart() {
+      return renderCdnQuickstartMarkdown();
     },
     ClauseLibraryDemo() {
       return renderClauseLibraryMarkdown();

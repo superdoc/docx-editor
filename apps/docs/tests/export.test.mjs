@@ -474,7 +474,12 @@ test('the editor quickstart offers the clean sample and no review markup', async
   // The tracked-changes fixture is reserved for review guidance, so the
   // quickstart must not reintroduce it through a download or an embed.
   assert.doesNotMatch(article, /tracked-changes\.docx/);
-  assert.doesNotMatch(article, /cdn\.jsdelivr\.net/);
+  assert.doesNotMatch(article, /class="sd-editor-demo/);
+});
+
+test('the CDN quickstart sample can be fetched from another origin', async () => {
+  const headers = await readFile(new URL('../out/_headers', import.meta.url), 'utf8');
+  assert.match(headers, /^\/fixtures\/\*\n {2}Access-Control-Allow-Origin: \*$/mu);
 });
 
 test('exports every framework example as plain Markdown', async () => {

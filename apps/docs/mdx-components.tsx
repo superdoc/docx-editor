@@ -28,6 +28,7 @@ import { SurfaceLifecycleDemo } from '@/components/embeds/surface-lifecycle-demo
 import { ThemePlayground } from '@/components/embeds/theme-playground';
 import { DocsHome } from '@/components/docs-home';
 import { Callout } from '@/components/mdx/callout';
+import { CdnQuickstart } from '@/components/mdx/cdn-quickstart';
 import { CommentsConfigReference } from '@/components/mdx/comments-config-reference';
 import { ConfigReference } from '@/components/mdx/ConfigReference';
 import { ContextMenuConfigReference } from '@/components/mdx/context-menu-config-reference';
@@ -71,6 +72,7 @@ export function getMDXComponents(components?: MDXComponents): MDXComponents {
   return {
     ...defaultMdxComponents,
     Callout,
+    CdnQuickstart,
     BuiltInUiMap,
     ClauseLibraryDemo,
     ContentControlAuthoringDemo,

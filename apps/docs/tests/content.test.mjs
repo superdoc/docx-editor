@@ -365,6 +365,7 @@ const registeredComponents = new Set([
   'Card',
   'Cards',
   'Callout',
+  'CdnQuickstart',
   'BuiltInUiMap',
   'ClauseLibraryDemo',
   'CommandStateDemo',
@@ -599,6 +600,16 @@ test('the editor demo runtime uses exact stable packages', async () => {
   assert.match(runtimeConfig.engineVersion, /^\d+\.\d+\.\d+$/u);
   assert.ok(engineSpecifier, `${runtimeConfig.enginePackage} must remain a SuperDoc dependency`);
   assert.equal(runtimeConfig.uiModulePath, superdocPackage.exports?.['./ui']?.import?.slice(1));
+});
+
+test('the CDN quickstart loads the pinned stable runtime as a classic script', async () => {
+  const { cdnQuickstartHtml } = await import('../lib/cdn-quickstart.ts');
+  const runtimeConfig = JSON.parse(await readFile(runtimeConfigUrl, 'utf8'));
+  const packageUrl = `${runtimeConfig.cdnOrigin}/${runtimeConfig.runtimePackage}@${runtimeConfig.runtimeVersion}/dist-cdn`;
+
+  assert.ok(cdnQuickstartHtml.includes(`<link rel="stylesheet" href="${packageUrl}/superdoc.min.css" />`));
+  assert.ok(cdnQuickstartHtml.includes(`<script src="${packageUrl}/superdoc.min.js"></script>`));
+  assert.doesNotMatch(cdnQuickstartHtml, /type="module"/u);
 });
 
 test('the custom UI overview demo uses the Editor-owned controller', async () => {

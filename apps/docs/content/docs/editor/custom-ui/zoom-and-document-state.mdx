@@ -65,6 +65,34 @@ the Editor is in editing, suggesting, or viewing mode. Read them from `ui.docume
 `ui.document.observe()`, as the examples do, so application controls follow both values without reading the rendered
 document DOM.
 
+## React to document changes
+
+`ui.document.onChange()` calls your listener once for each committed change to the current document. Use it to
+schedule autosave, keep an activity log, or refresh application state that depends on the content. It is not called
+when you subscribe, and it does not wait for the change to be painted. Use `observe()` for state you render.
+
+```ts
+const stop = ui.document.onChange((change) => {
+  if (change.cause === 'remote') return;
+  scheduleAutosave();
+  if (change.changeTag) markApplied(change.changeTag);
+});
+```
+
+Each change reports:
+
+- `cause`: `user` for typing and built-in UI actions, `api` for Document API calls, `undo` and `redo` for history,
+  and `remote` for a collaborator's edit.
+- `changeTag`: the `changeTag` you passed to the Document API call, or `null`.
+- `txId`: the transaction id from the call's receipt, so you can match the change to the call you made.
+- `documentEpoch` and `seq`: `seq` counts changes from 1 within one document. Replacing the document starts a new
+  `documentEpoch`.
+- `scope`: the stories the change touched, or `{ kind: 'unknown' }` when SuperDoc cannot say. Remote changes always
+  report an unknown scope; it does not mean nothing changed.
+
+Dry runs, rejected writes, and writes that changed nothing produce no record. Listeners added through
+`ui.createScope().document.onChange()` stop when the scope is disposed.
+
 `ui.document.export()` accepts the same typed DOCX options as `superdoc.export()`. It returns `undefined` when the bound
 host cannot export. The example passes `triggerDownload: true` so a successful browser export downloads the returned
 DOCX.

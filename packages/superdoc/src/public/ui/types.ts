@@ -129,6 +129,7 @@ import type {
   StyleCatalogSourceStatus,
   StylesGetCatalogInput,
   StylesGetCatalogResult,
+  StoryLocator as DocumentStoryLocator,
 } from '@superdoc/document-api';
 
 import type { BrowserDocumentApi, PartialBrowserDocumentApi } from '../browser-document-api.js';
@@ -834,6 +835,15 @@ export interface ZoomSlice {
   max: number;
 }
 
+export interface SuperDocDocumentChange {
+  documentEpoch: string;
+  seq: number;
+  cause: 'user' | 'api' | 'undo' | 'redo' | 'remote';
+  changeTag: string | null;
+  txId: string | null;
+  scope: { kind: 'known'; stories: DocumentStoryLocator[] } | { kind: 'unknown' };
+}
+
 /** Document-level state slice. */
 export interface DocumentSlice {
   /** The active editor is ready. */
@@ -1386,6 +1396,11 @@ export interface DocumentHandle extends SnapshotSubscribable<DocumentSlice> {
   replaceFile(file: File | Blob | ArrayBuffer | Uint8Array): Promise<unknown> | undefined;
   /** Replace mounted content. Operational errors reject; an unavailable host returns `ok: false`. */
   replaceDocument(file: File | Blob | ArrayBuffer | Uint8Array): Promise<DocumentReplacementResult>;
+  onChange(listener: (change: SuperDocDocumentChange) => void): () => void;
+}
+
+export interface ScopedDocumentHandle {
+  onChange(listener: (change: SuperDocDocumentChange) => void): () => void;
 }
 
 /** Viewport handle. */
@@ -1785,6 +1800,7 @@ export interface SuperDocUIScope {
   /** Subscribe within the scope. */
   select<TSlice>(selector: SelectorFn<SuperDocUIState, TSlice>, equality?: EqualityFn<TSlice>): Subscribable<TSlice>;
   readonly decorations: DecorationsHandle;
+  readonly document: ScopedDocumentHandle;
   /** Dispose every subscription created within the scope. */
   dispose(): void;
 }

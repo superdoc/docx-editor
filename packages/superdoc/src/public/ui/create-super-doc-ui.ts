@@ -54,6 +54,7 @@ import type {
   CustomCommandRegistrationResult,
   DocumentHandle,
   DocumentSlice,
+  SuperDocDocumentChange,
   EqualityFn,
   FontFamilyOption,
   FontSizeOption,
@@ -1828,6 +1829,44 @@ function mutationCommittedEventChangedDocument(event: LooseRecord): boolean {
   if (receipt && typeof receipt === 'object' && (receipt as LooseRecord).noop === true) return false;
   if (receipt && typeof receipt === 'object' && (receipt as LooseRecord).status === 'NO_OP') return false;
   return true;
+}
+
+type DocumentChangeFacts = Omit<SuperDocDocumentChange, 'documentEpoch' | 'seq'>;
+
+function readTxId(value: unknown): string | null {
+  return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
+function documentChangeScope(stories: unknown): SuperDocDocumentChange['scope'] {
+  return Array.isArray(stories) && stories.length > 0
+    ? { kind: 'known', stories: stories as Extract<SuperDocDocumentChange['scope'], { kind: 'known' }>['stories'] }
+    : { kind: 'unknown' };
+}
+
+function documentChangeFromHostEvent(event: LooseRecord): DocumentChangeFacts | null {
+  if (event.type === 'collaboration:remote-changed') {
+    return { cause: 'remote', changeTag: null, txId: null, scope: { kind: 'unknown' } };
+  }
+  if (event.type !== 'mutation:committed') return null;
+  if (event.origin === 'history') {
+    const result = isPlainObject(event.result) ? event.result : null;
+    if (!result || result.noop === true) return null;
+    const history = isPlainObject(result.history) ? result.history : null;
+    return {
+      cause: event.direction === 'redo' ? 'redo' : 'undo',
+      changeTag: null,
+      txId: readTxId(history?.txId),
+      scope: documentChangeScope(result.affectedStories),
+    };
+  }
+  if (!mutationCommittedEventChangedDocument(event)) return null;
+  const receipt = isPlainObject(event.receipt) ? event.receipt : {};
+  return {
+    cause: event.cause === 'user' ? 'user' : 'api',
+    changeTag: typeof receipt.changeTag === 'string' ? receipt.changeTag : null,
+    txId: readTxId(receipt.txId),
+    scope: documentChangeScope(receipt.affectedStories),
+  };
 }
 
 function commandResultSucceeded(result: CommandExecutionResult): boolean {
@@ -7611,6 +7650,25 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
   // after a programmatic mutation (e.g. `metadata.attach`), so consumer UI that
   // re-lists on slice change would stay stale.
   let scheduleActiveSearchRefresh = (): void => {};
+  const documentChangeListeners = new Set<(change: SuperDocDocumentChange) => void>();
+  let documentChangeEpoch = 0;
+  let documentChangeSeq = 0;
+  const startDocumentChangeEpoch = (): void => {
+    documentChangeEpoch += 1;
+    documentChangeSeq = 0;
+  };
+  const publishDocumentChange = (event: LooseRecord): void => {
+    if (documentChangeListeners.size === 0) return;
+    const facts = documentChangeFromHostEvent(event);
+    if (!facts) return;
+    documentChangeSeq += 1;
+    const change: SuperDocDocumentChange = {
+      documentEpoch: `document-${documentChangeEpoch}`,
+      seq: documentChangeSeq,
+      ...facts,
+    };
+    for (const listener of Array.from(documentChangeListeners)) safeCall(() => listener(change), undefined);
+  };
   const syncHostEventsSubscription = (): void => {
     const editor = getEditor();
     const host = editor?.host as LooseRecord | undefined;
@@ -7634,6 +7692,8 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
         'subscribe',
       )?.((event: LooseRecord) => {
         const type = event?.type;
+        if (type === 'collaboration:document-replaced') startDocumentChangeEpoch();
+        publishDocumentChange(event);
         const isStandaloneDocumentMutation = type === 'document:mutated' && event.hasCommitEvent !== true;
         if (
           type === 'collaboration:document-replaced' ||
@@ -12354,7 +12414,13 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       }
       return undefined;
     },
+    onChange: (listener) => {
+      if (disposed) return () => {};
+      documentChangeListeners.add(listener);
+      return () => documentChangeListeners.delete(listener);
+    },
   };
+  documentResetHooks.push(startDocumentChangeEpoch);
 
   // Resolve THIS controller's visible host element: the editor mount container
   // when the host exposes one, else the SuperDoc root element. Scopes point
@@ -14298,6 +14364,13 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     const scopeUnsubs: Array<() => void> = [];
     return {
       decorations: createDecorationsHandle((handle) => scopeUnsubs.push(() => handle.dispose())),
+      document: {
+        onChange: (listener) => {
+          const unsub = documentHandle.onChange(listener);
+          scopeUnsubs.push(unsub);
+          return unsub;
+        },
+      },
       select: (selector, equality) => {
         const sub = select(selector, equality);
         return {
@@ -14396,6 +14469,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     painterCaptureEpoch += 1;
     painterCommandDoc = null;
     painterModeListeners.clear();
+    documentChangeListeners.clear();
     // In-flight search work outlives this call the same way a painter capture
     // does; moving the token is what stops its continuation from publishing.
     searchRequestGeneration += 1;

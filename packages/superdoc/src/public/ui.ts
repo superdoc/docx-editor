@@ -80,6 +80,8 @@ export type {
   ZoomHandle,
   DocumentHandle,
   DocumentReplacementResult,
+  SuperDocDocumentChange,
+  ScopedDocumentHandle,
   ViewportHandle,
   DecorationsHandle,
   DecorationPointerEvent,

@@ -1,5 +1,6 @@
 import { afterEach, describe, it, expect, vi } from 'vite-plus/test';
 import { BUILT_IN_COMMAND_IDS, createSuperDocUI, shallowEqual } from './ui.js';
+import type { SuperDocDocumentChange } from './ui.js';
 import {
   executeFirstPartyCommandAsync,
   executeFirstPartyShortcutAsync,
@@ -9727,6 +9728,139 @@ describe('public ui — document control parity (row 742)', () => {
     expect(ui.document.getSnapshot().dirty).toBe(false);
 
     stopObserving();
+  });
+
+  it('reports each committed document change once with its cause, tag, and transaction', () => {
+    const hostEventListeners: Array<(event: Record<string, unknown>) => void> = [];
+    const instanceEventListeners = new Map<string, (payload?: unknown) => void>();
+    const host = {
+      events: {
+        subscribe: (listener: (event: Record<string, unknown>) => void) => {
+          hostEventListeners.push(listener);
+          return () => undefined;
+        },
+      },
+    };
+    const doc = {
+      comments: { list: () => ({ items: [] }) },
+      trackChanges: { list: () => ({ items: [] }) },
+      selection: { current: () => null },
+    };
+    const superdoc = {
+      activeEditor: { doc, host },
+      config: { documentMode: 'editing' },
+      on: vi.fn((event: string, listener: (payload?: unknown) => void) => {
+        instanceEventListeners.set(event, listener);
+      }),
+      off: vi.fn(),
+    };
+    const ui = createSuperDocUI({ superdoc });
+    const changes: SuperDocDocumentChange[] = [];
+    const body = { kind: 'story', storyType: 'body' };
+    const emit = (event: Record<string, unknown>) => hostEventListeners.at(-1)?.(event);
+
+    const stop = ui.document.onChange((change) => changes.push(change));
+    expect(changes).toEqual([]);
+
+    emit({
+      type: 'mutation:committed',
+      origin: 'command',
+      cause: 'user',
+      receipt: { success: true, txId: 'tx-1', affectedStories: [body] },
+    });
+    emit({ type: 'document:mutated', source: 'command', revision: 1, hasCommitEvent: true });
+    emit({
+      type: 'mutation:committed',
+      origin: 'extension',
+      cause: 'api',
+      receipt: { success: true, txId: 'tx-2', changeTag: 'add-table' },
+    });
+    emit({
+      type: 'mutation:committed',
+      origin: 'command',
+      cause: 'preview',
+      dryRun: true,
+      receipt: { success: true, txId: 'tx-3' },
+    });
+    emit({ type: 'mutation:committed', origin: 'command', cause: 'api', receipt: { success: true, changed: false } });
+    emit({
+      type: 'mutation:committed',
+      origin: 'history',
+      direction: 'undo',
+      result: { noop: false, revision: { before: '2', after: '3' }, history: { txId: 'tx-2', direction: 'undo' } },
+    });
+    emit({
+      type: 'mutation:committed',
+      origin: 'history',
+      direction: 'redo',
+      result: { noop: true, revision: { before: '3', after: '3' } },
+    });
+    emit({
+      type: 'collaboration:remote-changed',
+      remoteGeneration: 4,
+      changedStoryIds: ['main:/word/document.xml'],
+      changedPartUris: [],
+      reviewChanged: false,
+    });
+
+    const [first] = changes;
+    expect(changes.map(({ documentEpoch, ...rest }) => rest)).toEqual([
+      { seq: 1, cause: 'user', changeTag: null, txId: 'tx-1', scope: { kind: 'known', stories: [body] } },
+      { seq: 2, cause: 'api', changeTag: 'add-table', txId: 'tx-2', scope: { kind: 'unknown' } },
+      { seq: 3, cause: 'undo', changeTag: null, txId: 'tx-2', scope: { kind: 'unknown' } },
+      { seq: 4, cause: 'remote', changeTag: null, txId: null, scope: { kind: 'unknown' } },
+    ]);
+    expect(new Set(changes.map((change) => change.documentEpoch))).toEqual(new Set([first!.documentEpoch]));
+
+    instanceEventListeners.get('document-replaced')?.({ editor: superdoc.activeEditor, host });
+    emit({ type: 'mutation:committed', origin: 'command', cause: 'api', receipt: { success: true, txId: 'tx-5' } });
+    expect(changes.at(-1)).toMatchObject({ seq: 1, txId: 'tx-5' });
+    expect(changes.at(-1)!.documentEpoch).not.toBe(first!.documentEpoch);
+
+    stop();
+    emit({ type: 'mutation:committed', origin: 'command', cause: 'api', receipt: { success: true, txId: 'tx-6' } });
+    expect(changes).toHaveLength(5);
+  });
+
+  it('stops delivering document changes when the owning scope or controller is disposed', () => {
+    const hostEventListeners: Array<(event: Record<string, unknown>) => void> = [];
+    const host = {
+      events: {
+        subscribe: (listener: (event: Record<string, unknown>) => void) => {
+          hostEventListeners.push(listener);
+          return () => undefined;
+        },
+      },
+    };
+    const doc = {
+      comments: { list: () => ({ items: [] }) },
+      trackChanges: { list: () => ({ items: [] }) },
+      selection: { current: () => null },
+    };
+    const ui = createSuperDocUI({
+      superdoc: { activeEditor: { doc, host }, config: { documentMode: 'editing' }, on: vi.fn(), off: vi.fn() },
+    });
+    const scoped: number[] = [];
+    const direct: number[] = [];
+    const scope = ui.createScope();
+    scope.document.onChange((change) => scoped.push(change.seq));
+    ui.document.onChange((change) => direct.push(change.seq));
+    const emit = () =>
+      hostEventListeners.at(-1)?.({
+        type: 'mutation:committed',
+        origin: 'command',
+        cause: 'api',
+        receipt: { success: true },
+      });
+
+    emit();
+    scope.dispose();
+    emit();
+    ui.destroy();
+    emit();
+
+    expect(scoped).toEqual([1]);
+    expect(direct).toEqual([1, 2]);
   });
 
   it('keeps per-editor dirty state across active-editor switches', () => {

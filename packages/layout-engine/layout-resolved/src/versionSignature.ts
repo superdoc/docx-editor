@@ -16,6 +16,7 @@ import {
   type ListBlock,
   type ParagraphAttrs,
   type ParagraphBlock,
+  type ResolvedListMarkerItem,
   type SdtMetadata,
   type ShapeGroupDrawing,
   type SourceAnchor,
@@ -28,6 +29,7 @@ import {
   type TrackedChangeMeta,
   type TextRun,
   type VectorShapeDrawing,
+  type WordLayoutMarker,
   trackedChangeLayersSignature,
   trackedChangeMetaSignature,
 } from '@superdoc/contracts';
@@ -382,7 +384,9 @@ export const resolveFragmentLayoutIdentity = (fragment: Fragment, story?: Layout
 // deriveBlockVersion
 // ---------------------------------------------------------------------------
 
-const markerRunVisualVersion = (run: (Partial<TextRun> & { vanish?: boolean }) | undefined): string =>
+const markerRunVisualVersion = (
+  run: Partial<WordLayoutMarker['run'] & ResolvedListMarkerItem['run']> | undefined,
+): string =>
   run
     ? JSON.stringify([
         run.fontFamily ?? null,

@@ -8,6 +8,7 @@ import type {
   ImageRun,
   MarkerTrackedChange,
   ParagraphBlock,
+  ResolvedListMarkerItem,
   SourceAnchor,
   TableBlock,
   TabRun,
@@ -1195,7 +1196,7 @@ describe('deriveBlockVersion - recorded font epoch', () => {
 });
 
 const numberedMarkParagraph = (
-  run: Partial<WordLayoutMarker['run'] & Pick<TextRun, 'allCaps' | 'smallCaps'>> = {},
+  run: Partial<WordLayoutMarker['run'] & ResolvedListMarkerItem['run']> = {},
 ): ParagraphBlock => ({
   kind: 'paragraph',
   id: 'selected-mark',

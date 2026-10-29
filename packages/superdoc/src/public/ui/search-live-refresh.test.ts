@@ -56,6 +56,7 @@ function createSearchHarness() {
     superdoc,
     search,
     emitMutation: () => onHostEvent?.({ type: 'document:mutated', hasCommitEvent: false }),
+    emit: (event: Record<string, unknown>) => onHostEvent?.(event),
     settleRefresh: (value: unknown) => resolveRefresh?.(value),
   };
 }
@@ -135,6 +136,23 @@ describe('active search refresh after a document mutation', () => {
     harness.settleRefresh({ query: 'needle', total: 3, activeIndex: 0, canReplace: true });
     await vi.waitFor(() => expect(totals.at(-1)).toBe(3));
     expect(ui.search.getSnapshot().total).toBe(3);
+    ui.destroy();
+  });
+
+  it('requeries after a temporary preview changes the shown text', async () => {
+    const harness = createSearchHarness();
+    const ui = createSuperDocUI({ superdoc: harness.superdoc as never });
+    ui.search.open();
+    ui.search.find('needle');
+
+    harness.emit({
+      type: 'mutation:committed',
+      origin: 'command',
+      cause: 'preview',
+      receipt: { success: true, txId: 'tx-preview', temporary: { id: 'preview-1', phase: 'begin', tag: 'p' } },
+    });
+
+    await vi.waitFor(() => expect(harness.search.refresh).toHaveBeenCalledTimes(1));
     ui.destroy();
   });
 

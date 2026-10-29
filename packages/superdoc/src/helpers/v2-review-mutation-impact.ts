@@ -29,6 +29,18 @@ type CommentInvalidationInput = {
   documentId?: string | null;
 };
 
+export function mutationCommittedEventChangedVisibleContent(event: Record<string, unknown>): boolean {
+  if (event.dryRun === true) return false;
+  if (isPlainObject(event.result) && event.result.noop === true) return false;
+  const receipt = isPlainObject(event.receipt) ? event.receipt : null;
+  if (receipt?.changed === false || receipt?.noop === true || receipt?.status === 'NO_OP') return false;
+  return true;
+}
+
+export function mutationCommittedEventChangedDocument(event: Record<string, unknown>): boolean {
+  return event.cause !== 'preview' && mutationCommittedEventChangedVisibleContent(event);
+}
+
 /**
  * Classify the tracked-change identities carried by a v2 mutation event.
  *

@@ -3361,6 +3361,56 @@ describe('public ui — viewport + metadata geometry', () => {
     expect(result.rect).toMatchObject({ left: 10, top: 20 });
   });
 
+  it('metadata.getRect re-resolves after a preview that only removes a tracked change', async () => {
+    let listener: (event: Record<string, unknown>) => void = () => undefined;
+    let present = true;
+    const getTargetRects = vi.fn(() => ({
+      success: true,
+      rects: [{ pageIndex: 0, left: 0, right: 5, top: 0, bottom: 5, width: 5, height: 5 }],
+      pageIndex: 0,
+    }));
+    const resolve = vi.fn(() => Promise.resolve(present ? { target: META_TARGET } : null));
+    const host = {
+      getTargetRects,
+      getHandles: () => ({ editing: null }),
+      getLocalMutationRevision: () => 0,
+      events: {
+        subscribe: (next: typeof listener) => {
+          listener = next;
+          return () => undefined;
+        },
+      },
+    };
+    const doc = {
+      metadata: { resolve },
+      comments: { list: () => ({ items: [] }) },
+      trackChanges: { list: () => ({ items: [] }) },
+      selection: { current: () => null },
+    };
+    const ui = createSuperDocUI({
+      superdoc: { activeEditor: { host, doc }, config: { documentMode: 'editing' }, on: vi.fn(), off: vi.fn() },
+    });
+    ui.metadata.getRect({ id: 'cite-001' });
+    await Promise.resolve();
+    expect(ui.metadata.getRect({ id: 'cite-001' }).found).toBe(true);
+
+    present = false;
+    listener({
+      type: 'mutation:committed',
+      origin: 'command',
+      cause: 'preview',
+      receipt: {
+        success: true,
+        txId: 'tx-preview',
+        temporary: { id: 'preview-1', phase: 'begin', tag: 'preview' },
+        invalidatedRefs: [{ kind: 'entity', entityType: 'trackedChange', entityId: 'tc-1' }],
+      },
+    });
+
+    expect(ui.metadata.getRect({ id: 'cite-001' }).found).toBe(false);
+    ui.destroy();
+  });
+
   it('metadata.getRect fails closed when the metadata id does not resolve', async () => {
     const { superdoc } = makeGeometrySuperdoc({ resolve: () => null });
     const ui = createSuperDocUI({ superdoc });
@@ -9944,6 +9994,54 @@ describe('public ui — document control parity (row 742)', () => {
     expect(afterReplace).toMatchObject({ seq: 1 });
     expect(afterReplace!.documentEpoch).not.toBe(beforeReplace!.documentEpoch);
     expect(onB).toMatchObject({ seq: 1 });
+  });
+
+  it('reports only the commit of a temporary change and keeps previews from marking the document dirty', () => {
+    const hostEventListeners: Array<(event: Record<string, unknown>) => void> = [];
+    const host = {
+      events: {
+        subscribe: (listener: (event: Record<string, unknown>) => void) => {
+          hostEventListeners.push(listener);
+          return () => undefined;
+        },
+      },
+    };
+    const doc = {
+      comments: { list: () => ({ items: [] }) },
+      trackChanges: { list: () => ({ items: [] }) },
+      selection: { current: () => null },
+    };
+    const ui = createSuperDocUI({
+      superdoc: { activeEditor: { doc, host }, config: { documentMode: 'editing' }, on: vi.fn(), off: vi.fn() },
+    });
+    const changes: SuperDocDocumentChange[] = [];
+    ui.document.onChange((change) => changes.push(change));
+    const step = (phase: string, txId: string) => {
+      const preview = phase !== 'commit';
+      if (!preview)
+        hostEventListeners.at(-1)?.({ type: 'document:mutated', source: 'facade', revision: 1, hasCommitEvent: true });
+      hostEventListeners.at(-1)?.({
+        type: 'mutation:committed',
+        origin: 'command',
+        cause: preview ? 'preview' : 'api',
+        receipt: { success: true, txId, temporary: { id: 'preview-1', phase, tag: 'preview' } },
+      });
+    };
+
+    step('begin', 'tx-begin');
+    step('replace', 'tx-replace');
+    step('rollback', 'tx-rollback');
+
+    expect(changes).toEqual([]);
+    expect(ui.document.getSnapshot().dirty).toBe(false);
+
+    step('begin', 'tx-begin-2');
+    step('commit', 'tx-commit');
+
+    expect(changes.map(({ seq, cause, txId }) => ({ seq, cause, txId }))).toEqual([
+      { seq: 1, cause: 'api', txId: 'tx-commit' },
+    ]);
+    expect(ui.document.getSnapshot().dirty).toBe(true);
   });
 
   it('stops delivering document changes when the owning scope or controller is disposed', () => {

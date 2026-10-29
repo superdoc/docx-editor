@@ -54,6 +54,7 @@ import { normalizeHyperlinksConfig } from './core/config/normalize-hyperlinks-co
 import {
   applyV2CommentInvalidationFromMutation,
   getV2TrackedChangeMutationImpact,
+  mutationCommittedEventChangedDocument,
 } from './helpers/v2-review-mutation-impact.js';
 import { resolveV2ReviewTargetCommentId } from './helpers/v2-review-target.js';
 import {
@@ -1905,7 +1906,7 @@ const onV2HostEvent = (document, event) => {
     if (bulkDecisionEvent) {
       proxy.$superdoc.emit('tracked-changes:bulk-decision', bulkDecisionEvent);
     }
-    emitV2EditorUpdate();
+    if (mutationCommittedEventChangedDocument(event)) emitV2EditorUpdate();
   }
   if (event.type !== 'mutation:committed') return;
   // Review-metadata-only commits do not produce a canonical page paint, so

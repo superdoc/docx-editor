@@ -248,9 +248,27 @@ describe('SuperDoc interaction history remains passive', () => {
         });
       }
     }
+    editor.vm.$emit('v2-host-event', {
+      type: 'mutation:committed',
+      origin: 'command',
+      cause: 'preview',
+      receipt: { success: true, txId: 'temporary-preview', temporary: { id: 'preview-1', phase: 'begin', tag: 'p' } },
+    });
+    editor.vm.$emit('v2-host-event', {
+      type: 'mutation:committed',
+      origin: 'command',
+      cause: 'api',
+      receipt: { success: true, changed: false, temporary: { id: 'preview-1', phase: 'commit', tag: 'p' } },
+    });
+    editor.vm.$emit('v2-host-event', {
+      type: 'mutation:committed',
+      origin: 'history',
+      direction: 'undo',
+      result: { noop: true, revision: { before: '1', after: '1' } },
+    });
     await nextTick();
     expect(onEditorUpdate).toHaveBeenCalledTimes(2);
-    expect(diagnostics.getSnapshot().events).toHaveLength(enabled ? 4 : 0);
+    expect(diagnostics.getSnapshot().events).toHaveLength(enabled ? 7 : 0);
     closeInteractionHistory(superdoc);
   });
 });

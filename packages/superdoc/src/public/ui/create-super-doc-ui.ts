@@ -18,7 +18,11 @@ import { shallowEqual } from './equality.js';
 import { createWatermarkController } from './watermark-controller.js';
 import { buildStyleMatchPatch, STYLE_MATCH_READ_KEYS } from './style-match-patch.js';
 import { sdRunPropsToInlineRunPatch, selectionKey } from './format-painter-helpers.js';
-import { getV2TrackedChangeMutationImpact } from '../../helpers/v2-review-mutation-impact.js';
+import {
+  getV2TrackedChangeMutationImpact,
+  mutationCommittedEventChangedDocument,
+  mutationCommittedEventChangedVisibleContent,
+} from '../../helpers/v2-review-mutation-impact.js';
 import { isV2EditableTextMutationEvent } from '../../helpers/v2-typing-mutation-event.js';
 import { isSyntheticTrackedChangeCommentLaneItem } from '../../helpers/tracked-change-comment-lane.js';
 import {
@@ -1816,19 +1820,6 @@ function commandResultFromOperationResult(result: unknown): CommandExecutionResu
 
 function isSuccessfulReceipt(result: CommandExecutionResult): result is Extract<Receipt, { success: true }> {
   return Boolean(result) && typeof result === 'object' && (result as LooseRecord).success === true;
-}
-
-/**
- * The host also emits `mutation:committed` for previews and no-op receipts;
- * those events must not mark the document as having unsaved edits.
- */
-function mutationCommittedEventChangedDocument(event: LooseRecord): boolean {
-  if (event.dryRun === true) return false;
-  const receipt = event.receipt;
-  if (receipt && typeof receipt === 'object' && (receipt as LooseRecord).changed === false) return false;
-  if (receipt && typeof receipt === 'object' && (receipt as LooseRecord).noop === true) return false;
-  if (receipt && typeof receipt === 'object' && (receipt as LooseRecord).status === 'NO_OP') return false;
-  return true;
 }
 
 type DocumentChangeFacts = Omit<SuperDocDocumentChange, 'documentEpoch' | 'seq'>;
@@ -7707,7 +7698,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
         if (
           type === 'collaboration:document-replaced' ||
           isStandaloneDocumentMutation ||
-          (type === 'mutation:committed' && mutationCommittedEventChangedDocument(event)) ||
+          (type === 'mutation:committed' && mutationCommittedEventChangedVisibleContent(event)) ||
           type === 'collaboration:remote-changed'
         ) {
           // A confirmed toggle belongs to its source revision. A later actual
@@ -7720,7 +7711,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
         }
         if (
           isStandaloneDocumentMutation ||
-          (type === 'mutation:committed' && mutationCommittedEventChangedDocument(event)) ||
+          (type === 'mutation:committed' && mutationCommittedEventChangedVisibleContent(event)) ||
           (type === 'collaboration:remote-changed' &&
             Array.isArray(event.changedStoryIds) &&
             event.changedStoryIds.length > 0)
@@ -7796,6 +7787,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
             // not enumerate every removed logical identity).
             replaceTrackedChangeItemsInCache([]);
             publishAllTrackedChangesResolved(event.receipt);
+            if (event.cause === 'preview') invalidateDocumentContent();
             return;
           }
           if (impact?.removedIds.size) {
@@ -7821,6 +7813,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
             return;
           }
           if (impact?.removedIds.size && impact.upsertIds.size === 0) {
+            if (event.cause === 'preview') invalidateDocumentContent();
             return;
           }
           if (

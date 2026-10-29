@@ -2230,6 +2230,7 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
         ...syncTimeoutOption,
         ...(target.publicApiKey ? { publicApiKey: target.publicApiKey } : {}),
         ...(target.authEndpoint ? { authEndpoint: target.authEndpoint } : {}),
+        ...(target.baseUrl ? { baseUrl: target.baseUrl } : {}),
       };
     }
     if (target.providerFamily === 'hocuspocus') {

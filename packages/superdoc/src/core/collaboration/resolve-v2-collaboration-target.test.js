@@ -120,6 +120,40 @@ describe('resolveV2CollaborationTarget', () => {
     });
   });
 
+  it('carries a Liveblocks baseUrl and rejects one that is not an absolute http(s) URL', () => {
+    const local = resolveV2CollaborationTarget({
+      collaboration: {
+        providerType: 'liveblocks',
+        documentId: 'room',
+        publicApiKey: 'pk_localdev',
+        baseUrl: 'http://localhost:1153',
+      },
+    });
+    expect(local).toMatchObject({ ok: true, target: { baseUrl: 'http://localhost:1153' } });
+    const authenticated = resolveV2CollaborationTarget({
+      collaboration: {
+        providerType: 'liveblocks',
+        documentId: 'room',
+        authEndpoint: 'https://example.test/auth',
+        baseUrl: 'http://localhost:1153',
+      },
+    });
+    expect(authenticated).toMatchObject({
+      ok: true,
+      target: { authEndpoint: 'https://example.test/auth', baseUrl: 'http://localhost:1153' },
+    });
+    const hosted = resolveV2CollaborationTarget({
+      collaboration: { providerType: 'liveblocks', documentId: 'room', publicApiKey: 'pk_live' },
+    });
+    expect(hosted.ok && hosted.target).not.toHaveProperty('baseUrl');
+    for (const baseUrl of ['localhost:1153', 'ws://localhost:1153', '', 'https://']) {
+      const result = resolveV2CollaborationTarget({
+        collaboration: { providerType: 'liveblocks', documentId: 'room', publicApiKey: 'pk_localdev', baseUrl },
+      });
+      expect(result).toMatchObject({ ok: false, reason: 'invalid-base-url' });
+    }
+  });
+
   it('rejects unknown room modes instead of coercing them to join or create', () => {
     const result = resolveV2CollaborationTarget({
       v2Collaboration: {

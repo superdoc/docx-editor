@@ -706,6 +706,7 @@ export interface V2LiveblocksCollaborationConfig {
    * page; non-browser SDK/CLI callers must use an absolute HTTP(S) URL.
    */
   authEndpoint?: string;
+  baseUrl?: string;
   /** Maximum initial synchronization wait in milliseconds. Defaults to 30,000. */
   syncTimeoutMs?: number;
   /** Explicit room operation. Defaults to `'join'`; `'create'` never joins an existing room. */

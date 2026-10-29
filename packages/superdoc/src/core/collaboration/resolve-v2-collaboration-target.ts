@@ -31,6 +31,7 @@ export type V2CollaborationUnsupportedReason =
   | 'invalid-server-url'
   | 'invalid-room-mode'
   | 'invalid-auth-endpoint'
+  | 'invalid-base-url'
   | 'invalid-adapter-id'
   | 'invalid-provider-options'
   | 'invalid-sync-timeout'
@@ -64,6 +65,7 @@ export interface NormalizedV2CollaborationTarget {
   publicApiKey?: string;
   /** Liveblocks server-side auth endpoint mode. */
   authEndpoint?: string;
+  baseUrl?: string;
   /** Adapter registration key for a customer collaboration Worker. */
   adapterId?: string;
   /** Structured-clone-safe options interpreted by the registered adapter. */
@@ -373,6 +375,16 @@ function resolveLiveblocksFamily(
         'SuperDoc v2 Liveblocks collaboration accepts exactly one auth mode; pass either publicApiKey or authEndpoint, not both.',
     };
   }
+  const baseUrlRaw = candidate.baseUrl;
+  const baseUrl = baseUrlRaw === undefined ? undefined : normalizeHttpUrl(baseUrlRaw);
+  if (baseUrl === null) {
+    return {
+      ok: false,
+      reason: 'invalid-base-url',
+      message: 'SuperDoc v2 Liveblocks collaboration requires baseUrl to be an absolute http(s) URL.',
+    };
+  }
+  const baseUrlOption = baseUrl ? { baseUrl } : {};
   if (publicApiKey) {
     return {
       ok: true,
@@ -381,6 +393,7 @@ function resolveLiveblocksFamily(
         documentId,
         roomMode,
         publicApiKey,
+        ...baseUrlOption,
       },
     };
   }
@@ -399,6 +412,7 @@ function resolveLiveblocksFamily(
       documentId,
       roomMode,
       authEndpoint,
+      ...baseUrlOption,
     },
   };
 }

@@ -33,13 +33,13 @@ The default commands enable neither storage nor access checks.
 
 Hocuspocus is the local example's default, not a requirement. The document's `collaboration` field accepts these targets through `DocumentCollaborationConfig` in the [preview API](/editor/collaboration/connect-two-editors#configure-your-application):
 
-| `providerType`  | Room and connection                     | Authentication                                  |
-| --------------- | --------------------------------------- | ----------------------------------------------- |
-| `'hocuspocus'`  | `documentId` and `serverUrl` (or `url`) | `token` or string `params`                      |
-| `'y-websocket'` | `documentId` and `serverUrl` (or `url`) | String `params` forwarded to your server        |
-| `'liveblocks'`  | `documentId` or `roomId`                | Exactly one of `authEndpoint` or `publicApiKey` |
+| `providerType`  | Room and connection                     | Authentication                                                      |
+| --------------- | --------------------------------------- | ------------------------------------------------------------------- |
+| `'hocuspocus'`  | `documentId` and `serverUrl` (or `url`) | `token` or string `params`                                          |
+| `'y-websocket'` | `documentId` and `serverUrl` (or `url`) | String `params` forwarded to your server                            |
+| `'liveblocks'`  | `documentId` or `roomId`                | Exactly one of `authEndpoint` or `publicApiKey`; optional `baseUrl` |
 
-For Liveblocks, use an authenticated endpoint when access must be checked per room; a public key does not provide that check. Configure the chosen provider's server or service before pointing the editor at it. SuperDoc owns the browser connection and local shared state; pass connection settings, not an external `{ ydoc, provider }` pair. To keep an existing provider setup or your own connection code, see [Use your own provider](/editor/collaboration/use-your-own-provider).
+For Liveblocks, use an authenticated endpoint when access must be checked per room; a public key does not provide that check. To develop or test against the [Liveblocks dev server](https://liveblocks.io/docs/tools/dev-server), set `baseUrl: 'http://localhost:1153'` and `publicApiKey: 'pk_localdev'`. Configure the chosen provider's server or service before pointing the editor at it. SuperDoc owns the browser connection and local shared state; pass connection settings, not an external `{ ydoc, provider }` pair. To keep an existing provider setup or your own connection code, see [Use your own provider](/editor/collaboration/use-your-own-provider).
 
 ### Authorize access
 

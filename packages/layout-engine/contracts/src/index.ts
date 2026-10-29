@@ -2096,6 +2096,7 @@ export type SectionPageBorderSide = {
 
 export type SectionPageBorders = {
   offsetFrom: 'page';
+  display?: 'allPages' | 'firstPage';
   top?: SectionPageBorderSide;
   right?: SectionPageBorderSide;
   bottom?: SectionPageBorderSide;

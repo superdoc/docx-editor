@@ -84,7 +84,10 @@ export type PaginatorOptions = {
   };
   pageNumberOffset?: number;
   createPage(number: number, pageMargins: PageMargins, pageSizeOverride?: { w: number; h: number }): Page;
-  onNewPage?: (state: PageState | undefined, options?: { applyPendingSection: boolean }) => void;
+  onNewPage?: (
+    state: PageState | undefined,
+    options?: { applyPendingSection: boolean; replaceCurrentPage: boolean },
+  ) => void;
   shouldStopBeforeNewPage?: (input: {
     completedPageIndex: number;
     pages: readonly Page[];
@@ -170,7 +173,7 @@ export function createPaginator(opts: PaginatorOptions) {
     }
     // Allow caller to update state (e.g., apply pending→active) before we snapshot margins/size
     if (opts.onNewPage) {
-      opts.onNewPage(undefined, { applyPendingSection: options.applyPendingSection !== false });
+      opts.onNewPage(undefined, { applyPendingSection: options.applyPendingSection !== false, replaceCurrentPage });
     }
     const topMargin = opts.getActiveTopMargin();
     const bottomMargin = opts.getActiveBottomMargin();

@@ -1057,6 +1057,14 @@ function paginationInputFailure(block: FlowBlock, measure: Measure | undefined):
   return null;
 }
 
+function pageBordersForPage(
+  bordersBySection: ReadonlyMap<number, SectionPageBorders>,
+  page: Pick<Page, 'sectionIndex' | 'sectionPageNumber'>,
+): SectionPageBorders | undefined {
+  const borders = typeof page.sectionIndex === 'number' ? bordersBySection.get(page.sectionIndex) : undefined;
+  return borders?.display === 'firstPage' && page.sectionPageNumber !== 1 ? undefined : borders;
+}
+
 /**
  * Layout FlowBlocks into paginated fragments using measured line data.
  *
@@ -2151,9 +2159,13 @@ function* layoutDocumentBodySteps(
             );
           }
         : undefined,
-    onNewPage: (state?: PageState, pageStartOptions?: { applyPendingSection: boolean }) => {
+    onNewPage: (
+      state?: PageState,
+      pageStartOptions?: { applyPendingSection: boolean; replaceCurrentPage: boolean },
+    ) => {
       // apply pending->active and invalidate columns cache (first callback)
       if (!state) {
+        if (pageStartOptions?.replaceCurrentPage) activePageCounter -= 1;
         const applyPendingSection = pageStartOptions?.applyPendingSection !== false;
         // Track if we're entering a new section (pendingSectionIndex was just set)
         const isEnteringNewSection = applyPendingSection && pendingSectionIndex !== null;
@@ -2263,7 +2275,7 @@ function* layoutDocumentBodySteps(
             activeSectionPageCounterStart = activePageCounter;
           }
         }
-        pageCount += 1;
+        if (!pageStartOptions?.replaceCurrentPage) pageCount += 1;
 
         // Calculate the page number for this new page
         const newPageNumber = pageCount + pageNumberOffset;
@@ -4725,8 +4737,7 @@ function* layoutDocumentBodySteps(
     if (typeof sectionIndex === 'number') pageBordersBySection.set(sectionIndex, block.pageBorders);
   }
   for (const page of pages) {
-    if (typeof page.sectionIndex !== 'number') continue;
-    page.pageBorders = pageBordersBySection.get(page.sectionIndex);
+    page.pageBorders = pageBordersForPage(pageBordersBySection, page);
   }
 
   const layout: Layout = {
@@ -4870,7 +4881,7 @@ export function createLayoutDocumentContinuation(
     pageStartColumns,
   ) => {
     const snapshot = clonePlain(page);
-    if (typeof snapshot.sectionIndex === 'number') snapshot.pageBorders = pageBorders.get(snapshot.sectionIndex);
+    snapshot.pageBorders = pageBordersForPage(pageBorders, snapshot);
     if (state.constraintBoundaries.length > 0) {
       snapshot.columnRegions = [
         {

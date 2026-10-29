@@ -1833,9 +1833,9 @@ const onV2RenderCleared = (payload) => {
 const onV2HostEvent = (document, event) => {
   if (!event) return;
   recordInteraction(proxy.$superdoc, event.type, () => ({ ...event, documentId: document?.id ?? null }));
-  // Extension previews are forwarded for diagnostics only; they must not
-  // acquire editor-update or review side effects through this subscription.
-  if (event.type === 'mutation:committed' && event.origin === 'extension' && event.dryRun) return;
+  // Previews are forwarded for diagnostics only; they must not acquire
+  // editor-update or review side effects through this subscription.
+  if (event.type === 'mutation:committed' && event.dryRun) return;
   const documentId = document?.id ?? null;
   if (event.type === 'history:changed' && event.state) {
     proxy.$superdoc.emit('history-change', { documentId, history: event.state });

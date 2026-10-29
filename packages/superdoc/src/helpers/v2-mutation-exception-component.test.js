@@ -234,24 +234,23 @@ describe('SuperDoc mutation exceptions', () => {
 });
 
 describe('SuperDoc interaction history remains passive', () => {
-  it.each([true, false])(
-    'observes extension previews without editor-update callbacks when enabled=%s',
-    async (enabled) => {
-      const { editor, onEditorUpdate, diagnostics, superdoc } = await mountShell({ enabled });
-      diagnostics.clear();
-      onEditorUpdate.mockClear();
+  it.each([true, false])('observes previews without editor-update callbacks when enabled=%s', async (enabled) => {
+    const { editor, onEditorUpdate, diagnostics, superdoc } = await mountShell({ enabled });
+    diagnostics.clear();
+    onEditorUpdate.mockClear();
+    for (const origin of ['command', 'extension']) {
       for (const dryRun of [true, false]) {
         editor.vm.$emit('v2-host-event', {
           type: 'mutation:committed',
-          origin: 'extension',
+          origin,
           ...(dryRun ? { dryRun: true } : {}),
-          receipt: { success: true, dryRun, txId: 'extension-receipt' },
+          receipt: { success: true, dryRun, txId: `${origin}-receipt` },
         });
       }
-      await nextTick();
-      expect(onEditorUpdate).toHaveBeenCalledTimes(1);
-      expect(diagnostics.getSnapshot().events).toHaveLength(enabled ? 2 : 0);
-      closeInteractionHistory(superdoc);
-    },
-  );
+    }
+    await nextTick();
+    expect(onEditorUpdate).toHaveBeenCalledTimes(2);
+    expect(diagnostics.getSnapshot().events).toHaveLength(enabled ? 4 : 0);
+    closeInteractionHistory(superdoc);
+  });
 });

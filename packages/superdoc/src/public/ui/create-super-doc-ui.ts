@@ -10280,6 +10280,12 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
         ? { ...effectiveInput, keys: [...EFFECTIVE_INLINE_UNIFORMITY_KEYS, 'highlight'], includeCaret: true }
         : null,
     );
+    if (effective?.fontFamily?.state === 'mixed') {
+      delete inlinePatch.fontFamily;
+      delete inlinePatch.rFonts;
+      mixedInlineKeys.add('fontFamily');
+      mixedInlineKeys.add('rFonts');
+    }
     for (const [markName, patchKey] of Object.entries(MARK_TO_PATCH)) {
       const entry = effective?.[markName];
       if (!entry) continue;
@@ -10559,7 +10565,9 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
         const runs = (Array.isArray(para?.inlines) ? para.inlines : []) as LooseRecord[];
         for (const props of sliceRunProps(runs, segment.range)) {
           for (const key of Object.keys(sdRunPropsToInlineRunPatch(props))) {
-            if (!(key in inline) && !snap.mixedInlineKeys.includes(key)) {
+            const fontAlias = key === 'rFonts' ? 'fontFamily' : key === 'fontFamily' ? 'rFonts' : null;
+            const capturedFontAlias = fontAlias && (fontAlias in inline || snap.mixedInlineKeys.includes(fontAlias));
+            if (!(key in inline) && !snap.mixedInlineKeys.includes(key) && !capturedFontAlias) {
               inline[key] = FORMAT_PAINTER_BOOLEAN_KEYS.has(key) ? false : null;
             }
           }

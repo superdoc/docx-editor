@@ -5682,6 +5682,41 @@ describe('public ui — command reason taxonomy', () => {
     );
   });
 
+  it.each(['uniform', 'mixed'] as const)(
+    'copy-format handles newly exposed target fonts with %s inherited source fonts',
+    async (state) => {
+      const { superdoc, apply, setSelection, targetSelection } = makeFormatPainterSuperdoc({
+        sourceRuns: [{ text: 'hello', props: { bold: true } }],
+        targetRuns: [
+          {
+            text: 'world',
+            props: { fonts: { ascii: 'Times New Roman', hAnsi: 'Times New Roman' }, fontFamily: 'Times New Roman' },
+          },
+        ],
+        queryMatch: () => Promise.resolve({ items: [] }),
+        readEffectiveInlineUniformity: () => ({
+          success: true,
+          values: {
+            fontFamily: state === 'uniform' ? { state, value: 'Georgia' } : { state },
+          },
+        }),
+      });
+      const ui = createSuperDocUI({ superdoc });
+      try {
+        expect(await ui.commands.executeAsync('copy-format')).toBe(true);
+        setSelection(targetSelection);
+        ui.formatPainter.notifyPointerUp();
+        await vi.waitFor(() => expect(apply).toHaveBeenCalledTimes(1));
+        const inline = apply.mock.calls[0][0].inline;
+        if (state === 'uniform') expect(inline.fontFamily).toBe('Georgia');
+        else expect(inline).not.toHaveProperty('fontFamily');
+        expect(inline).not.toHaveProperty('rFonts');
+      } finally {
+        ui.destroy();
+      }
+    },
+  );
+
   it('copy-format omits a direct mark that the effective read reports as mixed', async () => {
     const { superdoc, apply, setSelection, targetSelection } = makeFormatPainterSuperdoc({
       sourceRuns: [{ text: 'hello', props: { bold: true, color: '#D2003F' } }],

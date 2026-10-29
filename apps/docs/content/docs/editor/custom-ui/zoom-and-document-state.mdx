@@ -93,6 +93,25 @@ Each change reports:
 Dry runs, rejected writes, and writes that changed nothing produce no record. Listeners added through
 `ui.createScope().document.onChange()` stop when the scope is disposed.
 
+## Show undo and redo state
+
+`ui.history.observe()` calls your listener with the current undo history, then again each time it changes. Use it to
+enable Undo and Redo buttons or to show how many steps can be undone. Run the actions through `ui.commands` or
+`doc.history`.
+
+```ts
+const stop = ui.history.observe(({ canUndo, canRedo, undoDepth }) => {
+  undoButton.disabled = !canUndo;
+  redoButton.disabled = !canRedo;
+  undoButton.title = `Undo (${undoDepth})`;
+});
+```
+
+The snapshot has `canUndo`, `canRedo`, `undoDepth`, and `redoDepth`. It starts empty before a document opens and
+again after the document is replaced. Each single accept or reject of a tracked change is its own undo step; accepting
+or rejecting all changes at once is one step. Once the stack holds its maximum number of steps, a new edit drops the
+oldest one and the depths stay the same, so `observe()` is not called. Use `ui.document.onChange()` to see each edit.
+
 `ui.document.export()` accepts the same typed DOCX options as `superdoc.export()`. It returns `undefined` when the bound
 host cannot export. The example passes `triggerDownload: true` so a successful browser export downloads the returned
 DOCX.

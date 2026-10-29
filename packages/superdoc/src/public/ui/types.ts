@@ -835,6 +835,13 @@ export interface ZoomSlice {
   max: number;
 }
 
+export interface HistorySlice {
+  canUndo: boolean;
+  canRedo: boolean;
+  undoDepth: number;
+  redoDepth: number;
+}
+
 export interface SuperDocDocumentChange {
   documentEpoch: string;
   seq: number;
@@ -1374,6 +1381,8 @@ export interface ToolbarHandle extends SnapshotSubscribable<ToolbarSnapshotSlice
   executeAsync(id: ToolbarCommandId, payload?: unknown): Promise<CommandExecutionResult>;
 }
 
+export type HistoryHandle = SnapshotSubscribable<HistorySlice>;
+
 /** Zoom handle. */
 export interface ZoomHandle extends SnapshotSubscribable<ZoomSlice> {
   /** Set an absolute zoom percentage (100 = 100%). */
@@ -1773,6 +1782,7 @@ export interface SuperDocUIState {
   contentControls: ContentControlsSlice;
   /** Zoom slice. */
   zoom: ZoomSlice;
+  history: HistorySlice;
   /** Fonts slice. */
   fonts: FontsSlice;
   /** Styles slice (read-only catalogue + active paragraph style). */
@@ -1840,6 +1850,7 @@ export interface SuperDocUI {
   readonly fonts: FontsHandle;
   /** Zoom surface. */
   readonly zoom: ZoomHandle;
+  readonly history: HistoryHandle;
   /** Document surface. */
   readonly document: DocumentHandle;
   /** Viewport / geometry surface. */

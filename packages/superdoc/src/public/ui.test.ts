@@ -12114,6 +12114,52 @@ describe('public ui — Plan B command catalog (row 747)', () => {
     await expect(pending).resolves.toEqual({ success: true, txId: 'tx-async' });
   });
 
+  it('observes undo history from the edit-command snapshot', () => {
+    let history: unknown = null;
+    const listeners = new Set<() => void>();
+    const superdoc = {
+      activeEditor: {
+        doc: {},
+        editCommands: {
+          getSnapshot: () => ({ commands: {}, history }),
+          subscribe: (listener: () => void) => {
+            listeners.add(listener);
+            return () => listeners.delete(listener);
+          },
+        },
+      },
+      config: { documentMode: 'editing' },
+      on: vi.fn(),
+      off: vi.fn(),
+    };
+    const ui = createSuperDocUI({ superdoc });
+    const seen: unknown[] = [];
+    ui.history.observe((snapshot) => seen.push(snapshot));
+    const publish = async (next: unknown) => {
+      history = next;
+      for (const listener of listeners) listener();
+      await Promise.resolve();
+    };
+
+    return (async () => {
+      await publish({ canUndo: true, canRedo: false, undoDepth: 1, redoDepth: 0 });
+      await publish({ canUndo: true, canRedo: false, undoDepth: 2, redoDepth: 0 });
+      await publish({ canUndo: true, canRedo: false, undoDepth: 2, redoDepth: 0 });
+      await publish({ canUndo: true, canRedo: false, redoDepth: 0 });
+      await publish(null);
+      expect(ui.history.getSnapshot()).toEqual({ canUndo: true, canRedo: false, undoDepth: 2, redoDepth: 0 });
+      await publish({ canUndo: true, canRedo: true, undoDepth: 1, redoDepth: 1 });
+      expect(seen).toEqual([
+        { canUndo: false, canRedo: false, undoDepth: 0, redoDepth: 0 },
+        { canUndo: true, canRedo: false, undoDepth: 1, redoDepth: 0 },
+        { canUndo: true, canRedo: false, undoDepth: 2, redoDepth: 0 },
+        { canUndo: true, canRedo: true, undoDepth: 1, redoDepth: 1 },
+      ]);
+      expect(ui.history.getSnapshot()).toBe(ui.state.history);
+      ui.destroy();
+    })();
+  });
+
   it('projects explicit fit-width bounds while preserving manual zoom and legacy aliases', () => {
     const superdoc = makeCatalogSuperdoc({
       instance: {

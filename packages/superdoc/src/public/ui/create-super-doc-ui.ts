@@ -123,6 +123,8 @@ import type {
   WorkflowScrollResult,
   ZoomHandle,
   ZoomSlice,
+  HistoryHandle,
+  HistorySlice,
 } from './types.js';
 import { collectDecorationProvidersFromChain, collectEntityHitsFromChain } from './entity-at.js';
 import { decodeLayoutStoryDataset } from '@superdoc/dom-contract';
@@ -4956,6 +4958,25 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     };
   };
 
+  const EMPTY_HISTORY: HistorySlice = { canUndo: false, canRedo: false, undoDepth: 0, redoDepth: 0 };
+  let historySlice = EMPTY_HISTORY;
+  let historySource: LooseRecord | null = null;
+  const computeHistory = (): HistorySlice => {
+    const source = getEditCommands();
+    if (source !== historySource) {
+      historySource = source;
+      historySlice = EMPTY_HISTORY;
+    }
+    const getSnapshot = hostMethod(source, 'getSnapshot');
+    const snapshot = getSnapshot ? safeCall<unknown>(() => getSnapshot(), null) : null;
+    const read = isPlainObject(snapshot) && isPlainObject(snapshot.history) ? snapshot.history : null;
+    const { undoDepth, redoDepth } = read ?? {};
+    if (typeof undoDepth !== 'number' || typeof redoDepth !== 'number') return historySlice;
+    const next = { canUndo: undoDepth > 0, canRedo: redoDepth > 0, undoDepth, redoDepth };
+    if (!shallowEqual(next, historySlice)) historySlice = next;
+    return historySlice;
+  };
+
   let zoomFitWidth: ZoomSlice['fitWidth'] | undefined;
   const computeZoom = (): ZoomSlice => {
     const getZoomState = hostMethod(superdoc, 'getZoomState');
@@ -7229,6 +7250,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       trackChanges: measure('trackChanges', () => computeTrackChanges(selection)),
       contentControls: measure('contentControls', () => computeContentControls(selection)),
       zoom: measure('zoom', computeZoom),
+      history: measure('history', computeHistory),
       fonts: measure('fonts', computeFonts),
       styles: measure('styles', () => computeStyles(selection)),
     };
@@ -12344,6 +12366,8 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     getSizeOptions: () => state.fonts.sizeOptions,
   };
 
+  const history: HistoryHandle = snapshotHandle(sliceHandle((s) => s.history));
+
   const zoomSub = sliceHandle((s) => s.zoom);
   const zoomSnap = snapshotHandle(zoomSub);
   const zoom: ZoomHandle = {
@@ -14519,6 +14543,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     bookmarks,
     fonts,
     zoom,
+    history,
     document: documentHandle,
     viewport,
     decorations,

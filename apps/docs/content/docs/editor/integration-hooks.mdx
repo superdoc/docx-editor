@@ -121,7 +121,9 @@ This option does not redefine kernel/model readiness or add loading/error contro
 
 ## Exact history observation
 
-Use existing `doc.history.get()` for the initial state and
+A custom UI should observe undo history with `ui.history.observe()`; see
+[Document controls](/editor/custom-ui/zoom-and-document-state#show-undo-and-redo-state). Without the UI controller,
+use `doc.history.get()` for the initial state and
 `superdoc.on('history-change', ({ documentId, history }) => { ... })` for acknowledged
 worker-owned depth changes, including changes while Undo stays enabled. Release the listener
 with `superdoc.off` when your application closes its view. No new controller or second stack

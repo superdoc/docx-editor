@@ -1,0 +1,33 @@
+name: Notify new issue
+
+# Grok Bot's GitHub triggers have no "issue opened" event, and its webhook needs
+# a bearer header that a repository webhook can't send.
+on:
+  issues:
+    types: [opened]
+
+permissions: {}
+
+jobs:
+  notify:
+    if: github.repository == 'superdoc/docx-editor'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Send issue to Grok Bot
+        env:
+          URL: ${{ secrets.GROKBOT_WEBHOOK_URL }}
+          KEY: ${{ secrets.GROKBOT_WEBHOOK_KEY }}
+          ISSUE_URL: ${{ github.event.issue.html_url }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          if [ -z "$URL" ] || [ -z "$KEY" ]; then
+            echo "Grok Bot webhook secrets are not set; skipping."
+            exit 0
+          fi
+          jq -n --arg url "$ISSUE_URL" --argjson number "$ISSUE_NUMBER" \
+            '{repo: "superdoc/docx-editor", issue: $url, number: $number}' |
+            curl -fsS --retry 3 -X POST "$URL" \
+              -H "Authorization: Bearer $KEY" \
+              -H 'content-type: application/json' \
+              --data @-

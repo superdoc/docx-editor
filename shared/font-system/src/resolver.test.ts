@@ -12,6 +12,15 @@ import {
 } from './index';
 
 describe('font stack insertion', () => {
+  it('preserves quoted commas and treats a generic-named physical fallback as a named face', () => {
+    expect(insertFontFamilyBeforeGeneric('"Acme, Inc.", sans-serif', 'Core Symbols')).toBe(
+      '"Acme, Inc.", "Core Symbols", sans-serif',
+    );
+    expect(insertFontFamilyBeforeGeneric('Example Sans, sans-serif', 'serif')).toBe(
+      'Example Sans, "serif", sans-serif',
+    );
+  });
+
   it('inserts a physical fallback before generic families and is idempotent', () => {
     expect(insertFontFamilyBeforeGeneric('"Example Sans", sans-serif', 'Core Symbols')).toBe(
       '"Example Sans", "Core Symbols", sans-serif',
@@ -24,6 +33,68 @@ describe('font stack insertion', () => {
 });
 
 describe('font resolver', () => {
+  it.each([
+    '"Acme, Inc.", Arial, sans-serif',
+    "'Acme, Inc.', Arial, sans-serif",
+    '"Acme \\"Display, Inc.\\"", Arial, sans-serif',
+    '"Acme\\\\, Inc.", Arial, sans-serif',
+  ])('preserves complete quoted families in %s', (stack) => {
+    const resolver = createFontResolver();
+    expect(resolver.resolvePhysicalFamily(stack)).toBe(stack);
+    for (const hasFace of [() => true, () => false]) {
+      expect(resolver.resolvePhysicalFamilyForFace(stack, { weight: '400', style: 'normal' }, hasFace)).toBe(stack);
+    }
+  });
+
+  it('replaces a complete quoted primary without splitting quoted fallback names', () => {
+    const resolver = createFontResolver();
+    resolver.map('Acme, Inc.', 'Sample 93');
+    const input = '"Acme, Inc.", "Fallback, Ltd.", sans-serif';
+    const expected = '"Sample 93", "Fallback, Ltd.", sans-serif';
+    expect(resolver.resolvePhysicalFamily(input)).toBe(expected);
+    expect(resolver.resolvePhysicalFamilyForFace(input, { weight: '400', style: 'normal' }, () => true)).toBe(expected);
+    expect(resolver.resolveFontFamily(input).physicalFamily).toBe('Sample 93');
+  });
+
+  it.each([
+    ['Bauhaus 93', '"Bauhaus 93"'],
+    ['93 Example', '"93 Example"'],
+    ['Example "Display" Face', '"Example \\"Display\\" Face"'],
+    ['Example\\Display', '"Example\\\\Display"'],
+  ])('quotes an unsafe mapped CSS family %s in both resolution paths', (physical, css) => {
+    const resolver = createFontResolver();
+    resolver.map('Example', physical);
+    const expected = `${css}, Arial, sans-serif`;
+    expect(resolver.resolvePhysicalFamily('Example, Arial, sans-serif')).toBe(expected);
+    expect(
+      resolver.resolvePhysicalFamilyForFace(
+        'Example, Arial, sans-serif',
+        { weight: '400', style: 'normal' },
+        () => true,
+      ),
+    ).toBe(expected);
+    expect(resolver.resolveFontFamily('Example').physicalFamily).toBe(physical);
+  });
+
+  it('quotes a numeric local family without replacing it or changing an already quoted stack', () => {
+    const resolver = createFontResolver();
+    const face = { weight: '400', style: 'normal' } as const;
+    expect(resolver.resolvePhysicalFamily('Bauhaus 93, Arial, sans-serif')).toBe('"Bauhaus 93", Arial, sans-serif');
+    for (const hasFace of [() => true, () => false]) {
+      expect(resolver.resolvePhysicalFamilyForFace('Bauhaus 93, Arial, sans-serif', face, hasFace)).toBe(
+        '"Bauhaus 93", Arial, sans-serif',
+      );
+      expect(resolver.resolvePhysicalFamilyForFace('"Bauhaus 93", Arial, sans-serif', face, hasFace)).toBe(
+        '"Bauhaus 93", Arial, sans-serif',
+      );
+    }
+    expect(resolver.resolveFontFamily('Bauhaus 93')).toEqual({
+      logicalFamily: 'Bauhaus 93',
+      physicalFamily: 'Bauhaus 93',
+      reason: 'as_requested',
+    });
+  });
+
   it('maps bundled substitutions and category fallbacks (bare names)', () => {
     expect(resolvePhysicalFamily('Calibri')).toBe('Carlito');
     expect(resolvePhysicalFamily('Cambria')).toBe('Caladea');
@@ -832,6 +903,21 @@ describe('embedded provider identity (mapEmbedded / clearEmbedded)', () => {
       return set.has(norm(f));
     };
   const regular = { weight: '400', style: 'normal' } as const;
+
+  it('quotes an embedded family with a numeric token while preserving its bare identity and fallbacks', () => {
+    const resolver = createFontResolver();
+    const physical = '__superdoc_embedded_7__0_Bauhaus 93';
+    resolver.mapEmbedded('Bauhaus 93', physical);
+    const hasFace = registeredOf(physical);
+    expect(resolver.resolvePhysicalFamilyForFace('"Bauhaus 93", Arial, sans-serif', regular, hasFace)).toBe(
+      `"${physical}", Arial, sans-serif`,
+    );
+    expect(resolver.resolveFace('Bauhaus 93', regular, hasFace)).toEqual({
+      logicalFamily: 'Bauhaus 93',
+      physicalFamily: physical,
+      reason: 'registered_face',
+    });
+  });
 
   it('binds a logical family to a unique physical family (registered_face), beating the bundled clone', () => {
     const r = createFontResolver();

@@ -22,6 +22,7 @@
  */
 
 import { getFallbackDecisionForFace, getRenderableFallback } from '@docfonts/fallbacks';
+import { toCssFontFamily } from '@superdoc/font-utils';
 
 import { type BundledActivation, FULLY_ACTIVE_BUNDLED } from './activation';
 import { BUNDLED_MANIFEST } from './bundled-manifest';
@@ -223,10 +224,31 @@ function stripFamilyQuotes(family: string): string {
 
 /** Split a CSS font-family value into trimmed, non-empty families (primary first). */
 function splitStack(cssFontFamily: string): string[] {
-  return cssFontFamily
-    .split(',')
-    .map((part) => part.trim())
-    .filter(Boolean);
+  const parts: string[] = [];
+  let start = 0;
+  let quote: string | null = null;
+  let escaped = false;
+  for (let index = 0; index < cssFontFamily.length; index++) {
+    const char = cssFontFamily[index];
+    if (escaped) {
+      escaped = false;
+    } else if (char === '\\') {
+      escaped = true;
+    } else if (quote) {
+      if (char === quote) quote = null;
+    } else if (char === '"' || char === "'") {
+      quote = char;
+    } else if (char === ',') {
+      parts.push(cssFontFamily.slice(start, index).trim());
+      start = index + 1;
+    }
+  }
+  parts.push(cssFontFamily.slice(start).trim());
+  return parts.filter(Boolean);
+}
+
+function cssFamily(family: string): string {
+  return toCssFontFamily(family, { fallback: '' }) ?? family;
 }
 
 const CSS_GENERIC_FAMILIES = new Set([
@@ -556,15 +578,16 @@ export class FontResolver {
   /**
    * Resolve a CSS font-family value for MEASURE and PAINT: swap the primary family to its
    * physical substitute and keep the original fallbacks. "Calibri, sans-serif" ->
-   * "Carlito, sans-serif"; "Calibri" -> "Carlito". An unmapped value is returned unchanged.
+   * "Carlito, sans-serif"; "Calibri" -> "Carlito". Quotes primary names when required by CSS syntax.
    */
   resolvePhysicalFamily(cssFontFamily: string): string {
     if (!cssFontFamily) return cssFontFamily;
     const parts = splitStack(cssFontFamily);
     if (parts.length === 0) return cssFontFamily;
     const { physical, reason } = this.#physicalFor(parts[0]);
-    if (reason === 'as_requested') return cssFontFamily;
-    return [physical, ...parts.slice(1)].join(', ');
+    const primary = cssFamily(reason === 'as_requested' ? parts[0] : physical);
+    if (primary === parts[0]) return cssFontFamily;
+    return [primary, ...parts.slice(1)].join(', ');
   }
 
   /**
@@ -593,8 +616,8 @@ export class FontResolver {
   /**
    * Face-aware CSS-stack variant for MEASURE and PAINT - the face-scoped counterpart of
    * {@link resolvePhysicalFamily}. Swaps the primary family to its substitute when this exact face is
-   * real or docfonts authorizes a synthetic source face. Otherwise returns the value unchanged
-   * (logical family + its fallbacks), so a missing face is never faux-styled by accident. Measure and
+   * real or docfonts authorizes a synthetic source face. Otherwise keeps the logical family and its
+   * fallbacks, quoting primary names when required by CSS syntax. Measure and
    * paint MUST call this with the same face key, or text is measured in one face and painted in another.
    */
   resolvePhysicalFamilyForFace(cssFontFamily: string, face: FaceKey, hasFace: HasFace): string {
@@ -607,10 +630,10 @@ export class FontResolver {
     // reasons keeps future provider tiers from needing another paint-path whitelist. Compare NORMALIZED
     // (quote-stripped + lowercased) because a same-name registered_face, as_requested, or
     // fallback_face_absent must not swap just because the primary was quoted or cased.
-    if (normalizeFamilyKey(physical) !== normalizeFamilyKey(parts[0])) {
-      return [physical, ...parts.slice(1)].join(', ');
-    }
-    return cssFontFamily;
+    const swapped = normalizeFamilyKey(physical) !== normalizeFamilyKey(parts[0]);
+    const primary = cssFamily(swapped ? physical : parts[0]);
+    if (primary === parts[0]) return cssFontFamily;
+    return [primary, ...parts.slice(1)].join(', ');
   }
 
   /**

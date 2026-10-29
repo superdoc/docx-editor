@@ -7,8 +7,8 @@ const docxType = 'application/vnd.openxmlformats-officedocument.wordprocessingml
 
 export default function App() {
   const editorRef = useRef<SuperDocRef>(null);
-  const editRevisionRef = useRef(0);
   const savingRef = useRef(false);
+  const stopObservingRef = useRef<(() => void) | null>(null);
   const [document, setDocument] = useState<Blob>();
   const [loadError, setLoadError] = useState(false);
   const [ready, setReady] = useState(false);
@@ -33,6 +33,8 @@ export default function App() {
     return () => controller.abort();
   }, []);
 
+  useEffect(() => () => stopObservingRef.current?.(), []);
+
   function showOpenError({ error }: { error: unknown }) {
     console.error('Could not open the document.', error);
     setReady(false);
@@ -45,7 +47,7 @@ export default function App() {
     const superdoc = editorRef.current?.getInstance();
     if (!superdoc) return;
 
-    const savedRevision = editRevisionRef.current;
+    const version = superdoc.ui.document.getVersion();
     savingRef.current = true;
     setSaving(true);
     setSaveStatus('Saving…');
@@ -62,7 +64,8 @@ export default function App() {
         body: editedDocx,
       });
       if (!response.ok) throw new Error(`Could not save the document: ${response.status}`);
-      setSaveStatus(editRevisionRef.current === savedRevision ? 'Saved' : 'Unsaved changes');
+      if (version) superdoc.ui.document.markClean(version);
+      setSaveStatus(superdoc.ui.document.getSnapshot().dirty ? 'Unsaved changes' : 'Saved');
     } catch (error) {
       setSaveStatus('Save failed. Try again.');
       console.error('Could not confirm the document was saved.', error);
@@ -84,12 +87,14 @@ export default function App() {
       <SuperDocEditor
         document={document}
         onContentError={showOpenError}
-        onEditorUpdate={() => {
-          editRevisionRef.current += 1;
-          setSaveStatus('Unsaved changes');
-        }}
         onException={showOpenError}
-        onReady={() => setReady(true)}
+        onReady={({ superdoc }) => {
+          setReady(true);
+          stopObservingRef.current?.();
+          stopObservingRef.current = superdoc.ui.document.observe(({ dirty }) =>
+            setSaveStatus(dirty ? 'Unsaved changes' : 'Saved'),
+          );
+        }}
         ref={editorRef}
       />
     </>

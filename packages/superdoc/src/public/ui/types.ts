@@ -1397,7 +1397,13 @@ export interface DocumentHandle extends SnapshotSubscribable<DocumentSlice> {
   /** Replace mounted content. Operational errors reject; an unavailable host returns `ok: false`. */
   replaceDocument(file: File | Blob | ArrayBuffer | Uint8Array): Promise<DocumentReplacementResult>;
   onChange(listener: (change: SuperDocDocumentChange) => void): () => void;
+  getVersion(): DocumentVersion | null;
+  markClean(version?: DocumentVersion): DocumentMarkCleanResult;
 }
+
+export type DocumentVersion = string & { readonly __documentVersion: unique symbol };
+
+export type DocumentMarkCleanResult = { ok: true } | { ok: false; reason: 'document-changed' | 'unavailable' };
 
 export interface ScopedDocumentHandle {
   onChange(listener: (change: SuperDocDocumentChange) => void): () => void;

@@ -12,8 +12,8 @@ const status = requireElement<HTMLOutputElement>('#document-status');
 
 const endpoint = '/api/documents/sample';
 let isReady = false;
-let editRevision = 0;
 let superdoc: SuperDoc | undefined;
+let stopObservingDocument: (() => void) | undefined;
 
 function showOpenError(error: unknown) {
   console.error('Could not open the document.', error);
@@ -31,14 +31,14 @@ try {
   superdoc = new SuperDoc({
     selector: '#editor',
     document: docx,
-    onReady: () => {
+    onReady: ({ superdoc: ready }) => {
       isReady = true;
       status.value = 'Ready';
       saveButton.disabled = false;
-    },
-    onEditorUpdate: () => {
-      editRevision += 1;
-      status.value = 'Unsaved changes';
+      stopObservingDocument?.();
+      stopObservingDocument = ready.ui.document.observe(({ dirty }) => {
+        status.value = dirty ? 'Unsaved changes' : 'Saved';
+      });
     },
     onContentError: ({ error }) => showOpenError(error),
     onException: ({ error }) => showOpenError(error),
@@ -50,7 +50,7 @@ try {
 saveButton.addEventListener('click', async () => {
   if (!superdoc || !isReady) return;
 
-  const savedRevision = editRevision;
+  const version = superdoc.ui.document.getVersion();
   saveButton.disabled = true;
   status.value = 'Saving…';
 
@@ -67,7 +67,8 @@ saveButton.addEventListener('click', async () => {
       body: editedDocx,
     });
     if (!saveResponse.ok) throw new Error(`Could not save the document: ${saveResponse.status}`);
-    status.value = editRevision === savedRevision ? 'Saved' : 'Unsaved changes';
+    if (version) superdoc.ui.document.markClean(version);
+    status.value = superdoc.ui.document.getSnapshot().dirty ? 'Unsaved changes' : 'Saved';
   } catch (error) {
     status.value = 'Save failed. Try again.';
     console.error('Could not confirm the document was saved.', error);

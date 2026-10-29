@@ -58,6 +58,7 @@ import type {
   CustomCommandRegistrationResult,
   DocumentHandle,
   DocumentSlice,
+  DocumentVersion,
   SuperDocDocumentChange,
   EqualityFn,
   FontFamilyOption,
@@ -3043,9 +3044,19 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
   };
   // Seeds on first read as well as on subscription: the initial state is
   // computed before the host subscription is wired.
-  const hasLocalDocumentMutation = (): boolean => {
+  const savedPoint = () => {
     const host = getHost();
+    return {
+      host,
+      isDirty: hostMethod(host, 'isDirty'),
+      getDocumentVersion: hostMethod(host, 'getDocumentVersion'),
+      markSaved: hostMethod(host, 'markSaved'),
+    };
+  };
+  const hasLocalDocumentMutation = (): boolean => {
+    const { host, isDirty } = savedPoint();
     if (!host) return false;
+    if (isDirty) return Boolean(safeCall<unknown>(() => isDirty(), false));
     seedLocalDocumentMutation(host);
     return dirtyHosts.has(host);
   };
@@ -7722,15 +7733,16 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
         // non-receipt Document API results that never emit
         // `mutation:committed`. The receipt event stays as a fallback for
         // hosts that predate the dedicated signal.
-        if (
-          (type === 'document:mutated' ||
-            (type === 'mutation:committed' && mutationCommittedEventChangedDocument(event))) &&
-          host &&
-          !dirtyHosts.has(host)
-        ) {
+        const documentEdited =
+          type === 'document:mutated' ||
+          (type === 'mutation:committed' && mutationCommittedEventChangedDocument(event));
+        if (documentEdited && host && hostMethod(host, 'isDirty')) {
+          recompute('document-dirty');
+        } else if (documentEdited && host && !dirtyHosts.has(host)) {
           dirtyHosts.add(host);
           recompute('document-dirty');
         }
+        if (type === 'document:saved-point-changed') recompute('document-dirty');
         if (type === 'collaboration:document-replaced' && host) {
           // The host reopened the authoritative remote document under the
           // same identity and reset its local revision. Local edits made to
@@ -12420,6 +12432,22 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       if (disposed) return () => {};
       documentChangeListeners.add(listener);
       return () => documentChangeListeners.delete(listener);
+    },
+    getVersion: () => {
+      const { getDocumentVersion } = savedPoint();
+      const version = getDocumentVersion ? safeCall<unknown>(() => getDocumentVersion(), null) : null;
+      return typeof version === 'string' ? (version as DocumentVersion) : null;
+    },
+    markClean: (version) => {
+      const { markSaved } = savedPoint();
+      if (!markSaved) return { ok: false, reason: 'unavailable' };
+      const result = safeCall<unknown>(() => markSaved(version), null);
+      return isPlainObject(result) && result.ok === true
+        ? { ok: true }
+        : {
+            ok: false,
+            reason: isPlainObject(result) && result.reason === 'document-changed' ? 'document-changed' : 'unavailable',
+          };
     },
   };
 

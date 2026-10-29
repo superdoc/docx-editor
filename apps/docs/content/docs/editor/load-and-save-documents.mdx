@@ -62,10 +62,17 @@ Both examples:
 - fetch the DOCX before mounting the Editor;
 - enable saving after `onReady`;
 - call `export({ triggerDownload: false })` to receive the edited `Blob`;
-- show **Saved** only after the `PUT` succeeds. Edits made during that request remain unsaved.
+- show **Saved** only after the `PUT` succeeds. They take `ui.document.getVersion()` before exporting and pass it to
+  `ui.document.markClean(version)` after the `PUT`, so edits made during that request remain unsaved;
+- update the status from `ui.document.observe()`, which reports `dirty` whenever it changes.
 
-The revision counter tracks local edits only. This is manual saving, not autosave or protection against another user
-overwriting the file.
+`dirty` counts local edits only: a collaborator's change doesn't make it true, and exporting doesn't clear it, because
+producing a file isn't storing it. Undoing back to the saved state still counts as unsaved. Run one save at a time, or
+make your storage reject an older write; otherwise a slow save can overwrite a newer one that was already marked clean.
+`markClean()` returns `{ ok: false, reason: 'document-changed' }` when the version belongs to a document that has since
+been replaced, and `{ ok: false, reason: 'unavailable' }` when the Editor can't track a saved point.
+
+This is manual saving, not autosave or protection against another user overwriting the file.
 
 ## Use another source or destination
 

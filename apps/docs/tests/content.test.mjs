@@ -4236,14 +4236,16 @@ test('the document storage example preserves unsaved state and reports failures'
     [documentStorageExampleUrl, reactDocumentStorageExampleUrl].map((url) => readFile(url, 'utf8')),
   );
 
-  assert.match(storage, /const savedRevision = editRevision/u);
-  assert.match(storage, /editRevision === savedRevision \? 'Saved' : 'Unsaved changes'/u);
+  assert.match(storage, /const version = superdoc\.ui\.document\.getVersion\(\)/u);
+  assert.match(storage, /if \(version\) superdoc\.ui\.document\.markClean\(version\)/u);
   assert.match(storage, /Could not open the document\. Reload to try again\./u);
   assert.match(storage, /Save failed\. Try again\./u);
   assert.match(reactStorage, /if \(savingRef\.current\) return;/u);
   assert.match(reactStorage, /savingRef\.current = true;[\s\S]*finally \{\s+savingRef\.current = false;/u);
-  assert.match(reactStorage, /const savedRevision = editRevisionRef\.current/u);
-  assert.match(reactStorage, /editRevisionRef\.current === savedRevision \? 'Saved' : 'Unsaved changes'/u);
+  assert.match(reactStorage, /const version = superdoc\.ui\.document\.getVersion\(\)/u);
+  assert.match(reactStorage, /if \(version\) superdoc\.ui\.document\.markClean\(version\)/u);
+  assert.match(storage, /stopObservingDocument\?\.\(\);\s+stopObservingDocument = ready\.ui\.document\.observe/u);
+  assert.match(reactStorage, /stopObservingRef\.current\?\.\(\);\s+stopObservingRef\.current = superdoc\.ui\.document\.observe/u);
   assert.match(reactStorage, /setSaveStatus\('Save failed\. Try again\.'\)/u);
   assert.match(reactStorage, /<output aria-live='polite'>/u);
   assert.match(reactStorage, /onContentError/u);

@@ -81,6 +81,8 @@ export type {
   DocumentHandle,
   DocumentReplacementResult,
   SuperDocDocumentChange,
+  DocumentVersion,
+  DocumentMarkCleanResult,
   ScopedDocumentHandle,
   ViewportHandle,
   DecorationsHandle,

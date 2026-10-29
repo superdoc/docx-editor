@@ -10085,6 +10085,134 @@ describe('public ui — document control parity (row 742)', () => {
     expect(direct).toEqual([1, 2]);
   });
 
+  it('marks the document clean through the host and keeps later edits dirty', () => {
+    const hostEventListeners: Array<(event: Record<string, unknown>) => void> = [];
+    let revision = 0;
+    let saved = 0;
+    const host = {
+      getLocalMutationRevision: () => revision,
+      getDocumentVersion: () => `1.0:${revision}`,
+      isDirty: () => revision !== saved,
+      markSaved: (version?: string) => {
+        const target = version === undefined ? revision : Number(version.split(':')[1]);
+        if (version !== undefined && !version.startsWith('1.0:')) return { ok: false, reason: 'document-changed' };
+        if (target > saved) saved = target;
+        for (const listener of hostEventListeners)
+          listener({ type: 'document:saved-point-changed', dirty: revision !== saved });
+        return { ok: true };
+      },
+      events: {
+        subscribe: (listener: (event: Record<string, unknown>) => void) => {
+          hostEventListeners.push(listener);
+          return () => undefined;
+        },
+      },
+    };
+    const doc = {
+      comments: { list: () => ({ items: [] }) },
+      trackChanges: { list: () => ({ items: [] }) },
+      selection: { current: () => null },
+    };
+    const superdoc = { activeEditor: { doc, host }, config: { documentMode: 'editing' }, on: vi.fn(), off: vi.fn() };
+    const ui = createSuperDocUI({ superdoc });
+    const other = createSuperDocUI({ superdoc });
+    const edit = () => {
+      revision += 1;
+      for (const listener of hostEventListeners)
+        listener({ type: 'document:mutated', source: 'facade', revision, hasCommitEvent: false });
+    };
+
+    edit();
+    const version = ui.document.getVersion();
+    edit();
+    expect(version).toBe('1.0:1');
+    expect(ui.document.getSnapshot().dirty).toBe(true);
+
+    expect(ui.document.markClean(version!)).toEqual({ ok: true });
+    expect(ui.document.getSnapshot().dirty).toBe(true);
+
+    expect(ui.document.markClean()).toEqual({ ok: true });
+    expect(ui.document.getSnapshot().dirty).toBe(false);
+    expect(other.document.getSnapshot().dirty).toBe(false);
+
+    expect(ui.document.markClean('2.0:1' as never)).toEqual({ ok: false, reason: 'document-changed' });
+
+    edit();
+    expect(ui.document.getSnapshot().dirty).toBe(true);
+    expect(other.document.getSnapshot().dirty).toBe(true);
+    ui.destroy();
+    other.destroy();
+  });
+
+  it('turns dirty again when an edit after markClean only removes a tracked change', () => {
+    const hostEventListeners: Array<(event: Record<string, unknown>) => void> = [];
+    let revision = 0;
+    let saved = 0;
+    const emit = (event: Record<string, unknown>) => {
+      for (const listener of hostEventListeners) listener(event);
+    };
+    const host = {
+      getLocalMutationRevision: () => revision,
+      getDocumentVersion: () => `1.0:${revision}`,
+      isDirty: () => revision !== saved,
+      markSaved: () => {
+        saved = revision;
+        emit({ type: 'document:saved-point-changed', dirty: false });
+        return { ok: true };
+      },
+      events: {
+        subscribe: (listener: (event: Record<string, unknown>) => void) => {
+          hostEventListeners.push(listener);
+          return () => undefined;
+        },
+      },
+    };
+    const doc = {
+      comments: { list: () => ({ items: [] }) },
+      trackChanges: { list: () => ({ items: [] }) },
+      selection: { current: () => null },
+    };
+    const ui = createSuperDocUI({
+      superdoc: { activeEditor: { doc, host }, config: { documentMode: 'editing' }, on: vi.fn(), off: vi.fn() },
+    });
+    revision += 1;
+    emit({ type: 'document:mutated', source: 'facade', revision, hasCommitEvent: false });
+    ui.document.markClean();
+    expect(ui.document.getSnapshot().dirty).toBe(false);
+
+    revision += 1;
+    emit({ type: 'document:mutated', source: 'facade', revision, hasCommitEvent: true });
+    emit({
+      type: 'mutation:committed',
+      origin: 'command',
+      cause: 'api',
+      receipt: {
+        success: true,
+        txId: 'reject-insertion',
+        invalidatedRefs: [{ kind: 'entity', entityType: 'trackedChange', entityId: 'tc-1' }],
+      },
+    });
+
+    expect(ui.document.getSnapshot().dirty).toBe(true);
+    ui.destroy();
+  });
+
+  it('reports markClean as unavailable when the host has no saved point', () => {
+    const host = { events: { subscribe: () => () => undefined } };
+    const doc = {
+      comments: { list: () => ({ items: [] }) },
+      trackChanges: { list: () => ({ items: [] }) },
+      selection: { current: () => null },
+    };
+    const ui = createSuperDocUI({
+      superdoc: { activeEditor: { doc, host }, config: { documentMode: 'editing' }, on: vi.fn(), off: vi.fn() },
+    });
+
+    expect(ui.document.getVersion()).toBeNull();
+    expect(ui.document.markClean()).toEqual({ ok: false, reason: 'unavailable' });
+    ui.destroy();
+  });
+
   it('keeps per-editor dirty state across active-editor switches', () => {
     const listenersByHost = new Map<object, (event: Record<string, unknown>) => void>();
     const instanceEventListeners = new Map<string, (payload?: unknown) => void>();

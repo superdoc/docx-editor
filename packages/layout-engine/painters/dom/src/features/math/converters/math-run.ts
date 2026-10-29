@@ -168,16 +168,63 @@ function resolveMathVariant(rPr: OmmlJsonNode | undefined): string | null {
   return null;
 }
 
-function extractText(node: OmmlJsonNode): string {
-  let text = '';
+type MathRunSegment = { text: string; revision?: OmmlJsonNode };
+
+function extractTextSegments(node: OmmlJsonNode): MathRunSegment[] {
+  const segments: MathRunSegment[] = [];
+  const textOf = (element: OmmlJsonNode): string =>
+    (element.elements ?? [])
+      .filter((child) => child.type === 'text' && typeof child.text === 'string')
+      .map((child) => child.text)
+      .join('');
   for (const child of node.elements ?? []) {
     if (child.name === 'm:t') {
-      for (const tc of child.elements ?? []) {
-        if (tc.type === 'text' && typeof tc.text === 'string') text += tc.text;
-      }
+      const text = textOf(child);
+      const previous = segments[segments.length - 1];
+      if (previous && !previous.revision) previous.text += text;
+      else if (text) segments.push({ text });
+    } else if (child.name === 'w:ins' || child.name === 'w:del') {
+      const text = (child.elements ?? [])
+        .filter((element) => element.name === 'm:t')
+        .map(textOf)
+        .join('');
+      if (text) segments.push({ text, revision: child });
     }
   }
-  return text;
+  return segments;
+}
+
+function convertRunSegments(
+  node: OmmlJsonNode,
+  doc: Document,
+  tokenize: (text: string) => Array<{ tag: MathAtomTag; content: string }>,
+): Node | null {
+  const rPr = (node.elements ?? []).find((element) => element.name === 'm:rPr');
+  const variant = resolveMathVariant(rPr);
+  const fragment = doc.createDocumentFragment();
+  for (const segment of extractTextSegments(node)) {
+    let parent: Node = fragment;
+    if (segment.revision) {
+      const wrapper = doc.createElementNS(MATHML_NS, 'mrow');
+      const kind = segment.revision.name === 'w:ins' ? 'insert' : 'delete';
+      wrapper.setAttribute('class', `track-${kind}-dec highlighted`);
+      wrapper.setAttribute('data-track-change-kind', kind);
+      for (const attribute of ['id', 'author', 'date']) {
+        const value = segment.revision.attributes?.[`w:${attribute}`];
+        if (value) wrapper.setAttribute(`data-track-change-${attribute}`, value);
+      }
+      fragment.appendChild(wrapper);
+      parent = wrapper;
+    }
+    for (const atom of tokenize(segment.text)) {
+      const element = doc.createElementNS(MATHML_NS, atom.tag);
+      element.textContent = atom.content;
+      if (variant) element.setAttribute('mathvariant', variant);
+      parent.appendChild(element);
+    }
+  }
+  if (!fragment.firstChild) return null;
+  return fragment.childNodes.length === 1 ? fragment.firstChild : fragment;
 }
 
 /**
@@ -198,30 +245,7 @@ function extractText(node: OmmlJsonNode): string {
  *   normal authored shape; §22.1.2.58 (lit) implies operators are classified
  *   per-character by default.
  */
-export const convertMathRun: MathObjectConverter = (node, doc) => {
-  const text = extractText(node);
-  if (!text) return null;
-
-  const rPr = (node.elements ?? []).find((el) => el.name === 'm:rPr');
-  const variant = resolveMathVariant(rPr);
-  const atoms = tokenizeMathText(text);
-
-  const createAtom = (atom: { tag: MathAtomTag; content: string }): Element => {
-    const el = doc.createElementNS(MATHML_NS, atom.tag);
-    el.textContent = atom.content;
-    // Apply m:rPr-derived variant to every atom in the run. Omitted attribute
-    // means "use the MathML default" (italic for single-char <mi>, normal
-    // for multi-char <mi>/<mo>/<mn>).
-    if (variant) el.setAttribute('mathvariant', variant);
-    return el;
-  };
-
-  if (atoms.length === 1) return createAtom(atoms[0]!);
-
-  const fragment = doc.createDocumentFragment();
-  for (const atom of atoms) fragment.appendChild(createAtom(atom));
-  return fragment;
-};
+export const convertMathRun: MathObjectConverter = (node, doc) => convertRunSegments(node, doc, tokenizeMathText);
 
 /**
  * Tokenize a math run's text for the m:fName context: consecutive non-digit,
@@ -285,23 +309,5 @@ function tokenizeFunctionNameText(text: string): Array<{ tag: MathAtomTag; conte
  * the run emits multiple atoms. Returns null for empty text.
  */
 export function convertMathRunAsFunctionName(node: OmmlJsonNode, doc: Document): Node | null {
-  const text = extractText(node);
-  if (!text) return null;
-
-  const rPr = (node.elements ?? []).find((el) => el.name === 'm:rPr');
-  const variant = resolveMathVariant(rPr);
-  const atoms = tokenizeFunctionNameText(text);
-
-  const createAtom = (atom: { tag: MathAtomTag; content: string }): Element => {
-    const el = doc.createElementNS(MATHML_NS, atom.tag);
-    el.textContent = atom.content;
-    if (variant) el.setAttribute('mathvariant', variant);
-    return el;
-  };
-
-  if (atoms.length === 1) return createAtom(atoms[0]!);
-
-  const fragment = doc.createDocumentFragment();
-  for (const atom of atoms) fragment.appendChild(createAtom(atom));
-  return fragment;
+  return convertRunSegments(node, doc, tokenizeFunctionNameText);
 }

@@ -78,7 +78,7 @@ The existing `contentControls.replaceContent({ format: 'ooxml' })` remains an in
 
 ## Insert and replace complete equations
 
-In a non-collaborative v2 document, insert a complete Office Math equation through the native OOXML route:
+Insert a complete Office Math equation through the native OOXML route:
 
 ```ts
 const doc = superdoc.activeEditor.doc;
@@ -98,9 +98,15 @@ const result = await doc.insert(
 
 Use a collapsed selection for insertion. To replace an equation, select the complete equation and pass its current selection target to `doc.replace()` with `type: 'ooxml'` and the replacement XML. Both `<m:oMath>` and `<m:oMathPara>` roots are accepted. These mutations use the normal undo history without remounting the editor.
 
-The browser treats each equation as one caret unit. Users can type beside it, delete the complete equation with adjacent Backspace or Delete, and press Enter after it. Editing part of an equation is unsupported. The native authoring route requires direct edits outside collaboration; unsupported inputs and tracked authoring return a failure without applying a partial mutation.
+The browser treats each equation as one caret unit. Users can type beside it, delete the complete equation with adjacent Backspace or Delete, and press Enter after it. Editing part of an equation is unsupported.
 
-Your application supplies its equation-entry UI and any LaTeX-to-OMML conversion. This capability adds no equation editor or native equation clipboard support, and does not recover the original LaTeX from OMML.
+Tracked authoring and shared authoring accept one complete equation at an explicit text selection within one paragraph: a collapsed selection inserts it, and a selection covering a complete equation replaces it. Use `{ changeMode: 'tracked' }` to retain author attribution and review decisions. Shared block placement, node-edge targets, partial equations, arbitrary native XML and captured package dependencies return a failure before applying a mutation. Direct edits outside collaboration retain their existing block-target behavior.
+
+Internal clipboard fragments preserve complete inline and display equations as editable native math. External Word HTML can supply a complete Office Math subtree; MathML, partial equations and unsupported nested controls are refused. A standalone `{ kind: 'math', omml }` clipboard inline requires self-contained Office Math namespace declarations. Equation paste uses normal history and can participate in tracked and shared authoring.
+
+Imported Word documents can retain pending revisions inside equation runs for display, review decisions and reopening. Fresh native writes and clipboard math inputs require equation XML without embedded revision markup; unsupported revision-rich inputs are refused before mutation.
+
+Your application supplies its equation-entry UI and converts LaTeX to Transitional OMML before insertion. Native Markdown math input and recovery of the original LaTeX from OMML are not provided.
 
 An empty selection, an address that no longer resolves, or invalid source data produces a structured validation error. Captures above the resource limits fail with `RESOURCE_LIMIT` and return no partial result: one referenced part can be at most 64 MiB, encoded dependency source bytes can total at most 128 MiB, and a capture can include at most 1,024 relationships.
 

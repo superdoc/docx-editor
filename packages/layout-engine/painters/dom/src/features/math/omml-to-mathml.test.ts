@@ -4635,3 +4635,94 @@ describe('m:borderBox converter', () => {
     expect(result).toBeNull();
   });
 });
+
+describe('SD-6495 pending Word math run revisions', () => {
+  it('paints both pending branches with their insertion/deletion meaning', () => {
+    const revision = (kind: string, text: string, id: string) => ({
+      name: 'm:r',
+      elements: [
+        {
+          name: `w:${kind}`,
+          attributes: { 'w:id': id, 'w:author': 'Editor' },
+          elements: [{ name: 'm:t', elements: [{ type: 'text', text }] }],
+        },
+      ],
+    });
+    const input = { name: 'm:oMath', elements: [revision('del', 'x+1', '1'), revision('ins', 'y=2', '2')] };
+    const result = convertOmmlToMathml(input, createTestDocument());
+    expect(result?.textContent).toBe('x+1y=2');
+    expect(result?.querySelector('.track-delete-dec')?.textContent).toBe('x+1');
+    expect(result?.querySelector('.track-insert-dec')?.textContent).toBe('y=2');
+  });
+  it('preserves ordinary segments, revision attribution, run styling and input JSON', () => {
+    const input = {
+      name: 'm:oMath',
+      elements: [
+        {
+          name: 'm:r',
+          elements: [
+            { name: 'm:rPr', elements: [{ name: 'm:sty', attributes: { 'm:val': 'b' } }] },
+            { name: 'm:t', elements: [{ type: 'text', text: 'a' }] },
+            {
+              name: 'w:del',
+              attributes: { 'w:id': '7', 'w:author': 'Reviewer', 'w:date': '2026-10-28T00:00:00Z' },
+              elements: [{ name: 'm:t', elements: [{ type: 'text', text: 'x+1' }] }],
+            },
+            { name: 'm:t', elements: [{ type: 'text', text: '=' }] },
+            {
+              name: 'w:ins',
+              attributes: { 'w:id': '8' },
+              elements: [{ name: 'm:t', elements: [{ type: 'text', text: 'y' }] }],
+            },
+          ],
+        },
+      ],
+    };
+    const before = JSON.stringify(input);
+    const result = convertOmmlToMathml(input, createTestDocument())!;
+    expect(result.textContent).toBe('ax+1=y');
+    const deleted = result.querySelector('.track-delete-dec')!;
+    expect(deleted.classList.contains('highlighted')).toBe(true);
+    expect(deleted.getAttribute('data-track-change-id')).toBe('7');
+    expect(deleted.getAttribute('data-track-change-kind')).toBe('delete');
+    expect(deleted.getAttribute('data-track-change-author')).toBe('Reviewer');
+    expect(deleted.getAttribute('data-track-change-date')).toBe('2026-10-28T00:00:00Z');
+    expect(
+      Array.from(result.querySelectorAll('mi,mo,mn')).every((atom) => atom.getAttribute('mathvariant') === 'bold'),
+    ).toBe(true);
+    expect(JSON.stringify(input)).toBe(before);
+  });
+
+  it('keeps function identifiers grouped inside selected revision segments', () => {
+    const input = {
+      name: 'm:oMath',
+      elements: [
+        {
+          name: 'm:func',
+          elements: [
+            {
+              name: 'm:fName',
+              elements: [
+                {
+                  name: 'm:r',
+                  elements: [
+                    { name: 'w:del', elements: [{ name: 'm:t', elements: [{ type: 'text', text: 'sin' }] }] },
+                    { name: 'w:ins', elements: [{ name: 'm:t', elements: [{ type: 'text', text: 'cos' }] }] },
+                  ],
+                },
+              ],
+            },
+            {
+              name: 'm:e',
+              elements: [{ name: 'm:r', elements: [{ name: 'm:t', elements: [{ type: 'text', text: 'x' }] }] }],
+            },
+          ],
+        },
+      ],
+    };
+    const result = convertOmmlToMathml(input, createTestDocument())!;
+    expect(result.querySelector('.track-delete-dec mi')?.textContent).toBe('sin');
+    expect(result.querySelector('.track-insert-dec mi')?.textContent).toBe('cos');
+    expect(result.querySelector('.track-insert-dec mi')?.getAttribute('mathvariant')).toBe('normal');
+  });
+});

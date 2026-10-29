@@ -178,6 +178,7 @@ export interface SDPasteBlockSdt {
 }
 
 export type SDPasteInline =
+  | { kind: 'math'; omml: string; sourcePath?: readonly (string | number)[] }
   | SDPasteLeafInline
   | SDPasteSdtInline
   | {

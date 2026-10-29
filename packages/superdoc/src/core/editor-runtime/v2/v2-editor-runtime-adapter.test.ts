@@ -29,6 +29,22 @@ function createReadyHost(overrides: Record<string, unknown> = {}) {
 }
 
 describe('createV2EditorRuntimeAdapter viewing preferences route', () => {
+  it.each(['text.deleteBackward', 'text.deleteForward'] as const)(
+    'preserves the accepted caret-only result of %s',
+    async (kind) => {
+      const host = createReadyHost({ dispatch: vi.fn(async () => ({ status: 'selected' as const })) });
+      const { runtime } = createV2EditorRuntimeAdapter({
+        id: 'v2-runtime',
+        documentId: 'doc-1',
+        root: document.createElement('div'),
+        host,
+      });
+
+      await expect(runtime.dispatch({ kind })).resolves.toEqual({ status: 'selected' });
+      expect(host.dispatch).toHaveBeenCalledWith({ kind });
+    },
+  );
+
   it('exports independent policies and rejects legacy conflicts before saving', async () => {
     const host = createReadyHost();
     const { runtime } = createV2EditorRuntimeAdapter({

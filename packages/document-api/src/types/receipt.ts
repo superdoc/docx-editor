@@ -84,7 +84,10 @@ export type ContentControlCreationRejectionReason =
   | 'content-control-unsupported-inline-structure'
   | 'content-control-shared-run-boundary';
 
-export type DocumentApiRejectionReason = TextRangeRejectionReason | ContentControlCreationRejectionReason;
+export type DocumentApiRejectionReason =
+  | TextRangeRejectionReason
+  | ContentControlCreationRejectionReason
+  | 'paragraph-mark-already-deleted';
 
 export interface DocumentApiRejectionDetails extends Record<string, unknown> {
   reason: DocumentApiRejectionReason;
@@ -99,6 +102,7 @@ export function getDocumentApiRejectionReason(details: unknown): DocumentApiReje
     case 'text-range-in-unsupported-tracked-wrapper':
     case 'content-control-unsupported-inline-structure':
     case 'content-control-shared-run-boundary':
+    case 'paragraph-mark-already-deleted':
       return details.reason;
     default:
       return undefined;

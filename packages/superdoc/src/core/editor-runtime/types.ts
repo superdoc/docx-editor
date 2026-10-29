@@ -175,6 +175,7 @@ export type EditorRuntimeRejectionCode =
  * must not inspect these to invalidate document state.
  */
 export type EditorRuntimeCommandResult =
+  | { status: 'selected' }
   | { status: 'committed'; receipt?: unknown }
   | { status: 'history-committed'; result?: unknown }
   | { status: 'noop'; reason: EditorRuntimeNoopReason }

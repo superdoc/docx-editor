@@ -83,6 +83,7 @@ interface HostDispatchRejectionLike {
 }
 
 type HostDispatchResultLike =
+  | { readonly status: 'selected' }
   | { readonly status: 'committed'; readonly receipt?: unknown }
   | { readonly status: 'history-committed'; readonly result?: unknown }
   | { readonly status: 'history-noop'; readonly result?: { readonly reason?: string } }
@@ -734,6 +735,8 @@ export function createV2EditorRuntimeAdapter(options: V2EditorRuntimeAdapterOpti
 
     const result = await host.dispatch(mapped);
     switch (result.status) {
+      case 'selected':
+        return { status: 'selected' };
       case 'committed':
         invalidatePositionTokens();
         return { status: 'committed', receipt: result.receipt };

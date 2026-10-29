@@ -96,10 +96,10 @@ describe('editor-runtime contract  -  exported type-name drift', () => {
 });
 
 describe('editor-runtime contract  -  compile-time shape', () => {
-  it('EditorRuntimeCommandResult carries the six named statuses', () => {
+  it('EditorRuntimeCommandResult carries the named statuses', () => {
     type Status = EditorRuntimeCommandResult['status'];
     expectTypeOf<Status>().toEqualTypeOf<
-      'committed' | 'history-committed' | 'noop' | 'history-noop' | 'receipt-failure' | 'rejected'
+      'selected' | 'committed' | 'history-committed' | 'noop' | 'history-noop' | 'receipt-failure' | 'rejected'
     >();
   });
 

@@ -212,7 +212,6 @@ const {
   showAddComment,
   handleEditorLocationsUpdate,
   handleTrackedChangeUpdate,
-  syncTrackedChangePositionsWithDocument,
   addComment,
   addHydratedComment,
   getComment,

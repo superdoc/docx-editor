@@ -1708,7 +1708,7 @@ describe('comments-store v2 tracked-change hydration', () => {
       trackedChangeDisplayType: 'both',
     };
 
-    store.handleTrackedChangeUpdate({ superdoc, documentState: null, broadcastChanges: true, params });
+    store.handleTrackedChangeUpdate({ superdoc, broadcastChanges: true, params });
     vi.runAllTimers();
 
     const updateEvents = emit.mock.calls
@@ -1719,7 +1719,7 @@ describe('comments-store v2 tracked-change hydration', () => {
     expect(updateEvents[0].comment.commentId).toBe('tc-first');
 
     emit.mockClear();
-    store.handleTrackedChangeUpdate({ superdoc, documentState: null, broadcastChanges: true, params });
+    store.handleTrackedChangeUpdate({ superdoc, broadcastChanges: true, params });
     vi.runAllTimers();
 
     expect(emit).not.toHaveBeenCalled();

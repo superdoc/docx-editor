@@ -243,6 +243,8 @@ export const useCommentsStore = defineStore('comments', () => {
   const suppressInternalExternal = ref(true);
   const currentCommentText = ref('');
   const currentCommentMentions = ref([]);
+  let commentDraftRevision = 0;
+  watch([currentCommentText, currentCommentMentions], () => commentDraftRevision++, { deep: true, flush: 'sync' });
   const commentsList = ref([]);
   // Complete review inventory for the explicit document panel only. Floating
   // presentation and geometry continue to consume the bounded commentsList.
@@ -1744,16 +1746,17 @@ export const useCommentsStore = defineStore('comments', () => {
 
     const v2Adapter = !skipEditorUpdate && !isHydration ? getV2CommentsAdapter(superdoc) : null;
     if (v2Adapter && !comment.trackedChange) {
+      const pendingDraft = pendingComment.value;
+      const draftRevision = commentDraftRevision;
+      const draftActiveComment = activeComment.value;
+      const draftActiveInstance = activeFloatingCommentInstanceId.value;
       // ui-phase3-002: in v2 mode the create / reply path delegates to the
       // Document API compatibility adapter. Vue state is not mutated until
       // the synchronous receipt commits and we refresh from
       // `host.getHandles().comments.list()`. This keeps the sidebar
       // receipt-driven; rejected mutations never produce orphan sidebar rows.
-      const submittedPendingComment = pendingComment.value;
       const submittedPendingRequest = pendingCommentRequest;
-      const text = normalizeV2CommentDraftText(
-        submittedPendingComment ? currentCommentText.value : comment.commentText,
-      );
+      const text = normalizeV2CommentDraftText(pendingDraft ? currentCommentText.value : comment.commentText);
       const mentions = pendingComment.value ? currentCommentMentions.value : (comment.mentions ?? []);
       const target = pendingComment.value ? pendingV2CommentTarget.value : null;
       const parentCommentId = comment.parentCommentId
@@ -1790,6 +1793,8 @@ export const useCommentsStore = defineStore('comments', () => {
           }
           return outcome;
         }
+        const ownsActiveDraftBeforeReconcile =
+          activeComment.value === draftActiveComment && activeFloatingCommentInstanceId.value === draftActiveInstance;
         const reconciled = reconcileCommentsFromV2({
           superdoc,
           adapter: v2Adapter,
@@ -1797,10 +1802,23 @@ export const useCommentsStore = defineStore('comments', () => {
           items: outcome.items,
         });
         const created = getV2CreatedComment({ outcome, reconciled, documentId: v2Adapter.documentId });
-        const hadPendingComment =
-          submittedPendingComment != null && pendingComment.value?.commentId === submittedPendingComment.commentId;
+        const createdId = created?.commentId ?? null;
+        const createdIsActive = createdId !== null && activeComment.value === createdId;
+        const createdInstance = createdIsActive ? activeFloatingCommentInstanceId.value : null;
         const ownsSubmittedRequest = pendingCommentRequest === submittedPendingRequest;
-        if (hadPendingComment) {
+        const reconciliationClearedActiveDraft =
+          ownsActiveDraftBeforeReconcile &&
+          activeComment.value === null &&
+          activeFloatingCommentInstanceId.value === null;
+        const ownsPendingDraft =
+          pendingDraft !== null &&
+          pendingComment.value === pendingDraft &&
+          commentDraftRevision === draftRevision &&
+          (createdIsActive ||
+            reconciliationClearedActiveDraft ||
+            (activeComment.value === draftActiveComment &&
+              activeFloatingCommentInstanceId.value === draftActiveInstance));
+        if (ownsPendingDraft) {
           if (ownsSubmittedRequest) removePendingComment(superdoc);
           else resetPendingCommentState(superdoc, false);
         }
@@ -1808,10 +1826,9 @@ export const useCommentsStore = defineStore('comments', () => {
         // of leaving it null, so the floating sidebar keeps treating this row
         // as active (viewport exemption, dialog mount, collision pinning) and
         // never observes an intermediate null in the same reactive flush.
-        const createdId = created?.commentId ?? null;
-        if (hadPendingComment && ownsSubmittedRequest && createdId) {
+        if (ownsPendingDraft && ownsSubmittedRequest && createdId) {
           setActiveComment(superdoc, createdId);
-          setActiveFloatingCommentInstance(createdId);
+          setActiveFloatingCommentInstance(createdInstance ?? createdId);
         }
         if (broadcastChanges) {
           superdoc.emit('comments-update', {

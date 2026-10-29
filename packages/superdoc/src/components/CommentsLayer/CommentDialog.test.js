@@ -4,6 +4,7 @@ import { vClickOutside } from '@superdoc/common';
 import { flushPromises, mount } from '@vue/test-utils';
 import CommentDialogSource from './CommentDialog.vue?raw';
 import CommentDialog from './CommentDialog.vue';
+import CommentsList from './commentsList/commentsList.vue';
 import useComment from './use-comment.js';
 import { useCommentsStore } from '../../stores/comments-store.js';
 import { useSuperdocStore } from '../../stores/superdoc-store.js';
@@ -18,10 +19,10 @@ describe('CommentDialog', () => {
   let superdocStore;
   let superdocStub;
 
-  const mountDialog = (comment, stubs = {}, directives = { 'click-outside': {} }) =>
-    mount(CommentDialog, {
+  const mountComments = (component, props = {}, stubs = {}, directives = { 'click-outside': {} }) =>
+    mount(component, {
       attachTo: document.body,
-      props: { comment },
+      props,
       global: {
         config: {
           globalProperties: {
@@ -38,6 +39,8 @@ describe('CommentDialog', () => {
         },
       },
     });
+
+  const mountDialog = (comment, stubs = {}, directives) => mountComments(CommentDialog, { comment }, stubs, directives);
 
   beforeEach(() => {
     setActivePinia(createPinia());
@@ -1610,6 +1613,148 @@ describe('CommentDialog', () => {
     }
   });
 
+  it.each(['fallback grouping', 'active directory'])(
+    'closes an unchanged successful reply after %s rehydrates its parent row',
+    async (source) => {
+      const root = {
+        commentId: '1',
+        importedId: '1',
+        fileId: 'doc-1',
+        commentText: 'Legacy parent',
+      };
+      const child = {
+        commentId: '2',
+        fileId: 'doc-1',
+        parentCommentId: '1',
+        commentText: 'Submitted reply',
+      };
+      let settle;
+      const completion = new Promise((resolve) => {
+        settle = resolve;
+      });
+      const adapter = {
+        documentId: 'doc-1',
+        getCapabilityState: () => ({ canWrite: true }),
+        reply: vi.fn(() => completion),
+        mapV2CommentToUseCommentInput: (item) => item,
+      };
+      superdocStub.activeEditor.editorVersion = 2;
+      superdocStub.activeEditor.v2Comments = adapter;
+      superdocStub.activeEditor.v2TrackedChanges = {
+        mapV2TrackedChangeToCommentParams: (item) => item,
+      };
+      commentsStore.setV2CommentsAdapter(adapter);
+      commentsStore.commentsList = [useComment(root)];
+      commentsStore.activeComment = root.commentId;
+      const publishDirectory = (items) =>
+        commentsStore.setReviewDirectoryFromV2({
+          superdoc: superdocStub,
+          commentItems: items,
+        });
+      if (source === 'active directory') {
+        commentsStore.isReviewDirectoryActive = true;
+        expect(publishDirectory([root]).ok).toBe(true);
+      }
+
+      const wrapper = mountComments(CommentsList);
+      const dialog = wrapper.findComponent(CommentDialog);
+      const parentRow = dialog.props('comment');
+      try {
+        await dialog.find('.reply-pill').trigger('click');
+        commentsStore.currentCommentText = child.commentText;
+        await flushPromises();
+        await dialog.find('button.reply-btn-primary').trigger('click');
+        expect(adapter.reply).toHaveBeenCalledWith({
+          parentCommentId: '1',
+          text: child.commentText,
+        });
+        if (source === 'active directory') expect(publishDirectory([root, child]).ok).toBe(true);
+
+        settle({ ok: true, items: [root, child] });
+        await flushPromises();
+
+        expect(commentsStore.commentsList.map((row) => [row.commentId, row.parentCommentId, row.commentText])).toEqual([
+          ['1', undefined, 'Legacy parent'],
+          ['2', '1', 'Submitted reply'],
+        ]);
+        expect(wrapper.findComponent(CommentDialog).element).toBe(dialog.element);
+        expect(dialog.props('comment')).not.toBe(parentRow);
+        expect(dialog.props('comment').commentId).toBe(root.commentId);
+        expect(commentsStore.currentCommentText).toBe('');
+        expect(dialog.find('.reply-expanded').exists()).toBe(false);
+      } finally {
+        settle({ ok: true, items: [root, child] });
+        wrapper.unmount();
+      }
+    },
+  );
+
+  it.each(['pending root', 'another reply', 'edit', 'same reply reopened'])(
+    'preserves a newer %s when a delayed legacy reply succeeds',
+    async (next) => {
+      superdocStub.activeEditor.editorVersion = 2;
+      superdocStub.activeEditor.v2Comments = {
+        getCapabilityState: () => ({ canWrite: true }),
+        setActiveComment: vi.fn(),
+      };
+      const root = useComment({ commentId: '1', importedId: '1', fileId: 'doc-1', commentText: 'Legacy parent' });
+      commentsStore.commentsList = [root];
+      commentsStore.activeComment = root.commentId;
+      let settle;
+      const completion = new Promise((resolve) => {
+        settle = resolve;
+      });
+      const submit = vi.spyOn(commentsStore, 'replyCommentV2').mockReturnValue(completion);
+      const wrapper = mountDialog(root);
+      let other;
+      try {
+        await wrapper.find('.reply-pill').trigger('click');
+        commentsStore.currentCommentText = 'Identical draft';
+        await flushPromises();
+        await wrapper.find('button.reply-btn-primary').trigger('click');
+        expect(submit).toHaveBeenCalledWith({ superdoc: superdocStub, parentCommentId: '1', text: 'Identical draft' });
+        if (next === 'pending root') {
+          const draft = useComment({ commentId: 'new-root', fileId: 'doc-1', commentText: '' });
+          commentsStore.pendingComment = draft;
+          commentsStore.activeComment = draft.commentId;
+          await flushPromises();
+          other = mountDialog(draft);
+        } else if (next === 'another reply') {
+          const parent = useComment({ commentId: '2', fileId: 'doc-1', commentText: 'Other parent' });
+          commentsStore.commentsList.push(parent);
+          commentsStore.activeComment = parent.commentId;
+          await flushPromises();
+          other = mountDialog(parent);
+          await other.find('.reply-pill').trigger('click');
+        } else if (next === 'edit') {
+          wrapper.findComponent({ name: 'CommentHeader' }).vm.$emit('overflow-select', 'edit');
+          await flushPromises();
+        } else {
+          await wrapper.find('button.reply-btn-cancel').trigger('click');
+          await wrapper.find('.reply-pill').trigger('click');
+        }
+        commentsStore.currentCommentText = 'Identical draft';
+        commentsStore.currentCommentMentions = [{ id: 'user-2', email: 'other@example.test' }];
+        const draft = commentsStore.pendingComment;
+        const active = commentsStore.activeComment;
+        const editing = commentsStore.editingCommentId;
+
+        settle({ ok: true });
+        await flushPromises();
+
+        expect(commentsStore.currentCommentText).toBe('Identical draft');
+        expect(commentsStore.currentCommentMentions).toEqual([{ id: 'user-2', email: 'other@example.test' }]);
+        expect(commentsStore.pendingComment).toBe(draft);
+        expect(commentsStore.activeComment).toBe(active);
+        expect(commentsStore.editingCommentId).toBe(editing);
+        expect((other ?? wrapper).find('button.reply-btn-primary').exists()).toBe(true);
+      } finally {
+        settle({ ok: true });
+        other?.unmount();
+        wrapper.unmount();
+      }
+    },
+  );
   it.each([
     ['PERMISSION_DENIED', 'you do not have permission'],
     ['INTERNAL_ERROR', 'Try again or cancel'],

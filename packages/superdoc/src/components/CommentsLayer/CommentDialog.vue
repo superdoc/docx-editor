@@ -1,6 +1,7 @@
 <script>
 // The shared composer can move between dialog instances while a mutation settles.
 const commentEditSessions = new WeakMap();
+const commentReplySessions = new WeakMap();
 </script>
 
 <script setup>
@@ -62,9 +63,15 @@ const { proxy } = getCurrentInstance();
 const superdocStore = useSuperdocStore();
 const commentsStore = useCommentsStore();
 const editSessionOwner = {};
+const replySessionOwner = {};
 const retireOwnEditSession = () => {
   if (commentEditSessions.get(commentsStore)?.owner === editSessionOwner) {
     commentEditSessions.delete(commentsStore);
+  }
+};
+const retireOwnReplySession = () => {
+  if (commentReplySessions.get(commentsStore)?.owner === replySessionOwner) {
+    commentReplySessions.delete(commentsStore);
   }
 };
 
@@ -369,6 +376,8 @@ const trackedChangeDecisionDisabledOutcome = () => ({
 const isReplying = ref(false);
 const isSubmittingReply = ref(false);
 const isSubmittingNewComment = ref(false);
+let replyDraftRevision = 0;
+watch([currentCommentText, currentCommentMentions], () => replyDraftRevision++, { deep: true, flush: 'sync' });
 const commentSaveFailure = ref('');
 const commentSaveFailureMessage = (outcome, hasDraft = true) => {
   const reason =
@@ -384,6 +393,7 @@ const startReply = () => {
   if (isV2WriteDisabled.value) {
     return { ok: false, reason: v2WriteCapability.value?.reason ?? 'v2-write-unavailable' };
   }
+  commentReplySessions.set(commentsStore, { owner: replySessionOwner });
   commentSaveFailure.value = '';
   isReplying.value = true;
   nextTick(() => {
@@ -779,6 +789,17 @@ const handleClickOutside = (e) => {
   isCommentHighlighted.value = false;
 };
 
+const captureCommentEditorOwner = () => {
+  const editor = proxy.$superdoc.activeEditor;
+  const adapter = editor.v2Comments;
+  const document = editor.doc;
+  return {
+    adapter,
+    isCurrent: () =>
+      proxy.$superdoc.activeEditor === editor && editor.v2Comments === adapter && editor.doc === document,
+  };
+};
+
 const handleAddComment = async () => {
   if (commentsAreReadOnly()) return readOnlyMutationOutcome();
   if (isV2WriteDisabled.value) {
@@ -793,6 +814,13 @@ const handleAddComment = async () => {
     isSubmittingReply.value = true;
     commentSaveFailure.value = '';
     try {
+      const session = commentReplySessions.get(commentsStore);
+      const draftRevision = replyDraftRevision;
+      const editorOwner = captureCommentEditorOwner();
+      const threadId = props.comment.commentId;
+      const fileId = props.comment.fileId;
+      const pendingDraft = pendingComment.value;
+      const edit = editingCommentId.value;
       const parentCommentId = getV2ExistingReplyParentId(props.comment);
       const trackedChangeTarget = getV2TrackedChangeCommentTarget(props.comment);
       const outcome = await commentsStore.replyCommentV2({
@@ -808,6 +836,20 @@ const handleAddComment = async () => {
         nextTick(() => emit('resize'));
         return outcome;
       }
+      if (
+        session?.owner !== replySessionOwner ||
+        commentReplySessions.get(commentsStore) !== session ||
+        replyDraftRevision !== draftRevision ||
+        !editorOwner.isCurrent() ||
+        props.comment.commentId !== threadId ||
+        props.comment.fileId !== fileId ||
+        pendingComment.value !== pendingDraft ||
+        editingCommentId.value !== edit ||
+        !isDialogActive.value ||
+        !isReplying.value
+      )
+        return outcome;
+      retireOwnReplySession();
       isReplying.value = false;
       currentCommentText.value = '';
       currentCommentMentions.value = [];
@@ -1263,10 +1305,8 @@ const handleCommentUpdate = async (comment) => {
     const session = commentEditSessions.get(commentsStore);
     const submission = Symbol('comment-edit-submission');
     if (session?.owner === editSessionOwner) session.submission = submission;
-    const editor = proxy.$superdoc.activeEditor;
-    const adapter = editor.v2Comments;
-    const documentId = adapter.documentId;
-    const document = editor.doc;
+    const editorOwner = captureCommentEditorOwner();
+    const documentId = editorOwner.adapter.documentId;
     const thread = props.comment;
     const draft = currentCommentText.value;
     const outcome = await commentsStore.editCommentV2({
@@ -1278,10 +1318,8 @@ const handleCommentUpdate = async (comment) => {
       session?.owner !== editSessionOwner ||
       commentEditSessions.get(commentsStore) !== session ||
       session.submission !== submission ||
-      proxy.$superdoc.activeEditor !== editor ||
-      editor.v2Comments !== adapter ||
-      adapter.documentId !== documentId ||
-      editor.doc !== document ||
+      !editorOwner.isCurrent() ||
+      editorOwner.adapter.documentId !== documentId ||
       props.comment !== thread ||
       editingCommentId.value !== comment.commentId ||
       currentCommentText.value !== draft
@@ -1330,6 +1368,7 @@ const getProcessedDate = (timestamp) => {
 const handleCancel = (comment) => {
   commentSaveFailure.value = '';
   retireOwnEditSession();
+  retireOwnReplySession();
   editingCommentId.value = null;
   isReplying.value = false;
   cancelComment(proxy.$superdoc);
@@ -1369,6 +1408,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   retireOwnEditSession();
+  retireOwnReplySession();
   proxy.$superdoc?.off?.('active-editor-change', refreshActiveEditor);
 });
 

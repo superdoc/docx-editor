@@ -4645,6 +4645,160 @@ describe('comments-store v2 pending document comments', () => {
     store = useCommentsStore();
   });
 
+  it.each([false, true])(
+    'retires only the submitted draft when reconciliation clears an active row (new thread: %s)',
+    async (changedActiveThread) => {
+      const creation = deferred();
+      const previous = { commentId: 'previous', fileId: 'doc-1', commentText: 'Previous root' };
+      const other = { commentId: 'other', fileId: 'doc-1', commentText: 'Another root' };
+      const root = { commentId: 'created', fileId: 'doc-1', commentText: 'Submitted root' };
+      const adapter = {
+        documentId: 'doc-1',
+        getCapabilityState: () => ({ canWrite: true }),
+        captureCurrentSelection: async () => ({
+          ok: true,
+          target: { kind: 'text', segments: [{ blockId: 'paragraph', start: 0, end: 7 }] },
+        }),
+        setActiveComment: vi.fn(async () => ({ ok: true })),
+        commitPendingComment: () => creation.promise,
+        mapV2CommentToUseCommentInput: (item) => item,
+      };
+      const superdoc = makeSuperdoc(adapter);
+      superdoc.config = { isInternal: true };
+      store.setV2CommentsAdapter(adapter);
+      store.commentsList = [useComment(previous), useComment(other)];
+      await store.showAddComment(superdoc);
+      store.setActiveComment(superdoc, 'previous');
+      store.setActiveFloatingCommentInstance(null);
+      store.currentCommentText = 'Submitted root';
+      const submittedDraft = store.pendingComment;
+      const pending = store.addComment({ superdoc, comment: submittedDraft });
+      if (changedActiveThread) store.setActiveComment(superdoc, 'other');
+
+      creation.resolve({ ok: true, createdCommentId: 'created', items: [root] });
+      expect(await pending).toMatchObject({ ok: true });
+      expect(store.commentsList.map((row) => row.commentId)).toEqual(['created']);
+      expect(store.pendingComment).toBe(changedActiveThread ? submittedDraft : null);
+      expect(store.currentCommentText).toBe(changedActiveThread ? 'Submitted root' : '');
+      expect(store.activeComment).toBe(changedActiveThread ? null : 'created');
+      expect(store.activeFloatingCommentInstanceId).toBe(changedActiveThread ? null : 'created');
+    },
+  );
+
+  it.each([
+    { instance: null, expectedInstance: '0' },
+    { instance: 'created-page-2', expectedInstance: 'created-page-2' },
+  ])(
+    'finishes an unchanged root after the host activates its created row ($instance)',
+    async ({ instance, expectedInstance }) => {
+      const creation = deferred();
+      const root = { commentId: '0', fileId: 'doc-1', commentText: 'First root' };
+      const adapter = {
+        documentId: 'doc-1',
+        getCapabilityState: () => ({ canWrite: true }),
+        captureCurrentSelection: async () => ({
+          ok: true,
+          target: { kind: 'text', segments: [{ blockId: 'paragraph', start: 0, end: 7 }] },
+        }),
+        setActiveComment: vi.fn(async () => ({ ok: true })),
+        commitPendingComment: () => creation.promise,
+        mapV2CommentToUseCommentInput: (item) => item,
+      };
+      const superdoc = makeSuperdoc(adapter);
+      superdoc.config = { isInternal: true };
+      store.setV2CommentsAdapter(adapter);
+      await store.showAddComment(superdoc);
+      store.currentCommentText = 'First root';
+      const pending = store.addComment({ superdoc, comment: store.pendingComment });
+
+      store.reconcileCommentsFromV2({ superdoc, adapter, documentId: 'doc-1', items: [root] });
+      store.setActiveComment(superdoc, '0');
+      store.setActiveFloatingCommentInstance(instance);
+      creation.resolve({ ok: true, createdCommentId: '0', items: [root] });
+      expect(await pending).toMatchObject({ ok: true });
+
+      expect(store.pendingComment).toBeNull();
+      expect(store.currentCommentText).toBe('');
+      expect(store.currentCommentMentions).toEqual([]);
+      expect(store.commentsList.map((row) => [row.commentId, row.commentText])).toEqual([['0', 'First root']]);
+      expect(store.activeComment).toBe('0');
+      expect(store.activeFloatingCommentInstanceId).toBe(expectedInstance);
+    },
+  );
+
+  it.each(['another root', 'continued input', 'another active thread'])(
+    'keeps %s and its target when an earlier root creation finishes',
+    async (next) => {
+      const creation = deferred();
+      const firstTarget = { kind: 'text', segments: [{ blockId: 'paragraph', start: 0, end: 7 }] };
+      const secondTarget = { kind: 'text', segments: [{ blockId: 'paragraph', start: 8, end: 13 }] };
+      let target = firstTarget;
+      const existingItem = { commentId: 'existing', fileId: 'doc-1', commentText: 'Existing thread' };
+      const firstItem = { commentId: 'first', fileId: 'doc-1', commentText: 'First root' };
+      const secondItem = { commentId: 'second', fileId: 'doc-1', commentText: 'New draft' };
+      const mentions = [{ id: 'reviewer-2', email: 'second@example.test' }];
+      const adapter = {
+        documentId: 'doc-1',
+        getCapabilityState: () => ({ canWrite: true }),
+        captureCurrentSelection: async () => ({ ok: true, target }),
+        setActiveComment: vi.fn(async () => ({ ok: true })),
+        commitPendingComment: vi
+          .fn()
+          .mockReturnValueOnce(creation.promise)
+          .mockResolvedValueOnce({
+            ok: true,
+            createdCommentId: 'second',
+            items: [existingItem, firstItem, secondItem],
+          }),
+        mapV2CommentToUseCommentInput: (item) => item,
+      };
+      const superdoc = makeSuperdoc(adapter);
+      superdoc.config = { isInternal: true };
+      store.setV2CommentsAdapter(adapter);
+      store.commentsList = [useComment(existingItem)];
+      await store.showAddComment(superdoc);
+      store.currentCommentText = 'First root';
+      const first = store.addComment({ superdoc, comment: store.pendingComment });
+      if (next === 'another root') {
+        target = secondTarget;
+        await store.showAddComment(superdoc);
+      }
+      if (next === 'another active thread') {
+        store.setActiveComment(superdoc, 'existing');
+        store.setActiveFloatingCommentInstance('existing-page-2');
+      } else {
+        store.currentCommentText = 'New draft';
+        store.currentCommentMentions = mentions;
+      }
+      const draft = store.pendingComment;
+      const active = store.activeComment;
+      const activeInstance = store.activeFloatingCommentInstanceId;
+      const text = store.currentCommentText;
+      const draftMentions = [...store.currentCommentMentions];
+
+      creation.resolve({ ok: true, createdCommentId: 'first', items: [existingItem, firstItem] });
+      expect(await first).toMatchObject({ ok: true });
+
+      expect(store.pendingComment).toBe(draft);
+      expect(store.currentCommentText).toBe(text);
+      expect(store.currentCommentMentions).toEqual(draftMentions);
+      expect(store.activeComment).toBe(active);
+      expect(store.activeFloatingCommentInstanceId).toBe(activeInstance);
+      expect(store.commentsList.map((row) => row.commentId)).toEqual(['existing', 'first']);
+      store.setActiveComment(superdoc, draft.commentId);
+      store.currentCommentText = 'New draft';
+      store.currentCommentMentions = mentions;
+      expect(await store.addComment({ superdoc, comment: store.pendingComment })).toMatchObject({ ok: true });
+      expect(adapter.commitPendingComment).toHaveBeenLastCalledWith({ text: 'New draft', target, mentions });
+      expect(store.commentsList.map((row) => [row.commentId, row.commentText])).toEqual([
+        ['existing', 'Existing thread'],
+        ['first', 'First root'],
+        ['second', 'New draft'],
+      ]);
+      expect(store.pendingComment).toBeNull();
+    },
+  );
+
   it.each(['editing', 'suggesting'])(
     'keeps a newer %s selection when pending comment creation finishes',
     async (documentMode) => {

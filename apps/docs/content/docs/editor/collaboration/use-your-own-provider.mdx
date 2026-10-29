@@ -183,16 +183,16 @@ new SuperDoc({
 
 ## What an extension must handle
 
-| Area            | What to do                                                                                                                                                                       |
-| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Sync            | Call `onSynced()` when the provider has synced. Call it again after each reconnect so the room returns to `synced`.                                                              |
-| Outages         | Call `onDegraded()` when the connection drops after a sync. Let the provider reconnect.                                                                                          |
-| Failure         | Call `onFailed(detail)` only for errors that will not recover. Use `{ reason: 'authentication_failed' }` for a rejected credential; `onException` reports it as `access-denied`. |
-| Authentication  | Pass `token` to your provider. If it is a function, the provider calls it on each connection.                                                                                    |
-| Presence        | Return the provider's Yjs `awareness`. Without it, [presence and cursors](/editor/collaboration/presence-and-awareness) do not appear.                                           |
-| Custom messages | Return `sendStateless` to support `superdoc.provider.sendStateless(message)`. Forward incoming messages to `onStateless`.                                                        |
-| Create and join | `roomMode` works, but `create` does not check that other editors can see the new room. Do not treat `collaboration-ready` as a signal that others can join.                      |
-| Cleanup         | `disconnect()` closes the connection. `destroy()` releases everything the transport created. SuperDoc calls them when the editor is destroyed.                                   |
+| Area            | What to do                                                                                                                                                                                                                                                                 |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Sync            | Call `onSynced()` when the provider has synced. Call it again after each reconnect so the room returns to `synced`.                                                                                                                                                        |
+| Outages         | Call `onDegraded()` when the connection drops after a sync. Let the provider reconnect.                                                                                                                                                                                    |
+| Failure         | Call `onFailed(detail)` only for errors that will not recover. Use `{ reason: 'authentication_failed' }` for a rejected credential; `onException` reports it as `access-denied`.                                                                                           |
+| Authentication  | Pass `token` to your provider. If it is a function, the provider calls it on each connection.                                                                                                                                                                              |
+| Presence        | Return the provider's Yjs `awareness`. Without it, [presence and cursors](/editor/collaboration/presence-and-awareness) do not appear. A cursor stays while awareness lists its user, so emit `change` with the user in `removed` when they leave or the connection drops. |
+| Custom messages | Return `sendStateless` to support `superdoc.provider.sendStateless(message)`. Forward incoming messages to `onStateless`.                                                                                                                                                  |
+| Create and join | `roomMode` works, but `create` does not check that other editors can see the new room. Do not treat `collaboration-ready` as a signal that others can join.                                                                                                                |
+| Cleanup         | `disconnect()` closes the connection. `destroy()` releases everything the transport created. SuperDoc calls them when the editor is destroyed.                                                                                                                             |
 
 Server-to-page messages are not available yet. Your page can send a stateless message, but a message from the server
 reaches only your adapter's `onStateless`, inside the worker.

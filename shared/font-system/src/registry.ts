@@ -561,6 +561,12 @@ export class FontRegistry {
       this.#faceStatus.set(key, 'fallback_used');
       return { request, status: 'fallback_used' };
     }
+    const managedFaces = this.#facesByKey.get(key);
+    if (managedFaces?.size && [...managedFaces].every((face) => face.status === 'error')) {
+      this.#faceStatus.set(key, 'failed');
+      this.#warnFaceFailureOnce(request, key);
+      return { request, status: 'failed' };
+    }
     this.#faceStatus.set(key, 'loading');
     const probe = faceProbe(request.family, request.weight, request.style, this.#probeSize);
     const TIMEOUT = Symbol('timeout');

@@ -325,6 +325,52 @@ describe('FontRegistry face-aware APIs', () => {
     expect(res.status).toBe('failed');
     expect(registry.getStatus('Broken')).toBe('failed');
   });
+
+  it('settles an errored managed face without repeatedly waiting for a native font-set promise', async () => {
+    fontSet.behaviors.set('Broken', 'never');
+    const timer = makeManualTimer();
+    const schedule = vi.spyOn(timer, 'scheduleTimeout');
+    const { registry } = makeRegistry(fontSet, timer);
+    registry.register({ family: 'Broken', source: 'url(missing.woff2)' });
+    (fontSet.added[0] as FakeFontFace).status = 'error';
+    const request = { family: 'Broken', weight: '400', style: 'normal' } as const;
+    for (let pass = 0; pass < 2; pass++) {
+      const result = registry.awaitFaceRequest(request, 1000);
+      expect(schedule).not.toHaveBeenCalled();
+      expect((await result).status).toBe('failed');
+      expect(registry.getFaceStatus(request)).toBe('failed');
+      expect(registry.getStatus('Broken')).toBe('failed');
+      expect(registry.hasFace('Broken', '400', 'normal')).toBe(false);
+    }
+    expect(fontSet.loadTexts).toEqual([]);
+  });
+
+  it('keeps waiting when another managed owner of the same face can still load', async () => {
+    fontSet.behaviors.set('Shared', 'load-ok');
+    const { registry } = makeRegistry(fontSet);
+    registry.registerOwnedFace({ family: 'Shared', source: new Uint8Array([1]), weight: '400', style: 'normal' });
+    registry.registerOwnedFace({ family: 'Shared', source: new Uint8Array([2]), weight: '400', style: 'normal' });
+    (fontSet.added[0] as FakeFontFace).status = 'error';
+    const result = await registry.awaitFaceRequest({ family: 'Shared', weight: '400', style: 'normal' }, 1000);
+    expect(result.status).toBe('loaded');
+    expect(fontSet.loadTexts).toHaveLength(1);
+    expect(registry.hasFace('Shared', '400', 'normal')).toBe(true);
+  });
+
+  it('allows a slow managed face to load after a timeout', async () => {
+    fontSet.behaviors.set('Slow', 'never');
+    const { registry, timer } = makeRegistry(fontSet);
+    registry.register({ family: 'Slow', source: 'url(slow.woff2)' });
+    (fontSet.added[0] as FakeFontFace).status = 'loading';
+    const request = { family: 'Slow', weight: '400', style: 'normal' } as const;
+    const pending = registry.awaitFaceRequest(request, 1000);
+    timer.fire();
+    expect((await pending).status).toBe('timed_out');
+    expect(registry.hasFace('Slow', '400', 'normal')).toBe(true);
+    fontSet.behaviors.set('Slow', 'load-ok');
+    (fontSet.added[0] as FakeFontFace).status = 'loaded';
+    expect((await registry.awaitFaceRequest(request, 1000)).status).toBe('loaded');
+  });
 });
 
 describe('FontRegistry.registerOwnedFace (document-scoped embedded fonts)', () => {

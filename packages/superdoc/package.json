@@ -113,6 +113,7 @@
     "audit:declarations:informational": "node ./scripts/audit-declarations.cjs --informational",
     "check:jsdoc": "node ./scripts/check-jsdoc.cjs",
     "check:v2-only": "node ./scripts/check-private-core.cjs",
+    "check:vue": "vue-tsc --noEmit -p tsconfig.vue.json",
     "build:es": "pnpm run build",
     "watch:es": "vp build --watch",
     "build:cdn": "node ./scripts/build-public-superdoc.mjs --surface cdn",
@@ -187,6 +188,7 @@
     "vite-plugin-dts": "catalog:",
     "vite-plugin-node-polyfills": "catalog:",
     "vite-plus": "catalog:",
-    "vitest": "catalog:"
+    "vitest": "catalog:",
+    "vue-tsc": "catalog:"
   }
 }

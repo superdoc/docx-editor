@@ -6082,7 +6082,12 @@ export const OPERATION_DEFINITIONS = {
   'footnotes.insert': {
     memberPath: 'footnotes.insert',
     description: 'Insert a new footnote or endnote at a target location or the current selection.',
-    expectedResult: 'Returns a FootnoteMutationResult indicating success with the footnote address or a failure.',
+    expectedResult:
+      'Returns a FootnoteMutationResult indicating success with the footnote address or a failure. ' +
+      'An anchor before, after, or between pending insertions and deletions is accepted and leaves those revisions pending. ' +
+      'CAPABILITY_UNAVAILABLE is returned for an anchor inside a pending insertion or deletion, ' +
+      'and for any anchor in a paragraph that contains a tracked move. ' +
+      'A dry run reports the same result without changing the document.',
     requiresDocumentContext: true,
     metadata: mutationOperation({
       idempotency: 'non-idempotent',

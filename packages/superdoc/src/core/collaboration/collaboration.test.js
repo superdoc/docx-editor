@@ -1,87 +1,14 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vite-plus/test';
-import * as collaborationModule from './collaboration.js';
-import {
-  initCollaborationComments,
-  loadCommentsFromYdoc,
-  initSuperdocYdoc,
-  makeDocumentsCollaborative,
-  syncCommentsToClients,
-} from './helpers.js';
+import { initCollaborationComments, loadCommentsFromYdoc, syncCommentsToClients } from './helpers.js';
 import * as commentsModule from './collaboration-comments.js';
 const { addYComment, updateYComment, deleteYComment, getCommentIndex } = commentsModule;
 import { SuperDoc } from '../SuperDoc.js';
 import { PERMISSIONS, isAllowed, createTrackedChangePermissionResolver } from './permissions.js';
 import * as permissionsModule from './permissions.js';
 
-var awarenessStatesToArrayMock;
-
 var MockYMap;
 var MockYArray;
-var MockYText;
 var MockYDoc;
-var MockWebsocketProvider;
-var MockHocuspocusProvider;
-var websocketInstances = [];
-var hocuspocusInstances = [];
-
-vi.mock('@superdoc/common/collaboration/awareness', () => {
-  awarenessStatesToArrayMock = vi.fn(() => [{ name: 'Remote User' }]);
-  return { awarenessStatesToArray: awarenessStatesToArrayMock };
-});
-
-vi.mock('y-websocket', () => {
-  MockWebsocketProvider = class {
-    constructor(url, name, ydoc, options) {
-      this.url = url;
-      this.name = name;
-      this.ydoc = ydoc;
-      this.options = options;
-      this.awareness = {
-        setLocalStateField: vi.fn(),
-        on: vi.fn((event, handler) => {
-          if (event === 'update') this._awarenessHandler = handler;
-        }),
-        getStates: vi.fn(() => this._states || new Map()),
-      };
-      websocketInstances.push(this);
-    }
-
-    emitAwareness(changes, states = new Map()) {
-      this._states = states;
-      this._awarenessHandler?.(changes);
-    }
-  };
-
-  return {
-    WebsocketProvider: MockWebsocketProvider,
-  };
-});
-
-vi.mock('@hocuspocus/provider', () => {
-  MockHocuspocusProvider = class {
-    constructor(options) {
-      this.options = options;
-      this._handlers = {};
-      hocuspocusInstances.push(this);
-    }
-
-    setAwarenessField(field, value) {
-      this._awarenessField = { field, value };
-    }
-
-    on(event, handler) {
-      this._handlers[event] = handler;
-    }
-
-    emit(event, payload) {
-      this._handlers[event]?.(payload);
-    }
-  };
-
-  return {
-    HocuspocusProvider: MockHocuspocusProvider,
-  };
-});
 
 vi.mock('yjs', () => {
   MockYMap = class extends Map {
@@ -121,32 +48,6 @@ vi.mock('yjs', () => {
     }
   };
 
-  MockYText = class {
-    constructor(value = '') {
-      this.text = String(value);
-      this.formatting = [];
-    }
-
-    insert(index, text, attributes) {
-      this.text = `${this.text.slice(0, index)}${text}${this.text.slice(index)}`;
-      if (attributes) {
-        this.formatting.push({ index, length: text.length, attributes });
-      }
-    }
-
-    delete(index, length) {
-      this.text = `${this.text.slice(0, index)}${this.text.slice(index + length)}`;
-    }
-
-    toString() {
-      return this.text;
-    }
-
-    toJSON() {
-      return this.text;
-    }
-  };
-
   MockYDoc = class {
     constructor() {
       this._arrays = new Map();
@@ -167,10 +68,7 @@ vi.mock('yjs', () => {
   };
 
   return {
-    Array: MockYArray,
-    Doc: MockYDoc,
     Map: MockYMap,
-    Text: MockYText,
   };
 });
 
@@ -186,96 +84,11 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
-  awarenessStatesToArrayMock?.mockClear();
   useCommentMock?.mockClear();
-  websocketInstances.length = 0;
-  hocuspocusInstances.length = 0;
 });
 
 afterEach(() => {
   vi.clearAllMocks();
-});
-
-describe('collaboration.createProvider', () => {
-  it('creates websocket provider with awareness hook', () => {
-    const context = { emit: vi.fn() };
-    const config = { url: 'ws://test-server' };
-    const user = { name: 'Sam', email: 'sam@example.com' };
-    const result = collaborationModule.createProvider({
-      config,
-      user,
-      documentId: 'doc-1',
-      superdocInstance: context,
-    });
-
-    expect(result.provider).toBeInstanceOf(MockWebsocketProvider);
-    expect(result.provider.awareness.setLocalStateField).toHaveBeenCalledWith('user', user);
-
-    const states = new Map([[1, { user: { name: 'Other' } }]]);
-    awarenessStatesToArrayMock.mockReturnValueOnce([{ name: 'Other' }]);
-    result.provider.emitAwareness({ added: [1], removed: [] }, states);
-
-    expect(context.emit).toHaveBeenCalledWith(
-      'awareness-update',
-      expect.objectContaining({ states: [{ name: 'Other' }] }),
-    );
-  });
-
-  // SD-673: pin the exact key set of the awareness-update payload.
-  // SuperDocAwarenessUpdatePayload declares { states, added, removed,
-  // superdoc }; the objectContaining assertion above would not catch a
-  // dropped field or a regression to the older { context } shape.
-  it('awareness-update payload has exactly { states, added, removed, superdoc } (SD-673)', () => {
-    const context = { emit: vi.fn() };
-    const result = collaborationModule.createProvider({
-      config: { url: 'ws://test' },
-      user: { name: 'Sam', email: 'sam@example.com' },
-      documentId: 'doc-1',
-      superdocInstance: context,
-    });
-
-    awarenessStatesToArrayMock.mockReturnValueOnce([{ name: 'A' }, { name: 'B' }]);
-    result.provider.emitAwareness({ added: [3], removed: [7] }, new Map());
-
-    expect(context.emit).toHaveBeenCalledTimes(1);
-    const [eventName, payload] = context.emit.mock.calls[0];
-    expect(eventName).toBe('awareness-update');
-    expect(Object.keys(payload).sort()).toEqual(['added', 'removed', 'states', 'superdoc']);
-    expect(payload.states).toEqual([{ name: 'A' }, { name: 'B' }]);
-    expect(payload.added).toEqual([3]);
-    expect(payload.removed).toEqual([7]);
-    expect(payload.superdoc).toBe(context);
-  });
-
-  it('creates hocuspocus provider and wires lifecycle callbacks', () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const context = { emit: vi.fn() };
-    const user = { name: 'Ana', email: 'ana@example.com' };
-
-    const { provider } = collaborationModule.createProvider({
-      config: { providerType: 'hocuspocus', token: 'abc' },
-      user,
-      documentId: 'doc-2',
-      socket: { url: 'wss://socket' },
-      superdocInstance: context,
-    });
-
-    expect(provider).toBeInstanceOf(MockHocuspocusProvider);
-    expect(provider._awarenessField).toEqual({ field: 'user', value: user });
-
-    provider.options.onConnect();
-    provider.options.onDisconnect();
-    provider.options.onDestroy();
-    provider.options.onAuthenticationFailed('bad-token');
-    provider.emit('awarenessUpdate', { states: new Map([[2, { user: user }]]) });
-    expect(awarenessStatesToArrayMock).toHaveBeenCalled();
-    expect(context.emit).toHaveBeenCalledWith(
-      'awareness-update',
-      expect.objectContaining({ states: [{ name: 'Remote User' }] }),
-    );
-    expect(warnSpy).toHaveBeenCalled();
-    warnSpy.mockRestore();
-  });
 });
 
 describe('collaboration helpers', () => {
@@ -287,18 +100,11 @@ describe('collaboration helpers', () => {
     commentsArray = ydoc.getArray('comments');
     superdoc = {
       config: {
-        superdocId: 'doc-123',
         user: { id: 'owner-id', name: 'Owner', email: 'owner@example.com' },
-        role: 'editor',
-        isInternal: false,
-        socket: { id: 'socket' },
         modules: {
           comments: true,
-          collaboration: { providerType: 'superdoc', url: 'ws://collab' },
         },
-        documents: [{ id: 'doc-a' }, { id: 'doc-b' }],
       },
-      colors: ['#f00'],
       provider: {
         on: vi.fn(),
         off: vi.fn(),
@@ -449,31 +255,6 @@ describe('collaboration helpers', () => {
     superdoc.config.modules.comments = false;
     initCollaborationComments(superdoc);
     expect(superdoc.provider.on).not.toHaveBeenCalled();
-  });
-
-  it('initSuperdocYdoc delegates to createProvider with derived document id', () => {
-    const mockProvider = { provider: 'p', ydoc: 'y' };
-    const spy = vi.spyOn(collaborationModule, 'createProvider').mockReturnValue(mockProvider);
-
-    const result = initSuperdocYdoc(superdoc);
-    expect(spy).toHaveBeenCalledWith(
-      expect.objectContaining({
-        documentId: 'doc-123-superdoc-external',
-      }),
-    );
-    expect(result).toEqual(mockProvider);
-    spy.mockRestore();
-  });
-
-  it('makeDocumentsCollaborative mutates documents with provider metadata', () => {
-    const created = makeDocumentsCollaborative(superdoc);
-    expect(created).toHaveLength(2);
-    created.forEach((doc) => {
-      expect(doc.provider).toBeInstanceOf(MockWebsocketProvider);
-      expect(doc.ydoc).toBeInstanceOf(MockYDoc);
-      expect(doc.socket).toEqual(superdoc.config.socket);
-      expect(doc.role).toBe(superdoc.config.role);
-    });
   });
 });
 

@@ -1,4 +1,3 @@
-import { createProvider } from '../collaboration/collaboration';
 import useComment from '../../components/CommentsLayer/use-comment';
 import { actorIdentitiesMatch } from '@superdoc/common';
 
@@ -126,62 +125,6 @@ export const initCollaborationComments = (superdoc) => {
     // Update conversations
     updateCommentsStore();
   });
-};
-
-/**
- * Initialize SuperDoc general Y.Doc for high level collaboration.
- * Returns the pair the caller assigns to `superdoc.ydoc` / `superdoc.provider`,
- * or `undefined` when there is no `superdocId` to scope the room on.
- *
- * @param {Object} superdoc The SuperDoc instance
- * @returns {{ ydoc: import('yjs').Doc, provider: import('../types/index.js').CollaborationProvider } | undefined}
- */
-export const initSuperdocYdoc = (superdoc) => {
-  const { isInternal } = superdoc.config;
-  const baseName = `${superdoc.config.superdocId}-superdoc`;
-  if (!superdoc.config.superdocId) return;
-
-  const documentId = isInternal ? baseName : `${baseName}-external`;
-  const superdocCollaborationOptions = {
-    config: superdoc.config.modules.collaboration,
-    user: superdoc.config.user,
-    documentId,
-    socket: superdoc.config.socket,
-    superdocInstance: superdoc,
-  };
-
-  const { provider: superdocProvider, ydoc: superdocYdoc } = createProvider(superdocCollaborationOptions);
-
-  return { ydoc: superdocYdoc, provider: superdocProvider };
-};
-
-/**
- * Process SuperDoc's documents to make them collaborative by
- * adding provider, ydoc, awareness handler, and socket to each document.
- *
- * @param {Object} superdoc The SuperDoc instance
- * @returns {Array[Object]} The processed documents
- */
-export const makeDocumentsCollaborative = (superdoc) => {
-  const processedDocuments = [];
-  superdoc.config.documents.forEach((doc) => {
-    superdoc.config.user.color = superdoc.colors[0];
-    const options = {
-      config: superdoc.config.modules.collaboration,
-      user: superdoc.config.user,
-      documentId: doc.id,
-      socket: superdoc.config.socket,
-      superdocInstance: superdoc,
-    };
-
-    const { provider, ydoc } = createProvider(options);
-    doc.provider = provider;
-    doc.socket = superdoc.config.socket;
-    doc.ydoc = ydoc;
-    doc.role = superdoc.config.role;
-    processedDocuments.push(doc);
-  });
-  return processedDocuments;
 };
 
 /**

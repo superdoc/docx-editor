@@ -151,3 +151,61 @@ describe('SuperDoc collaboration-connection-change (SD-4997)', () => {
     expect(instance.getCollaborationConnectionState()).toBeNull();
   });
 });
+
+describe('SuperDoc awareness-update from v2 presence (SD-673)', () => {
+  it('emits exactly { states, added, removed, superdoc } when a remote actor joins and leaves', async () => {
+    const { instance } = await createInstance();
+    type PresenceSnapshot = { remoteActors: Array<{ actorLabel: string; email?: string }> };
+    const listeners = new Set<(next: PresenceSnapshot) => void>();
+    const presence = {
+      getSnapshot: (): PresenceSnapshot => ({ remoteActors: [] }),
+      subscribe(listener: (next: PresenceSnapshot) => void) {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+    };
+    const payloads: Array<Record<string, unknown>> = [];
+    instance.on('awareness-update', (payload) => payloads.push(payload as unknown as Record<string, unknown>));
+
+    instance.emit('collaboration-ready', { editor: { editorVersion: 2, presence } } as never);
+    const push = (next: PresenceSnapshot) => {
+      for (const listener of [...listeners]) listener(next);
+    };
+    push({ remoteActors: [{ actorLabel: 'Ana', email: 'ana@example.com' }] });
+    push({ remoteActors: [] });
+
+    expect(payloads).toHaveLength(3);
+    for (const payload of payloads) {
+      expect(Object.keys(payload).sort()).toEqual(['added', 'removed', 'states', 'superdoc']);
+      expect(payload.superdoc).toBe(instance);
+    }
+    expect(payloads[1]).toMatchObject({ added: [1], removed: [] });
+    expect(payloads[2]).toMatchObject({ added: [], removed: [1] });
+  });
+});
+
+describe('SuperDoc v1 modules.collaboration config', () => {
+  it('records collaboration-v1-config-unsupported and attaches no provider or ydoc', async () => {
+    const selector = document.createElement('div');
+    document.body.append(selector);
+    const provider = { on: vi.fn(), connect: vi.fn() };
+    const ydoc = { getArray: vi.fn(), getMap: vi.fn() };
+    const instance = new SuperDoc({
+      selector,
+      telemetry: { enabled: false },
+      modules: { collaboration: { url: 'ws://legacy', providerType: 'hocuspocus', provider, ydoc } },
+    } as never);
+    instances.push(instance);
+
+    await vi.waitFor(() =>
+      expect(instance.config.v2CollaborationPreflightFailure).toMatchObject({
+        code: 'collaboration-v1-config-unsupported',
+      }),
+    );
+    expect(instance.isCollaborative).toBe(false);
+    expect(provider.on).not.toHaveBeenCalled();
+    expect(provider.connect).not.toHaveBeenCalled();
+    expect(ydoc.getArray).not.toHaveBeenCalled();
+    expect(ydoc.getMap).not.toHaveBeenCalled();
+  });
+});

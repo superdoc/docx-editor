@@ -17,6 +17,7 @@
     "docx-from-html": { "path": "go-links/unavailable" },
     "esign": { "repository": "superdoc-dev/demos", "path": "esign" },
     "examples/collaboration": { "path": "examples/collaboration" },
+    "examples/collaboration-server": { "path": "examples/collaboration-server" },
     "examples/content-controls": { "path": "examples/content-controls" },
     "examples/custom-ui": { "path": "examples/custom-ui" },
     "examples/document-comparison": { "path": "examples/document-comparison" },

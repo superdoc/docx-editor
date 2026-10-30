@@ -10,6 +10,7 @@
   "docx-from-html",
   "esign",
   "examples/collaboration",
+  "examples/collaboration-server",
   "examples/content-controls",
   "examples/custom-ui",
   "examples/document-comparison",

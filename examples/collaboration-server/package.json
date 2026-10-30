@@ -1,0 +1,24 @@
+{
+  "name": "@superdoc-examples/collaboration-server",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.24.0",
+  "scripts": {
+    "start": "tsx server.ts",
+    "token": "tsx scripts/create-token.ts",
+    "create-room": "tsx scripts/create-room.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test --test-force-exit test/*.test.ts"
+  },
+  "dependencies": {
+    "@hocuspocus/server": "2.15.3",
+    "@superdoc/sdk": "2.26.0-next.3",
+    "yjs": "13.6.31"
+  },
+  "devDependencies": {
+    "@hocuspocus/provider": "2.15.3",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.2"
+  }
+}

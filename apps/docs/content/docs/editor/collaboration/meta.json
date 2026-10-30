@@ -11,6 +11,7 @@
     "observe-edits",
     "control-room-access",
     "run-a-server",
+    "deploy-a-server",
     "use-your-own-provider",
     "upgrade-a-document"
   ]

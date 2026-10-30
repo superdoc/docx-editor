@@ -1,0 +1,169 @@
+---
+title: Deploy a collaboration server
+navTitle: Deploy a server
+description: Start from a server template that checks access, stores rooms, creates each room once, and autosaves DOCX files.
+---
+
+The [local example](/editor/collaboration/run-a-server) has no access checks and keeps rooms in memory. The
+[collaboration server template](https://go.superdoc.dev/examples/collaboration-server) is a starting point for
+production. Copy it into your repository, change the parts marked for replacement, and deploy it on your own
+infrastructure. SuperDoc does not host it.
+
+The template is a Hocuspocus server that:
+
+- admits a connection only when your access check accepts its token,
+- stores every room, so it survives a refresh, the last editor leaving, and a restart,
+- creates each document's room once, from your backend,
+- saves an up-to-date DOCX of every room and hands it to you.
+
+<Callout title='Preview API'>
+  The browser configuration on this page uses the `collaboration` field from the upcoming SuperDoc release. See [the
+  preview API](/editor/collaboration/connect-two-editors#configure-your-application).
+</Callout>
+
+## Decide who owns what
+
+The collaboration server only syncs rooms. It does not store or serve your DOCX files.
+
+| Part                     | Owns                                                                                   |
+| ------------------------ | -------------------------------------------------------------------------------------- |
+| Your app                 | Your DOCX files, who may open which document, and whether each document's room exists. |
+| The collaboration server | The rooms: syncing edits between editors, storing room state, and checking tokens.     |
+| Each editor's browser    | Opening the document's DOCX from your app together with its room.                      |
+
+Every editor opens the same DOCX, including people who join later. The creator's file becomes the room's starting
+content. A joiner's file is required but not used for content, so supplying it never resets the room.
+
+## Start the server
+
+Requires Node 22.12 or newer and pnpm 11. From your copy of the template:
+
+```bash
+printf "allowBuilds:\n  esbuild: true\n" > pnpm-workspace.yaml
+pnpm install
+export COLLABORATION_AUTH_SECRET="$(openssl rand -hex 32)"
+pnpm start
+```
+
+The server listens on `ws://127.0.0.1:1234`, stores rooms in `./collaboration-data`, and saves DOCX files to
+`./collaboration-docx`. The template's README lists every setting.
+
+The first line lets esbuild, which runs the server's TypeScript, run its install script. Without it, pnpm 11
+stops before `pnpm start`. If your copy sits inside an existing pnpm workspace, add the same `allowBuilds` entry
+to that workspace's file instead.
+
+## Check access
+
+On every connection and reconnect, the server calls one function with the connection's token and the room's
+`documentId`. It admits the connection only if the function returns a user:
+
+```ts
+type Authorize = (request: {
+  token: string;
+  roomName: string;
+  documentId: string | null;
+}) => { userId: string; readOnly?: boolean } | null | Promise<{ userId: string; readOnly?: boolean } | null>;
+```
+
+Return `null` to refuse; SuperDoc reports `collaboration-access-denied` through `onException`. Return
+`readOnly: true` to let someone follow the room without editing it.
+
+The template's sample check accepts tokens signed with `COLLABORATION_AUTH_SECRET`. Replace it with a check against
+your own login system, for example by verifying the JWTs your identity provider already issues. In the browser, pass
+a function as `token` so SuperDoc fetches a fresh token on every reconnect:
+
+```ts
+const collaboration = {
+  providerType: 'hocuspocus',
+  serverUrl: 'wss://collab.example.com',
+  documentId: 'contract-42',
+  token: () => getAccessToken(),
+  roomMode: 'join',
+} satisfies DocumentCollaborationConfig;
+```
+
+A connection with no token is never admitted, but it isn't refused either: SuperDoc reports a sync timeout after
+`syncTimeoutMs` instead of `collaboration-access-denied`. Always send a token.
+
+To run without access checks on a private network, set `COLLABORATION_AUTH=none`. Anyone who can reach the server can
+then open any room.
+
+[Control access to a room](/editor/collaboration/control-room-access) explains the checks in more detail.
+
+## Store rooms
+
+The template stores one file of room state per room. It stores a room shortly after edits stop, at least every 10
+seconds during editing, and once more when the last editor leaves.
+
+To use your database or object storage, implement two methods, `load` and `store`, and pass them to the server. The
+template's README has copyable Postgres and S3 versions.
+
+If more than one server process can hold the same room, one can overwrite the other's newer edits. Route every
+connection for a room to one process, or share rooms between processes with Hocuspocus's Redis extension.
+
+[Save and restore a room](/editor/collaboration/save-and-restore-a-room) explains why room state and DOCX files are
+stored separately.
+
+## Create each room once
+
+Create a document's room from your backend when the document is first shared, record that it exists, and have every
+editor, including the first, open it with `roomMode: 'join'`:
+
+```ts
+import { createRoom, RoomExistsError } from './src/create-room.ts';
+
+if (!document.roomCreated) {
+  await createRoom({ serverUrl, documentId: document.id, docxPath: document.localPath, token: serviceToken });
+  await db.documents.update(document.id, { roomCreated: true });
+}
+```
+
+`createRoom` opens the DOCX with the Node SDK and stays connected until a second, fresh client can open the complete
+room. If the room already exists, it throws `RoomExistsError` and writes nothing. Treat that as "open it with `join`",
+never as a reason to create another room. The template also includes `pnpm create-room <documentId> <docx>` for
+scripts.
+
+`createRoom` does not coordinate retries between several backends. If your service retries creation automatically,
+add the single-initializer rules in [Recover an interrupted
+initialization](/editor/collaboration/initialize-a-document#recover-an-interrupted-initialization).
+
+## Save DOCX files
+
+The server saves a room as a DOCX when it has gone 10 seconds without edits, when the last editor leaves with unsaved
+edits, and before the server shuts down. It opens the room with the [Node.js SDK](/agents/automation/node-sdk), so
+the file matches what an editor would export, including tracked changes and comments. Editors do not see the
+autosave as a participant.
+
+The template writes the latest file per document to a directory. Replace that with your own `DocxStore` to send the
+file anywhere:
+
+```ts
+const docxStore: DocxStore = {
+  async put(documentId, docx) {
+    await storage.upload(`documents/${documentId}.docx`, docx);
+  },
+};
+```
+
+What happens to the file next is up to you: overwrite, keep versions, or pass it to another system.
+
+- **Memory.** Each save runs a full SuperDoc engine: roughly 200 MB for a short contract and up to 2 GB for a very
+  large document. Saves run one at a time. Size the server for your largest document.
+- **Versions.** Keep `@superdoc/sdk` on the server close to the `superdoc` version in your browsers. Both derive the
+  room name from `documentId`, and they must agree.
+- **Extra saves.** Opening a room makes a small write, so an editor who opens and leaves without editing still causes
+  one save with identical content.
+- **Connected backend clients.** A Node SDK client that stays in the room, such as an agent, keeps the room from
+  emptying. The save on leave never runs while it is connected; the idle save still does.
+
+Set `COLLABORATION_DOCX=off` to turn DOCX autosave off.
+
+## Before you deploy
+
+- Serve the server over `wss://`, for example behind a TLS-terminating reverse proxy, and set `HOST=0.0.0.0` only
+  behind that proxy or a firewall.
+- Put room state and DOCX files on durable storage, and back them up.
+- Keep `COLLABORATION_AUTH_SECRET`, or your identity provider's keys, out of source control.
+- Set connection and document size limits in the proxy or the server.
+- Test a restart with editors connected: rooms should reopen with their edits, and pending DOCX files should be
+  saved before the process exits.

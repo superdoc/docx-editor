@@ -29,6 +29,10 @@ The default commands enable neither storage nor access checks.
 
 ## Prepare for production
 
+To start from a Hocuspocus server that already checks access, stores rooms, creates each room once, and autosaves
+DOCX files, see [Deploy a collaboration server](/editor/collaboration/deploy-a-server). The rest of this section
+explains the decisions behind it.
+
 ### Choose a provider
 
 Hocuspocus is the local example's default, not a requirement. The document's `collaboration` field accepts these targets through `DocumentCollaborationConfig` in the [preview API](/editor/collaboration/connect-two-editors#configure-your-application):

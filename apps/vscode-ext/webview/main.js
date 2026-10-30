@@ -95,7 +95,10 @@ function initializeEditor(fileArrayBuffer) {
         onReady: () => {
           debug('SuperDoc is ready');
           isInitialLoad = false;
-          setupEditorListeners();
+        },
+        onEditorUpdate: () => {
+          if (isInitialLoad) return;
+          scheduleAutoSave();
         },
         onEditorCreate: () => {
           debug('Editor created');
@@ -112,25 +115,6 @@ function initializeEditor(fileArrayBuffer) {
   } catch (error) {
     debug(`Failed to initialize SuperDoc: ${error.message}`);
   }
-}
-
-function setupEditorListeners() {
-  if (!editor?.activeEditor) {
-    debug('No editor or activeEditor available');
-    return;
-  }
-
-  debug('Setting up editor update listener');
-
-  editor.activeEditor.on('update', async ({ editor: editorInstance }) => {
-    if (isInitialLoad) return;
-
-    const html = editorInstance.getHTML();
-    debug(`Content updated: ${html?.length || 0} chars`);
-    scheduleAutoSave();
-  });
-
-  debug('Editor update listener ready');
 }
 
 function scheduleAutoSave() {

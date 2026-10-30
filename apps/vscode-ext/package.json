@@ -94,6 +94,7 @@
     "@types/vscode": "^1.107.0",
     "@vscode/vsce": "^2.32.0",
     "esbuild": "^0.28.0",
+    "happy-dom": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:",
     "vitest": "catalog:",

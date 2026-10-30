@@ -54,13 +54,8 @@ describe('SuperDoc API contract', () => {
       expect(superdocClassSrc).toMatch(/destroy\s*\(\s*\)/);
     });
 
-    it('has getHTML() method', () => {
-      expect(superdocClassSrc).toMatch(/\bgetHTML\s*\(/);
-    });
-
-    it('has activeEditor property', () => {
-      // webview/main.js: editor.activeEditor.on('update', ...)
-      expect(superdocClassSrc).toMatch(/this\.activeEditor\s*=/);
+    it('declares the editor-update event', () => {
+      expect(superdocClassSrc).toMatch(/'editor-update':\s*\[EditorUpdateEvent\]/);
     });
   });
 
@@ -83,6 +78,10 @@ describe('SuperDoc API contract', () => {
     it('accepts onReady callback', () => {
       // webview/main.js: new SuperDoc({ onReady: () => { ... }, ... })
       expect(superdocClassSrc).toMatch(/config\.onReady/);
+    });
+
+    it('accepts onEditorUpdate callback', () => {
+      expect(superdocClassSrc).toMatch(/#onConfig\('editor-update',\s*this\.config\.onEditorUpdate\)/);
     });
 
     it('accepts onException callback', () => {

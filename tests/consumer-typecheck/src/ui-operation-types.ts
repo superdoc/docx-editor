@@ -49,12 +49,11 @@ const replacement = {
 } satisfies OperationCall<'replace'>;
 void doc.replace(replacement.input, replacement.options);
 
-// @ts-expect-error an author attributes plain text only, not rich content
 const richWithAuthor: OperationCall<'insert'> = {
   input: { value: '<b>x</b>', type: 'html' },
   options: { changeMode: 'tracked', author: { name: 'Reviewer' } },
 };
-void richWithAuthor;
+void doc.insert(richWithAuthor.input, richWithAuthor.options);
 
 const comment: OperationInput<'comments.create'> = {
   text: 'Why?',

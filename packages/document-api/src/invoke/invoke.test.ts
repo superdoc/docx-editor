@@ -738,6 +738,59 @@ describe('invoke', () => {
   });
 
   describe('error handling', () => {
+    it('rejects direct or unstamped attribution before direct and invoked writes mutate', () => {
+      const { adapters, writeAdapter } = makeAdapters();
+      const api = createDocumentApi(adapters);
+      for (const input of [
+        { type: 'html' as const, value: '<p>Review</p>' },
+        { type: 'text' as const, value: 'Review' },
+      ]) {
+        for (const options of [
+          { changeMode: 'direct' as const, author: { name: 'Reviewer' } },
+          { author: { name: 'Reviewer' } },
+          { changeMode: 'direct' as const, date: '2026-05-01T12:00:00.000Z' },
+          { date: '2026-05-01T12:00:00.000Z' },
+        ]) {
+          expect(() => api.insert(input, options)).toThrow(expect.objectContaining({ code: 'INVALID_INPUT' }));
+          expect(() => api.invoke<'insert'>({ operationId: 'insert', input, options })).toThrow(
+            expect.objectContaining({ code: 'INVALID_INPUT' }),
+          );
+        }
+      }
+      expect(writeAdapter.insertStructured).not.toHaveBeenCalled();
+      expect(writeAdapter.write).not.toHaveBeenCalled();
+    });
+
+    it('rejects authored plain-text body replacement before direct and invoked writes mutate', () => {
+      const { adapters, writeAdapter } = makeAdapters();
+      writeAdapter.replaceStructured = mock(() => {
+        throw new Error('Unexpected mutation');
+      });
+      const api = createDocumentApi(adapters);
+      const input = { target: { kind: 'story' as const, storyType: 'body' as const }, text: 'Review' };
+      const options = { changeMode: 'tracked' as const, author: { name: 'Reviewer' } };
+      expect(() => api.replace(input, options)).toThrow(expect.objectContaining({ code: 'INVALID_INPUT' }));
+      expect(() => api.invoke<'replace'>({ operationId: 'replace', input, options })).toThrow(
+        expect.objectContaining({ code: 'INVALID_INPUT' }),
+      );
+      expect(writeAdapter.replaceStructured).not.toHaveBeenCalled();
+    });
+
+    it('preserves supported tracked rich attribution through direct and invoked writes', () => {
+      const { adapters, writeAdapter } = makeAdapters();
+      const api = createDocumentApi(adapters);
+      const input = { type: 'html' as const, value: '<p>Review</p>' };
+      const options = {
+        changeMode: 'tracked' as const,
+        author: { name: 'Reviewer' },
+        date: '2026-05-01T12:00:00.000Z',
+      };
+      expect(api.insert(input, options).success).toBe(true);
+      expect(api.invoke<'insert'>({ operationId: 'insert', input, options }).success).toBe(true);
+      expect(writeAdapter.insertStructured).toHaveBeenCalledTimes(2);
+      expect(writeAdapter.insertStructured).toHaveBeenCalledWith(input, { ...options, dryRun: false });
+    });
+
     it('throws for inherited prototype keys used as operationId', () => {
       const { adapters } = makeAdapters();
       const api = createDocumentApi(adapters);

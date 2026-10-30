@@ -1,4 +1,5 @@
 import type { DocumentApi, BrowserDocumentApi } from 'superdoc/ui';
+import type { RichContentMutationOptions, ReplaceMutationOptions } from '@superdoc/document-api';
 
 declare const doc: DocumentApi;
 declare const browserDoc: BrowserDocumentApi;
@@ -68,12 +69,10 @@ async function browserInvokeReceipts() {
 }
 void browserInvokeReceipts;
 
-// Explicit typed requests exclude the intentional unknown-input dynamic fallback.
-// @ts-expect-error An authored typed invocation cannot insert HTML.
 doc.invoke<'insert'>({
   operationId: 'insert',
   input: { value: '<p>Review</p>', type: 'html' },
-  options: { changeMode: 'tracked', author },
+  options: { changeMode: 'tracked', author, date: '2026-05-01T12:00:00.000Z' },
 });
 const structuralInput: Parameters<DocumentApi['insert']>[0] = {
   content: { kind: 'paragraph', paragraph: { inlines: [] } },
@@ -84,16 +83,7 @@ const authoredStructuralRequest = {
   input: structuralInput,
   options: { changeMode: 'tracked' as const, author },
 };
-// @ts-expect-error A valid structural input cannot receive an authored typed invocation.
 doc.invoke<'insert'>(authoredStructuralRequest);
-// @ts-expect-error An authored typed invocation cannot replace the complete body.
-doc.invoke<'replace'>({
-  operationId: 'replace',
-  input: { target: { kind: 'story', storyType: 'body' }, text: 'Review' },
-  options: { changeMode: 'tracked', author },
-});
-// @ts-expect-error An authored typed invocation cannot insert in direct mode.
-doc.invoke<'insert'>({ operationId: 'insert', input: { value: 'Review' }, options: { changeMode: 'direct', author } });
 const listInput: Parameters<DocumentApi['lists']['apply']>[0] = {
   target: { kind: 'block', nodeType: 'paragraph', nodeId: 'p1' },
   seed: 'bullet',
@@ -104,23 +94,37 @@ doc.invoke<'lists.apply'>({
   input: listInput,
   options: {
     changeMode: 'tracked',
-    // @ts-expect-error A valid list input cannot receive an authored typed invocation.
     author,
+    date: '2026-05-01T12:00:00.000Z',
   },
 });
-// @ts-expect-error Browser typed invocation preserves the unsupported HTML restriction.
 browserDoc.invoke<'insert'>({
   operationId: 'insert',
   input: { value: '<p>Review</p>', type: 'html' },
   options: { changeMode: 'tracked', author },
 });
 
-// @ts-expect-error A direct insertion cannot claim a per-call tracked author.
-doc.insert({ value: 'Review' }, { changeMode: 'direct', author });
-// @ts-expect-error Per-call author is not supported for HTML.
 doc.insert({ value: '<p>Review</p>', type: 'html' }, { changeMode: 'tracked', author });
-// @ts-expect-error Per-call author is not supported for structural content.
 doc.insert(structuralInput, { changeMode: 'tracked', author });
+
+interface ConsumerRichOptions extends RichContentMutationOptions {
+  requestId?: string;
+}
+interface ConsumerReplaceOptions extends ReplaceMutationOptions {
+  requestId?: string;
+}
+const date = '2026-05-01T12:00:00.000Z';
+const richOptions: RichContentMutationOptions = { changeMode: 'tracked', author, date };
+const replaceOptions: ReplaceMutationOptions = { changeMode: 'tracked', author, date };
+const extendedRichOptions: ConsumerRichOptions = { ...richOptions, requestId: 'insert-1' };
+const extendedReplaceOptions: ConsumerReplaceOptions = { ...replaceOptions, requestId: 'replace-1' };
+void doc.insert({ type: 'markdown', value: '**Review**' }, richOptions);
+void browserDoc.insert(structuralInput, extendedRichOptions);
+void doc.invoke<'insert'>({ operationId: 'insert', input: structuralInput, options: richOptions });
+const richReplacement = { ref: 'found-text', type: 'html' as const, value: '<p>Review</p>' };
+void doc.replace(richReplacement, replaceOptions);
+void browserDoc.replace(richReplacement, extendedReplaceOptions);
+void browserDoc.invoke<'replace'>({ operationId: 'replace', input: richReplacement, options: replaceOptions });
 const authoredPlan = { atomic: true, changeMode: 'tracked', steps: [], author } satisfies Parameters<
   typeof doc.mutations.apply
 >[0];

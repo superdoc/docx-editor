@@ -3039,6 +3039,20 @@ async function measureParagraphBlock(
     return alignmentTabStopsPx[targetIndex];
   };
 
+  const tocPageTabIndex = block.attrs?.isTocEntry
+    ? runsToProcess.reduce((last, run, index) => (isTabRun(run) && !isVanishedRun(run) ? index : last), -1)
+    : -1;
+  const tocPageTab = tocPageTabIndex >= 0 ? getAlignmentStopForOrdinal(totalTabRuns - 1, tocPageTabIndex)?.stop : null;
+  const tocPageNumberWidth =
+    tocPageTab?.val === 'end'
+      ? measureTabAlignmentGroup(tocPageTabIndex + 1, runsToProcess, ctx, decimalSeparator, fontContext).totalWidth
+      : 0;
+  const textWrapWidth = (width: number, runIndex: number, lineIndex = lines.length): number => {
+    if (!tocPageTab || tocPageNumberWidth <= 0 || runIndex >= tocPageTabIndex) return width;
+    const lineIndent = lineIndex === 0 ? firstLineTabIndent : indentLeft;
+    return Math.max(1, Math.min(width, tocPageTab.pos - lineIndent) - tocPageNumberWidth);
+  };
+
   let sequentialTabIndex = 0;
   let wordBoundariesUntilCheckpoint = WORD_BOUNDARIES_PER_MEASUREMENT_CHECKPOINT;
   for (let runIndex = 0; runIndex < runsToProcess.length; runIndex++) {
@@ -4118,9 +4132,6 @@ async function measureParagraphBlock(
         const isRunStart = charPosInRun === 0 && segmentIndex === 0 && wordIndex === 0;
         // Safe cast: only TextRuns produce word segments from split(), other run types are handled earlier
         const boundarySpacing = currentLine ? resolveBoundarySpacing(currentLine.width, isRunStart, run as TextRun) : 0;
-        // For TOC entries, never break lines - allow them to extend beyond maxWidth
-        const isTocEntry = block.attrs?.isTocEntry;
-
         // Compute the ordinary wrap decision before long-token admission. A
         // hanging first line can be wider than the continuation line that will
         // actually receive a wrapped token.
@@ -4136,9 +4147,10 @@ async function measureParagraphBlock(
             firstLineRunIndex != null &&
             currentLine.segments.some((lineSegment) => lineSegment.runIndex !== firstLineRunIndex);
           const acceptsSubpixelOverflow = !justifyAlignment && (spansRunBoundary || currentLine.hasExplicitTabStops);
-          availableWidth = currentLine.maxWidth + (acceptsSubpixelOverflow ? WIDTH_FUDGE_PX : -WIDTH_FUDGE_PX);
-          shouldBreak =
-            !inActiveTabGroup && totalWidthWithWord > availableWidth && currentLine.width > 0 && !isTocEntry;
+          availableWidth =
+            textWrapWidth(currentLine.maxWidth, runIndex) +
+            (acceptsSubpixelOverflow ? WIDTH_FUDGE_PX : -WIDTH_FUDGE_PX);
+          shouldBreak = !inActiveTabGroup && totalWidthWithWord > availableWidth && currentLine.width > 0;
 
           if (shouldBreak && justifyAlignment) {
             const candidateSpaces = currentLine.spaceCount ?? 0;
@@ -4184,7 +4196,6 @@ async function measureParagraphBlock(
           currentLine &&
           currentLine.width > 0 &&
           !inActiveTabGroup &&
-          !isTocEntry &&
           // Drop caps narrow the available width by line index, but the chunker
           // budgets every continuation chunk before any of them is pushed, so the
           // two would disagree. Keep drop-cap paragraphs on the plain wrap path.
@@ -4193,9 +4204,11 @@ async function measureParagraphBlock(
           // into its own run, and such a word has no CJK neighbour to make
           // `hasCjkBreakOpportunity` true, yet it still may not open a line.
           (hasCjkBreakOpportunity(word) || KINSOKU_FORBIDDEN_LINE_START.has(word)) &&
-          currentLine.width + boundarySpacing + wordOnlyWidth > currentLine.maxWidth - WIDTH_FUDGE_PX
+          currentLine.width + boundarySpacing + wordOnlyWidth >
+            textWrapWidth(currentLine.maxWidth, runIndex) - WIDTH_FUDGE_PX
         ) {
-          const remainingWidth = currentLine.maxWidth - WIDTH_FUDGE_PX - currentLine.width - boundarySpacing;
+          const remainingWidth =
+            textWrapWidth(currentLine.maxWidth, runIndex) - WIDTH_FUDGE_PX - currentLine.width - boundarySpacing;
           // The first *break unit*, not the first character: a token like
           // `SuperDoc中文` may be chunked between its ideographs, but its Latin
           // head has to move as a whole, so filling the line with part of it
@@ -4216,12 +4229,15 @@ async function measureParagraphBlock(
 
         const tabOnlyRemainingWidth =
           currentLine != null && currentLine.segments.length === 0 && currentLine.width > 0
-            ? Math.max(1, currentLine.maxWidth - currentLine.width)
+            ? Math.max(1, textWrapWidth(currentLine.maxWidth, runIndex) - currentLine.width)
             : null;
         const effectiveMaxWidth =
           currentLine && shouldBreak
-            ? getEffectiveWidth(bodyContentWidth, lines.length + 1)
-            : (currentLine?.maxWidth ?? getEffectiveWidth(lines.length === 0 ? initialAvailableWidth : contentWidth));
+            ? textWrapWidth(getEffectiveWidth(bodyContentWidth, lines.length + 1), runIndex, lines.length + 1)
+            : textWrapWidth(
+                currentLine?.maxWidth ?? getEffectiveWidth(lines.length === 0 ? initialAvailableWidth : contentWidth),
+                runIndex,
+              );
 
         // Character-level word breaking: if a single word exceeds maxWidth, break it into chunks
         // This handles narrow table cells where long words would otherwise overflow and be clipped
@@ -4246,7 +4262,14 @@ async function measureParagraphBlock(
           }
 
           // Break the word into chunks that fit within maxWidth
-          const lineMaxWidth = getEffectiveWidth(lines.length === 0 ? initialAvailableWidth : contentWidth);
+          const firstChunkWidth = textWrapWidth(
+            getEffectiveWidth(lines.length === 0 ? initialAvailableWidth : contentWidth),
+            runIndex,
+          );
+          const lineMaxWidth =
+            tocPageNumberWidth > 0 && runIndex < tocPageTabIndex
+              ? textWrapWidth(getEffectiveWidth(bodyContentWidth, lines.length + 1), runIndex, lines.length + 1)
+              : firstChunkWidth;
 
           // If currentLine exists with tab positioning but no text segments, we need to handle
           // the first chunk specially to preserve the tab alignment
@@ -4258,7 +4281,11 @@ async function measureParagraphBlock(
             run,
             wordStartChar,
             {
-              ...(tabOnlyRemainingWidth != null ? { firstChunkWidth: tabOnlyRemainingWidth } : {}),
+              ...(tabOnlyRemainingWidth != null
+                ? { firstChunkWidth: tabOnlyRemainingWidth }
+                : firstChunkWidth !== lineMaxWidth
+                  ? { firstChunkWidth }
+                  : {}),
               applyKinsoku: hasCjkBreakOpportunity(word),
             },
             fontContext,
@@ -4419,7 +4446,7 @@ async function measureParagraphBlock(
         if (shouldBreak && useCjkLineFill) {
           const chunks = await breakWordIntoChunks(
             word,
-            getEffectiveWidth(bodyContentWidth),
+            textWrapWidth(getEffectiveWidth(bodyContentWidth), runIndex, lines.length + 1),
             font,
             ctx,
             run,

@@ -116,6 +116,22 @@ describe('ButtonGroup button activation', () => {
     expect(wrapper.emitted('command')).toEqual([[{ item }]]);
     expect(event.defaultPrevented).toBe(true);
   });
+
+  it('forwards the static argument of a button created with one', () => {
+    const item = useToolbarItem({
+      type: 'button',
+      name: 'rtl',
+      command: 'setTextDirection',
+      argument: { direction: 'rtl' },
+      defaultLabel: 'Right to left',
+      attributes: { ariaLabel: 'Right to left' },
+    });
+    mountGroup([item]);
+
+    wrapper.get('[aria-label="Right to left"]').element.click();
+
+    expect(wrapper.emitted('command')).toEqual([[{ item, argument: { direction: 'rtl' } }]]);
+  });
 });
 
 describe('ButtonGroup font-family combobox wiring', () => {

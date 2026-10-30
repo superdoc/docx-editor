@@ -1,15 +1,12 @@
 <script setup lang="ts">
 import type { PropType } from 'vue';
 import ToolbarComboBox from './ToolbarComboBox.vue';
+import type { ComboBoxCommand, ComboBoxItem, ComboBoxTabOut } from './ToolbarComboBox.vue';
 import { normalizeCustomFontFamily } from './font-typeahead.js';
-
-type ComboBoxProps = InstanceType<typeof ToolbarComboBox>['$props'];
-type ComboBoxCommand = Parameters<NonNullable<ComboBoxProps['onCommand']>>[0];
-type ComboBoxTabOut = Parameters<NonNullable<ComboBoxProps['onTab-out']>>[0];
 
 const props = defineProps({
   item: {
-    type: Object as PropType<ComboBoxProps['item']>,
+    type: Object as PropType<ComboBoxItem>,
     required: true,
   },
   uiFontFamily: {

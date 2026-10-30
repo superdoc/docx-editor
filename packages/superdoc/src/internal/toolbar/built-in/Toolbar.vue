@@ -35,9 +35,8 @@ type ToolbarHost = Pick<
   | 'emitCommand'
   | 'on'
   | 'off'
-> & {
-  pendingSelectionCapture?: SelectionCapture | null;
-};
+  | 'pendingSelectionCapture'
+>;
 
 type ToolbarProxy = ComponentPublicInstance & { $toolbar?: ToolbarHost };
 

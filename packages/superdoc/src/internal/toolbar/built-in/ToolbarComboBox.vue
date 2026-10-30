@@ -5,7 +5,7 @@ import { toolbarIcons } from './toolbarIcons.js';
 import { useHighContrastMode } from '../../../composables/use-high-contrast-mode';
 import { computeTypeahead, findPrefixMatchIndex } from './font-typeahead.js';
 
-interface ComboBoxOption {
+export interface ComboBoxOption {
   key: string;
   label: string;
   value?: string;
@@ -15,7 +15,7 @@ interface ComboBoxOption {
   };
 }
 
-interface ComboBoxItem {
+export interface ComboBoxItem {
   id?: Ref<string>;
   name: Ref<string>;
   label?: Ref<string | number | null | undefined>;
@@ -31,6 +31,9 @@ interface TabOutTarget {
   shiftKey: boolean;
   target: HTMLInputElement | null;
 }
+
+export type ComboBoxCommand = { item: ComboBoxItem; argument: string; option: ComboBoxOption | null };
+export type ComboBoxTabOut = KeyboardEvent | TabOutTarget;
 
 type TypeaheadInputEvent = Event & Partial<Pick<InputEvent, 'inputType'>>;
 
@@ -58,9 +61,9 @@ const props = defineProps({
 });
 
 const emit = defineEmits<{
-  command: [payload: { item: ComboBoxItem; argument: string; option: ComboBoxOption | null }];
+  command: [payload: ComboBoxCommand];
   'item-clicked': [];
-  'tab-out': [event: KeyboardEvent | TabOutTarget];
+  'tab-out': [event: ComboBoxTabOut];
   'editor-handoff': [];
 }>();
 

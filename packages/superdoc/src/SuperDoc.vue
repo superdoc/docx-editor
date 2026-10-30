@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { BuiltInToolbar } from './internal/toolbar/built-in-toolbar.js';
 import {
   recordInteraction,
   isWorkflowRecordingEnabled,
@@ -167,8 +168,8 @@ type ShellToolbarItem = {
 type ShellToolbar = {
   getToolbarItemByName?: (name: string) => unknown;
   updateToolbarState?: () => void;
-  pendingSelectionCapture?: unknown;
-  ui?: { selection?: { capture?: () => unknown } };
+  pendingSelectionCapture?: BuiltInToolbar['pendingSelectionCapture'];
+  ui?: { selection?: { capture?: () => BuiltInToolbar['pendingSelectionCapture'] } };
   toolbarContainer?: HTMLElement | null;
 };
 type LegacyLayoutEngineOptions = SuperDocInstance['config']['layoutEngineOptions'] & {

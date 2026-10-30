@@ -38,6 +38,7 @@ import type {
   BorrowedSuperDocUI,
   CommandState,
   CustomCommandRegistrationResult,
+  SelectionCapture,
   StyleCatalogItem,
   ToolbarSnapshotSlice,
 } from '../../public/ui/types.js';
@@ -62,18 +63,21 @@ import { renderColorOptions } from './built-in/color-dropdown-helpers.js';
 import { findElementBySelector } from './built-in/general.js';
 import { HIGH_CONTRAST_MODE_KEY, type HighContrastMode } from '../../composables/use-high-contrast-mode.js';
 
-type ToolbarItemOption = {
+export interface ToolbarItemOption {
   key?: string | number;
   label?: string;
   type?: string;
   disabled?: boolean;
+  class?: unknown;
+  props?: Record<string, unknown>;
+  icon?: string | object | ((option: ToolbarItemOption) => unknown);
   render?: () => unknown;
   [member: string]: unknown;
-};
+}
 
 type ToolbarItemAttributes = { ariaLabel?: string; className?: unknown; [attribute: string]: unknown };
 
-interface ToolbarItem {
+export interface ToolbarItem {
   type: string;
   id: Ref<string>;
   name: Ref<string>;
@@ -347,6 +351,7 @@ export class BuiltInToolbar extends EventEmitter {
 
   toolbarItems: ToolbarItem[] = [];
   overflowItems: ToolbarItem[] = [];
+  pendingSelectionCapture: SelectionCapture | null | undefined = undefined;
   #imagePicker: ImageFilePicker | null = null;
   #groupItems = new Map<string, ToolbarItem[]>();
   #highlightOptions = new WeakMap<ToolbarItem, ToolbarItemOption[]>();

@@ -1,18 +1,7 @@
 <script setup lang="ts">
 import { computed, defineComponent, h, inject, nextTick, onBeforeUnmount, onMounted, ref, useSlots, watch } from 'vue';
 import type { CSSProperties, PropType } from 'vue';
-
-interface DropdownOption {
-  key?: string | number;
-  label?: string;
-  type?: string;
-  disabled?: boolean;
-  class?: unknown;
-  props?: Record<string, unknown>;
-  icon?: string | object | ((option: DropdownOption) => unknown);
-  render?: () => unknown;
-  [member: string]: unknown;
-}
+import type { ToolbarItemOption as DropdownOption } from '../built-in-toolbar.js';
 
 interface DropdownMenuProps {
   class?: unknown;

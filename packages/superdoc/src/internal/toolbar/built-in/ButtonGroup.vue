@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, getCurrentInstance, ref, watch, onBeforeUnmount } from 'vue';
-import type { ComponentPublicInstance, MaybeRef, PropType, Ref, StyleValue } from 'vue';
+import type { ComponentPublicInstance, MaybeRef, PropType, Ref } from 'vue';
 import ToolbarButton from './ToolbarButton.vue';
 import ToolbarSeparator from './ToolbarSeparator.vue';
 import OverflowMenu from './OverflowMenu.vue';
@@ -10,31 +10,39 @@ import FontSizeCombobox from './FontSizeCombobox.vue';
 import SdTooltip from './SdTooltip.vue';
 import { refocusEditorSurface } from './toolbar-focus-helpers.js';
 import { useHighContrastMode } from '../../../composables/use-high-contrast-mode';
-import type { BuiltInToolbar } from '../built-in-toolbar.js';
-import type { SelectionCapture } from '../../../public/ui/types.js';
+import type { BuiltInToolbar, ToolbarItem, ToolbarItemOption as DropdownOption } from '../built-in-toolbar.js';
+import type { ComboBoxCommand, ComboBoxItem, ComboBoxTabOut } from './ToolbarComboBox.vue';
 
-type ButtonItem = InstanceType<typeof ToolbarButton>['$props']['toolbarItem'];
-type ComboBoxProps = InstanceType<typeof FontFamilyCombobox>['$props'];
-type ComboBoxItem = ComboBoxProps['item'];
-type ComboBoxCommand = Parameters<NonNullable<ComboBoxProps['onCommand']>>[0];
-type ComboBoxTabOut = Parameters<NonNullable<ComboBoxProps['onTab-out']>>[0];
-type DropdownOption = NonNullable<InstanceType<typeof ToolbarDropdown>['$props']['options']>[number];
-
-export interface ToolbarGroupItem extends ButtonItem {
-  type: string;
-  id: Ref<string>;
-  isNarrow: Ref<boolean | undefined>;
-  isWide: Ref<boolean | undefined>;
-  tooltip: Ref<string | undefined>;
-  argument: Ref<unknown>;
-  command?: unknown;
-  splitButtonCommand?: unknown;
-  restoreEditorFocus: boolean;
-  dropdownStyles: Ref<StyleValue | undefined>;
-  dropdownValueKey: Ref<string | undefined>;
-  selectedValue: Ref<string | number | null | undefined>;
-  nestedOptions: Ref<DropdownOption[]>;
-}
+export type ToolbarGroupItem = Pick<
+  ToolbarItem,
+  | 'type'
+  | 'id'
+  | 'name'
+  | 'active'
+  | 'icon'
+  | 'label'
+  | 'hideLabel'
+  | 'iconColor'
+  | 'hasCaret'
+  | 'splitButton'
+  | 'disabled'
+  | 'expand'
+  | 'inlineTextInputVisible'
+  | 'hasInlineTextInput'
+  | 'style'
+  | 'attributes'
+  | 'nestedOptions'
+  | 'isNarrow'
+  | 'isWide'
+  | 'tooltip'
+  | 'argument'
+  | 'command'
+  | 'splitButtonCommand'
+  | 'restoreEditorFocus'
+  | 'dropdownStyles'
+  | 'dropdownValueKey'
+  | 'selectedValue'
+>;
 
 export interface ToolbarGroupCommand {
   item: ToolbarGroupItem | ComboBoxItem;
@@ -47,9 +55,10 @@ type FocusMoveEvent = {
   target?: (EventTarget & Partial<Pick<Element, 'closest'>>) | null;
 };
 
-type ToolbarHost = Pick<BuiltInToolbar, 'ui' | 'superdoc' | 'toolbarItems' | 'overflowItems'> & {
-  pendingSelectionCapture?: SelectionCapture | null;
-};
+type ToolbarHost = Pick<
+  BuiltInToolbar,
+  'ui' | 'superdoc' | 'toolbarItems' | 'overflowItems' | 'pendingSelectionCapture'
+>;
 
 type ButtonGroupProxy = ComponentPublicInstance & { $toolbar?: ToolbarHost };
 
@@ -145,11 +154,10 @@ const getExpanded = (item: { expand: MaybeRef<boolean> } | null) => {
 };
 
 const setExpanded = (item: { expand: Ref<boolean> }, open: boolean) => {
-  if (!item?.expand) return;
   item.expand.value = open;
 };
 
-const handleToolbarButtonClick = (item: ToolbarGroupItem, argument: unknown = undefined) => {
+const handleToolbarButtonClick = (item: ToolbarGroupItem) => {
   if (item.disabled.value) return;
 
   if (isOverflow(item)) {
@@ -172,11 +180,8 @@ const handleToolbarButtonClick = (item: ToolbarGroupItem, argument: unknown = un
   }
 
   emit('item-clicked');
-  // Forward the item's static `argument` (set via `useToolbarItem({ argument })`)
-  // when no caller-provided argument exists. Lets buttons carry fixed args like
-  // `{ direction: 'rtl' }` without needing a dropdown.
-  const resolved = argument !== undefined ? argument : item.argument?.value;
-  emit('command', resolved === undefined ? { item } : { item, argument: resolved });
+  const argument = item.argument.value;
+  emit('command', argument === undefined ? { item } : { item, argument });
 };
 
 const handleToolbarButtonTextSubmit = (item: ToolbarGroupItem, argument: string) => {

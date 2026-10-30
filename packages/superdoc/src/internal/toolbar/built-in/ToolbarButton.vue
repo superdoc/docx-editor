@@ -5,7 +5,6 @@ import type { ComponentPublicInstance, MaybeRef, PropType, Ref, StyleValue } fro
 import { toolbarIcons } from './toolbarIcons.js';
 import { useHighContrastMode } from '../../../composables/use-high-contrast-mode';
 import type { BuiltInToolbar } from '../built-in-toolbar.js';
-import type { SelectionCapture } from '../../../public/ui/types.js';
 
 interface ToolbarButtonItem {
   name: Ref<string>;
@@ -25,9 +24,7 @@ interface ToolbarButtonItem {
   nestedOptions?: Ref<{ label?: string }[]>;
 }
 
-type ToolbarHost = Pick<BuiltInToolbar, 'ui' | 'superdoc'> & {
-  pendingSelectionCapture?: SelectionCapture | null;
-};
+type ToolbarHost = Pick<BuiltInToolbar, 'ui' | 'superdoc' | 'pendingSelectionCapture'>;
 
 type ToolbarButtonProxy = ComponentPublicInstance & { $toolbar?: ToolbarHost };
 

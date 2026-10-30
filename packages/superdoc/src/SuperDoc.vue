@@ -3702,21 +3702,23 @@ const handleSelectionStart = (e: MouseEvent) => {
   selectionLayer.value!.style.pointerEvents = 'auto';
 
   nextTick(() => {
+    const layer = selectionLayer.value;
+    if (!layer) return;
     isDragging.value = true;
-    selectionLayer.value!.style.pointerEvents = 'none';
+    layer.style.pointerEvents = 'none';
     const pageNumber = getPdfPageNumberFromEvent(e);
-    selectionLayer.value!.style.pointerEvents = 'auto';
+    layer.style.pointerEvents = 'auto';
     if (!pageNumber) {
       isDragging.value = false;
-      selectionLayer.value!.style.pointerEvents = 'none';
+      layer.style.pointerEvents = 'none';
       return;
     }
-    const layerBounds = selectionLayer.value!.getBoundingClientRect();
+    const layerBounds = layer.getBoundingClientRect();
     const zoom = activeZoom.value / 100;
     const x = (e.clientX - layerBounds.left) / zoom;
     const y = (e.clientY - layerBounds.top) / zoom;
     updateSelection({ startX: x, startY: y, page: pageNumber, source: 'pdf' });
-    selectionLayer.value!.addEventListener('mousemove', handleDragMove);
+    layer.addEventListener('mousemove', handleDragMove);
   });
 };
 

@@ -537,7 +537,12 @@ export interface Editor {
   setHighContrastMode?: (isHighContrast: boolean) => unknown;
   on?: (...args: unknown[]) => unknown;
   off?: (...args: unknown[]) => unknown;
-  getHTML: (options?: Record<string, unknown>) => unknown;
+  /**
+   * Not implemented by the superdoc@2 active editor; guard before calling.
+   *
+   * @deprecated replaceWith=`await editor.doc.getHtml({})` removeIn=v3.0
+   */
+  getHTML?: (options?: Record<string, unknown>) => unknown;
   getDocumentId?: () => string | null | undefined;
   /**
    * Narrow v2 extension facet for command execution and diagnostics, backed by
@@ -1534,10 +1539,6 @@ export interface LinkPopoverConfig {
    */
   popoverResolver?: LinkPopoverResolver;
 }
-
-// ---------------------------------------------------------------------------
-// Context menu types
-// ---------------------------------------------------------------------------
 
 /**
  * Context supplied to the deprecated `action` and `render` callbacks.
@@ -3145,9 +3146,9 @@ export interface SuperDocTrackedChangesBulkDecisionPayload {
  * the editor it is bound to and ignore anything else.
  *
  * Typed `unknown` rather than `Editor`: the active editor can be a v2 facade
- * that does not satisfy `Editor` (`getHTML` is required there and absent on the
- * facade), so annotating it as `Editor` would promise methods that are not
- * present. It is an identity token to compare, not an object to call.
+ * whose runtime shape does not match `Editor`, so annotating it as `Editor`
+ * would promise members it does not have. It is an identity token to compare,
+ * not an object to call.
  */
 export interface SuperDocDocumentReplacedPayload {
   editor: unknown;

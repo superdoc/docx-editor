@@ -3859,7 +3859,7 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
    * @deprecated replaceWith=`await superdoc.activeEditor.doc.getHtml({})` removeIn=v3.0
    * @param _options Ignored.
    */
-  getHTML(_options: Parameters<Editor['getHTML']>[0] = {}): unknown[] {
+  getHTML(_options: Parameters<NonNullable<Editor['getHTML']>>[0] = {}): unknown[] {
     warnOnce(
       'superdoc.getHTML',
       '[SuperDoc] getHTML() is not supported in superdoc@2 and returns []. Use await superdoc.activeEditor.doc.getHtml({}).',

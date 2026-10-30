@@ -1690,21 +1690,21 @@ const onV2EditorReady = (payload: V2EditorReadyPayload | null | undefined) => {
   }
   const runtimeRegistered = registerV2Runtime({ documentId, host, mount, facade });
   if (!runtimeRegistered) {
-    proxy.$superdoc.setActiveEditor(facade as Editor);
+    proxy.$superdoc.setActiveEditor(facade);
   }
   if (collaborationProvider) {
     const provider = markRaw(collaborationProvider);
     proxy.$superdoc.provider = provider;
     if (doc) doc.provider = provider;
   }
-  proxy.$superdoc.broadcastEditorCreate(facade as Editor);
+  proxy.$superdoc.broadcastEditorCreate(facade);
   if (host && firstPartyCommandMutation) {
     registerFirstPartyCommandMutation(proxy.$superdoc, host, firstPartyCommandMutation as V2CommandMutation);
   }
   installV2CommandShortcutBinding({ documentId, bindEditShortcuts });
   installV2SessionShortcutBinding({ documentId, bindSessionShortcuts, documentApi, firstPartyCommandMutation });
   if (collaborationProvider && resolveDocumentV2Collaboration(getDocument(documentId)).state === 'valid') {
-    onEditorCollaborationReady({ editor: facade as Editor });
+    onEditorCollaborationReady({ editor: facade });
   }
   // ui-phase4-002: flip the reactive readiness signal so the ruler template
   // re-evaluates `shouldShowV2Ruler(doc)` now that pageMetrics + pageLayout

@@ -1,20 +1,168 @@
-<script>
+<script lang="ts">
 // Module-level cache — survives component remounts caused by hasInitializedLocations toggle
-const _heightsCache = {};
+const _heightsCache: Record<string, number> = {};
 </script>
 
-<script setup>
+<script setup lang="ts">
 import { storeToRefs } from 'pinia';
 import { ref, computed, nextTick, watch, onMounted, onBeforeUnmount } from 'vue';
-import { useCommentsStore } from '@superdoc/stores/comments-store';
-import { useSuperdocStore } from '@superdoc/stores/superdoc-store';
-import CommentDialog from '@superdoc/components/CommentsLayer/CommentDialog.vue';
+import type { PropType, Ref } from 'vue';
+import { useCommentsStore } from '../../stores/comments-store';
+import { useSuperdocStore } from '../../stores/superdoc-store';
+import type { Document as SuperDocDocument } from '../../core/types/index.js';
+import CommentDialog from './CommentDialog.vue';
+import type useComment from './use-comment';
 import {
   normalizeFloatingAnchorTop,
   resolveRemovedReviewCardContinuityTarget,
   resolveOffscreenFloatingCardTop,
   shouldMountFloatingCommentDialog,
 } from './floating-comment-positioning.js';
+
+type FloatingComment = ReturnType<typeof useComment>;
+
+type PositionEntry = {
+  pageIndex?: number | null;
+  bounds?: { top?: number; bottom?: number } | null;
+};
+
+type FloatingInstance = {
+  id: string;
+  comment: FloatingComment;
+  positionKey?: string | null;
+  positionEntry?: PositionEntry | null;
+  pageIndex?: number | null;
+  isPrimary?: boolean;
+  mount?: boolean;
+};
+
+type ReviewCoordinate = {
+  documentEpoch: string;
+  mountId: string;
+  commitSequence: number;
+  reviewVersion: number;
+};
+
+type ReviewInstance = {
+  id: string;
+  rowId: string;
+  threadId: string;
+  pageIndex: number | null;
+  positionKey: string | null;
+  positionEntry: PositionEntry | null;
+  anchorTop: number;
+  anchorBottom: number;
+  top: number;
+  height: number;
+  isPrimary: boolean;
+  isOffscreenReviewCard: boolean;
+  mount: boolean;
+};
+
+type CommittedInstance = ReviewInstance & { comment: FloatingComment; rowVersion: number };
+
+type DecisionContinuityRequest = ReviewCoordinate & {
+  removedInstanceId: string;
+  removedRowVersion: number;
+  targetInstanceId: string;
+  targetRowVersion: number;
+  top: number;
+};
+
+type WorkerDecisionContinuity = {
+  documentId: string;
+  documentMode: string;
+  request: DecisionContinuityRequest;
+};
+
+type ViewportRange = { top: number; bottom: number };
+
+type ReviewViewport = ViewportRange & {
+  width: number;
+  scale: number;
+  stageOffsetX: number;
+  stageOffsetY: number;
+};
+
+type ReviewContextInput = {
+  decisionContinuity: DecisionContinuityRequest | null;
+  activeThreadId: string | null;
+  activeInstanceId: string | null;
+  editingRowId: string | null;
+  retainedThreadIds: string[];
+  visibility: { comments: boolean; trackedChanges: boolean };
+  viewport: ReviewViewport;
+  pending: { anchorTop: number | null; height: number } | null;
+  measurements: { instanceId: string; rowVersion: number; height: number; fontRevision?: number }[];
+};
+
+type ReviewPresentation = {
+  instances: ReviewInstance[];
+  rowVersions: Record<string, number | undefined>;
+  coordinate?: ReviewCoordinate | null;
+  fontRevision?: number;
+  readPaintOrigin?: () => { left: number; top: number } | null;
+  readFontRevision?: () => number;
+  updateContext: (input: ReviewContextInput, readViewport?: () => ReviewViewport | null) => void;
+};
+
+type FloatingCommentsStore = {
+  clearInstantSidebarAlignment: () => void;
+  committedReviewPresentations: Record<string, ReviewPresentation | undefined>;
+  commentsList: FloatingComment[];
+  getFloatingCommentInstances: FloatingInstance[];
+  belongsToDocument: (
+    comment: FloatingComment,
+    activeDocumentId: string,
+    options: { allowSingleDocumentMismatch: boolean },
+  ) => boolean;
+  getComment: (id: string) => unknown;
+  viewingVisibility: { documentMode: string; commentsVisible: boolean; trackChangesVisible: boolean };
+};
+
+type FloatingCommentsStoreRefs = {
+  activeComment: Ref<string | null>;
+  activeFloatingCommentInstanceId: Ref<string | null>;
+  editorCommentPositions: Ref<Record<string, PositionEntry | undefined>>;
+  pendingComment: Ref<FloatingComment | null>;
+  editingCommentId: Ref<string | null>;
+  instantSidebarAlignmentTargetY: Ref<number | null>;
+  instantSidebarAlignmentThreadId: Ref<string | null>;
+  instantSidebarAlignmentInstanceId: Ref<string | null>;
+};
+
+type FloatingPosition = {
+  id: string;
+  threadId?: string;
+  pageIndex?: number | null;
+  anchorTop: number;
+  anchorBottom: number;
+  hasAnchorGeometry: boolean;
+  top: number;
+  height: number;
+  isOffscreenReviewCard?: boolean;
+  commentRef: FloatingComment;
+  instanceRef?: FloatingInstance | CommittedInstance;
+};
+
+type GeometryBearingInstance = {
+  id: string;
+  threadId: string;
+  instance: FloatingInstance;
+  top: number;
+  anchorBottom: number;
+};
+
+type DialogReadyPayload = {
+  commentId?: string | null;
+  elementRef?: { readonly value: Element | null } | null;
+};
+
+type ContinuityAnchor = { key: string; targetClientY: number };
+
+type DirectDecisionContinuity = { removedKey: string; targetKey: string; targetClientY: number; applied: boolean };
+
+const isFiniteNumber = (value: unknown): value is number => Number.isFinite(value);
 
 const ESTIMATED_HEIGHT = 110;
 const OBSERVER_MARGIN = 600;
@@ -23,7 +171,7 @@ const SCROLL_OWNER_OVERFLOW_VALUES = new Set(['auto', 'scroll', 'hidden', 'clip'
 // Layout algorithm: positions comments in a single column with collision avoidance.
 // When a comment is active it pins at its anchor; neighbors push up/down to avoid overlap.
 // Earlier neighbors may clip above the viewport; the selected anchor stays fixed.
-const resolveCollisions = (positions, activeIndex, gap) => {
+const resolveCollisions = (positions: FloatingPosition[], activeIndex: number, gap: number) => {
   if (activeIndex >= 0) {
     positions[activeIndex].top = positions[activeIndex].anchorTop;
 
@@ -55,19 +203,21 @@ const resolveCollisions = (positions, activeIndex, gap) => {
 
 const props = defineProps({
   currentDocument: {
-    type: Object,
+    type: Object as PropType<SuperDocDocument>,
     required: true,
   },
   parent: {
-    type: Object,
+    type: Object as PropType<HTMLElement>,
     required: true,
   },
 });
 
 const superdocStore = useSuperdocStore();
-const commentsStore = useCommentsStore();
+const piniaCommentsStore = useCommentsStore();
+const commentsStore: FloatingCommentsStore = piniaCommentsStore;
 const { clearInstantSidebarAlignment } = commentsStore;
 
+const commentsStoreRefs: FloatingCommentsStoreRefs = storeToRefs(piniaCommentsStore);
 const {
   activeComment,
   activeFloatingCommentInstanceId,
@@ -77,7 +227,7 @@ const {
   instantSidebarAlignmentTargetY,
   instantSidebarAlignmentThreadId,
   instantSidebarAlignmentInstanceId,
-} = storeToRefs(commentsStore);
+} = commentsStoreRefs;
 const { activeZoom } = storeToRefs(superdocStore);
 
 // Access the Pinia getter directly instead of storeToRefs(). In this component
@@ -113,28 +263,28 @@ const floatingCommentInstances = computed(() => {
   );
 });
 
-const floatingCommentsContainer = ref(null);
+const floatingCommentsContainer = ref<HTMLElement | null>(null);
 const commentsRenderKey = ref(0);
 const sidebarOffsetY = ref(0);
 const disableInstantLayoutTransitions = ref(false);
-const directDecisionContinuityTargetId = ref(null);
-const workerDecisionContinuity = ref(null);
+const directDecisionContinuityTargetId = ref<string | null>(null);
+const workerDecisionContinuity = ref<WorkerDecisionContinuity | null>(null);
 const viewportRevision = ref(0);
 
-const isPendingThread = (commentOrId) => {
+const isPendingThread = (commentOrId: FloatingComment | string | null) => {
   const pendingId = pendingComment.value?.commentId;
   if (!pendingId) return false;
   if (typeof commentOrId === 'object') return commentOrId?.commentId === pendingId;
   return commentOrId === pendingId || commentOrId === 'pending';
 };
 
-const getThreadId = (comment) => {
+const getThreadId = (comment: FloatingComment | null | undefined) => {
   return comment?.commentId ?? comment?.importedId ?? null;
 };
 
 const floatingInstanceIndex = computed(() => {
-  const byId = new Map();
-  const byThreadId = new Map();
+  const byId = new Map<string, FloatingInstance>();
+  const byThreadId = new Map<string, FloatingInstance[]>();
   for (const instance of floatingCommentInstances.value) {
     if (instance?.id != null) byId.set(String(instance.id), instance);
     const threadId = getThreadId(instance?.comment);
@@ -147,7 +297,7 @@ const floatingInstanceIndex = computed(() => {
   return { byId, byThreadId };
 });
 
-const findPrimaryInstanceIdForThread = (threadId) => {
+const findPrimaryInstanceIdForThread = (threadId: string | null) => {
   if (threadId == null) {
     return null;
   }
@@ -161,7 +311,7 @@ const findPrimaryInstanceIdForThread = (threadId) => {
   return matchingInstances.find((instance) => instance.isPrimary)?.id ?? matchingInstances[0]?.id ?? null;
 };
 
-const resolveFloatingInstanceId = (threadId, preferredInstanceId = null) => {
+const resolveFloatingInstanceId = (threadId: string | null, preferredInstanceId: string | null = null) => {
   if (threadId == null) {
     return null;
   }
@@ -187,7 +337,7 @@ const activeCommentInstanceId = computed(() => {
   return resolveFloatingInstanceId(activeComment.value, activeFloatingCommentInstanceId.value);
 });
 
-const toFinitePdfCoordinate = (value) => {
+const toFinitePdfCoordinate = (value: unknown) => {
   if (typeof value === 'number') return Number.isFinite(value) ? value : null;
   if (typeof value !== 'string' || value.trim() === '') return null;
   const number = Number(value);
@@ -196,19 +346,19 @@ const toFinitePdfCoordinate = (value) => {
 
 // Heights: measured (actual) or estimated. Seeded from module-level cache to
 // survive remounts triggered by hasInitializedLocations toggle in SuperDoc.vue.
-const measuredHeights = ref({ ..._heightsCache });
-const measuredFontRevisions = ref({});
+const measuredHeights = ref<Record<string, number>>({ ..._heightsCache });
+const measuredFontRevisions = ref<Record<string, number | undefined>>({});
 
 // Set of comment IDs that are near the viewport (should mount CommentDialog)
-const visibleIds = ref(new Set());
+const visibleIds = ref(new Set<string>());
 
 // Refs for placeholder elements keyed by comment ID
-const placeholderRefs = ref({});
+const placeholderRefs = ref<Record<string, HTMLElement | undefined>>({});
 
-let observer = null;
+let observer: IntersectionObserver | null = null;
 // Track which DOM elements are currently being observed (avoids disconnect/re-observe cycle)
-const observedElements = new Set();
-let viewportFrame = null;
+const observedElements = new Set<HTMLElement>();
+let viewportFrame: number | null = null;
 const refreshViewportWindow = () => {
   if (viewportFrame != null) return;
   viewportFrame = requestAnimationFrame(() => {
@@ -218,7 +368,7 @@ const refreshViewportWindow = () => {
 };
 
 // Compute anchor position for a floating comment instance.
-const getAnchorTop = (instance) => {
+const getAnchorTop = (instance: FloatingInstance) => {
   if (props.currentDocument.type === 'application/pdf') {
     const zoom = (activeZoom.value ?? 100) / 100;
     const top = toFinitePdfCoordinate(instance?.comment?.selection?.selectionBounds?.top);
@@ -228,7 +378,7 @@ const getAnchorTop = (instance) => {
   return instance?.positionEntry?.bounds?.top;
 };
 
-const getAnchorBottom = (instance, anchorTop) => {
+const getAnchorBottom = (instance: FloatingInstance, anchorTop: number) => {
   if (props.currentDocument.type === 'application/pdf') {
     const zoom = (activeZoom.value ?? 100) / 100;
     const bottom = toFinitePdfCoordinate(instance?.comment?.selection?.selectionBounds?.bottom);
@@ -236,20 +386,20 @@ const getAnchorBottom = (instance, anchorTop) => {
   }
 
   const bottom = instance?.positionEntry?.bounds?.bottom;
-  return Number.isFinite(bottom) ? bottom : anchorTop;
+  return isFiniteNumber(bottom) ? bottom : anchorTop;
 };
 
 // Geometry changes are less frequent than scroll events. Cache the small set
 // of geometry-bearing rows so viewport refreshes never rescan the complete
 // logical tracked-change catalog.
 const geometryBearingInstances = computed(() => {
-  const positioned = [];
+  const positioned: GeometryBearingInstance[] = [];
   for (const instance of floatingCommentInstances.value) {
     const id = instance?.id;
     const threadId = getThreadId(instance?.comment);
     const anchorTop = getAnchorTop(instance);
-    if (id == null || threadId == null || !Number.isFinite(anchorTop)) continue;
-    const top = normalizeFloatingAnchorTop(anchorTop, instance.comment);
+    if (id == null || threadId == null || !isFiniteNumber(anchorTop)) continue;
+    const top = normalizeFloatingAnchorTop(anchorTop);
     positioned.push({
       id,
       threadId,
@@ -275,18 +425,17 @@ const getPendingAnchorTop = () => {
   return top == null ? null : top * zoom;
 };
 
-const shouldRenderDialog = (position) => {
+const shouldRenderDialog = (position: FloatingPosition) => {
   return shouldMountFloatingCommentDialog({
     id: position?.id,
     visibleIds: committedPresentation.value
       ? new Set(allPositions.value.filter((item) => item.instanceRef?.mount).map((item) => item.id))
       : visibleIds.value,
     activeCommentInstanceId: activeCommentInstanceId.value,
-    comment: position?.commentRef,
   });
 };
 
-const getFloatingViewportRange = () => {
+const getFloatingViewportRange = (): ViewportRange | null => {
   const container = floatingCommentsContainer.value;
   if (!container) {
     return null;
@@ -359,7 +508,7 @@ const allPositions = computed(() => {
   const hasPending = pendingComment.value && pendingComment.value.fileId === props.currentDocument.id;
   if (!positionedInstances.length && !floatingCommentInstances.value.length && !hasPending) return [];
 
-  const positions = [];
+  const positions: FloatingPosition[] = [];
   const viewportRange = getFloatingViewportRange() ?? {
     top: 0,
     bottom: Math.max(0, props.parent?.clientHeight || window.innerHeight || 0),
@@ -367,8 +516,15 @@ const allPositions = computed(() => {
   const renderTop = viewportRange.top - OBSERVER_MARGIN;
   const renderBottom = viewportRange.bottom + OBSERVER_MARGIN;
   const activeKey = hasPending ? 'pending' : activeCommentInstanceId.value;
-  const positionIds = new Set();
-  const pushPosition = ({ id, threadId, instance, top, anchorBottom, hasAnchorGeometry }) => {
+  const positionIds = new Set<string>();
+  const pushPosition = ({
+    id,
+    threadId,
+    instance,
+    top,
+    anchorBottom,
+    hasAnchorGeometry,
+  }: GeometryBearingInstance & { hasAnchorGeometry: boolean }) => {
     const key = String(id);
     if (positionIds.has(key)) return;
     positionIds.add(key);
@@ -401,7 +557,7 @@ const allPositions = computed(() => {
     });
   }
 
-  const transitionalInstances = [];
+  const transitionalInstances: FloatingInstance[] = [];
   if (activeKey && activeKey !== 'pending') {
     const activeInstance = floatingInstanceIndex.value.byId.get(String(activeKey));
     if (activeInstance) transitionalInstances.push(activeInstance);
@@ -436,7 +592,7 @@ const allPositions = computed(() => {
         hasAnchorGeometry: true,
         top: pendingTop,
         height: measuredHeights.value['pending'] || ESTIMATED_HEIGHT,
-        commentRef: pendingComment.value,
+        commentRef: pendingComment.value!,
       });
     }
   }
@@ -473,7 +629,7 @@ const allPositions = computed(() => {
   return positions;
 });
 
-const readReviewViewport = () => {
+const readReviewViewport = (): ReviewViewport | null => {
   const presentation = committedPresentation.value,
     container = floatingCommentsContainer.value;
   if (!presentation || !container) return null;
@@ -496,7 +652,7 @@ const readReviewViewport = () => {
     stageOffsetY: stage.top - rail.top,
   };
 };
-const measuredReviewContext = computed(() => {
+const measuredReviewContext = computed((): ReviewContextInput | null => {
   const presentation = committedPresentation.value;
   const viewport = readReviewViewport();
   if (!presentation || !viewport) return null;
@@ -567,7 +723,7 @@ const setupObserver = () => {
     (entries) => {
       const newVisible = new Set(visibleIds.value);
       for (const entry of entries) {
-        const id = entry.target.dataset.commentId;
+        const id = (entry.target as HTMLElement).dataset.commentId;
         if (!id) continue;
         if (entry.isIntersecting) {
           newVisible.add(id);
@@ -611,7 +767,7 @@ const observePlaceholders = () => {
 
 // Store a measured height for a comment key. Deduplicates the update logic
 // shared between initial mount (handleDialog) and active-state remeasure.
-const storeHeight = (key, height) => {
+const storeHeight = (key: string, height: number) => {
   if (height <= 0) return;
   const fontRevision = committedPresentation.value?.readFontRevision?.();
   if (height === measuredHeights.value[key] && fontRevision === measuredFontRevisions.value[key]) return;
@@ -638,7 +794,7 @@ watch(
 );
 
 // When a CommentDialog mounts and reports its size, record the measured height.
-const handleDialog = (dialog) => {
+const handleDialog = (dialog: DialogReadyPayload | null | undefined) => {
   if (!dialog) return;
   const { elementRef, commentId: instanceId } = dialog;
   if (!elementRef) return;
@@ -651,7 +807,7 @@ const handleDialog = (dialog) => {
 };
 
 // Re-measure a specific comment dialog when it signals a resize (e.g. text truncation toggle)
-const handleResize = (position) => {
+const handleResize = (position: FloatingPosition) => {
   const key = position?.id;
   if (!key) return;
   nextTick(() => {
@@ -678,12 +834,12 @@ const handleResize = (position) => {
   });
 };
 
-const setInstantLayoutTransitionsDisabled = (disabled) => {
+const setInstantLayoutTransitionsDisabled = (disabled: boolean) => {
   if (!disabled && directDecisionContinuityTargetId.value != null) return;
   disableInstantLayoutTransitions.value = disabled;
 };
 
-const alignCommentKeyToClientY = (key, targetY, onComplete) => {
+const alignCommentKeyToClientY = (key: string, targetY: number, onComplete?: (didAlign: boolean) => void) => {
   if (!Number.isFinite(targetY)) {
     onComplete?.(false);
     return;
@@ -700,7 +856,7 @@ const alignCommentKeyToClientY = (key, targetY, onComplete) => {
 };
 
 // Store placeholder ref by comment ID
-const setPlaceholderRef = (id, el) => {
+const setPlaceholderRef = (id: string, el: HTMLElement | null) => {
   if (el) {
     placeholderRefs.value[id] = el;
     if (observer && !observedElements.has(el)) {
@@ -718,21 +874,21 @@ const setPlaceholderRef = (id, el) => {
 };
 
 // Timer IDs for cancellation on rapid active-comment switching
-let remeasureTimers = [];
-let scrollTimer = null;
+let remeasureTimers: ReturnType<typeof setTimeout>[] = [];
+let scrollTimer: ReturnType<typeof setTimeout> | null = null;
 // A decision removes the active row before clearing activeComment. Keep one
 // surviving row as a visual anchor so subsequent list reconciliation cannot
 // translate the entire review rail back to its unshifted origin.
-let renderedPositionOrder = [];
-let sidebarContinuityAnchor = null;
+let renderedPositionOrder: string[] = [];
+let sidebarContinuityAnchor: ContinuityAnchor | null = null;
 let continuityAlignmentScheduled = false;
 let continuityAlignmentGeneration = 0;
-let continuityTransitionFrame = null;
-let activeLayoutContinuityFrame = null;
-let directDecisionContinuity = null;
-let directDecisionSourceId = null;
-let ownerScrollContinuityResetFrame = null;
-const ownerScrollTargets = new Set();
+let continuityTransitionFrame: number | null = null;
+let activeLayoutContinuityFrame: number | null = null;
+let directDecisionContinuity: DirectDecisionContinuity | null = null;
+let directDecisionSourceId: string | null = null;
+let ownerScrollContinuityResetFrame: number | null = null;
+const ownerScrollTargets = new Set<EventTarget>();
 
 const releaseDirectDecisionContinuity = () => {
   directDecisionContinuity = null;
@@ -752,13 +908,13 @@ watch(
   () => releaseDirectDecisionContinuity(),
 );
 
-const releaseDirectDecisionContinuityForUnrelatedPointer = (event) => {
+const releaseDirectDecisionContinuityForUnrelatedPointer = (event: PointerEvent) => {
   if (!directDecisionContinuity) return;
   const target = event?.target instanceof Element ? event.target : null;
   const actionElement = target?.closest?.('[data-comment-action]');
   const action = actionElement?.getAttribute?.('data-comment-action');
   const continuesReviewSequence =
-    (action === 'resolve' || action === 'reject') && floatingCommentsContainer.value?.contains?.(actionElement);
+    (action === 'resolve' || action === 'reject') && floatingCommentsContainer.value?.contains?.(actionElement ?? null);
   if (!continuesReviewSequence) {
     releaseDirectDecisionContinuity();
   }
@@ -769,8 +925,8 @@ const clearDeferredRemeasureTimers = () => {
   remeasureTimers = [];
 };
 
-const remeasureCommentKeys = (keys) => {
-  for (const key of keys.filter(Boolean)) {
+const remeasureCommentKeys = (keys: readonly (string | null | undefined)[]) => {
+  for (const key of keys.filter((candidate): candidate is string => Boolean(candidate))) {
     const el = placeholderRefs.value[key];
     if (!el) continue;
     const dialog = el.querySelector('.comments-dialog');
@@ -789,7 +945,9 @@ const REMEASURE_AFTER_PLACEHOLDER_TRANSITION_MS = 350;
  * Pass an array of keys, or a getter so keys are resolved when each timeout fires
  * (e.g. when `allPositions` may have changed).
  */
-const scheduleDeferredRemeasure = (keysOrGetter) => {
+const scheduleDeferredRemeasure = (
+  keysOrGetter: readonly (string | null | undefined)[] | (() => readonly (string | null | undefined)[]),
+) => {
   clearDeferredRemeasureTimers();
   const resolveKeys = typeof keysOrGetter === 'function' ? keysOrGetter : () => keysOrGetter;
   remeasureTimers.push(setTimeout(() => remeasureCommentKeys(resolveKeys()), REMEASURE_AFTER_DOM_SETTLE_MS));
@@ -805,7 +963,7 @@ const finishInstantSidebarAlignment = () => {
   });
 };
 
-const applyInstantSidebarAlignment = (key, targetY) => {
+const applyInstantSidebarAlignment = (key: string, targetY: number) => {
   if (!key || !Number.isFinite(targetY)) return;
 
   setInstantLayoutTransitionsDisabled(true);
@@ -856,14 +1014,14 @@ const handleOwnerScroll = () => {
 // Contained roots are siblings of the sidebar. Capture only their scrolls,
 // including roots replaced on document reload; nested editor controls do not
 // own document geometry or release review-action continuity.
-const handleDocumentScroll = (event) => {
+const handleDocumentScroll = (event: Event) => {
   if (event.target instanceof Element && event.target.matches('.superdoc__sub-document')) {
     handleOwnerScroll();
   }
 };
 
 const registerOwnerScrollListeners = () => {
-  const addTarget = (target) => {
+  const addTarget = (target: EventTarget | null | undefined) => {
     if (!target?.addEventListener || ownerScrollTargets.has(target)) return;
     target.addEventListener('scroll', handleOwnerScroll, { passive: true });
     ownerScrollTargets.add(target);
@@ -908,7 +1066,7 @@ const scheduleSidebarContinuityAlignment = () => {
       return;
     }
 
-    const { key, targetClientY } = sidebarContinuityAnchor;
+    const { key, targetClientY } = sidebarContinuityAnchor!;
     remeasureCommentKeys([key]);
     alignCommentKeyToClientY(key, targetClientY, (didAlign) => {
       if (generation !== continuityAlignmentGeneration) return;
@@ -926,7 +1084,7 @@ const scheduleSidebarContinuityAlignment = () => {
   });
 };
 
-const preserveSidebarContinuityAfterRemoval = (removedKey, currentIds) => {
+const preserveSidebarContinuityAfterRemoval = (removedKey: string, currentIds: ReadonlySet<string>) => {
   const targetKey = resolveRemovedReviewCardContinuityTarget({
     previousIds: renderedPositionOrder,
     currentIds,
@@ -935,7 +1093,7 @@ const preserveSidebarContinuityAfterRemoval = (removedKey, currentIds) => {
   const targetElement = targetKey ? placeholderRefs.value[targetKey] : null;
   const targetClientY = targetElement?.getBoundingClientRect?.().top;
 
-  if (!targetKey || !Number.isFinite(targetClientY)) {
+  if (!targetKey || !isFiniteNumber(targetClientY)) {
     clearSidebarContinuityAnchor();
     return false;
   }
@@ -950,10 +1108,11 @@ const preserveSidebarContinuityAfterRemoval = (removedKey, currentIds) => {
 // active. Capture the next card's client position before the async decision
 // removes the clicked row so the same continuity path used by active-card
 // decisions can keep the next visible action target stationary (SD-3855).
-const prepareSidebarContinuityForDirectDecision = (event) => {
-  const actionElement = event?.target?.closest?.('[data-comment-action]');
+const prepareSidebarContinuityForDirectDecision = (event: MouseEvent) => {
+  const eventTarget = event?.target instanceof Element ? event.target : null;
+  const actionElement = eventTarget?.closest?.('[data-comment-action]');
   const action = actionElement?.getAttribute?.('data-comment-action');
-  if (action !== 'resolve' && action !== 'reject') return;
+  if (!actionElement || (action !== 'resolve' && action !== 'reject')) return;
 
   // The pointer already reached this action, so any previous target no longer
   // needs its temporary hit area. A disabled action must not arm new state.
@@ -981,7 +1140,7 @@ const prepareSidebarContinuityForDirectDecision = (event) => {
   });
   const targetElement = targetKey ? placeholderRefs.value[targetKey] : null;
   const targetClientY = targetElement?.getBoundingClientRect?.().top;
-  if (!targetKey || !Number.isFinite(targetClientY)) return;
+  if (!targetKey || !isFiniteNumber(targetClientY)) return;
 
   directDecisionContinuity = { removedKey, targetKey, targetClientY, applied: false };
   directDecisionSourceId = removedKey;
@@ -1021,7 +1180,7 @@ const prepareSidebarContinuityForDirectDecision = (event) => {
         removedRowVersion: removed.rowVersion,
         targetInstanceId: targetKey,
         targetRowVersion: target.rowVersion,
-        top: targetClientY - floatingCommentsContainer.value.getBoundingClientRect().top,
+        top: targetClientY - floatingCommentsContainer.value!.getBoundingClientRect().top,
       },
     };
     // Capture precedes the action's async mutation, so its source-owned worker
@@ -1071,7 +1230,7 @@ watch(activeCommentInstanceId, (newKey, oldKey) => {
 watch(
   [activeCommentInstanceId, instantAlignmentInstanceKey, instantSidebarAlignmentTargetY],
   ([activeKey, requestKey, targetY]) => {
-    if (!activeKey || !requestKey || activeKey !== requestKey || !Number.isFinite(targetY)) return;
+    if (!activeKey || !requestKey || activeKey !== requestKey || !isFiniteNumber(targetY)) return;
     applyInstantSidebarAlignment(activeKey, targetY);
   },
 );
@@ -1147,10 +1306,10 @@ watch(activeZoom, () => {
 });
 
 // Track positioned IDs so we can detect additions/removals
-let prevPositionIds = new Set();
-let prevActiveInstanceId = null;
-let prevActiveAnchorTop = null;
-let prevActiveLayoutTop = null;
+let prevPositionIds = new Set<string>();
+let prevActiveInstanceId: string | null = null;
+let prevActiveAnchorTop: number | null = null;
+let prevActiveLayoutTop: number | null = null;
 
 // Re-observe when positions change; clean up stale heights and remeasure on add/remove
 watch(allPositions, (positions) => {
@@ -1186,7 +1345,7 @@ watch(allPositions, (positions) => {
     // Preserve a translated active row when windowed geometry changes its
     // offscreen placement without moving the same instance's anchor.
     setInstantLayoutTransitionsDisabled(true);
-    sidebarOffsetY.value += prevActiveLayoutTop - activeLayoutTop;
+    sidebarOffsetY.value += prevActiveLayoutTop! - activeLayoutTop;
     if (activeLayoutContinuityFrame != null) cancelAnimationFrame(activeLayoutContinuityFrame);
     activeLayoutContinuityFrame = requestAnimationFrame(() => {
       activeLayoutContinuityFrame = null;
@@ -1285,7 +1444,7 @@ watch(allPositions, (positions) => {
   if (setChanged) {
     // Remove stale heights so allPositions recomputes with ESTIMATED_HEIGHT
     // for the next cycle, then measure actual heights after DOM settles.
-    const cleaned = {};
+    const cleaned: Record<string, number> = {};
     for (const id of currentIds) {
       if (_heightsCache[id]) cleaned[id] = _heightsCache[id];
     }
@@ -1378,7 +1537,7 @@ onBeforeUnmount(() => {
       <div
         v-for="pos in allPositions"
         :key="pos.id"
-        :ref="(el) => setPlaceholderRef(pos.id, el)"
+        :ref="(el) => setPlaceholderRef(pos.id, el as HTMLElement | null)"
         :data-comment-id="pos.id"
         :data-comment-instance-id="pos.id"
         :data-comment-thread-id="pos.threadId"
@@ -1405,8 +1564,8 @@ onBeforeUnmount(() => {
           :parent="parent"
           :comment="pos.commentRef"
           :floating-instance-id="pos.id"
-          :floating-page-index="pos.pageIndex"
-          :floating-position-entry="pos.instanceRef?.positionEntry ?? null"
+          :floating-page-index="pos.pageIndex ?? undefined"
+          :floating-position-entry="pos.instanceRef?.positionEntry ?? undefined"
           :is-floating-instance-active="pos.id === activeCommentInstanceId"
         />
       </div>

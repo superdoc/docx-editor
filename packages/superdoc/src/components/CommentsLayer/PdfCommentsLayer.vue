@@ -1,4 +1,4 @@
-<script setup>
+<script setup lang="ts">
 /**
  * PdfCommentsLayer
  *
@@ -13,11 +13,47 @@
  * must never render here, and this layer never recreates the legacy v1
  * on-document DOCX comment markers.
  */
-import { computed, getCurrentInstance } from 'vue';
+import { computed } from 'vue';
+import type { CSSProperties } from 'vue';
 import { storeToRefs } from 'pinia';
 import { PDF } from '@superdoc/common';
-import { useCommentsStore } from '@superdoc/stores/comments-store';
-import { useSuperdocStore } from '@superdoc/stores/superdoc-store';
+import type { SuperDoc } from '../../core/SuperDoc.js';
+import { useSuperDocInstance } from '../../composables/use-superdoc-instance';
+import { useCommentsStore } from '../../stores/comments-store';
+import { useSuperdocStore } from '../../stores/superdoc-store';
+
+type BoundValue = number | string | null | undefined;
+
+type PdfSelectionBounds = { top?: BoundValue; left?: BoundValue; right?: BoundValue; bottom?: BoundValue };
+
+type FiniteSelectionBounds = { top: BoundValue; left: BoundValue; right: BoundValue; bottom: BoundValue };
+
+type PdfComment = {
+  commentId?: string | null;
+  importedId?: string | null;
+  fileId?: string | null;
+  documentId?: string | null;
+  resolvedTime?: number | null;
+  isInternal?: boolean;
+  selection?: {
+    source?: string | null;
+    page?: number | null;
+    documentId?: string | null;
+    selectionBounds?: PdfSelectionBounds | null;
+  } | null;
+};
+
+type PdfCommentAnchor = {
+  commentId: string;
+  page: number | null;
+  isInternal: boolean;
+  bounds: { top: number; left: number; right: number; bottom: number };
+};
+
+type PdfCommentsStore = {
+  getFloatingComments: PdfComment[] | null | undefined;
+  setActiveComment(superdoc: SuperDoc, id: string): void;
+};
 
 const PDF_SELECTION_SOURCE = 'pdf';
 const INTERNAL_HIGHLIGHT_COLOR = '#078383';
@@ -25,19 +61,20 @@ const EXTERNAL_HIGHLIGHT_COLOR = '#B1124B';
 
 const emit = defineEmits(['anchor-activate']);
 
-const commentsStore = useCommentsStore();
+const piniaCommentsStore = useCommentsStore();
+const commentsStore: PdfCommentsStore = piniaCommentsStore;
 const superdocStore = useSuperdocStore();
-const { activeComment } = storeToRefs(commentsStore);
+const { activeComment } = storeToRefs(piniaCommentsStore);
 const { documents, activeZoom } = storeToRefs(superdocStore);
-const { proxy } = getCurrentInstance();
+const { proxy } = useSuperDocInstance();
 
-const isFiniteNumber = (value) => {
+const isFiniteNumber = (value: unknown) => {
   if (typeof value === 'number') return Number.isFinite(value);
   if (typeof value === 'string' && value.trim() !== '') return Number.isFinite(Number(value));
   return false;
 };
 
-const hasFiniteBounds = (bounds) =>
+const hasFiniteBounds = (bounds: PdfSelectionBounds | null | undefined): bounds is FiniteSelectionBounds =>
   !!bounds &&
   isFiniteNumber(bounds.top) &&
   isFiniteNumber(bounds.left) &&
@@ -51,17 +88,17 @@ const openPdfDocumentIds = computed(() => {
   return new Set(docs.filter((doc) => doc?.type === PDF).map((doc) => String(doc.id)));
 });
 
-const getCommentDocumentId = (comment) => {
+const getCommentDocumentId = (comment: PdfComment) => {
   const id = comment?.fileId ?? comment?.documentId ?? comment?.selection?.documentId;
   return id != null ? String(id) : null;
 };
 
-const getAnchorCommentId = (comment) => {
+const getAnchorCommentId = (comment: PdfComment) => {
   const id = comment?.commentId ?? comment?.importedId;
   return id != null && String(id) !== '' ? String(id) : null;
 };
 
-const belongsToOpenPdfDocument = (comment) => {
+const belongsToOpenPdfDocument = (comment: PdfComment) => {
   const ids = openPdfDocumentIds.value;
   if (!ids.size) return false;
   const commentDocumentId = getCommentDocumentId(comment);
@@ -73,7 +110,7 @@ const belongsToOpenPdfDocument = (comment) => {
 
 // Normalize reversed selection bounds (drag up / drag left) so width/height are
 // always non-negative.
-const normalizeBounds = (bounds) => {
+const normalizeBounds = (bounds: FiniteSelectionBounds) => {
   const top = Math.min(Number(bounds.top), Number(bounds.bottom));
   const bottom = Math.max(Number(bounds.top), Number(bounds.bottom));
   const left = Math.min(Number(bounds.left), Number(bounds.right));
@@ -85,25 +122,26 @@ const pdfCommentAnchors = computed(() => {
   const parentComments = commentsStore.getFloatingComments;
   if (!Array.isArray(parentComments)) return [];
 
-  return parentComments
-    .filter((comment) => comment?.selection?.source === PDF_SELECTION_SOURCE)
-    .filter((comment) => !comment.resolvedTime)
-    .filter((comment) => getAnchorCommentId(comment) !== null)
-    .filter((comment) => hasFiniteBounds(comment.selection?.selectionBounds))
-    .filter((comment) => belongsToOpenPdfDocument(comment))
-    .map((comment) => {
-      const commentId = getAnchorCommentId(comment);
-      const bounds = normalizeBounds(comment.selection.selectionBounds);
-      return {
+  return parentComments.flatMap((comment): PdfCommentAnchor[] => {
+    if (comment?.selection?.source !== PDF_SELECTION_SOURCE) return [];
+    if (comment.resolvedTime) return [];
+    const commentId = getAnchorCommentId(comment);
+    if (commentId === null) return [];
+    const selectionBounds = comment.selection.selectionBounds;
+    if (!hasFiniteBounds(selectionBounds)) return [];
+    if (!belongsToOpenPdfDocument(comment)) return [];
+    return [
+      {
         commentId,
-        page: comment.selection?.page ?? null,
+        page: comment.selection.page ?? null,
         isInternal: comment.isInternal !== false,
-        bounds,
-      };
-    });
+        bounds: normalizeBounds(selectionBounds),
+      },
+    ];
+  });
 });
 
-const getAnchorStyle = (anchor) => {
+const getAnchorStyle = (anchor: PdfCommentAnchor): CSSProperties => {
   const zoom = (activeZoom.value ?? 100) / 100;
   const { top, left, right, bottom } = anchor.bounds;
   const isActive = activeComment.value === anchor.commentId;
@@ -120,7 +158,7 @@ const getAnchorStyle = (anchor) => {
 };
 
 // Reopen the real submitted comment through the configured compact/sidebar path.
-const activateAnchor = (anchor) => {
+const activateAnchor = (anchor: PdfCommentAnchor) => {
   commentsStore.setActiveComment(proxy.$superdoc, anchor.commentId);
   emit('anchor-activate', anchor.commentId);
 };

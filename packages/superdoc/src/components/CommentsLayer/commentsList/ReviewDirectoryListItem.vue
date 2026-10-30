@@ -1,11 +1,35 @@
-<script setup>
+<script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
+import type { PropType, Ref } from 'vue';
 import { storeToRefs } from 'pinia';
-import { useCommentsStore } from '@stores/comments-store';
+import { useCommentsStore } from '../../../stores/comments-store';
 import CommentDialog from '../CommentDialog.vue';
+import type { CommentModel } from '../use-comment';
+import { isFiniteNumber } from '../../../helpers/is-finite-number.js';
+
+export type PositionEntry = {
+  pageIndex?: number | null;
+  bounds?: { top?: number; bottom?: number } | null;
+};
+
+export type ReviewDirectoryItem = {
+  id: string | undefined;
+  comment: CommentModel;
+  floatingInstanceId: string | null;
+  floatingPageIndex: number | null | undefined;
+  floatingPositionEntry: PositionEntry | null;
+  isFloatingInstanceActive: boolean | undefined;
+  threadComments: CommentModel[];
+};
+
+type ReviewDirectoryItemStoreRefs = {
+  activeComment: Ref<string | null | undefined>;
+  editingCommentId: Ref<string | null | undefined>;
+  pendingComment: Ref<CommentModel | null>;
+};
 
 const props = defineProps({
-  item: { type: Object, required: true },
+  item: { type: Object as PropType<ReviewDirectoryItem>, required: true },
   index: { type: Number, required: true },
   total: { type: Number, required: true },
   tabIndex: { type: Number, default: -1 },
@@ -13,13 +37,13 @@ const props = defineProps({
 const emit = defineEmits(['focus-item', 'navigate']);
 
 const commentsStore = useCommentsStore();
-const { activeComment, editingCommentId, pendingComment } = storeToRefs(commentsStore);
-const shell = ref(null);
+const { activeComment, editingCommentId, pendingComment }: ReviewDirectoryItemStoreRefs = storeToRefs(commentsStore);
+const shell = ref<HTMLElement | null>(null);
 const measuredHeight = ref(112);
 const intersects = ref(typeof IntersectionObserver === 'undefined');
 const containsFocus = ref(false);
-let intersectionObserver = null;
-let resizeObserver = null;
+let intersectionObserver: IntersectionObserver | null = null;
+let resizeObserver: ResizeObserver | null = null;
 
 const threadIds = computed(
   () =>
@@ -57,7 +81,7 @@ const accessibleSummary = computed(() => {
 
 const measure = () => {
   const height = shell.value?.getBoundingClientRect?.().height;
-  if (Number.isFinite(height) && height > 0) measuredHeight.value = height;
+  if (isFiniteNumber(height) && height > 0) measuredHeight.value = height;
 };
 
 const onFocusIn = () => {
@@ -65,14 +89,24 @@ const onFocusIn = () => {
   emit('focus-item', props.index);
 };
 
-const onKeydown = (event) => {
+const onFocusOut = (event: FocusEvent) => {
+  containsFocus.value = event.relatedTarget instanceof Node && shell.value?.contains(event.relatedTarget) === true;
+};
+
+const onKeydown = (event: KeyboardEvent) => {
   if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
-  if (event.target?.closest?.('input, textarea, select, button, [contenteditable="true"]')) return;
+  if (
+    event.target instanceof Element &&
+    event.target.closest('input, textarea, select, button, [contenteditable="true"]')
+  )
+    return;
   event.preventDefault();
   emit('navigate', { index: props.index, key: event.key });
 };
 
 onMounted(() => {
+  const element = shell.value;
+  if (!element) return;
   if (typeof IntersectionObserver !== 'undefined') {
     intersectionObserver = new IntersectionObserver(
       (entries) => {
@@ -83,11 +117,11 @@ onMounted(() => {
       },
       { root: null, rootMargin: '600px 0px' },
     );
-    intersectionObserver.observe(shell.value);
+    intersectionObserver.observe(element);
   }
   if (typeof ResizeObserver !== 'undefined') {
     resizeObserver = new ResizeObserver(measure);
-    resizeObserver.observe(shell.value);
+    resizeObserver.observe(element);
   }
   void nextTick(measure);
 });
@@ -114,7 +148,7 @@ onBeforeUnmount(() => {
     :data-comment-page-index="Number.isFinite(item.floatingPageIndex) ? item.floatingPageIndex : ''"
     :data-review-directory-index="index"
     @focusin="onFocusIn"
-    @focusout="containsFocus = shell?.contains?.($event.relatedTarget) === true"
+    @focusout="onFocusOut"
     @keydown="onKeydown"
   >
     <CommentDialog

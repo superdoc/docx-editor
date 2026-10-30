@@ -470,3 +470,5 @@ export default function useComment(params: UseCommentParams) {
     updateIdentityValues,
   });
 }
+
+export type CommentModel = ReturnType<typeof useComment>;

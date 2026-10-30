@@ -1,7 +1,8 @@
-<script setup>
+<script setup lang="ts">
 import { computed, ref, onMounted, watch } from 'vue';
-import { superdocIcons } from '@superdoc/icons.js';
-import { useUiFontFamily } from '@superdoc/composables/useUiFontFamily.js';
+import type { CSSProperties } from 'vue';
+import { superdocIcons } from '../../icons.js';
+import { useUiFontFamily } from '../../composables/useUiFontFamily.js';
 import CommentsDropdown from './CommentsDropdown.vue';
 
 const emit = defineEmits(['select']);
@@ -43,7 +44,7 @@ const getStyle = computed(() => {
   const activeOption = options.find((o) => o.key === activeState.value);
   if (!activeOption) return {};
 
-  const style = { backgroundColor: activeOption.backgroundColor };
+  const style: CSSProperties = { backgroundColor: activeOption.backgroundColor };
 
   if (props.isDisabled) {
     style.opacity = 0.5;
@@ -52,7 +53,7 @@ const getStyle = computed(() => {
   return style;
 });
 
-const handleSelect = (key, suppressEmit = false) => {
+const handleSelect = (key: string | undefined, suppressEmit = false) => {
   activeState.value = key;
   activeIcon.value = options.find((o) => o.key === key)?.iconString;
 
@@ -61,7 +62,7 @@ const handleSelect = (key, suppressEmit = false) => {
 };
 
 const activeState = ref(props.state);
-const activeIcon = ref(null);
+const activeIcon = ref<string | null | undefined>(null);
 
 watch(
   () => props.state,

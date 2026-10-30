@@ -1,4 +1,4 @@
-<script setup>
+<script setup lang="ts">
 /**
  * SurfaceHost — mounted once as the last child of .superdoc.
  *
@@ -16,20 +16,22 @@
 import { inject, computed, ref, watch, onMounted, onBeforeUnmount } from 'vue';
 import SurfaceDialog from './SurfaceDialog.vue';
 import SurfaceFloating from './SurfaceFloating.vue';
+import type { PropType } from 'vue';
+import type { SurfaceManager } from '../../core/surface-manager.js';
 
 const props = defineProps({
-  geometryTarget: { type: Object, default: null },
+  geometryTarget: { type: Object as PropType<HTMLElement | null>, default: null },
 });
 
-const surfaceManager = inject('surfaceManager', null);
+const surfaceManager = inject<SurfaceManager | null>('surfaceManager', null);
 
 const dialog = computed(() => surfaceManager?.activeDialog.value ?? null);
 const floating = computed(() => surfaceManager?.activeFloating.value ?? null);
 const hasAnySurface = computed(() => dialog.value != null || floating.value != null);
 
-const hostRef = ref(null);
-const floatingRef = ref(null);
-const hostStyle = ref({});
+const hostRef = ref<HTMLElement | null>(null);
+const floatingRef = ref<InstanceType<typeof SurfaceFloating> | null>(null);
+const hostStyle = ref<Record<string, string>>({});
 
 // ---------------------------------------------------------------------------
 // Viewport geometry — position:fixed host sized to the visible document area
@@ -43,8 +45,8 @@ const CLIPPING_OVERFLOW = new Set(['hidden', 'scroll', 'auto', 'clip']);
  * Used by both setupGeometry (to observe resizes) and computeVisibleRect
  * (to intersect bounding rects).
  */
-function collectClippingAncestors(el) {
-  const ancestors = [];
+function collectClippingAncestors(el: HTMLElement) {
+  const ancestors: HTMLElement[] = [];
   let ancestor = el.parentElement;
   while (ancestor) {
     const style = getComputedStyle(ancestor);
@@ -63,7 +65,7 @@ function collectClippingAncestors(el) {
  * Accepts pre-collected clipping ancestors to avoid re-walking the DOM on
  * every scroll/resize tick.
  */
-function computeVisibleRect(el, clippingAncestors) {
+function computeVisibleRect(el: HTMLElement, clippingAncestors: HTMLElement[]) {
   let top = 0;
   let left = 0;
   let right = window.innerWidth;
@@ -98,10 +100,10 @@ function computeVisibleRect(el, clippingAncestors) {
   };
 }
 
-let geometryTarget = null;
-let clippingAncestors = [];
+let geometryTarget: HTMLElement | null = null;
+let clippingAncestors: HTMLElement[] = [];
 let rafId = 0;
-let resizeObserver = null;
+let resizeObserver: ResizeObserver | null = null;
 
 function updateHostRect() {
   if (!geometryTarget) return;
@@ -187,7 +189,7 @@ onMounted(() => {
 // Floating Escape — document-level listener active while a floating is open
 // ---------------------------------------------------------------------------
 
-function handleFloatingEscape(event) {
+function handleFloatingEscape(event: KeyboardEvent) {
   const f = floating.value;
   if (!f || f.settled) return;
 
@@ -196,7 +198,7 @@ function handleFloatingEscape(event) {
 
   if (event.key === 'Escape' && f.request.closeOnEscape !== false) {
     event.stopPropagation();
-    surfaceManager.close(f.id);
+    surfaceManager?.close(f.id);
   }
 }
 
@@ -218,14 +220,15 @@ function detachEscapeListener() {
 // Floating outside-pointer-down — closes floating on pointer outside shell
 // ---------------------------------------------------------------------------
 
-function handleOutsidePointerDown(event) {
+function handleOutsidePointerDown(event: PointerEvent) {
   const f = floating.value;
   if (!f || f.settled) return;
   if (dialog.value) return;
 
   const rootEl = floatingRef.value?.rootEl;
-  if (rootEl && !rootEl.contains(event.target)) {
-    surfaceManager.close(f.id);
+  const target = event.target instanceof Node ? event.target : null;
+  if (rootEl && !rootEl.contains(target)) {
+    surfaceManager?.close(f.id);
   }
 }
 
@@ -278,7 +281,7 @@ onBeforeUnmount(() => {
 function handleDialogClose() {
   const d = dialog.value;
   if (d && !d.settled) {
-    surfaceManager.close(d.id);
+    surfaceManager?.close(d.id);
   }
 }
 </script>

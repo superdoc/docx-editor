@@ -76,6 +76,29 @@ function mountSurface(handle) {
   });
 }
 
+describe('FindReplaceSurface — typing', () => {
+  it('writes the typed find text to findQuery', async () => {
+    const handle = createHandle();
+    const wrapper = mountSurface(handle);
+
+    await wrapper.find('.sd-find-replace__input--search').setValue('ipsum');
+
+    expect(handle.findQuery.value).toBe('ipsum');
+    wrapper.unmount();
+  });
+
+  it('writes the typed replace text to replaceText', async () => {
+    const handle = createHandle({ handle: { showReplace: ref(true) } });
+    const wrapper = mountSurface(handle);
+
+    const [, replaceInput] = wrapper.findAll('input[type="text"]');
+    await replaceInput.setValue('dolor');
+
+    expect(handle.replaceText.value).toBe('dolor');
+    wrapper.unmount();
+  });
+});
+
 describe('FindReplaceSurface — keyboard focus (SD-3045)', () => {
   it('keeps focus on the find input after pressing Enter, even when goNext steals focus to another element', async () => {
     // The editor view focus steal is the real-world cause of SD-3045 — simulate it

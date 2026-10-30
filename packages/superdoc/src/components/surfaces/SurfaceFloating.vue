@@ -1,15 +1,17 @@
-<script setup>
+<script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue';
 import SurfaceExternalMount from './SurfaceExternalMount.vue';
 import { FOCUSABLE_SELECTOR } from './focusable-selector.js';
+import type { PropType } from 'vue';
+import type { ActiveSurface } from '../../core/surface-manager.js';
 
 const props = defineProps({
-  surface: { type: Object, required: true },
+  surface: { type: Object as PropType<ActiveSurface>, required: true },
 });
 
-const floatingRef = ref(null);
+const floatingRef = ref<HTMLElement | null>(null);
 defineExpose({ rootEl: floatingRef });
-const clampedInsets = ref({});
+const clampedInsets = ref<Record<string, string>>({});
 
 const titleId = computed(() => (props.surface.request.title ? `sd-surface-title-${props.surface.id}` : undefined));
 const labelledBy = computed(() => titleId.value ?? props.surface.request.ariaLabelledBy ?? undefined);
@@ -36,14 +38,14 @@ const floatingClasses = computed(() => {
 });
 
 /** Normalize a dimension value: numbers become pixel strings. */
-function toPx(value) {
+function toPx(value: string | number | undefined) {
   if (value == null) return undefined;
   return typeof value === 'number' ? `${value}px` : value;
 }
 
 const floatingStyle = computed(() => {
   const o = floatingOpts.value;
-  const style = {};
+  const style: Record<string, string | undefined> = {};
 
   // Explicit insets override placement classes
   if (o.top != null) style.top = toPx(o.top);
@@ -73,7 +75,7 @@ async function clampToHostBounds() {
   const edgePadding = 8;
   const rootRect = rootEl.getBoundingClientRect();
   const hostRect = hostEl.getBoundingClientRect();
-  const nextInsets = {};
+  const nextInsets: Record<string, string> = {};
   const o = floatingOpts.value;
 
   if (o.left != null && o.right == null) {
@@ -116,9 +118,9 @@ const mergedComponentProps = computed(() => {
 // Focus management — capture, move, and restore
 // ---------------------------------------------------------------------------
 
-let previouslyFocusedElement = null;
+let previouslyFocusedElement: (Element & Partial<Pick<HTMLElement, 'focus'>>) | null = null;
 let didTakeFocus = false;
-let boundsResizeObserver = null;
+let boundsResizeObserver: ResizeObserver | null = null;
 
 onMounted(async () => {
   clampToHostBounds();
@@ -134,7 +136,8 @@ onMounted(async () => {
   // A surface can mark its preferred initial-focus element (e.g. the find
   // input) with `data-sd-autofocus`; otherwise the first focusable wins.
   const firstFocusable =
-    floatingRef.value.querySelector('[data-sd-autofocus]') ?? floatingRef.value.querySelector(FOCUSABLE_SELECTOR);
+    floatingRef.value.querySelector<HTMLElement>('[data-sd-autofocus]') ??
+    floatingRef.value.querySelector<HTMLElement>(FOCUSABLE_SELECTOR);
   if (firstFocusable) {
     previouslyFocusedElement = document.activeElement;
     firstFocusable.focus();

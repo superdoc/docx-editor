@@ -1,18 +1,20 @@
-<script setup>
+<script setup lang="ts">
 import { ref, onMounted, computed } from 'vue';
+import type { PropType } from 'vue';
+import type { FindReplaceHandle, SurfaceComponentProps, SurfaceMode, SurfaceRequest } from '../../core/types/index.js';
 
 const props = defineProps({
   // Reserved surface props (injected by SurfaceFloating)
   surfaceId: { type: String, default: '' },
-  mode: { type: String, default: 'floating' },
-  request: { type: Object, default: () => ({}) },
-  resolve: { type: Function, default: () => {} },
-  close: { type: Function, default: () => {} },
+  mode: { type: String as PropType<SurfaceMode>, default: 'floating' },
+  request: { type: Object as PropType<SurfaceRequest>, default: () => ({}) },
+  resolve: { type: Function as PropType<SurfaceComponentProps['resolve']>, default: () => {} },
+  close: { type: Function as PropType<SurfaceComponentProps['close']>, default: () => {} },
   // Feature-specific: the find/replace handle
-  findReplace: { type: Object, required: true },
+  findReplace: { type: Object as PropType<FindReplaceHandle>, required: true },
 });
 
-const findInputRef = ref(null);
+const findInputRef = ref<HTMLInputElement | null>(null);
 
 // Replace controls are disabled when there are no matches, a replace is in
 // flight, or the active session cannot mutate (V2 read-only/viewing mode).
@@ -45,7 +47,7 @@ const showReplaceControls = computed(
 const showRegexToggle = computed(() => props.findReplace.regexSupported?.value === true);
 const searchErrorText = computed(() => props.findReplace.searchError?.value ?? null);
 
-function handleFindKeydown(e) {
+function handleFindKeydown(e: KeyboardEvent) {
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault();
     handleGoNext();
@@ -75,9 +77,17 @@ function handleClose() {
   props.findReplace.close('user-closed');
 }
 
-function collectScrollableAncestors(element) {
-  const result = [];
-  let cur = element?.parentElement ?? null;
+function handleFindInput(event: Event) {
+  if (event.target instanceof HTMLInputElement) props.findReplace.findQuery.value = event.target.value;
+}
+
+function handleReplaceInput(event: Event) {
+  if (event.target instanceof HTMLInputElement) props.findReplace.replaceText.value = event.target.value;
+}
+
+function collectScrollableAncestors(element: HTMLElement) {
+  const result: Element[] = [];
+  let cur = element.parentElement;
   while (cur) {
     const style = cur.ownerDocument?.defaultView?.getComputedStyle?.(cur);
     if (style) {
@@ -88,7 +98,7 @@ function collectScrollableAncestors(element) {
     }
     cur = cur.parentElement;
   }
-  const root = element?.ownerDocument?.scrollingElement;
+  const root = element.ownerDocument.scrollingElement;
   if (root && !result.includes(root)) result.push(root);
   return result;
 }
@@ -161,7 +171,7 @@ onMounted(() => {
         <input
           ref="findInputRef"
           :value="findReplace.findQuery.value"
-          @input="findReplace.findQuery.value = $event.target.value"
+          @input="handleFindInput"
           type="text"
           class="sd-find-replace__input sd-find-replace__input--search"
           data-sd-autofocus
@@ -280,7 +290,7 @@ onMounted(() => {
       <div class="sd-find-replace__field">
         <input
           :value="findReplace.replaceText.value"
-          @input="findReplace.replaceText.value = $event.target.value"
+          @input="handleReplaceInput"
           type="text"
           class="sd-find-replace__input"
           :placeholder="findReplace.texts.replacePlaceholder"

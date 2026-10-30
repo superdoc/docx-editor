@@ -1,15 +1,22 @@
-<script setup>
+<script setup lang="ts">
 import { ref, computed } from 'vue';
+import type { PropType } from 'vue';
+import type {
+  PasswordPromptHandle,
+  SurfaceComponentProps,
+  SurfaceMode,
+  SurfaceRequest,
+} from '../../core/types/index.js';
 
 const props = defineProps({
   // Reserved surface props (injected by SurfaceDialog)
   surfaceId: { type: String, default: '' },
-  mode: { type: String, default: 'dialog' },
-  request: { type: Object, default: () => ({}) },
-  resolve: { type: Function, default: () => {} },
-  close: { type: Function, default: () => {} },
+  mode: { type: String as PropType<SurfaceMode>, default: 'dialog' },
+  request: { type: Object as PropType<SurfaceRequest>, default: () => ({}) },
+  resolve: { type: Function as PropType<SurfaceComponentProps['resolve']>, default: () => {} },
+  close: { type: Function as PropType<SurfaceComponentProps['close']>, default: () => {} },
   // Feature-specific: the password prompt handle
-  passwordPrompt: { type: Object, required: true },
+  passwordPrompt: { type: Object as PropType<PasswordPromptHandle>, required: true },
 });
 
 const password = ref('');

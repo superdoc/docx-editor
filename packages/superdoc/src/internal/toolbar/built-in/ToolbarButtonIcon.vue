@@ -1,5 +1,6 @@
-<script setup>
+<script setup lang="ts">
 import { computed } from 'vue';
+import type { PropType } from 'vue';
 
 const props = defineProps({
   name: {
@@ -7,11 +8,11 @@ const props = defineProps({
     required: true,
   },
   color: {
-    type: String,
+    type: String as PropType<string | null>,
     default: null,
   },
   icon: {
-    type: String,
+    type: String as PropType<string | null>,
     default: null,
   },
 });

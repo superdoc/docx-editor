@@ -1,6 +1,10 @@
-<script setup>
+<script setup lang="ts">
 import { ref, onMounted, nextTick, watch } from 'vue';
+import type { PropType } from 'vue';
 import { toolbarIcons } from './toolbarIcons.js';
+import type { StyleCatalogItem } from '../../../public/ui/types.js';
+
+type LinkedStyleOption = Partial<Pick<StyleCatalogItem, 'id' | 'name' | 'preview'>>;
 
 /**
  * Built-in linked-styles (quick format) dropdown list.
@@ -16,15 +20,18 @@ import { toolbarIcons } from './toolbarIcons.js';
  * (`data-item="btn-linkedStyles-option"`, keyboard navigation) and makes no
  * v1-only shape assumptions.
  */
-const emit = defineEmits(['select', 'update']);
-const styleRefs = ref([]);
+const emit = defineEmits<{
+  select: [style: LinkedStyleOption];
+  update: [style: LinkedStyleOption];
+}>();
+const styleRefs = ref<HTMLElement[]>([]);
 const props = defineProps({
   styles: {
-    type: Array,
+    type: Array as PropType<LinkedStyleOption[]>,
     default: () => [],
   },
   selectedOption: {
-    type: String,
+    type: String as PropType<string | null>,
     default: null,
   },
   updateLabel: {
@@ -33,29 +40,29 @@ const props = defineProps({
   },
 });
 
-const select = (style) => {
+const select = (style: LinkedStyleOption) => {
   emit('select', style);
 };
 
-const update = (style) => {
+const update = (style: LinkedStyleOption) => {
   emit('update', style);
 };
 
-const moveToNextStyle = (index) => {
+const moveToNextStyle = (index: number) => {
   if (index === styleRefs.value.length - 1) return;
   const nextItem = styleRefs.value[index + 1];
   nextItem.setAttribute('tabindex', '0');
   nextItem.focus();
 };
 
-const moveToPreviousStyle = (index) => {
+const moveToPreviousStyle = (index: number) => {
   if (index === 0) return;
   const previousItem = styleRefs.value[index - 1];
   previousItem.setAttribute('tabindex', '0');
   previousItem.focus();
 };
 
-const handleKeyDown = (event, index, style) => {
+const handleKeyDown = (event: KeyboardEvent, index: number, style: LinkedStyleOption) => {
   switch (event.key) {
     case 'ArrowDown':
       moveToNextStyle(index);
@@ -72,12 +79,12 @@ const handleKeyDown = (event, index, style) => {
   }
 };
 
-const styleLabel = (style) => style?.name ?? style?.id ?? '';
+const styleLabel = (style: LinkedStyleOption) => style?.name ?? style?.id ?? '';
 
 // Optional resolved preview tokens from the v2 catalogue item
 // (`StyleCatalogItem.preview.css`). Absent on documents/passes without preview
 // resolution, in which case the option renders with default styling.
-const previewStyle = (style) => {
+const previewStyle = (style: LinkedStyleOption) => {
   const css = style?.preview?.css;
   return css && typeof css === 'object' ? css : undefined;
 };

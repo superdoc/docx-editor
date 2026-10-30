@@ -1,14 +1,46 @@
-<script setup>
+<script setup lang="ts">
 import ToolbarButtonIcon from './ToolbarButtonIcon.vue';
 import { ref, computed, nextTick, watch, getCurrentInstance } from 'vue';
+import type { ComponentPublicInstance, MaybeRef, PropType, Ref, StyleValue } from 'vue';
 import { toolbarIcons } from './toolbarIcons.js';
 import { useHighContrastMode } from '../../../composables/use-high-contrast-mode';
-const emit = defineEmits(['buttonClick', 'textSubmit', 'mainClick']);
-const { proxy } = getCurrentInstance();
+import type { BuiltInToolbar } from '../built-in-toolbar.js';
+import type { SelectionCapture } from '../../../public/ui/types.js';
+
+interface ToolbarButtonItem {
+  name: Ref<string>;
+  active: MaybeRef<boolean>;
+  icon: Ref<string | undefined>;
+  label: Ref<string | undefined>;
+  hideLabel: Ref<boolean | undefined>;
+  iconColor: Ref<string | undefined>;
+  hasCaret: Ref<boolean | undefined>;
+  splitButton: Ref<boolean>;
+  disabled: Ref<boolean | undefined>;
+  expand: Ref<boolean>;
+  inlineTextInputVisible: Ref<boolean | undefined>;
+  hasInlineTextInput: Ref<boolean | undefined>;
+  style: Ref<StyleValue | undefined>;
+  attributes: Ref<{ className?: unknown; ariaLabel?: string }>;
+  nestedOptions?: Ref<{ label?: string }[]>;
+}
+
+type ToolbarHost = Pick<BuiltInToolbar, 'ui' | 'superdoc'> & {
+  pendingSelectionCapture?: SelectionCapture | null;
+};
+
+type ToolbarButtonProxy = ComponentPublicInstance & { $toolbar?: ToolbarHost };
+
+const emit = defineEmits<{
+  buttonClick: [];
+  textSubmit: [value: string];
+  mainClick: [];
+}>();
+const proxy: ToolbarButtonProxy | null | undefined = getCurrentInstance()?.proxy;
 
 const props = defineProps({
   iconColor: {
-    type: String,
+    type: String as PropType<string | null>,
     default: null,
   },
   active: {
@@ -24,11 +56,11 @@ const props = defineProps({
     default: false,
   },
   toolbarItem: {
-    type: Object,
+    type: Object as PropType<ToolbarButtonItem>,
     required: true,
   },
   defaultLabel: {
-    type: String,
+    type: String as PropType<string | null>,
     default: null,
   },
   isOverflowItem: {
@@ -62,7 +94,6 @@ const {
   expand,
   inlineTextInputVisible,
   hasInlineTextInput,
-  minWidth,
   style,
   attributes,
 } = props.toolbarItem;
@@ -71,7 +102,7 @@ const isSplit = computed(() => Boolean(splitButton?.value) && Boolean(hasCaret?.
 const itemName = computed(() => name?.value ?? '');
 
 const inlineTextInput = ref('');
-const inlineInput = ref(null);
+const inlineInput = ref<HTMLInputElement | null>(null);
 const { isHighContrastMode } = useHighContrastMode();
 
 watch(
@@ -93,7 +124,7 @@ const handleClick = () => {
   emit('buttonClick');
 };
 
-const handleSplitMainClick = (event) => {
+const handleSplitMainClick = (event: Event) => {
   if (disabled?.value) return;
   event?.stopPropagation();
   emit('mainClick');
@@ -104,7 +135,7 @@ const handleOuterClick = () => {
   handleClick();
 };
 
-const handleOuterEnter = (event) => {
+const handleOuterEnter = (event: KeyboardEvent) => {
   if (isSplit.value) {
     handleSplitMainClick(event);
     return;
@@ -112,14 +143,14 @@ const handleOuterEnter = (event) => {
   handleClick();
 };
 
-const onEnterKeydown = (event) => {
+const onEnterKeydown = (event: KeyboardEvent) => {
   // Opening a dialog can focus a native button before Enter's default action runs.
   event.preventDefault();
   if (!props.allowEnterPropagation) event.stopPropagation();
   handleOuterEnter(event);
 };
 
-const resolveFontFamilyInput = (rawValue) => {
+const resolveFontFamilyInput = (rawValue: string) => {
   const options = props.toolbarItem?.nestedOptions?.value ?? [];
   const normalized = rawValue.trim();
   if (!normalized) return '';
@@ -148,14 +179,14 @@ const handleInputSubmit = () => {
   return true;
 };
 
-const selectInlineInputContents = (event) => {
+const selectInlineInputContents = (event: Event) => {
   const input = event?.currentTarget;
   if (!(input instanceof HTMLInputElement)) return;
   input.focus({ preventScroll: true });
   input.select();
 };
 
-const focusInlineInput = (name) => {
+const focusInlineInput = (name: string) => {
   requestAnimationFrame(() => {
     const input = document.getElementById(`inlineTextInput-${name}`);
     if (!(input instanceof HTMLInputElement)) return;
@@ -194,7 +225,7 @@ const handleInlineInputEnter = () => {
   focusEditorSurface();
 };
 
-const handleInlineInputTab = (event) => {
+const handleInlineInputTab = (event: KeyboardEvent) => {
   handleInputSubmit();
 
   if (event.shiftKey) {
@@ -222,14 +253,9 @@ const handleInlineInputTab = (event) => {
 const getStyle = computed(() => {
   if (style.value) return style.value;
   return {
-    minWidth: props.minWidth,
+    minWidth: undefined,
   };
 });
-
-const onFontSizeInput = (event) => {
-  let { value } = event.target;
-  inlineTextInput.value = value.replace(/[^0-9]/g, '');
-};
 
 const caretIcon = computed(() => {
   return expand?.value ? toolbarIcons.dropdownCaretUp : toolbarIcons.dropdownCaretDown;

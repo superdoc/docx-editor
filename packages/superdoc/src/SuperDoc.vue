@@ -3294,9 +3294,12 @@ const showActiveSelection = computed(() => {
   if (!isCommentsEnabled.value) return false;
   return !getConfig.value?.readOnly && selectionPosition.value;
 });
-watch(showCommentsSidebar, (value) => {
-  proxy.$superdoc.broadcastSidebarToggle(value as boolean);
-});
+watch(
+  () => Boolean(showCommentsSidebar.value),
+  (isOpened) => {
+    proxy.$superdoc.broadcastSidebarToggle(isOpened);
+  },
+);
 
 // Viewport fit tracking: maintains viewport metrics, emits `viewport-change`,
 // and applies the fit-width zoom policy. See composables/use-viewport-fit.js.

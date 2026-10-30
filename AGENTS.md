@@ -3,6 +3,10 @@
 Growing the published API surface needs a fixture under
 `tests/consumer-typecheck/src/` that asserts both the parameter and return
 shapes, and `pnpm check:public` has to pass.
+Each `@ts-expect-error` there pins a misuse the published types reject.
+Removing or weakening one loosens the public contract: the PR must name the
+misuse it now allows and why, and review treats an unexplained removal as a
+regression.
 
 Run `pnpm` scripts from this directory, the one holding `pnpm-workspace.yaml`.
 In an Orbit checkout that is `superdoc/public`, not the Orbit root, which does

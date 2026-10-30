@@ -360,6 +360,38 @@ describe('CommentDialog', () => {
       }
     });
 
+    it.each([
+      [true, false, 1],
+      [false, true, 2],
+    ])(
+      'with readOnly %s, renders the reply section: %s, with %i separators in a two-comment thread',
+      async (readOnly, rendered, separatorCount) => {
+        commentsStore.init({ readOnly, allowResolve: true });
+        const comment = useComment({
+          commentId: `comment-input-${readOnly}`,
+          fileId: 'doc-1',
+          commentText: 'Parent comment',
+        });
+        const reply = useComment({
+          commentId: `comment-input-reply-${readOnly}`,
+          fileId: 'doc-1',
+          parentCommentId: comment.commentId,
+          commentText: 'Reply',
+        });
+        commentsStore.commentsList = [comment, reply];
+        commentsStore.activeComment = comment.commentId;
+
+        const wrapper = mountDialog(comment);
+        try {
+          await flushPromises();
+          expect(wrapper.find('.reply-pill').exists()).toBe(rendered);
+          expect(wrapper.findAll('.comment-separator')).toHaveLength(separatorCount);
+        } finally {
+          wrapper.unmount();
+        }
+      },
+    );
+
     it('closes reply and edit surfaces when config flips to read-only', async () => {
       commentsStore.init({ readOnly: false, allowResolve: true });
       const comment = useComment({

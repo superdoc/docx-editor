@@ -544,7 +544,7 @@ const showSeparator = computed(() => (index: number) => {
 });
 
 const showInputSection = computed(() => {
-  return isDialogActive.value && !props.comment.resolvedTime && !isEditingAnyComment.value;
+  return !commentsAreReadOnly() && isDialogActive.value && !props.comment.resolvedTime && !isEditingAnyComment.value;
 });
 
 const readOnlyMutationOutcome = () => ({ ok: false, reason: 'read-only-document' });
@@ -1933,7 +1933,7 @@ watch(isV2WriteDisabled, (isDisabled) => {
       </div>
 
       <!-- Reply area: pill that expands in-place with action buttons -->
-      <template v-if="showInputSection && !getConfig.readOnly">
+      <template v-if="showInputSection">
         <button
           v-if="!isReplying"
           type="button"

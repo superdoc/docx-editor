@@ -1,17 +1,24 @@
-<script setup>
+<script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
+import type { PropType } from 'vue';
 import { useHighContrastMode } from '../../../composables/use-high-contrast-mode';
 
 const { isHighContrastMode } = useHighContrastMode();
 const emit = defineEmits(['select']);
 
+interface StyleButton {
+  key: string;
+  icon: string;
+  ariaLabel: string;
+}
+
 const props = defineProps({
   buttons: {
-    type: Array,
+    type: Array as PropType<StyleButton[]>,
     required: true,
   },
   selectedStyle: {
-    type: String,
+    type: String as PropType<string | null>,
     default: null,
   },
   iconSize: {
@@ -20,18 +27,18 @@ const props = defineProps({
   },
 });
 
-const buttonRefs = ref([]);
+const buttonRefs = ref<HTMLElement[]>([]);
 
 const iconStyle = computed(() => ({
   width: `${props.iconSize}px`,
   height: `${props.iconSize}px`,
 }));
 
-const select = (key) => {
+const select = (key: string) => {
   emit('select', key);
 };
 
-const moveToNextButton = (index) => {
+const moveToNextButton = (index: number) => {
   if (index === buttonRefs.value.length - 1) return;
   const next = buttonRefs.value[index + 1];
   if (next) {
@@ -40,7 +47,7 @@ const moveToNextButton = (index) => {
   }
 };
 
-const moveToPreviousButton = (index) => {
+const moveToPreviousButton = (index: number) => {
   if (index === 0) return;
   const prev = buttonRefs.value[index - 1];
   if (prev) {
@@ -49,7 +56,7 @@ const moveToPreviousButton = (index) => {
   }
 };
 
-const handleKeyDown = (e, index) => {
+const handleKeyDown = (e: KeyboardEvent, index: number) => {
   switch (e.key) {
     case 'ArrowLeft':
       moveToPreviousButton(index);

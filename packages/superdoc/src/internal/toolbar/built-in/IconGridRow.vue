@@ -1,36 +1,45 @@
-<script setup>
+<script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
+import type { PropType, Ref } from 'vue';
 import { toolbarIcons } from './toolbarIcons.js';
+
+export interface ColorOption {
+  label: string;
+  icon: string;
+  value: string;
+  style: Record<string, string>;
+}
 
 const emit = defineEmits(['select', 'clickoutside']);
 const props = defineProps({
   icons: {
-    type: Array,
+    type: Array as PropType<ColorOption[][]>,
     required: true,
   },
   activeColor: {
-    type: Object,
+    type: Object as PropType<Ref<string | null | undefined>>,
     required: false,
   },
 });
 
-const isActive = computed(() => (option) => {
-  if (!props.activeColor.value) return false;
-  return props.activeColor.value.toUpperCase() === option.value;
+const isActive = computed(() => (option: ColorOption) => {
+  const activeColor = props.activeColor?.value;
+  if (!activeColor) return false;
+  return activeColor.toUpperCase() === option.value;
 });
 
-const getCheckStyle = (color, optionIndex) => {
+const getCheckStyle = (color: string, optionIndex: number) => {
   const lightColors = ['#FFFFFF', '#FAFF09'];
   if (optionIndex === 5 || lightColors.includes(color)) return { color: '#000' };
   return { color: '#FFF' };
 };
 
-const handleClick = (option) => {
+const handleClick = (option: ColorOption) => {
   emit('select', option.value);
 };
 
-const rowRefs = ref([]);
-const iconRefs = ref([]);
+const rowRefs = ref<HTMLElement[]>([]);
+const iconRefs = ref<HTMLElement[]>([]);
 
 const ROW_SIZE = 7;
 onMounted(() => {
@@ -45,7 +54,7 @@ onMounted(() => {
   }
 });
 
-const moveToNextIcon = (rowIndex, optionIndex) => {
+const moveToNextIcon = (rowIndex: number, optionIndex: number) => {
   const iconIndex = ROW_SIZE * rowIndex + optionIndex + 1;
   const nextIcon = iconRefs.value[iconIndex];
   if (nextIcon) {
@@ -54,7 +63,7 @@ const moveToNextIcon = (rowIndex, optionIndex) => {
   }
 };
 
-const moveToPreviousIcon = (rowIndex, optionIndex) => {
+const moveToPreviousIcon = (rowIndex: number, optionIndex: number) => {
   const iconIndex = ROW_SIZE * rowIndex + optionIndex - 1;
   const previousIcon = iconRefs.value[iconIndex];
   if (previousIcon) {
@@ -63,7 +72,7 @@ const moveToPreviousIcon = (rowIndex, optionIndex) => {
   }
 };
 
-const moveToNextRow = (rowIndex, optionIndex) => {
+const moveToNextRow = (rowIndex: number, optionIndex: number) => {
   const iconIndex = optionIndex + ROW_SIZE * (rowIndex + 1);
   const nextIcon = iconRefs.value[iconIndex];
   if (nextIcon) {
@@ -72,7 +81,7 @@ const moveToNextRow = (rowIndex, optionIndex) => {
   }
 };
 
-const moveToPreviousRow = (rowIndex, optionIndex) => {
+const moveToPreviousRow = (rowIndex: number, optionIndex: number) => {
   const iconIndex = optionIndex + ROW_SIZE * (rowIndex - 1);
   const previousIcon = iconRefs.value[iconIndex];
   if (previousIcon) {
@@ -81,7 +90,7 @@ const moveToPreviousRow = (rowIndex, optionIndex) => {
   }
 };
 
-const handleKeyDown = (event, rowIndex, optionIndex, option) => {
+const handleKeyDown = (event: KeyboardEvent, rowIndex: number, optionIndex: number, option: ColorOption) => {
   switch (event.key) {
     case 'ArrowRight':
       moveToNextIcon(rowIndex, optionIndex);

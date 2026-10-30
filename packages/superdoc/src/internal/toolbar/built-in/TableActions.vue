@@ -1,13 +1,24 @@
-<script setup>
+<script setup lang="ts">
+import type { PropType } from 'vue';
+
+interface TableActionOption {
+  label: string;
+  command: string;
+  icon: string;
+  disabled?: boolean;
+  bottomBorder?: boolean;
+  props?: { 'data-item'?: string; ariaLabel?: string };
+}
+
 const emit = defineEmits(['select']);
 
 const props = defineProps({
   options: {
-    type: Array,
+    type: Array as PropType<TableActionOption[]>,
   },
 });
 
-const handleClick = (item) => {
+const handleClick = (item: TableActionOption) => {
   if (item.disabled) return;
   emit('select', { command: item.command });
 };

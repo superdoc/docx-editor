@@ -1,23 +1,32 @@
-<script setup>
+<script setup lang="ts">
 import { ref, onMounted } from 'vue';
+import type { PropType } from 'vue';
 import { useHighContrastMode } from '../../../composables/use-high-contrast-mode';
+
+interface DocumentModeOption {
+  label: string;
+  value: string;
+  icon: string;
+  description: string;
+  disabled?: boolean;
+}
 
 const emit = defineEmits(['select']);
 
-const documentModeRefs = ref([]);
+const documentModeRefs = ref<HTMLElement[]>([]);
 const { isHighContrastMode } = useHighContrastMode();
 
 const props = defineProps({
   options: {
-    type: Array,
+    type: Array as PropType<DocumentModeOption[]>,
   },
 });
 
-const handleClick = (item) => {
+const handleClick = (item: DocumentModeOption) => {
   emit('select', item);
 };
 
-const moveToNextOption = (index) => {
+const moveToNextOption = (index: number) => {
   if (index === documentModeRefs.value.length - 1) return;
   const nextOption = documentModeRefs.value[index + 1];
   if (nextOption) {
@@ -26,7 +35,7 @@ const moveToNextOption = (index) => {
   }
 };
 
-const moveToPreviousOption = (index) => {
+const moveToPreviousOption = (index: number) => {
   if (index === 0) return;
   const previousOption = documentModeRefs.value[index - 1];
   if (previousOption) {
@@ -35,7 +44,7 @@ const moveToPreviousOption = (index) => {
   }
 };
 
-const handleKeyDown = (e, index) => {
+const handleKeyDown = (e: KeyboardEvent, index: number) => {
   switch (e.key) {
     case 'ArrowDown':
       moveToNextOption(index);
@@ -43,9 +52,11 @@ const handleKeyDown = (e, index) => {
     case 'ArrowUp':
       moveToPreviousOption(index);
       break;
-    case 'Enter':
-      handleClick(props.options[index]);
+    case 'Enter': {
+      const option = props.options?.[index];
+      if (option) handleClick(option);
       break;
+    }
     default:
       break;
   }

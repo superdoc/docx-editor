@@ -1,4 +1,4 @@
-<script setup>
+<script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import { useHighContrastMode } from '../../../composables/use-high-contrast-mode';
 const emit = defineEmits(['select', 'clickoutside']);
@@ -8,9 +8,10 @@ const selectedRows = ref(0);
 const selectedCols = ref(0);
 const { isHighContrastMode } = useHighContrastMode();
 
-const tableGridItems = ref([]);
-const onTableGridMouseOver = (event) => {
+const tableGridItems = ref<HTMLElement[]>([]);
+const onTableGridMouseOver = (event: MouseEvent) => {
   let target = event.target;
+  if (!(target instanceof HTMLElement)) return;
   let isGrid = !!target.dataset.grid;
 
   if (isGrid) {
@@ -18,21 +19,22 @@ const onTableGridMouseOver = (event) => {
   }
 
   let grid = target.parentElement;
-  let allItems = [...grid.querySelectorAll('[data-item]')];
-  let cols = parseInt(target.dataset.cols, 10);
-  let rows = parseInt(target.dataset.rows, 10);
+  if (!grid) return;
+  let allItems = Array.from(grid.querySelectorAll<HTMLElement>('[data-item]'));
+  let cols = parseInt(target.dataset.cols ?? '', 10);
+  let rows = parseInt(target.dataset.rows ?? '', 10);
 
   selectGridItems(allItems, cols, rows);
 };
 
-const selectGridItems = (allItems, cols, rows) => {
+const selectGridItems = (allItems: HTMLElement[], cols: number, rows: number) => {
   selectedCols.value = cols;
   selectedRows.value = rows;
 
   for (let i = 0; i < allItems.length; i++) {
     let item = allItems[i];
-    let itemsCols = parseInt(item.dataset.cols, 10);
-    let itemsRows = parseInt(item.dataset.rows, 10);
+    let itemsCols = parseInt(item.dataset.cols ?? '', 10);
+    let itemsRows = parseInt(item.dataset.rows ?? '', 10);
 
     if (itemsCols <= cols && itemsRows <= rows) {
       item.classList.add('sd-selected');
@@ -42,11 +44,11 @@ const selectGridItems = (allItems, cols, rows) => {
   }
 };
 
-const handleClick = ({ cols, rows }) => {
+const handleClick = ({ cols, rows }: { cols: number; rows: number }) => {
   emit('select', { cols, rows });
 };
 
-const handleKeyDown = (event, cols, rows) => {
+const handleKeyDown = (event: KeyboardEvent, cols: number, rows: number) => {
   let normalizedCols = cols - 1;
   let normalizedRows = rows - 1;
 

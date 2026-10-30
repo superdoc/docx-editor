@@ -1,18 +1,20 @@
-<script setup>
+<script setup lang="ts">
+import type { PropType, Ref } from 'vue';
 import IconGridRow from './IconGridRow.vue';
+import type { ColorOption } from './IconGridRow.vue';
 import DropIcon from '@superdoc/common/icons/droplet-slash.svg?raw';
 const emit = defineEmits(['select', 'clickoutside']);
 const props = defineProps({
   icons: {
-    type: Array,
+    type: Array as PropType<ColorOption[][]>,
     required: true,
   },
   customIcons: {
-    type: Array,
+    type: Array as PropType<ColorOption[][]>,
     required: false,
   },
   activeColor: {
-    type: Object,
+    type: Object as PropType<Ref<string | null | undefined>>,
     required: false,
   },
   hasNoneIcon: {
@@ -21,7 +23,7 @@ const props = defineProps({
   },
 });
 
-const handleSelect = (option) => {
+const handleSelect = (option: string) => {
   emit('select', option);
 };
 </script>
@@ -41,7 +43,7 @@ const handleSelect = (option) => {
     <div class="option-grid-ctn">
       <IconGridRow :icons="icons" :active-color="activeColor" @select="handleSelect" />
 
-      <template v-if="customIcons.flat().length">
+      <template v-if="customIcons?.flat().length">
         <span class="option-grid-ctn__subtitle">Custom colors</span>
 
         <IconGridRow :icons="customIcons" :active-color="activeColor" @select="handleSelect" />

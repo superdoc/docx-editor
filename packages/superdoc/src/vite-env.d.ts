@@ -6,6 +6,11 @@ declare module '*?url' {
   export default url;
 }
 
+declare module '*?raw' {
+  const content: string;
+  export default content;
+}
+
 declare module 'pdfjs-dist/build/pdf.mjs' {
   export * from 'pdfjs-dist';
 }

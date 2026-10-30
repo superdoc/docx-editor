@@ -1,5 +1,13 @@
-<script setup>
+<script setup lang="ts">
 import { computed, nextTick, onMounted, ref } from 'vue';
+import type { PropType } from 'vue';
+import type { SelectionTarget } from '@superdoc/document-api';
+import { isPlainObject } from '../../../helpers/object-guards.js';
+
+interface AiWriterDocument {
+  replace?: (input: { target: SelectionTarget; text: string }) => unknown;
+  insert?: (input: { target?: SelectionTarget; value: string; type: 'text' }) => unknown;
+}
 
 const DEFAULT_AI_ENDPOINT = 'https://sd-dev-express-gateway-i6xtm.ondigitalocean.app/insights';
 const SYSTEM_PROMPT =
@@ -11,11 +19,11 @@ const props = defineProps({
     default: '',
   },
   target: {
-    type: Object,
+    type: Object as PropType<SelectionTarget | null>,
     default: null,
   },
   doc: {
-    type: Object,
+    type: Object as PropType<AiWriterDocument | null>,
     default: null,
   },
   apiKey: {
@@ -27,11 +35,11 @@ const props = defineProps({
     default: '',
   },
   restoreSelection: {
-    type: Function,
+    type: Function as PropType<() => void>,
     default: null,
   },
   handleClose: {
-    type: Function,
+    type: Function as PropType<() => void>,
     required: true,
   },
 });
@@ -39,7 +47,7 @@ const props = defineProps({
 const promptText = ref('');
 const isLoading = ref(false);
 const errorMessage = ref('');
-const textareaRef = ref(null);
+const textareaRef = ref<HTMLTextAreaElement | null>(null);
 
 const placeholderText = computed(() =>
   props.selectedText ? 'Insert prompt to update text' : 'Insert prompt to generate text',
@@ -52,16 +60,16 @@ onMounted(() => {
   });
 });
 
-function extractGeneratedText(payload) {
+function extractGeneratedText(payload: unknown): string {
   if (typeof payload === 'string') return payload;
-  if (!payload || typeof payload !== 'object') return '';
+  if (!isPlainObject(payload)) return '';
 
   const customPrompt = payload.custom_prompt;
   if (Array.isArray(customPrompt)) {
-    const first = customPrompt[0];
-    if (first && typeof first.value === 'string') return first.value;
+    const first: unknown = customPrompt[0];
+    if (isPlainObject(first) && typeof first.value === 'string') return first.value;
   }
-  if (customPrompt && typeof customPrompt === 'object' && typeof customPrompt.value === 'string') {
+  if (isPlainObject(customPrompt) && typeof customPrompt.value === 'string') {
     return customPrompt.value;
   }
   if (typeof payload.value === 'string') return payload.value;
@@ -69,8 +77,8 @@ function extractGeneratedText(payload) {
   return '';
 }
 
-async function requestAiText(prompt) {
-  const headers = { 'Content-Type': 'application/json' };
+async function requestAiText(prompt: string) {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (props.apiKey) headers['x-api-key'] = props.apiKey;
 
   const selectedText = props.selectedText.trim();
@@ -107,13 +115,13 @@ async function requestAiText(prompt) {
   return generated;
 }
 
-function receiptSucceeded(receipt) {
+function receiptSucceeded(receipt: unknown) {
   if (!receipt || typeof receipt !== 'object') return true;
-  if (receipt.success === false || receipt.ok === false) return false;
+  if (('success' in receipt && receipt.success === false) || ('ok' in receipt && receipt.ok === false)) return false;
   return true;
 }
 
-function insertGeneratedText(text) {
+function insertGeneratedText(text: string) {
   const doc = props.doc;
   if (!doc) throw new Error('Document API is unavailable.');
 
@@ -151,7 +159,7 @@ async function handleSubmit() {
   }
 }
 
-function handleKeydown(event) {
+function handleKeydown(event: KeyboardEvent) {
   if (event.key !== 'Enter' || event.shiftKey) return;
   event.preventDefault();
   handleSubmit();

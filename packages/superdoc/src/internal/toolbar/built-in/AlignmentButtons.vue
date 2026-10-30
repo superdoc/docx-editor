@@ -1,4 +1,4 @@
-<script setup>
+<script setup lang="ts">
 import { onMounted, ref, watch } from 'vue';
 import { useHighContrastMode } from '../../../composables/use-high-contrast-mode';
 
@@ -7,7 +7,7 @@ import { toolbarIcons } from './toolbarIcons.js';
 const { isHighContrastMode } = useHighContrastMode();
 const emit = defineEmits(['select']);
 
-const alignmentButtonsRefs = ref([]);
+const alignmentButtonsRefs = ref<HTMLElement[]>([]);
 const alignmentButtons = [
   {
     key: 'left',
@@ -30,11 +30,11 @@ const alignmentButtons = [
     icon: toolbarIcons.alignJustify,
   },
 ];
-const select = (alignment) => {
+const select = (alignment: string) => {
   emit('select', alignment);
 };
 
-const moveToNextButton = (index) => {
+const moveToNextButton = (index: number) => {
   if (index === alignmentButtonsRefs.value.length - 1) return;
   const nextButton = alignmentButtonsRefs.value[index + 1];
   if (nextButton) {
@@ -43,7 +43,7 @@ const moveToNextButton = (index) => {
   }
 };
 
-const moveToPreviousButton = (index) => {
+const moveToPreviousButton = (index: number) => {
   if (index === 0) return;
   const previousButton = alignmentButtonsRefs.value[index - 1];
   if (previousButton) {
@@ -52,7 +52,7 @@ const moveToPreviousButton = (index) => {
   }
 };
 
-const handleKeyDown = (e, index) => {
+const handleKeyDown = (e: KeyboardEvent, index: number) => {
   switch (e.key) {
     case 'ArrowLeft':
       moveToPreviousButton(index);

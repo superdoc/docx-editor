@@ -250,13 +250,6 @@ const handleInlineInputTab = (event: KeyboardEvent) => {
   }
 };
 
-const getStyle = computed(() => {
-  if (style.value) return style.value;
-  return {
-    minWidth: undefined,
-  };
-});
-
 const caretIcon = computed(() => {
   return expand?.value ? toolbarIcons.dropdownCaretUp : toolbarIcons.dropdownCaretDown;
 });
@@ -265,7 +258,7 @@ const caretIcon = computed(() => {
 <template>
   <div
     :class="['sd-toolbar-item', attributes.className]"
-    :style="getStyle"
+    :style="style"
     :role="isOverflowItem ? 'menuitem' : 'button'"
     :aria-label="attributes.ariaLabel"
     :aria-disabled="disabled ? 'true' : undefined"

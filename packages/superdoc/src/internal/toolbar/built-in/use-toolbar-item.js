@@ -44,7 +44,6 @@ export const useToolbarItem = (options) => {
   const style = ref(options.style);
   const isNarrow = ref(options.isNarrow);
   const isWide = ref(options.isWide);
-  const minWidth = ref(options.minWidth);
   const layoutWidth = ref(options.layoutWidth);
   const suppressActiveHighlight = ref(options.suppressActiveHighlight || false);
 
@@ -173,7 +172,6 @@ export const useToolbarItem = (options) => {
     style,
     isNarrow,
     isWide,
-    minWidth,
     layoutWidth,
     argument,
     parentItem,

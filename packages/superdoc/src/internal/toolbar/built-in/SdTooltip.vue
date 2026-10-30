@@ -1,5 +1,6 @@
-<script setup>
+<script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, useAttrs, watch } from 'vue';
+import type { CSSProperties, PropType } from 'vue';
 
 defineOptions({
   inheritAttrs: false,
@@ -23,7 +24,7 @@ const props = defineProps({
     default: false,
   },
   contentStyle: {
-    type: Object,
+    type: Object as PropType<CSSProperties>,
     default: () => ({}),
   },
 });
@@ -35,13 +36,13 @@ const attrs = useAttrs();
 const AUTO_HIDE_DELAY = 2500;
 
 const isOpen = ref(false);
-const triggerRef = ref(null);
-const contentRef = ref(null);
+const triggerRef = ref<HTMLSpanElement | null>(null);
+const contentRef = ref<HTMLDivElement | null>(null);
 const position = ref({ top: '0px', left: '0px', below: false });
 
-let closeTimeout = null;
-let openTimeout = null;
-let autoHideTimeout = null;
+let closeTimeout: number | null = null;
+let openTimeout: number | null = null;
+let autoHideTimeout: number | null = null;
 
 const mergedContentClass = computed(() => [
   'sd-tooltip-content',
@@ -50,7 +51,7 @@ const mergedContentClass = computed(() => [
 ]);
 const contentStyle = computed(() => ({
   ...props.contentStyle,
-  ...(attrs.style || {}),
+  ...((attrs.style as CSSProperties | undefined) || {}),
   position: 'fixed',
   top: position.value.top,
   left: position.value.left,
@@ -177,11 +178,11 @@ const handleContentMouseLeave = () => {
   closeWithDelay();
 };
 
-const handleEscape = (event) => {
+const handleEscape = (event: KeyboardEvent) => {
   if (event.key === 'Escape') close();
 };
 
-const handleTriggerKeydown = (event) => {
+const handleTriggerKeydown = (event: KeyboardEvent) => {
   if (event.key === 'Enter' || event.key === ' ') close();
 };
 

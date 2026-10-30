@@ -1,9 +1,31 @@
-<script setup>
+<script setup lang="ts">
 import { computed, defineComponent, h, inject, nextTick, onBeforeUnmount, onMounted, ref, useSlots, watch } from 'vue';
+import type { CSSProperties, PropType } from 'vue';
+
+interface DropdownOption {
+  key?: string | number;
+  label?: string;
+  type?: string;
+  disabled?: boolean;
+  class?: unknown;
+  props?: Record<string, unknown>;
+  icon?: string | object | ((option: DropdownOption) => unknown);
+  render?: () => unknown;
+}
+
+interface DropdownMenuProps {
+  class?: unknown;
+  style?: CSSProperties;
+  [attribute: string]: unknown;
+}
+
+type MaybeOption = DropdownOption | null | undefined;
+type MenuPropsFactory = () => DropdownMenuProps | null | undefined;
+type NodePropsFactory = (option: DropdownOption) => Record<string, unknown> | null | undefined;
 
 const props = defineProps({
   options: {
-    type: Array,
+    type: Array as PropType<DropdownOption[]>,
     default: () => [],
   },
   show: {
@@ -19,15 +41,15 @@ const props = defineProps({
     default: false,
   },
   contentStyle: {
-    type: Object,
+    type: Object as PropType<CSSProperties>,
     default: () => ({}),
   },
   menuProps: {
-    type: Function,
+    type: Function as PropType<MenuPropsFactory>,
     default: null,
   },
   nodeProps: {
-    type: Function,
+    type: Function as PropType<NodePropsFactory>,
     default: null,
   },
   closeOnEscape: {
@@ -40,14 +62,17 @@ const props = defineProps({
   },
 });
 
-const emit = defineEmits(['update:show', 'select']);
+const emit = defineEmits<{
+  'update:show': [value: boolean];
+  select: [key: DropdownOption['key'], option: DropdownOption];
+}>();
 const slots = useSlots();
-const toolbarOwnerId = inject('sdToolbarOwnerId', null);
+const toolbarOwnerId = inject<string | null>('sdToolbarOwnerId', null);
 
-const triggerRef = ref(null);
-const menuRef = ref(null);
+const triggerRef = ref<HTMLDivElement | null>(null);
+const menuRef = ref<HTMLDivElement | null>(null);
 const menuPosition = ref({ top: '0px', left: '0px', maxHeight: 'none' });
-const optionRefs = ref([]);
+const optionRefs = ref<HTMLElement[]>([]);
 const keyboardIndex = ref(-1);
 
 const isOpen = computed(() => Boolean(props.show));
@@ -56,7 +81,7 @@ const teleportTarget = computed(() => (isOpen.value && fullscreenRoot.value ? fu
 const hasRenderOptions = computed(() => props.options.some((option) => option?.type === 'render'));
 const hasCustomMenu = computed(() => Boolean(slots.menu));
 
-const computedMenuProps = computed(() => {
+const computedMenuProps = computed((): DropdownMenuProps => {
   if (typeof props.menuProps !== 'function') return {};
   return props.menuProps() || {};
 });
@@ -79,7 +104,7 @@ const mergedMenuStyle = computed(() => {
   return { ...props.contentStyle, ...fromProps };
 });
 
-const menuStyle = computed(() => {
+const menuStyle = computed((): CSSProperties => {
   return {
     ...mergedMenuStyle.value,
     position: 'fixed',
@@ -90,7 +115,7 @@ const menuStyle = computed(() => {
   };
 });
 
-const setOpen = (value) => {
+const setOpen = (value: boolean) => {
   emit('update:show', value);
 };
 
@@ -146,27 +171,27 @@ const onTriggerClick = () => {
   setOpen(!isOpen.value);
 };
 
-const getNodeProps = (option) => {
+const getNodeProps = (option: DropdownOption) => {
   if (typeof props.nodeProps !== 'function') return {};
   return props.nodeProps(option) || {};
 };
 
-const onOptionClick = (option) => {
+const onOptionClick = (option: DropdownOption) => {
   if (option?.disabled) return;
   if (option?.type === 'render') return;
   emit('select', option?.key, option);
   close();
 };
 
-const isRenderOption = (option) => option?.type === 'render';
-const isOptionNavigable = (option) => !option?.disabled && option?.type !== 'render';
-const hasIcon = (option) => typeof option?.icon === 'function' || Boolean(option?.icon);
-const renderIcon = (option) => {
+const isRenderOption = (option: MaybeOption) => option?.type === 'render';
+const isOptionNavigable = (option: MaybeOption) => !option?.disabled && option?.type !== 'render';
+const hasIcon = (option: MaybeOption) => typeof option?.icon === 'function' || Boolean(option?.icon);
+const renderIcon = (option: MaybeOption): unknown => {
   if (typeof option?.icon === 'function') return option.icon(option);
   return option?.icon || null;
 };
 
-const classHasSelected = (value) => {
+const classHasSelected = (value: unknown): boolean => {
   if (!value) return false;
   if (typeof value === 'string') {
     return value.split(/\s+/).includes('sd-selected');
@@ -175,12 +200,12 @@ const classHasSelected = (value) => {
     return value.some(classHasSelected);
   }
   if (typeof value === 'object') {
-    return Boolean(value['sd-selected']);
+    return 'sd-selected' in value && Boolean(value['sd-selected']);
   }
   return false;
 };
 
-const isOptionSelected = (option) => {
+const isOptionSelected = (option: MaybeOption) => {
   return classHasSelected(option?.props?.class) || classHasSelected(option?.class);
 };
 
@@ -194,7 +219,7 @@ const getInitialKeyboardIndex = () => {
   return getNavigableIndexes()[0] ?? -1;
 };
 
-const setOptionRef = (el, index) => {
+const setOptionRef = (el: HTMLElement | null, index: number) => {
   if (!el) {
     delete optionRefs.value[index];
     return;
@@ -215,7 +240,7 @@ const focusKeyboardIndex = () => {
   }
 };
 
-const moveKeyboardIndex = (direction) => {
+const moveKeyboardIndex = (direction: number) => {
   const navigableIndexes = getNavigableIndexes();
   if (!navigableIndexes.length) {
     keyboardIndex.value = -1;
@@ -233,7 +258,7 @@ const moveKeyboardIndex = (direction) => {
 };
 
 const selectKeyboardOption = () => {
-  let option = props.options[keyboardIndex.value];
+  let option: MaybeOption = props.options[keyboardIndex.value];
   if (!isOptionNavigable(option)) {
     const firstIndex = getNavigableIndexes()[0];
     option = firstIndex === undefined ? null : props.options[firstIndex];
@@ -246,7 +271,7 @@ const RenderOption = defineComponent({
   name: 'ToolbarDropdownRenderOption',
   props: {
     option: {
-      type: Object,
+      type: Object as PropType<DropdownOption>,
       required: true,
     },
   },
@@ -262,7 +287,7 @@ const OptionIcon = defineComponent({
   name: 'ToolbarDropdownOptionIcon',
   props: {
     option: {
-      type: Object,
+      type: Object as PropType<DropdownOption>,
       required: true,
     },
   },
@@ -274,7 +299,7 @@ const OptionIcon = defineComponent({
   },
 });
 
-const handlePointerDown = (event) => {
+const handlePointerDown = (event: PointerEvent) => {
   if (!isOpen.value) return;
 
   const target = event.target;
@@ -294,7 +319,7 @@ const handlePointerDown = (event) => {
 
 const TRIGGER_FOCUS_SELECTOR =
   'button, [href], input, select, textarea, [role="button"], [tabindex]:not([tabindex="-1"])';
-const triggerFocusTargetRef = ref(null);
+const triggerFocusTargetRef = ref<Element | null | undefined>(null);
 const rememberTriggerFocusTarget = () => {
   const trigger = triggerRef.value;
   const active = document.activeElement;
@@ -334,7 +359,7 @@ const focusTrigger = () => {
 
 defineExpose({ focusTrigger });
 
-const handleKeyDown = (event) => {
+const handleKeyDown = (event: KeyboardEvent) => {
   if (!isOpen.value) return;
 
   const { key } = event;
@@ -447,7 +472,7 @@ onBeforeUnmount(() => {
           <div
             v-for="(option, index) in hasCustomMenu ? [] : options"
             :key="option.key"
-            :ref="(el) => setOptionRef(el, index)"
+            :ref="(el) => setOptionRef(el as HTMLElement | null, index)"
             class="toolbar-dropdown-option"
             :class="[
               option.class,

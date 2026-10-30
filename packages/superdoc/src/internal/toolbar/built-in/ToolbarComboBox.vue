@@ -1,12 +1,42 @@
-<script setup>
+<script setup lang="ts">
 import { computed, inject, nextTick, onBeforeUnmount, ref, watch } from 'vue';
+import type { ComponentPublicInstance, CSSProperties, PropType, Ref, StyleValue } from 'vue';
 import { toolbarIcons } from './toolbarIcons.js';
 import { useHighContrastMode } from '../../../composables/use-high-contrast-mode';
 import { computeTypeahead, findPrefixMatchIndex } from './font-typeahead.js';
 
+interface ComboBoxOption {
+  key: string;
+  label: string;
+  value?: string;
+  props?: {
+    style?: CSSProperties;
+    [key: string]: unknown;
+  };
+}
+
+interface ComboBoxItem {
+  id?: Ref<string>;
+  name?: Ref<string>;
+  label?: Ref<string | number | null | undefined>;
+  disabled?: Ref<boolean | undefined>;
+  attributes?: Ref<{ ariaLabel?: string } | undefined>;
+  nestedOptions?: Ref<ComboBoxOption[]>;
+  selectedValue: Ref<string | undefined>;
+  expand?: Ref<boolean>;
+  style?: Ref<StyleValue | undefined>;
+}
+
+interface TabOutTarget {
+  shiftKey: boolean;
+  target: HTMLInputElement | null;
+}
+
+type TypeaheadInputEvent = Event & Partial<Pick<InputEvent, 'inputType'>>;
+
 const props = defineProps({
   item: {
-    type: Object,
+    type: Object as PropType<ComboBoxItem>,
     required: true,
   },
   uiFontFamily: {
@@ -22,20 +52,25 @@ const props = defineProps({
   // Normalizes a typed value that matches no preset before it is applied as a
   // custom command argument (family: logical family string; size: clamped int).
   normalizeValue: {
-    type: Function,
-    default: (value) => String(value ?? '').trim(),
+    type: Function as PropType<(value: string) => string>,
+    default: (value: string) => String(value ?? '').trim(),
   },
 });
 
-const emit = defineEmits(['command', 'item-clicked', 'tab-out', 'editor-handoff']);
+const emit = defineEmits<{
+  command: [payload: { item: ComboBoxItem; argument: string; option: ComboBoxOption | null }];
+  'item-clicked': [];
+  'tab-out': [event: KeyboardEvent | TabOutTarget];
+  'editor-handoff': [];
+}>();
 
 const { isHighContrastMode } = useHighContrastMode();
-const toolbarOwnerId = inject('sdToolbarOwnerId', null);
+const toolbarOwnerId = inject<string | null>('sdToolbarOwnerId', null);
 
-const inputRef = ref(null);
-const rootRef = ref(null);
-const popupRef = ref(null);
-const optionRefs = ref([]);
+const inputRef = ref<HTMLInputElement | null>(null);
+const rootRef = ref<HTMLDivElement | null>(null);
+const popupRef = ref<HTMLDivElement | null>(null);
+const optionRefs = ref<HTMLElement[]>([]);
 
 const isEditing = ref(false);
 const isOpen = ref(false);
@@ -55,14 +90,14 @@ const ariaLabel = computed(() => props.item.attributes?.value?.ariaLabel ?? 'Fon
 const boundValue = computed(() => (isEditing.value ? inputDisplay.value : appliedLabel.value));
 
 const listboxId = computed(() => `sd-${itemName.value || 'combobox'}-listbox-${props.item.id?.value ?? 'default'}`);
-const optionId = (index) => `${listboxId.value}-option-${index}`;
+const optionId = (index: number) => `${listboxId.value}-option-${index}`;
 const activeDescendant = computed(() =>
   isOpen.value && activeIndex.value >= 0 ? optionId(activeIndex.value) : undefined,
 );
 
 const caretIcon = computed(() => (isOpen.value ? toolbarIcons.dropdownCaretUp : toolbarIcons.dropdownCaretDown));
 
-const previewFamilyForLabel = (label) => {
+const previewFamilyForLabel = (label: string) => {
   const normalized = String(label ?? '')
     .trim()
     .toLowerCase();
@@ -90,7 +125,7 @@ const appliedIndex = () => {
   return byLabel;
 };
 
-const setSelectionRange = (start, end) => {
+const setSelectionRange = (start: number, end: number) => {
   const el = inputRef.value;
   if (!el || typeof el.setSelectionRange !== 'function') return;
   try {
@@ -137,7 +172,7 @@ const updatePosition = () => {
   };
 };
 
-const menuStyle = computed(() => ({
+const menuStyle = computed<CSSProperties>(() => ({
   position: 'fixed',
   top: menuPosition.value.top,
   left: menuPosition.value.left,
@@ -147,13 +182,16 @@ const menuStyle = computed(() => ({
   zIndex: 2000,
 }));
 
-const setItemExpanded = (open) => {
+const setItemExpanded = (open: boolean) => {
   if (props.item.expand && typeof props.item.expand === 'object' && 'value' in props.item.expand) {
     props.item.expand.value = open;
   }
 };
 
-const openList = (index, { focusInput = false, focusOption = false } = {}) => {
+const openList = (
+  index: number,
+  { focusInput = false, focusOption = false }: { focusInput?: boolean; focusOption?: boolean } = {},
+) => {
   if (disabled.value || !options.value.length) {
     setItemExpanded(false);
     return;
@@ -176,7 +214,7 @@ const openList = (index, { focusInput = false, focusOption = false } = {}) => {
   });
 };
 
-const closeList = ({ syncItem = true } = {}) => {
+const closeList = ({ syncItem = true }: { syncItem?: boolean } = {}) => {
   isOpen.value = false;
   activeIndex.value = -1;
   if (syncItem) setItemExpanded(false);
@@ -201,7 +239,7 @@ const onFocus = () => {
   nextTick(() => setSelectionRange(0, inputDisplay.value.length));
 };
 
-const onInputMousedown = (event) => {
+const onInputMousedown = (event: MouseEvent) => {
   if (disabled.value) return;
 
   const hadInputFocus = document.activeElement === inputRef.value;
@@ -224,16 +262,16 @@ const onInputMousedown = (event) => {
   }
 };
 
-const onBlur = (event) => {
+const onBlur = (event: FocusEvent) => {
   const next = event.relatedTarget;
   if (next instanceof Node && rootRef.value?.contains(next)) return;
   if (next instanceof Node && popupRef.value?.contains(next)) return;
   resetToApplied();
 };
 
-const onInput = (event) => {
+const onInput = (event: TypeaheadInputEvent) => {
   if (isComposing.value) return;
-  const el = event.target;
+  const el = event.target as HTMLInputElement;
   const typed = el.value;
   const selectionStart = typeof el.selectionStart === 'number' ? el.selectionStart : typed.length;
   const selectionEnd = typeof el.selectionEnd === 'number' ? el.selectionEnd : selectionStart;
@@ -257,12 +295,12 @@ const onInput = (event) => {
   }
 };
 
-const onCompositionEnd = (event) => {
+const onCompositionEnd = (event: CompositionEvent) => {
   isComposing.value = false;
   onInput(event);
 };
 
-const moveActive = (direction) => {
+const moveActive = (direction: number) => {
   if (!options.value.length) return;
   const count = options.value.length;
   const start = activeIndex.value < 0 ? (direction > 0 ? -1 : 0) : activeIndex.value;
@@ -270,13 +308,13 @@ const moveActive = (direction) => {
   nextTick(scrollActiveIntoView);
 };
 
-const emitFontCommand = (label, option) => {
+const emitFontCommand = (label: string, option: ComboBoxOption | null) => {
   emit('item-clicked');
   emit('command', { item: props.item, argument: label, option });
   if (option) props.item.selectedValue.value = option.key;
 };
 
-const applyOption = (option) => {
+const applyOption = (option: ComboBoxOption | undefined) => {
   if (!option) return;
   emitFontCommand(option.value ?? option.label, option);
   isEditing.value = false;
@@ -307,7 +345,7 @@ const applySelection = () => {
   return false;
 };
 
-const onKeydown = (event) => {
+const onKeydown = (event: KeyboardEvent) => {
   if (event.isComposing || isComposing.value || event.keyCode === 229) return;
   if (event.ctrlKey || event.metaKey || event.altKey) return;
 
@@ -354,7 +392,7 @@ const onKeydown = (event) => {
   }
 };
 
-const onCaretMousedown = (event) => {
+const onCaretMousedown = (event: MouseEvent) => {
   // Prevent the mousedown from focusing the caret button so focus can be placed
   // deliberately: into the open list when opening, back on the input when closing.
   event.preventDefault();
@@ -369,7 +407,7 @@ const onCaretMousedown = (event) => {
   }
 };
 
-const onOptionMousedown = (event, option) => {
+const onOptionMousedown = (event: MouseEvent, option: ComboBoxOption) => {
   // Prevent the input from blurring mid-apply so the restored selection holds,
   // then settle focus so the field returns to its non-editing applied state.
   event.preventDefault();
@@ -378,11 +416,11 @@ const onOptionMousedown = (event, option) => {
   inputRef.value?.blur();
 };
 
-const onOptionMouseenter = (index) => {
+const onOptionMouseenter = (index: number) => {
   activeIndex.value = index;
 };
 
-const onOptionKeydown = (event) => {
+const onOptionKeydown = (event: KeyboardEvent) => {
   if (event.ctrlKey || event.metaKey || event.altKey) return;
   switch (event.key) {
     case 'ArrowDown':
@@ -424,7 +462,7 @@ const onOptionKeydown = (event) => {
   }
 };
 
-const handleDocumentPointerDown = (event) => {
+const handleDocumentPointerDown = (event: PointerEvent) => {
   if (!isOpen.value) return;
   const target = event.target;
   if (!(target instanceof Element)) return;
@@ -457,16 +495,16 @@ onBeforeUnmount(() => {
   window.removeEventListener('scroll', updatePosition, true);
 });
 
-const setOptionRef = (el, index) => {
+const setOptionRef = (el: Element | ComponentPublicInstance | null, index: number) => {
   if (!el) {
     delete optionRefs.value[index];
     return;
   }
-  optionRefs.value[index] = el;
+  optionRefs.value[index] = el as HTMLElement;
 };
 
-const isOptionActive = (index) => index === activeIndex.value;
-const isOptionSelected = (option) => option?.key && option.key === props.item.selectedValue?.value;
+const isOptionActive = (index: number) => index === activeIndex.value;
+const isOptionSelected = (option: ComboBoxOption) => option?.key && option.key === props.item.selectedValue?.value;
 
 watch(appliedLabel, (label) => {
   if (isEditing.value) return;

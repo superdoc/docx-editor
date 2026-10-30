@@ -1,9 +1,29 @@
-<script setup>
+<script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
+import type { PropType, Ref } from 'vue';
 import { sanitizeHref } from './url-safety.js';
 import { toolbarIcons } from './toolbarIcons.js';
 import { useHighContrastMode } from '../../../composables/use-high-contrast-mode';
 import { executeFirstPartyCommandAsync } from '../../../public/ui/create-super-doc-ui.js';
+import type { CommandExecutionResult, SuperDocUI } from '../../../public/ui/types.js';
+
+type LinkInputUI = Partial<Pick<SuperDocUI, 'selection' | 'toolbar' | 'document'>> & Pick<SuperDocUI, 'commands'>;
+
+interface LinkItem {
+  attributes?: Ref<{ href?: unknown } | undefined>;
+}
+
+type RuntimeRejection = { success?: undefined; status: 'rejected' };
+
+type LinkCommandResult = CommandExecutionResult | RuntimeRejection | null | undefined;
+
+interface LinkCommandPayload {
+  href: string | null;
+  hyperlinkTarget: object | null;
+  currentText?: string;
+  textTarget?: object | null;
+  text?: string;
+}
 
 /**
  * Built-in link editing popover.
@@ -31,57 +51,57 @@ const props = defineProps({
     default: true,
   },
   goToAnchor: {
-    type: Function,
+    type: Function as PropType<(anchorUrl: string) => unknown>,
     default: () => {},
   },
   /** The shared UI controller (single command-state truth). */
   ui: {
-    type: Object,
+    type: Object as PropType<LinkInputUI | null>,
     default: null,
   },
   /** The built-in `link` toolbar item, for current-href fallback. */
   linkItem: {
-    type: Object,
+    type: Object as PropType<LinkItem | null>,
     default: null,
   },
   closePopover: {
-    type: Function,
+    type: Function as PropType<() => void>,
     default: () => {},
   },
   href: {
-    type: String,
+    type: String as PropType<string | null>,
     default: null,
   },
   target: {
-    type: String,
+    type: String as PropType<string | null>,
     default: null,
   },
   rel: {
-    type: String,
+    type: String as PropType<string | null>,
     default: null,
   },
   tooltip: {
-    type: String,
+    type: String as PropType<string | null>,
     default: null,
   },
   clickedElement: {
-    type: Object,
+    type: Object as PropType<HTMLElement | null>,
     default: null,
   },
   hyperlinkTarget: {
-    type: Object,
+    type: Object as PropType<object | null>,
     default: null,
   },
   hyperlinkText: {
-    type: String,
+    type: String as PropType<string | null>,
     default: null,
   },
   textTarget: {
-    type: Object,
+    type: Object as PropType<object | null>,
     default: null,
   },
   selectedText: {
-    type: String,
+    type: String as PropType<string | null>,
     default: null,
   },
   /**
@@ -92,11 +112,11 @@ const props = defineProps({
    * the user highlighted. Supplied by renderLinkDropdown.
    */
   restoreSelection: {
-    type: Function,
+    type: Function as PropType<() => void>,
     default: () => {},
   },
   documentMode: {
-    type: String,
+    type: String as PropType<string | null>,
     default: null,
   },
 });
@@ -161,7 +181,7 @@ const openLink = () => {
 };
 
 const focusInput = () => {
-  const input = document.querySelector('.link-input-ctn input');
+  const input = document.querySelector<HTMLInputElement>('.link-input-ctn input');
   if (!input) return;
   input.focus();
 };
@@ -174,7 +194,7 @@ onMounted(() => {
   if (props.showInput && !isViewingMode.value) focusInput();
 });
 
-const runLinkCommand = async (payload) => {
+const runLinkCommand = async (payload: LinkCommandPayload): Promise<LinkCommandResult> => {
   const ui = props.ui;
   if (!ui?.commands?.executeAsync) return false;
   // Restore the pre-interaction selection so the command targets the highlighted
@@ -185,7 +205,7 @@ const runLinkCommand = async (payload) => {
   return executeFirstPartyCommandAsync(ui, 'link', payload);
 };
 
-const applyLinkCommand = async (payload) => {
+const applyLinkCommand = async (payload: LinkCommandPayload) => {
   if (isSubmitting.value) return;
   isSubmitting.value = true;
   commandError.value = '';
@@ -227,7 +247,7 @@ const handleSubmit = async () => {
     return;
   }
 
-  const payload = {
+  const payload: LinkCommandPayload = {
     href,
     currentText: readSelectedText(),
     hyperlinkTarget: props.hyperlinkTarget,
@@ -248,7 +268,7 @@ const handleRemove = async () => {
 };
 
 const navigationError = ref('');
-const navigateToAnchor = async (anchorUrl) => {
+const navigateToAnchor = async (anchorUrl: string) => {
   navigationError.value = '';
   try {
     if ((await props.goToAnchor?.(anchorUrl)) === false) navigationError.value = 'Reference target is unavailable';

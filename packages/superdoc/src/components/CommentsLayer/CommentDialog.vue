@@ -542,12 +542,13 @@ const showSeparator = computed(() => (index: number) => {
   return visible.length > 1 && index !== visible.length - 1;
 });
 
+const commentsAreReadOnly = () => getConfig.value?.readOnly === true;
+
 const showInputSection = computed(() => {
   return !commentsAreReadOnly() && isDialogActive.value && !props.comment.resolvedTime && !isEditingAnyComment.value;
 });
 
 const readOnlyMutationOutcome = () => ({ ok: false, reason: 'read-only-document' });
-const commentsAreReadOnly = () => getConfig.value?.readOnly === true;
 const trackedChangeDecisionsAreDisabled = () => {
   const allowDecisions = proxy.$superdoc?.interactionConfig?.trackedChanges?.allowDecisions;
   if (typeof allowDecisions === 'boolean') return !allowDecisions;
@@ -758,7 +759,7 @@ const expandThread = () => {
 
 const isInternalDropdownDisabled = computed(() => {
   if (props.comment.resolvedTime) return true;
-  return getConfig.value.readOnly;
+  return commentsAreReadOnly();
 });
 
 const isEditingThisComment = computed(() => (comment: DialogComment) => {
@@ -771,7 +772,7 @@ const isEditingAnyComment = computed(() => {
 });
 
 const shouldShowInternalExternal = computed(() => {
-  if (getConfig.value.readOnly) return false;
+  if (commentsAreReadOnly()) return false;
   if (!proxy.$superdoc.config.isInternal) return false;
   // ui-phase3-002: the v2 host does not model `isInternal` today, so the
   // dropdown would only mutate Vue state without surviving save/reopen.
@@ -1197,7 +1198,7 @@ const getRejectDisabledReason = (comment: DialogComment) => {
 const getReopenDisabledReason = () => {
   if (!isV2Mode.value) return null;
   if (!v2CommentsAdapter.value) return 'v2-comments-adapter-missing';
-  if (getConfig.value?.readOnly) return 'read-only-document';
+  if (commentsAreReadOnly()) return 'read-only-document';
   if (isV2WriteDisabled.value) {
     return v2WriteCapability.value?.reason ?? 'v2-write-unavailable';
   }
@@ -1631,7 +1632,7 @@ watch(editingCommentId, (commentId) => {
 // store guards below the component remain the final defense against stale
 // events that were already queued before this watcher ran.
 watch(
-  () => getConfig.value?.readOnly === true,
+  commentsAreReadOnly,
   (readOnly) => {
     if (!readOnly) return;
 

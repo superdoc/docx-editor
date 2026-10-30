@@ -20,7 +20,6 @@ import { trackedChangeThreadParentIdForComment as resolveTrackedChangeThreadPare
 import { normalizeV2CommentDraftText } from './helpers/comment-draft-text.js';
 import {
   cloneV2TrackedChangeStory,
-  makeTrackedChangeAnchorKey,
   normalizeTrackedChangeCustomAttributes,
   normalizeTrackedChangeDetailLines,
   normalizeTrackedChangeImagePreview,
@@ -28,38 +27,23 @@ import {
   trackedChangeCustomAttributesEqual,
   trackedChangeDetailLinesEqual,
 } from './helpers/tracked-change-row-values.js';
+import {
+  BODY_TRACKED_CHANGE_STORY,
+  buildBodyTrackedChangeAnchorKey,
+  buildTrackedChangeAnchorKeyForStory,
+  buildTrackedChangeImportedPositionId,
+  getTrackedChangeStoryKey,
+  isBodyTrackedChangeComment,
+  makeTrackedChangeAnchorKey,
+  normalizeCommentId,
+  normalizeTrackedChangePositionAliases,
+  normalizeTrackedChangeStoryKey,
+  parseTrackedChangeAnchorKey,
+  positionEntryMatchesTrackedChangeStory,
+  trackedChangeStoryKeysAreCompatible,
+} from './helpers/tracked-change-identity.js';
 
 export const useCommentsStore = defineStore('comments', () => {
-  const BODY_TRACKED_CHANGE_STORY = { kind: 'story', storyType: 'body' };
-
-  const isBodyTrackedChangeComment = (comment) => {
-    if (!comment?.trackedChange) return false;
-    const storyType = comment?.trackedChangeStory?.storyType;
-    if (storyType == null || storyType === 'body') return true;
-    return comment?.trackedChangeAnchorKey?.startsWith?.('tc::body::') === true;
-  };
-
-  const buildBodyTrackedChangeAnchorKey = (rawId) => {
-    if (rawId === undefined || rawId === null) return null;
-    return makeTrackedChangeAnchorKey({ storyKey: 'body', rawId: String(rawId) });
-  };
-
-  const parseTrackedChangeAnchorKey = (anchorKey) => {
-    const normalized = normalizeCommentId(anchorKey);
-    if (!normalized?.startsWith('tc::')) return null;
-    const separatorIndex = normalized.indexOf('::', 'tc::'.length);
-    if (separatorIndex <= 'tc::'.length) return null;
-    const storyKey = normalized.slice('tc::'.length, separatorIndex);
-    const rawId = normalized.slice(separatorIndex + 2);
-    if (!storyKey || !rawId) return null;
-    return { storyKey, rawId };
-  };
-
-  const buildTrackedChangeAnchorKeyForStory = (storyKey, rawId) => {
-    if (rawId === undefined || rawId === null) return null;
-    return makeTrackedChangeAnchorKey({ storyKey: storyKey || 'body', rawId: String(rawId) });
-  };
-
   const superdocStore = useSuperdocStore();
   const commentsConfig = reactive({
     name: 'comments',
@@ -223,60 +207,6 @@ export const useCommentsStore = defineStore('comments', () => {
     if (config.comments && config.comments.length) {
       commentsList.value = config.comments?.map((c) => useComment(c)) || [];
     }
-  };
-
-  const normalizeCommentId = (id) => (id === undefined || id === null ? null : String(id));
-
-  const normalizeTrackedChangePositionAliases = (aliases) => {
-    if (!Array.isArray(aliases)) return [];
-    return [...new Set(aliases.map((id) => normalizeCommentId(id)).filter(Boolean))];
-  };
-
-  const getTrackedChangeStoryKey = (comment) => {
-    if (!comment?.trackedChange) return null;
-
-    const anchorParts = parseTrackedChangeAnchorKey(comment.trackedChangeAnchorKey);
-    if (anchorParts?.storyKey) return anchorParts.storyKey;
-
-    const story = comment.trackedChangeStory;
-    switch (story?.storyType) {
-      case 'body':
-        return 'body';
-      case 'headerFooterPart':
-        return story.refId ? `hf:${story.refId}` : null;
-      case 'footnote':
-        return story.noteId ? `fn:${story.noteId}` : null;
-      case 'endnote':
-        return story.noteId ? `en:${story.noteId}` : null;
-      case 'textbox':
-        return story.textboxId ? `textbox:${story.textboxId}` : null;
-      default:
-        return null;
-    }
-  };
-
-  const normalizeTrackedChangeStoryKey = (storyKey) => {
-    if (storyKey?.startsWith('hf:part:')) return `hf:${storyKey.slice('hf:part:'.length)}`;
-    if (storyKey?.startsWith('headerFooterPart:')) return `hf:${storyKey.slice('headerFooterPart:'.length)}`;
-    return storyKey;
-  };
-
-  const trackedChangeStoryKeysAreCompatible = (leftStoryKey, rightStoryKey) => {
-    const left = normalizeTrackedChangeStoryKey(leftStoryKey);
-    const right = normalizeTrackedChangeStoryKey(rightStoryKey);
-    return !left || !right || left === right;
-  };
-
-  const positionEntryMatchesTrackedChangeStory = (entry, comment) => {
-    const expectedStoryKey = normalizeTrackedChangeStoryKey(getTrackedChangeStoryKey(comment));
-    const entryStoryKey = normalizeTrackedChangeStoryKey(normalizeCommentId(entry?.storyKey));
-    return trackedChangeStoryKeysAreCompatible(expectedStoryKey, entryStoryKey);
-  };
-
-  const buildTrackedChangeImportedPositionId = (id) => {
-    const normalizedId = normalizeCommentId(id);
-    if (!normalizedId) return null;
-    return normalizedId.startsWith('imported:') ? normalizedId : `imported:${normalizedId}`;
   };
 
   const positionEntriesByAlias = computed(() => {

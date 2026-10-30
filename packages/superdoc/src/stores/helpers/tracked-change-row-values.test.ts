@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vite-plus/test';
 import { reactive } from 'vue';
 import {
   cloneV2TrackedChangeStory,
-  makeTrackedChangeAnchorKey,
   normalizeTrackedChangeCustomAttributes,
   normalizeTrackedChangeDetailLines,
   normalizeTrackedChangeImagePreview,
@@ -13,12 +12,6 @@ import {
 
 const ATTRIBUTE = { name: 'w15:x', namespaceUri: 'urn:x', localName: 'x', value: '1' };
 const IMAGE_SRC = 'data:image/png;base64,AAAA';
-
-describe('makeTrackedChangeAnchorKey', () => {
-  it('joins the story key and raw id', () => {
-    expect(makeTrackedChangeAnchorKey({ storyKey: 'footnote:2', rawId: '7' })).toBe('tc::footnote:2::7');
-  });
-});
 
 describe('shallowEqual', () => {
   it('compares one level deep with Object.is', () => {

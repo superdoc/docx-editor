@@ -20,9 +20,6 @@ const isObjectOrArray = (value: unknown): value is IndexableObject => isPlainObj
 
 const stringOrEmpty = (value: unknown): string => (typeof value === 'string' ? value : '');
 
-export const makeTrackedChangeAnchorKey = ({ storyKey, rawId }: { storyKey: string; rawId: string }): string =>
-  `tc::${storyKey}::${rawId}`;
-
 export const shallowEqual = (a: unknown, b: unknown): boolean => {
   if (Object.is(a, b)) return true;
   if (!isObjectOrArray(a) || !isObjectOrArray(b)) return false;

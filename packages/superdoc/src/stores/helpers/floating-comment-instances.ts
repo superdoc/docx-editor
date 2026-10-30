@@ -1,14 +1,68 @@
+import { isFiniteNumber } from '../../helpers/is-finite-number.js';
+import { isPlainObject } from '../../helpers/object-guards.js';
+
 const HEADER_FOOTER_TRACKED_CHANGE_STORY_TYPE = 'headerFooterPart';
 
-const toFinitePageIndex = (value) => {
-  return Number.isFinite(value) ? Number(value) : null;
+type FloatingCommentRect = {
+  pageIndex?: number | null;
+  left?: number;
+  top?: number;
+  right?: number;
+  bottom?: number;
 };
 
-const buildPageScopedInstanceId = (positionKey, pageIndex) => {
+type FloatingCommentBounds = {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+  width: number;
+  height: number;
+};
+
+type FloatingCommentPositionEntry = {
+  pageIndex?: number | null;
+  rects?: readonly (FloatingCommentRect | null | undefined)[] | null;
+  bounds?: Partial<FloatingCommentBounds> | null;
+};
+
+type FloatingCommentSource = {
+  commentId?: string | null;
+  trackedChange?: boolean | null;
+  trackedChangeStory?: string | { storyType?: unknown } | null;
+  trackedChangeCanonicalId?: string | null;
+  trackedChangePositionAliases?: readonly unknown[] | null;
+  selection?: { page?: unknown } | null;
+};
+
+type FloatingCommentInstance<TComment extends FloatingCommentSource = FloatingCommentSource> = {
+  id: string;
+  threadId: string | null;
+  comment: TComment;
+  positionKey: string | null;
+  positionEntry: FloatingCommentPositionEntry | null;
+  pageIndex: number | null;
+  isPrimary: boolean;
+};
+
+type BuildFloatingCommentInstancesParams<TComment extends FloatingCommentSource> = {
+  comment: TComment;
+  positionKey: string | null;
+  positionEntry: FloatingCommentPositionEntry | null;
+  fallbackId: string | null;
+};
+
+type PageRectGroup = { pageIndex: number; rects: FloatingCommentRect[] };
+
+const toFinitePageIndex = (value: unknown): number | null => {
+  return isFiniteNumber(value) ? value : null;
+};
+
+const buildPageScopedInstanceId = (positionKey: string, pageIndex: number): string => {
   return `${positionKey}::page:${pageIndex}`;
 };
 
-const matchesTrackedChangePositionAlias = (positionKey, alias) => {
+const matchesTrackedChangePositionAlias = (positionKey: string, alias: unknown): boolean => {
   const normalizedPositionKey = String(positionKey);
   const normalizedAlias = String(alias);
   return (
@@ -17,7 +71,7 @@ const matchesTrackedChangePositionAlias = (positionKey, alias) => {
   );
 };
 
-const aggregateRectBounds = (rects) => {
+const aggregateRectBounds = (rects: readonly FloatingCommentRect[]): FloatingCommentBounds | null => {
   if (!Array.isArray(rects) || rects.length === 0) {
     return null;
   }
@@ -28,7 +82,12 @@ const aggregateRectBounds = (rects) => {
   let bottom = Number.NEGATIVE_INFINITY;
 
   rects.forEach((rect) => {
-    if (![rect?.left, rect?.top, rect?.right, rect?.bottom].every(Number.isFinite)) {
+    if (
+      !isFiniteNumber(rect?.left) ||
+      !isFiniteNumber(rect.top) ||
+      !isFiniteNumber(rect.right) ||
+      !isFiniteNumber(rect.bottom)
+    ) {
       return;
     }
 
@@ -52,13 +111,13 @@ const aggregateRectBounds = (rects) => {
   };
 };
 
-const groupRectsByPage = (rects) => {
-  const groupedRects = new Map();
+const groupRectsByPage = (rects: FloatingCommentPositionEntry['rects']): PageRectGroup[] => {
+  const groupedRects = new Map<number, FloatingCommentRect[]>();
 
   const geometryRects = Array.isArray(rects) ? rects : [];
   geometryRects.forEach((rect) => {
     const pageIndex = toFinitePageIndex(rect?.pageIndex);
-    if (pageIndex == null) {
+    if (!rect || pageIndex == null) {
       return;
     }
 
@@ -76,29 +135,44 @@ const groupRectsByPage = (rects) => {
     .map(([pageIndex, pageRects]) => ({ pageIndex, rects: pageRects }));
 };
 
-const isRepeatedHeaderFooterTrackedChange = (comment, positionEntry) => {
+const readStoryType = (story: FloatingCommentSource['trackedChangeStory']): unknown => {
+  return isPlainObject(story) ? story.storyType : undefined;
+};
+
+const isRepeatedHeaderFooterTrackedChange = (
+  comment: FloatingCommentSource,
+  positionEntry: FloatingCommentPositionEntry | null,
+): boolean => {
   if (!comment?.trackedChange) {
     return false;
   }
 
-  if (comment?.trackedChangeStory?.storyType !== HEADER_FOOTER_TRACKED_CHANGE_STORY_TYPE) {
+  if (readStoryType(comment?.trackedChangeStory) !== HEADER_FOOTER_TRACKED_CHANGE_STORY_TYPE) {
     return false;
   }
 
   return groupRectsByPage(positionEntry?.rects).length > 1;
 };
 
-// PDF / non-editor comments have no editor-backed positionEntry, so their
-// page index cannot be read from layout geometry. Fall back to the 1-based
-// `selection.page` carried by the PDF selection (page 1 → pageIndex 0). Only
-// applied when there is no geometry pageIndex; editor geometry stays authoritative.
-const resolveSelectionPageIndex = (comment) => {
+const resolveSelectionPageIndex = (comment: FloatingCommentSource): number | null => {
   const page = Number(comment?.selection?.page);
   if (!Number.isInteger(page) || page < 1) return null;
   return page - 1;
 };
 
-const buildSingleFloatingCommentInstance = ({ id, threadId, comment, positionKey, positionEntry }) => {
+const buildSingleFloatingCommentInstance = <TComment extends FloatingCommentSource>({
+  id,
+  threadId,
+  comment,
+  positionKey,
+  positionEntry,
+}: {
+  id: string;
+  threadId: string | null;
+  comment: TComment;
+  positionKey: string | null;
+  positionEntry: FloatingCommentPositionEntry | null;
+}): FloatingCommentInstance<TComment> => {
   const geometryPageIndex = toFinitePageIndex(positionEntry?.pageIndex);
   const fallbackPageIndex = comment?.trackedChange ? null : resolveSelectionPageIndex(comment);
   const pageIndex = geometryPageIndex ?? fallbackPageIndex;
@@ -114,18 +188,26 @@ const buildSingleFloatingCommentInstance = ({ id, threadId, comment, positionKey
   };
 };
 
-const buildRepeatedHeaderFooterInstances = ({ comment, positionKey, positionEntry, primaryInstanceId }) => {
+const buildRepeatedHeaderFooterInstances = <TComment extends FloatingCommentSource>({
+  comment,
+  positionKey,
+  positionEntry,
+  primaryInstanceId,
+}: {
+  comment: TComment;
+  positionKey: string;
+  positionEntry: FloatingCommentPositionEntry | null;
+  primaryInstanceId: string;
+}): FloatingCommentInstance<TComment>[] => {
   const rectGroups = groupRectsByPage(positionEntry?.rects);
   if (rectGroups.length < 2) {
     return [];
   }
 
-  const renderableGroups = rectGroups
-    .map(({ pageIndex, rects }) => {
-      const bounds = aggregateRectBounds(rects);
-      return bounds ? { pageIndex, rects, bounds } : null;
-    })
-    .filter(Boolean);
+  const renderableGroups = rectGroups.flatMap(({ pageIndex, rects }) => {
+    const bounds = aggregateRectBounds(rects);
+    return bounds ? [{ pageIndex, rects, bounds }] : [];
+  });
   if (renderableGroups.length < 2) {
     return [];
   }
@@ -155,13 +237,19 @@ const buildRepeatedHeaderFooterInstances = ({ comment, positionKey, positionEntr
   });
 };
 
-export const buildFloatingCommentInstances = ({ comment, positionKey, positionEntry, fallbackId }) => {
+export const buildFloatingCommentInstances = <TComment extends FloatingCommentSource>({
+  comment,
+  positionKey,
+  positionEntry,
+  fallbackId,
+}: BuildFloatingCommentInstancesParams<TComment>): FloatingCommentInstance<TComment>[] => {
+  const aliases = comment?.trackedChangePositionAliases;
   const hasTrackedChangePositionAlias =
     comment?.trackedChange &&
     positionKey &&
     fallbackId &&
-    Array.isArray(comment?.trackedChangePositionAliases) &&
-    comment.trackedChangePositionAliases.some((alias) => matchesTrackedChangePositionAlias(positionKey, alias));
+    Array.isArray(aliases) &&
+    aliases.some((alias) => matchesTrackedChangePositionAlias(positionKey, alias));
   const hasSharedTrackedChangeAnchor =
     comment?.trackedChange &&
     comment?.trackedChangeCanonicalId &&

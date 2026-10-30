@@ -134,6 +134,59 @@ describe('buildFloatingCommentInstances', () => {
     ]);
   });
 
+  it('skips missing rect entries when grouping repeated header/footer pages', () => {
+    const comment = {
+      commentId: 'tracked-change-holes',
+      trackedChange: true,
+      trackedChangeStory: { kind: 'story', storyType: 'headerFooterPart', refId: 'rId-footer' },
+    };
+    const positionEntry = {
+      pageIndex: 1,
+      rects: [
+        null,
+        { pageIndex: 0, top: 20, left: 12, right: 50, bottom: 40 },
+        undefined,
+        { pageIndex: 1, top: 120, left: 8, right: 32, bottom: 136 },
+      ],
+    };
+
+    const instances = buildFloatingCommentInstances({
+      comment,
+      positionKey: 'tc::hf:part:rId-footer::tracked-change-holes',
+      positionEntry,
+      fallbackId: 'fallback-thread-id',
+    });
+
+    expect(instances.map(({ pageIndex, isPrimary }) => ({ pageIndex, isPrimary }))).toEqual([
+      { pageIndex: 0, isPrimary: false },
+      { pageIndex: 1, isPrimary: true },
+    ]);
+  });
+
+  it('treats a string trackedChangeStory as a single instance, not a repeated header/footer change', () => {
+    const comment = {
+      commentId: 'tracked-change-string-story',
+      trackedChange: true,
+      trackedChangeStory: 'headerFooterPart',
+    };
+
+    const instances = buildFloatingCommentInstances({
+      comment,
+      positionKey: 'tc::string-story',
+      positionEntry: {
+        pageIndex: 1,
+        rects: [
+          { pageIndex: 0, top: 20, left: 12, right: 50, bottom: 40 },
+          { pageIndex: 1, top: 120, left: 8, right: 32, bottom: 136 },
+        ],
+      },
+      fallbackId: 'fallback-thread-id',
+    });
+
+    expect(instances).toHaveLength(1);
+    expect(instances[0]).toMatchObject({ id: 'tc::string-story', isPrimary: true });
+  });
+
   it('retains a geometry-free tracked header/footer move row with its logical identity', () => {
     const canonicalId = 'tc|move|1%7C101';
     const rowId = `${canonicalId}::move-to`;

@@ -20,7 +20,7 @@ import { range } from './helpers/range';
 
 /**
  * @typedef {Object} PDFJSConfig
- * @property {any} pdfLib
+ * @property {any} [pdfLib]
  * @property {string} [workerSrc]
  * @property {boolean} [setWorker]
  */
@@ -114,8 +114,8 @@ export class PDFJSAdapter extends PDFAdapter {
 
 export class PDFAdapterFactory {
   /**
-   * @param {PDFJSConfig & {adapter: AdapterType}} config
-   * @returns {PDFAdapter}
+   * @param {PDFConfig} config
+   * @returns {PDFJSAdapter}
    * @throws {Error}
    */
   static create(config) {

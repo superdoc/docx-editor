@@ -1,11 +1,20 @@
-<script setup>
+<script setup lang="ts">
 import { ref, computed, watch, markRaw } from 'vue';
+import type { PropType } from 'vue';
+import type { PDFPageProxy } from 'pdfjs-dist';
 import { floor } from '../../core/pdf/helpers/floor';
 import { readFileAsArrayBuffer } from '../../core/pdf/helpers/read-file';
 import { OUTPUT_SCALE } from '../../core/pdf/helpers/constants';
 import { isFiniteNumber } from '../../helpers/is-finite-number.js';
 import { PDFAdapterFactory, createPDFConfig } from '../../core/pdf/pdf-adapter';
 import PdfViewerDocument from './PdfViewerDocument.vue';
+import type {
+  PdfPageRenderedPayload,
+  PdfSelectionRawPayload,
+  PdfViewerConfig,
+  PdfViewerDocumentData,
+  PdfViewerPageData,
+} from './pdf-viewer-types';
 
 const emit = defineEmits([
   'page-rendered',
@@ -19,11 +28,11 @@ const emit = defineEmits([
 
 const props = defineProps({
   config: {
-    type: Object,
+    type: Object as PropType<PdfViewerConfig>,
     required: true,
   },
   file: {
-    type: Object,
+    type: Object as PropType<Blob | null>,
     required: true,
   },
   fileId: {
@@ -40,19 +49,25 @@ const props = defineProps({
   },
 });
 
+function requirePdfLib(config: PdfViewerConfig) {
+  const { pdfLib } = config;
+  if (!pdfLib) throw new TypeError('PdfViewer requires modules.pdf.pdfLib');
+  return markRaw(pdfLib);
+}
+
 const pdfConfig = createPDFConfig({
-  pdfLib: markRaw(props.config.pdfLib),
+  pdfLib: requirePdfLib(props.config),
   workerSrc: props.config.workerSrc,
   setWorker: props.config.setWorker,
 });
 
 const pdfAdapter = PDFAdapterFactory.create(pdfConfig);
 
-const rootRef = ref(null);
-const documentRef = ref(null);
+const rootRef = ref<HTMLDivElement | null>(null);
+const documentRef = ref<InstanceType<typeof PdfViewerDocument> | null>(null);
 
-const pdf = ref(null);
-const pages = ref([]);
+const pdf = ref<PdfViewerDocumentData | null>(null);
+const pages = ref<PdfViewerPageData[]>([]);
 // Zoom scale, seeded from the host's initial zoom (rounded the same way
 // updateScale rounds) so the first render already matches getZoom().
 const scale = ref(isFiniteNumber(props.initialScale) && props.initialScale > 0 ? floor(props.initialScale, 2) : 1);
@@ -62,18 +77,18 @@ const renderedPages = ref(0);
 const hasTextLayer = computed(() => props.config?.textLayer === true);
 const outputScale = computed(() => props.config?.outputScale ?? OUTPUT_SCALE);
 
-function onPageRendered(payload) {
+function onPageRendered(payload: PdfPageRenderedPayload) {
   const page = payload?.page;
   if (page) page.pageIsRendered = true;
   checkDocumentReady();
   emit('page-rendered', payload);
 }
 
-function onSelectionRaw(payload) {
+function onSelectionRaw(payload: PdfSelectionRawPayload) {
   emit('selection-raw', payload);
 }
 
-function onBypassSelection(event) {
+function onBypassSelection(event: MouseEvent) {
   emit('bypass-selection', event);
 }
 
@@ -88,13 +103,13 @@ function checkDocumentReady() {
   }
 }
 
-function updatePages(nextPages) {
+function updatePages(nextPages: PdfViewerPageData[]) {
   pages.value = nextPages;
   totalPages.value = nextPages.length;
   renderedPages.value = 0;
 }
 
-function updateScale(nextScale) {
+function updateScale(nextScale: number) {
   const roundedScale = floor(nextScale, 2);
   scale.value = roundedScale;
 }
@@ -103,7 +118,7 @@ defineExpose({
   updateScale,
 });
 
-async function getDocument(file) {
+async function getDocument(file: Blob | null) {
   if (!file) return;
 
   try {
@@ -133,10 +148,12 @@ async function getPages() {
   try {
     const pdfjsPages = await pdfAdapter.getPages(pdfjsDocument, firstPageNum, lastPageNum);
 
-    const mapPages = (pdfjsPage) => {
+    const mapPages = (pdfjsPage: PDFPageProxy): PdfViewerPageData => {
+      const currentPdf = pdf.value;
+      if (!currentPdf) throw new TypeError('PdfViewer has no document to map pages for');
       return {
-        documentId: pdf.value.documentId,
-        pageId: generatePageId(pdf.value.documentId, pdfjsPage.pageNumber),
+        documentId: currentPdf.documentId,
+        pageId: generatePageId(currentPdf.documentId, pdfjsPage.pageNumber),
         pageNumber: pdfjsPage.pageNumber,
         pageIsRendered: false,
         pdfjsPage: markRaw(pdfjsPage),
@@ -157,11 +174,11 @@ function resetValues() {
   scale.value = 1;
 }
 
-function generateDocumentId(fileName) {
+function generateDocumentId(fileName: string) {
   return `pdf-${fileName.replace(/\W/g, '')}-${Math.random().toString(36).slice(2)}-${Date.now()}`;
 }
 
-function generatePageId(documentId, pageNumber) {
+function generatePageId(documentId: string, pageNumber: number) {
   return `${documentId}-page-${pageNumber}`;
 }
 

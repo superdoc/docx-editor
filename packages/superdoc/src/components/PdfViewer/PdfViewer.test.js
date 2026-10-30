@@ -120,6 +120,14 @@ describe('PdfViewer.vue', () => {
     expect(adapterGetDocument).not.toHaveBeenCalled();
   });
 
+  it('throws a named error when the config has no pdfLib', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(() => mount(PdfViewer, { props: { config: {}, file: null } })).toThrow(
+      new TypeError('PdfViewer requires modules.pdf.pdfLib'),
+    );
+    warnSpy.mockRestore();
+  });
+
   it('updateScale rounds to 2 decimals and is callable via exposed API', async () => {
     const wrapper = mountViewer();
     await flushPromises();

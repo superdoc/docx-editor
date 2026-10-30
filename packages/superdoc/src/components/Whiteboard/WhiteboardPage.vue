@@ -1,21 +1,27 @@
-<script setup>
+<script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import type { PropType } from 'vue';
+import type { WhiteboardPage } from '../../core/whiteboard/WhiteboardPage';
+import { isFiniteNumber } from '../../helpers/is-finite-number';
+import type { WhiteboardDropTarget, WhiteboardPageOffset, WhiteboardPageSize } from './whiteboard-types';
+
+type WhiteboardDropEvent = DragEvent & { dataTransfer: DataTransfer };
 
 const props = defineProps({
   whiteboard: {
-    type: Object,
+    type: Object as PropType<WhiteboardDropTarget>,
     required: true,
   },
   page: {
-    type: Object,
+    type: Object as PropType<WhiteboardPage>,
     required: true,
   },
   pageSize: {
-    type: Object,
+    type: Object as PropType<WhiteboardPageSize | null>,
     default: null,
   },
   pageOffset: {
-    type: Object,
+    type: Object as PropType<WhiteboardPageOffset | null>,
     default: null,
   },
   enabled: {
@@ -24,7 +30,7 @@ const props = defineProps({
   },
 });
 
-const containerRef = ref(null);
+const containerRef = ref<HTMLDivElement | null>(null);
 
 // Mount Konva stage and apply current size.
 const mountPage = () => {
@@ -37,8 +43,8 @@ const mountPage = () => {
 };
 
 // Handle drop of stickers, images, comments, or text.
-const handleDrop = (event) => {
-  if (!props.page || !event?.dataTransfer) {
+const handleDrop = (event: DragEvent) => {
+  if (!props.page || !hasDataTransfer(event)) {
     return;
   }
   if (!props.enabled || props.whiteboard.getTool() !== 'select') {
@@ -57,7 +63,7 @@ const handleDrop = (event) => {
   const currentWidth = props.pageSize?.width;
   const originalWidth = props.pageSize?.originalWidth ?? currentWidth;
   const scale =
-    Number.isFinite(currentWidth) && Number.isFinite(originalWidth) && originalWidth ? currentWidth / originalWidth : 1;
+    isFiniteNumber(currentWidth) && isFiniteNumber(originalWidth) && originalWidth ? currentWidth / originalWidth : 1;
 
   if (handleStickerDrop(event, x, y, scale)) {
     return;
@@ -71,8 +77,12 @@ const handleDrop = (event) => {
   handlePlainTextDrop(event, x, y);
 };
 
+function hasDataTransfer(event: DragEvent): event is WhiteboardDropEvent {
+  return Boolean(event?.dataTransfer);
+}
+
 // Drop sticker by id (from registry).
-const handleStickerDrop = (event, x, y, scale) => {
+const handleStickerDrop = (event: WhiteboardDropEvent, x: number, y: number, scale: number) => {
   const stickerId = event.dataTransfer.getData('application/sticker');
   if (!stickerId) return false;
   const stickers = props.whiteboard.getType('stickers') || [];
@@ -87,19 +97,19 @@ const handleStickerDrop = (event, x, y, scale) => {
     return false;
   }
   props.page.addImage({
-    stickerId: sticker.id,
+    stickerId,
     x,
     y,
-    src: sticker.src,
-    width: Number.isFinite(sticker.width) ? sticker.width * scale : sticker.width,
-    height: Number.isFinite(sticker.height) ? sticker.height * scale : sticker.height,
+    src: String(sticker.src),
+    width: isFiniteNumber(sticker.width) ? sticker.width * scale : undefined,
+    height: isFiniteNumber(sticker.height) ? sticker.height * scale : undefined,
     type: 'sticker',
   });
   return true;
 };
 
 // Drop local image file (base64).
-const handleFileImageDrop = (event, x, y, scale) => {
+const handleFileImageDrop = (event: WhiteboardDropEvent, x: number, y: number, scale: number) => {
   const files = Array.from(event.dataTransfer.files || []);
   const imageFile = files.find((file) => file.type.startsWith('image/'));
   if (!imageFile) return false;
@@ -113,18 +123,18 @@ const handleFileImageDrop = (event, x, y, scale) => {
 };
 
 // Drop a predefined comment (text).
-const handleCommentDrop = (event, x, y) => {
+const handleCommentDrop = (event: WhiteboardDropEvent, x: number, y: number) => {
   const commentId = event.dataTransfer.getData('application/comment');
   if (!commentId) return false;
   const comments = props.whiteboard.getType('comments') || [];
   const comment = comments.find((item) => item.id === commentId);
   if (!comment?.text) return false;
-  props.page.addText({ x, y, content: comment.text });
+  if (typeof comment.text === 'string') props.page.addText({ x, y, content: comment.text });
   return true;
 };
 
 // Drop raw text.
-const handlePlainTextDrop = (event, x, y) => {
+const handlePlainTextDrop = (event: WhiteboardDropEvent, x: number, y: number) => {
   const text = event.dataTransfer.getData('text/plain');
   if (!text) return false;
   props.page.addText({ x, y, content: text });

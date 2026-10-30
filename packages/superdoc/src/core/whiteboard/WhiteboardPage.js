@@ -53,8 +53,8 @@ const DEFAULT_TEXT_FONT_SIZE = 18;
  * Per-page whiteboard renderer/controller.
  */
 export class WhiteboardPage {
-  /** @type {number|null} */
-  pageIndex = null;
+  /** @type {number} */
+  pageIndex;
 
   /** @type {WhiteboardStoredStroke[]} */
   strokes = [];

@@ -1,22 +1,25 @@
-<script setup>
+<script setup lang="ts">
 import { computed } from 'vue';
+import type { PropType } from 'vue';
+import type { WhiteboardPage as WhiteboardPageModel } from '../../core/whiteboard/WhiteboardPage';
 import WhiteboardPage from './WhiteboardPage.vue';
+import type { WhiteboardDropTarget, WhiteboardPageOffset, WhiteboardPageSize } from './whiteboard-types';
 
 const props = defineProps({
   whiteboard: {
-    type: Object,
+    type: Object as PropType<WhiteboardDropTarget>,
     required: true,
   },
   pages: {
-    type: Array,
+    type: Array as PropType<WhiteboardPageModel[]>,
     default: () => [],
   },
   pageSizes: {
-    type: Object,
+    type: Object as PropType<Record<number, WhiteboardPageSize>>,
     default: () => ({}),
   },
   pageOffsets: {
-    type: Object,
+    type: Object as PropType<Record<number, WhiteboardPageOffset>>,
     default: () => ({}),
   },
   enabled: {
@@ -31,7 +34,7 @@ const props = defineProps({
    * legacy single-flag behavior when a host does not provide an explicit value.
    */
   interactive: {
-    type: Boolean,
+    type: Boolean as PropType<boolean | null>,
     default: null,
   },
   opacity: {

@@ -1,6 +1,9 @@
-<script setup>
+<script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
+import type { PropType } from 'vue';
+import type { PageViewport, RenderTask } from 'pdfjs-dist';
 import { OUTPUT_SCALE, PDF_TO_CSS_UNITS } from '../../core/pdf/helpers/constants';
+import type { PdfViewerConfig, PdfViewerPageData } from './pdf-viewer-types';
 
 const emit = defineEmits([
   'page-rendered',
@@ -13,15 +16,15 @@ const emit = defineEmits([
 
 const props = defineProps({
   config: {
-    type: Object,
+    type: Object as PropType<PdfViewerConfig>,
     required: true,
   },
   page: {
-    type: Object,
+    type: Object as PropType<PdfViewerPageData>,
     required: true,
   },
   pages: {
-    type: Array,
+    type: Array as PropType<PdfViewerPageData[]>,
     required: true,
   },
   scale: {
@@ -37,17 +40,17 @@ const props = defineProps({
     default: OUTPUT_SCALE,
   },
   documentEl: {
-    type: [Object],
+    type: Object as PropType<HTMLElement | null>,
     default: null,
   },
 });
 
-const viewport = shallowRef(null);
-const pageRef = ref(null);
-const canvasRef = ref(null);
-const textLayerRef = ref(null);
+const viewport = shallowRef<PageViewport>(createInitialViewport());
+const pageRef = ref<HTMLDivElement | null>(null);
+const canvasRef = ref<HTMLCanvasElement | null>(null);
+const textLayerRef = ref<HTMLDivElement | null>(null);
 
-let renderTask;
+let renderTask: RenderTask | null = null;
 
 const pageIdx = computed(() => props.pages.findIndex((page) => page.pageId === props.page.pageId));
 const pageNumber = computed(() => {
@@ -55,7 +58,7 @@ const pageNumber = computed(() => {
   return pageIdx.value + 1;
 });
 
-function getSelectedTextBoundingBox(container) {
+function getSelectedTextBoundingBox(container: HTMLElement) {
   const selection = window.getSelection();
   if (!selection || selection.rangeCount === 0) return null;
 
@@ -116,7 +119,8 @@ const pageStyle = computed(() => {
 function onMouseUp() {
   const selection = window.getSelection();
   if (!selection || selection.toString().length === 0) return;
-  const container = props.documentEl?.value ?? props.documentEl ?? pageRef.value;
+  const container = props.documentEl ?? pageRef.value;
+  if (!container) return;
   const bounds = getSelectedTextBoundingBox(container);
   if (!bounds) return;
   emit('selection-raw', {
@@ -127,9 +131,9 @@ function onMouseUp() {
   });
 }
 
-function onMouseDown(event) {
+function onMouseDown(event: MouseEvent) {
   if (!event?.target) return;
-  if (event.target.tagName !== 'SPAN') {
+  if (!(event.target instanceof Element) || event.target.tagName !== 'SPAN') {
     emit('bypass-selection', event);
   }
 }
@@ -156,9 +160,9 @@ function getScaleFactor() {
   return (props.scale ?? 1) * PDF_TO_CSS_UNITS;
 }
 
-function setInitialViewport() {
+function createInitialViewport() {
   const { pdfjsPage } = props.page;
-  viewport.value = pdfjsPage.getViewport({ scale: PDF_TO_CSS_UNITS * props.outputScale });
+  return pdfjsPage.getViewport({ scale: PDF_TO_CSS_UNITS * props.outputScale });
 }
 
 async function renderPage() {
@@ -167,8 +171,7 @@ async function renderPage() {
   const canvasElem = canvasRef.value;
   if (!canvasElem || !viewport.value) return;
 
-  const canvasContext = canvasElem.getContext('2d');
-  const renderContext = { canvasContext, viewport: viewport.value };
+  const renderContext = { canvas: canvasElem, viewport: viewport.value };
 
   try {
     const { pdfjsPage } = props.page;
@@ -231,7 +234,7 @@ async function render() {
   await renderTextLayer();
 }
 
-function destroyPage(page) {
+function destroyPage(page: PdfViewerPageData) {
   if (page?.pdfjsPage) page.pdfjsPage.cleanup();
   destroyRenderTask();
 }
@@ -249,7 +252,6 @@ watch(
   },
 );
 
-setInitialViewport();
 onMounted(() => {
   render();
 });

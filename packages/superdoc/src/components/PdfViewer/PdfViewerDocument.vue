@@ -1,23 +1,32 @@
-<script setup>
+<script setup lang="ts">
 import { ref } from 'vue';
+import type { PropType } from 'vue';
 import PdfViewerPage from './PdfViewerPage.vue';
+import type {
+  PdfPageRenderedPayload,
+  PdfSelectionRawPayload,
+  PdfViewerConfig,
+  PdfViewerDocumentData,
+  PdfViewerPageData,
+} from './pdf-viewer-types';
 
 const emit = defineEmits(['page-focus', 'page-rendered', 'page-error', 'selection-raw', 'bypass-selection']);
 
 const props = defineProps({
   config: {
-    type: Object,
+    type: Object as PropType<PdfViewerConfig>,
     required: true,
   },
   pdf: {
-    type: Object,
+    type: Object as PropType<PdfViewerDocumentData | null>,
   },
   pages: {
-    type: Array,
+    type: Array as PropType<PdfViewerPageData[]>,
     required: true,
   },
   scale: {
     type: Number,
+    required: true,
   },
   hasTextLayer: {
     type: Boolean,
@@ -28,26 +37,26 @@ const props = defineProps({
   },
 });
 
-const documentRef = ref(null);
-const documentWrapper = ref(null);
+const documentRef = ref<HTMLDivElement | null>(null);
+const documentWrapper = ref<HTMLDivElement | null>(null);
 
-function onPageFocused(pageNumber) {
+function onPageFocused(pageNumber: number) {
   emit('page-focus', pageNumber);
 }
 
-function onPageRendered(payload) {
+function onPageRendered(payload: PdfPageRenderedPayload) {
   emit('page-rendered', payload);
 }
 
-function onPageError(page) {
+function onPageError(page: PdfViewerPageData) {
   emit('page-error', page);
 }
 
-function onSelectionRaw(payload) {
+function onSelectionRaw(payload: PdfSelectionRawPayload) {
   emit('selection-raw', payload);
 }
 
-function onBypassSelection(event) {
+function onBypassSelection(event: MouseEvent) {
   emit('bypass-selection', event);
 }
 </script>

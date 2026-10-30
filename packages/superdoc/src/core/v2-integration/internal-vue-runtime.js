@@ -155,6 +155,9 @@ export function provide(...args) {
 export function reactive(...args) {
   return runtime().reactive(...args);
 }
+export function readonly(...args) {
+  return runtime().readonly(...args);
+}
 export function ref(...args) {
   return runtime().ref(...args);
 }

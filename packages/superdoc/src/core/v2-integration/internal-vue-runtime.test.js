@@ -33,6 +33,16 @@ describe('packaged internal Vue selection', () => {
     expect(globalThis[key].peer).toBe(peer);
   });
 
+  it('wraps refs as readonly through the installed runtime', async () => {
+    globalThis[key] = { vue: Vue };
+    const runtime = await import('./internal-vue-runtime.js');
+    const source = Vue.ref(false);
+    const view = runtime.readonly(source);
+    expect(Vue.isReadonly(view)).toBe(true);
+    source.value = true;
+    expect(view.value).toBe(true);
+  });
+
   it('provides toolbar ownership to children using the installed Vue runtime', async () => {
     globalThis[key] = { vue: Vue };
     const runtime = await import('./internal-vue-runtime.js');

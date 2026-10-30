@@ -111,9 +111,6 @@ describe('collaboration helpers', () => {
       },
       ydoc,
       commentsStore: {
-        commentsParentElement: 'parent',
-        editorCommentIds: ['1'],
-        handleEditorLocationsUpdate: vi.fn(),
         hasSyncedCollaborationComments: false,
         commentsList: [],
       },
@@ -131,8 +128,8 @@ describe('collaboration helpers', () => {
     // Trigger synced event
     const syncedHandler = superdoc.provider.on.mock.calls[0][1];
     syncedHandler();
-    expect(superdoc.commentsStore.handleEditorLocationsUpdate).toHaveBeenCalled();
     expect(superdoc.commentsStore.hasSyncedCollaborationComments).toBe(true);
+    expect(superdoc.provider.off).toHaveBeenCalledWith('synced', syncedHandler);
 
     // Trigger observation from another user
     commentsArray.items = [
@@ -249,6 +246,29 @@ describe('collaboration helpers', () => {
     expect(commentsArray._observers.size).toBe(1);
     expect(superdoc.provider.on).toHaveBeenCalledTimes(1);
     expect(superdoc.commentsStore.commentsList).toEqual([{ normalized: 'c1' }]);
+  });
+
+  it('skips non-object entries in the Yjs comments array', () => {
+    commentsArray.items = [null, 'not-a-comment', 42, new MockYMap(Object.entries({ commentId: 'c1', text: 'Hello' }))];
+
+    expect(loadCommentsFromYdoc(superdoc)).toBe(true);
+
+    expect(useCommentMock).toHaveBeenCalledTimes(1);
+    expect(superdoc.commentsStore.commentsList).toEqual([{ normalized: 'c1' }]);
+  });
+
+  it.each([
+    ['a string origin', 'remote-origin'],
+    ['a null origin', null],
+    ['an origin without a user', { client: 7 }],
+  ])('reloads comments for a transaction with %s', (_label, origin) => {
+    initCollaborationComments(superdoc);
+    useCommentMock.mockClear();
+    commentsArray.items = [new MockYMap(Object.entries({ commentId: 'c1', text: 'Hello' }))];
+
+    commentsArray.emit({ transaction: { origin } });
+
+    expect(useCommentMock).toHaveBeenCalledTimes(1);
   });
 
   it('initCollaborationComments skips when module disabled', () => {

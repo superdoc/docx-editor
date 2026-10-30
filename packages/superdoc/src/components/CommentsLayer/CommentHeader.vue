@@ -141,11 +141,13 @@ const generallyAllowed = computed(() => {
   return true;
 });
 
+const resolveIsDisabled = () => props.config.allowResolve === false;
+
 const allowResolve = computed(() => {
   if (!generallyAllowed.value) return false;
   if (props.comment.trackedChange) {
     if (!trackedChangeDecisionsVisible.value) return false;
-  } else if (!commentMutationsVisible.value || props.config.allowResolve === false) {
+  } else if (!commentMutationsVisible.value || resolveIsDisabled()) {
     return false;
   }
 
@@ -191,7 +193,7 @@ const allowReject = computed(() => {
 // is the symmetric lifecycle inverse of resolve.
 const allowReopen = computed(() => {
   if (!commentMutationsVisible.value) return false;
-  if (props.config.allowResolve === false) return false;
+  if (resolveIsDisabled()) return false;
   if (!props.reopenSupported) return false;
   if (!props.comment) return false;
   if (!props.comment.resolvedTime) return false;
@@ -260,7 +262,7 @@ const getOverflowOptions = computed(() => {
 const handleResolve = () => {
   if (props.comment?.trackedChange) {
     if (!trackedChangeDecisionsVisible.value) return;
-  } else if (!commentMutationsVisible.value || props.config.allowResolve === false) {
+  } else if (!commentMutationsVisible.value || resolveIsDisabled()) {
     return;
   }
   if (props.resolveDisabledReason) return;
@@ -272,7 +274,7 @@ const handleReject = () => {
   emit('reject');
 };
 const handleReopen = () => {
-  if (!commentMutationsVisible.value || props.config.allowResolve === false) return;
+  if (!commentMutationsVisible.value || resolveIsDisabled()) return;
   if (props.reopenDisabledReason) return;
   emit('reopen');
 };

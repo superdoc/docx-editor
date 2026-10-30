@@ -543,12 +543,14 @@ const showSeparator = computed(() => (index: number) => {
 });
 
 const commentsAreReadOnly = () => getConfig.value?.readOnly === true;
+const resolveIsDisabled = () => getConfig.value?.allowResolve === false;
 
 const showInputSection = computed(() => {
   return !commentsAreReadOnly() && isDialogActive.value && !props.comment.resolvedTime && !isEditingAnyComment.value;
 });
 
 const readOnlyMutationOutcome = () => ({ ok: false, reason: 'read-only-document' });
+const resolveDisabledOutcome = () => ({ ok: false, reason: 'resolve-disabled' });
 const trackedChangeDecisionsAreDisabled = () => {
   const allowDecisions = proxy.$superdoc?.interactionConfig?.trackedChanges?.allowDecisions;
   if (typeof allowDecisions === 'boolean') return !allowDecisions;
@@ -1343,7 +1345,7 @@ const handleResolve = async () => {
     if (trackedChangeDecisionsAreDisabled()) return trackedChangeDecisionDisabledOutcome();
   } else {
     if (commentsAreReadOnly()) return readOnlyMutationOutcome();
-    if (getConfig.value?.allowResolve === false) return { ok: false, reason: 'resolve-disabled' };
+    if (resolveIsDisabled()) return resolveDisabledOutcome();
   }
 
   const customHandler = proxy.$superdoc.config.onTrackedChangeBubbleAccept;
@@ -1441,7 +1443,7 @@ const handleResolve = async () => {
 // rejection the row stays resolved so the user can retry.
 const handleReopen = async () => {
   if (commentsAreReadOnly()) return readOnlyMutationOutcome();
-  if (getConfig.value?.allowResolve === false) return { ok: false, reason: 'resolve-disabled' };
+  if (resolveIsDisabled()) return resolveDisabledOutcome();
   if (!isV2Mode.value || !v2CommentsAdapter.value) return;
   const outcome = await commentsStore.reopenCommentV2({
     superdoc: proxy.$superdoc,

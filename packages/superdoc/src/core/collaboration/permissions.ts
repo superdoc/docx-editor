@@ -1,3 +1,6 @@
+import type { SuperDoc } from '../SuperDoc.js';
+import type { CanPerformPermissionParams, PermissionResolver, User } from '../types/index.js';
+
 export const PERMISSIONS = Object.freeze({
   RESOLVE_OWN: 'RESOLVE_OWN',
   RESOLVE_OTHER: 'RESOLVE_OTHER',
@@ -17,7 +20,12 @@ const ROLES = Object.freeze({
   VIEWER: 'viewer',
 });
 
-const PERMISSION_MATRIX = Object.freeze({
+interface PermissionAudienceRoles {
+  readonly internal: readonly string[];
+  readonly external: readonly string[];
+}
+
+const PERMISSION_MATRIX: Readonly<Partial<Record<string, PermissionAudienceRoles>>> = Object.freeze({
   [PERMISSIONS.RESOLVE_OWN]: {
     internal: [ROLES.EDITOR],
     external: [ROLES.EDITOR],
@@ -60,24 +68,36 @@ const PERMISSION_MATRIX = Object.freeze({
   },
 });
 
-const pickResolver = (context = {}) => {
+export interface PermissionContext {
+  comment?: object | null;
+  superdoc?: SuperDoc | null;
+  currentUser?: User | null;
+  permissionResolver?: PermissionResolver;
+  trackedChange?: object | null;
+}
+
+const pickResolver = (context: PermissionContext = {}): PermissionResolver | null => {
   if (typeof context.permissionResolver === 'function') return context.permissionResolver;
   if (typeof context.superdoc?.config?.permissionResolver === 'function') {
     return context.superdoc.config.permissionResolver;
   }
-  const deprecatedResolver = context.superdoc?.config?.modules?.comments?.permissionResolver;
+  const comments = context.superdoc?.config?.modules?.comments;
+  const deprecatedResolver = comments ? comments.permissionResolver : undefined;
   if (typeof deprecatedResolver === 'function') return deprecatedResolver;
   return null;
 };
 
-const BUILT_IN_PERMISSION_METHOD = Symbol.for('superdoc.internal.permission-method.builtin');
-const BUILT_IN_PERMISSION_RESOLVER = Symbol.for('superdoc.internal.permission-resolver.builtin');
+export const BUILT_IN_PERMISSION_METHOD: unique symbol = Symbol.for('superdoc.internal.permission-method.builtin');
+const BUILT_IN_PERMISSION_RESOLVER: unique symbol = Symbol.for('superdoc.internal.permission-resolver.builtin');
 
-/** Create the shell's internal, live tracked-change permission shim. */
-export const createTrackedChangePermissionResolver = (superdoc) => {
+const hasBuiltInPermissionMethodBrand = (method: unknown): boolean =>
+  ((typeof method === 'object' && method !== null) || typeof method === 'function') &&
+  Reflect.get(method, BUILT_IN_PERMISSION_METHOD) === true;
+
+export const createTrackedChangePermissionResolver = (superdoc: SuperDoc) => {
   const isBuiltInPolicy = () =>
-    superdoc.canPerformPermission?.[BUILT_IN_PERMISSION_METHOD] === true && pickResolver({ superdoc }) === null;
-  const resolver = (payload = {}) =>
+    hasBuiltInPermissionMethodBrand(superdoc.canPerformPermission) && pickResolver({ superdoc }) === null;
+  const resolver = (payload: CanPerformPermissionParams = {}): boolean =>
     isBuiltInPolicy()
       ? defaultDecisionFor(payload.permission, superdoc.config.role, superdoc.config.isInternal)
       : superdoc.canPerformPermission({
@@ -91,24 +111,30 @@ export const createTrackedChangePermissionResolver = (superdoc) => {
   return resolver;
 };
 
-const defaultDecisionFor = (permission, role, isInternal) => {
+const defaultDecisionFor = (permission: string | undefined, role: unknown, isInternal: unknown): boolean => {
+  if (permission === undefined || typeof role !== 'string') return false;
   const internalExternal = isInternal ? 'internal' : 'external';
   return PERMISSION_MATRIX[permission]?.[internalExternal]?.includes(role) ?? false;
 };
 
 const NON_DATA_PERMISSION_PROPERTY = Symbol();
 
-const readPermissionDataProperty = (source, key) => {
+const readPermissionDataProperty = (source: unknown, key: PropertyKey): unknown => {
   if (source == null) return undefined;
   if (typeof source !== 'object' && typeof source !== 'function') return NON_DATA_PERMISSION_PROPERTY;
-  for (let owner = source; owner !== null; owner = Object.getPrototypeOf(owner)) {
+  for (let owner: object | null = source; owner !== null; owner = Object.getPrototypeOf(owner)) {
     const descriptor = Object.getOwnPropertyDescriptor(owner, key);
     if (descriptor) return 'value' in descriptor ? descriptor.value : NON_DATA_PERMISSION_PROPERTY;
   }
   return undefined;
 };
 
-export const readBuiltInTrackedChangePermissionDecision = (superdoc, canPerform, permission, trackedChange) => {
+export const readBuiltInTrackedChangePermissionDecision = (
+  superdoc: unknown,
+  canPerform: unknown,
+  permission: string,
+  trackedChange: unknown,
+): boolean | null => {
   try {
     if (
       readPermissionDataProperty(superdoc, 'canPerformPermission') !== canPerform ||
@@ -156,22 +182,12 @@ export const readBuiltInTrackedChangePermissionDecision = (superdoc, canPerform,
   }
 };
 
-/**
- * Resolve a client-side permission through the built-in matrix and optional
- * resolver.
- *
- * @param {string} permission The permission to check
- * @param {string | undefined} role The role to check
- * @param {boolean | undefined} isInternal The internal/external flag
- * @param {object} [context] Context passed to the permission resolver
- * @param {object | null} [context.comment] The comment/tracked change being evaluated
- * @param {object | null} [context.superdoc] The SuperDoc instance
- * @param {object | null} [context.currentUser] The active user object performing the action
- * @param {Function} [context.permissionResolver] Explicit resolver override
- * @param {object | null} [context.trackedChange] Tracked change metadata (for tracked-change permissions)
- * @returns {boolean} Whether the permission is allowed
- */
-export const isAllowed = (permission, role, isInternal, context = {}) => {
+export const isAllowed = (
+  permission: string,
+  role: string | undefined,
+  isInternal: boolean | undefined,
+  context: PermissionContext = {},
+): boolean => {
   const defaultDecision = defaultDecisionFor(permission, role, isInternal);
   const resolver = pickResolver(context);
 

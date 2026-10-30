@@ -30,7 +30,7 @@ import {
 } from './collaboration/resolve-v2-collaboration-target.js';
 import { createV2AwarenessDiffer, type V2AwarenessSnapshotLike } from './collaboration/v2-awareness-bridge.js';
 import { documentByteSourceToBlob, isDocumentByteSource, normalizeDocumentEntry } from './helpers/file.js';
-import { isAllowed } from './collaboration/permissions.js';
+import { BUILT_IN_PERMISSION_METHOD, isAllowed } from './collaboration/permissions.js';
 import { Whiteboard } from './whiteboard/Whiteboard';
 import { WhiteboardRenderer } from './whiteboard/WhiteboardRenderer';
 import { SurfaceManager } from './surface-manager.js';
@@ -4316,10 +4316,6 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
   }
 }
 
-Object.defineProperty(
-  SuperDoc.prototype.canPerformPermission,
-  Symbol.for('superdoc.internal.permission-method.builtin'),
-  {
-    value: true,
-  },
-);
+Object.defineProperty(SuperDoc.prototype.canPerformPermission, BUILT_IN_PERMISSION_METHOD, {
+  value: true,
+});

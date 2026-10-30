@@ -264,7 +264,7 @@ import type {
   ViewingTrackedChangesMode,
 } from './types/index.js';
 import type { SuperDocActiveEditorExtensions } from './extensions/index.js';
-import type { EditorRuntime, EditorRuntimeId } from './editor-runtime/index.js';
+import type { EditorRuntime, EditorRuntimeId, EditorRuntimeUser } from './editor-runtime/index.js';
 import type { EditorRuntimeRegistryUnsubscribe } from './editor-runtime/editor-runtime-registry.js';
 import type * as Y from 'yjs';
 // `Whiteboard` is already imported as a value above (line 19); reuse it
@@ -641,6 +641,16 @@ interface SuperDocEventMap {
  *
  * @class
  */
+function runtimeUserOf(user: User): EditorRuntimeUser {
+  const text = (value: unknown) => (typeof value === 'string' && value ? value : undefined);
+  return {
+    name: text(user.name) ?? '',
+    ...(text(user.id) ? { id: text(user.id) } : {}),
+    ...(text(user.email) ? { email: text(user.email) } : {}),
+    ...(text(user.initials) ? { initials: text(user.initials) } : {}),
+  };
+}
+
 export class SuperDoc extends EventEmitter<SuperDocEventMap> {
   static allowedTypes = [DOCX, PDF];
 
@@ -2442,6 +2452,47 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
       throw new Error('SuperDoc: source editor not yet created — wait for the ready event before upgrading');
     }
     return editor;
+  }
+
+  setUser(user: User): Promise<void> {
+    this.#requireReady('setUser');
+    const name = typeof user?.name === 'string' ? user.name.trim() : '';
+    if (!name) return Promise.reject(new TypeError('SuperDoc.setUser requires a non-empty user name.'));
+    const next = normalizeSuperDocUser({ ...user, name });
+    const applied = this.#userSwitch.then(() => this.#applyUser(next));
+    this.#userSwitch = applied.catch(() => {});
+    return applied;
+  }
+
+  #userSwitch: Promise<void> = Promise.resolve();
+
+  async #applyUser(next: User): Promise<void> {
+    const current = this.config.user;
+    const fields = ['id', 'name', 'email', 'image', 'initials'] as const;
+    if (current && fields.every((key) => (current[key] ?? null) === (next[key] ?? null))) return;
+    const runtimes = this.#editorRuntimeRegistry.getAll();
+    const results = await Promise.allSettled(runtimes.map((runtime) => runtime.setUser?.(runtimeUserOf(next))));
+    const failure = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
+    if (failure) {
+      if (current) {
+        await Promise.allSettled(
+          runtimes
+            .filter((_, index) => results[index]!.status === 'fulfilled')
+            .map((runtime) => runtime.setUser?.(runtimeUserOf(current))),
+        );
+      }
+      throw failure.reason;
+    }
+    const target = this.config.user ?? (this.config.user = {} as User);
+    for (const key of Object.keys(target)) delete target[key];
+    Object.assign(target, next);
+    this.user = target;
+    this.#assignUserColor();
+    const storeUser = this.superdocStore?.user;
+    if (storeUser) {
+      for (const key of Object.keys(storeUser)) delete storeUser[key];
+      Object.assign(storeUser, target);
+    }
   }
 
   /**

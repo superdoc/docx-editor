@@ -10,7 +10,9 @@ type SuperDocConfig = {
 };
 
 export class SuperDoc {
+  static readyGate: Promise<void> | null = null;
   config: SuperDocConfig;
+  user: Record<string, unknown> | undefined;
   private zoom: number;
   private zoomMode = 'manual';
   private destroyed = false;
@@ -21,9 +23,11 @@ export class SuperDoc {
     }
 
     this.config = config;
+    this.user = config.user as Record<string, unknown> | undefined;
     this.zoom = typeof config.zoom?.initial === 'number' ? config.zoom.initial : 100;
 
-    queueMicrotask(() => {
+    const gate = SuperDoc.readyGate ?? Promise.resolve();
+    void gate.then(() => {
       if (this.destroyed) return;
       this.config.onEditorCreate?.({ editor: {}, superdoc: this });
       this.config.onReady?.({ superdoc: this });
@@ -42,6 +46,10 @@ export class SuperDoc {
 
   setDocumentMode(mode: string) {
     this.config.documentMode = mode;
+  }
+
+  async setUser(user: Record<string, unknown>) {
+    this.user = { ...user };
   }
 
   setZoom(zoom: number) {

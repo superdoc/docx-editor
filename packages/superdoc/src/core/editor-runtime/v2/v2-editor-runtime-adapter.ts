@@ -5,6 +5,7 @@ import type {
   EditorRuntimeCommandKind,
   EditorRuntimeCommandResult,
   EditorRuntimeDocumentMode,
+  EditorRuntimeUser,
   EditorRuntimeEvent,
   EditorRuntimeExportOptions,
   EditorRuntimeFocusOptions,
@@ -177,6 +178,7 @@ interface ModeAwareHostLike {
   subscribe(listener: (snapshot: HostSnapshotLike) => void): () => void;
   getDocumentMode(): EditorRuntimeDocumentMode;
   setDocumentMode(mode: EditorRuntimeDocumentMode): void;
+  setUser?(user: EditorRuntimeUser): Promise<void>;
   setTrackedChangesRenderOptions(options?: { mode?: 'review' | 'original' | 'final' | 'off'; enabled?: boolean }): void;
   setShowFormattingMarks(show: boolean): void;
   dispatch(command: HostCommandLike): Promise<HostDispatchResultLike>;
@@ -805,6 +807,9 @@ export function createV2EditorRuntimeAdapter(options: V2EditorRuntimeAdapterOpti
     getSnapshot: () => runtimeSnapshot(),
     setDocumentMode(mode) {
       host.setDocumentMode(mode);
+    },
+    async setUser(user) {
+      await host.setUser?.(user);
     },
     getDocumentMode: () => host.getDocumentMode(),
     setTrackedChangesRenderOptions(options) {

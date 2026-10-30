@@ -10,6 +10,7 @@ export type {
   EditorRuntimeKind,
   EditorRuntimeId,
   EditorRuntimeDocumentMode,
+  EditorRuntimeUser,
   EditorRuntimeState,
   // the runtime
   EditorRuntime,

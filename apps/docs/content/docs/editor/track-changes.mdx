@@ -48,6 +48,20 @@ You do not need to enable tracking separately. In `suggesting` mode, supported e
 Select a proposed change to reveal its review actions. You can keep the built-in UI or use
 [custom review controls](/editor/custom-ui/tracked-changes); the document workflow is the same.
 
+### Change who is editing
+
+When someone else takes over the open document, switch the user instead of reopening it:
+
+```ts
+await superdoc.setUser({ name: 'Sam Ortiz', email: 'sam@example.com' });
+```
+
+Edits and comments that start after the promise resolves are credited to the new user, and own-versus-other
+permissions follow them. Existing proposals and comments keep their authors, the undo history is kept, and the two
+users' typing is never merged into one undo step. Fields you leave out, such as `email`, are cleared rather than kept
+from the previous user. `name` is required. In React, change the `user` prop; `SuperDocEditor` calls `setUser` for
+you and keeps the editor mounted. The name collaborators see on your caret does not change.
+
 ## Save and reopen the review
 
 Make three separate edits. Accept one, reject another, and leave the third undecided. Use **Export DOCX** in your project,

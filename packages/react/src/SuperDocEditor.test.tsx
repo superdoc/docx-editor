@@ -543,7 +543,60 @@ describe('SuperDocEditor', () => {
     );
 
     it(
-      'rebuilds and remounts a new instance when user prop value actually changes',
+      'applies a user change made before the editor is ready once it becomes ready',
+      async () => {
+        const { SuperDoc } = (await import('superdoc')) as unknown as { SuperDoc: { readyGate: Promise<void> | null } };
+        let ready!: () => void;
+        SuperDoc.readyGate = new Promise<void>((resolve) => {
+          ready = resolve;
+        });
+        const ref = createRef<SuperDocRef>();
+        const onReady = vi.fn();
+        const props = { ref, onReady };
+        try {
+          const { rerender } = render(<SuperDocEditor {...props} user={{ name: 'Alex' }} />);
+          await waitFor(() => expect(ref.current?.getInstance()).toBeTruthy());
+          rerender(<SuperDocEditor {...props} user={{ name: 'Jamie' }} />);
+          expect(ref.current?.getInstance()?.user?.name).toBe('Alex');
+        } finally {
+          SuperDoc.readyGate = null;
+          ready();
+        }
+
+        await waitFor(() => expect(ref.current?.getInstance()?.user?.name).toBe('Jamie'), {
+          timeout: SUPERDOC_READY_WAIT_TIMEOUT,
+        });
+        expect(onReady).toHaveBeenCalledTimes(1);
+      },
+      SUPERDOC_READY_TEST_TIMEOUT,
+    );
+
+    it(
+      'reports a failed user switch through onException without rebuilding',
+      async () => {
+        const ref = createRef<SuperDocRef>();
+        const onReady = vi.fn();
+        const onException = vi.fn();
+        const onEditorDestroy = vi.fn();
+        const props = { ref, onReady, onException, onEditorDestroy };
+        const { rerender } = render(<SuperDocEditor {...props} user={{ name: 'Alex' }} />);
+        await waitFor(() => expect(onReady).toHaveBeenCalled(), { timeout: SUPERDOC_READY_WAIT_TIMEOUT });
+        const instance = ref.current!.getInstance()!;
+        vi.spyOn(instance, 'setUser').mockRejectedValueOnce(new Error('worker closed'));
+
+        rerender(<SuperDocEditor {...props} user={{ name: 'Jamie' }} />);
+
+        await waitFor(() =>
+          expect(onException).toHaveBeenCalledWith({ error: expect.objectContaining({ message: 'worker closed' }) }),
+        );
+        expect(ref.current?.getInstance()).toBe(instance);
+        expect(onEditorDestroy).not.toHaveBeenCalled();
+      },
+      SUPERDOC_READY_TEST_TIMEOUT,
+    );
+
+    it(
+      'switches the user on the live instance without rebuilding when the user prop value changes',
       async () => {
         const ref = createRef<SuperDocRef>();
         const onReady = vi.fn();
@@ -570,10 +623,13 @@ describe('SuperDocEditor', () => {
           />,
         );
 
-        // Old instance torn down, new instance ready.
-        await waitFor(() => expect(onEditorDestroy).toHaveBeenCalled(), { timeout: SUPERDOC_READY_WAIT_TIMEOUT });
-        await waitFor(() => expect(onReady).toHaveBeenCalledTimes(2), { timeout: SUPERDOC_READY_WAIT_TIMEOUT });
-        expect(ref.current?.getInstance()).not.toBe(instanceBefore);
+        await waitFor(() => expect(ref.current?.getInstance()?.user?.name).toBe('Jamie'), {
+          timeout: SUPERDOC_READY_WAIT_TIMEOUT,
+        });
+        expect(ref.current?.getInstance()?.user?.email).toBe('jamie@example.com');
+        expect(ref.current?.getInstance()).toBe(instanceBefore);
+        expect(onEditorDestroy).not.toHaveBeenCalled();
+        expect(onReady).toHaveBeenCalledTimes(1);
       },
       SUPERDOC_READY_TEST_TIMEOUT,
     );
@@ -618,11 +674,11 @@ describe('SuperDocEditor', () => {
     );
 
     it(
-      'still rebuilds under StrictMode when user prop value actually changes',
+      'switches the user without rebuilding under StrictMode when the user prop value changes',
       async () => {
         // The same-content StrictMode test above proves memoization survives
-        // double-invocation. This test proves the positive path — a real
-        // value change under StrictMode still tears down and remounts.
+        // double-invocation. This test proves a real value change under
+        // StrictMode switches the user on the same instance.
         const ref = createRef<SuperDocRef>();
         const onReady = vi.fn();
         const onEditorDestroy = vi.fn();
@@ -652,10 +708,10 @@ describe('SuperDocEditor', () => {
           </StrictMode>,
         );
 
-        await waitFor(() => expect(onEditorDestroy).toHaveBeenCalled(), { timeout: SUPERDOC_READY_WAIT_TIMEOUT });
-        await waitFor(() => expect(ref.current?.getInstance()).not.toBe(instanceBefore), {
+        await waitFor(() => expect(ref.current?.getInstance()?.user?.name).toBe('Jamie'), {
           timeout: SUPERDOC_READY_WAIT_TIMEOUT,
         });
+        expect(ref.current?.getInstance()).toBe(instanceBefore);
       },
       SUPERDOC_READY_TEST_TIMEOUT,
     );

@@ -426,6 +426,13 @@ export type EditorRuntimeUnsubscribe = () => void;
  * synchronous so they can back existing synchronous shell APIs and Vue
  * computeds without forcing them async in current implementation.
  */
+export interface EditorRuntimeUser {
+  name: string;
+  id?: string;
+  email?: string;
+  initials?: string;
+}
+
 export interface EditorRuntime {
   readonly id: EditorRuntimeId;
   readonly kind: EditorRuntimeKind;
@@ -437,6 +444,7 @@ export interface EditorRuntime {
   getSnapshot(): EditorRuntimeSnapshot;
   setDocumentMode(mode: EditorRuntimeDocumentMode): void;
   getDocumentMode(): EditorRuntimeDocumentMode;
+  setUser?(user: EditorRuntimeUser): Promise<void>;
   setTrackedChangesRenderOptions(options?: { mode?: 'review' | 'original' | 'final' | 'off'; enabled?: boolean }): void;
   setShowFormattingMarks(show: boolean): void;
 

@@ -1,5 +1,6 @@
 import {
   forwardRef,
+  useCallback,
   useEffect,
   useImperativeHandle,
   useRef,
@@ -107,6 +108,8 @@ function SuperDocEditorInner(props: SuperDocEditorProps, ref: ForwardedRef<Super
   // that a consumer may intentionally swap. See SD-2635.
   const user = useMemoByValue(userProp);
   const users = useMemoByValue(usersProp);
+  const userRef = useRef(user);
+  userRef.current = user;
 
   const instanceRef = useRef<SuperDocInstance | null>(null);
   const toolbarContainerRef = useRef<HTMLDivElement | null>(null);
@@ -179,6 +182,19 @@ function SuperDocEditorInner(props: SuperDocEditorProps, ref: ForwardedRef<Super
     prevDocumentModeRef.current = documentMode;
   }, [documentMode]);
 
+  const appliedUserRef = useRef(user);
+  const applyUser = useCallback((instance: SuperDocInstance) => {
+    const next = userRef.current;
+    if (appliedUserRef.current === next || !next) return;
+    appliedUserRef.current = next;
+    instance.setUser(next).catch((error: unknown) => {
+      callbacksRef.current.onException?.({ error: error as Error });
+    });
+  }, []);
+  useEffect(() => {
+    if (instanceRef.current && !isInitializingRef.current) applyUser(instanceRef.current);
+  }, [user, applyUser]);
+
   // Expose ref methods - simplified API with just getInstance()
   useImperativeHandle(
     ref,
@@ -221,7 +237,7 @@ function SuperDocEditorInner(props: SuperDocEditorProps, ref: ForwardedRef<Super
           role,
           contained,
           ...(documentProp != null ? { document: documentProp } : {}),
-          ...(user ? { user } : {}),
+          ...(userRef.current ? { user: userRef.current } : {}),
           ...(users ? { users } : {}),
           ...(modules ? { modules } : {}),
           ...(resolvedUi !== undefined ? { ui: resolvedUi } : {}),
@@ -236,6 +252,7 @@ function SuperDocEditorInner(props: SuperDocEditorProps, ref: ForwardedRef<Super
                 event.superdoc.setDocumentMode(pendingModeRef.current);
                 pendingModeRef.current = null;
               }
+              applyUser(event.superdoc);
 
               callbacksRef.current.onReady?.(event);
             }
@@ -287,6 +304,7 @@ function SuperDocEditorInner(props: SuperDocEditorProps, ref: ForwardedRef<Super
           },
         };
 
+        appliedUserRef.current = userRef.current;
         instance = new SuperDoc(superdocConfig) as SuperDocInstance;
         instanceRef.current = instance;
       } catch (error) {
@@ -316,7 +334,7 @@ function SuperDocEditorInner(props: SuperDocEditorProps, ref: ForwardedRef<Super
     // initial values — use getInstance() methods to change them at runtime.
     // restProps is intentionally excluded to avoid rebuilds on every render.
     // documentMode is handled separately via setDocumentMode() for efficiency.
-  }, [documentProp, user, users, modules, ui, role, hideToolbar, contained, containerId, toolbarId]);
+  }, [documentProp, users, modules, ui, role, hideToolbar, contained, containerId, toolbarId]);
 
   const wrapperClassName = ['superdoc-wrapper', className].filter(Boolean).join(' ');
   const builtInLoadingEnabled = ui !== false && ui?.loading !== false;

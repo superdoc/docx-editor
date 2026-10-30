@@ -11,6 +11,7 @@ const EXPECTED_TYPE_NAMES = [
   'EditorRuntimeKind',
   'EditorRuntimeId',
   'EditorRuntimeDocumentMode',
+  'EditorRuntimeUser',
   'EditorRuntimeState',
   // the runtime
   'EditorRuntime',

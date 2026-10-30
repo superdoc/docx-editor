@@ -167,6 +167,22 @@ describe('BuiltInToolbar', () => {
     toolbar.destroy();
   });
 
+  it('labels the document-mode button from a string text override and ignores a non-string one', () => {
+    const labelFor = (documentEditingMode: unknown) => {
+      const toolbar = new BuiltInToolbar({
+        highContrastMode: createHighContrastMode(),
+        superdoc: makeHost(),
+        texts: { documentEditingMode },
+      });
+      const label = toolbar.getToolbarItemByName('documentMode')?.label.value;
+      toolbar.destroy();
+      return label;
+    };
+
+    expect(labelFor('Edit mode')).toBe('Edit mode');
+    expect(labelFor(5)).toBe('Editing');
+  });
+
   it.each(['editing', 'suggesting', 'viewing'])(
     'opens the existing watermark workflow from the %s toolbar',
     async (documentMode) => {

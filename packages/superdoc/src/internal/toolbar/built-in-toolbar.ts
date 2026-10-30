@@ -25,7 +25,7 @@
 import { EventEmitter } from 'eventemitter3';
 import { executeFirstPartyCommandAsync } from '../../public/ui/create-super-doc-ui.js';
 import { createApp, shallowRef } from 'vue';
-import type { App, Component, ComponentPublicInstance, Ref } from 'vue';
+import type { App, Component, ComponentPublicInstance, Ref, StyleValue } from 'vue';
 import { vClickOutside } from '@superdoc/common';
 import type {
   Editor,
@@ -62,20 +62,47 @@ import { renderColorOptions } from './built-in/color-dropdown-helpers.js';
 import { findElementBySelector } from './built-in/general.js';
 import { HIGH_CONTRAST_MODE_KEY, type HighContrastMode } from '../../composables/use-high-contrast-mode.js';
 
+type ToolbarItemOption = {
+  key?: string | number;
+  label?: string;
+  type?: string;
+  disabled?: boolean;
+  render?: () => unknown;
+  [member: string]: unknown;
+};
+
+type ToolbarItemAttributes = { ariaLabel?: string; className?: unknown; [attribute: string]: unknown };
+
 interface ToolbarItem {
   type: string;
+  id: Ref<string>;
   name: Ref<string>;
   command?: unknown;
+  splitButtonCommand?: unknown;
   group: Ref<string>;
-  attributes: Ref<Record<string, unknown>>;
+  attributes: Ref<ToolbarItemAttributes>;
   disabled: Ref<boolean>;
   active: Ref<boolean>;
   expand: Ref<boolean>;
-  nestedOptions: Ref<unknown[]>;
-  label: Ref<unknown>;
-  defaultLabel: Ref<unknown>;
-  icon: Ref<unknown>;
-  selectedValue: Ref<unknown>;
+  nestedOptions: Ref<ToolbarItemOption[]>;
+  label: Ref<string | undefined>;
+  defaultLabel: Ref<string | undefined>;
+  icon: Ref<string | undefined>;
+  selectedValue: Ref<string | number | null | undefined>;
+  hideLabel: Ref<boolean | undefined>;
+  iconColor: Ref<string | undefined>;
+  hasCaret: Ref<boolean | undefined>;
+  splitButton: Ref<boolean>;
+  inlineTextInputVisible: Ref<boolean | undefined>;
+  hasInlineTextInput: Ref<boolean | undefined>;
+  style: Ref<StyleValue | undefined>;
+  isNarrow: Ref<boolean | undefined>;
+  isWide: Ref<boolean | undefined>;
+  tooltip: Ref<string | undefined>;
+  argument: Ref<unknown>;
+  restoreEditorFocus: boolean;
+  dropdownStyles: Ref<StyleValue | undefined>;
+  dropdownValueKey: Ref<string | undefined>;
   allowWithoutEditor: Ref<boolean | undefined>;
   initiallyDisabled: boolean;
   isCustomToolbarItem?: boolean;
@@ -86,8 +113,11 @@ interface ToolbarItem {
   onActivate(attributes?: Record<string, unknown>, ...args: unknown[]): unknown;
 }
 
+export type ToolbarCommandItem = Pick<ToolbarItem, 'name'> &
+  Partial<Pick<ToolbarItem, 'type' | 'command' | 'isCustomToolbarItem'>>;
+
 type ToolbarCommandCallback = (context: {
-  item: ToolbarItem;
+  item: ToolbarCommandItem;
   argument?: unknown;
   option?: unknown;
   [key: string]: unknown;
@@ -142,7 +172,17 @@ type BuiltInToolbarOptions = {
   [option: string]: unknown;
 };
 
-type DocumentModeUi = { label: unknown; icon: unknown };
+type DocumentModeUi = { label: string; icon: string | undefined };
+
+type ToolbarSelectedValue = ToolbarItem['selectedValue']['value'];
+
+function toSelectedValue(value: unknown): ToolbarSelectedValue {
+  return typeof value === 'string' || typeof value === 'number' || value === null ? value : undefined;
+}
+
+function nonEmptyString(value: unknown): string | undefined {
+  return typeof value === 'string' && value ? value : undefined;
+}
 
 function isThenable(value: unknown): value is PromiseLike<unknown> {
   return (
@@ -309,7 +349,7 @@ export class BuiltInToolbar extends EventEmitter {
   overflowItems: ToolbarItem[] = [];
   #imagePicker: ImageFilePicker | null = null;
   #groupItems = new Map<string, ToolbarItem[]>();
-  #highlightOptions = new WeakMap<ToolbarItem, unknown[]>();
+  #highlightOptions = new WeakMap<ToolbarItem, ToolbarItemOption[]>();
   #painterListenersDetach: (() => void) | null = null;
   isDev = false;
   role = 'editor';
@@ -542,7 +582,7 @@ export class BuiltInToolbar extends EventEmitter {
     const selectedCustomOptions = new Map(
       this.#getAllToolbarItems()
         .filter((item) => item.isCustomToolbarItem && item.type === 'dropdown')
-        .map((item): [string, unknown] => [item.name.value, item.selectedValue.value]),
+        .map((item): [string, ToolbarSelectedValue] => [item.name.value, item.selectedValue.value]),
     );
     const groups = this.config.groups;
     const groupComposition = groups && !Array.isArray(groups) && Object.keys(groups).length > 0 ? groups : null;
@@ -890,16 +930,19 @@ export class BuiltInToolbar extends EventEmitter {
     const texts = this.config.texts || {};
     const icons = this.config.icons || {};
     const editing: DocumentModeUi = {
-      label: texts.documentEditingMode || 'Editing',
-      icon: icons.documentEditingMode || icons.documentMode,
+      label: nonEmptyString(texts.documentEditingMode) ?? 'Editing',
+      icon: nonEmptyString(icons.documentEditingMode) ?? nonEmptyString(icons.documentMode),
     };
     const map: Readonly<Record<string, DocumentModeUi | undefined>> = {
       editing,
       suggesting: {
-        label: texts.documentSuggestingMode || 'Suggesting',
-        icon: icons.documentSuggestingMode || icons.documentMode,
+        label: nonEmptyString(texts.documentSuggestingMode) ?? 'Suggesting',
+        icon: nonEmptyString(icons.documentSuggestingMode) ?? nonEmptyString(icons.documentMode),
       },
-      viewing: { label: texts.documentViewingMode || 'Viewing', icon: icons.documentViewingMode || icons.documentMode },
+      viewing: {
+        label: nonEmptyString(texts.documentViewingMode) ?? 'Viewing',
+        icon: nonEmptyString(icons.documentViewingMode) ?? nonEmptyString(icons.documentMode),
+      },
     };
 
     const next = map[mode] || editing;
@@ -992,7 +1035,7 @@ export class BuiltInToolbar extends EventEmitter {
         else item.deactivate();
       },
       lineHeight: () => {
-        item.selectedValue.value = commandState?.value != null ? commandState.value : '';
+        item.selectedValue.value = toSelectedValue(commandState?.value) ?? '';
       },
       zoom: () => {
         if (commandState?.value != null) {
@@ -1058,12 +1101,12 @@ export class BuiltInToolbar extends EventEmitter {
           typeof value === 'string' ? value : styleValue && 'styleId' in styleValue ? styleValue.styleId : undefined;
         const styleName = styleValue ? ('styleName' in styleValue ? styleValue.styleName : undefined) : null;
         if (styleId) item.activate({ styleId, styleName });
-        else item.label.value = this.config.texts?.formatText || 'Format text';
+        else item.label.value = nonEmptyString(this.config.texts?.formatText) ?? 'Format text';
       },
       list: () => {
         if (commandState?.active) {
           item.activate();
-          item.selectedValue.value = commandState.value;
+          item.selectedValue.value = toSelectedValue(commandState.value);
         } else {
           item.deactivate();
           item.selectedValue.value = null;
@@ -1072,7 +1115,7 @@ export class BuiltInToolbar extends EventEmitter {
       numberedlist: () => {
         if (commandState?.active) {
           item.activate();
-          item.selectedValue.value = commandState.value;
+          item.selectedValue.value = toSelectedValue(commandState.value);
         } else {
           item.deactivate();
           item.selectedValue.value = null;
@@ -1164,7 +1207,7 @@ export class BuiltInToolbar extends EventEmitter {
    * Execute the controller-backed command for an item through the shared
    * controller. Returns true when handled.
    */
-  #executeControllerCommand(item: ToolbarItem, argument: unknown): boolean {
+  #executeControllerCommand(item: ToolbarCommandItem, argument: unknown): boolean {
     const name = item?.name?.value;
     if (!name) return false;
     const callbacks: ExecuteCommandOptions = {
@@ -1309,7 +1352,7 @@ export class BuiltInToolbar extends EventEmitter {
   /**
    * Main toolbar command entry point used by the rendered components.
    */
-  emitCommand({ item, argument, option }: { item: ToolbarItem; argument?: unknown; option?: unknown }) {
+  emitCommand({ item, argument, option }: { item: ToolbarCommandItem; argument?: unknown; option?: unknown }) {
     const name = item?.name?.value;
     const { command } = item;
 

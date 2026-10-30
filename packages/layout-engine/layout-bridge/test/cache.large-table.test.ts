@@ -51,6 +51,27 @@ describe('bounded table measurement identity', () => {
     expect(cache.get(block, 400, 600)).toEqual({ height: 100 });
   });
 
+  it.each([0, 500, 999])('bounds marker-bearing 10K-cell keys and invalidates nested marker edits in row %i', (row) => {
+    const block = table();
+    const paragraph = block.rows[row]!.cells[0]!.blocks![0] as ParagraphBlock;
+    paragraph.attrs = { wordLayout: { marker: { markerText: '1.3→1.2', run: { fontFamily: 'Arial', fontSize: 16 } } } };
+    const outer: TableBlock = {
+      kind: 'table',
+      id: 'marker-outer',
+      rows: [{ id: 'r', cells: [{ id: 'c', blocks: [block] }] }],
+    };
+    const cache = new MeasureCache<number>();
+    cache.set(outer, 400, 600, 42, 'fonts');
+    expect(hashMeasureContent(outer).length).toBeLessThan(128);
+    expect(cache.prepareKey(outer, 400, 600, 'fonts').length).toBeLessThan(192);
+    expect(cache.get(structuredClone(outer), 400, 600, 'fonts')).toBe(42);
+    const changed = structuredClone(outer);
+    const nested = changed.rows[0]!.cells[0]!.blocks![0] as TableBlock;
+    (nested.rows[row]!.cells[0]!.blocks![0] as ParagraphBlock).attrs!.wordLayout!.marker!.markerText = '1.2';
+    expect(cache.get(changed, 400, 600, 'fonts')).toBeUndefined();
+    expect(cache.get(outer, 400, 600, 'fonts')).toBe(42);
+  });
+
   it('streams the existing ordered serialization, including nested tables and geometry', () => {
     const block: TableBlock = {
       kind: 'table',

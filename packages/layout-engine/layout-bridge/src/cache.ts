@@ -19,6 +19,7 @@ import {
   type TextRun,
 } from '@superdoc/contracts';
 import type { FontMeasureCapabilities } from '@superdoc/font-system';
+import type { MinimalWordLayout } from '@superdoc/common/list-marker-utils';
 import { fieldAnnotationKey } from './field-annotation-key.js';
 import { inlineBoxKey } from './inline-box-key.js';
 import { hasTrackedChange, resolveTrackedChangesEnabled } from './tracked-changes-utils.js';
@@ -417,7 +418,9 @@ const writeTableHash = (tableBlock: TableBlock, write: HashWriter, capabilities?
         }
 
         const paragraphBlock = cellBlock;
-        const marker = paragraphBlock.attrs?.wordLayout?.marker;
+        const wordLayout = paragraphBlock.attrs?.wordLayout as MinimalWordLayout | undefined;
+        const marker = wordLayout?.marker;
+        const markerRunKey = markerRunSignature(paragraphBlock.attrs?.wordLayout?.marker?.run);
         const numbering = paragraphBlock.attrs?.numberingProperties;
         if (numbering)
           append(
@@ -425,7 +428,7 @@ const writeTableHash = (tableBlock: TableBlock, write: HashWriter, capabilities?
               numbering.numId ?? null,
               numbering.ilvl ?? 0,
               marker ? (marker.markerText ?? null) : null,
-              markerRunSignature(marker?.run),
+              markerRunKey,
             ])}`,
           );
 
@@ -478,6 +481,32 @@ const writeTableHash = (tableBlock: TableBlock, write: HashWriter, capabilities?
               write(comment.internal ? ':1' : ':0');
             }
           }
+        }
+
+        if (marker) {
+          append(
+            'marker:',
+            JSON.stringify([
+              marker.markerText,
+              markerRunKey,
+              marker.run?.allCaps,
+              marker.run?.smallCaps,
+              marker.justification,
+              marker.suffix,
+              marker.gutterWidthPx,
+              marker.markerBoxWidthPx,
+              marker.glyphWidthPx,
+              marker.markerX,
+              marker.textStartX,
+              wordLayout.textStartMode,
+              wordLayout.firstLineIndentMode,
+              wordLayout.textStartPx,
+              wordLayout.indentLeftPx,
+              wordLayout.firstLinePx,
+              wordLayout.hangingPx,
+              wordLayout.tabsPx,
+            ]),
+          );
         }
 
         const trackedMode = paragraphBlock.attrs?.trackedChangesMode || 'review';

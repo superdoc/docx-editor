@@ -1,5 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
-import type { FlowBlock, ParagraphBlock, ParagraphMeasure, SectionBreakBlock } from '@superdoc/contracts';
+import type {
+  FlowBlock,
+  Measure,
+  ParagraphBlock,
+  ParagraphMeasure,
+  SectionBreakBlock,
+  TableBlock,
+} from '@superdoc/contracts';
 import { createDomMeasurementRuntime } from '@superdoc/measuring-dom';
 import { resolveCanvas } from '@superdoc/measuring-dom/canvas-resolver';
 import { incrementalLayout, measureCache } from '../src/incrementalLayout';
@@ -46,7 +53,10 @@ describe('incrementalLayout previous-measure reuse', () => {
       lines: [],
       totalHeight: 10,
     }));
-    const fontContext = { fontSignature: 'tabular-face', resolvePhysical: (family: string) => family };
+    const fontContext = {
+      fontSignature: 'tabular-face',
+      resolvePhysical: (family: string) => family,
+    };
     const fontCapabilities = { hasTabularDigits: () => true };
     const previousBlocks = [makeNoteReferenceParagraph('1000')];
     const firstPass = await incrementalLayout([], null, previousBlocks, options, measureBlock, undefined, undefined, {
@@ -405,7 +415,10 @@ describe('incrementalLayout previous-measure reuse', () => {
       }),
     );
     const nextData = previousData.map((block) =>
-      freeze({ ...block, runs: block.runs.map((run) => ({ ...run, pmStart: run.pmStart + 1, pmEnd: run.pmEnd + 1 })) }),
+      freeze({
+        ...block,
+        runs: block.runs.map((run) => ({ ...run, pmStart: run.pmStart + 1, pmEnd: run.pmEnd + 1 })),
+      }),
     );
     const source = (data: FlowBlock[]) =>
       new Proxy(Object.freeze(data) as unknown as FlowBlock[], {
@@ -417,8 +430,14 @@ describe('incrementalLayout previous-measure reuse', () => {
     const previous = source(previousData),
       next = source(nextData);
     const measure = vi.fn(async () => ({ kind: 'paragraph' as const, lines: [], totalHeight: 10 }));
-    const options = { pageSize: { w: 300, h: 400 }, margins: { top: 20, right: 20, bottom: 20, left: 20 } };
-    const fontContext = { fontSignature: 'owned-lookup', resolvePhysical: (family: string) => family };
+    const options = {
+      pageSize: { w: 300, h: 400 },
+      margins: { top: 20, right: 20, bottom: 20, left: 20 },
+    };
+    const fontContext = {
+      fontSignature: 'owned-lookup',
+      resolvePhysical: (family: string) => family,
+    };
     const fontCapabilities = { hasTabularDigits: () => false };
     const cold = await incrementalLayout([], null, previous, options, measure, undefined, undefined, {
       fontContext,
@@ -544,6 +563,233 @@ describe('SD-5988 previous marker metrics', () => {
         oracle.dispose();
         measureCache.clear();
       }
+    },
+  );
+});
+
+describe('incremental table list-marker measurement reuse', () => {
+  const options = {
+    pageSize: { w: 240, h: 140 },
+    margins: { top: 10, right: 10, bottom: 10, left: 10 },
+  };
+  const fontContext = {
+    fontSignature: 'uniform-eight-pixel-face',
+    resolvePhysical: (family: string) => family,
+  };
+  const fontOptions = { fontContext, fontCapabilities: { hasTabularDigits: () => true } };
+  const transitions = [
+    ['historical half', '1.3→1.2', '1.44→1.2', 56, 64],
+    ['history removal', '1.3→1.2', '1.2', 56, 24],
+    ['history appearance', '1.2', '1.3→1.2', 24, 56],
+    ['current half', '1.3→1.2', '1.3→1.22', 56, 64],
+  ] as const;
+  const table = (markerText: string, shape: 'modern' | 'legacy' | 'nested'): TableBlock => {
+    const paragraph: ParagraphBlock = {
+      kind: 'paragraph',
+      id: 'marker-owner',
+      runs: [{ text: 'Follower', fontFamily: 'Arial', fontSize: 16 }],
+      attrs: {
+        wordLayout: {
+          marker: { markerText, suffix: 'nothing', run: { fontFamily: 'Arial', fontSize: 16 } },
+        },
+      },
+    };
+    const inner: TableBlock = {
+      kind: 'table',
+      id: 'marker-table',
+      columnWidths: [200],
+      rows: [
+        {
+          id: 'row',
+          cells: [{ id: 'cell', ...(shape === 'legacy' ? { paragraph } : { blocks: [paragraph] }) }],
+        },
+      ],
+    };
+    return shape === 'nested'
+      ? {
+          kind: 'table',
+          id: 'outer-table',
+          columnWidths: [200],
+          rows: [{ id: 'outer-row', cells: [{ id: 'outer-cell', blocks: [inner] }] }],
+        }
+      : inner;
+  };
+  const measureUniform = (block: FlowBlock): Measure => {
+    if (block.kind === 'table') {
+      const cell = block.rows[0]!.cells[0]!;
+      const blocks = (cell.blocks ?? (cell.paragraph ? [cell.paragraph] : [])).map(measureUniform);
+      return {
+        kind: 'table',
+        totalWidth: 200,
+        columnWidths: [200],
+        totalHeight: 20,
+        rows: [{ height: 20, cells: [{ width: 200, height: 20, blocks }] }],
+      };
+    }
+    if (block.kind !== 'paragraph') throw new Error('Expected paragraph or table');
+    const markerText = block.attrs?.wordLayout?.marker?.markerText;
+    const width = (markerText?.length ?? 0) * 8;
+    const characterCount = block.runs.reduce((count, run) => count + ('text' in run ? (run.text?.length ?? 0) : 0), 0);
+    return {
+      kind: 'paragraph',
+      totalHeight: 20,
+      ...(markerText === undefined
+        ? {}
+        : { marker: { markerWidth: width + 8, markerTextWidth: width, indentLeft: 0 } }),
+      lines: [
+        {
+          fromRun: 0,
+          fromChar: 0,
+          toRun: 0,
+          toChar: characterCount,
+          width: characterCount * 8,
+          maxWidth: 200 - width,
+          ascent: 12,
+          descent: 4,
+          lineHeight: 20,
+        },
+      ],
+    };
+  };
+  const paragraphMeasure = (measure: Measure): ParagraphMeasure => {
+    if (measure.kind === 'paragraph') return measure;
+    if (measure.kind !== 'table') throw new Error('Expected table measure');
+    return paragraphMeasure(measure.rows[0]!.cells[0]!.blocks![0]!);
+  };
+
+  beforeEach(() => measureCache.clear());
+
+  describe.each(['modern', 'legacy', 'nested'] as const)('%s cells', (shape) => {
+    it.each(transitions)('matches cold layout after changing %s', async (_name, before, after, oldWidth, nextWidth) => {
+      const measure = vi.fn(async (block: FlowBlock) => measureUniform(block));
+      const previous = [table(before, shape)];
+      const next = [table(after, shape)];
+      const initial = await incrementalLayout([], null, previous, options, measure, undefined, undefined, fontOptions);
+      const equal = await incrementalLayout(
+        [],
+        null,
+        structuredClone(previous),
+        options,
+        measure,
+        undefined,
+        undefined,
+        fontOptions,
+      );
+      expect(equal.measures[0]).toBe(initial.measures[0]);
+      expect(measure).toHaveBeenCalledTimes(1);
+      expect(paragraphMeasure(initial.measures[0]!)).toMatchObject({
+        marker: { markerTextWidth: oldWidth },
+        lines: [{ maxWidth: 200 - oldWidth }],
+      });
+      const warm = await incrementalLayout(
+        previous,
+        initial.layout,
+        next,
+        options,
+        measure,
+        undefined,
+        initial.measures,
+        { ...fontOptions, previousFontSignature: fontContext.fontSignature },
+      );
+      measureCache.clear();
+      const cold = await incrementalLayout([], null, next, options, measure, undefined, undefined, fontOptions);
+      expect(paragraphMeasure(cold.measures[0]!)).toMatchObject({
+        marker: { markerTextWidth: nextWidth },
+        lines: [{ maxWidth: 200 - nextWidth }],
+      });
+      expect(warm.measures).toEqual(cold.measures);
+      expect(warm.layout.pages).toEqual(cold.layout.pages);
+      expect(measure).toHaveBeenCalledTimes(3);
+    });
+  });
+
+  it('misses the LRU without previous blocks when only the marker changes', async () => {
+    const measure = vi.fn(async (block: FlowBlock) => measureUniform(block));
+    await incrementalLayout(
+      [],
+      null,
+      [table('1.3→1.2', 'modern')],
+      options,
+      measure,
+      undefined,
+      undefined,
+      fontOptions,
+    );
+    const next = [table('1.2', 'modern')];
+    const warm = await incrementalLayout([], null, next, options, measure, undefined, undefined, fontOptions);
+    expect(paragraphMeasure(warm.measures[0]!).marker?.markerTextWidth).toBe(24);
+    expect(measure).toHaveBeenCalledTimes(2);
+    measureCache.clear();
+    const cold = await incrementalLayout([], null, next, options, measure, undefined, undefined, fontOptions);
+    expect(warm.measures).toEqual(cold.measures);
+    expect(warm.layout.pages).toEqual(cold.layout.pages);
+  });
+
+  it.each([true, false])(
+    'checks marker content after four misses before previous-measure adoption: changed=%s',
+    async (changed) => {
+      const measure = vi.fn(async (block: FlowBlock) => measureUniform(block));
+      const previous: FlowBlock[] = [
+        ...Array.from({ length: 4 }, (_, index) => makeParagraph(`before-${index}`, `Before ${index}`)),
+        table('1.3→1.2', 'modern'),
+        makeParagraph('downstream', 'Unchanged'),
+      ];
+      const nextTable = table(changed ? '1.2' : '1.3→1.2', 'modern');
+      nextTable.rows[0]!.id = 'reprojected-row';
+      const next: FlowBlock[] = [
+        ...Array.from({ length: 4 }, (_, index) => makeParagraph(`before-${index}`, `After ${index}`)),
+        nextTable,
+        structuredClone(previous[5]!),
+      ];
+      const initial = await incrementalLayout([], null, previous, options, measure, undefined, undefined, fontOptions);
+      measureCache.clear();
+      measure.mockClear();
+      const warm = await incrementalLayout(
+        previous,
+        initial.layout,
+        next,
+        options,
+        measure,
+        undefined,
+        initial.measures,
+        { ...fontOptions, previousFontSignature: fontContext.fontSignature },
+      );
+      expect(warm.bridgeTiming.counters.measureContentSignatureComputations).toBeGreaterThanOrEqual(
+        previous.length + 1,
+      );
+      expect(measure.mock.calls.filter(([block]) => block.kind === 'table')).toHaveLength(changed ? 1 : 0);
+      expect(measure.mock.calls.filter(([block]) => block.id === 'downstream')).toHaveLength(0);
+      if (!changed) expect(warm.measures[4]).toBe(initial.measures[4]);
+      measureCache.clear();
+      const cold = await incrementalLayout([], null, next, options, measure, undefined, undefined, fontOptions);
+      expect(warm.measures).toEqual(cold.measures);
+      expect(warm.layout.pages).toEqual(cold.layout.pages);
+    },
+  );
+
+  it.each([undefined, { hasTabularDigits: () => false }])(
+    'matches cold layout with font capabilities %s',
+    async (fontCapabilities) => {
+      const measure = vi.fn(async (block: FlowBlock) => measureUniform(block));
+      const fonts = { fontContext, fontCapabilities };
+      const previous = [table('1.3→1.2', 'modern')];
+      const next = [table('1.2', 'modern')];
+      const initial = await incrementalLayout([], null, previous, options, measure, undefined, undefined, fonts);
+      const warm = await incrementalLayout(
+        previous,
+        initial.layout,
+        next,
+        options,
+        measure,
+        undefined,
+        initial.measures,
+        { ...fonts, previousFontSignature: fontContext.fontSignature },
+      );
+      expect(measure).toHaveBeenCalledTimes(2);
+      measureCache.clear();
+      const cold = await incrementalLayout([], null, next, options, measure, undefined, undefined, fonts);
+      expect(warm.measures).toEqual(cold.measures);
+      expect(warm.layout.pages).toEqual(cold.layout.pages);
     },
   );
 });

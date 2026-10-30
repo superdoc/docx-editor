@@ -1,7 +1,14 @@
 // @vitest-environment jsdom
 import '../../measuring/dom/vitest.setup';
-import { expect, it } from 'vite-plus/test';
-import type { FlowBlock, ParagraphBlock, TableBlock, TableMeasure } from '@superdoc/contracts';
+import { describe, expect, it, vi } from 'vite-plus/test';
+import type {
+  FlowBlock,
+  Measure,
+  ParagraphBlock,
+  ParagraphMeasure,
+  TableBlock,
+  TableMeasure,
+} from '@superdoc/contracts';
 import {
   createDomMeasurementRuntime,
   readTableMeasurementClosure,
@@ -11,6 +18,12 @@ import { computeDirtyRegions } from '../src/diff.js';
 import { analyzeTableLayoutLocality } from '../src/table-layout-locality.js';
 import { clearIncrementalModuleState, incrementalLayout, type IncrementalMeasureReuseProof } from '../src/index.js';
 import { measureCache } from '../src/incrementalLayout.js';
+import { resolveCanvas } from '../../measuring/dom/src/canvas-resolver.js';
+import { resolveParagraphContent } from '../../layout-resolved/src/resolveParagraph.js';
+import {
+  createListMarkerElement,
+  resolvePainterListMarkerGeometry,
+} from '../../painters/dom/src/paragraph/list-marker.js';
 
 function freezeData<T>(value: T): T {
   if (value && typeof value === 'object') {
@@ -82,7 +95,12 @@ it('carries the canonical paragraph proof through changing-height measurement an
                   blocks: [
                     {
                       ...paragraph,
-                      runs: [{ ...paragraph.runs[0], text: 'An edited cell that wraps onto more than one line' }],
+                      runs: [
+                        {
+                          ...paragraph.runs[0],
+                          text: 'An edited cell that wraps onto more than one line',
+                        },
+                      ],
                     },
                   ],
                 },
@@ -121,7 +139,12 @@ it('carries the canonical paragraph proof through changing-height measurement an
             ? {
                 retainedTable: {
                   ...constraints.retainedTable,
-                  paragraphReplacement: { current: edited, rowIndex: 2, cellIndex: 0, blockIndex: 0 },
+                  paragraphReplacement: {
+                    current: edited,
+                    rowIndex: 2,
+                    cellIndex: 0,
+                    blockIndex: 0,
+                  },
                 },
               }
             : {}),
@@ -154,7 +177,10 @@ it('carries the canonical paragraph proof through changing-height measurement an
       previousMeasure: previousTable,
       currentMeasure: currentTable,
     };
-    expect(readTableMeasurementClosure(closureInput)).toEqual({ firstAffectedRow: 2, lastAffectedRowExclusive: 4 });
+    expect(readTableMeasurementClosure(closureInput)).toEqual({
+      firstAffectedRow: 2,
+      lastAffectedRowExclusive: 4,
+    });
     expect(analyzeTableLayoutLocality(closureInput)).toMatchObject({
       currentFirstAffectedRow: 2,
       currentLastAffectedRowExclusive: 4,
@@ -197,7 +223,10 @@ it.each([
     clearIncrementalModuleState();
     const runtime = createDomMeasurementRuntime();
     const coldRuntime = createDomMeasurementRuntime();
-    const fonts = { fontSignature: 'prepared-table-v1', resolvePhysical: (family: string) => family };
+    const fonts = {
+      fontSignature: 'prepared-table-v1',
+      resolvePhysical: (family: string) => family,
+    };
     const fontCapabilities = { hasTabularDigits: () => false };
     const options = {
       pageSize: { w: 240, h: 140 },
@@ -391,3 +420,186 @@ it.each([
     }
   },
 );
+
+describe('native table marker cache geometry', () => {
+  const fonts = {
+    fontSignature: 'native-marker-table',
+    resolvePhysical: (family: string) => family,
+  };
+  const options = {
+    pageSize: { w: 240, h: 140 },
+    margins: { top: 10, right: 10, bottom: 10, left: 10 },
+  };
+  const paragraph = (markerText: string): ParagraphBlock => ({
+    kind: 'paragraph',
+    id: 'native-marker-owner',
+    runs: [
+      {
+        text: 'Follower text wraps inside a narrow table cell with unchanged content.',
+        fontFamily: 'Arial',
+        fontSize: 16,
+      },
+    ],
+    attrs: {
+      wordLayout: {
+        marker: {
+          markerText,
+          suffix: 'space',
+          justification: 'left',
+          run: { fontFamily: 'Arial', fontSize: 16 },
+          trackedChange: { id: 'marker-format', kind: 'format', author: 'Reviewer' },
+        },
+      },
+    },
+  });
+  const table = (markerText: string, shape: 'modern' | 'legacy' | 'nested'): TableBlock => {
+    const inner: TableBlock = {
+      kind: 'table',
+      id: 'native-marker-table',
+      attrs: { tableLayout: 'fixed' },
+      columnWidths: [200],
+      rows: [
+        {
+          id: 'row',
+          cells: [
+            {
+              id: 'cell',
+              ...(shape === 'legacy' ? { paragraph: paragraph(markerText) } : { blocks: [paragraph(markerText)] }),
+            },
+          ],
+        },
+      ],
+    };
+    return freezeData(
+      shape === 'nested'
+        ? {
+            kind: 'table',
+            id: 'native-outer-table',
+            attrs: { tableLayout: 'fixed' },
+            columnWidths: [200],
+            rows: [{ id: 'outer-row', cells: [{ id: 'outer-cell', blocks: [inner] }] }],
+          }
+        : inner,
+    );
+  };
+  const readParagraph = (measure: Measure): ParagraphMeasure => {
+    if (measure.kind === 'paragraph') return measure;
+    if (measure.kind !== 'table') throw new Error('Expected table measure');
+    const cell = measure.rows[0]!.cells[0]!;
+    return readParagraph(cell.blocks?.[0] ?? cell.paragraph!);
+  };
+  const resolveAndPaint = (block: ParagraphBlock, measure: ParagraphMeasure) => {
+    const resolved = resolveParagraphContent(
+      {
+        kind: 'para',
+        blockId: block.id,
+        x: 0,
+        y: 0,
+        width: measure.measuredAtMaxWidth!,
+        fromLine: 0,
+        toLine: measure.lines.length,
+        markerWidth: measure.marker!.markerWidth,
+        markerTextWidth: measure.marker!.markerTextWidth,
+      },
+      block,
+      measure,
+    );
+    const marker = resolved.marker!;
+    const element = createListMarkerElement(
+      document,
+      marker.text,
+      marker.run,
+      marker.sourceAnchor,
+      fonts.resolvePhysical,
+      marker.trackedChange,
+    );
+    const geometry = resolvePainterListMarkerGeometry({
+      wordLayout: block.attrs!.wordLayout,
+      indentLeftPx: 0,
+      hangingIndentPx: 0,
+      firstLineIndentPx: 0,
+      markerTextWidthPx: measure.marker!.markerTextWidth,
+    })!;
+    expect(element.textContent).toBe(block.attrs!.wordLayout!.marker!.markerText);
+    const glyph = element.querySelector<HTMLElement>('.superdoc-paragraph-marker')!;
+    expect(glyph.dataset.trackChangeId).toBe('marker-format');
+    expect(glyph.style.textTransform).toBe('');
+    expect(geometry.textStartPx).toBeGreaterThanOrEqual(geometry.markerStartPx + geometry.markerTextWidthPx);
+    expect(geometry.suffixWidthPx).toBe(marker.suffixWidthPx);
+    expect(geometry.markerStartPx).toBe(marker.markerStartPx);
+    expect(measure.lines[0]!.maxWidth).toBeCloseTo(measure.measuredAtMaxWidth! - geometry.textStartPx, 3);
+    return { resolved, geometry, html: element.outerHTML };
+  };
+
+  describe.each(['modern', 'legacy', 'nested'] as const)('%s cells', (shape) => {
+    it.each([
+      ['historical half', '1.3→1.2', '1.44→1.2'],
+      ['history removal', '1.3→1.2', '1.2'],
+      ['history appearance', '1.2', '1.3→1.2'],
+      ['current half', '1.3→1.2', '1.3→1.22'],
+      ['independently prepared case', 'b.→A.', 'B.→A.'],
+    ])('matches cold native measure, pagination and paint after changing %s', async (_name, before, after) => {
+      expect(resolveCanvas().usingStub).toBe(false);
+      clearIncrementalModuleState();
+      const runtime = createDomMeasurementRuntime();
+      const coldRuntime = createDomMeasurementRuntime();
+      const measure = vi.fn();
+      const run = async (
+        activeRuntime: typeof runtime,
+        previous: FlowBlock[],
+        previousResult: Awaited<ReturnType<typeof incrementalLayout>> | null,
+        next: FlowBlock[],
+      ) => {
+        const pass = activeRuntime.beginPass(fonts);
+        measure.mockImplementation(pass.measureBlock);
+        try {
+          return await incrementalLayout(
+            previous,
+            previousResult?.layout ?? null,
+            next,
+            options,
+            measure,
+            undefined,
+            previousResult?.measures,
+            {
+              fontContext: fonts,
+              previousFontSignature: fonts.fontSignature,
+              fontCapabilities: pass.fontCapabilities,
+            },
+          );
+        } finally {
+          pass.finish();
+        }
+      };
+      try {
+        const previous = [table(before, shape)];
+        const next = [table(after, shape)];
+        const initial = await run(runtime, [], null, previous);
+        const equal = await run(runtime, [], null, structuredClone(previous));
+        expect(equal.measures[0]).toBe(initial.measures[0]);
+        expect(measure).toHaveBeenCalledTimes(1);
+        const initialParagraph = readParagraph(initial.measures[0]!);
+        expect(initialParagraph.marker!.markerTextWidth).toBeGreaterThan(0);
+        const warm = await run(runtime, previous, initial, next);
+        clearIncrementalModuleState();
+        const cold = await run(coldRuntime, [], null, next);
+        const warmParagraph = readParagraph(warm.measures[0]!);
+        const coldParagraph = readParagraph(cold.measures[0]!);
+        expect(coldParagraph.marker!.markerTextWidth).not.toBe(initialParagraph.marker!.markerTextWidth);
+        expect(coldParagraph.lines[0]!.maxWidth).not.toBe(initialParagraph.lines[0]!.maxWidth);
+        expect(coldParagraph.totalHeight).toBeGreaterThan(0);
+        expect(warmParagraph).toEqual(coldParagraph);
+        expect(warm.measures).toEqual(cold.measures);
+        expect(warm.layout.pages).toEqual(cold.layout.pages);
+        expect(measure).toHaveBeenCalledTimes(3);
+        expect(resolveAndPaint(paragraph(after), warmParagraph)).toEqual(
+          resolveAndPaint(paragraph(after), coldParagraph),
+        );
+      } finally {
+        runtime.dispose();
+        coldRuntime.dispose();
+        clearIncrementalModuleState();
+      }
+    });
+  });
+});

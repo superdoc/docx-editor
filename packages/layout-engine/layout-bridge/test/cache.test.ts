@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vite-plus/test';
 import { hashMeasureContent, MeasureCache } from '../src/cache';
 import { computeDirtyRegions } from '../src/diff';
+import type { MinimalWordLayout } from '@superdoc/common/list-marker-utils';
 import type {
   FlowBlock,
   ImageBlock,
@@ -2629,4 +2630,162 @@ describe('SD-5988 marker measurement identity', () => {
       ).toEqual(measure);
     },
   );
+});
+
+describe('table list-marker measurement identity', () => {
+  const markerParagraph = (markerText: string | undefined): ParagraphBlock => ({
+    ...paragraphBlock('marker-owner', 'Unchanged body'),
+    attrs: {
+      wordLayout: {
+        marker: { markerText, run: { fontFamily: 'Arial', fontSize: 16 }, suffix: 'nothing' },
+      },
+    },
+  });
+  const wrap = (paragraph: ParagraphBlock, shape: 'modern' | 'legacy' | 'nested'): TableBlock => {
+    const inner = tableWithCellBlocks('marker-table', [paragraph]);
+    if (shape === 'legacy') inner.rows[0]!.cells[0] = { id: 'marker-cell', paragraph };
+    return shape === 'nested' ? tableWithCellBlocks('outer-marker-table', [inner]) : inner;
+  };
+
+  it.each(['modern', 'legacy', 'nested'] as const)('invalidates exact prepared marker changes in %s cells', (shape) => {
+    for (const [before, after] of [
+      ['1.3→1.2', '1.44→1.2'],
+      ['1.3→1.2', '1.2'],
+      ['1.2', '1.3→1.2'],
+      ['1.3→1.2', '1.3→1.22'],
+      ['b.→A.', 'B.→a.'],
+      ['1.3→1.2', '1.3 →1.2'],
+    ]) {
+      const original = wrap(markerParagraph(before), shape);
+      const changed = wrap(markerParagraph(after), shape);
+      const cache = new MeasureCache<number>();
+      cache.set(original, 200, 300, 42, 'fonts');
+      expect(hashMeasureContent(changed)).not.toBe(hashMeasureContent(original));
+      expect(cache.prepareKey(changed, 200, 300, 'fonts')).not.toBe(cache.prepareKey(original, 200, 300, 'fonts'));
+      expect(cache.get(changed, 200, 300, 'fonts')).toBeUndefined();
+      expect(cache.get(structuredClone(original), 200, 300, 'fonts')).toBe(42);
+    }
+  });
+
+  it('distinguishes absent, empty and visible markers even with empty runs and no numbering properties', () => {
+    const hashes = [undefined, '', '1.2'].map((text) => {
+      const paragraph = markerParagraph(text);
+      paragraph.runs = [];
+      return hashMeasureContent(wrap(paragraph, 'modern'));
+    });
+    const plain = paragraphBlock('marker-owner', '');
+    plain.runs = [];
+    hashes.push(hashMeasureContent(wrap(plain, 'modern')));
+    expect(new Set(hashes).size).toBe(4);
+  });
+
+  it('preserves plain reuse and explicit modern empty-block precedence over a legacy marker', () => {
+    const original = tableWithCellBlocks('plain-table', [paragraphBlock('p', 'Plain')]);
+    const cache = new MeasureCache<number>();
+    cache.set(original, 200, 300, 42);
+    expect(cache.get(structuredClone(original), 200, 300)).toBe(42);
+    const empty = tableWithCellBlocks('empty-table', []);
+    const legacy = structuredClone(empty);
+    legacy.rows[0]!.cells[0]!.paragraph = markerParagraph('1.3→1.2');
+    expect(hashMeasureContent(legacy)).toBe(hashMeasureContent(empty));
+    legacy.rows[0]!.cells[0]!.paragraph = markerParagraph('1.2');
+    expect(hashMeasureContent(legacy)).toBe(hashMeasureContent(empty));
+  });
+
+  it('keys supported marker typography and prefix inputs without paint metadata or measured output', () => {
+    const paragraph = markerParagraph('b.→A.');
+    const original = wrap(paragraph, 'modern');
+    const mutations: Array<(layout: MinimalWordLayout) => void> = [
+      (layout) => {
+        layout.marker!.run!.fontFamily = 'Courier New';
+      },
+      (layout) => {
+        layout.marker!.run!.fontSize = 20;
+      },
+      (layout) => {
+        layout.marker!.run!.bold = true;
+      },
+      (layout) => {
+        layout.marker!.run!.italic = true;
+      },
+      (layout) => {
+        layout.marker!.run!.letterSpacing = 2;
+      },
+      (layout) => {
+        layout.marker!.run!.color = '#ff0000';
+      },
+      (layout) => {
+        layout.marker!.run!.allCaps = true;
+      },
+      (layout) => {
+        layout.marker!.run!.smallCaps = true;
+      },
+      (layout) => {
+        layout.marker!.run!.vanish = true;
+      },
+      (layout) => {
+        layout.marker!.suffix = 'space';
+      },
+      (layout) => {
+        layout.marker!.justification = 'right';
+      },
+      (layout) => {
+        layout.marker!.gutterWidthPx = 12;
+      },
+      (layout) => {
+        layout.marker!.markerBoxWidthPx = 60;
+      },
+      (layout) => {
+        layout.marker!.glyphWidthPx = 40;
+      },
+      (layout) => {
+        layout.marker!.markerX = 4;
+      },
+      (layout) => {
+        layout.marker!.textStartX = 60;
+      },
+      (layout) => {
+        layout.textStartMode = 'paragraph';
+      },
+      (layout) => {
+        layout.firstLineIndentMode = true;
+      },
+      (layout) => {
+        layout.textStartPx = 60;
+      },
+      (layout) => {
+        layout.indentLeftPx = 48;
+      },
+      (layout) => {
+        layout.firstLinePx = 12;
+      },
+      (layout) => {
+        layout.hangingPx = 24;
+      },
+      (layout) => {
+        layout.tabsPx = [48, 96];
+      },
+    ];
+    for (const mutate of mutations) {
+      const changed = structuredClone(paragraph);
+      mutate(changed.attrs!.wordLayout! as MinimalWordLayout);
+      expect(hashMeasureContent(wrap(changed, 'modern'))).not.toBe(hashMeasureContent(original));
+    }
+    const ordered = structuredClone(paragraph);
+    ordered.attrs!.wordLayout!.tabsPx = [48, 96];
+    const reordered = structuredClone(ordered);
+    reordered.attrs!.wordLayout!.tabsPx = [96, 48];
+    expect(hashMeasureContent(wrap(ordered, 'modern'))).not.toBe(hashMeasureContent(wrap(reordered, 'modern')));
+    const paintOnly = structuredClone(paragraph);
+    paintOnly.attrs!.wordLayout!.marker!.trackedChange = { id: 'revision', kind: 'format', author: 'Reviewer' };
+    paintOnly.attrs!.wordLayout!.lines = [{ width: 999 }];
+    expect(hashMeasureContent(wrap(paintOnly, 'modern'))).toBe(hashMeasureContent(original));
+    const tabbed = structuredClone(paragraph);
+    tabbed.runs.push({ kind: 'tab', text: '\t', width: 10 });
+    const measuredTab = structuredClone(tabbed);
+    const tab = measuredTab.runs[1]!;
+    if (tab.kind !== 'tab') throw new Error('Expected tab');
+    tab.width = 99;
+    expect(hashMeasureContent(wrap(measuredTab, 'modern'))).toBe(hashMeasureContent(wrap(tabbed, 'modern')));
+  });
 });

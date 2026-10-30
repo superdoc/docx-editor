@@ -7,6 +7,8 @@ import type {
   TextRun,
   FlowBlock,
   Measure,
+  TableBlock,
+  TableMeasure,
 } from '@superdoc/contracts';
 import { computeLinePmRange, sliceRunsForLine, shouldSkipParagraphDuringLayout } from '@superdoc/contracts';
 import { remeasureParagraph } from '../../layout-bridge/src/remeasure.js';
@@ -493,3 +495,78 @@ it('preserves a closing carrier when remote anchored objects have uncertain fall
   };
   expect(shouldSkipParagraphDuringLayout(ordinary, 1)).toBe(false);
 });
+
+it.each([
+  { type: 'nextPage', emptyPrefix: false },
+  { type: 'continuous', emptyPrefix: false },
+  { type: 'nextPage', emptyPrefix: true },
+] as const)(
+  'keeps $type section tables scoped to their physical page with emptyPrefix=$emptyPrefix',
+  ({ type, emptyPrefix }) => {
+    const header: ParagraphBlock = {
+      kind: 'paragraph',
+      id: 'header',
+      attrs: { indent: { left: 182.4 }, widowControl: false },
+      runs: [{ text: 'Readable header', fontFamily: 'Arial', fontSize: 12 }],
+    };
+    const owner: ParagraphBlock = { kind: 'paragraph', id: 'table-owner', runs: [{ text: '' }] };
+    const table: TableBlock = {
+      kind: 'table',
+      id: 'later-page-table',
+      rows: [],
+      anchor: { isAnchored: true, hRelativeFrom: 'margin', alignH: 'center', vRelativeFrom: 'page', alignV: 'top' },
+      wrap: { type: 'Square', distLeft: 12, distRight: 12 },
+      attrs: { anchorParagraphId: owner.id },
+    };
+    const columns = { count: 2, gap: 8 / 3, widths: [5135 / 15, 7065 / 15], equalWidth: false };
+    const blocks: FlowBlock[] = [
+      {
+        kind: 'sectionBreak',
+        id: 'first-section',
+        type: 'continuous',
+        columns,
+        attrs: { sectionIndex: 0, isFirstSection: true },
+      },
+      header,
+      { kind: 'sectionBreak', id: 'later-section', type, columns, attrs: { sectionIndex: 1 } },
+      owner,
+      table,
+    ];
+    if (emptyPrefix) {
+      blocks.splice(1, 1, {
+        kind: 'paragraph',
+        id: 'empty-section-marker',
+        runs: [{ text: '' }],
+        attrs: { sectPrMarker: true },
+      });
+      blocks.splice(3, 0, header);
+    }
+    const tableMeasure: TableMeasure = {
+      kind: 'table',
+      rows: [],
+      columnWidths: [742],
+      totalWidth: 742,
+      totalHeight: 228,
+    };
+    const headerMeasure = remeasureParagraph(header, 5135 / 15);
+    const measures: Measure[] = [
+      { kind: 'sectionBreak' },
+      headerMeasure,
+      { kind: 'sectionBreak' },
+      remeasureParagraph(owner, 5135 / 15),
+      tableMeasure,
+    ];
+    if (emptyPrefix) {
+      measures[1] = remeasureParagraph(blocks[1] as ParagraphBlock, 5135 / 15);
+      measures.splice(3, 0, headerMeasure);
+    }
+    const layout = layoutDocument(blocks, measures, {
+      pageSize: { w: 816, h: 1056 },
+      margins: { top: 0, bottom: 0, left: 0, right: 0 },
+      remeasureParagraph,
+    });
+    const first = layout.pages[0]?.fragments.find((fragment) => fragment.blockId === header.id);
+    expect(first?.y).toBe(type === 'nextPage' && !emptyPrefix ? 0 : 228);
+    expect(layout.pages.flatMap((page) => page.fragments).some((fragment) => fragment.blockId === table.id)).toBe(true);
+  },
+);

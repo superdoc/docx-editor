@@ -2562,6 +2562,9 @@ function* layoutDocumentBodySteps(
     );
     lastSectionIdx = finalSectionIndex;
   }
+  const firstPageSectionIndices = new Set<number>(currentSectionIdx == null ? [] : [currentSectionIdx]);
+  let crossedFirstPageSectionBoundary = false;
+  let firstPageHasMeaningfulContent = false;
   for (const idx of candidateIndices ?? Array.from({ length: blocks.length }, (_, index) => index)) {
     if (checkpointEveryBlocks != null && idx % checkpointEveryBlocks === 0) {
       yield { phase: 'layout-document:preflight-section', index: idx, total: blocks.length };
@@ -2576,6 +2579,16 @@ function* layoutDocumentBodySteps(
     if (block.kind === 'sectionBreak') {
       documentHasAnySectionBreak = true;
       if (typeof attrSectionIdx === 'number') {
+        if (
+          firstPageSectionIndices.size > 0 &&
+          !firstPageSectionIndices.has(attrSectionIdx) &&
+          (block.type === 'nextPage' || block.type === 'evenPage' || block.type === 'oddPage') &&
+          (firstPageHasMeaningfulContent ||
+            ((block.type === 'evenPage' || block.requiredPageParity === 'even') && (pageNumberOffset + 1) % 2 !== 0) ||
+            ((block.type === 'oddPage' || block.requiredPageParity === 'odd') && (pageNumberOffset + 1) % 2 === 0))
+        )
+          crossedFirstPageSectionBoundary = true;
+        if (!crossedFirstPageSectionBoundary) firstPageSectionIndices.add(attrSectionIdx);
         currentSectionIdx = attrSectionIdx;
         lastSectionIdx = attrSectionIdx;
         if (block.columns) {
@@ -2589,6 +2602,14 @@ function* layoutDocumentBodySteps(
         }
       }
     }
+    if (
+      block.kind !== 'sectionBreak' &&
+      block.kind !== 'pageBreak' &&
+      block.kind !== 'columnBreak' &&
+      !sectionBoundaryFillerBlockIds.has(block.id) &&
+      !isInvisibleSectionBoundaryMarkerBlock(block)
+    )
+      firstPageHasMeaningfulContent = true;
     if (currentSectionIdx !== null) {
       blockSectionMap.set(block.id, currentSectionIdx);
       if (block.kind === 'columnBreak') {
@@ -3018,6 +3039,8 @@ function* layoutDocumentBodySteps(
   }
 
   for (const entry of preRegisteredTables) {
+    const sectionIndex = blockSectionMap.get(entry.block.id);
+    if (sectionIndex != null && !firstPageSectionIndices.has(sectionIndex)) continue;
     const state = paginator.ensurePage();
     const anchorY = clampPageRelativeFloatingTableY(
       entry.block,

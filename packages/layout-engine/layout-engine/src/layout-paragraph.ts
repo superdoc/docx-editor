@@ -1152,20 +1152,55 @@ export function* layoutParagraphBlockSteps(
         (runIndex < current.fromRun || isBreakOnlyLine(current, runIndex)),
     );
   };
-  const lineClearance = (lineY: number, lineHeight: number, state: PageState, clearAll: boolean): number => {
+  const paragraphContentLeft = indentLeft;
+  const paragraphContentRight = () => columnWidth - indentRight;
+  const minimumFloatLineWidths = new Map<string, number>();
+  const lineStartKey = (line: Line): string => `${line.fromRun}:${line.fromChar}`;
+  const intersectParagraphRegions = (regions: ParagraphLineRegion[]): ParagraphLineRegion[] =>
+    regions
+      .map((region) => {
+        const left = Math.max(paragraphContentLeft, region.offsetX);
+        const right = Math.min(paragraphContentRight(), region.offsetX + region.width);
+        return { offsetX: left - paragraphContentLeft, width: right - left };
+      })
+      .filter((region) => region.width > 0);
+
+  const lineClearance = (lineY: number, line: Line, state: PageState, clearAll: boolean): number => {
+    const lineHeight = line.lineHeight ?? 0;
+    const minimumWidth = minimumFloatLineWidths.get(lineStartKey(line)) ?? 0;
     let resolvedY = lineY;
     while (true) {
-      let nextY =
-        floatManager.computeVerticalClearance(resolvedY, lineHeight, state.columnIndex, state.page.number) ?? resolvedY;
+      const exclusions = floatManager.getExclusionsForLine(resolvedY, lineHeight, state.columnIndex, state.page.number);
+      let nextY = resolvedY;
+      if (exclusions.some((zone) => zone.wrapMode !== 'none' && zone.wrapMode !== 'topBottom')) {
+        const regions = floatManager.computeAvailableRegions(
+          resolvedY,
+          lineHeight,
+          columnWidth,
+          state.columnIndex,
+          state.page.number,
+        );
+        const hasUsableRegion = intersectParagraphRegions(regions).some(
+          (region) => region.width > 1 && region.width + REMEASURE_WIDTH_EPSILON_PX >= minimumWidth,
+        );
+        let nextWrapY = Number.POSITIVE_INFINITY;
+        for (const zone of exclusions) {
+          if (zone.wrapMode === 'topBottom') {
+            nextY = Math.max(nextY, zone.bounds.y + zone.bounds.height + zone.distances.bottom);
+          } else if (!hasUsableRegion && zone.wrapMode !== 'none') {
+            nextWrapY = Math.min(nextWrapY, zone.bounds.y + zone.bounds.height + zone.distances.bottom);
+          }
+        }
+        if (Number.isFinite(nextWrapY)) nextY = Math.max(nextY, nextWrapY);
+      } else {
+        nextY =
+          floatManager.computeVerticalClearance(resolvedY, lineHeight, state.columnIndex, state.page.number) ??
+          resolvedY;
+      }
       if (clearAll) {
         const left = columnX(state) + Math.min(0, indentLeft);
         const right = columnX(state) + columnWidth - Math.min(0, indentRight);
-        for (const zone of floatManager.getExclusionsForLine(
-          resolvedY,
-          lineHeight,
-          state.columnIndex,
-          state.page.number,
-        )) {
+        for (const zone of exclusions) {
           if (
             zone.wrapMode !== 'none' &&
             zone.bounds.x - zone.distances.left < right &&
@@ -1194,9 +1229,7 @@ export function* layoutParagraphBlockSteps(
     mapLine: (line: Line) => Line = (line) => line,
   ): { lines: Line[]; constrained: boolean; marker?: ParagraphMeasure['marker'] } => {
     if (!remeasureParagraph) return { lines: candidateLines, constrained: false };
-    const paragraphContentLeft = indentLeft;
-    const paragraphContentRight = columnWidth - indentRight;
-    const paragraphContentWidth = Math.max(1, paragraphContentRight - paragraphContentLeft);
+    const paragraphContentWidth = Math.max(1, paragraphContentRight() - paragraphContentLeft);
 
     const scanFloatConstraints = (candidateLines: Line[]): ParagraphLineRegion[][] => {
       const tempState = state;
@@ -1205,24 +1238,18 @@ export function* layoutParagraphBlockSteps(
 
       for (let i = 0; i < candidateLines.length; i++) {
         const lineHeight = candidateLines[i]?.lineHeight || 0;
-        const lineY = lineClearance(tempY, lineHeight, tempState, clearsBeforeLine(candidateLines, i));
-        const availableRegions = floatManager.computeAvailableRegions(
-          lineY,
-          lineHeight,
-          columnWidth,
-          tempState.columnIndex,
-          tempState.page.number,
+        const lineY = lineClearance(tempY, candidateLines[i]!, tempState, clearsBeforeLine(candidateLines, i));
+        constraints.push(
+          intersectParagraphRegions(
+            floatManager.computeAvailableRegions(
+              lineY,
+              lineHeight,
+              columnWidth,
+              tempState.columnIndex,
+              tempState.page.number,
+            ),
+          ),
         );
-
-        const paragraphRegions = availableRegions
-          .map((region) => {
-            const left = Math.max(paragraphContentLeft, region.offsetX);
-            const right = Math.min(paragraphContentRight, region.offsetX + region.width);
-            return { offsetX: left - paragraphContentLeft, width: right - left };
-          })
-          .filter((region) => region.width > 0);
-
-        constraints.push(paragraphRegions);
 
         tempY = lineY + lineHeight;
       }
@@ -1270,6 +1297,20 @@ export function* layoutParagraphBlockSteps(
           normalizeLines(newMeasure),
           ctx.collapseSplitLineBreakCarrier,
         ).map(mapLine);
+        for (const line of newLines) {
+          const run = block.runs[line.fromRun];
+          const text = run && 'text' in run ? run.text : undefined;
+          const singleGlyph =
+            line.fromRun === line.toRun &&
+            typeof text === 'string' &&
+            Array.from(text.slice(line.fromChar, line.toChar)).length === 1 &&
+            text.slice(line.fromChar, line.toChar).trim().length > 0;
+          if (singleGlyph && line.maxWidth != null && line.width > line.maxWidth + REMEASURE_WIDTH_EPSILON_PX) {
+            const key = lineStartKey(line);
+            const glyphWidth = line.segments?.[0]?.width ?? line.width;
+            minimumFloatLineWidths.set(key, Math.max(minimumFloatLineWidths.get(key) ?? 0, glyphWidth));
+          }
+        }
         const nextRegions = scanFloatConstraints(newLines);
         if (!isConstrained(nextRegions)) {
           resultLines = preFloatLines;
@@ -1330,10 +1371,23 @@ export function* layoutParagraphBlockSteps(
     return ctx.getFootnoteRefCountForBlockId?.(block.id, range.pmStart, range.pmEnd) ?? 0;
   };
 
-  const refreshColumnMeasure = (state: PageState) => {
-    const nextWidth = ctx.columnWidthForState?.(state) ?? columnWidth;
-    if (Math.abs(nextWidth - columnWidth) <= REMEASURE_WIDTH_EPSILON_PX) return;
-    columnWidth = nextWidth;
+  let measuredPageNumber = ensurePage().page.number;
+  let measuredColumnIndex = ensurePage().columnIndex;
+  const needsColumnMeasure = (state: PageState): boolean =>
+    Math.abs((ctx.columnWidthForState?.(state) ?? columnWidth) - columnWidth) > REMEASURE_WIDTH_EPSILON_PX ||
+    ((state.page.number !== measuredPageNumber || state.columnIndex !== measuredColumnIndex) &&
+      (didRemeasureForFloats || floatManager.getAllFloatsForPage(state.page.number).length > 0));
+  const refreshColumnMeasure = (state: PageState, deferFloatRefresh = false) => {
+    if (
+      deferFloatRefresh &&
+      Math.abs((ctx.columnWidthForState?.(state) ?? columnWidth) - columnWidth) <= REMEASURE_WIDTH_EPSILON_PX
+    )
+      return;
+    const needsRefresh = needsColumnMeasure(state);
+    measuredPageNumber = state.page.number;
+    measuredColumnIndex = state.columnIndex;
+    if (!needsRefresh) return;
+    columnWidth = ctx.columnWidthForState?.(state) ?? columnWidth;
     if (!remeasureParagraph || !lines[fromLine]) return;
     const continuation = fromLine > 0 ? paragraphContinuation(blockForRemeasure(), lines[fromLine]) : undefined;
     const candidate = continuation?.block ?? blockForRemeasure();
@@ -1358,17 +1412,19 @@ export function* layoutParagraphBlockSteps(
   };
 
   // PHASE 2: Layout the paragraph with the remeasured lines
+  let reclaimedBorderSpacing = false;
   while (fromLine < lines.length) {
     yield { index: fromLine, total: lines.length };
     let state = ensurePage();
-    refreshColumnMeasure(state);
+    refreshColumnMeasure(state, true);
     if (state.trailingSpacing == null) state.trailingSpacing = 0;
 
     // Reclaim the previous paragraph's bottom border expansion when joining a group.
     // The previous paragraph already reserved space for its bottom border, but in a
     // group that border is suppressed — so we move cursorY back to close the gap.
-    if (inBorderGroup && fromLine === 0) {
+    if (inBorderGroup && fromLine === 0 && !reclaimedBorderSpacing) {
       state.cursorY -= rawBorderExpansion.bottom;
+      reclaimedBorderSpacing = true;
     }
 
     /**
@@ -1555,12 +1611,7 @@ export function* layoutParagraphBlockSteps(
     // reduction. Move the next flow line below every overlapping band,
     // including the authored bottom text distance.
     const lineTop = state.cursorY + borderExpansion.top;
-    const verticalClearance = lineClearance(
-      lineTop,
-      lines[fromLine]?.lineHeight ?? 0,
-      state,
-      clearsBeforeLine(lines, fromLine),
-    );
+    const verticalClearance = lineClearance(lineTop, lines[fromLine]!, state, clearsBeforeLine(lines, fromLine));
     if (verticalClearance != null && verticalClearance > lineTop) {
       state.cursorY += verticalClearance - lineTop;
       state.maxCursorY = Math.max(state.maxCursorY, state.cursorY);
@@ -1685,16 +1736,14 @@ export function* layoutParagraphBlockSteps(
 
     if (state.cursorY >= effectiveBottom) {
       state = advanceColumn(state);
-      if (Math.abs((ctx.columnWidthForState?.(state) ?? columnWidth) - columnWidth) > REMEASURE_WIDTH_EPSILON_PX)
-        continue;
+      if (needsColumnMeasure(state)) continue;
       effectiveBottom = computePreviewBottom();
     }
 
     const availableHeight = effectiveBottom - state.cursorY;
     if (availableHeight <= 0) {
       state = advanceColumn(state);
-      if (Math.abs((ctx.columnWidthForState?.(state) ?? columnWidth) - columnWidth) > REMEASURE_WIDTH_EPSILON_PX)
-        continue;
+      if (needsColumnMeasure(state)) continue;
       effectiveBottom = computePreviewBottom();
     }
 
@@ -1702,8 +1751,7 @@ export function* layoutParagraphBlockSteps(
     const remainingHeight = effectiveBottom - state.cursorY;
     if (pageHasNonTableAnchorContent(state) && remainingHeight < nextLineHeight) {
       state = advanceColumn(state);
-      if (Math.abs((ctx.columnWidthForState?.(state) ?? columnWidth) - columnWidth) > REMEASURE_WIDTH_EPSILON_PX)
-        continue;
+      if (needsColumnMeasure(state)) continue;
       effectiveBottom = computePreviewBottom();
     }
 
@@ -1735,7 +1783,7 @@ export function* layoutParagraphBlockSteps(
       const candidateLineTop = state.cursorY + borderExpansion.top + height;
       const candidateVerticalClearance = lineClearance(
         candidateLineTop,
-        lineHeight,
+        lines[toLine]!,
         state,
         clearsBeforeLine(lines, toLine),
       );
@@ -1921,7 +1969,7 @@ export function* layoutParagraphBlockSteps(
     const terminalRun = block.runs.length - 1;
     const hasTrailingBreakLine = lines.length > 1 && isBreakOnlyLine(lines[lines.length - 1], terminalRun);
     if (clearAllBreaks.includes(terminalRun) && !hasTrailingBreakLine) {
-      lastState.cursorY = lineClearance(lastState.cursorY, lines.at(-1)?.lineHeight ?? 1, lastState, true);
+      lastState.cursorY = lineClearance(lastState.cursorY, lines.at(-1)!, lastState, true);
       lastState.maxCursorY = Math.max(lastState.maxCursorY, lastState.cursorY);
     }
     if (spacingAfter > 0) {

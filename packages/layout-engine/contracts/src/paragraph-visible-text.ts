@@ -11,9 +11,9 @@ export type ParagraphVisibleRunSlice = {
 const isTextRun = (run: Run): run is Extract<Run, { kind?: 'text' }> =>
   (run.kind === undefined || run.kind === 'text') && 'text' in run;
 
-const runVisibleLength = (run: Run): number => (isTextRun(run) ? run.text.length : 1);
+export const runVisibleLength = (run: Run): number => (isTextRun(run) ? run.text.length : 1);
 
-const splitsSurrogatePair = (text: string, offset: number): boolean => {
+export const splitsSurrogatePair = (text: string, offset: number): boolean => {
   if (offset <= 0 || offset >= text.length) return false;
   const before = text.charCodeAt(offset - 1);
   const after = text.charCodeAt(offset);

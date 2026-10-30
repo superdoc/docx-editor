@@ -3993,6 +3993,8 @@ export {
 } from './run-helpers.js';
 
 export {
+  runVisibleLength,
+  splitsSurrogatePair,
   INLINE_OBJECT_REPLACEMENT_CHARACTER,
   flattenParagraphVisibleText,
   mapVisibleRangeToRunSlices,

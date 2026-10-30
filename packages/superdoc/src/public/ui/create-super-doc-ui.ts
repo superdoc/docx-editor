@@ -130,6 +130,7 @@ import { collectDecorationProvidersFromChain, collectEntityHitsFromChain } from 
 import { decodeLayoutStoryDataset } from '@superdoc/dom-contract';
 import { getParagraphInlineDirection } from '@superdoc/contracts';
 import { isPlainObject } from '../../helpers/object-guards.js';
+import { isFiniteNumber } from '../../helpers/is-finite-number.js';
 import type { SurfaceHandle } from '../../core/types/index.js';
 import {
   CLEAR_INLINE_FORMATTING_KEYS,
@@ -1276,10 +1277,6 @@ type ParagraphIndentationTwips = {
 
 function pointsToTwips(value: number): number {
   return Math.round(value * 20);
-}
-
-function isFiniteNumber(value: unknown): value is number {
-  return typeof value === 'number' && Number.isFinite(value);
 }
 
 function readParagraphIndentationFromResult(result: unknown): ParagraphIndentationTwips | null {

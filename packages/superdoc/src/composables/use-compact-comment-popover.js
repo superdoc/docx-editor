@@ -1,6 +1,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { PDF } from '@superdoc/common';
 import { COMPACT_ANCHOR_SELECTOR } from '../helpers/comment-small-screen.js';
+import { isFiniteNumber } from '../helpers/is-finite-number.js';
 
 const POPOVER_WIDTH_PX = 320;
 const SAFE_MARGIN_PX = 12;
@@ -15,7 +16,6 @@ const PDF_COMMENT_ANCHOR_SELECTOR = '.sd-comment-anchor';
 // Clamp a value into the given inclusive range.
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 const toNumber = (value) => Number(value);
-const isFiniteNumber = (value) => Number.isFinite(value);
 
 const getCommentAnchorId = (comment) => comment?.commentId ?? comment?.importedId ?? null;
 

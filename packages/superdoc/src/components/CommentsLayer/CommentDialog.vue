@@ -30,6 +30,7 @@ import CommentInput from './CommentInput.vue';
 import { COMMENT_RECONCILIATION_TOKEN } from './use-comment.js';
 import Avatar from '../general/Avatar.vue';
 import { renderCommentHtml } from './comment-urls.js';
+import { isFiniteNumber } from '../../helpers/is-finite-number.js';
 
 type DialogComment = ReturnType<typeof useComment>;
 
@@ -177,8 +178,6 @@ type DialogCommentsStoreRefs = {
   editorCommentPositions: Ref<Record<string, PositionEntry | undefined>>;
   isCommentHighlighted: Ref<boolean>;
 };
-
-const isFiniteNumber = (value: unknown): value is number => Number.isFinite(value);
 
 const emit = defineEmits<{
   'click-outside': [];

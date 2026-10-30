@@ -11,6 +11,7 @@ import { useCommentsStore } from '../../stores/comments-store';
 import { useSuperdocStore } from '../../stores/superdoc-store';
 import type { Document as SuperDocDocument } from '../../core/types/index.js';
 import CommentDialog from './CommentDialog.vue';
+import { isFiniteNumber } from '../../helpers/is-finite-number.js';
 import type useComment from './use-comment';
 import {
   normalizeFloatingAnchorTop,
@@ -161,8 +162,6 @@ type DialogReadyPayload = {
 type ContinuityAnchor = { key: string; targetClientY: number };
 
 type DirectDecisionContinuity = { removedKey: string; targetKey: string; targetClientY: number; applied: boolean };
-
-const isFiniteNumber = (value: unknown): value is number => Number.isFinite(value);
 
 const ESTIMATED_HEIGHT = 110;
 const OBSERVER_MARGIN = 600;

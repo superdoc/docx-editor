@@ -157,6 +157,19 @@ describe('PageNumberMenu', () => {
     });
   });
 
+  it('jumps to the row ends with Home and End and ignores other keys', async () => {
+    const { wrapper, applyPageNumbers } = mountMenu();
+    await flush();
+
+    await selectedTile(wrapper).trigger('keydown', { key: 'Home' });
+    expect(selectedTile(wrapper).attributes('aria-label')).toBe('Bottom of page, left');
+    await selectedTile(wrapper).trigger('keydown', { key: 'End' });
+    expect(selectedTile(wrapper).attributes('aria-label')).toBe('Bottom of page, right');
+    await selectedTile(wrapper).trigger('keydown', { key: 'a' });
+    expect(selectedTile(wrapper).attributes('aria-label')).toBe('Bottom of page, right');
+    expect(applyPageNumbers).not.toHaveBeenCalled();
+  });
+
   it('sends only what changed when the section already has numbers', async () => {
     const { wrapper, applyPageNumbers } = mountMenu({ loadCurrent: async () => NUMBERED_FOOTER });
     await flush();
@@ -215,6 +228,43 @@ describe('PageNumberMenu', () => {
     expect(wrapper.get('[role="alert"]').text()).toBe(
       'A page number shares its line with other text. Edit the footer directly to change it.',
     );
+  });
+
+  it('closes when the controller settles a command as true', async () => {
+    const { wrapper, applyPageNumbers, close } = mountMenu();
+    applyPageNumbers.mockResolvedValueOnce(true);
+    await flush();
+
+    await wrapper.get('[data-sd-page-number-add]').trigger('click');
+    await flush();
+
+    expect(close).toHaveBeenCalledWith({
+      action: 'apply',
+      choice: { position: 'bottom', alignment: 'right', showOnFirstPage: true },
+    });
+  });
+
+  it('explains a section that already has page numbers, and a failed remove', async () => {
+    const { wrapper, applyPageNumbers, removePageNumbers, close } = mountMenu({
+      loadCurrent: async () => NUMBERED_FOOTER,
+    });
+    applyPageNumbers.mockResolvedValueOnce({
+      success: false,
+      failure: { code: 'PRECONDITION_FAILED', details: { reason: 'page-number-exists' } },
+    });
+    removePageNumbers.mockResolvedValueOnce({ success: false, failure: { code: 'NO_OP', details: 'none' } });
+    await flush();
+    await flush();
+
+    await wrapper.get('[data-position="top"][data-alignment="right"]').trigger('click');
+    await wrapper.get('[data-sd-page-number-add]').trigger('click');
+    await flush();
+    expect(wrapper.get('[role="alert"]').text()).toBe('This section already has page numbers.');
+
+    await wrapper.get('[data-sd-page-number-remove]').trigger('click');
+    await flush();
+    expect(wrapper.get('[role="alert"]').text()).toBe('Page numbers couldn’t be removed. Try again.');
+    expect(close).not.toHaveBeenCalled();
   });
 
   it('stays open with a retry message when adding fails', async () => {

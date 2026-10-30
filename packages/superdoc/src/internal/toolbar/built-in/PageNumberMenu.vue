@@ -1,35 +1,78 @@
-<script setup>
+<script setup lang="ts">
 import { computed, nextTick, onMounted, ref } from 'vue';
+import type { PropType } from 'vue';
+import type {
+  HeaderFooterKind,
+  HeaderFooterPageNumberAlignment,
+  HeaderFooterPageNumbersInfo,
+  SectionPageNumberingFormat,
+} from '@superdoc/document-api';
 import { useHighContrastMode } from '../../../composables/use-high-contrast-mode';
+import { isPlainObject } from '../../../helpers/object-guards.js';
+import type { CommandExecutionResult, CommandState } from '../../../public/ui/types.js';
+
+type PagePosition = 'top' | 'bottom';
+
+interface PageNumberChoice {
+  position: PagePosition;
+  alignment?: HeaderFooterPageNumberAlignment;
+  showOnFirstPage?: boolean;
+  format?: SectionPageNumberingFormat;
+  start?: number | null;
+}
+
+interface RememberedChoice {
+  position: PagePosition;
+  alignment: HeaderFooterPageNumberAlignment | null;
+  showOnFirstPage: boolean;
+}
+
+type PageNumberMenuOutcome =
+  | { action: 'apply'; choice: RememberedChoice }
+  | { action: 'remove'; kinds: HeaderFooterKind[] }
+  | { action: 'cursor' };
+
+type PageNumberAction = 'apply' | 'remove';
+
+interface PreparedCommit {
+  execute: () => Promise<CommandExecutionResult>;
+  outcome: PageNumberMenuOutcome;
+}
 
 const props = defineProps({
   /** Command state of `page-numbers-apply`, read when the popover opens. */
-  pageNumbersState: { type: Object, default: null },
+  pageNumbersState: { type: Object as PropType<CommandState | null>, default: null },
   /** Command state of `page-number-insert` (insert at the header/footer cursor). */
-  atCursorState: { type: Object, default: null },
+  atCursorState: { type: Object as PropType<CommandState | null>, default: null },
   /** Header/footer structure cannot be suggested, so numbering needs Editing. */
   suggesting: { type: Boolean, default: false },
   /** The selection is in a header or footer, so a disabled cursor insert needs a collapsed caret. */
   inHeaderFooter: { type: Boolean, default: false },
   /** Resolves the caret section's page numbers (`headerFooters.pageNumbers.get`), or null. */
-  loadCurrent: { type: Function, default: null },
+  loadCurrent: {
+    type: Function as PropType<() => Promise<HeaderFooterPageNumbersInfo | null>>,
+    default: null,
+  },
   /** Runs `page-numbers-apply` with `{ position, alignment?, showOnFirstPage?, format?, start? }`. */
-  applyPageNumbers: { type: Function, required: true },
+  applyPageNumbers: {
+    type: Function as PropType<(choice: PageNumberChoice) => Promise<CommandExecutionResult>>,
+    required: true,
+  },
   /** Runs `page-numbers-remove`. */
-  removePageNumbers: { type: Function, required: true },
+  removePageNumbers: { type: Function as PropType<() => Promise<CommandExecutionResult>>, required: true },
   /** Runs `page-number-insert` at the header/footer cursor. */
-  insertAtCursor: { type: Function, required: true },
+  insertAtCursor: { type: Function as PropType<() => Promise<CommandExecutionResult>>, required: true },
   /** Closes the popover after a successful action. */
-  close: { type: Function, required: true },
+  close: { type: Function as PropType<(outcome: PageNumberMenuOutcome) => void>, required: true },
   /** Last choice made in this session, used when the section has no numbers yet. */
-  initialChoice: { type: Object, default: null },
+  initialChoice: { type: Object as PropType<RememberedChoice | null>, default: null },
 });
 
-const POSITIONS = [
+const POSITIONS: { value: PagePosition; label: string; kind: HeaderFooterKind }[] = [
   { value: 'top', label: 'Top of page', kind: 'header' },
   { value: 'bottom', label: 'Bottom of page', kind: 'footer' },
 ];
-const ALIGNMENTS = [
+const ALIGNMENTS: { value: HeaderFooterPageNumberAlignment; label: string }[] = [
   { value: 'left', label: 'left' },
   { value: 'center', label: 'center' },
   { value: 'right', label: 'right' },
@@ -42,7 +85,7 @@ const TILES = POSITIONS.flatMap((position) =>
   })),
 );
 // Word's Format Page Numbers styles. Hebrew styles are listed only when a document uses them.
-const FORMATS = [
+const FORMATS: { value: SectionPageNumberingFormat; label: string }[] = [
   { value: 'decimal', label: '1, 2, 3' },
   { value: 'lowerLetter', label: 'a, b, c' },
   { value: 'upperLetter', label: 'A, B, C' },
@@ -50,31 +93,31 @@ const FORMATS = [
   { value: 'upperRoman', label: 'I, II, III' },
   { value: 'numberInDash', label: '- 1 -, - 2 -' },
 ];
-const EXTRA_FORMATS = [
+const EXTRA_FORMATS: { value: SectionPageNumberingFormat; label: string }[] = [
   { value: 'hebrew1', label: 'א, ב, ג' },
   { value: 'hebrew2', label: 'א, ב, ג (alphabet)' },
 ];
 // Number chip placement inside the 36 x 46 page sketch.
-const CHIP_X = { left: 6, center: 14, right: 22 };
-const CHIP_Y = { top: 4, bottom: 37 };
+const CHIP_X: Record<HeaderFooterPageNumberAlignment, number> = { left: 6, center: 14, right: 22 };
+const CHIP_Y: Record<PagePosition, number> = { top: 4, bottom: 37 };
 
 const { isHighContrastMode } = useHighContrastMode();
-const remembered = props.initialChoice ?? {};
-const position = ref(remembered.position === 'top' ? 'top' : 'bottom');
-const alignment = ref(
-  ALIGNMENTS.some((entry) => entry.value === remembered.alignment) ? remembered.alignment : 'right',
+const remembered: Partial<RememberedChoice> = props.initialChoice ?? {};
+const position = ref<PagePosition>(remembered.position === 'top' ? 'top' : 'bottom');
+const alignment = ref<HeaderFooterPageNumberAlignment | null>(
+  isAlignment(remembered.alignment) ? remembered.alignment : 'right',
 );
 const showOnFirstPage = ref(remembered.showOnFirstPage !== false);
-const format = ref('decimal');
+const format = ref<SectionPageNumberingFormat>('decimal');
 const restart = ref(false);
 const startAt = ref(1);
-const current = ref(null);
+const current = ref<HeaderFooterPageNumbersInfo | null>(null);
 const loading = ref(typeof props.loadCurrent === 'function');
-let loaded = Promise.resolve();
+let loaded: Promise<void> = Promise.resolve();
 const touched = ref(false);
 const busy = ref(false);
 const message = ref('');
-const tileRefs = ref([]);
+const tileRefs = ref<(HTMLElement | null)[]>([]);
 
 const canApply = computed(() => props.pageNumbersState?.enabled === true);
 const canInsertAtCursor = computed(() => props.atCursorState?.enabled === true);
@@ -106,7 +149,13 @@ const shortcutLabel = computed(() => {
   return /Mac|iPhone|iPad/i.test(platform) ? '⌥⇧⌘P' : 'Ctrl+Alt+Shift+P';
 });
 
-function isTileSelected(tile) {
+type Tile = (typeof TILES)[number];
+
+function isAlignment(value: unknown): value is HeaderFooterPageNumberAlignment {
+  return ALIGNMENTS.some((entry) => entry.value === value);
+}
+
+function isTileSelected(tile: Tile) {
   return tile.position === position.value && tile.alignment === alignment.value;
 }
 
@@ -115,7 +164,7 @@ function markTouched() {
   message.value = '';
 }
 
-function selectTile(tile, { focus = false } = {}) {
+function selectTile(tile: Tile, { focus = false }: { focus?: boolean } = {}) {
   position.value = tile.position;
   alignment.value = tile.alignment;
   markTouched();
@@ -124,25 +173,26 @@ function selectTile(tile, { focus = false } = {}) {
   }
 }
 
-function moveSelection(event) {
+function moveSelection(event: KeyboardEvent) {
   const index = focusIndex.value;
   const row = Math.floor(index / ALIGNMENTS.length);
   const column = index % ALIGNMENTS.length;
-  const next = {
+  const moves: Record<string, [number, number] | undefined> = {
     ArrowLeft: [row, Math.max(0, column - 1)],
     ArrowRight: [row, Math.min(ALIGNMENTS.length - 1, column + 1)],
     ArrowUp: [Math.max(0, row - 1), column],
     ArrowDown: [Math.min(POSITIONS.length - 1, row + 1), column],
     Home: [row, 0],
     End: [row, ALIGNMENTS.length - 1],
-  }[event.key];
+  };
+  const next = moves[event.key];
   if (!next) return false;
   event.preventDefault();
   selectTile(TILES[next[0] * ALIGNMENTS.length + next[1]], { focus: true });
   return true;
 }
 
-function onTileKeydown(event) {
+function onTileKeydown(event: KeyboardEvent) {
   if (moveSelection(event)) return;
   if (event.key === 'Enter') {
     event.preventDefault();
@@ -153,7 +203,7 @@ function onTileKeydown(event) {
 }
 
 /** Show the section's numbers, unless the user already started choosing. */
-function adoptCurrent(info) {
+function adoptCurrent(info: HeaderFooterPageNumbersInfo | null) {
   current.value = info && Array.isArray(info.placements) ? info : null;
   if (!current.value || touched.value) return;
   const placement =
@@ -176,7 +226,7 @@ function buildChoice() {
   const info = current.value;
   const kind = position.value === 'top' ? 'header' : 'footer';
   const placement = info?.placements?.find((entry) => entry.kind === kind) ?? null;
-  const choice = { position: position.value };
+  const choice: PageNumberChoice = { position: position.value };
   if (alignment.value && (!placement || placement.alignment !== alignment.value)) choice.alignment = alignment.value;
   if (!hasNumbers.value || showOnFirstPage.value !== (info?.showOnFirstPage !== false)) {
     choice.showOnFirstPage = showOnFirstPage.value;
@@ -192,8 +242,13 @@ function normalizedStart() {
   return Number.isFinite(value) && value >= 0 ? value : 1;
 }
 
-function failureMessage(result, action) {
-  const details = result?.failure?.details;
+function failureDetails(result: CommandExecutionResult | null): Record<string, unknown> | null {
+  if (typeof result !== 'object' || result === null || result.success) return null;
+  return isPlainObject(result.failure?.details) ? result.failure.details : null;
+}
+
+function failureMessage(result: CommandExecutionResult | null, action: PageNumberAction) {
+  const details = failureDetails(result);
   if (details?.reason === 'page-number-has-content') {
     return `A page number shares its line with other text. Edit the ${details.kind === 'header' ? 'header' : 'footer'} directly to change it.`;
   }
@@ -208,7 +263,7 @@ function failureMessage(result, action) {
  * Run an action once the section's numbers are known. A commit made while they
  * load waits for them, so it changes what the section actually has.
  */
-async function commit(action, prepare) {
+async function commit(action: PageNumberAction, prepare: () => PreparedCommit) {
   if (!canApply.value || busy.value) return;
   busy.value = true;
   message.value = '';
@@ -216,7 +271,7 @@ async function commit(action, prepare) {
     await loaded;
     const { execute, outcome } = prepare();
     const result = await execute();
-    if (result === true || result?.success === true) {
+    if (result === true || (typeof result === 'object' && result !== null && result.success === true)) {
       props.close(outcome);
       return;
     }
@@ -254,7 +309,7 @@ function insertAtCursor() {
   // Start the insert before focus returns to the editor. The field then enters
   // the editor's command queue first, so keys typed right away land after it,
   // as they do with the keyboard shortcut.
-  let pending;
+  let pending: Promise<CommandExecutionResult> | undefined;
   try {
     pending = props.insertAtCursor();
   } catch {
@@ -266,9 +321,10 @@ function insertAtCursor() {
 
 onMounted(() => {
   void nextTick(() => tileRefs.value[focusIndex.value]?.focus({ preventScroll: true }));
-  if (typeof props.loadCurrent !== 'function') return;
+  const loadCurrent = props.loadCurrent;
+  if (typeof loadCurrent !== 'function') return;
   loaded = Promise.resolve()
-    .then(() => props.loadCurrent())
+    .then(() => loadCurrent())
     .then(adoptCurrent, () => adoptCurrent(null))
     .finally(() => {
       loading.value = false;
@@ -298,7 +354,7 @@ onMounted(() => {
         <button
           v-for="tile in TILES.slice(rowIndex * 3, rowIndex * 3 + 3)"
           :key="`${tile.position}-${tile.alignment}`"
-          :ref="(element) => (tileRefs[TILES.indexOf(tile)] = element)"
+          :ref="(element) => (tileRefs[TILES.indexOf(tile)] = element as HTMLElement | null)"
           type="button"
           role="radio"
           class="sd-page-number-menu__tile"

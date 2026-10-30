@@ -1,17 +1,24 @@
-<script setup>
+<script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, watch } from 'vue';
+import type { PropType } from 'vue';
+import type {
+  DirectSurfaceRequest,
+  ExternalSurfaceRenderContext,
+  SurfaceMode,
+  SurfaceRequest,
+} from '../../core/types/index.js';
 
 const props = defineProps({
   surfaceId: { type: String, required: true },
-  mode: { type: String, required: true },
-  request: { type: Object, required: true },
-  render: { type: Function, required: true },
-  resolve: { type: Function, required: true },
-  close: { type: Function, required: true },
+  mode: { type: String as PropType<SurfaceMode>, required: true },
+  request: { type: Object as PropType<SurfaceRequest>, required: true },
+  render: { type: Function as PropType<NonNullable<DirectSurfaceRequest['render']>>, required: true },
+  resolve: { type: Function as PropType<ExternalSurfaceRenderContext['resolve']>, required: true },
+  close: { type: Function as PropType<ExternalSurfaceRenderContext['close']>, required: true },
 });
 
-const container = ref(null);
-let destroyFn = null;
+const container = ref<HTMLElement | null>(null);
+let destroyFn: (() => void) | null = null;
 
 function mount() {
   cleanup();

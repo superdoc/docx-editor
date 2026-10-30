@@ -1,16 +1,18 @@
-<script setup>
+<script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue';
+import type { PropType } from 'vue';
 import SurfaceExternalMount from './SurfaceExternalMount.vue';
 import { FOCUSABLE_SELECTOR } from './focusable-selector.js';
+import type { ActiveSurface } from '../../core/surface-manager.js';
 
 const props = defineProps({
-  surface: { type: Object, required: true },
-  scrollLockTarget: { type: Object, default: null },
+  surface: { type: Object as PropType<ActiveSurface>, required: true },
+  scrollLockTarget: { type: Object as PropType<HTMLElement | null>, default: null },
 });
 
 const emit = defineEmits(['close']);
 
-const dialogRef = ref(null);
+const dialogRef = ref<HTMLElement | null>(null);
 const titleId = computed(() => (props.surface.request.title ? `sd-surface-title-${props.surface.id}` : undefined));
 // Precedence: title (via aria-labelledby to shell title) → ariaLabelledBy → ariaLabel
 const labelledBy = computed(() => titleId.value ?? props.surface.request.ariaLabelledBy ?? undefined);
@@ -20,11 +22,11 @@ const ariaLabel = computed(() => (labelledBy.value ? undefined : props.surface.r
 // Focus management
 // ---------------------------------------------------------------------------
 
-let previouslyFocusedElement = null;
+let previouslyFocusedElement: (Element & Partial<Pick<HTMLElement, 'focus'>>) | null = null;
 
-function trapFocus(event) {
+function trapFocus(event: KeyboardEvent) {
   if (!dialogRef.value) return;
-  const focusable = dialogRef.value.querySelectorAll(FOCUSABLE_SELECTOR);
+  const focusable = dialogRef.value.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR);
   if (focusable.length === 0) return;
 
   const first = focusable[0];
@@ -42,7 +44,8 @@ function trapFocus(event) {
 function setInitialFocus() {
   if (!dialogRef.value) return;
   const firstFocusable =
-    dialogRef.value.querySelector('[data-sd-autofocus]') ?? dialogRef.value.querySelector(FOCUSABLE_SELECTOR);
+    dialogRef.value.querySelector<HTMLElement>('[data-sd-autofocus]') ??
+    dialogRef.value.querySelector<HTMLElement>(FOCUSABLE_SELECTOR);
   if (firstFocusable) {
     firstFocusable.focus();
   } else {
@@ -54,7 +57,7 @@ function setInitialFocus() {
 // Scroll lock
 // ---------------------------------------------------------------------------
 
-let scrollLockTarget = null;
+let scrollLockTarget: HTMLElement | null = null;
 let originalOverflow = '';
 
 function lockScroll() {
@@ -64,8 +67,8 @@ function lockScroll() {
   if (props.scrollLockTarget) {
     scrollLockTarget = props.scrollLockTarget;
   } else {
-    const superdocRoot = dialogRef.value?.closest('.superdoc');
-    scrollLockTarget = superdocRoot?.querySelector('.superdoc__layers') ?? superdocRoot;
+    const superdocRoot = dialogRef.value?.closest<HTMLElement>('.superdoc');
+    scrollLockTarget = superdocRoot?.querySelector<HTMLElement>('.superdoc__layers') ?? superdocRoot ?? null;
   }
   if (!scrollLockTarget) return;
   originalOverflow = scrollLockTarget.style.overflow;
@@ -83,7 +86,7 @@ function unlockScroll() {
 // Keyboard & backdrop
 // ---------------------------------------------------------------------------
 
-function handleKeydown(event) {
+function handleKeydown(event: KeyboardEvent) {
   if (event.key === 'Tab') {
     trapFocus(event);
     return;
@@ -94,7 +97,7 @@ function handleKeydown(event) {
   }
 }
 
-function handleBackdropClick(event) {
+function handleBackdropClick(event: MouseEvent) {
   if (event.target !== event.currentTarget) return;
   // Mousedown must not steal focus from the dialog or its restored opener.
   event.preventDefault();
@@ -130,7 +133,7 @@ const maxWidth = computed(() => {
 });
 
 const cardStyle = computed(() => {
-  const style = {};
+  const style: Record<string, string> = {};
   if (maxWidth.value) style['max-width'] = maxWidth.value;
   return style;
 });

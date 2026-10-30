@@ -18,6 +18,12 @@ describe('useDocument', () => {
     expect(doc.password).toBe('secret');
   });
 
+  it('throws a named TypeError when the SuperDoc config is missing', () => {
+    expect(() => useDocument({ id: 'doc-1', type: DOCX }, null)).toThrow(
+      new TypeError('SuperDoc config is required to initialize a document'),
+    );
+  });
+
   it('exposes editorMountNonce as a ref starting at 0', () => {
     const doc = makeDoc();
     expect(isRef(doc.editorMountNonce)).toBe(true);

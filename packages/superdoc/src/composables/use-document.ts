@@ -1,11 +1,56 @@
 import { ref, shallowRef } from 'vue';
 import { useField } from './use-field';
 import { documentTypes } from '@superdoc/common';
-import useComment from '@superdoc/components/CommentsLayer/use-comment';
+import useComment from '../components/CommentsLayer/use-comment.js';
+import type { UseCommentParams } from '../components/CommentsLayer/use-comment.js';
+import type { DocumentRendererRuntime, Editor, InternalConfig, RuntimeDocument } from '../core/types/index.js';
 
-export default function useDocument(params, superdocConfig) {
+type UseDocumentParams = Pick<
+  RuntimeDocument,
+  | 'id'
+  | 'data'
+  | 'password'
+  | 'fieldContext'
+  | 'load'
+  | 'loadScope'
+  | 'role'
+  | 'ydoc'
+  | 'provider'
+  | 'isNewFile'
+  | 'v2Collaboration'
+> & {
+  type?: string;
+  state?: unknown;
+  html?: string;
+  markdown?: string;
+  socket?: unknown;
+  fields?: unknown[];
+  annotations?: unknown[];
+  conversations?: UseCommentParams[];
+  commentThreadingProfile?: unknown;
+};
+
+type DocumentPageContainer = {
+  page: number;
+  containerBounds?: unknown;
+  container?: Element | null;
+};
+
+type UseDocumentConfig = Pick<InternalConfig, 'modules' | 'rulers'>;
+
+const mimeTypesByShorthand: Readonly<Record<string, string | undefined>> = documentTypes;
+
+function initDocumentType({ type, data }: Pick<UseDocumentParams, 'type' | 'data'>): string {
+  if (data?.type) return data.type;
+  if (type) return mimeTypesByShorthand[type] || type;
+  throw new Error('Document type not specified');
+}
+
+export default function useDocument(params: UseDocumentParams, superdocConfig: UseDocumentConfig | null) {
   const id = params.id;
   const type = initDocumentType(params);
+
+  if (!superdocConfig) throw new TypeError('SuperDoc config is required to initialize a document');
 
   const data = params.data;
   const config = superdocConfig;
@@ -15,58 +60,29 @@ export default function useDocument(params, superdocConfig) {
   const markdown = params.markdown;
   const password = params.password;
 
-  // Password retry — incrementing this forces SuperDoc editor to remount and re-run loadXmlData.
   const editorMountNonce = ref(0);
 
-  // Placement
-  const container = ref(null);
-  const pageContainers = ref([]);
+  const container = ref<Element | null>(null);
+  const pageContainers = ref<DocumentPageContainer[]>([]);
   const isReady = ref(false);
   const rulers = ref(superdocConfig.rulers);
 
-  // Collaboration
   const ydoc = shallowRef(params.ydoc);
   const provider = shallowRef(params.provider);
   const socket = shallowRef(params.socket);
   const isNewFile = ref(params.isNewFile);
   const v2Collaboration = shallowRef(params.v2Collaboration || null);
 
-  // For docx
-  const editorRef = shallowRef(null);
-  const setEditor = (ref) => (editorRef.value = ref);
+  const editorRef = shallowRef<Editor | null>(null);
+  const setEditor = (ref: Editor | null) => (editorRef.value = ref);
 
-  /**
-   * @deprecated Direct editor access will be removed in a future version. Use the Document API (`editor.doc`) instead.
-   * See https://docs.superdoc.dev/document-api/overview
-   */
   const getEditor = () => editorRef.value;
 
-  const documentRuntimeRef = shallowRef(null);
-  const setDocumentRuntime = (ref) => (documentRuntimeRef.value = ref);
+  const documentRuntimeRef = shallowRef<DocumentRendererRuntime | null>(null);
+  const setDocumentRuntime = (ref: DocumentRendererRuntime | null) => (documentRuntimeRef.value = ref);
 
-  /**
-   * @deprecated Direct editor access will be removed in a future version. Use the Document API (`editor.doc`) instead.
-   * See https://docs.superdoc.dev/document-api/overview
-   */
   const getDocumentRuntime = () => documentRuntimeRef.value;
 
-  /**
-   * Initialize the mime type of the document.
-   * Accepts shorthand ('docx') or full mime type ('application/vnd...').
-   * @param {Object} params - The document parameters
-   * @param {string} [params.type] - The document type (shorthand or mime type)
-   * @param {Object} [params.data] - The document data object
-   * @param {string} [params.data.type] - The mime type from the data object
-   * @returns {string} The resolved mime type
-   * @throws {Error} If no document type can be determined
-   */
-  function initDocumentType({ type, data }) {
-    if (data?.type) return data.type;
-    if (type) return documentTypes[type] || type;
-    throw new Error('Document type not specified');
-  }
-
-  // Comments
   const removeComments = () => {
     conversationsBackup.value = conversations.value;
     conversations.value = [];
@@ -77,7 +93,6 @@ export default function useDocument(params, superdocConfig) {
     console.debug('[superdoc] Restored comments:', conversations.value);
   };
 
-  // Modules
   const rawFields = ref(params.fields || []);
   const fields = ref(params.fields?.map((f) => useField(f)) || []);
   const annotations = ref(params.annotations || []);
@@ -91,11 +106,6 @@ export default function useDocument(params, superdocConfig) {
   }
 
   const core = ref(null);
-
-  const removeConversation = (conversationId) => {
-    const index = conversations.value.findIndex((c) => c.conversationId === conversationId);
-    if (index > -1) conversations.value.splice(index, 1);
-  };
 
   return {
     id,
@@ -119,26 +129,22 @@ export default function useDocument(params, superdocConfig) {
     isNewFile,
     v2Collaboration,
 
-    // Placement
     container,
     pageContainers,
     isReady,
     rulers,
 
-    // Modules
     rawFields,
     fields,
     annotations,
     conversations,
     commentThreadingProfile,
 
-    // Actions
     setEditor,
     getEditor,
     setDocumentRuntime,
     getDocumentRuntime,
     removeComments,
     restoreComments,
-    removeConversation,
   };
 }

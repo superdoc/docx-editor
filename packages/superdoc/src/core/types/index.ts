@@ -1176,9 +1176,7 @@ export interface RuntimeDocument extends Document {
    * created one. Set by the editor-create lifecycle.
    *
    * @deprecated Direct editor access will be removed in a future version.
-   * Use the Document API (`editor.doc`) instead. This typedef carries the
-   * deprecation marker forward from the source accessor in
-   * `packages/superdoc/src/composables/use-document.js`.
+   * Use the Document API (`editor.doc`) instead.
    */
   getEditor?: () => Editor | null | undefined;
   /**

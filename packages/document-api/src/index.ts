@@ -444,7 +444,6 @@ import type {
   MutationOptions,
   RevisionGuardOptions,
   RichContentMutationOptions,
-  TrackedAttribution,
   TrackedTextMutationOptions,
   TextMutationOptions,
   WriteAdapter,

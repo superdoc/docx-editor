@@ -11,9 +11,7 @@ import { useUiFontFamily } from '../../composables/useUiFontFamily.js';
 import { useSuperDocInstance } from '../../composables/use-superdoc-instance';
 import CommentsDropdown from './CommentsDropdown.vue';
 import { trackedChangeThreadParentIdForComment } from './tracked-change-threading.js';
-import type useComment from './use-comment.js';
-
-type HeaderComment = ReturnType<typeof useComment>;
+import type { CommentModel } from './use-comment';
 
 type HeaderConfig = { readOnly?: boolean; allowResolve?: boolean };
 
@@ -31,7 +29,7 @@ const props = defineProps({
     required: true,
   },
   comment: {
-    type: Object as PropType<HeaderComment>,
+    type: Object as PropType<CommentModel>,
     required: true,
   },
   isPendingInput: {
@@ -82,7 +80,7 @@ const props = defineProps({
 const { proxy, superdoc } = useSuperDocInstance();
 const role = superdoc.config.role;
 const isInternal = superdoc.config.isInternal;
-const isCommentOwnedByCurrentUser = (comment: HeaderComment) => {
+const isCommentOwnedByCurrentUser = (comment: CommentModel) => {
   const currentUser = proxy.$superdoc.config.user;
   const otherUser = { id: comment?.creatorId, email: comment?.creatorEmail };
   if (actorIdentitiesMatch({ current: currentUser, other: otherUser })) return true;
@@ -100,7 +98,7 @@ const isCommentOwnedByCurrentUser = (comment: HeaderComment) => {
   const commentName = normalizeActorName(comment?.creatorName);
   return Boolean(currentName && commentName && currentName === commentName);
 };
-const isTrackedChangeOwnedByCurrentUser = (comment: HeaderComment) => {
+const isTrackedChangeOwnedByCurrentUser = (comment: CommentModel) => {
   const currentUser = proxy.$superdoc.config.user;
   const current = getActorIdentity(currentUser);
   const author = getActorIdentity({

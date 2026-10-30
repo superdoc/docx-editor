@@ -14,7 +14,6 @@ import { storeToRefs } from 'pinia';
 import { useSuperDocInstance } from '../../composables/use-superdoc-instance';
 import type { SuperDoc } from '../../core/SuperDoc.js';
 import type { Editor, User } from '../../core/types/index.js';
-import type useComment from './use-comment.js';
 import { useCommentsStore } from '../../stores/comments-store';
 import { useSuperdocStore } from '../../stores/superdoc-store';
 import { superdocIcons } from '../../icons.js';
@@ -27,12 +26,10 @@ import {
 import InternalDropdown from './InternalDropdown.vue';
 import CommentHeader from './CommentHeader.vue';
 import CommentInput from './CommentInput.vue';
-import { COMMENT_RECONCILIATION_TOKEN } from './use-comment.js';
+import { COMMENT_RECONCILIATION_TOKEN, type CommentModel } from './use-comment';
 import Avatar from '../general/Avatar.vue';
 import { renderCommentHtml } from './comment-urls.js';
 import { isFiniteNumber } from '../../helpers/is-finite-number.js';
-
-type DialogComment = ReturnType<typeof useComment>;
 
 type PositionBounds = { top?: number; left?: number; right?: number; bottom?: number };
 
@@ -57,13 +54,13 @@ type CapabilityState = { canWrite?: boolean; canDecide?: boolean; reason?: strin
 
 type V2CommentsAdapter = {
   documentId?: string | null;
-  focusComment(comment: DialogComment): Promise<MutationOutcome | undefined>;
+  focusComment(comment: CommentModel): Promise<MutationOutcome | undefined>;
   getCapabilityState?(command: string | null): CapabilityState | null | undefined;
 };
 
 type V2TrackedChangesAdapter = {
   focusTrackedChange(
-    target: DialogComment | Record<string, unknown> | string | null | undefined,
+    target: CommentModel | Record<string, unknown> | string | null | undefined,
   ): Promise<MutationOutcome | undefined>;
   getCapabilityState?(): CapabilityState | null | undefined;
 };
@@ -84,18 +81,18 @@ type DialogEditor = Editor & {
 type V2TrackedChangeCommentTarget = {
   kind: 'trackedChange';
   trackedChangeId: string;
-  story?: DialogComment['trackedChangeStory'];
+  story?: CommentModel['trackedChangeStory'];
   side?: 'source' | 'destination';
 };
 
-type TrackedChangeBubbleHandler = (comment: DialogComment, editor: Editor | null) => void;
+type TrackedChangeBubbleHandler = (comment: CommentModel, editor: Editor | null) => void;
 
 type DialogSuperDocConfig = SuperDoc['config'] & {
   onTrackedChangeBubbleAccept?: TrackedChangeBubbleHandler;
   onTrackedChangeBubbleReject?: TrackedChangeBubbleHandler;
 };
 
-type CommentsHost = Parameters<DialogComment['setIsInternal']>[0]['superdoc'];
+type CommentsHost = Parameters<CommentModel['setIsInternal']>[0]['superdoc'];
 
 type DialogSuperDoc = Pick<SuperDoc, 'interactionConfig' | 'on' | 'off' | 'focus'> & {
   emit: CommentsHost['emit'];
@@ -115,36 +112,36 @@ type TrackedChangeDecision = 'accept' | 'reject';
 type TrackedChangeDecisionFailure = { decision: TrackedChangeDecision; reason: string | null };
 
 type DialogCommentsStore = {
-  addComment(params: { superdoc: DialogSuperDoc; comment: DialogComment }): Promise<MutationOutcome> | MutationOutcome;
+  addComment(params: { superdoc: DialogSuperDoc; comment: CommentModel }): Promise<MutationOutcome> | MutationOutcome;
   cancelComment(superdoc: DialogSuperDoc): void;
   deleteComment(params: {
     superdoc: DialogSuperDoc;
     commentId: string | undefined;
   }): Promise<MutationOutcome> | MutationOutcome;
-  getCommentAliasIds(commentOrId: DialogComment | string): Array<string | null>;
-  getCommentDocumentId(comment: DialogComment): string | null;
+  getCommentAliasIds(commentOrId: CommentModel | string): Array<string | null>;
+  getCommentDocumentId(comment: CommentModel): string | null;
   removePendingComment(superdoc: DialogSuperDoc): void;
   requestInstantSidebarAlignment(targetY?: number | null, threadId?: string | null, instanceId?: string | null): void;
-  resolveCommentPositionEntry(commentOrId: DialogComment | string): {
+  resolveCommentPositionEntry(commentOrId: CommentModel | string): {
     key: string | null;
     entry: PositionEntry | null;
   };
   clearInstantSidebarAlignment(): void;
   setActiveFloatingCommentInstance(instanceId?: string | null): void;
-  getTrackedChangeThread(parentComment: DialogComment): readonly DialogComment[];
+  getTrackedChangeThread(parentComment: CommentModel): readonly CommentModel[];
   getComment(id: string): Record<string, unknown> | null | undefined;
   setActiveComment(superdoc: DialogSuperDoc, id: string | null | undefined): void;
   getPendingComment(params: {
     documentId?: string | null;
     isInternal?: boolean;
     parentCommentId?: string | null;
-    selection?: ReturnType<DialogComment['selection']['getValues']>;
-  }): DialogComment;
+    selection?: ReturnType<CommentModel['selection']['getValues']>;
+  }): CommentModel;
   replyCommentV2(params: {
     superdoc: DialogSuperDoc;
     parentCommentId: string | null;
     text: string;
-    mentions?: DialogComment['mentions'];
+    mentions?: CommentModel['mentions'];
     trackedChangeTarget?: V2TrackedChangeCommentTarget;
   }): Promise<MutationOutcome>;
   editCommentV2(params: {
@@ -156,10 +153,10 @@ type DialogCommentsStore = {
   reopenCommentV2(params: { superdoc: DialogSuperDoc; commentId: string | undefined }): Promise<MutationOutcome>;
   decideTrackedChangeFromSidebar(params: {
     superdoc: DialogSuperDoc;
-    comment: DialogComment;
+    comment: CommentModel;
     decision: TrackedChangeDecision;
   }): Promise<MutationOutcome> | MutationOutcome;
-  commentsList: DialogComment[];
+  commentsList: CommentModel[];
   lastUpdate?: Date;
   viewingVisibility: { documentMode: string };
 };
@@ -170,9 +167,9 @@ type DialogCommentsStoreRefs = {
   activeComment: Ref<string | null | undefined>;
   activeFloatingCommentInstanceId: Ref<string | null>;
   floatingCommentsOffset: Ref<number>;
-  pendingComment: Ref<DialogComment | null>;
+  pendingComment: Ref<CommentModel | null>;
   currentCommentText: Ref<string>;
-  currentCommentMentions: Ref<DialogComment['mentions']>;
+  currentCommentMentions: Ref<CommentModel['mentions']>;
   isDebugging?: Ref<boolean>;
   editingCommentId: Ref<string | null | undefined>;
   editorCommentPositions: Ref<Record<string, PositionEntry | undefined>>;
@@ -187,7 +184,7 @@ const emit = defineEmits<{
 }>();
 const props = defineProps({
   comment: {
-    type: Object as PropType<DialogComment>,
+    type: Object as PropType<CommentModel>,
     required: true,
   },
   autoFocus: {
@@ -215,7 +212,7 @@ const props = defineProps({
     default: undefined,
   },
   threadComments: {
-    type: Array as PropType<DialogComment[] | null>,
+    type: Array as PropType<CommentModel[] | null>,
     default: null,
   },
 });
@@ -283,7 +280,7 @@ const CLICK_OUTSIDE_HIT_SAMPLE_OFFSETS = [
 ];
 const TRACKED_CHANGE_PREVIEW_MAX_PX = 90;
 
-const trackedChangeImagePreviewStyle = (preview: DialogComment['trackedChangeImagePreview']) => {
+const trackedChangeImagePreviewStyle = (preview: CommentModel['trackedChangeImagePreview']) => {
   const width = isFiniteNumber(preview?.width) ? preview.width : null;
   const height = isFiniteNumber(preview?.height) ? preview.height : null;
   if (!width || !height || width <= 0 || height <= 0) return {};
@@ -365,10 +362,10 @@ const focusEditInput = (commentId: string) => {
 };
 const commentDialogElement = ref<HTMLElement | null>(null);
 
-const trackedChangeStoryType = (story: DialogComment['trackedChangeStory']) =>
+const trackedChangeStoryType = (story: CommentModel['trackedChangeStory']) =>
   typeof story === 'object' ? story?.storyType : undefined;
 
-const getCommentFocusThreadId = (comment: DialogComment) => {
+const getCommentFocusThreadId = (comment: CommentModel) => {
   if (comment.resolvedTime) {
     return comment.commentId;
   }
@@ -376,7 +373,7 @@ const getCommentFocusThreadId = (comment: DialogComment) => {
   return comment.importedId || comment.commentId;
 };
 
-const getV2ExistingReplyParentId = (comment: DialogComment | null | undefined) => {
+const getV2ExistingReplyParentId = (comment: CommentModel | null | undefined) => {
   if (!comment) return null;
   if (comment.trackedChange && comment.trackedChangeCanonicalId != null) {
     return String(comment.trackedChangeCanonicalId);
@@ -385,7 +382,7 @@ const getV2ExistingReplyParentId = (comment: DialogComment | null | undefined) =
   return null;
 };
 
-const getV2TrackedChangeCommentTarget = (comment: DialogComment) => {
+const getV2TrackedChangeCommentTarget = (comment: CommentModel) => {
   if (!comment?.trackedChange) return null;
   const trackedChangeId = getV2ExistingReplyParentId(comment);
   if (!trackedChangeId) return null;
@@ -470,7 +467,7 @@ const shouldIncludeThreadAlias = (
 // One logical thread can surface under multiple position keys when tracked-change
 // anchors are split across imported ids and canonical ids. Collect every matching
 // key so the visible highlight lookup stays aligned with the actual rendered text.
-const getThreadHighlightLookupIds = (commentOrId: DialogComment) => {
+const getThreadHighlightLookupIds = (commentOrId: CommentModel) => {
   const lookupIds = new Set(getCommentAliasIds(commentOrId));
   const { key, entry } = resolveCommentPositionEntry(commentOrId);
 
@@ -738,7 +735,7 @@ const collapsedReplyAuthors = computed(() => {
   const hidden = childComments.value.slice(0, -1);
   const seen = new Set<string | null | undefined>();
   return hidden
-    .map((c: DialogComment & { email?: string | null }) =>
+    .map((c: CommentModel & { email?: string | null }) =>
       typeof c.getCommentUser === 'function'
         ? c.getCommentUser()
         : { name: c.creatorName, email: c.creatorEmail || c.email },
@@ -764,7 +761,7 @@ const isInternalDropdownDisabled = computed(() => {
   return commentsAreReadOnly();
 });
 
-const isEditingThisComment = computed(() => (comment: DialogComment) => {
+const isEditingThisComment = computed(() => (comment: CommentModel) => {
   return isDialogActive.value && editingCommentId.value === comment.commentId;
 });
 
@@ -1167,7 +1164,7 @@ const v2TrackedChangeCapability = computed(() => {
   return capability;
 });
 
-const getResolveDisabledReason = (comment: DialogComment) => {
+const getResolveDisabledReason = (comment: CommentModel) => {
   if (isV2Mode.value && comment?.trackedChange) {
     // Tracked-change accept (resolve) routes through the v2 adapter. Disable
     // the control only when the v2 host reports a real precondition.
@@ -1181,7 +1178,7 @@ const getResolveDisabledReason = (comment: DialogComment) => {
   }
   return null;
 };
-const getRejectDisabledReason = (comment: DialogComment) => {
+const getRejectDisabledReason = (comment: CommentModel) => {
   if (isV2Mode.value && comment?.trackedChange) {
     if (!v2TrackedChangesAdapter.value) return 'v2-tracked-change-adapter-missing';
     const cap = v2TrackedChangeCapability.value;
@@ -1461,7 +1458,7 @@ const handleReopen = async () => {
   });
 };
 
-const handleOverflowSelect = async (value: string, comment: DialogComment) => {
+const handleOverflowSelect = async (value: string, comment: CommentModel) => {
   if (commentsAreReadOnly()) return readOnlyMutationOutcome();
 
   switch (value) {
@@ -1488,7 +1485,7 @@ const handleOverflowSelect = async (value: string, comment: DialogComment) => {
   }
 };
 
-const handleCommentUpdate = async (comment: DialogComment) => {
+const handleCommentUpdate = async (comment: CommentModel) => {
   if (commentsAreReadOnly()) return readOnlyMutationOutcome();
 
   // TCS Phase 0 / 004 §4.2: in v2 mode route edit through the store-owned

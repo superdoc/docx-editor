@@ -12,15 +12,13 @@ import { useSuperdocStore } from '../../stores/superdoc-store';
 import type { Document as SuperDocDocument } from '../../core/types/index.js';
 import CommentDialog from './CommentDialog.vue';
 import { isFiniteNumber } from '../../helpers/is-finite-number.js';
-import type useComment from './use-comment';
+import type { CommentModel } from './use-comment';
 import {
   normalizeFloatingAnchorTop,
   resolveRemovedReviewCardContinuityTarget,
   resolveOffscreenFloatingCardTop,
   shouldMountFloatingCommentDialog,
 } from './floating-comment-positioning.js';
-
-type FloatingComment = ReturnType<typeof useComment>;
 
 type PositionEntry = {
   pageIndex?: number | null;
@@ -29,7 +27,7 @@ type PositionEntry = {
 
 type FloatingInstance = {
   id: string;
-  comment: FloatingComment;
+  comment: CommentModel;
   positionKey?: string | null;
   positionEntry?: PositionEntry | null;
   pageIndex?: number | null;
@@ -60,7 +58,7 @@ type ReviewInstance = {
   mount: boolean;
 };
 
-type CommittedInstance = ReviewInstance & { comment: FloatingComment; rowVersion: number };
+type CommittedInstance = ReviewInstance & { comment: CommentModel; rowVersion: number };
 
 type DecisionContinuityRequest = ReviewCoordinate & {
   removedInstanceId: string;
@@ -110,10 +108,10 @@ type ReviewPresentation = {
 type FloatingCommentsStore = {
   clearInstantSidebarAlignment: () => void;
   committedReviewPresentations: Record<string, ReviewPresentation | undefined>;
-  commentsList: FloatingComment[];
+  commentsList: CommentModel[];
   getFloatingCommentInstances: FloatingInstance[];
   belongsToDocument: (
-    comment: FloatingComment,
+    comment: CommentModel,
     activeDocumentId: string,
     options: { allowSingleDocumentMismatch: boolean },
   ) => boolean;
@@ -125,7 +123,7 @@ type FloatingCommentsStoreRefs = {
   activeComment: Ref<string | null>;
   activeFloatingCommentInstanceId: Ref<string | null>;
   editorCommentPositions: Ref<Record<string, PositionEntry | undefined>>;
-  pendingComment: Ref<FloatingComment | null>;
+  pendingComment: Ref<CommentModel | null>;
   editingCommentId: Ref<string | null>;
   instantSidebarAlignmentTargetY: Ref<number | null>;
   instantSidebarAlignmentThreadId: Ref<string | null>;
@@ -142,7 +140,7 @@ type FloatingPosition = {
   top: number;
   height: number;
   isOffscreenReviewCard?: boolean;
-  commentRef: FloatingComment;
+  commentRef: CommentModel;
   instanceRef?: FloatingInstance | CommittedInstance;
 };
 
@@ -270,14 +268,14 @@ const directDecisionContinuityTargetId = ref<string | null>(null);
 const workerDecisionContinuity = ref<WorkerDecisionContinuity | null>(null);
 const viewportRevision = ref(0);
 
-const isPendingThread = (commentOrId: FloatingComment | string | null) => {
+const isPendingThread = (commentOrId: CommentModel | string | null) => {
   const pendingId = pendingComment.value?.commentId;
   if (!pendingId) return false;
   if (typeof commentOrId === 'object') return commentOrId?.commentId === pendingId;
   return commentOrId === pendingId || commentOrId === 'pending';
 };
 
-const getThreadId = (comment: FloatingComment | null | undefined) => {
+const getThreadId = (comment: CommentModel | null | undefined) => {
   return comment?.commentId ?? comment?.importedId ?? null;
 };
 

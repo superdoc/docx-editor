@@ -60,7 +60,7 @@ import { useCommentsStore } from './stores/comments-store';
 
 import { DOCX, PDF } from '@superdoc/common';
 import { composeAuthorColorResolver } from '@superdoc/contracts';
-import useComment, { type UseCommentParams } from './components/CommentsLayer/use-comment';
+import useComment, { type CommentModel, type UseCommentParams } from './components/CommentsLayer/use-comment';
 import { collectRemovedCommentIds } from './components/CommentsLayer/collect-removed-comment-ids.js';
 import { useHighContrastMode } from './composables/use-high-contrast-mode';
 import { useSuperDocInstance } from './composables/use-superdoc-instance';
@@ -4292,7 +4292,7 @@ const whiteboardInteractive = computed(() => whiteboardEnabled.value);
     </div>
 
     <div v-if="activeCompactComment" class="superdoc__compact-comment-popover" :style="compactCommentPopoverStyle">
-      <CommentDialog :comment="activeCompactComment as ReturnType<typeof useComment>" :parent="layers!" />
+      <CommentDialog :comment="activeCompactComment as CommentModel" :parent="layers!" />
     </div>
 
     <!-- Surface host — generic dialog/floating overlay system -->

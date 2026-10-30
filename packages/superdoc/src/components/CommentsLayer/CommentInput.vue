@@ -9,9 +9,7 @@ import { storeToRefs } from 'pinia';
 import { useCommentsStore } from '../../stores/comments-store';
 import type { User } from '../../core/types/index.js';
 import CommentHeader from './CommentHeader.vue';
-import type useComment from './use-comment.js';
-
-type InputComment = ReturnType<typeof useComment>;
+import type { CommentModel } from './use-comment';
 
 type InputConfig = { readOnly?: boolean; allowResolve?: boolean };
 
@@ -47,7 +45,7 @@ const props = defineProps({
     default: true,
   },
   comment: {
-    type: Object as PropType<InputComment>,
+    type: Object as PropType<CommentModel>,
     required: true,
   },
 });

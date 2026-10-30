@@ -1,11 +1,10 @@
 import { defineStore } from 'pinia';
-import { ref, shallowRef, reactive, computed, watch, toRaw, isReactive } from 'vue';
+import { ref, shallowRef, reactive, computed, watch, isReactive } from 'vue';
 import { comments_module_events } from '@superdoc/common';
 import { useSuperdocStore } from '@superdoc/stores/superdoc-store';
 import { syncCommentsToClients } from '../core/collaboration/helpers.js';
 import useComment, { COMMENT_RECONCILIATION_TOKEN } from '@superdoc/components/CommentsLayer/use-comment';
 import { DOCUMENT_EDITOR_SELECTION_SOURCE } from '../helpers/selection-source.js';
-import { isFiniteNumber } from '../helpers/is-finite-number.js';
 import { buildFloatingCommentInstances } from './helpers/floating-comment-instances.js';
 import {
   isSyntheticTrackedChangeCommentLaneItem,
@@ -18,137 +17,17 @@ import {
   buildTrackedChangeThreadIndex,
 } from './helpers/tracked-change-thread-index.js';
 import { trackedChangeThreadParentIdForComment as resolveTrackedChangeThreadParentId } from '../components/CommentsLayer/tracked-change-threading.js';
-
-const makeTrackedChangeAnchorKey = ({ storyKey, rawId }) => `tc::${storyKey}::${rawId}`;
-const COMMENT_DRAFT_BR_TAG = /<br(?:\s[^>]*)?\s*\/?>/gi;
-const COMMENT_DRAFT_BLOCK_BOUNDARY =
-  /(?:<\/(?:p|div|li|blockquote|pre|h[1-6])\s*>\s*)+(?:<(?:p|div|li|blockquote|pre|h[1-6])(?:\s[^>]*)?\s*\/?>)+/gi;
-const COMMENT_DRAFT_BLOCK_OPEN_TAG = /<(?:p|div|li|blockquote|pre|h[1-6])(?:\s[^>]*)?\s*\/?>/gi;
-const COMMENT_DRAFT_BLOCK_CLOSE_TAG = /<\/(?:p|div|li|blockquote|pre|h[1-6])\s*>/gi;
-const COMMENT_DRAFT_ANY_TAG = /<\/?[A-Za-z][A-Za-z0-9:-]*(?:\s[^>]*)?\s*\/?>/g;
-const COMMENT_DRAFT_ENTITY = /&(#x[0-9a-fA-F]+|#\d+|[a-zA-Z][a-zA-Z0-9]+);/g;
-const COMMENT_DRAFT_NAMED_ENTITIES = {
-  amp: '&',
-  apos: "'",
-  gt: '>',
-  lt: '<',
-  nbsp: ' ',
-  quot: '"',
-};
-const shallowEqual = (a, b) => {
-  if (Object.is(a, b)) return true;
-  if (!a || !b || typeof a !== 'object' || typeof b !== 'object') return false;
-  const aKeys = Object.keys(a);
-  const bKeys = Object.keys(b);
-  if (aKeys.length !== bKeys.length) return false;
-  return aKeys.every((key) => Object.prototype.hasOwnProperty.call(b, key) && Object.is(a[key], b[key]));
-};
-
-/**
- * Normalize the optional signed tracked-change detail lines
- * (`[{ excerpt, label }]`, TCS-LIST-005) to a stable shape; absent, empty, or
- * malformed input reads as `null` so legacy rows stay untouched.
- */
-const normalizeTrackedChangeDetailLines = (lines) => {
-  if (!Array.isArray(lines)) return null;
-  const normalized = lines
-    .filter((line) => line && typeof line === 'object')
-    .map((line) => ({
-      excerpt: typeof line.excerpt === 'string' ? line.excerpt : '',
-      label: typeof line.label === 'string' ? line.label : '',
-    }));
-  return normalized.length > 0 ? normalized : null;
-};
-
-/**
- * Element-wise equality for detail-line arrays: refresh paths rebuild the
- * array each pass, so reference equality would rebroadcast every keystroke.
- */
-const trackedChangeDetailLinesEqual = (a, b) => {
-  if (a === b) return true;
-  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
-  return a.every((line, index) => shallowEqual(line, b[index]));
-};
-
-const normalizeTrackedChangeCustomAttributes = (attributes) => {
-  if (!Array.isArray(attributes)) return null;
-  return attributes
-    .filter((attribute) => attribute && typeof attribute === 'object')
-    .map((attribute) => ({
-      name: typeof attribute.name === 'string' ? attribute.name : '',
-      namespaceUri: typeof attribute.namespaceUri === 'string' ? attribute.namespaceUri : '',
-      localName: typeof attribute.localName === 'string' ? attribute.localName : '',
-      value: typeof attribute.value === 'string' ? attribute.value : '',
-    }))
-    .filter((attribute) => attribute.name && attribute.namespaceUri && attribute.localName);
-};
-
-const trackedChangeCustomAttributesEqual = (left, right) => {
-  if (left === right) return true;
-  if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) return false;
-  return left.every((attribute, index) => shallowEqual(attribute, right[index]));
-};
-
-const normalizeTrackedChangeImagePreview = (preview) => {
-  if (!preview || typeof preview !== 'object') return null;
-  const src = typeof preview.src === 'string' ? preview.src : null;
-  if (!src || !src.startsWith('data:image/')) return null;
-  const contentType =
-    typeof preview.contentType === 'string' && preview.contentType.startsWith('image/') ? preview.contentType : null;
-  const role = typeof preview.role === 'string' ? preview.role : null;
-  const width = isFiniteNumber(preview.width) && preview.width > 0 ? preview.width : null;
-  const height = isFiniteNumber(preview.height) && preview.height > 0 ? preview.height : null;
-  const alt = typeof preview.alt === 'string' && preview.alt.length > 0 ? preview.alt : 'Tracked image preview';
-  return {
-    src,
-    ...(contentType ? { contentType } : {}),
-    ...(role ? { role } : {}),
-    ...(width ? { width } : {}),
-    ...(height ? { height } : {}),
-    alt,
-  };
-};
-
-const decodeCommentDraftEntity = (entity) => {
-  const lower = String(entity).toLowerCase();
-  const named = COMMENT_DRAFT_NAMED_ENTITIES[lower];
-  if (named !== undefined) return named;
-  const radix = lower.startsWith('#x') ? 16 : lower.startsWith('#') ? 10 : null;
-  if (!radix) return null;
-  const value = lower.startsWith('#x') ? lower.slice(2) : lower.slice(1);
-  const codePoint = Number.parseInt(value, radix);
-  if (!Number.isFinite(codePoint)) return null;
-  try {
-    return String.fromCodePoint(codePoint);
-  } catch {
-    return null;
-  }
-};
-
-const decodeCommentDraftEntities = (value) =>
-  value.replace(COMMENT_DRAFT_ENTITY, (match, entity) => decodeCommentDraftEntity(entity) ?? match);
-
-const normalizeV2CommentDraftText = (value) => {
-  const html = String(value ?? '');
-  if (!html || html === '<p></p>') return '';
-  return decodeCommentDraftEntities(
-    html
-      .replace(COMMENT_DRAFT_BLOCK_BOUNDARY, '\n')
-      .replace(COMMENT_DRAFT_BR_TAG, '\n')
-      .replace(COMMENT_DRAFT_BLOCK_CLOSE_TAG, '')
-      .replace(COMMENT_DRAFT_BLOCK_OPEN_TAG, '')
-      .replace(COMMENT_DRAFT_ANY_TAG, ''),
-  );
-};
-
-const cloneV2TrackedChangeStory = (story) => {
-  if (!story || typeof story !== 'object') return null;
-  const rawStory = toRaw(story);
-  return {
-    ...rawStory,
-    ...(rawStory.section && typeof rawStory.section === 'object' ? { section: { ...toRaw(rawStory.section) } } : {}),
-  };
-};
+import { normalizeV2CommentDraftText } from './helpers/comment-draft-text.js';
+import {
+  cloneV2TrackedChangeStory,
+  makeTrackedChangeAnchorKey,
+  normalizeTrackedChangeCustomAttributes,
+  normalizeTrackedChangeDetailLines,
+  normalizeTrackedChangeImagePreview,
+  shallowEqual,
+  trackedChangeCustomAttributesEqual,
+  trackedChangeDetailLinesEqual,
+} from './helpers/tracked-change-row-values.js';
 
 export const useCommentsStore = defineStore('comments', () => {
   const BODY_TRACKED_CHANGE_STORY = { kind: 'story', storyType: 'body' };

@@ -336,7 +336,12 @@ import {
   executeListsRestartV2,
   executeListsRemoveV2,
 } from './lists/lists.js';
-import { executeReplace, type ReplaceInput, type ReplaceMutationOptions } from './replace/replace.js';
+import {
+  executeReplace,
+  type ReplaceInput,
+  type ReplaceMutationOptions,
+  type TrackedReplaceMutationOptions,
+} from './replace/replace.js';
 import type { CreateAdapter, CreateApi } from './create/create.js';
 import {
   executeCreateParagraph,
@@ -444,7 +449,7 @@ import type {
   MutationOptions,
   RevisionGuardOptions,
   RichContentMutationOptions,
-  TrackedTextMutationOptions,
+  TrackedRichContentMutationOptions,
   TextMutationOptions,
   WriteAdapter,
 } from './write/write.js';
@@ -1179,6 +1184,7 @@ export type {
   WriteRequest,
   RichContentMutationOptions,
   TrackedAttribution,
+  TrackedRichContentMutationOptions,
   TrackedTextMutationOptions,
   TextMutationOptions,
 } from './write/write.js';
@@ -1900,6 +1906,7 @@ export type {
   TextReplacementGranularity,
   RichContentReplaceInput,
   ReplaceMutationOptions,
+  TrackedReplaceMutationOptions,
   NativeOoxmlReplaceInput,
   SnapshotReplaceInput,
   ParagraphTextReplaceInput,
@@ -2088,20 +2095,14 @@ export interface DocumentApiSurface {
    * Insert content at a target location.
    * If target is omitted, inserts at the end of the document.
    */
-  insert(
-    input: import('./insert/insert.js').PlainTextInsertInput,
-    options: TrackedTextMutationOptions & OperationCancellation,
-  ): SDMutationReceipt;
+  insert(input: InsertInput, options: TrackedRichContentMutationOptions & OperationCancellation): SDMutationReceipt;
   insert(input: InsertInput, options?: RichContentMutationOptions & OperationCancellation): SDMutationReceipt;
   /**
    * Replace text at a target range.
    */
   replace(
-    input: Exclude<
-      import('./replace/replace.js').TextReplaceInput,
-      { target: import('./types/story.types.js').BodyStoryLocator }
-    >,
-    options: TrackedTextMutationOptions,
+    input: Exclude<ReplaceInput, { target: import('./types/story.types.js').BodyStoryLocator; text: string }>,
+    options: TrackedReplaceMutationOptions,
   ): SDMutationReceipt;
   replace(input: ReplaceInput, options?: ReplaceMutationOptions): SDMutationReceipt;
   /**
@@ -2726,11 +2727,11 @@ export function createDocumentApi(adapters: DocumentApiAdapters): DocumentApi {
     },
     insert(
       input: InsertInput,
-      options?: (RichContentMutationOptions | TrackedTextMutationOptions) & OperationCancellation,
+      options?: (RichContentMutationOptions | TrackedRichContentMutationOptions) & OperationCancellation,
     ): SDMutationReceipt {
       return executeInsert(adapters.selectionMutation, adapters.write, input, options);
     },
-    replace(input: ReplaceInput, options?: ReplaceMutationOptions | TrackedTextMutationOptions): SDMutationReceipt {
+    replace(input: ReplaceInput, options?: ReplaceMutationOptions | TrackedReplaceMutationOptions): SDMutationReceipt {
       return executeReplace(adapters.selectionMutation, adapters.write, input, options);
     },
     delete(input: DeleteInput, options?: TextMutationOptions): TextMutationReceipt {

@@ -13,7 +13,11 @@
 
 import { isOoxmlContentSource, validateOoxmlContentSource } from '../selection/selection.js';
 import type { OoxmlContentSource } from '../selection/selection.types.js';
-import type { RichContentMutationOptions, TextMutationOptions } from '../write/write.js';
+import type {
+  RichContentMutationOptions,
+  TextMutationOptions,
+  TrackedRichContentMutationOptions,
+} from '../write/write.js';
 import type { SelectionTarget } from '../types/address.js';
 import type { SDMutationReceipt } from '../types/sd-contract.js';
 import type { SDReplaceInput } from '../types/structural-input.js';
@@ -129,8 +133,11 @@ export interface ReplaceMutationOptions extends RichContentMutationOptions {
   /** Compare the addressed paragraph with an unchanged retained snapshot before committing. */
   expectedSnapshotId?: string;
 }
+export type TrackedReplaceMutationOptions = TrackedRichContentMutationOptions &
+  Pick<ReplaceMutationOptions, 'replaceMode' | 'expectedSnapshotId'>;
 type ReplaceExecutionOptions =
   | ReplaceMutationOptions
+  | TrackedReplaceMutationOptions
   | (TextMutationOptions & { replaceMode?: never; expectedSnapshotId?: never });
 export type ReplaceInput =
   | TextReplaceInput

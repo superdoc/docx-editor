@@ -49,6 +49,8 @@ const replaced = doc.replace({ ref: 'selection', text: 'Review' }, options);
 const formatted = doc.format.bold({ ref: 'selection' }, options);
 void browser.format.bold({ ref: 'selection' }, options);
 void doc.delete({ ref: 'selection' }, { changeMode: 'tracked', date: options.date });
+// @ts-expect-error Dates are supported only on tracked writes.
+doc.insert({ value: 'Review' }, { changeMode: 'direct', date: options.date });
 // @ts-expect-error Read-only source identity must not be assigned by an application.
 comment.paraId = 'invented';
 const error = new DocumentLoadError('DOCUMENT_LOAD_TIMEOUT');

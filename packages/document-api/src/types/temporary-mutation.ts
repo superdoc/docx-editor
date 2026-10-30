@@ -1,7 +1,12 @@
 import type { DocumentApiSurface } from '../index.js';
 import type { ReceiptEntity, ReceiptFailureResult, ReceiptSuccess } from './receipt.js';
 import type { PlainTextInsertInput } from '../insert/insert.js';
-import type { ParagraphTextReplaceInput, ReplaceMutationOptions, TextReplaceInput } from '../replace/replace.js';
+import type {
+  ParagraphTextReplaceInput,
+  ReplaceMutationOptions,
+  TextReplaceInput,
+  TrackedReplaceMutationOptions,
+} from '../replace/replace.js';
 import type { MutationOptions, TrackedTextMutationOptions } from '../write/write.js';
 import type { BodyStoryLocator } from './story.types.js';
 
@@ -30,6 +35,7 @@ export type TemporaryMutationOperation = { id?: string } & (
   | TemporaryText<'insert', PlainTextInsertInput>
   | TemporaryText<'replace', TextReplaceInput>
   | { operation: 'replace'; input: ParagraphTextReplaceInput; options?: ReplaceMutationOptions }
+  | { operation: 'replace'; input: ParagraphTextReplaceInput; options: TrackedReplaceMutationOptions }
   | TemporaryCall<'delete', DocumentApiSurface['delete']>
   | TemporaryCall<'blocks.delete', DocumentApiSurface['blocks']['delete']>
   | TemporaryCall<'trackChanges.decide', DocumentApiSurface['trackChanges']['decide']>

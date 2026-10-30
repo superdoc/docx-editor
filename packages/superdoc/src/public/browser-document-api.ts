@@ -12,13 +12,14 @@
 import type {
   DocumentApi,
   DynamicInvokeRequest,
+  InsertInput,
   InvokeRequest,
   InvokeResult,
   OperationId,
   OperationCancellation,
-  PlainTextInsertInput,
-  TextReplaceInput,
-  TrackedTextMutationOptions,
+  ReplaceInput,
+  TrackedReplaceMutationOptions,
+  TrackedRichContentMutationOptions,
 } from '@superdoc/document-api';
 
 type MaybePromise<T> = T | Promise<T>;
@@ -44,12 +45,12 @@ export type BrowserDocumentApi = Omit<BrowserDocumentApiObject<DocumentApi>, 'in
   invoke<T extends OperationId>(request: InvokeRequest<T>): MaybePromise<Awaited<InvokeResult<T>>>;
   invoke(request: DynamicInvokeRequest): unknown;
   insert(
-    input: PlainTextInsertInput,
-    options: TrackedTextMutationOptions & OperationCancellation,
+    input: InsertInput,
+    options: TrackedRichContentMutationOptions & OperationCancellation,
   ): MaybePromise<Awaited<ReturnType<DocumentApi['insert']>>>;
   replace(
-    input: Exclude<TextReplaceInput, { target: { kind: 'story'; storyType: 'body' } }>,
-    options: TrackedTextMutationOptions,
+    input: Exclude<ReplaceInput, { target: { kind: 'story'; storyType: 'body' }; text: string }>,
+    options: TrackedReplaceMutationOptions,
   ): MaybePromise<Awaited<ReturnType<DocumentApi['replace']>>>;
 };
 

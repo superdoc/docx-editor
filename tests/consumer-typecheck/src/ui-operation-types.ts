@@ -55,6 +55,13 @@ const richWithAuthor: OperationCall<'insert'> = {
 };
 void doc.insert(richWithAuthor.input, richWithAuthor.options);
 
+const directWithAuthor: OperationCall<'insert'> = {
+  input: { value: '<b>x</b>', type: 'html' },
+  // @ts-expect-error an author attributes tracked writes only
+  options: { changeMode: 'direct', author: { name: 'Reviewer' } },
+};
+void directWithAuthor;
+
 const comment: OperationInput<'comments.create'> = {
   text: 'Why?',
   target: { kind: 'trackedChange', trackedChangeId: 'tc-1' },

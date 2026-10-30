@@ -1,6 +1,6 @@
 import type { TextMutationReceipt, SDMutationReceipt } from '../types/index.js';
 import type { InsertInput } from '../insert/insert.js';
-import type { ReplaceMutationOptions, ReplaceInput } from '../replace/replace.js';
+import type { ReplaceMutationOptions, ReplaceInput, TrackedReplaceMutationOptions } from '../replace/replace.js';
 import type { StoryLocator } from '../types/story.types.js';
 import { DocumentApiValidationError } from '../errors.js';
 import type { SDHtmlMarkdownCheckGuard } from '../capabilities/html-markdown-support.js';
@@ -73,7 +73,9 @@ export interface TrackedAttribution {
   date?: string;
 }
 
-export interface RichContentMutationOptions extends MutationOptions, TrackedAttribution {
+export interface RichContentMutationOptions extends MutationOptions {
+  author?: never;
+  date?: never;
   /** Guard returned by `doc.capabilities.check` for an exact rich write. */
   supportCheck?: SDHtmlMarkdownCheckGuard;
 }
@@ -82,7 +84,10 @@ export interface TrackedTextMutationOptions extends MutationOptions, TrackedAttr
   changeMode: 'tracked';
 }
 
-export type TextMutationOptions = MutationOptions | TrackedTextMutationOptions;
+export type TrackedRichContentMutationOptions = TrackedTextMutationOptions &
+  Pick<RichContentMutationOptions, 'supportCheck'>;
+
+export type TextMutationOptions = (MutationOptions & { author?: never; date?: never }) | TrackedTextMutationOptions;
 
 export function normalizeTextMutationOptions(
   options?: RichContentMutationOptions | TextMutationOptions,
@@ -91,13 +96,14 @@ export function normalizeTextMutationOptions(
 }
 
 export function normalizeRichMutationOptions(
-  options: (MutationOptions & TrackedAttribution & Partial<RichContentMutationOptions>) | undefined,
+  options: (MutationOptions & TrackedAttribution & Pick<RichContentMutationOptions, 'supportCheck'>) | undefined,
   supportCheckOperation?: 'insert' | 'replace',
-): RichContentMutationOptions {
-  const { author, date, ...rest } = (options ?? {}) as RichContentMutationOptions & {
-    author?: unknown;
-    date?: unknown;
-  };
+): RichContentMutationOptions | TrackedRichContentMutationOptions {
+  const { author, date, ...rest } = (options ?? {}) as MutationOptions &
+    Pick<RichContentMutationOptions, 'supportCheck'> & {
+      author?: unknown;
+      date?: unknown;
+    };
   const normalized = normalizeMutationOptions(rest, supportCheckOperation);
   if (!options || (author === undefined && date === undefined)) return normalized;
   if (
@@ -162,9 +168,15 @@ export interface WriteAdapter {
   readonly supportsNativeOoxml?: boolean;
   write(request: InsertWriteRequest, options?: TextMutationOptions): TextMutationReceipt;
   /** Structured insert for SDFragment or markdown/html content. Returns SDMutationReceipt. */
-  insertStructured(input: InsertInput, options?: RichContentMutationOptions): SDMutationReceipt;
+  insertStructured(
+    input: InsertInput,
+    options?: RichContentMutationOptions | TrackedRichContentMutationOptions,
+  ): SDMutationReceipt;
   /** Structured replace for SDFragment or markdown/html content. Returns SDMutationReceipt. */
-  replaceStructured(input: ReplaceInput, options?: ReplaceMutationOptions): SDMutationReceipt;
+  replaceStructured(
+    input: ReplaceInput,
+    options?: ReplaceMutationOptions | TrackedReplaceMutationOptions,
+  ): SDMutationReceipt;
 }
 
 export function normalizeMutationOptions(

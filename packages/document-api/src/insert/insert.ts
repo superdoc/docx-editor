@@ -6,6 +6,7 @@ import {
   normalizeTextMutationOptions,
   type RichContentMutationOptions,
   type TextMutationOptions,
+  type TrackedRichContentMutationOptions,
   type WriteAdapter,
 } from '../write/write.js';
 import type { SelectionTarget, TargetLocator, SDMutationReceipt } from '../types/index.js';
@@ -320,7 +321,8 @@ export function executeInsert(
   selectionAdapter: SelectionMutationAdapter,
   writeAdapter: WriteAdapter,
   input: InsertInput,
-  options?: (RichContentMutationOptions | TextMutationOptions) & OperationCancellation,
+  options?: (RichContentMutationOptions | TrackedRichContentMutationOptions | TextMutationOptions) &
+    OperationCancellation,
 ): SDMutationReceipt {
   assertOperationCanStart(options);
   validateInsertInput(input);

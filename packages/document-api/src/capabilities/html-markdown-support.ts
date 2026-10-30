@@ -1,6 +1,10 @@
 import type { RichContentInsertInput } from '../insert/insert.js';
-import type { RichContentReplaceInput, ReplaceMutationOptions } from '../replace/replace.js';
-import type { ChangeMode, TrackedAttribution } from '../write/write.js';
+import type {
+  RichContentReplaceInput,
+  ReplaceMutationOptions,
+  TrackedReplaceMutationOptions,
+} from '../replace/replace.js';
+import type { ChangeMode, RichContentMutationOptions, TrackedRichContentMutationOptions } from '../write/write.js';
 import { normalizeRichMutationOptions } from '../write/write.js';
 import type {
   ProjectHtmlInput,
@@ -33,11 +37,19 @@ export interface SDHtmlMarkdownCheckGuard {
 }
 
 export type SDHtmlMarkdownSupportCheckInput =
-  | { operation: 'insert'; input: RichContentInsertInput; options?: { changeMode?: ChangeMode } & TrackedAttribution }
+  | {
+      operation: 'insert';
+      input: RichContentInsertInput;
+      options?:
+        | Pick<RichContentMutationOptions, 'changeMode' | 'author' | 'date'>
+        | Pick<TrackedRichContentMutationOptions, 'changeMode' | 'author' | 'date'>;
+    }
   | {
       operation: 'replace';
       input: RichContentReplaceInput;
-      options?: Pick<ReplaceMutationOptions, 'changeMode' | 'replaceMode' | 'expectedSnapshotId'> & TrackedAttribution;
+      options?:
+        | Pick<ReplaceMutationOptions, 'changeMode' | 'replaceMode' | 'expectedSnapshotId' | 'author' | 'date'>
+        | Pick<TrackedReplaceMutationOptions, 'changeMode' | 'replaceMode' | 'expectedSnapshotId' | 'author' | 'date'>;
     }
   | { operation: 'projectHtml'; input?: ProjectHtmlInput }
   | { operation: 'projectMarkdown'; input?: ProjectMarkdownInput };

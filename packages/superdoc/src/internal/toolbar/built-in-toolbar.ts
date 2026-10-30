@@ -60,6 +60,7 @@ import { toolbarTexts } from './built-in/toolbarTexts.js';
 import { mapFontFamilyOptionsToToolbar } from './built-in/constants.js';
 import { renderColorOptions } from './built-in/color-dropdown-helpers.js';
 import { findElementBySelector } from './built-in/general.js';
+import { HIGH_CONTRAST_MODE_KEY, type HighContrastMode } from '../../composables/use-high-contrast-mode.js';
 
 interface ToolbarItem {
   type: string;
@@ -137,6 +138,7 @@ type BuiltInToolbarOptions = {
   hideButtons?: boolean;
   responsiveToContainer?: boolean;
   uiDisplayFallbackFont?: string;
+  highContrastMode: HighContrastMode;
   [option: string]: unknown;
 };
 
@@ -326,8 +328,11 @@ export class BuiltInToolbar extends EventEmitter {
   declare _reportedInvalidCustomItems: Set<string>;
   declare _lastFontOptionsSignature: string;
 
-  constructor(config: BuiltInToolbarOptions = {}) {
+  readonly #highContrastMode: HighContrastMode;
+
+  constructor(config: BuiltInToolbarOptions) {
     super();
+    this.#highContrastMode = config.highContrastMode;
 
     this.config = { ...this.config, ...config };
     this.toolbarItems = [];
@@ -409,6 +414,7 @@ export class BuiltInToolbar extends EventEmitter {
       this.app = createApp(Toolbar as Component);
       this.app.directive('click-outside', vClickOutside);
       this.app.config.globalProperties.$toolbar = this;
+      this.app.provide(HIGH_CONTRAST_MODE_KEY, this.#highContrastMode);
       this.toolbar = this.app.mount(this.toolbarContainer);
 
       this.updateToolbarState();

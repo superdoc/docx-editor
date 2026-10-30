@@ -79,8 +79,8 @@ sd.setZoomMode('manual');
 sd.setZoomMode('fit-page');
 
 // ─── setHighContrastMode ────────────────────────────────────────────
-// Forwards to `activeEditor.setHighContrastMode` and writes to the
-// highContrastModeStore. No-op until the active editor exists.
+// Forwards to `activeEditor.setHighContrastMode` and updates this
+// instance's high-contrast state. No-op until the active editor exists.
 const _setHighContrastParamsOk: AssertEqual<
   Parameters<SuperDoc['setHighContrastMode']>,
   [isHighContrast: boolean]

@@ -24,6 +24,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { createBuiltInToolbar } from '../internal/toolbar/index.js';
 import type { SuperDocUI } from '../public/ui/types.js';
+import { createHighContrastMode } from '../composables/use-high-contrast-mode.js';
 
 const factoryCalls = vi.hoisted(() => ({ count: 0 }));
 
@@ -58,7 +59,7 @@ function mount(): SuperDocInstance {
 function attachToolbar(superdoc: SuperDocInstance): BuiltInToolbarHandle {
   const container = document.createElement('div');
   document.body.append(container);
-  const toolbar = createBuiltInToolbar({ superdoc, selector: container });
+  const toolbar = createBuiltInToolbar({ highContrastMode: createHighContrastMode(), superdoc, selector: container });
   superdoc.toolbar = toolbar as never;
   return toolbar;
 }

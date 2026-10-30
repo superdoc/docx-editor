@@ -16,6 +16,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { createSuperDocUI } from './create-super-doc-ui.js';
 import type { CommandState, SuperDocLike, SuperDocUI } from './types.js';
+import { createHighContrastMode } from '../../composables/use-high-contrast-mode.js';
 
 /** Hook state for the single component instance under test. */
 const dispatcher = vi.hoisted(() => ({ slots: [] as unknown[], cursor: 0, contextValue: null as unknown }));
@@ -333,7 +334,7 @@ describe('useSuperDocCommand — id switch', () => {
 describe('SuperDocUIProvider — against a real SuperDoc', () => {
   it('publishes the same controller the built-in toolbar reads', () => {
     const superdoc = realSuperDoc();
-    const toolbar = new BuiltInToolbar({ superdoc: superdoc as never });
+    const toolbar = new BuiltInToolbar({ highContrastMode: createHighContrastMode(), superdoc: superdoc as never });
 
     const context = render();
     context.setSuperDoc(superdoc as unknown as SuperDocLike);
@@ -349,7 +350,7 @@ describe('SuperDocUIProvider — against a real SuperDoc', () => {
 
   it('leaves the toolbar working when the provider unmounts and remounts', () => {
     const superdoc = realSuperDoc();
-    const toolbar = new BuiltInToolbar({ superdoc: superdoc as never });
+    const toolbar = new BuiltInToolbar({ highContrastMode: createHighContrastMode(), superdoc: superdoc as never });
 
     const context = render();
     context.setSuperDoc(superdoc as unknown as SuperDocLike);

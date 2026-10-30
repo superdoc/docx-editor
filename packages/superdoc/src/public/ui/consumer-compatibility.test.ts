@@ -29,6 +29,7 @@ import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
 import { BuiltInToolbar } from '../../internal/toolbar/built-in-toolbar.js';
 import { createSuperDocUI } from './create-super-doc-ui.js';
 import type { SuperDocLike, SuperDocUI } from './types.js';
+import { createHighContrastMode } from '../../composables/use-high-contrast-mode.js';
 
 /** Controllers built by a test, torn down together. */
 const controllers: SuperDocUI[] = [];
@@ -123,7 +124,7 @@ afterEach(() => {
 describe('an application that builds its own controller beside the built-in toolbar', () => {
   it('propagates a custom-controller action to the toolbar', () => {
     const { host, applied } = makeDrivableHost();
-    const toolbar = new BuiltInToolbar({ superdoc: host });
+    const toolbar = new BuiltInToolbar({ highContrastMode: createHighContrastMode(), superdoc: host });
     const independent = createSuperDocUI({ superdoc: host as SuperDocLike });
     controllers.push(independent);
 
@@ -140,7 +141,7 @@ describe('an application that builds its own controller beside the built-in tool
 
   it('propagates a toolbar action to the custom controller', () => {
     const { host, applied } = makeDrivableHost();
-    const toolbar = new BuiltInToolbar({ superdoc: host });
+    const toolbar = new BuiltInToolbar({ highContrastMode: createHighContrastMode(), superdoc: host });
     const independent = createSuperDocUI({ superdoc: host as SuperDocLike });
     controllers.push(independent);
 
@@ -154,7 +155,7 @@ describe('an application that builds its own controller beside the built-in tool
 
   it('leaves the toolbar working after the custom controller is destroyed', () => {
     const { host, applied } = makeDrivableHost();
-    const toolbar = new BuiltInToolbar({ superdoc: host });
+    const toolbar = new BuiltInToolbar({ highContrastMode: createHighContrastMode(), superdoc: host });
     const independent = createSuperDocUI({ superdoc: host as SuperDocLike });
 
     independent.destroy();
@@ -170,7 +171,7 @@ describe('an application that builds its own controller beside the built-in tool
 
   it('leaves the custom controller working after the toolbar is destroyed', () => {
     const { host, applied } = makeDrivableHost();
-    const toolbar = new BuiltInToolbar({ superdoc: host });
+    const toolbar = new BuiltInToolbar({ highContrastMode: createHighContrastMode(), superdoc: host });
     const independent = createSuperDocUI({ superdoc: host as SuperDocLike });
     controllers.push(independent);
 
@@ -211,6 +212,7 @@ describe('a toolbar that fails to construct', () => {
     expect(
       () =>
         new BuiltInToolbar({
+          highContrastMode: createHighContrastMode(),
           superdoc: host,
           customButtons: [{ type: 'button', name: 'ghost', tooltip: 'g', icon: '<svg/>', command: () => true }],
         }),
@@ -227,7 +229,7 @@ describe('a toolbar that fails to construct', () => {
 describe('an application reading superdoc.ui beside the built-in toolbar', () => {
   it('shows the same command state to the toolbar and to a custom panel', () => {
     const { host } = makeDrivableHost();
-    const toolbar = new BuiltInToolbar({ superdoc: host });
+    const toolbar = new BuiltInToolbar({ highContrastMode: createHighContrastMode(), superdoc: host });
     const panel = host.ui as SuperDocUI;
 
     // Driven from the custom panel.
@@ -245,7 +247,7 @@ describe('an application reading superdoc.ui beside the built-in toolbar', () =>
     // leaves the DOM, and it keeps the test off the toolbar's private
     // event plumbing.
     const { host, applied } = makeDrivableHost();
-    const toolbar = new BuiltInToolbar({ superdoc: host });
+    const toolbar = new BuiltInToolbar({ highContrastMode: createHighContrastMode(), superdoc: host });
     const panel = host.ui as SuperDocUI;
 
     expect((host.ui as SuperDocUI).commands.execute('bullet-list')).toBe(true);
@@ -267,7 +269,7 @@ describe('an application reading superdoc.ui beside the built-in toolbar', () =>
     // holds its own controller, so the toolbar tearing down `superdoc.ui` is
     // invisible to it. Only a reader of the shared controller notices.
     const { host, applied } = makeDrivableHost();
-    const toolbar = new BuiltInToolbar({ superdoc: host });
+    const toolbar = new BuiltInToolbar({ highContrastMode: createHighContrastMode(), superdoc: host });
     const panel = host.ui as SuperDocUI;
 
     toolbar.destroy();
@@ -287,7 +289,7 @@ describe('an application reading superdoc.ui beside the built-in toolbar', () =>
     // object and the assertion cannot fail. The toolbar's own item is the
     // independent reader, so that is what gets queried.
     const { host } = makeDrivableHost();
-    const toolbar = new BuiltInToolbar({ superdoc: host });
+    const toolbar = new BuiltInToolbar({ highContrastMode: createHighContrastMode(), superdoc: host });
     const panel = host.ui as SuperDocUI;
 
     const state = panel.commands.get('bold').getState();
@@ -303,7 +305,7 @@ describe('an application reading superdoc.ui beside the built-in toolbar', () =>
 
   it('keeps the toolbar working when a custom panel unsubscribes and resubscribes', () => {
     const { host } = makeDrivableHost();
-    const toolbar = new BuiltInToolbar({ superdoc: host });
+    const toolbar = new BuiltInToolbar({ highContrastMode: createHighContrastMode(), superdoc: host });
     const panel = host.ui as SuperDocUI;
 
     // A panel mounts, observes, and unmounts. Its scope disposal must not take

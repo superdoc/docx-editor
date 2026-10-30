@@ -5,7 +5,7 @@ import { vClickOutside } from '@superdoc/common';
 import { useSuperdocStore } from '../stores/superdoc-store';
 import { useCommentsStore } from '../stores/comments-store';
 import App from '../SuperDoc.vue';
-import { useHighContrastMode } from '../composables/use-high-contrast-mode';
+import { HIGH_CONTRAST_MODE_KEY } from '../composables/use-high-contrast-mode';
 
 const PINIA_DEVTOOLS_SETUP_EVENT = 'devtools-plugin:setup';
 const PINIA_DEVTOOLS_PLUGIN_ID = 'dev.esm.pinia';
@@ -310,24 +310,23 @@ const setPiniaDevtoolsSuppressedForApp = (app, isSuppressed) => {
  * @property {import('pinia').Pinia} pinia The Pinia store instance attached to `app`
  * @property {ReturnType<typeof useSuperdocStore>} superdocStore The SuperDoc Pinia store
  * @property {ReturnType<typeof useCommentsStore>} commentsStore The Comments Pinia store
- * @property {ReturnType<typeof useHighContrastMode>} highContrastModeStore The high-contrast mode composable refs (`isHighContrastMode`, `setHighContrastMode`). Named `*Store` for historical reasons; this is a plain Vue composable, not a Pinia store.
  */
 
 /**
  * Generate the superdoc vue app
  *
- * @param {Object} [options]
+ * @param {Object} options
  * @param {boolean} [options.disablePiniaDevtools=false] Disable Pinia devtools registration for this app instance
- * @returns {SuperdocVueAppRefs} An object containing the vue app, the pinia reference, the superdoc/comments Pinia stores, and the high-contrast mode composable
+ * @param {import('../composables/use-high-contrast-mode').HighContrastMode} options.highContrastMode The owning SuperDoc's high-contrast state, provided to the app
+ * @returns {SuperdocVueAppRefs} An object containing the vue app, the pinia reference, and the superdoc/comments Pinia stores
  */
-export const createSuperdocVueApp = ({ disablePiniaDevtools = false } = {}) => {
+export const createSuperdocVueApp = ({ disablePiniaDevtools = false, highContrastMode }) => {
   const app = createApp(App);
   const pinia = createPinia();
   const cleanupPiniaDevtoolsSuppression = setPiniaDevtoolsSuppressedForApp(app, disablePiniaDevtools);
 
   let superdocStore;
   let commentsStore;
-  let highContrastModeStore;
 
   try {
     app.use(pinia);
@@ -338,7 +337,7 @@ export const createSuperdocVueApp = ({ disablePiniaDevtools = false } = {}) => {
 
     superdocStore = useSuperdocStore();
     commentsStore = useCommentsStore();
-    highContrastModeStore = useHighContrastMode();
+    app.provide(HIGH_CONTRAST_MODE_KEY, highContrastMode);
   } catch (error) {
     cleanupPiniaDevtoolsSuppression();
     throw error;
@@ -352,5 +351,5 @@ export const createSuperdocVueApp = ({ disablePiniaDevtools = false } = {}) => {
     };
   }
 
-  return { app, pinia, superdocStore, commentsStore, highContrastModeStore };
+  return { app, pinia, superdocStore, commentsStore };
 };

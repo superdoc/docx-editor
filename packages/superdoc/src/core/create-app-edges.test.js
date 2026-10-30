@@ -4,7 +4,6 @@ const createAppMock = vi.fn();
 const createPiniaMock = vi.fn();
 const useSuperdocStoreMock = vi.fn();
 const useCommentsStoreMock = vi.fn();
-const useHighContrastModeMock = vi.fn();
 const clickOutsideDirectiveMock = vi.fn();
 
 vi.mock('vue', () => ({ createApp: createAppMock }));
@@ -13,18 +12,17 @@ vi.mock('@superdoc/common', () => ({ vClickOutside: clickOutsideDirectiveMock })
 vi.mock('../stores/superdoc-store', () => ({ useSuperdocStore: useSuperdocStoreMock }));
 vi.mock('../stores/comments-store', () => ({ useCommentsStore: useCommentsStoreMock }));
 vi.mock('../composables/use-high-contrast-mode', () => ({
-  useHighContrastMode: useHighContrastModeMock,
+  HIGH_CONTRAST_MODE_KEY: Symbol('high-contrast-mode'),
 }));
 vi.mock('../SuperDoc.vue', () => ({ default: { name: 'SuperDocMock' } }));
 
 const setupAppMocks = () => {
   const originalUnmount = vi.fn();
-  const app = { use: vi.fn(), directive: vi.fn(), unmount: originalUnmount };
+  const app = { use: vi.fn(), directive: vi.fn(), provide: vi.fn(), unmount: originalUnmount };
   createAppMock.mockReturnValue(app);
   createPiniaMock.mockReturnValue({});
   useSuperdocStoreMock.mockReturnValue({});
   useCommentsStoreMock.mockReturnValue({});
-  useHighContrastModeMock.mockReturnValue({});
   return { app, originalUnmount };
 };
 
@@ -32,6 +30,8 @@ const safeDelete = (key) => {
   const desc = Object.getOwnPropertyDescriptor(globalThis, key);
   if (!desc || desc.configurable !== false) delete globalThis[key];
 };
+
+const highContrastMode = { isHighContrastMode: { value: false }, setHighContrastMode: () => {} };
 
 describe('createSuperdocVueApp', () => {
   beforeEach(() => {
@@ -49,12 +49,18 @@ describe('createSuperdocVueApp', () => {
   it('returns the Vue app with all stores', async () => {
     const { app } = setupAppMocks();
     const { createSuperdocVueApp } = await import('./create-app.js');
-    const result = createSuperdocVueApp({ disablePiniaDevtools: false });
+    const result = createSuperdocVueApp({ disablePiniaDevtools: false, highContrastMode });
     expect(result.app).toBe(app);
     expect(result.pinia).toBeDefined();
     expect(result.superdocStore).toBeDefined();
     expect(result.commentsStore).toBeDefined();
-    expect(result.highContrastModeStore).toBeDefined();
+  });
+
+  it('provides the high-contrast state it was given to the app', async () => {
+    const { app } = setupAppMocks();
+    const { createSuperdocVueApp } = await import('./create-app.js');
+    createSuperdocVueApp({ highContrastMode });
+    expect(app.provide).toHaveBeenCalledWith(expect.any(Symbol), highContrastMode);
   });
 
   // Outcome-focused: when suppressed, the Pinia devtools plugin for this app
@@ -66,7 +72,7 @@ describe('createSuperdocVueApp', () => {
     globalThis.__VUE_DEVTOOLS_GLOBAL_HOOK__ = { emit: emitSpy };
     const { app } = setupAppMocks();
     const { createSuperdocVueApp } = await import('./create-app.js');
-    createSuperdocVueApp({ disablePiniaDevtools: true });
+    createSuperdocVueApp({ disablePiniaDevtools: true, highContrastMode });
 
     const hook = globalThis.__VUE_DEVTOOLS_GLOBAL_HOOK__;
     // Hook emit for this app is swallowed
@@ -94,7 +100,7 @@ describe('createSuperdocVueApp', () => {
     globalThis.__VUE_DEVTOOLS_GLOBAL_HOOK__ = { emit: emitSpy };
     const { app } = setupAppMocks();
     const { createSuperdocVueApp } = await import('./create-app.js');
-    createSuperdocVueApp({ disablePiniaDevtools: false });
+    createSuperdocVueApp({ disablePiniaDevtools: false, highContrastMode });
 
     const hook = globalThis.__VUE_DEVTOOLS_GLOBAL_HOOK__;
     expect(hook.emit('devtools-plugin:setup', { id: 'dev.esm.pinia', app }, vi.fn())).toBe('emitted');
@@ -109,7 +115,7 @@ describe('createSuperdocVueApp', () => {
       throw new Error('init failed');
     });
     const { createSuperdocVueApp } = await import('./create-app.js');
-    expect(() => createSuperdocVueApp({ disablePiniaDevtools: true })).toThrow('init failed');
+    expect(() => createSuperdocVueApp({ disablePiniaDevtools: true, highContrastMode })).toThrow('init failed');
 
     const hook = globalThis.__VUE_DEVTOOLS_GLOBAL_HOOK__;
     expect(hook.emit('devtools-plugin:setup', { id: 'dev.esm.pinia', app }, vi.fn())).toBe('emitted');

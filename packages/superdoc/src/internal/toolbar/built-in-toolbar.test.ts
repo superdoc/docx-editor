@@ -8,6 +8,7 @@ import { useToolbarItem } from './built-in/use-toolbar-item.js';
 import { createSuperDocUI, registerFirstPartyCommandMutation } from '../../public/ui/create-super-doc-ui.js';
 import type { SuperDocLike, SuperDocUI } from '../../public/ui/types.js';
 import { normalizeUiConfig } from '../../core/config/normalize-ui-config.js';
+import { createHighContrastMode } from '../../composables/use-high-contrast-mode.js';
 
 /**
  * Controllers created by `makeHost`. The toolbar is a pure consumer of
@@ -130,7 +131,11 @@ async function waitForElement<T extends Element>(
 
 describe('BuiltInToolbar', () => {
   it('assigns a distinct render identity to every default toolbar slot', () => {
-    const toolbar = new BuiltInToolbar({ superdoc: makeHost(), hideButtons: false });
+    const toolbar = new BuiltInToolbar({
+      highContrastMode: createHighContrastMode(),
+      superdoc: makeHost(),
+      hideButtons: false,
+    });
     try {
       const names = toolbar.toolbarItems.map((item) => item.name.value);
       expect(names.filter((name) => name === 'separator').length).toBeGreaterThan(1);
@@ -149,10 +154,14 @@ describe('BuiltInToolbar', () => {
 
   it('leaves Watermark out of the default toolbar and includes it when requested', () => {
     const host = makeHost();
-    const defaultToolbar = new BuiltInToolbar({ superdoc: host });
+    const defaultToolbar = new BuiltInToolbar({ highContrastMode: createHighContrastMode(), superdoc: host });
     expect(defaultToolbar.getToolbarItemByName('watermark')).toBeUndefined();
     const normalized = normalizeUiConfig({ ui: { toolbar: { includeItems: ['watermark'] } } }).toolbar;
-    const toolbar = new BuiltInToolbar({ superdoc: host, ...normalized.options });
+    const toolbar = new BuiltInToolbar({
+      highContrastMode: createHighContrastMode(),
+      superdoc: host,
+      ...normalized.options,
+    });
     expect(toolbar.getToolbarItemByName('watermark')).toBeTruthy();
     defaultToolbar.destroy();
     toolbar.destroy();
@@ -168,7 +177,12 @@ describe('BuiltInToolbar', () => {
       const normalized = normalizeUiConfig({
         ui: { toolbar: { items: { center: ['watermark'] }, overflow: 'visible' } },
       }).toolbar;
-      const toolbar = new BuiltInToolbar({ superdoc: host, selector: toolbarContainer, ...normalized.options });
+      const toolbar = new BuiltInToolbar({
+        highContrastMode: createHighContrastMode(),
+        superdoc: host,
+        selector: toolbarContainer,
+        ...normalized.options,
+      });
       await nextTick();
       const item = toolbar.getToolbarItemByName('watermark');
       expect(item?.disabled.value).toBe(false);
@@ -184,7 +198,11 @@ describe('BuiltInToolbar', () => {
   it('disables Watermark before a document is ready', () => {
     const host = makeHost({ activeEditor: null });
     const normalized = normalizeUiConfig({ ui: { toolbar: { includeItems: ['watermark'] } } }).toolbar;
-    const toolbar = new BuiltInToolbar({ superdoc: host, ...normalized.options });
+    const toolbar = new BuiltInToolbar({
+      highContrastMode: createHighContrastMode(),
+      superdoc: host,
+      ...normalized.options,
+    });
     expect(toolbar.getToolbarItemByName('watermark')?.disabled.value).toBe(true);
     toolbar.destroy();
   });
@@ -199,7 +217,12 @@ describe('BuiltInToolbar', () => {
       const normalized = normalizeUiConfig({
         ui: { toolbar: { items: { center: ['watermark'] }, responsiveTo: 'container' } },
       }).toolbar;
-      const toolbar = new BuiltInToolbar({ superdoc: host, selector: toolbarContainer, ...normalized.options });
+      const toolbar = new BuiltInToolbar({
+        highContrastMode: createHighContrastMode(),
+        superdoc: host,
+        selector: toolbarContainer,
+        ...normalized.options,
+      });
 
       toolbar.snapshot = { commands: { 'document-mode': { value: 'viewing' } } };
       toolbar.updateToolbarState();
@@ -219,13 +242,22 @@ describe('BuiltInToolbar', () => {
     const normalized = normalizeUiConfig({
       ui: { toolbar: { items: { center: ['watermark'] }, responsiveTo: 'container' } },
     }).toolbar;
-    const toolbar = new BuiltInToolbar({ superdoc: host, selector: toolbarContainer, ...normalized.options });
+    const toolbar = new BuiltInToolbar({
+      highContrastMode: createHighContrastMode(),
+      superdoc: host,
+      selector: toolbarContainer,
+      ...normalized.options,
+    });
     expect(toolbar.overflowItems.map((item) => item.name.value)).toContain('watermark');
     toolbar.destroy();
     const excluded = normalizeUiConfig({
       ui: { toolbar: { includeItems: ['watermark'], excludeItems: ['watermark'] } },
     }).toolbar;
-    const excludedToolbar = new BuiltInToolbar({ superdoc: host, ...excluded.options });
+    const excludedToolbar = new BuiltInToolbar({
+      highContrastMode: createHighContrastMode(),
+      superdoc: host,
+      ...excluded.options,
+    });
     expect(excludedToolbar.getToolbarItemByName('watermark')).toBeUndefined();
     excludedToolbar.destroy();
   });
@@ -321,7 +353,12 @@ describe('BuiltInToolbar', () => {
       const normalized = normalizeUiConfig({
         ui: { toolbar: { items: { center: ['page-number'] }, includeItems: ['page-number'], overflow: 'visible' } },
       }).toolbar;
-      const toolbar = new BuiltInToolbar({ superdoc: host, selector: toolbarContainer, ...normalized.options });
+      const toolbar = new BuiltInToolbar({
+        highContrastMode: createHighContrastMode(),
+        superdoc: host,
+        selector: toolbarContainer,
+        ...normalized.options,
+      });
       const item = toolbar.getToolbarItemByName('pageNumber')!;
       await vi.waitFor(() => expect(item.disabled.value).toBe(false));
       await nextTick();
@@ -340,16 +377,25 @@ describe('BuiltInToolbar', () => {
       Object.defineProperty(toolbarContainer, 'offsetWidth', { configurable: true, value: 50 });
       document.body.append(toolbarContainer);
       const normalized = normalizeUiConfig({ ui: { toolbar: { responsiveTo: 'container' } } }).toolbar;
-      const toolbar = new BuiltInToolbar({ superdoc: host, selector: toolbarContainer, ...normalized.options });
+      const toolbar = new BuiltInToolbar({
+        highContrastMode: createHighContrastMode(),
+        superdoc: host,
+        selector: toolbarContainer,
+        ...normalized.options,
+      });
       expect(itemNames(toolbar)).not.toContain('pageNumber');
       toolbar.destroy();
     });
 
     it('adds exactly one control through includeItems without changing the default items', () => {
       const host = makeHost();
-      const defaultToolbar = new BuiltInToolbar({ superdoc: host });
+      const defaultToolbar = new BuiltInToolbar({ highContrastMode: createHighContrastMode(), superdoc: host });
       const normalized = normalizeUiConfig({ ui: { toolbar: { includeItems: ['page-number'] } } }).toolbar;
-      const toolbar = new BuiltInToolbar({ superdoc: host, ...normalized.options });
+      const toolbar = new BuiltInToolbar({
+        highContrastMode: createHighContrastMode(),
+        superdoc: host,
+        ...normalized.options,
+      });
       const names = itemNames(toolbar);
       expect(names.filter((name) => name === 'pageNumber')).toHaveLength(1);
       expect(names.filter((name) => name !== 'pageNumber')).toEqual(itemNames(defaultToolbar));
@@ -365,7 +411,12 @@ describe('BuiltInToolbar', () => {
           toolbar: { items: { center: ['bold', 'page-number'] }, includeItems: ['page-number'], overflow: 'visible' },
         },
       }).toolbar;
-      const toolbar = new BuiltInToolbar({ superdoc: makeHost(), selector: toolbarContainer, ...normalized.options });
+      const toolbar = new BuiltInToolbar({
+        highContrastMode: createHighContrastMode(),
+        superdoc: makeHost(),
+        selector: toolbarContainer,
+        ...normalized.options,
+      });
       await nextTick();
       expect(toolbar.toolbarItems.map((item) => item.name.value)).toEqual(['bold', 'pageNumber']);
       expect(toolbarContainer.querySelector('[aria-label="Page number"]')).not.toBeNull();
@@ -381,13 +432,22 @@ describe('BuiltInToolbar', () => {
       const normalized = normalizeUiConfig({
         ui: { toolbar: { includeItems: ['page-number'], responsiveTo: 'container' } },
       }).toolbar;
-      const toolbar = new BuiltInToolbar({ superdoc: host, selector: toolbarContainer, ...normalized.options });
+      const toolbar = new BuiltInToolbar({
+        highContrastMode: createHighContrastMode(),
+        superdoc: host,
+        selector: toolbarContainer,
+        ...normalized.options,
+      });
       expect(toolbar.overflowItems.map((item) => item.name.value)).toContain('pageNumber');
       toolbar.destroy();
       const excluded = normalizeUiConfig({
         ui: { toolbar: { includeItems: ['page-number'], excludeItems: ['page-number'] } },
       }).toolbar;
-      const excludedToolbar = new BuiltInToolbar({ superdoc: host, ...excluded.options });
+      const excludedToolbar = new BuiltInToolbar({
+        highContrastMode: createHighContrastMode(),
+        superdoc: host,
+        ...excluded.options,
+      });
       expect(excludedToolbar.getToolbarItemByName('pageNumber')).toBeUndefined();
       excludedToolbar.destroy();
     });
@@ -498,7 +558,11 @@ describe('BuiltInToolbar', () => {
           },
         },
       }).toolbar;
-      const toolbar = new BuiltInToolbar({ superdoc: host, ...normalized.options });
+      const toolbar = new BuiltInToolbar({
+        highContrastMode: createHighContrastMode(),
+        superdoc: host,
+        ...normalized.options,
+      });
       const atCursor = toolbar.getToolbarItemByName('app-page-number');
       const numberPages = toolbar.getToolbarItemByName('app-page-numbers');
       await vi.waitFor(() => expect(atCursor?.disabled.value).toBe(false));
@@ -520,7 +584,11 @@ describe('BuiltInToolbar', () => {
     const normalized = normalizeUiConfig({
       ui: { toolbar: { excludeItems: ['fontFamily', 'fontSize', 'bold', 'italic', 'underline'] } },
     }).toolbar;
-    const toolbar = new BuiltInToolbar({ superdoc: host, ...normalized.options });
+    const toolbar = new BuiltInToolbar({
+      highContrastMode: createHighContrastMode(),
+      superdoc: host,
+      ...normalized.options,
+    });
 
     for (const group of ['left', 'center', 'right'] as const) {
       const types = toolbar.getToolbarItemByGroup(group).map((item) => item.type);
@@ -539,6 +607,7 @@ describe('BuiltInToolbar', () => {
     document.body.append(toolbarContainer);
 
     const toolbar = new BuiltInToolbar({
+      highContrastMode: createHighContrastMode(),
       superdoc: makeHost(),
       selector: toolbarContainer,
       groups: ['left', 'center', 'right'],
@@ -555,9 +624,11 @@ describe('BuiltInToolbar', () => {
 
   it('disables Search until the built-in search surface is enabled', () => {
     const disabledToolbar = new BuiltInToolbar({
+      highContrastMode: createHighContrastMode(),
       superdoc: makeHost({ uiConfig: { search: { enabled: false } } }),
     });
     const enabledToolbar = new BuiltInToolbar({
+      highContrastMode: createHighContrastMode(),
       superdoc: makeHost({ uiConfig: { search: { enabled: true } } }),
     });
 
@@ -570,6 +641,7 @@ describe('BuiltInToolbar', () => {
 
   it('keeps custom buttons in their configured group even when groups are explicit', () => {
     const toolbar = new BuiltInToolbar({
+      highContrastMode: createHighContrastMode(),
       superdoc: makeHost(),
       groups: {
         left: ['undo', 'redo'],
@@ -595,6 +667,7 @@ describe('BuiltInToolbar', () => {
 
   it('renders composed items in the configured order within a region', () => {
     const toolbar = new BuiltInToolbar({
+      highContrastMode: createHighContrastMode(),
       superdoc: makeHost(),
       groups: { center: ['zoom', 'search', 'ruler', 'documentMode'] },
       hideButtons: false,
@@ -626,6 +699,7 @@ describe('BuiltInToolbar', () => {
       },
     }).toolbar;
     const toolbar = new BuiltInToolbar({
+      highContrastMode: createHighContrastMode(),
       superdoc: host,
       selector: normalized.container,
       ...normalized.options,
@@ -663,6 +737,7 @@ describe('BuiltInToolbar', () => {
       },
     }).toolbar;
     const toolbar = new BuiltInToolbar({
+      highContrastMode: createHighContrastMode(),
       superdoc: makeHost(),
       selector: normalized.container,
       ...normalized.options,
@@ -690,6 +765,7 @@ describe('BuiltInToolbar', () => {
       },
     }).toolbar;
     const toolbar = new BuiltInToolbar({
+      highContrastMode: createHighContrastMode(),
       superdoc: makeHost(),
       selector: normalized.container,
       ...normalized.options,
@@ -726,6 +802,7 @@ describe('BuiltInToolbar', () => {
       },
     }).toolbar;
     const toolbar = new BuiltInToolbar({
+      highContrastMode: createHighContrastMode(),
       superdoc: makeHost(),
       selector: normalized.container,
       ...normalized.options,
@@ -760,6 +837,7 @@ describe('BuiltInToolbar', () => {
       },
     }).toolbar;
     const toolbar = new BuiltInToolbar({
+      highContrastMode: createHighContrastMode(),
       superdoc: makeHost(),
       selector: normalized.container,
       ...normalized.options,
@@ -797,6 +875,7 @@ describe('BuiltInToolbar', () => {
       },
     }).toolbar;
     const toolbar = new BuiltInToolbar({
+      highContrastMode: createHighContrastMode(),
       superdoc: makeHost(),
       selector: normalized.container,
       ...normalized.options,
@@ -869,7 +948,11 @@ describe('BuiltInToolbar', () => {
         },
       },
     }).toolbar;
-    const toolbar = new BuiltInToolbar({ superdoc: makeHost(), ...normalized.options });
+    const toolbar = new BuiltInToolbar({
+      highContrastMode: createHighContrastMode(),
+      superdoc: makeHost(),
+      ...normalized.options,
+    });
     const status = toolbar.getToolbarItemByName('status');
 
     status.selectedValue.value = 'approved';
@@ -895,7 +978,11 @@ describe('BuiltInToolbar', () => {
         },
       },
     }).toolbar;
-    const toolbar = new BuiltInToolbar({ superdoc: makeHost(), ...normalized.options });
+    const toolbar = new BuiltInToolbar({
+      highContrastMode: createHighContrastMode(),
+      superdoc: makeHost(),
+      ...normalized.options,
+    });
     const exceptions: Array<{ error: Error; itemName: string | null }> = [];
     toolbar.on('exception', (payload) => exceptions.push(payload));
 
@@ -927,7 +1014,11 @@ describe('BuiltInToolbar', () => {
         },
       },
     }).toolbar;
-    const toolbar = new BuiltInToolbar({ superdoc: host, ...normalized.options });
+    const toolbar = new BuiltInToolbar({
+      highContrastMode: createHighContrastMode(),
+      superdoc: host,
+      ...normalized.options,
+    });
     const exceptions: Array<{ error: Error; itemName: string | null }> = [];
     toolbar.on('exception', (payload) => exceptions.push(payload));
 
@@ -949,7 +1040,11 @@ describe('BuiltInToolbar', () => {
         },
       },
     }).toolbar;
-    const toolbar = new BuiltInToolbar({ superdoc: makeHost(), ...normalized.options });
+    const toolbar = new BuiltInToolbar({
+      highContrastMode: createHighContrastMode(),
+      superdoc: makeHost(),
+      ...normalized.options,
+    });
     const exceptions: Array<{ error: Error; itemName: string | null }> = [];
     toolbar.on('exception', (payload) => exceptions.push(payload));
 
@@ -973,7 +1068,11 @@ describe('BuiltInToolbar', () => {
         },
       },
     }).toolbar;
-    const toolbar = new BuiltInToolbar({ superdoc: makeHost(), ...normalized.options });
+    const toolbar = new BuiltInToolbar({
+      highContrastMode: createHighContrastMode(),
+      superdoc: makeHost(),
+      ...normalized.options,
+    });
     const item = toolbar.getToolbarItemByName('emphasis');
 
     toolbar.snapshot = {
@@ -1001,7 +1100,11 @@ describe('BuiltInToolbar', () => {
         },
       },
     }).toolbar;
-    const toolbar = new BuiltInToolbar({ superdoc: makeHost(), ...normalized.options });
+    const toolbar = new BuiltInToolbar({
+      highContrastMode: createHighContrastMode(),
+      superdoc: makeHost(),
+      ...normalized.options,
+    });
     const item = toolbar.getToolbarItemByName('mode');
 
     toolbar.snapshot = {
@@ -1023,7 +1126,11 @@ describe('BuiltInToolbar', () => {
         },
       },
     }).toolbar;
-    const toolbar = new BuiltInToolbar({ superdoc: makeHost(), ...normalized.options });
+    const toolbar = new BuiltInToolbar({
+      highContrastMode: createHighContrastMode(),
+      superdoc: makeHost(),
+      ...normalized.options,
+    });
     const item = toolbar.getToolbarItemByName('emphasis');
 
     toolbar.snapshot = {
@@ -1043,7 +1150,11 @@ describe('BuiltInToolbar', () => {
         },
       },
     }).toolbar;
-    const toolbar = new BuiltInToolbar({ superdoc: makeHost(), ...normalized.options });
+    const toolbar = new BuiltInToolbar({
+      highContrastMode: createHighContrastMode(),
+      superdoc: makeHost(),
+      ...normalized.options,
+    });
     const fontFamily = toolbar.getToolbarItemByName('fontFamily');
 
     toolbar.snapshot = {
@@ -1065,6 +1176,7 @@ describe('BuiltInToolbar', () => {
       ui: { toolbar: { container: toolbarContainer, items: {}, overflow: 'visible' } },
     }).toolbar;
     const toolbar = new BuiltInToolbar({
+      highContrastMode: createHighContrastMode(),
       superdoc: makeHost(),
       selector: normalized.container,
       ...normalized.options,
@@ -1082,6 +1194,7 @@ describe('BuiltInToolbar', () => {
     document.body.append(toolbarContainer);
 
     const toolbar = new BuiltInToolbar({
+      highContrastMode: createHighContrastMode(),
       superdoc: makeHost(),
       selector: toolbarContainer,
       groups: { center: ['bold'] },
@@ -1108,6 +1221,7 @@ describe('BuiltInToolbar', () => {
       },
     }).toolbar;
     const toolbar = new BuiltInToolbar({
+      highContrastMode: createHighContrastMode(),
       superdoc: makeHost(),
       selector: normalized.container,
       ...normalized.options,
@@ -1124,6 +1238,7 @@ describe('BuiltInToolbar', () => {
     document.body.append(toolbarContainer);
 
     const toolbar = new BuiltInToolbar({
+      highContrastMode: createHighContrastMode(),
       superdoc: makeHost(),
       selector: toolbarContainer,
       groups: {
@@ -1144,6 +1259,7 @@ describe('BuiltInToolbar', () => {
     document.body.append(toolbarContainer);
 
     const toolbar = new BuiltInToolbar({
+      highContrastMode: createHighContrastMode(),
       superdoc: makeHost(),
       selector: toolbarContainer,
       groups: { right: ['measurementUnit', 'zoom'] },
@@ -1160,6 +1276,7 @@ describe('BuiltInToolbar', () => {
     document.body.append(toolbarContainer);
 
     const toolbar = new BuiltInToolbar({
+      highContrastMode: createHighContrastMode(),
       superdoc: makeHost(),
       selector: toolbarContainer,
       // `measurementUnit` (52px) is declared far later than `bold`/`italic`
@@ -1183,6 +1300,7 @@ describe('BuiltInToolbar', () => {
     document.body.append(toolbarContainer);
 
     const toolbar = new BuiltInToolbar({
+      highContrastMode: createHighContrastMode(),
       superdoc: makeHost(),
       selector: toolbarContainer,
       groups: { center: ['linkedStyles'] },
@@ -1200,6 +1318,7 @@ describe('BuiltInToolbar', () => {
     document.body.append(toolbarContainer);
 
     const toolbar = new BuiltInToolbar({
+      highContrastMode: createHighContrastMode(),
       superdoc: makeHost(),
       selector: toolbarContainer,
       groups: {
@@ -1219,6 +1338,7 @@ describe('BuiltInToolbar', () => {
     document.body.append(toolbarContainer);
 
     const toolbar = new BuiltInToolbar({
+      highContrastMode: createHighContrastMode(),
       superdoc: makeHost(),
       selector: toolbarContainer,
       groups: {
@@ -1239,6 +1359,7 @@ describe('BuiltInToolbar', () => {
     document.body.append(toolbarContainer);
 
     const toolbar = new BuiltInToolbar({
+      highContrastMode: createHighContrastMode(),
       superdoc: makeHost(),
       selector: toolbarContainer,
       groups: {
@@ -1259,6 +1380,7 @@ describe('BuiltInToolbar', () => {
     document.body.append(toolbarContainer);
 
     const toolbar = new BuiltInToolbar({
+      highContrastMode: createHighContrastMode(),
       superdoc: makeHost(),
       selector: toolbarContainer,
       groups: {
@@ -1323,6 +1445,7 @@ describe('BuiltInToolbar', () => {
     document.body.append(toolbarContainer);
 
     const toolbar = new BuiltInToolbar({
+      highContrastMode: createHighContrastMode(),
       superdoc: makeHost(),
       selector: toolbarContainer,
       groups: {
@@ -1351,6 +1474,7 @@ describe('BuiltInToolbar', () => {
     }).toolbar;
 
     const toolbar = new BuiltInToolbar({
+      highContrastMode: createHighContrastMode(),
       superdoc: makeHost(),
       selector: toolbarContainer,
       ...normalized.options,
@@ -1367,6 +1491,7 @@ describe('BuiltInToolbar', () => {
 
   it('routes string-valued custom commands through the async shared command controller', () => {
     const toolbar = new BuiltInToolbar({
+      highContrastMode: createHighContrastMode(),
       superdoc: makeHost(),
       customButtons: [
         {
@@ -1396,7 +1521,7 @@ describe('BuiltInToolbar', () => {
   // only to the item's own handlers would still leave `ToolbarButton.vue`
   // rendering "undefined …" into its live region on the first snapshot.
   it('keeps the link accessible name across updateToolbarState with and without an href', () => {
-    const toolbar = new BuiltInToolbar({ superdoc: makeHost() });
+    const toolbar = new BuiltInToolbar({ highContrastMode: createHighContrastMode(), superdoc: makeHost() });
     const link = toolbar.getToolbarItemByName('link');
     expect(link, 'expected a link item on the built-in toolbar').toBeTruthy();
     expect(link!.attributes.value.ariaLabel).toBe('Link dropdown');
@@ -1419,6 +1544,7 @@ describe('BuiltInToolbar', () => {
   it('runs a built-in command and refreshes after settlement', async () => {
     const bold = vi.fn(() => ({ success: true }));
     const toolbar = new BuiltInToolbar({
+      highContrastMode: createHighContrastMode(),
       superdoc: makeHost({ activeEditor: { doc: makeCommandDoc({ format: { bold } }) } }),
     });
     const updateToolbarState = vi.spyOn(toolbar, 'updateToolbarState');
@@ -1433,6 +1559,7 @@ describe('BuiltInToolbar', () => {
 
   it('does not create a Vue app when no toolbar container resolves', () => {
     const toolbar = new BuiltInToolbar({
+      highContrastMode: createHighContrastMode(),
       superdoc: makeHost(),
       selector: '#missing-toolbar',
     });
@@ -1463,6 +1590,7 @@ describe('BuiltInToolbar', () => {
     let toolbar: BuiltInToolbar;
     const setDocumentMode = vi.fn(() => toolbar.setActiveEditor(firstEditor));
     toolbar = new BuiltInToolbar({
+      highContrastMode: createHighContrastMode(),
       superdoc: makeHost({ activeEditor: selectedEditor, setDocumentMode }),
       selector: toolbarContainer,
     });
@@ -1498,6 +1626,7 @@ describe('BuiltInToolbar', () => {
     const setAlignment = vi.fn(() => ({ success: true }));
     const { editorSurface, focus, host } = makeFocusableHost({ format: { paragraph: { setAlignment } } });
     const toolbar = new BuiltInToolbar({
+      highContrastMode: createHighContrastMode(),
       superdoc: host,
       selector: toolbarContainer,
       groups: { center: ['textAlign'] },
@@ -1533,6 +1662,7 @@ describe('BuiltInToolbar', () => {
     const setSpacing = vi.fn(() => ({ success: true }));
     const { editorSurface, focus, host } = makeFocusableHost({ format: { paragraph: { setSpacing } } });
     const toolbar = new BuiltInToolbar({
+      highContrastMode: createHighContrastMode(),
       superdoc: host,
       selector: toolbarContainer,
       groups: { center: ['lineHeight'] },
@@ -1572,6 +1702,7 @@ describe('BuiltInToolbar', () => {
     document.body.append(toolbarContainer);
     const { editorSurface, focus, host } = makeFocusableHost();
     const toolbar = new BuiltInToolbar({
+      highContrastMode: createHighContrastMode(),
       superdoc: host,
       selector: toolbarContainer,
       groups: { center: ['link'] },
@@ -1607,10 +1738,9 @@ describe('BuiltInToolbar', () => {
   });
 
   it('shows the AI toolbar item only when modules.ai is configured', () => {
-    const withoutAi = new BuiltInToolbar({
-      superdoc: makeHost(),
-    });
+    const withoutAi = new BuiltInToolbar({ highContrastMode: createHighContrastMode(), superdoc: makeHost() });
     const withAi = new BuiltInToolbar({
+      highContrastMode: createHighContrastMode(),
       superdoc: makeHost({ config: { modules: { ai: {} } } }),
     });
 
@@ -1622,9 +1752,7 @@ describe('BuiltInToolbar', () => {
   });
 
   it('keeps v1 toolbar controls enabled for missing selection reasons only', () => {
-    const toolbar = new BuiltInToolbar({
-      superdoc: makeHost(),
-    });
+    const toolbar = new BuiltInToolbar({ highContrastMode: createHighContrastMode(), superdoc: makeHost() });
 
     toolbar.snapshot = {
       ...toolbar.snapshot,
@@ -1661,7 +1789,7 @@ describe('BuiltInToolbar', () => {
   });
 
   it('blanks the font-family field for a mixed (multi-font) selection', () => {
-    const toolbar = new BuiltInToolbar({ superdoc: makeHost() });
+    const toolbar = new BuiltInToolbar({ highContrastMode: createHighContrastMode(), superdoc: makeHost() });
 
     const applyFontState = (state: Record<string, unknown>) => {
       toolbar.snapshot = {
@@ -1692,7 +1820,7 @@ describe('BuiltInToolbar', () => {
   });
 
   it('projects the linked-style dropdown options from the ui.styles quick gallery', () => {
-    const toolbar = new BuiltInToolbar({ superdoc: makeHost() });
+    const toolbar = new BuiltInToolbar({ highContrastMode: createHighContrastMode(), superdoc: makeHost() });
     const quickGallery = [
       { id: 'Heading1', name: 'Heading 1', preview: { available: true, css: { fontWeight: 700 } } },
       { id: 'Normal', name: 'Normal' },
@@ -1711,7 +1839,7 @@ describe('BuiltInToolbar', () => {
   });
 
   it('keeps an active named paragraph style available outside the quick gallery', () => {
-    const toolbar = new BuiltInToolbar({ superdoc: makeHost() });
+    const toolbar = new BuiltInToolbar({ highContrastMode: createHighContrastMode(), superdoc: makeHost() });
     const active = { id: 'DemoHeading', name: 'Demo Heading', type: 'paragraph' };
     const gallery = [{ id: 'Heading1', name: 'Heading 1', type: 'paragraph' }];
     toolbar.ui.styles.getCatalog = ((input?: { view?: string }) => ({
@@ -1778,6 +1906,7 @@ describe('BuiltInToolbar', () => {
       },
     });
     const toolbar = new BuiltInToolbar({
+      highContrastMode: createHighContrastMode(),
       superdoc: host,
       selector: toolbarContainer,
       groups: { center: ['linkedStyles'] },
@@ -1804,6 +1933,7 @@ describe('BuiltInToolbar', () => {
   it('routes a selected linked-style catalogue item through the linked-style command as a style id', async () => {
     const setStyle = vi.fn(() => ({ success: true }));
     const toolbar = new BuiltInToolbar({
+      highContrastMode: createHighContrastMode(),
       superdoc: makeHost({ activeEditor: { doc: makeCommandDoc({ styles: { paragraph: { setStyle } } }) } }),
     });
     let activeStyleId: string | null = 'Heading1';
@@ -1846,7 +1976,7 @@ describe('BuiltInToolbar', () => {
   });
 
   it('routes a row "Update to match selection" through ui.styles.updateToMatchSelection', async () => {
-    const toolbar = new BuiltInToolbar({ superdoc: makeHost() });
+    const toolbar = new BuiltInToolbar({ highContrastMode: createHighContrastMode(), superdoc: makeHost() });
     const receipt = { success: true, changed: true };
     const updateToMatchSelection = vi.fn(async () => receipt);
     toolbar.ui.styles.updateToMatchSelection = updateToMatchSelection as never;
@@ -1870,7 +2000,7 @@ describe('BuiltInToolbar', () => {
   });
 
   it('shows the active linked-style display name from shared command state', () => {
-    const toolbar = new BuiltInToolbar({ superdoc: makeHost() });
+    const toolbar = new BuiltInToolbar({ highContrastMode: createHighContrastMode(), superdoc: makeHost() });
     toolbar.snapshot = {
       commands: {
         'document-mode': { value: 'editing', disabled: false },
@@ -1891,7 +2021,7 @@ describe('BuiltInToolbar', () => {
   });
 
   it('returns an empty linked-style option list when the styles surface is unreachable', () => {
-    const toolbar = new BuiltInToolbar({ superdoc: makeHost() });
+    const toolbar = new BuiltInToolbar({ highContrastMode: createHighContrastMode(), superdoc: makeHost() });
     expect(toolbar.getLinkedStyleOptions()).toEqual([]);
     expect(toolbar.getActiveLinkedStyleId()).toBeNull();
     toolbar.destroy();
@@ -1924,6 +2054,7 @@ describe('BuiltInToolbar', () => {
     for (const [key, item] of Object.entries(invalid)) {
       it(`skips ${key} and keeps the built-in items`, () => {
         const toolbar = new BuiltInToolbar({
+          highContrastMode: createHighContrastMode(),
           superdoc: makeHost(),
           customButtons: [item],
           hideButtons: false,
@@ -1953,6 +2084,7 @@ describe('BuiltInToolbar', () => {
       });
 
       const toolbar = new BuiltInToolbar({
+        highContrastMode: createHighContrastMode(),
         superdoc: makeHost(),
         customButtons: [invalid.noAffordance],
         hideButtons: false,
@@ -1988,6 +2120,7 @@ describe('BuiltInToolbar', () => {
       });
 
       const toolbar = new BuiltInToolbar({
+        highContrastMode: createHighContrastMode(),
         superdoc: makeHost(),
         customButtons: [
           {
@@ -2035,6 +2168,7 @@ describe('BuiltInToolbar', () => {
       });
 
       const toolbar = new BuiltInToolbar({
+        highContrastMode: createHighContrastMode(),
         superdoc: makeHost(),
         customButtons: [invalid.noAffordance],
         hideButtons: false,
@@ -2066,6 +2200,7 @@ describe('BuiltInToolbar', () => {
       };
 
       const toolbar = new BuiltInToolbar({
+        highContrastMode: createHighContrastMode(),
         superdoc: host,
         customButtons: [invalid.noAffordance],
         hideButtons: false,
@@ -2090,6 +2225,7 @@ describe('BuiltInToolbar', () => {
       sparseRows[0] = { label: 'Only', key: 'only' };
 
       const toolbar = new BuiltInToolbar({
+        highContrastMode: createHighContrastMode(),
         superdoc: makeHost(),
         customButtons: [
           { type: 'dropdown', name: 'sparse', label: 'Sparse', options: sparseRows },
@@ -2119,6 +2255,7 @@ describe('BuiltInToolbar', () => {
       });
 
       const toolbar = new BuiltInToolbar({
+        highContrastMode: createHighContrastMode(),
         superdoc: makeHost(),
         // Neither carries a name, and both fail the affordance check.
         customButtons: [{ type: 'button' }, { type: 'button' }],
@@ -2146,6 +2283,7 @@ describe('BuiltInToolbar', () => {
       };
 
       const toolbar = new BuiltInToolbar({
+        highContrastMode: createHighContrastMode(),
         superdoc: host,
         customButtons: [{ type: 'button', name: 'boom', icon: '<i></i>', command: 'definitelyNotACommand' }],
         hideButtons: false,
@@ -2168,6 +2306,7 @@ describe('BuiltInToolbar', () => {
 
     it('keeps the valid entries beside the skipped one', () => {
       const toolbar = new BuiltInToolbar({
+        highContrastMode: createHighContrastMode(),
         superdoc: makeHost(),
         customButtons: [invalid.noAffordance, { type: 'button', name: 'good', icon: '<i></i>', command: () => {} }],
         hideButtons: false,
@@ -2194,6 +2333,7 @@ describe('BuiltInToolbar', () => {
   describe('custom button names must be unique', () => {
     it('skips a second entry that reuses a custom name', () => {
       const toolbar = new BuiltInToolbar({
+        highContrastMode: createHighContrastMode(),
         superdoc: makeHost(),
         customButtons: [
           { type: 'button', name: 'dup', icon: '<i>1</i>', command: () => {} },
@@ -2208,6 +2348,7 @@ describe('BuiltInToolbar', () => {
 
     it('skips an entry that collides with a built-in name and keeps the built-in', () => {
       const toolbar = new BuiltInToolbar({
+        highContrastMode: createHighContrastMode(),
         superdoc: makeHost(),
         customButtons: [{ type: 'button', name: 'bold', icon: '<i></i>', command: () => {} }],
         hideButtons: false,
@@ -2238,7 +2379,11 @@ describe('BuiltInToolbar', () => {
           },
         },
       }).toolbar;
-      const toolbar = new BuiltInToolbar({ superdoc: makeHost(), ...normalized.options });
+      const toolbar = new BuiltInToolbar({
+        highContrastMode: createHighContrastMode(),
+        superdoc: makeHost(),
+        ...normalized.options,
+      });
       spy.mockRestore();
 
       expect(toolbar.getToolbarItemByName(reservedName)).toBeFalsy();

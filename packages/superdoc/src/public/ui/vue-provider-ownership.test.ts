@@ -22,6 +22,7 @@ import type { SuperDocLike, SuperDocUI } from './types.js';
 
 import { SuperDoc } from '../../core/SuperDoc.js';
 import { BuiltInToolbar } from '../../internal/toolbar/built-in-toolbar.js';
+import { createHighContrastMode } from '../../composables/use-high-contrast-mode.js';
 
 /** Mounted apps torn down together after each test. */
 const apps: App[] = [];
@@ -250,7 +251,7 @@ describe('provideSuperDocUI — against a real SuperDoc', () => {
 
   it('publishes the same controller the built-in toolbar reads', () => {
     const superdoc = realSuperDoc();
-    const toolbar = new BuiltInToolbar({ superdoc: superdoc as never });
+    const toolbar = new BuiltInToolbar({ highContrastMode: createHighContrastMode(), superdoc: superdoc as never });
     const { binding } = mountProvider();
 
     binding.setSuperDoc(superdoc as unknown as SuperDocLike);
@@ -265,7 +266,7 @@ describe('provideSuperDocUI — against a real SuperDoc', () => {
 
   it('leaves the toolbar working when the provider unmounts and remounts', () => {
     const superdoc = realSuperDoc();
-    const toolbar = new BuiltInToolbar({ superdoc: superdoc as never });
+    const toolbar = new BuiltInToolbar({ highContrastMode: createHighContrastMode(), superdoc: superdoc as never });
     const { binding, unmount } = mountProvider();
 
     binding.setSuperDoc(superdoc as unknown as SuperDocLike);

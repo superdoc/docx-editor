@@ -49,6 +49,7 @@ import { describe, expect, it, vi } from 'vite-plus/test';
 import { BuiltInToolbar } from '../../internal/toolbar/built-in-toolbar.js';
 import { createSuperDocUI } from './create-super-doc-ui.js';
 import { SUPERDOC_UI_REASONS } from './reasons.js';
+import { createHighContrastMode } from '../../composables/use-high-contrast-mode.js';
 
 const BASELINE = join(dirname(fileURLToPath(import.meta.url)), 'ui-parity-baseline.json');
 
@@ -204,7 +205,7 @@ describe('custom-UI behaviour parity with v2', () => {
     const trace: Array<Snap> = [];
 
     const ui = createSuperDocUI({ superdoc: host as never });
-    const toolbar = new BuiltInToolbar({ superdoc: host as never });
+    const toolbar = new BuiltInToolbar({ highContrastMode: createHighContrastMode(), superdoc: host as never });
 
     checkpoint(trace, 'mounted', () => readSemanticState(ui, toolbar));
 

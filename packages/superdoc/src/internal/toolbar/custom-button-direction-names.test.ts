@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
 import { BuiltInToolbar } from './built-in-toolbar.js';
 import { createSuperDocUI } from '../../public/ui/create-super-doc-ui.js';
 import type { SuperDocLike, SuperDocUI } from '../../public/ui/types.js';
+import { createHighContrastMode } from '../../composables/use-high-contrast-mode.js';
 
 const controllers: SuperDocUI[] = [];
 afterEach(() => {
@@ -33,6 +34,7 @@ function makeHost() {
 describe('custom toolbar buttons named like direction commands', () => {
   it.each(['directionLtr', 'directionRtl'])('keeps a callback button named %s enabled and inactive', (name) => {
     const toolbar = new BuiltInToolbar({
+      highContrastMode: createHighContrastMode(),
       superdoc: makeHost(),
       hideButtons: false,
       customButtons: [{ type: 'button', name, tooltip: name, icon: '<svg />', command: vi.fn() }],
@@ -55,6 +57,7 @@ describe('custom toolbar buttons named like direction commands', () => {
     ['direction-rtl', 'directionRtl'],
   ])('still follows %s for a custom button that names that command', (command, name) => {
     const toolbar = new BuiltInToolbar({
+      highContrastMode: createHighContrastMode(),
       superdoc: makeHost(),
       hideButtons: false,
       customButtons: [{ type: 'button', name, tooltip: name, icon: '<svg />', command }],

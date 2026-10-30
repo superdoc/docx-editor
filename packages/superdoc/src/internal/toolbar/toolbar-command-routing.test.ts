@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
 import { BuiltInToolbar } from './built-in-toolbar.js';
 import { createSuperDocUI } from '../../public/ui/create-super-doc-ui.js';
 import type { CommandState, SuperDocLike, SuperDocUI } from '../../public/ui/types.js';
+import { createHighContrastMode } from '../../composables/use-high-contrast-mode.js';
 
 const controllers: SuperDocUI[] = [];
 afterEach(() => {
@@ -35,6 +36,7 @@ function makeHost() {
 
 function makeToolbar(host = makeHost()) {
   return new BuiltInToolbar({
+    highContrastMode: createHighContrastMode(),
     superdoc: host,
     hideButtons: false,
     showFormattingMarksButton: true,

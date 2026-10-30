@@ -19,6 +19,7 @@ import { DOCX, PDF, getActorIdentityKey, normalizeActorEmail } from '@superdoc/c
 import { DOM_CLASS_NAMES } from '@superdoc/dom-contract';
 import { SuperComments } from '../components/CommentsLayer/commentsList/super-comments-list.js';
 import { computeAppliedFitZoom, resolveFitWidthOptions } from '../composables/use-viewport-fit.js';
+import { createHighContrastMode, type HighContrastMode } from '../composables/use-high-contrast-mode.js';
 import { createSuperdocVueApp } from './create-app.js';
 import { createDownload, cleanName } from './helpers/export.js';
 import { initCollaborationComments } from './collaboration/helpers.js';
@@ -868,7 +869,7 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
   /**
    * @private
    */
-  declare private highContrastModeStore: ReturnType<typeof createSuperdocVueApp>['highContrastModeStore'] | undefined;
+  readonly #highContrastMode: HighContrastMode = createHighContrastMode();
 
   /**
    * Internal mount handle for the `SuperComments` Vue component, created
@@ -905,7 +906,7 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
    * internal source compilation.
    *
    * Same SD-3213f-style TS surface hide as
-   * `superdocStore` / `commentsStore` / `highContrastModeStore` /
+   * `superdocStore` / `commentsStore` /
    * `commentsList`; not runtime privacy.
    *
    * @private
@@ -1712,8 +1713,9 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
   }
 
   #initVueApp() {
-    const { app, pinia, superdocStore, commentsStore, highContrastModeStore } = createSuperdocVueApp({
+    const { app, pinia, superdocStore, commentsStore } = createSuperdocVueApp({
       disablePiniaDevtools: Boolean(this.config.disablePiniaDevtools),
+      highContrastMode: this.#highContrastMode,
     });
     this.app = app;
     this.pinia = pinia;
@@ -1727,7 +1729,6 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
 
     this.superdocStore = superdocStore;
     this.commentsStore = commentsStore;
-    this.highContrastModeStore = highContrastModeStore;
     if (typeof this.superdocStore.setExceptionHandler === 'function') {
       this.superdocStore.setExceptionHandler((payload: SuperDocExceptionStorePayload) =>
         this.emit('exception', payload),
@@ -3201,6 +3202,7 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
         icons: toolbarUi.options.icons,
         texts: toolbarUi.options.texts,
         uiDisplayFallbackFont: this.config.uiDisplayFallbackFont,
+        highContrastMode: this.#highContrastMode,
       }) as unknown as ToolbarLike;
     } catch (error) {
       console.warn('[SuperDoc] built-in toolbar mount failed', error);
@@ -4257,16 +4259,8 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
    */
   setHighContrastMode(isHighContrast: boolean) {
     if (!this.activeEditor) return;
-    // `setHighContrastMode` is typed as optional on Editor because the
-    // method is only present once the editor's mount hooks run. By the
-    // time this entry point is reachable the editor is fully constructed
-    // and the method is installed, so the optional chain is a no-op.
     this.activeEditor.setHighContrastMode?.(isHighContrast);
-    // `activeEditor` is only set after the editor's mount completes, which
-    // happens after `#initVueApp` populates `highContrastModeStore`. The
-    // `if (!this.activeEditor) return` above is the runtime guarantee;
-    // the optional chain expresses that to TS without a redundant throw.
-    this.highContrastModeStore?.setHighContrastMode(isHighContrast);
+    this.#highContrastMode.setHighContrastMode(isHighContrast);
   }
 }
 

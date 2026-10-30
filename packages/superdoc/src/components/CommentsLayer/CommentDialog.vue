@@ -1,32 +1,194 @@
-<script>
+<script lang="ts">
+type CommentEditSession = { owner: object; submission: symbol | null };
+type CommentReplySession = { owner: object };
+
 // The shared composer can move between dialog instances while a mutation settles.
-const commentEditSessions = new WeakMap();
-const commentReplySessions = new WeakMap();
+const commentEditSessions = new WeakMap<object, CommentEditSession>();
+const commentReplySessions = new WeakMap<object, CommentReplySession>();
 </script>
 
-<script setup>
-import { computed, ref, getCurrentInstance, onMounted, onBeforeUnmount, nextTick, watch } from 'vue';
+<script setup lang="ts">
+import { computed, ref, onMounted, onBeforeUnmount, nextTick, watch } from 'vue';
+import type { ComponentPublicInstance, PropType, Ref } from 'vue';
 import { storeToRefs } from 'pinia';
-import { useCommentsStore } from '@superdoc/stores/comments-store';
-import { useSuperdocStore } from '@superdoc/stores/superdoc-store';
-import { superdocIcons } from '@superdoc/icons.js';
+import { useSuperDocInstance } from '../../composables/use-superdoc-instance';
+import type { SuperDoc } from '../../core/SuperDoc.js';
+import type { Editor, User } from '../../core/types/index.js';
+import type useComment from './use-comment.js';
+import { useCommentsStore } from '../../stores/comments-store';
+import { useSuperdocStore } from '../../stores/superdoc-store';
+import { superdocIcons } from '../../icons.js';
 import {
   getPreferredCommentFocusTargetClientY,
   getVisibleThreadAnchorClientY,
   getVisibleThreadHighlightClientY,
   scrollThreadAnchorToFocusTarget,
-} from '@superdoc/helpers/comment-focus.js';
+} from '../../helpers/comment-focus.js';
 import InternalDropdown from './InternalDropdown.vue';
 import CommentHeader from './CommentHeader.vue';
 import CommentInput from './CommentInput.vue';
 import { COMMENT_RECONCILIATION_TOKEN } from './use-comment.js';
-import Avatar from '@superdoc/components/general/Avatar.vue';
+import Avatar from '../general/Avatar.vue';
 import { renderCommentHtml } from './comment-urls.js';
 
-const emit = defineEmits(['click-outside', 'ready', 'dialog-exit', 'resize']);
+type DialogComment = ReturnType<typeof useComment>;
+
+type PositionBounds = { top?: number; left?: number; right?: number; bottom?: number };
+
+type PositionEntry = {
+  kind?: string;
+  storyKey?: string;
+  pageIndex?: number | null;
+  start?: number;
+  end?: number;
+  bounds?: PositionBounds | null;
+};
+
+type MutationOutcome = {
+  ok?: boolean;
+  success?: boolean;
+  reason?: string | null;
+  code?: string;
+  detail?: string;
+};
+
+type CapabilityState = { canWrite?: boolean; canDecide?: boolean; reason?: string | null };
+
+type V2CommentsAdapter = {
+  documentId?: string | null;
+  focusComment(comment: DialogComment): Promise<MutationOutcome | undefined>;
+  getCapabilityState?(command: string | null): CapabilityState | null | undefined;
+};
+
+type V2TrackedChangesAdapter = {
+  focusTrackedChange(
+    target: DialogComment | Record<string, unknown> | string | null | undefined,
+  ): Promise<MutationOutcome | undefined>;
+  getCapabilityState?(): CapabilityState | null | undefined;
+};
+
+type V2Host = { subscribe?(listener: () => void): (() => void) | undefined };
+
+type LegacyCommentCommands = {
+  setCursorById(id: string | undefined, options?: { activeCommentId?: string }): boolean;
+  setActiveComment(options: { commentId: string | undefined }): unknown;
+};
+
+type DialogEditor = Editor & {
+  documentId?: string;
+  commands?: LegacyCommentCommands | null;
+  host?: V2Host | null;
+};
+
+type V2TrackedChangeCommentTarget = {
+  kind: 'trackedChange';
+  trackedChangeId: string;
+  story?: DialogComment['trackedChangeStory'];
+  side?: 'source' | 'destination';
+};
+
+type TrackedChangeBubbleHandler = (comment: DialogComment, editor: Editor | null) => void;
+
+type DialogSuperDocConfig = SuperDoc['config'] & {
+  onTrackedChangeBubbleAccept?: TrackedChangeBubbleHandler;
+  onTrackedChangeBubbleReject?: TrackedChangeBubbleHandler;
+};
+
+type CommentsHost = Parameters<DialogComment['setIsInternal']>[0]['superdoc'];
+
+type DialogSuperDoc = Pick<SuperDoc, 'interactionConfig' | 'on' | 'off' | 'focus'> & {
+  emit: CommentsHost['emit'];
+  activeEditor: DialogEditor | null;
+  config: DialogSuperDocConfig;
+  users: Array<User & { access?: string | { role?: string } | null }>;
+};
+
+type DialogComponentProxy = ComponentPublicInstance & { $superdoc: DialogSuperDoc };
+
+type FocusableInput = { focus?: (options?: FocusOptions) => void };
+
+type ClickOutsideEvent = MouseEvent & { target: Node & Partial<Pick<Element, 'closest'>> };
+
+type TrackedChangeDecision = 'accept' | 'reject';
+
+type TrackedChangeDecisionFailure = { decision: TrackedChangeDecision; reason: string | null };
+
+type DialogCommentsStore = {
+  addComment(params: { superdoc: DialogSuperDoc; comment: DialogComment }): Promise<MutationOutcome> | MutationOutcome;
+  cancelComment(superdoc: DialogSuperDoc): void;
+  deleteComment(params: {
+    superdoc: DialogSuperDoc;
+    commentId: string | undefined;
+  }): Promise<MutationOutcome> | MutationOutcome;
+  getCommentAliasIds(commentOrId: DialogComment | string): Array<string | null>;
+  getCommentDocumentId(comment: DialogComment): string | null;
+  removePendingComment(superdoc: DialogSuperDoc): void;
+  requestInstantSidebarAlignment(targetY?: number | null, threadId?: string | null, instanceId?: string | null): void;
+  resolveCommentPositionEntry(commentOrId: DialogComment | string): {
+    key: string | null;
+    entry: PositionEntry | null;
+  };
+  clearInstantSidebarAlignment(): void;
+  setActiveFloatingCommentInstance(instanceId?: string | null): void;
+  getTrackedChangeThread(parentComment: DialogComment): readonly DialogComment[];
+  getComment(id: string): Record<string, unknown> | null | undefined;
+  setActiveComment(superdoc: DialogSuperDoc, id: string | null | undefined): void;
+  getPendingComment(params: {
+    documentId?: string | null;
+    isInternal?: boolean;
+    parentCommentId?: string | null;
+    selection?: ReturnType<DialogComment['selection']['getValues']>;
+  }): DialogComment;
+  replyCommentV2(params: {
+    superdoc: DialogSuperDoc;
+    parentCommentId: string | null;
+    text: string;
+    mentions?: DialogComment['mentions'];
+    trackedChangeTarget?: V2TrackedChangeCommentTarget;
+  }): Promise<MutationOutcome>;
+  editCommentV2(params: {
+    superdoc: DialogSuperDoc;
+    commentId: string | undefined;
+    text: string;
+  }): Promise<MutationOutcome>;
+  resolveCommentV2(params: { superdoc: DialogSuperDoc; commentId: string | undefined }): Promise<MutationOutcome>;
+  reopenCommentV2(params: { superdoc: DialogSuperDoc; commentId: string | undefined }): Promise<MutationOutcome>;
+  decideTrackedChangeFromSidebar(params: {
+    superdoc: DialogSuperDoc;
+    comment: DialogComment;
+    decision: TrackedChangeDecision;
+  }): Promise<MutationOutcome> | MutationOutcome;
+  commentsList: DialogComment[];
+  lastUpdate?: Date;
+  viewingVisibility: { documentMode: string };
+};
+
+type DialogCommentsStoreRefs = {
+  suppressInternalExternal: Ref<boolean>;
+  getConfig: Ref<{ readOnly: boolean; allowResolve: boolean }>;
+  activeComment: Ref<string | null | undefined>;
+  activeFloatingCommentInstanceId: Ref<string | null>;
+  floatingCommentsOffset: Ref<number>;
+  pendingComment: Ref<DialogComment | null>;
+  currentCommentText: Ref<string>;
+  currentCommentMentions: Ref<DialogComment['mentions']>;
+  isDebugging?: Ref<boolean>;
+  editingCommentId: Ref<string | null | undefined>;
+  editorCommentPositions: Ref<Record<string, PositionEntry | undefined>>;
+  isCommentHighlighted: Ref<boolean>;
+};
+
+const isFiniteNumber = (value: unknown): value is number => Number.isFinite(value);
+
+const emit = defineEmits<{
+  'click-outside': [];
+  ready: [payload: { commentId: string | null | undefined; elementRef: Ref<HTMLElement | null> }];
+  'dialog-exit': [];
+  resize: [];
+}>();
 const props = defineProps({
   comment: {
-    type: Object,
+    type: Object as PropType<DialogComment>,
     required: true,
   },
   autoFocus: {
@@ -34,34 +196,35 @@ const props = defineProps({
     default: false,
   },
   parent: {
-    type: Object,
+    type: Object as PropType<HTMLElement | null>,
     required: false,
   },
   floatingInstanceId: {
-    type: String,
+    type: String as PropType<string | null>,
     default: null,
   },
   floatingPageIndex: {
-    type: Number,
+    type: Number as PropType<number | null>,
     default: null,
   },
   floatingPositionEntry: {
-    type: Object,
+    type: Object as PropType<PositionEntry | null>,
     default: null,
   },
   isFloatingInstanceActive: {
-    type: Boolean,
+    type: Boolean as PropType<boolean | undefined>,
     default: undefined,
   },
   threadComments: {
-    type: Array,
+    type: Array as PropType<DialogComment[] | null>,
     default: null,
   },
 });
 
-const { proxy } = getCurrentInstance();
+const proxy = useSuperDocInstance().proxy as DialogComponentProxy;
 const superdocStore = useSuperdocStore();
-const commentsStore = useCommentsStore();
+const piniaCommentsStore = useCommentsStore();
+const commentsStore: DialogCommentsStore = piniaCommentsStore;
 const editSessionOwner = {};
 const replySessionOwner = {};
 const retireOwnEditSession = () => {
@@ -101,16 +264,16 @@ const {
   editingCommentId,
   editorCommentPositions,
   isCommentHighlighted,
-} = storeToRefs(commentsStore);
+}: DialogCommentsStoreRefs = storeToRefs(piniaCommentsStore);
 
 const isInternal = ref(true);
-const commentInput = ref(null);
-const editCommentInputs = ref(new Map());
+const commentInput = ref<FocusableInput | null>(null);
+const editCommentInputs = ref(new Map<string, FocusableInput>());
 // SD-3772 §6: a rejected tracked-change decision must be visible. The row is
 // retained and focus stays where it is, so the card owns a `[role="alert"]`
 // with a retry affordance instead of silently swallowing the failure.
 // Shape: { decision: 'accept' | 'reject', reason: string | null } or null.
-const trackedChangeDecisionFailure = ref(null);
+const trackedChangeDecisionFailure = ref<TrackedChangeDecisionFailure | null>(null);
 const CLICK_OUTSIDE_HIT_TOLERANCE_PX = 3;
 const CLICK_OUTSIDE_HIT_SAMPLE_OFFSETS = [
   [0, 0],
@@ -121,7 +284,7 @@ const CLICK_OUTSIDE_HIT_SAMPLE_OFFSETS = [
 ];
 const TRACKED_CHANGE_PREVIEW_MAX_PX = 90;
 
-const trackedChangeImagePreviewStyle = (preview) => {
+const trackedChangeImagePreviewStyle = (preview: DialogComment['trackedChangeImagePreview']) => {
   const width = typeof preview?.width === 'number' && Number.isFinite(preview.width) ? preview.width : null;
   const height = typeof preview?.height === 'number' && Number.isFinite(preview.height) ? preview.height : null;
   if (!width || !height || width <= 0 || height <= 0) return {};
@@ -150,10 +313,10 @@ const CLICK_OUTSIDE_IGNORED_SELECTORS = [
   '.track-format-dec',
 ].join(',');
 
-const setEditCommentInputRef = (commentId) => (el) => {
+const setEditCommentInputRef = (commentId: string | undefined) => (el: Element | ComponentPublicInstance | null) => {
   if (!commentId) return;
   if (el) {
-    editCommentInputs.value.set(commentId, el);
+    editCommentInputs.value.set(commentId, el as FocusableInput);
     if (editingCommentId.value === commentId) {
       nextTick(() => {
         focusEditInput(commentId);
@@ -164,7 +327,7 @@ const setEditCommentInputRef = (commentId) => (el) => {
   }
 };
 
-const elementContainsClickPoint = (element, clientX, clientY) => {
+const elementContainsClickPoint = (element: HTMLElement, clientX: number, clientY: number) => {
   const rect = element?.getBoundingClientRect?.();
   if (
     !rect ||
@@ -182,13 +345,13 @@ const elementContainsClickPoint = (element, clientX, clientY) => {
   });
 };
 
-const findIgnoredElementByGeometry = (clientX, clientY) => {
+const findIgnoredElementByGeometry = (clientX: number, clientY: number) => {
   if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) {
     return null;
   }
 
   const ignoredElements = document.querySelectorAll(CLICK_OUTSIDE_IGNORED_SELECTORS);
-  for (const element of ignoredElements) {
+  for (const element of Array.from(ignoredElements)) {
     if (element instanceof HTMLElement && elementContainsClickPoint(element, clientX, clientY)) {
       return element;
     }
@@ -197,13 +360,16 @@ const findIgnoredElementByGeometry = (clientX, clientY) => {
   return null;
 };
 
-const focusEditInput = (commentId) => {
+const focusEditInput = (commentId: string) => {
   const input = editCommentInputs.value.get(commentId);
   input?.focus?.();
 };
-const commentDialogElement = ref(null);
+const commentDialogElement = ref<HTMLElement | null>(null);
 
-const getCommentFocusThreadId = (comment) => {
+const trackedChangeStoryType = (story: DialogComment['trackedChangeStory']) =>
+  typeof story === 'object' ? story?.storyType : undefined;
+
+const getCommentFocusThreadId = (comment: DialogComment) => {
   if (comment.resolvedTime) {
     return comment.commentId;
   }
@@ -211,7 +377,7 @@ const getCommentFocusThreadId = (comment) => {
   return comment.importedId || comment.commentId;
 };
 
-const getV2ExistingReplyParentId = (comment) => {
+const getV2ExistingReplyParentId = (comment: DialogComment | null | undefined) => {
   if (!comment) return null;
   if (comment.trackedChange && comment.trackedChangeCanonicalId != null) {
     return String(comment.trackedChangeCanonicalId);
@@ -220,24 +386,27 @@ const getV2ExistingReplyParentId = (comment) => {
   return null;
 };
 
-const getV2TrackedChangeCommentTarget = (comment) => {
+const getV2TrackedChangeCommentTarget = (comment: DialogComment) => {
   if (!comment?.trackedChange) return null;
   const trackedChangeId = getV2ExistingReplyParentId(comment);
   if (!trackedChangeId) return null;
 
-  const target = { kind: 'trackedChange', trackedChangeId };
+  const target: V2TrackedChangeCommentTarget = { kind: 'trackedChange', trackedChangeId };
   if (comment.trackedChangeStory) target.story = comment.trackedChangeStory;
   if (comment.semanticColorKey === 'move-from') target.side = 'source';
   if (comment.semanticColorKey === 'move-to') target.side = 'destination';
   return target;
 };
 
-const getEntryBoundsCoordinate = (entry, coordinate) => {
+const getEntryBoundsCoordinate = (entry: PositionEntry | null | undefined, coordinate: keyof PositionBounds) => {
   const value = entry?.bounds?.[coordinate];
-  return Number.isFinite(value) ? value : null;
+  return isFiniteNumber(value) ? value : null;
 };
 
-const entriesShareLine = (entry, candidateEntry) => {
+const entriesShareLine = (
+  entry: PositionEntry | null | undefined,
+  candidateEntry: PositionEntry | null | undefined,
+) => {
   if (!entry || !candidateEntry) return false;
   if (entry.pageIndex !== candidateEntry.pageIndex) return false;
 
@@ -247,33 +416,47 @@ const entriesShareLine = (entry, candidateEntry) => {
   return entryTop != null && candidateTop != null && Math.abs(entryTop - candidateTop) < 0.5;
 };
 
-const entriesOverlapHorizontalSpan = (entry, candidateEntry) => {
+const entriesOverlapHorizontalSpan = (
+  entry: PositionEntry | null | undefined,
+  candidateEntry: PositionEntry | null | undefined,
+) => {
   const entryLeft = getEntryBoundsCoordinate(entry, 'left');
   const candidateLeft = getEntryBoundsCoordinate(candidateEntry, 'left');
   const entryRight = getEntryBoundsCoordinate(entry, 'right');
   const candidateRight = getEntryBoundsCoordinate(candidateEntry, 'right');
 
-  if ([entryLeft, candidateLeft, entryRight, candidateRight].some((value) => value == null)) {
+  if (entryLeft == null || candidateLeft == null || entryRight == null || candidateRight == null) {
     return false;
   }
 
   return candidateLeft < entryRight && entryLeft < candidateRight;
 };
 
-const entriesOverlapRange = (entry, candidateEntry) => {
+const entriesOverlapRange = (
+  entry: PositionEntry | null | undefined,
+  candidateEntry: PositionEntry | null | undefined,
+) => {
   const entryStart = entry?.start;
   const entryEnd = entry?.end;
   const candidateStart = candidateEntry?.start;
   const candidateEnd = candidateEntry?.end;
 
-  if (![entryStart, entryEnd, candidateStart, candidateEnd].every(Number.isFinite)) {
+  if (
+    !isFiniteNumber(entryStart) ||
+    !isFiniteNumber(entryEnd) ||
+    !isFiniteNumber(candidateStart) ||
+    !isFiniteNumber(candidateEnd)
+  ) {
     return false;
   }
 
   return candidateStart <= entryEnd && entryStart <= candidateEnd;
 };
 
-const shouldIncludeThreadAlias = (entry, candidateEntry) => {
+const shouldIncludeThreadAlias = (
+  entry: PositionEntry | null | undefined,
+  candidateEntry: PositionEntry | null | undefined,
+) => {
   if (!entry || !candidateEntry) return false;
   if (entry.kind && candidateEntry.kind && entry.kind !== candidateEntry.kind) return false;
   if (entry.storyKey && candidateEntry.storyKey && entry.storyKey !== candidateEntry.storyKey) return false;
@@ -288,7 +471,7 @@ const shouldIncludeThreadAlias = (entry, candidateEntry) => {
 // One logical thread can surface under multiple position keys when tracked-change
 // anchors are split across imported ids and canonical ids. Collect every matching
 // key so the visible highlight lookup stays aligned with the actual rendered text.
-const getThreadHighlightLookupIds = (commentOrId) => {
+const getThreadHighlightLookupIds = (commentOrId: DialogComment) => {
   const lookupIds = new Set(getCommentAliasIds(commentOrId));
   const { key, entry } = resolveCommentPositionEntry(commentOrId);
 
@@ -309,8 +492,12 @@ const getThreadHighlightLookupIds = (commentOrId) => {
   return [...lookupIds];
 };
 
-const isDialogAlreadyAlignedWithTarget = (dialogElement, targetClientY, tolerancePx = 24) => {
-  if (!Number.isFinite(targetClientY) || typeof dialogElement?.getBoundingClientRect !== 'function') {
+const isDialogAlreadyAlignedWithTarget = (
+  dialogElement: HTMLElement | null,
+  targetClientY: number | null,
+  tolerancePx = 24,
+) => {
+  if (!isFiniteNumber(targetClientY) || typeof dialogElement?.getBoundingClientRect !== 'function') {
     return false;
   }
 
@@ -350,14 +537,14 @@ const isPendingNewComment = computed(() => {
   return pendingComment.value && pendingComment.value.commentId === props.comment.commentId;
 });
 
-const showSeparator = computed(() => (index) => {
+const showSeparator = computed(() => (index: number) => {
   const visible = visibleComments.value;
   if (showInputSection.value && index === visible.length - 1) return true;
   return visible.length > 1 && index !== visible.length - 1;
 });
 
 const showInputSection = computed(() => {
-  return !getConfig.readOnly && isDialogActive.value && !props.comment.resolvedTime && !isEditingAnyComment.value;
+  return isDialogActive.value && !props.comment.resolvedTime && !isEditingAnyComment.value;
 });
 
 const readOnlyMutationOutcome = () => ({ ok: false, reason: 'read-only-document' });
@@ -379,7 +566,7 @@ const isSubmittingNewComment = ref(false);
 let replyDraftRevision = 0;
 watch([currentCommentText, currentCommentMentions], () => replyDraftRevision++, { deep: true, flush: 'sync' });
 const commentSaveFailure = ref('');
-const commentSaveFailureMessage = (outcome, hasDraft = true) => {
+const commentSaveFailureMessage = (outcome?: MutationOutcome, hasDraft = true) => {
   const reason =
     outcome?.detail === 'document-mode-read-only'
       ? ' because the document or connection is read-only'
@@ -434,7 +621,7 @@ const renderedCommentTexts = computed(
   () => new Map(comments.value.map((comment) => [comment.commentId, renderCommentHtml(comment.commentText)])),
 );
 
-const handleDialogClick = (event) => {
+const handleDialogClick = (event: MouseEvent) => {
   if (event.target instanceof Element && event.target.closest('.comment a[href]')) return;
   event.preventDefault();
   return setFocus();
@@ -448,7 +635,7 @@ const dialogAccessibleLabel = computed(() => {
 
 /* ── Step 2: Text truncation ── */
 const textExpanded = ref(false);
-const parentBodyRef = ref(null);
+const parentBodyRef = ref<HTMLElement | null>(null);
 const isTextOverflowing = ref(false);
 const shouldTruncate = computed(() => !textExpanded.value);
 const bodyOverflowClass = computed(() => ({
@@ -459,8 +646,8 @@ const toggleTruncation = () => {
   textExpanded.value = !textExpanded.value;
   nextTick(() => emit('resize'));
 };
-const setParentBodyRef = (el) => {
-  parentBodyRef.value = el ?? null;
+const setParentBodyRef = (el: Element | ComponentPublicInstance | null) => {
+  parentBodyRef.value = el as HTMLElement | null;
 };
 const checkOverflow = () => {
   // Only measure when the clamp is active (initial state)
@@ -547,9 +734,9 @@ const collapsedReplyAuthors = computed(() => {
   if (!shouldCollapseThread.value) return [];
   // Hidden = all replies except last
   const hidden = childComments.value.slice(0, -1);
-  const seen = new Set();
+  const seen = new Set<string | null | undefined>();
   return hidden
-    .map((c) =>
+    .map((c: DialogComment & { email?: string | null }) =>
       typeof c.getCommentUser === 'function'
         ? c.getCommentUser()
         : { name: c.creatorName, email: c.creatorEmail || c.email },
@@ -575,7 +762,7 @@ const isInternalDropdownDisabled = computed(() => {
   return getConfig.value.readOnly;
 });
 
-const isEditingThisComment = computed(() => (comment) => {
+const isEditingThisComment = computed(() => (comment: DialogComment) => {
   return isDialogActive.value && editingCommentId.value === comment.commentId;
 });
 
@@ -600,7 +787,8 @@ const hasTextContent = computed(() => {
 
 const setFocus = async () => {
   const editor = proxy.$superdoc.activeEditor;
-  const v2Adapter = editor?.editorVersion === 2 ? (editor?.v2Comments ?? null) : null;
+  const v2Adapter =
+    editor?.editorVersion === 2 ? ((editor?.v2Comments as V2CommentsAdapter | null | undefined) ?? null) : null;
   const isTrackedChange = Boolean(props.comment?.trackedChange);
   const targetClientY = getPreferredCommentFocusTargetClientY();
   const isInstanceScopedDialog = props.floatingInstanceId != null;
@@ -622,7 +810,7 @@ const setFocus = async () => {
         : null;
     const trackedChangeAdapter =
       editor?.editorVersion === 2 && (isTrackedChange || linkedTrackedChangeId != null)
-        ? (editor?.v2TrackedChanges ?? null)
+        ? ((editor?.v2TrackedChanges as V2TrackedChangesAdapter | null | undefined) ?? null)
         : null;
     const linkedTrackedChange = linkedTrackedChangeId != null ? commentsStore.getComment(linkedTrackedChangeId) : null;
     const trackedChangeTarget = isTrackedChange
@@ -670,7 +858,8 @@ const setFocus = async () => {
     const { entry: resolvedFocusEntry } = resolveCommentPositionEntry(props.comment);
     const focusEntry = props.floatingPositionEntry ?? resolvedFocusEntry;
     const usePageScopedAnchorOnly =
-      Number.isFinite(props.floatingPageIndex) && props.comment?.trackedChangeStory?.storyType === 'headerFooterPart';
+      Number.isFinite(props.floatingPageIndex) &&
+      trackedChangeStoryType(props.comment?.trackedChangeStory) === 'headerFooterPart';
     const visibleAnchorTargetY = getVisibleThreadAnchorClientY(props.parent, focusEntry);
     const visibleHighlightTargetY = usePageScopedAnchorOnly
       ? null
@@ -757,7 +946,7 @@ const setFocus = async () => {
   }
 };
 
-const handleClickOutside = (e) => {
+const handleClickOutside = (e: ClickOutsideEvent) => {
   const targetElement = e.target instanceof Element ? e.target : e.target?.parentElement;
   // Also check what's under the actual click coordinates. Pointer capture
   // (used by the presentation editor) can redirect e.target away from the
@@ -790,8 +979,8 @@ const handleClickOutside = (e) => {
 };
 
 const captureCommentEditorOwner = () => {
-  const editor = proxy.$superdoc.activeEditor;
-  const adapter = editor.v2Comments;
+  const editor = proxy.$superdoc.activeEditor!;
+  const adapter = editor.v2Comments as V2CommentsAdapter;
   const document = editor.doc;
   return {
     adapter,
@@ -871,7 +1060,7 @@ const handleAddComment = async () => {
     commentSaveFailure.value = '';
   }
 
-  const options = {
+  const options: Parameters<DialogCommentsStore['getPendingComment']>[0] = {
     documentId: props.comment.fileId,
     isInternal: pendingComment.value ? pendingComment.value.isInternal : isInternal.value,
     parentCommentId: pendingComment.value ? null : props.comment.commentId,
@@ -921,14 +1110,18 @@ const isV2Mode = computed(() => {
 });
 const v2CommentsAdapter = computed(() => {
   void activeEditorRevision.value;
-  return isV2Mode.value ? (proxy.$superdoc?.activeEditor?.v2Comments ?? null) : null;
+  return isV2Mode.value
+    ? ((proxy.$superdoc?.activeEditor?.v2Comments as V2CommentsAdapter | null | undefined) ?? null)
+    : null;
 });
 // ui-phase3-003: v2 tracked-change adapter accessor. Mutation-plane
 // consolidation: accept/reject route through the adapter's compatibility
 // wrappers, which delegate to `activeEditor.doc.trackChanges.decide(...)`.
 const v2TrackedChangesAdapter = computed(() => {
   void activeEditorRevision.value;
-  return isV2Mode.value ? (proxy.$superdoc?.activeEditor?.v2TrackedChanges ?? null) : null;
+  return isV2Mode.value
+    ? ((proxy.$superdoc?.activeEditor?.v2TrackedChanges as V2TrackedChangesAdapter | null | undefined) ?? null)
+    : null;
 });
 watch(
   () => {
@@ -972,7 +1165,7 @@ const v2TrackedChangeCapability = computed(() => {
   return capability;
 });
 
-const getResolveDisabledReason = (comment) => {
+const getResolveDisabledReason = (comment: DialogComment) => {
   if (isV2Mode.value && comment?.trackedChange) {
     // Tracked-change accept (resolve) routes through the v2 adapter. Disable
     // the control only when the v2 host reports a real precondition.
@@ -986,7 +1179,7 @@ const getResolveDisabledReason = (comment) => {
   }
   return null;
 };
-const getRejectDisabledReason = (comment) => {
+const getRejectDisabledReason = (comment: DialogComment) => {
   if (isV2Mode.value && comment?.trackedChange) {
     if (!v2TrackedChangesAdapter.value) return 'v2-tracked-change-adapter-missing';
     const cap = v2TrackedChangeCapability.value;
@@ -1023,7 +1216,7 @@ const v2OverflowWriteDisabledReason = computed(() => {
   return v2WriteCapability.value?.reason ?? 'v2-write-unavailable';
 });
 
-const reportTrackedChangeDecisionFailure = (decision, outcome) => {
+const reportTrackedChangeDecisionFailure = (decision: TrackedChangeDecision, outcome: MutationOutcome | undefined) => {
   trackedChangeDecisionFailure.value = {
     decision,
     reason: outcome?.reason ?? null,
@@ -1266,13 +1459,13 @@ const handleReopen = async () => {
   });
 };
 
-const handleOverflowSelect = async (value, comment) => {
+const handleOverflowSelect = async (value: string, comment: DialogComment) => {
   if (commentsAreReadOnly()) return readOnlyMutationOutcome();
 
   switch (value) {
     case 'edit':
       commentEditSessions.set(commentsStore, { owner: editSessionOwner, submission: null });
-      currentCommentText.value = comment?.commentText?.value ?? comment?.commentText ?? '';
+      currentCommentText.value = comment?.commentText ?? '';
       currentCommentMentions.value = Array.isArray(comment?.mentions) ? [...comment.mentions] : [];
       activeComment.value = props.comment.commentId;
       if (props.floatingInstanceId) {
@@ -1293,7 +1486,7 @@ const handleOverflowSelect = async (value, comment) => {
   }
 };
 
-const handleCommentUpdate = async (comment) => {
+const handleCommentUpdate = async (comment: DialogComment) => {
   if (commentsAreReadOnly()) return readOnlyMutationOutcome();
 
   // TCS Phase 0 / 004 §4.2: in v2 mode route edit through the store-owned
@@ -1340,18 +1533,18 @@ const handleCommentUpdate = async (comment) => {
   removePendingComment(proxy.$superdoc);
 };
 
-const handleInternalExternalSelect = (value) => {
+const handleInternalExternalSelect = (value: string) => {
   if (commentsAreReadOnly()) return readOnlyMutationOutcome();
 
   const isPendingComment = !!pendingComment.value;
   const isInternal = value.toLowerCase() === 'internal';
 
   if (!isPendingComment) props.comment.setIsInternal({ isInternal: isInternal, superdoc: proxy.$superdoc });
-  else pendingComment.value.isInternal = isInternal;
+  else pendingComment.value!.isInternal = isInternal;
 };
 
 const getSidebarCommentStyle = computed(() => {
-  const style = {};
+  const style: { zIndex?: number } = {};
 
   if (isDialogActive.value || isPendingNewComment.value || isEditingAnyComment.value) {
     style.zIndex = 50;
@@ -1360,12 +1553,12 @@ const getSidebarCommentStyle = computed(() => {
   return style;
 });
 
-const getProcessedDate = (timestamp) => {
+const getProcessedDate = (timestamp: string | number) => {
   const isString = typeof timestamp === 'string';
   return isString ? new Date(timestamp).getTime() : timestamp;
 };
 
-const handleCancel = (comment) => {
+const handleCancel = () => {
   commentSaveFailure.value = '';
   retireOwnEditSession();
   retireOwnReplySession();
@@ -1378,7 +1571,9 @@ const usersFiltered = computed(() => {
   const users = proxy.$superdoc.users;
 
   if (props.comment.isInternal === true) {
-    return users.filter((user) => user.access === 'internal' || user.access?.role === 'internal');
+    return users.filter(
+      (user) => user.access === 'internal' || (typeof user.access === 'object' && user.access?.role === 'internal'),
+    );
   }
 
   return users;
@@ -1484,7 +1679,7 @@ watch(isV2WriteDisabled, (isDisabled) => {
           @click.stop.prevent
           class="sd-internal-dropdown"
           :is-disabled="false"
-          :state="pendingComment.isInternal ? 'internal' : 'external'"
+          :state="pendingComment!.isInternal ? 'internal' : 'external'"
           @select="handleInternalExternalSelect"
         />
       </div>
@@ -1541,11 +1736,11 @@ watch(isV2WriteDisabled, (isDisabled) => {
           :timestamp="getProcessedDate(comment.createdTime)"
           :comment="comment"
           :is-active="isDialogActive"
-          :resolve-disabled-reason="getResolveDisabledReason(comment)"
-          :reject-disabled-reason="getRejectDisabledReason(comment)"
+          :resolve-disabled-reason="getResolveDisabledReason(comment) ?? undefined"
+          :reject-disabled-reason="getRejectDisabledReason(comment) ?? undefined"
           :reopen-supported="isV2Mode && Boolean(v2CommentsAdapter)"
-          :reopen-disabled-reason="getReopenDisabledReason()"
-          :write-disabled-reason="v2OverflowWriteDisabledReason"
+          :reopen-disabled-reason="getReopenDisabledReason() ?? undefined"
+          :write-disabled-reason="v2OverflowWriteDisabledReason ?? undefined"
           @resolve="handleResolve"
           @reject="handleReject"
           @reopen="handleReopen"
@@ -1663,7 +1858,8 @@ watch(isV2WriteDisabled, (isDisabled) => {
           ></div>
           <div v-else-if="isDebugging && !isEditingThisComment(comment)" class="comment">
             {{
-              editorCommentPositions[comment.importedId !== undefined ? comment.importedId : comment.commentId]?.bounds
+              editorCommentPositions[String(comment.importedId !== undefined ? comment.importedId : comment.commentId)]
+                ?.bounds
             }}
           </div>
           <div v-else class="reply-expanded">
@@ -1677,7 +1873,7 @@ watch(isV2WriteDisabled, (isDisabled) => {
               />
             </div>
             <div class="reply-actions">
-              <button class="sd-button reply-btn-cancel" @click.stop.prevent="handleCancel(comment)">Cancel</button>
+              <button class="sd-button reply-btn-cancel" @click.stop.prevent="handleCancel">Cancel</button>
               <button
                 class="sd-button primary reply-btn-primary"
                 @click.stop.prevent="handleCommentUpdate(comment)"
@@ -1712,7 +1908,7 @@ watch(isV2WriteDisabled, (isDisabled) => {
             <div class="collapsed-avatars">
               <Avatar
                 v-for="author in collapsedReplyAuthors"
-                :key="author.email || author.name"
+                :key="(author.email || author.name) ?? undefined"
                 :user="author"
                 class="mini-avatar"
               />

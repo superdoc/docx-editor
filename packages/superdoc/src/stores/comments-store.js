@@ -1493,10 +1493,10 @@ export const useCommentsStore = defineStore('comments', () => {
    * Get a new pending comment
    *
    * @param {Object} param0
-   * @param {Object} param0.selection The selection object
-   * @param {String} param0.documentId The document ID
-   * @param {String} param0.parentCommentId The parent comment
-   * @returns {Object} The new comment object
+   * @param {Object} [param0.selection] The selection object
+   * @param {string | null} [param0.documentId] The document ID
+   * @param {string | null} [param0.parentCommentId] The parent comment
+   * @returns {ReturnType<typeof useComment>} The new comment object
    */
   const getPendingComment = ({ selection, documentId, parentCommentId, ...options }) => {
     return _getNewcomment({ selection, documentId, parentCommentId, ...options });
@@ -1593,7 +1593,11 @@ export const useCommentsStore = defineStore('comments', () => {
    *
    * @param {Object} param0
    * @param {Object} param0.superdoc The SuperDoc instance
-   * @returns {void}
+   * @param {ReturnType<typeof useComment>} param0.comment The comment to add
+   * @param {boolean} [param0.skipEditorUpdate] Skip writing the comment into the editor
+   * @param {boolean} [param0.broadcastChanges] Emit and sync the change
+   * @param {boolean} [param0.isHydration] The comment comes from import or collaboration
+   * @returns {{ ok: boolean, reason?: string, detail?: string, code?: string } | Promise<{ ok: boolean, reason?: string, detail?: string, code?: string }>} The mutation outcome
    */
   const addCommentInternal = ({
     superdoc,
@@ -2327,6 +2331,13 @@ export const useCommentsStore = defineStore('comments', () => {
    *   - successful mutation refreshes from v2 list and reconciles
    *   - rejection preserves rows and emits a rejected `comments-update` event
    *   - committed-but-refresh-failed surfaces honestly (no reconcile with `[]`)
+   *
+   * @param {Object} [param0]
+   * @param {Object} [param0.superdoc] The SuperDoc instance.
+   * @param {string | null} [param0.parentCommentId] The comment or tracked-change row being replied to.
+   * @param {string} [param0.text] The reply text.
+   * @param {Array<{ name?: string | null, email?: string | null }>} [param0.mentions] Users mentioned in the reply.
+   * @param {{ kind: 'trackedChange', trackedChangeId: string, story?: unknown, side?: 'source' | 'destination' }} [param0.trackedChangeTarget] The tracked change a first reply anchors to.
    */
   const replyCommentV2 = async ({ superdoc, parentCommentId, text, mentions = [], trackedChangeTarget } = {}) => {
     if (commentsAreReadOnly()) return readOnlyMutationOutcome();
@@ -3974,15 +3985,13 @@ export const useCommentsStore = defineStore('comments', () => {
   };
 
   /**
-   * Rebuild tracked-change comments from the current editor state.
-   *
-   * Useful after bulk document transforms (like diff replay) where tracked-change
-   * marks may be remapped and incremental tracked-change events are not emitted.
+   * Accept or reject the tracked change behind a sidebar row.
    *
    * @param {Object} param0
    * @param {Object} param0.superdoc The SuperDoc instance.
-   * @param {Object} param0.editor The active Super Editor instance.
-   * @returns {void}
+   * @param {Object} param0.comment The tracked-change row.
+   * @param {string} param0.decision `'accept'` or `'reject'`.
+   * @returns {{ ok: boolean, success?: boolean, reason?: string } | Promise<{ ok: boolean, success?: boolean, reason?: string }>} The decision outcome.
    */
   const decideTrackedChangeFromSidebar = ({ superdoc, comment, decision }) => {
     const disabledReason = trackedChangeDecisionDisabledReason(superdoc);

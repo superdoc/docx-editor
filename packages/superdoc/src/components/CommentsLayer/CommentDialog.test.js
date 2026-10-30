@@ -386,6 +386,32 @@ describe('CommentDialog', () => {
       }
     });
 
+    it('prefills the edit composer with the comment text and a copy of its mentions', async () => {
+      commentsStore.init({ readOnly: false, allowResolve: true });
+      const mentions = [{ name: 'Other', email: 'other@example.test' }];
+      const comment = useComment({
+        commentId: 'comment-edit-prefill',
+        fileId: 'doc-1',
+        commentText: '<p>Needs a citation</p>',
+        mentions,
+      });
+      commentsStore.commentsList = [comment];
+      commentsStore.activeComment = comment.commentId;
+
+      const wrapper = mountDialog(comment);
+      try {
+        wrapper.findComponent({ name: 'CommentHeader' }).vm.$emit('overflow-select', 'edit');
+        await flushPromises();
+
+        expect(commentsStore.editingCommentId).toBe(comment.commentId);
+        expect(commentsStore.currentCommentText).toBe('<p>Needs a citation</p>');
+        expect(commentsStore.currentCommentMentions).toEqual(mentions);
+        expect(commentsStore.currentCommentMentions).not.toBe(comment.mentions);
+      } finally {
+        wrapper.unmount();
+      }
+    });
+
     it('closes an active edit surface when config flips to read-only', async () => {
       commentsStore.init({ readOnly: false, allowResolve: true });
       const comment = useComment({

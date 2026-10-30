@@ -4287,7 +4287,7 @@ const whiteboardInteractive = computed(() => whiteboardEnabled.value);
     </div>
 
     <div v-if="activeCompactComment" class="superdoc__compact-comment-popover" :style="compactCommentPopoverStyle">
-      <CommentDialog :comment="activeCompactComment" :parent="layers!" />
+      <CommentDialog :comment="activeCompactComment as ReturnType<typeof useComment>" :parent="layers!" />
     </div>
 
     <!-- Surface host — generic dialog/floating overlay system -->

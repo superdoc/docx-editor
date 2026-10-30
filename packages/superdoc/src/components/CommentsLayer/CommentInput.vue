@@ -1,12 +1,28 @@
-<script>
+<script lang="ts">
 let commentInputSequence = 0;
 </script>
 
-<script setup>
+<script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import type { PropType, Ref } from 'vue';
 import { storeToRefs } from 'pinia';
-import { useCommentsStore } from '@stores/comments-store';
+import { useCommentsStore } from '../../stores/comments-store';
+import type { User } from '../../core/types/index.js';
 import CommentHeader from './CommentHeader.vue';
+import type useComment from './use-comment.js';
+
+type InputComment = ReturnType<typeof useComment>;
+
+type InputConfig = { readOnly?: boolean; allowResolve?: boolean };
+
+type MentionUser = User & { access?: string | { role?: string } | null };
+
+type MentionIdentity = Pick<User, 'id' | 'name' | 'email'>;
+
+type CommentInputStoreRefs = {
+  currentCommentText: Ref<string>;
+  currentCommentMentions: Ref<MentionIdentity[]>;
+};
 
 const TEXTAREA_MIN_HEIGHT = 28;
 const TEXTAREA_MAX_HEIGHT = 132;
@@ -14,12 +30,12 @@ const TEXTAREA_MAX_HEIGHT = 132;
 const emit = defineEmits(['focus']);
 const props = defineProps({
   users: {
-    type: Array,
+    type: Array as PropType<readonly MentionUser[]>,
     required: false,
     default: () => [],
   },
   config: {
-    type: Object,
+    type: Object as PropType<InputConfig>,
     required: true,
   },
   isFocused: {
@@ -31,23 +47,23 @@ const props = defineProps({
     default: true,
   },
   comment: {
-    type: Object,
-    required: false,
+    type: Object as PropType<InputComment>,
+    required: true,
   },
 });
 const commentsStore = useCommentsStore();
-const { currentCommentText, currentCommentMentions } = storeToRefs(commentsStore);
-const inputRef = ref(null);
-const mentionStart = ref(null);
+const { currentCommentText, currentCommentMentions }: CommentInputStoreRefs = storeToRefs(commentsStore);
+const inputRef = ref<HTMLTextAreaElement | null>(null);
+const mentionStart = ref<number | null>(null);
 const mentionQuery = ref('');
 const highlightedMentionIndex = ref(0);
 const mentionListId = `sd-comment-mention-list-${++commentInputSequence}`;
 
-const handleFocusChange = (focused) => emit('focus', focused);
+const handleFocusChange = (focused: boolean) => emit('focus', focused);
 
 const getInputElement = () => inputRef.value;
 
-const focus = (options) => {
+const focus = (options?: FocusOptions) => {
   getInputElement()?.focus?.(options);
 };
 
@@ -66,7 +82,7 @@ const scheduleInputHeightSync = () => {
   nextTick(syncInputHeight);
 };
 
-const escapeHtml = (value) =>
+const escapeHtml = (value: unknown) =>
   String(value ?? '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -74,7 +90,7 @@ const escapeHtml = (value) =>
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 
-const htmlToText = (html) => {
+const htmlToText = (html: unknown) => {
   const value = String(html ?? '');
   if (!value || value === '<p></p>') return '';
   if (typeof document === 'undefined') {
@@ -92,7 +108,7 @@ const htmlToText = (html) => {
   return element.textContent || '';
 };
 
-const textToHtml = (value) => {
+const textToHtml = (value: unknown) => {
   const normalized = String(value ?? '').replace(/\r\n/g, '\n');
   if (!normalized) return '<p></p>';
   return `<p>${escapeHtml(normalized).replace(/\n/g, '<br>')}</p>`;
@@ -100,18 +116,18 @@ const textToHtml = (value) => {
 
 const commentDraft = computed({
   get: () => htmlToText(currentCommentText.value),
-  set: (value) => {
+  set: (value: string) => {
     currentCommentText.value = textToHtml(value);
   },
 });
 
-const displayName = (user) => user?.name?.trim() || user?.email?.trim() || '';
-const userKey = (user) => String(user?.id ?? user?.email ?? user?.name ?? '');
-const isViewer = (user) =>
+const displayName = (user: MentionIdentity) => user?.name?.trim() || user?.email?.trim() || '';
+const userKey = (user: MentionIdentity) => String(user?.id ?? user?.email ?? user?.name ?? '');
+const isViewer = (user: MentionUser) =>
   user?.role === 'viewer' ||
   user?.access === 'viewer' ||
   (typeof user?.access === 'object' && user.access?.role === 'viewer');
-const mentionIdentity = (user) => ({
+const mentionIdentity = (user: MentionUser): MentionIdentity => ({
   ...(user?.id != null ? { id: user.id } : {}),
   ...(user?.name != null ? { name: user.name } : {}),
   ...(user?.email != null ? { email: user.email } : {}),
@@ -135,7 +151,7 @@ const activeMentionOptionId = computed(() => {
   return user ? `${mentionListId}-${userKey(user)}` : undefined;
 });
 
-const updateMentionQuery = (caret) => {
+const updateMentionQuery = (caret: number) => {
   const beforeCaret = commentDraft.value.slice(0, caret);
   const match = /(?:^|\s)@([^\s@]{0,40})$/.exec(beforeCaret);
   mentionStart.value = match ? caret - match[1].length - 1 : null;
@@ -143,15 +159,16 @@ const updateMentionQuery = (caret) => {
   highlightedMentionIndex.value = 0;
 };
 
-const onInput = (event) => {
+const onInput = (event: Event) => {
   currentCommentMentions.value = currentCommentMentions.value.filter((user) =>
     commentDraft.value.includes(`@${displayName(user)}`),
   );
-  updateMentionQuery(event.target.selectionStart ?? commentDraft.value.length);
+  const caret = event.target instanceof HTMLTextAreaElement ? event.target.selectionStart : null;
+  updateMentionQuery(caret ?? commentDraft.value.length);
   syncInputHeight();
 };
 
-const selectMention = (user) => {
+const selectMention = (user: MentionUser) => {
   if (mentionStart.value == null) return;
   const start = mentionStart.value;
   const caret = inputRef.value?.selectionStart ?? commentDraft.value.length;
@@ -171,7 +188,7 @@ const selectMention = (user) => {
   });
 };
 
-const onKeydown = (event) => {
+const onKeydown = (event: KeyboardEvent) => {
   if (!mentionListOpen.value) return;
   if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
     event.preventDefault();

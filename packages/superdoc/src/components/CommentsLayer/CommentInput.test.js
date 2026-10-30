@@ -75,6 +75,19 @@ describe('CommentInput.vue', () => {
     ]);
   });
 
+  it('finds the mention at the caret instead of the end of the draft', async () => {
+    const wrapper = mountInput([{ id: 'u1', name: 'Internal Reviewer', email: 'internal@example.com' }]);
+    const textarea = wrapper.find('textarea.superdoc-field');
+
+    await textarea.setValue('@Int tail');
+    expect(wrapper.find('[data-sd-comment-mention-option="u1"]').exists()).toBe(false);
+
+    textarea.element.setSelectionRange(4, 4);
+    await textarea.trigger('input');
+
+    expect(wrapper.find('[data-sd-comment-mention-option="u1"]').exists()).toBe(true);
+  });
+
   it('selects eligible users from the keyboard and excludes viewers', async () => {
     const wrapper = mountInput([
       { id: 'viewer', name: 'Read Only', email: 'viewer@example.com', role: 'viewer' },

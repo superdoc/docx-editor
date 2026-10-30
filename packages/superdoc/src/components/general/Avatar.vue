@@ -1,12 +1,15 @@
-<script setup>
+<script setup lang="ts">
+import type { PropType } from 'vue';
+import type { User } from '../../core/types/index.js';
+
 const props = defineProps({
   user: {
-    type: Object,
+    type: Object as PropType<User>,
     required: true,
   },
 });
 
-const getInitials = (name, email) => {
+const getInitials = (name: User['name'], email: User['email']) => {
   if (!name && !email) return;
   if (name) {
     // Filter to only words that start with a letter (skip parenthesized qualifiers like "(imported)")

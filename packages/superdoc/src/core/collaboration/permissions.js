@@ -161,8 +161,8 @@ export const readBuiltInTrackedChangePermissionDecision = (superdoc, canPerform,
  * resolver.
  *
  * @param {string} permission The permission to check
- * @param {string} role The role to check
- * @param {boolean} isInternal The internal/external flag
+ * @param {string | undefined} role The role to check
+ * @param {boolean | undefined} isInternal The internal/external flag
  * @param {object} [context] Context passed to the permission resolver
  * @param {object | null} [context.comment] The comment/tracked change being evaluated
  * @param {object | null} [context.superdoc] The SuperDoc instance

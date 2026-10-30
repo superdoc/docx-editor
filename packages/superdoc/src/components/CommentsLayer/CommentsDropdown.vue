@@ -1,9 +1,18 @@
-<script setup>
+<script setup lang="ts">
 import { computed, defineComponent, nextTick, onBeforeUnmount, ref, watch } from 'vue';
+import type { CSSProperties, PropType, VNodeChild } from 'vue';
+
+type CommentsDropdownOption = {
+  key: string;
+  label: string;
+  disabled?: boolean;
+  iconString?: string;
+  icon?: VNodeChild | ((option: CommentsDropdownOption) => VNodeChild);
+};
 
 const props = defineProps({
   options: {
-    type: Array,
+    type: Array as PropType<readonly CommentsDropdownOption[]>,
     default: () => [],
   },
   disabled: {
@@ -11,7 +20,7 @@ const props = defineProps({
     default: false,
   },
   contentStyle: {
-    type: Object,
+    type: Object as PropType<CSSProperties>,
     default: () => ({}),
   },
 });
@@ -19,11 +28,11 @@ const props = defineProps({
 const emit = defineEmits(['select']);
 
 const isOpen = ref(false);
-const triggerRef = ref(null);
-const menuRef = ref(null);
+const triggerRef = ref<HTMLElement | null>(null);
+const menuRef = ref<HTMLElement | null>(null);
 const menuPosition = ref({ top: '0px', left: '0px' });
 
-const menuStyle = computed(() => ({
+const menuStyle = computed<CSSProperties>(() => ({
   ...props.contentStyle,
   position: 'fixed',
   top: menuPosition.value.top,
@@ -31,7 +40,7 @@ const menuStyle = computed(() => ({
   zIndex: 1200,
 }));
 
-const setOpen = (value) => {
+const setOpen = (value: boolean) => {
   if (props.disabled && value) return;
   isOpen.value = value;
 };
@@ -63,20 +72,20 @@ const updateMenuPosition = () => {
   };
 };
 
-const handleTriggerClick = (event) => {
+const handleTriggerClick = (event: MouseEvent) => {
   event.stopPropagation();
   toggle();
 };
 
-const onOptionClick = (option) => {
+const onOptionClick = (option: CommentsDropdownOption) => {
   if (option?.disabled) return;
   emit('select', option?.key, option);
   close();
 };
 
-const hasIcon = (option) => Boolean(option?.iconString) || Boolean(option?.icon);
+const hasIcon = (option: CommentsDropdownOption) => Boolean(option?.iconString) || Boolean(option?.icon);
 
-const renderIcon = (option) => {
+const renderIcon = (option: CommentsDropdownOption): VNodeChild => {
   if (option?.iconString) return option.iconString;
   if (typeof option?.icon === 'function') return option.icon(option);
   return option?.icon || null;
@@ -86,7 +95,7 @@ const OptionIcon = defineComponent({
   name: 'CommentsDropdownOptionIcon',
   props: {
     option: {
-      type: Object,
+      type: Object as PropType<CommentsDropdownOption>,
       required: true,
     },
   },
@@ -95,7 +104,7 @@ const OptionIcon = defineComponent({
   },
 });
 
-const handlePointerDown = (event) => {
+const handlePointerDown = (event: PointerEvent) => {
   if (!isOpen.value) return;
   const target = event.target;
   if (!(target instanceof Element)) return;
@@ -105,7 +114,7 @@ const handlePointerDown = (event) => {
   close();
 };
 
-const handleEscape = (event) => {
+const handleEscape = (event: KeyboardEvent) => {
   if (event.key !== 'Escape') return;
   close();
 };

@@ -1,29 +1,38 @@
-<script setup>
+<script setup lang="ts">
 import { formatDate } from './helpers';
-import { superdocIcons } from '@superdoc/icons.js';
-import { computed, getCurrentInstance } from 'vue';
+import { superdocIcons } from '../../icons.js';
+import { computed } from 'vue';
+import type { PropType } from 'vue';
 import { actorIdentitiesMatch, getActorIdentity, normalizeActorName } from '@superdoc/common';
-import { isAllowed, PERMISSIONS } from '@superdoc/core/collaboration/permissions.js';
-import { useCommentsStore } from '@superdoc/stores/comments-store';
-import Avatar from '@superdoc/components/general/Avatar.vue';
-import { useUiFontFamily } from '@superdoc/composables/useUiFontFamily.js';
+import { isAllowed, PERMISSIONS } from '../../core/collaboration/permissions.js';
+import { useCommentsStore } from '../../stores/comments-store';
+import Avatar from '../general/Avatar.vue';
+import { useUiFontFamily } from '../../composables/useUiFontFamily.js';
+import { useSuperDocInstance } from '../../composables/use-superdoc-instance';
 import CommentsDropdown from './CommentsDropdown.vue';
 import { trackedChangeThreadParentIdForComment } from './tracked-change-threading.js';
+import type useComment from './use-comment.js';
+
+type HeaderComment = ReturnType<typeof useComment>;
+
+type HeaderConfig = { readOnly?: boolean; allowResolve?: boolean };
+
+type HeaderCommentsStore = { pendingComment: object | null };
 
 const emit = defineEmits(['resolve', 'reject', 'reopen', 'overflow-select']);
-const commentsStore = useCommentsStore();
+const commentsStore: HeaderCommentsStore = useCommentsStore();
 const props = defineProps({
   timestamp: {
     type: Number,
     required: false,
   },
   config: {
-    type: Object,
+    type: Object as PropType<HeaderConfig>,
     required: true,
   },
   comment: {
-    type: Object,
-    required: false,
+    type: Object as PropType<HeaderComment>,
+    required: true,
   },
   isPendingInput: {
     type: Boolean,
@@ -39,18 +48,18 @@ const props = defineProps({
   // to keep tracked-change accept/reject controls visible-but-disabled until
   // Phase 3 / 003 wires the tracked-change adapter.
   resolveDisabledReason: {
-    type: String,
+    type: String as PropType<string | null>,
     default: null,
   },
   rejectDisabledReason: {
-    type: String,
+    type: String as PropType<string | null>,
     default: null,
   },
   // Row 864 reopen: when set, the reopen affordance renders disabled (e.g.
   // read-only document or the v2 host reports writes are unavailable) and
   // emits nothing on click. When null, the affordance is interactive.
   reopenDisabledReason: {
-    type: String,
+    type: String as PropType<string | null>,
     default: null,
   },
   // Row 864 reopen: gate the reopen affordance so it only renders where a
@@ -65,15 +74,15 @@ const props = defineProps({
   // host not ready). Both options are filtered out of the overflow menu so
   // the user cannot trigger a mutation that the host will reject.
   writeDisabledReason: {
-    type: String,
+    type: String as PropType<string | null>,
     default: null,
   },
 });
 
-const { proxy } = getCurrentInstance();
-const role = proxy.$superdoc.config.role;
-const isInternal = proxy.$superdoc.config.isInternal;
-const isCommentOwnedByCurrentUser = (comment) => {
+const { proxy, superdoc } = useSuperDocInstance();
+const role = superdoc.config.role;
+const isInternal = superdoc.config.isInternal;
+const isCommentOwnedByCurrentUser = (comment: HeaderComment) => {
   const currentUser = proxy.$superdoc.config.user;
   const otherUser = { id: comment?.creatorId, email: comment?.creatorEmail };
   if (actorIdentitiesMatch({ current: currentUser, other: otherUser })) return true;
@@ -91,7 +100,7 @@ const isCommentOwnedByCurrentUser = (comment) => {
   const commentName = normalizeActorName(comment?.creatorName);
   return Boolean(currentName && commentName && currentName === commentName);
 };
-const isTrackedChangeOwnedByCurrentUser = (comment) => {
+const isTrackedChangeOwnedByCurrentUser = (comment: HeaderComment) => {
   const currentUser = proxy.$superdoc.config.user;
   const current = getActorIdentity(currentUser);
   const author = getActorIdentity({
@@ -125,6 +134,8 @@ const OVERFLOW_OPTIONS = Object.freeze({
   edit: { label: 'Edit', key: 'edit' },
   delete: { label: 'Delete', key: 'delete' },
 });
+
+type OverflowOption = (typeof OVERFLOW_OPTIONS)[keyof typeof OVERFLOW_OPTIONS];
 
 const commentMutationsVisible = computed(() => props.config.readOnly !== true);
 const trackedChangeDecisionsVisible = computed(() => {
@@ -233,8 +244,8 @@ const getOverflowOptions = computed(() => {
   // a mutation the host would immediately reject.
   if (props.writeDisabledReason) return [];
 
-  const allowedOptions = [];
-  const options = new Set();
+  const allowedOptions: OverflowOption[] = [];
+  const options = new Set<keyof typeof OVERFLOW_OPTIONS>();
 
   // Only the comment creator can edit.
   if (isCommentOwnedByCurrentUser(props.comment)) {
@@ -278,7 +289,7 @@ const handleReopen = () => {
   if (props.reopenDisabledReason) return;
   emit('reopen');
 };
-const handleSelect = (value) => {
+const handleSelect = (value: string) => {
   if (!commentMutationsVisible.value) return;
   emit('overflow-select', value);
 };

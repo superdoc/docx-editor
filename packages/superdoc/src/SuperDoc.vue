@@ -1,4 +1,4 @@
-<script setup>
+<script setup lang="ts">
 import {
   recordInteraction,
   isWorkflowRecordingEnabled,
@@ -27,8 +27,26 @@ import {
   watch,
   defineAsyncComponent,
   markRaw,
+  type Ref,
+  type StyleValue,
 } from 'vue';
 import { storeToRefs } from 'pinia';
+import type { HistoryState } from '@superdoc/document-api';
+import type { SuperDocActiveEditorExtensions } from './core/extensions/types.js';
+import type { SurfaceManager } from './core/surface-manager.js';
+import type {
+  CollaborationProvider,
+  Editor,
+  EditorUpdateEvent,
+  SuperDocCommentsUpdatePayload,
+  SuperDocPageMarginsChangePayload,
+  SuperDocWorkerFailureDetail,
+  LinkPopoverResolution,
+  SurfaceRequest,
+  V2AuthoringFacade,
+  V2AuthoringSelectionCollapse,
+} from './core/types/index.js';
+import type { V2EditorRuntimeAdapterOptions } from './core/editor-runtime/v2/v2-editor-runtime-adapter.js';
 
 import CommentDialog from './components/CommentsLayer/CommentDialog.vue';
 import FloatingComments from './components/CommentsLayer/FloatingComments.vue';
@@ -42,7 +60,7 @@ import { useCommentsStore } from './stores/comments-store';
 
 import { DOCX, PDF } from '@superdoc/common';
 import { composeAuthorColorResolver } from '@superdoc/contracts';
-import useComment from './components/CommentsLayer/use-comment';
+import useComment, { type UseCommentParams } from './components/CommentsLayer/use-comment';
 import { collectRemovedCommentIds } from './components/CommentsLayer/collect-removed-comment-ids.js';
 import { useHighContrastMode } from './composables/use-high-contrast-mode';
 import { useSuperDocInstance } from './composables/use-superdoc-instance';
@@ -86,7 +104,12 @@ import { createV2SessionShortcutRoutes } from './core/editor-runtime/v2/v2-sessi
 import { createV2SaveQueue } from './core/editor-runtime/v2/v2-save-queue.js';
 import { resolveV2DocxExportOptions } from './core/helpers/resolve-docx-export.js';
 import { markRuntimeRoot, unmarkRuntimeRoot } from './core/editor-runtime/root-marker.js';
-import { createDefaultV2Integration } from './core/v2-integration/v2-integration.js';
+import {
+  createDefaultV2Integration,
+  type V2GeometryPayload,
+  type V2CommittedPageWindow,
+  type V2GeometryPublishOptions,
+} from './core/v2-integration/v2-integration.js';
 import { resolveV2CollaborationTarget } from './core/collaboration/resolve-v2-collaboration-target.js';
 import { createCollaborationException } from './core/collaboration/collaboration-exception.js';
 import { createDocumentOpenTelemetry } from './core/document-open-telemetry.js';
@@ -109,12 +132,362 @@ import {
   VALID_COMMENTS_LAYOUTS,
 } from './helpers/comment-small-screen.js';
 
+type SuperDocInstance = typeof superdoc;
+type StoreDocument = ReturnType<typeof getDocument> & {};
+type ShellDocument = Omit<StoreDocument, 'provider'> & {
+  html?: string;
+  markdown?: string;
+  provider?: CollaborationProvider | null;
+  container?: unknown;
+  setEditor?: (editor: unknown) => void;
+  editorMountNonce?: number;
+  documentMarginsLastChange?: unknown;
+  fieldContext?: Record<string, unknown>;
+};
+type TrackChangeHighlightColorSet = {
+  insertBorder?: string;
+  insertBackground?: string;
+  deleteBorder?: string;
+  deleteBackground?: string;
+  formatBorder?: string;
+};
+type ShellCommentsConfig = {
+  highlightHoverColor?: string;
+  trackChangeHighlightColors?: TrackChangeHighlightColorSet;
+  trackChangeActiveHighlightColors?: TrackChangeHighlightColorSet;
+  highlightColors?: unknown;
+  highlightOpacity?: unknown;
+  layout?: string;
+  readOnly?: boolean;
+};
+type ShellToolbarItem = {
+  disabled?: { value?: boolean };
+  expand?: unknown;
+};
+type ShellToolbar = {
+  getToolbarItemByName?: (name: string) => unknown;
+  updateToolbarState?: () => void;
+  pendingSelectionCapture?: unknown;
+  ui?: { selection?: { capture?: () => unknown } };
+  toolbarContainer?: HTMLElement | null;
+};
+type LegacyLayoutEngineOptions = SuperDocInstance['config']['layoutEngineOptions'] & {
+  proofing?: SuperDocInstance['config']['proofing'];
+  debugLabel?: string;
+};
+type ShellConfig = SuperDocInstance['config'] & {
+  collaboration?: unknown;
+  benchmarkTraceEnabled?: boolean;
+  annotations?: unknown;
+};
+type V2CommandMutation = {
+  selectionReader?: {
+    capture: () => { read: () => Promise<unknown>; isCurrent: (info: unknown) => boolean } | null;
+  };
+  supports: (memberPath: string) => boolean;
+  run: (memberPath: string, args: readonly unknown[]) => unknown;
+  runListApply: (input: unknown) => Promise<boolean>;
+};
+type V2ShortcutUnbind = (() => void) | void | null | undefined;
+type V2CommandRoute = {
+  executeAsync: (commandId: string, payload?: unknown) => Promise<unknown>;
+  executeAfterSelection: (commandId: string, payload?: unknown) => Promise<unknown>;
+  getState: (commandId: string) => unknown;
+};
+type V2BindEditShortcuts = (input: { commandRoute: V2CommandRoute; openLinkWorkflow?: () => void }) => V2ShortcutUnbind;
+type V2BindSessionShortcuts = (input: {
+  routes: ReturnType<typeof createV2SessionShortcutRoutes>;
+  isMutationAllowed: () => boolean;
+}) => V2ShortcutUnbind;
+type V2SessionDocumentApi = Parameters<typeof createV2SessionShortcutRoutes>[0]['getDocumentApi'] extends () => infer T
+  ? T
+  : never;
+type V2ShortcutBinding = { unbind: V2ShortcutUnbind };
+type V2RuntimeHost = V2EditorRuntimeAdapterOptions['host'];
+type V2RuntimeEntry = { runtimeId: string; adapter: ReturnType<typeof createV2EditorRuntimeAdapter> };
+type V2RuntimeMount = Parameters<ReturnType<typeof createV2EditorRuntimeAdapter>['attachMountHandle']>[0];
+type ShellCommentRecord = Record<string, unknown> & {
+  commentId?: unknown;
+  importedId?: unknown;
+  fileId?: unknown;
+  documentId?: unknown;
+  trackedChange?: unknown;
+  selection?: {
+    source?: unknown;
+    documentId?: unknown;
+    selectionBounds?: Record<string, unknown> | null;
+  } | null;
+};
+type ShellCommentPositionEntry = { bounds?: { top?: number } | null; [key: string]: unknown };
+type RawCommentsStore = ReturnType<typeof useCommentsStore>;
+type ShellCommentsStoreRefs = Omit<
+  ReturnType<typeof storeToRefs<RawCommentsStore>>,
+  'commentsList' | 'pendingComment' | 'activeComment' | 'editorCommentPositions'
+> & {
+  commentsByDocument?: unknown;
+  commentsList: Ref<ShellCommentRecord[]>;
+  pendingComment: Ref<ShellCommentRecord | null>;
+  activeComment: Ref<string | null>;
+  editorCommentPositions: Ref<Record<string, unknown>>;
+};
+type ShellCommentsStoreActions = Omit<
+  RawCommentsStore,
+  | 'showAddComment'
+  | 'handleEditorLocationsUpdate'
+  | 'handleTrackedChangeUpdate'
+  | 'addHydratedComment'
+  | 'getComment'
+  | 'resolveCommentPositionEntry'
+  | 'belongsToDocument'
+  | 'requestInstantSidebarAlignment'
+  | 'peekInstantSidebarAlignment'
+  | 'getV2TrackedChangeRowCount'
+  | 'reconcileTrackedChangeMutationFromV2'
+  | 'remapTrackedChangeIdentities'
+  | 'announceV2CommentCreated'
+  | 'setActiveComment'
+  | 'dropCommentsFromMutationImpact'
+  | 'applyReviewWindowFromV2'
+> & {
+  applyReviewWindowFromV2?: (
+    input: Record<string, unknown> & {
+      patch: (callback: Parameters<RawCommentsStore['$patch']>[0]) => void;
+    },
+  ) => unknown;
+  dropCommentsFromMutationImpact: NonNullable<
+    NonNullable<Parameters<typeof applyV2CommentInvalidationFromMutation>[0]>['commentsStore']
+  >['dropCommentsFromMutationImpact'];
+  getV2TrackedChangeRowCount: (documentId?: string | null) => number;
+  reconcileTrackedChangeMutationFromV2: (input: {
+    superdoc: object;
+    adapter: unknown;
+    documentId: string | null;
+    upsertIds?: Iterable<string>;
+    removedIds?: Iterable<string>;
+    remappedPairs?: Array<{ from: string; to: string }>;
+    allResolved?: unknown;
+    reconcileMode?: string;
+  }) => Promise<{ ok?: boolean; allResolved?: boolean } | null | undefined>;
+  remapTrackedChangeIdentities: (
+    pairs: Array<{ from: string; to: string }>,
+    options: { documentId: string | null },
+  ) => void;
+  announceV2CommentCreated: (input: { superdoc: object; commentId: unknown }) => Promise<unknown>;
+  setActiveComment: (superdoc: object, id: string | null | undefined) => void;
+  showAddComment: (superdoc: object, targetClientY?: number | null) => Promise<{ ok?: boolean } | null | undefined>;
+  handleEditorLocationsUpdate: (
+    positions: Record<string, unknown>,
+    options?: { retainMissingTrackedChangeGeometry?: boolean; retainedTrackedChangeIds?: Iterable<string> },
+  ) => void;
+  handleTrackedChangeUpdate: (input: { superdoc: object; params: object }) => void;
+  addHydratedComment: (input: { superdoc: object; comment: unknown; skipEditorUpdate?: boolean }) => void;
+  getComment: (id: string) => ShellCommentRecord | null | undefined;
+  resolveCommentPositionEntry: (commentOrId: unknown) => {
+    key: string | null;
+    entry: ShellCommentPositionEntry | null;
+  };
+  belongsToDocument: (comment: unknown, activeDocumentId: string) => boolean;
+  requestInstantSidebarAlignment: (
+    targetY?: number | null,
+    threadId?: string | null,
+    instanceId?: string | null,
+  ) => void;
+  peekInstantSidebarAlignment: () => number | null;
+};
+type V2EditorFailure = {
+  reason: string;
+  message: string;
+  detail: string | null;
+  workerFailure?: SuperDocWorkerFailureDetail;
+};
+type V2ActiveEditorView = {
+  editorVersion?: 2;
+  documentId?: string;
+  options?: { documentId?: string };
+  host?: { getHandles?: () => V2HostHandles | null | undefined } | null;
+  mount?: { container?: HTMLElement | null } | null;
+  pageMetrics?: { setZoom?: (percent: number) => unknown } | null;
+  pageLayout?: V2RulerPageLayout | null;
+};
+type V2Failure = { ok: false; reason: string; detail?: string };
+type V2SelectionTargetRead = {
+  kind?: string;
+  rejection?: { reason?: string; code?: string; detail?: string } | null;
+  target?: unknown;
+  mode?: string;
+  story?: unknown;
+};
+type V2SelectionHandle = {
+  getSnapshot?: () => V2SelectionSnapshot | null;
+  toSelectionTarget?: () => V2SelectionTargetRead | null | undefined;
+  applyDomSelection?: (selection: Selection | null) => { ok?: boolean; mode?: string } | null | undefined;
+  syncVisibleOverlay?: () => void;
+  clear?: () => void;
+};
+type V2SelectionTargetsHandle = {
+  apply?: (target: unknown) => unknown;
+  applyAndWait?: (target: unknown) => unknown;
+};
+type V2HostHandles = {
+  editing?: { selection?: V2SelectionHandle | null; selectionTargets?: V2SelectionTargetsHandle | null } | null;
+  selection?: V2SelectionHandle | null;
+  trackChanges: { moveFragmentWordIds: (ids: readonly string[]) => unknown };
+};
+type V2SaveOptions = Parameters<V2RuntimeHost['save']>[0];
+type V2ExtensionCommandHandle = {
+  id: string;
+  getState: () => { disabled?: boolean; label?: string } | null | undefined;
+};
+type V2EditorHost = V2HostExtensions & V2RuntimeHost;
+type V2HostExtensions = {
+  save: (options?: V2SaveOptions | Record<string, never>) => Promise<ArrayBuffer>;
+  getCapabilities?: () => unknown;
+  getExtensionManager?: () => {
+    commands: {
+      execute: (id: string, payload?: unknown) => Promise<boolean | void>;
+      get: (id: string) => V2ExtensionCommandHandle | null | undefined;
+      list: () => V2ExtensionCommandHandle[];
+    };
+    diagnostics: () => ReturnType<SuperDocActiveEditorExtensions['diagnostics']['getSnapshot']>;
+  } | null;
+  getHostVisuals?: () => unknown;
+  getFontRuntime?: () => unknown;
+  getHandles: () => V2HostHandles;
+  resolveReviewWindow: (input: unknown) => unknown;
+};
+type V2SelectionSnapshot = {
+  anchor?: {
+    fragmentId?: unknown;
+    blockId?: unknown;
+    position?: { anchor?: { nativeId?: unknown } | null } | null;
+  } | null;
+};
+type V2RestampEvent = CustomEvent<{ itemIds?: unknown; refreshReason?: string } | null> | null | undefined;
+type V2ReviewTarget = { origin?: unknown; entityId?: unknown; entityType?: unknown };
+type V2HostEvent = Record<string, unknown> & {
+  type: string;
+  dryRun?: boolean;
+  state?: Readonly<HistoryState>;
+  reviewMutation?: { token?: string } | null;
+  next?: V2ReviewTarget | null;
+  reviewChanged?: boolean;
+  diagnostics?: Parameters<typeof translateSsigParseDiagnostic>[0][];
+  generation?: unknown;
+  trackedChangeBulkDecision?: unknown;
+  trackedChangeAllResolved?: unknown;
+  origin?: string;
+  direction?: string;
+  reviewSidecarOnly?: boolean;
+};
+type V2ReceiptFailure = { code?: string; message?: string; detail?: string; reason?: string };
+type V2Receipt =
+  | (V2ReceiptFailure & {
+      ok?: boolean;
+      success?: boolean;
+      failure?: V2ReceiptFailure | null;
+    })
+  | null
+  | undefined;
+type V2DocumentApi = V2SessionDocumentApi & {
+  query?: { match?: (input: unknown) => Promise<{ items?: unknown; total?: unknown } | null | undefined> };
+  text?: { replace?: (input: unknown) => Promise<V2Receipt> };
+  clipboard?: {
+    serializeSelection?: (input: unknown) => Promise<{ payload?: unknown; plan?: unknown } | null | undefined>;
+    insert?: (input: unknown) => Promise<V2Receipt>;
+  };
+  blocks?: { list?: (input: unknown) => unknown };
+};
+type V2QueryItem = { target?: unknown; handle?: { ref?: unknown } | null };
+type V2SelectionTarget = { kind?: unknown; start?: unknown; end?: unknown; story?: unknown };
+type V2AuthoringMode = 'direct' | 'tracked';
+type V2EditorReadyPayload = {
+  [key: string]: unknown;
+  host: V2EditorHost;
+  mount?: (V2RuntimeMount & { focus?: { focus?: (options?: unknown) => unknown } | null }) | null;
+  documentId: string;
+  capabilities?: unknown;
+  bindEditShortcuts?: V2BindEditShortcuts | null;
+  bindSessionShortcuts?: V2BindSessionShortcuts | null;
+  commentsAdapter?: unknown;
+  trackedChangesAdapter?: unknown;
+  contextMenu?: unknown;
+  documentApi?: V2DocumentApi | null;
+  documentMutationReadiness?: { whenPainted?: (receipt: unknown) => unknown } | null;
+  documentApiUnavailableReason?: string | null;
+  pageMetrics?: unknown;
+  pageLayout?: V2RulerPageLayout | null;
+  pageFurniture?: unknown;
+  presence?: unknown;
+  lock?: unknown;
+  connection?: unknown;
+  collaborationProvider?: CollaborationProvider | null;
+  fonts?: unknown;
+  replaceFile?: (source: unknown) => Promise<{ state?: string } | null | undefined>;
+  upgradeToCollaboration?: (source: unknown, collaboration: unknown) => Promise<unknown>;
+  documentOpenToken?: object | null;
+};
+type V2RulerPageLayout = {
+  getActiveRulerContext?: () => { pageIndex?: number } | null | undefined;
+  subscribeActiveRulerContext?: (listener: (context: { pageIndex?: number } | null | undefined) => void) => () => void;
+};
+type V2EditorFailedPayload = {
+  documentId?: string | null;
+  reason?: unknown;
+  detail?: unknown;
+  workerFailure?: SuperDocWorkerFailureDetail | null;
+  bootErrorName?: unknown;
+  diagnostics?: unknown;
+  generation?: unknown;
+};
+type V2DiagnosticRecord = Parameters<typeof translateUnzipDiagnostic>[0];
+type V2Diagnostic = NonNullable<ReturnType<typeof translateUnzipDiagnostic>>;
+type V2DiagnosticsPayload = {
+  documentId?: unknown;
+  diagnostics?: unknown;
+  generation?: unknown;
+  snapshot?: { diagnostics?: unknown } | null;
+};
+type ReplayCommentPayload = Record<string, unknown> & {
+  isDone?: unknown;
+  resolvedTime?: unknown;
+  resolvedById?: unknown;
+  resolvedByEmail?: unknown;
+  resolvedByName?: unknown;
+  creatorId?: unknown;
+  creatorEmail?: unknown;
+  creatorName?: unknown;
+  createdTime?: unknown;
+  commentText?: unknown;
+  text?: unknown;
+  docxCommentJSON?: unknown;
+  elements?: unknown;
+  documentId?: unknown;
+  fileId?: unknown;
+  commentId?: unknown;
+  importedId?: unknown;
+};
+type EditorCommentsUpdateParams = {
+  activeCommentId?: string | null;
+  type?: string;
+  comment?: ReplayCommentPayload | null;
+};
+type ShellSelection = {
+  selectionBounds?: { top: number; left: number; right: number; bottom: number } | null;
+  source?: unknown;
+};
+type V2PageMarginsChangeEvent = Omit<SuperDocPageMarginsChangePayload, 'documentId' | 'editorVersion'>;
+type ShellPdfViewer = { updateScale: (scale: number) => void };
+type V2CollaborationResolution =
+  | { state: 'absent' }
+  | { state: 'invalid'; failure: { code: string; message: string } }
+  | { state: 'valid'; config: Record<string, unknown> };
+
 const PdfViewer = defineAsyncComponent(() => import('./components/PdfViewer/PdfViewer.vue'));
-const getDocumentLoadPassword = (doc) => doc.password ?? proxy.$superdoc.config.password;
+const getDocumentLoadPassword = (doc: ShellDocument) => doc.password ?? proxy.$superdoc.config.password;
 // Preserve the distinction between no collaboration request and a malformed
 // request. Invalid input is a terminal preflight failure; it must never be
 // silently reinterpreted as a local editor boot.
-const resolveDocumentV2Collaboration = (doc) => {
+const resolveDocumentV2Collaboration = (doc: ShellDocument | null | undefined): V2CollaborationResolution => {
   const rawConfig = doc?.v2Collaboration;
   const config = rawConfig && typeof rawConfig === 'object' && 'value' in rawConfig ? rawConfig.value : rawConfig;
   if (config == null) return { state: 'absent' };
@@ -145,7 +518,7 @@ const resolveDocumentV2Collaboration = (doc) => {
 
 // Stores
 const superdocStore = useSuperdocStore();
-const commentsStore = useCommentsStore();
+const commentsStore = useCommentsStore() as ShellCommentsStoreActions;
 const emit = defineEmits(['selection-update']);
 
 //prettier-ignore
@@ -163,7 +536,7 @@ const {
 const { handlePageReady, modules, user, getDocument } = superdocStore;
 
 // Password prompt coordinator — uses surfaces to show a dialog for encrypted DOCX files.
-const surfaceManager = inject('surfaceManager', null);
+const surfaceManager = inject<SurfaceManager | null>('surfaceManager', null);
 const passwordPrompt = usePasswordPrompt({
   getSurfaceManager: () => surfaceManager,
   getPasswordPromptConfig: () => proxy.$superdoc?.config?.modules?.surfaces?.passwordPrompt,
@@ -208,7 +581,7 @@ const {
   hasInitializedLocations,
   isCommentHighlighted,
   hasOpenTrackedChanges,
-} = storeToRefs(commentsStore);
+} = storeToRefs(commentsStore as RawCommentsStore) as ShellCommentsStoreRefs;
 const {
   showAddComment,
   handleEditorLocationsUpdate,
@@ -224,7 +597,7 @@ const {
   clearInstantSidebarAlignment,
 } = commentsStore;
 const { proxy, superdoc } = useSuperDocInstance();
-commentsStore.proxy = proxy;
+(commentsStore as ShellCommentsStoreActions & { proxy?: typeof proxy }).proxy = proxy;
 const documentOpenTelemetry = createDocumentOpenTelemetry(superdoc.config);
 
 // Resolve the single v2 integration object. superdoc@2 source-resolves the
@@ -272,7 +645,7 @@ const resolvedProofingConfig = computed(() => {
   if (proxy.$superdoc.config.proofing !== undefined) {
     return proxy.$superdoc.config.proofing;
   }
-  return proxy.$superdoc.config.layoutEngineOptions?.proofing;
+  return (proxy.$superdoc.config.layoutEngineOptions as LegacyLayoutEngineOptions | undefined)?.proofing;
 });
 
 const commentsModuleConfig = computed(() => {
@@ -289,19 +662,19 @@ const commentsModuleConfig = computed(() => {
 });
 
 const superdocStyleVars = computed(() => {
-  const vars = {
+  const vars: Record<string, string> = {
     '--sd-ui-font-family': uiFontFamily.value,
   };
 
-  const commentsConfig = commentsModuleConfig.value;
+  const commentsConfig: ShellCommentsConfig | null = commentsModuleConfig.value;
   if (!commentsConfig) return vars;
 
   if (commentsConfig.highlightHoverColor) {
     vars['--sd-comments-highlight-hover'] = commentsConfig.highlightHoverColor;
   }
 
-  const trackChangeColors = commentsConfig.trackChangeHighlightColors || {};
-  const activeTrackChangeColors = {
+  const trackChangeColors: TrackChangeHighlightColorSet = commentsConfig.trackChangeHighlightColors || {};
+  const activeTrackChangeColors: TrackChangeHighlightColorSet = {
     ...trackChangeColors,
     ...(commentsConfig.trackChangeActiveHighlightColors || {}),
   };
@@ -320,11 +693,15 @@ const superdocStyleVars = computed(() => {
 });
 
 // Refs
-const superdocRoot = ref(null);
-const layers = ref(null);
-const rightSidebarRef = ref(null);
-const pdfViewerRef = ref(null);
-const toolsMenuPosition = reactive({ top: null, right: '-25px', zIndex: 101 });
+const superdocRoot = ref<HTMLDivElement | null>(null);
+const layers = ref<HTMLDivElement | null>(null);
+const rightSidebarRef = ref<HTMLDivElement | null>(null);
+const pdfViewerRef = ref<ShellPdfViewer | ShellPdfViewer[] | null>(null);
+const toolsMenuPosition = reactive<{ top: string | undefined | null; right: string; zIndex: number }>({
+  top: null,
+  right: '-25px',
+  zIndex: 101,
+});
 const {
   superdocContainerWidth,
   isCompactCommentsMode,
@@ -349,13 +726,13 @@ const isV2Mode = computed(() => true);
 // the sidebar does not appear before painted carriers exist.
 // `v2ReviewSidebarUnlocked` latches after that first publish so a transient
 // remount on Enter cannot unmount the sidebar via the geometry gate.
-const v2GeometryRender = shallowRef(null);
+const v2GeometryRender = shallowRef<V2GeometryPayload | null>(null);
 const v2GeometryAvailable = ref(false);
 const v2ReviewSidebarUnlocked = ref(false);
-const v2GeometryEpoch = ref(null);
+const v2GeometryEpoch = ref<number | null>(null);
 let v2GeometryRafHandle = 0;
 let v2TrackedChangeRestampRetainPaints = 0;
-let v2TrackedChangeRestampRetentionReason = null;
+let v2TrackedChangeRestampRetentionReason: string | null = null;
 const TRACKED_CHANGE_CARRIERS_RESTAMPED_EVENT = 'superdoc:v2-tracked-change-carriers-restamped';
 
 // Create a ref to pass to the composable
@@ -384,16 +761,16 @@ const findReplace = useFindReplace({
   // which is backed by the single host search session (`host.search`).
   getSuperDocUI,
 });
-const getLinkPopoverSurfaceManager = () => {
+const getLinkPopoverSurfaceManager = (): Pick<SurfaceManager, 'open'> | null => {
   if (surfaceManager) return surfaceManager;
   if (typeof proxy.$superdoc?.openSurface !== 'function') return null;
   return {
-    open: (request) => proxy.$superdoc.openSurface(request),
+    open: (request: SurfaceRequest) => proxy.$superdoc.openSurface(request),
   };
 };
 const getHyperlinkActivationHandler = () => {
   const config = normalizeHyperlinksConfig(proxy.$superdoc?.config);
-  return config.editableActivationDisabled ? () => ({ type: 'none' }) : config.handler;
+  return config.editableActivationDisabled ? (): LinkPopoverResolution => ({ type: 'none' }) : config.handler;
 };
 const getHyperlinkActivationSource = () => normalizeHyperlinksConfig(proxy.$superdoc?.config).handlerSource;
 const getBuiltInLinkEditorDisabled = () => normalizeHyperlinksConfig(proxy.$superdoc?.config).builtInEditorDisabled;
@@ -416,15 +793,16 @@ const linkPopover = useLinkPopover({
   },
 });
 
-const pdfConfig = superdoc.config.modules?.pdf || {};
+const pdfConfig: Partial<NonNullable<SuperDocInstance['config']['modules']['pdf']>> =
+  superdoc.config.modules?.pdf || {};
 
-const handleDocumentReady = (documentId, container) => {
-  const doc = getDocument(documentId);
+const handleDocumentReady = (documentId: string, container: unknown) => {
+  const doc: ShellDocument | undefined = getDocument(documentId);
   if (!doc || (doc.loadScope && !doc.loadScope.finish())) return;
   doc.isReady = true;
   doc.container = container;
   if (areDocumentsReady.value) {
-    if (!proxy.$superdoc.config.collaboration) isReady.value = true;
+    if (!(proxy.$superdoc.config as ShellConfig).collaboration) isReady.value = true;
   }
 
   ensureInitialFallbackZoom();
@@ -457,8 +835,8 @@ const handleCommentToolClick = async () => {
   if (pendingPosition) publishV2PendingPositionEntry(pendingPosition);
 };
 
-const handleToolClick = async (tool) => {
-  const toolOptions = {
+const handleToolClick = async (tool: string) => {
+  const toolOptions: Record<string, (selection?: unknown, position?: unknown) => Promise<void>> = {
     comments: () => handleCommentToolClick(),
   };
 
@@ -473,13 +851,13 @@ const handleToolClick = async (tool) => {
 const handleHighlightClick = () => (toolsMenuPosition.top = null);
 
 // Shell-owned per-document state for the v2 runtime adapter.
-const subDocumentRoots = new Map();
-const v2Runtimes = new Map();
-const v2CommandShortcutBindings = new Map();
-const v2SessionShortcutBindings = new Map();
+const subDocumentRoots = new Map<string, HTMLElement>();
+const v2Runtimes = new Map<string, V2RuntimeEntry>();
+const v2CommandShortcutBindings = new Map<string, V2ShortcutBinding>();
+const v2SessionShortcutBindings = new Map<string, V2ShortcutBinding>();
 let v2RuntimeSeq = 0;
 
-const clearV2CommandShortcutBinding = (documentId) => {
+const clearV2CommandShortcutBinding = (documentId: string) => {
   const entry = v2CommandShortcutBindings.get(documentId);
   if (!entry) return;
   v2CommandShortcutBindings.delete(documentId);
@@ -491,10 +869,10 @@ const clearV2CommandShortcutBinding = (documentId) => {
 };
 
 const resolveV2LinkWorkflowOpener = () => {
-  const toolbar = proxy.$superdoc?.toolbar;
+  const toolbar: ShellToolbar | null | undefined = proxy.$superdoc?.toolbar;
   if (!toolbar || typeof toolbar.getToolbarItemByName !== 'function') return null;
   return () => {
-    const linkItem = toolbar.getToolbarItemByName('link');
+    const linkItem = toolbar.getToolbarItemByName!('link') as ShellToolbarItem | null | undefined;
     if (!linkItem || linkItem.disabled?.value === true) return;
     toolbar.pendingSelectionCapture = toolbar.ui?.selection?.capture?.() ?? null;
     if (linkItem.expand && typeof linkItem.expand === 'object' && 'value' in linkItem.expand) {
@@ -504,7 +882,13 @@ const resolveV2LinkWorkflowOpener = () => {
   };
 };
 
-const installV2CommandShortcutBinding = ({ documentId, bindEditShortcuts }) => {
+const installV2CommandShortcutBinding = ({
+  documentId,
+  bindEditShortcuts,
+}: {
+  documentId: string | null | undefined;
+  bindEditShortcuts: V2BindEditShortcuts | null | undefined;
+}) => {
   if (!documentId) return;
   clearV2CommandShortcutBinding(documentId);
   if (typeof bindEditShortcuts !== 'function') return;
@@ -517,12 +901,12 @@ const installV2CommandShortcutBinding = ({ documentId, bindEditShortcuts }) => {
       // Fail closed, and keep the promise shape: a queued shortcut that
       // settles after teardown still gets an awaitable result rather than
       // `undefined`, which would throw for any caller chaining `.then()`.
-      executeAsync: (commandId, payload) => {
+      executeAsync: (commandId: string, payload?: unknown) => {
         const ui = getSuperDocUI();
         if (!ui) return Promise.resolve(UNAVAILABLE_COMMAND_RESULT);
         return executeFirstPartyCommandAsync(ui, commandId, payload);
       },
-      executeAfterSelection: (commandId, payload) => {
+      executeAfterSelection: (commandId: string, payload?: unknown) => {
         const ui = getSuperDocUI();
         return ui
           ? executeFirstPartyShortcutAsync(ui, commandId, payload)
@@ -530,14 +914,14 @@ const installV2CommandShortcutBinding = ({ documentId, bindEditShortcuts }) => {
       },
       // Fail closed: a shortcut must never read as enabled when the shell has
       // outlived its SuperDoc instance.
-      getState: (commandId) => getSuperDocUI()?.commands.get(commandId).getState() ?? UNAVAILABLE_COMMAND_STATE,
+      getState: (commandId: string) => getSuperDocUI()?.commands.get(commandId).getState() ?? UNAVAILABLE_COMMAND_STATE,
     },
     ...(openLinkWorkflow ? { openLinkWorkflow } : {}),
   });
   v2CommandShortcutBindings.set(documentId, { unbind });
 };
 
-const clearV2SessionShortcutBinding = (documentId) => {
+const clearV2SessionShortcutBinding = (documentId: string) => {
   const entry = v2SessionShortcutBindings.get(documentId);
   if (!entry) return;
   v2SessionShortcutBindings.delete(documentId);
@@ -560,16 +944,23 @@ const installV2SessionShortcutBinding = ({
   bindSessionShortcuts,
   documentApi,
   firstPartyCommandMutation,
+}: {
+  documentId: string | null | undefined;
+  bindSessionShortcuts: V2BindSessionShortcuts | null | undefined;
+  documentApi: V2SessionDocumentApi;
+  [key: string]: unknown;
 }) => {
   if (!documentId) return;
   clearV2SessionShortcutBinding(documentId);
   if (typeof bindSessionShortcuts !== 'function') return;
   const routes = createV2SessionShortcutRoutes({
-    resolveToolbarElement: () => proxy.$superdoc?.toolbar?.toolbarContainer ?? null,
+    resolveToolbarElement: () =>
+      (proxy.$superdoc?.toolbar as ShellToolbar | null | undefined)?.toolbarContainer ?? null,
     getDocumentApi: () => documentApi ?? null,
     ...(firstPartyCommandMutation
       ? {
-          runReferenceMutation: (memberPath, input) => firstPartyCommandMutation.run(memberPath, [input]),
+          runReferenceMutation: (memberPath, input) =>
+            (firstPartyCommandMutation as V2CommandMutation).run(memberPath, [input]),
         }
       : {}),
     pageNumberCommand: {
@@ -595,16 +986,16 @@ const installV2SessionShortcutBinding = ({
  * @param {Object} doc - the document model
  * @param {HTMLElement|null} el - the wrapper element, or null on unmount
  */
-const setSubDocumentRoot = (doc, el) => {
+const setSubDocumentRoot = (doc: ShellDocument | null | undefined, el: HTMLElement | null) => {
   if (!doc?.id) return;
   if (el) subDocumentRoots.set(doc.id, el);
   else subDocumentRoots.delete(doc.id);
 };
 
-const clearV2RuntimeRegistration = (documentId) => {
+const clearV2RuntimeRegistration = (documentId: string) => {
   clearV2CommandShortcutBinding(documentId);
   clearV2SessionShortcutBinding(documentId);
-  const document = getDocument(documentId);
+  const document: ShellDocument | undefined = getDocument(documentId);
   const provider = document?.provider ?? null;
   if (provider && proxy.$superdoc.provider === provider) {
     proxy.$superdoc.provider = undefined;
@@ -614,13 +1005,23 @@ const clearV2RuntimeRegistration = (documentId) => {
   }
   const entry = v2Runtimes.get(documentId);
   if (!entry) return;
-  proxy.$superdoc.unregisterEditorRuntime(entry.runtimeId);
+  proxy.$superdoc['unregisterEditorRuntime'](entry.runtimeId);
   v2Runtimes.delete(documentId);
   const hostRoot = subDocumentRoots.get(documentId);
   if (hostRoot) unmarkRuntimeRoot(hostRoot);
 };
 
-const registerV2Runtime = ({ documentId, host, mount, facade }) => {
+const registerV2Runtime = ({
+  documentId,
+  host,
+  mount,
+  facade,
+}: {
+  documentId: string;
+  host: V2RuntimeHost;
+  mount: V2RuntimeMount | null | undefined;
+  facade: unknown;
+}) => {
   const root = subDocumentRoots.get(documentId);
   if (!root) {
     console.warn('[SuperDoc] v2 runtime host root unavailable; skipping runtime registration for', documentId);
@@ -639,7 +1040,7 @@ const registerV2Runtime = ({ documentId, host, mount, facade }) => {
     host,
     getLegacyEditorProjection: () => facade,
     onUnregister: (id) => {
-      proxy.$superdoc.unregisterEditorRuntime(id);
+      proxy.$superdoc['unregisterEditorRuntime'](id);
       const current = v2Runtimes.get(documentId);
       if (current && current.runtimeId === id) v2Runtimes.delete(documentId);
       const hostRoot = subDocumentRoots.get(documentId);
@@ -649,9 +1050,9 @@ const registerV2Runtime = ({ documentId, host, mount, facade }) => {
 
   adapter.attachMountHandle(mount ?? null);
   markRuntimeRoot(root, runtimeId);
-  proxy.$superdoc.registerEditorRuntime(adapter.runtime);
+  proxy.$superdoc['registerEditorRuntime'](adapter.runtime);
   v2Runtimes.set(documentId, { runtimeId, adapter });
-  proxy.$superdoc.setActiveRuntime(runtimeId, 'v2-editor-ready');
+  proxy.$superdoc['setActiveRuntime'](runtimeId, 'v2-editor-ready');
   return true;
 };
 
@@ -692,7 +1093,7 @@ const v2ReviewWindowController = resolvedEditorIntegration.createReviewWindowCon
 // the active document surface, keyed by documentId. The visible failure UI is
 // owned by the V2 browser shell overlay; this store lets shell chrome read the
 // last typed failure (reason + content-safe detail) without re-deriving it.
-const v2EditorFailures = ref({});
+const v2EditorFailures = ref<Record<string, V2EditorFailure>>({});
 
 // SuperDoc Diagnostics MVP: dedupe/generation logic lives in
 // internal/diagnostics/diagnostic-dedupe.js (unit-tested there) so it's
@@ -708,16 +1109,16 @@ const v2DiagnosticDedupe = createV2DiagnosticDedupe();
 
 const v2AuthorRequiredGate = createV2AuthorRequiredNotificationGate();
 const v2EditRejectedGate = createV2KeyboardEditRejectionNotificationGate();
-const v2MutationNoticeScope = (documentId) =>
+const v2MutationNoticeScope = (documentId: string | null | undefined) =>
   typeof documentId === 'string' && documentId.length > 0 ? `document:${documentId}` : 'document:default';
 
-const clearV2MutationRejectionNotifications = (documentId) => {
+const clearV2MutationRejectionNotifications = (documentId: string | null | undefined) => {
   const scope = v2MutationNoticeScope(documentId);
   v2AuthorRequiredGate.clear(scope);
   v2EditRejectedGate.clear(scope);
 };
 
-const maybeNotifyV2AuthorRequired = (documentId, event) => {
+const maybeNotifyV2AuthorRequired = (documentId: string | null, event: V2HostEvent) => {
   if (!v2AuthorRequiredGate.shouldNotify(v2MutationNoticeScope(documentId), event)) return;
   proxy.$superdoc.emit('exception', {
     error: new Error(V2_AUTHOR_REQUIRED_MESSAGE, { cause: createV2MutationRejectionCause(event) }),
@@ -727,28 +1128,28 @@ const maybeNotifyV2AuthorRequired = (documentId, event) => {
   });
 };
 
-const maybeNotifyV2EditRejected = (documentId, event) => {
+const maybeNotifyV2EditRejected = (documentId: string | null, event: V2HostEvent) => {
   if (!v2EditRejectedGate.shouldNotify(v2MutationNoticeScope(documentId), event)) return;
   proxy.$superdoc.emit('exception', createV2KeyboardEditRejectionException(documentId, event));
 };
 
-const getV2EditorFailure = (documentId) =>
+const getV2EditorFailure = (documentId: string | null | undefined) =>
   documentId && v2EditorFailures.value[documentId] ? v2EditorFailures.value[documentId] : null;
 
-const setV2EditorFailure = (documentId, failure) => {
+const setV2EditorFailure = (documentId: string | null, failure: V2EditorFailure) => {
   if (!documentId) return;
   v2EditorFailures.value = { ...v2EditorFailures.value, [documentId]: failure };
 };
 
-const clearV2EditorFailure = (documentId) => {
+const clearV2EditorFailure = (documentId: string | null | undefined) => {
   if (!documentId || !v2EditorFailures.value[documentId]) return;
   const next = { ...v2EditorFailures.value };
   delete next[documentId];
   v2EditorFailures.value = next;
 };
 
-const clearActiveV2EditorFacade = (documentId = null) => {
-  const activeEditor = proxy.$superdoc?.activeEditor;
+const clearActiveV2EditorFacade = (documentId: string | null = null) => {
+  const activeEditor = proxy.$superdoc?.activeEditor as V2ActiveEditorView | null | undefined;
   const activeDocumentId = documentId ?? activeEditor?.documentId ?? activeEditor?.options?.documentId ?? null;
   if (!activeDocumentId) {
     if (activeEditor?.editorVersion === 2) {
@@ -762,7 +1163,7 @@ const clearActiveV2EditorFacade = (documentId = null) => {
     if (currentDocumentId && currentDocumentId !== documentId) return;
   }
 
-  const doc = activeDocumentId ? getDocument(activeDocumentId) : null;
+  const doc: ShellDocument | null | undefined = activeDocumentId ? getDocument(activeDocumentId) : null;
   if (doc) {
     doc.isReady = false;
     if (typeof doc.setEditor === 'function') doc.setEditor(null);
@@ -781,14 +1182,14 @@ const clearActiveV2EditorFacade = (documentId = null) => {
 // extension manager. Exposes command execution + diagnostics without leaking
 // the raw private manager or its command handles. Returns null when no
 // extensions are registered on the active document.
-const createV2ExtensionsFacet = (host) => {
+const createV2ExtensionsFacet = (host: V2EditorHost | null | undefined): SuperDocActiveEditorExtensions | null => {
   const manager = typeof host?.getExtensionManager === 'function' ? host.getExtensionManager() : null;
   if (!manager) return null;
   const registry = manager.commands;
   return {
     commands: {
-      execute: (id, payload) => registry.execute(id, payload),
-      getState: (id) => {
+      execute: (id: string, payload?: unknown) => registry.execute(id, payload),
+      getState: (id: string) => {
         const handle = registry.get(id);
         if (!handle) return null;
         const state = handle.getState() ?? {};
@@ -797,7 +1198,7 @@ const createV2ExtensionsFacet = (host) => {
         return { enabled: !state.disabled, reason: null };
       },
       list: () =>
-        registry.list().map((handle) => {
+        registry.list().map((handle: V2ExtensionCommandHandle) => {
           const state = handle.getState() ?? {};
           return state.label ? { id: handle.id, label: state.label } : { id: handle.id };
         }),
@@ -808,14 +1209,14 @@ const createV2ExtensionsFacet = (host) => {
   };
 };
 
-const clearDocumentFieldContext = (documentId) => {
-  const document = documents.value.find((entry) => entry.id === documentId);
+const clearDocumentFieldContext = (documentId: string | null | undefined) => {
+  const document: ShellDocument | undefined = documents.value.find((entry) => entry.id === documentId);
   const configDocument = proxy.$superdoc.config.documents.find((entry) => entry.id === documentId);
   if (document) document.fieldContext = {};
   if (configDocument) configDocument.fieldContext = {};
 };
 
-const onV2EditorReady = (payload) => {
+const onV2EditorReady = (payload: V2EditorReadyPayload | null | undefined) => {
   if (!payload) return;
   const loadingDocument = documents.value.find((doc) => doc.id === payload.documentId);
   if (loadingDocument?.loadScope && !loadingDocument.loadScope.finish()) return;
@@ -850,17 +1251,17 @@ const onV2EditorReady = (payload) => {
     documentOpenToken,
   } = payload;
   documentOpenTelemetry?.trackDocumentOpen(documentOpenToken ?? null, documentId ?? null);
-  const saveV2Bytes = createV2SaveQueue(async (saveOptions = {}) => {
+  const saveV2Bytes = createV2SaveQueue(async (saveOptions: V2SaveOptions | Record<string, never> = {}) => {
     if (!host || typeof host.save !== 'function') {
       throw new Error('v2-editor: save unavailable');
     }
     return host.save(saveOptions);
   });
-  const exportV2Docx = async (options = {}) => {
+  const exportV2Docx = async (options: Parameters<typeof resolveV2DocxExportOptions>[0] = {}) => {
     const bytes = await saveV2Bytes({ format: 'docx', ...resolveV2DocxExportOptions(options) });
     return new Blob([bytes], { type: DOCX });
   };
-  const replaceV2File = async (source) => {
+  const replaceV2File = async (source: unknown) => {
     if (typeof replaceFile !== 'function') {
       throw new Error('v2-editor: replaceFile unavailable');
     }
@@ -868,29 +1269,30 @@ const onV2EditorReady = (payload) => {
     if (result?.state === 'review-ready' || result?.state === 'editing-ready') clearDocumentFieldContext(documentId);
     return result;
   };
-  const upgradeV2ToCollaboration = async (source, collaboration) => {
+  const upgradeV2ToCollaboration = async (source: unknown, collaboration: unknown) => {
     if (typeof upgradeToCollaboration !== 'function') {
       throw new Error('v2-editor: upgradeToCollaboration unavailable');
     }
     return upgradeToCollaboration(source, collaboration);
   };
-  const focusV2Editable = (options = {}) => {
+  const focusV2Editable = (options: unknown = {}) => {
     if (mount?.focus && typeof mount.focus.focus === 'function') {
       return mount.focus.focus(options);
     }
     return false;
   };
-  const createV2AuthoringFailure = (reason, detail = undefined) => {
-    const result = { ok: false, reason };
+  const createV2AuthoringFailure = (reason: string, detail: string | undefined = undefined): V2Failure => {
+    const result: V2Failure = { ok: false, reason };
     if (detail) result.detail = detail;
     return result;
   };
-  const readV2QueryItems = (result) => (Array.isArray(result?.items) ? result.items : []);
-  const normalizeV2Occurrence = (occurrence) => {
+  const readV2QueryItems = (result: { items?: unknown } | null | undefined): V2QueryItem[] =>
+    Array.isArray(result?.items) ? result.items : [];
+  const normalizeV2Occurrence = (occurrence: unknown) => {
     const value = Number(occurrence);
     return Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
   };
-  const resolveV2TextMatch = async ({ text, occurrence = 0 } = {}) => {
+  const resolveV2TextMatch = async ({ text, occurrence = 0 }: { text?: unknown; occurrence?: unknown } = {}) => {
     if (typeof text !== 'string' || text.length === 0) {
       return createV2AuthoringFailure('invalid-text', 'text must be a non-empty string');
     }
@@ -914,10 +1316,10 @@ const onV2EditorReady = (payload) => {
       ref: typeof item?.handle?.ref === 'string' ? item.handle.ref : null,
       text,
       occurrence: occurrenceIndex,
-      total: Number.isFinite(Number(result?.total)) ? Number(result.total) : items.length,
+      total: Number.isFinite(Number(result?.total)) ? Number(result!.total) : items.length,
     };
   };
-  const collapseV2SelectionTarget = (target, collapse) => {
+  const collapseV2SelectionTarget = (target: V2SelectionTarget, collapse: V2AuthoringSelectionCollapse | undefined) => {
     if (!target || typeof target !== 'object' || target.kind !== 'selection') return target;
     if (collapse !== 'start' && collapse !== 'end') return target;
     const point = collapse === 'start' ? target.start : target.end;
@@ -929,11 +1331,15 @@ const onV2EditorReady = (payload) => {
       ...(target.story ? { story: target.story } : {}),
     };
   };
-  const applyV2SelectionTarget = async ({ target, collapse = null, focus = true } = {}) => {
+  const applyV2SelectionTarget = async ({
+    target,
+    collapse = null,
+    focus = true,
+  }: { target?: unknown; collapse?: V2AuthoringSelectionCollapse; focus?: boolean } = {}) => {
     if (!target || typeof target !== 'object') {
       return createV2AuthoringFailure('invalid-target', 'target must be a SelectionTarget object');
     }
-    const selectionTarget = collapseV2SelectionTarget(target, collapse);
+    const selectionTarget = collapseV2SelectionTarget(target as V2SelectionTarget, collapse);
     const editing = host?.getHandles?.()?.editing ?? null;
     const selectionTargets = editing?.selectionTargets ?? null;
     if (typeof selectionTargets?.apply !== 'function') {
@@ -942,10 +1348,10 @@ const onV2EditorReady = (payload) => {
         'editing.selectionTargets.apply is not available',
       );
     }
-    let result;
+    let result: { ok?: boolean; reason?: string; detail?: string; mode?: string } | null | undefined;
     try {
       const apply = selectionTargets.applyAndWait ?? selectionTargets.apply;
-      result = await apply.call(selectionTargets, selectionTarget);
+      result = (await apply.call(selectionTargets, selectionTarget)) as typeof result;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       return createV2AuthoringFailure('selection-target-threw', message);
@@ -984,8 +1390,8 @@ const onV2EditorReady = (payload) => {
       story: result.story,
     };
   };
-  const failureFromV2Receipt = (receipt, fallbackReason) => {
-    const failure = receipt?.failure ?? receipt;
+  const failureFromV2Receipt = (receipt: V2Receipt, fallbackReason: string) => {
+    const failure: V2ReceiptFailure | null | undefined = receipt?.failure ?? receipt;
     return createV2AuthoringFailure(
       failure?.code ?? receipt?.reason ?? fallbackReason,
       failure?.message ?? failure?.detail ?? receipt?.detail,
@@ -993,9 +1399,10 @@ const onV2EditorReady = (payload) => {
   };
   const v2Authoring = {
     focusEditable: focusV2Editable,
-    readBlocks: (input = { includeText: true }) => documentApi?.blocks?.list?.(input),
-    setSelectionTarget: (input = {}) => applyV2SelectionTarget(input),
-    setSelectionByText: async (input = {}) => {
+    readBlocks: (input: Record<string, unknown> = { includeText: true }) => documentApi?.blocks?.list?.(input),
+    setSelectionTarget: (input: Partial<Parameters<V2AuthoringFacade['setSelectionTarget']>[0]> = {}) =>
+      applyV2SelectionTarget(input),
+    setSelectionByText: async (input: Partial<Parameters<V2AuthoringFacade['setSelectionByText']>[0]> = {}) => {
       const resolved = await resolveV2TextMatch(input);
       if (!resolved.ok) return resolved;
       const applied = await applyV2SelectionTarget({
@@ -1012,7 +1419,12 @@ const onV2EditorReady = (payload) => {
         target: resolved.target,
       };
     },
-    replaceTextByText: async ({ findText, replacement, occurrence = 0, mode = 'direct' } = {}) => {
+    replaceTextByText: async ({
+      findText,
+      replacement,
+      occurrence = 0,
+      mode = 'direct',
+    }: { findText?: unknown; replacement?: unknown; occurrence?: unknown; mode?: unknown } = {}) => {
       if (typeof replacement !== 'string') {
         return createV2AuthoringFailure('invalid-replacement', 'replacement must be a string');
       }
@@ -1037,7 +1449,11 @@ const onV2EditorReady = (payload) => {
         occurrence: normalizeV2Occurrence(occurrence),
       };
     },
-    replaceSelection: async ({ target, replacement = '', mode = 'direct' } = {}) => {
+    replaceSelection: async ({
+      target,
+      replacement = '',
+      mode = 'direct',
+    }: { target?: unknown; replacement?: unknown; mode?: unknown } = {}) => {
       if (!target || typeof target !== 'object') {
         return createV2AuthoringFailure('invalid-target', 'target must be a SelectionTarget object');
       }
@@ -1058,7 +1474,7 @@ const onV2EditorReady = (payload) => {
         text: replacement,
       };
     },
-    serializeSelectionToClipboard: async ({ includeHtml = true } = {}) => {
+    serializeSelectionToClipboard: async ({ includeHtml = true }: { includeHtml?: boolean } = {}) => {
       if (!documentApi?.clipboard || typeof documentApi.clipboard.serializeSelection !== 'function') {
         return createV2AuthoringFailure(
           'clipboard-serialize-unavailable',
@@ -1098,7 +1514,7 @@ const onV2EditorReady = (payload) => {
       target = null,
       mode = currentV2AuthoringMode(),
       fallback = undefined,
-    } = {}) => {
+    }: { payload?: unknown; target?: unknown; mode?: unknown; fallback?: unknown } = {}) => {
       if (!payload || typeof payload !== 'object') {
         return createV2AuthoringFailure('invalid-clipboard-payload', 'payload must be a ClipboardPayload object');
       }
@@ -1137,7 +1553,11 @@ const onV2EditorReady = (payload) => {
         mode: selectionMode,
       };
     },
-    pastePlainText: async ({ text, target = null, mode = currentV2AuthoringMode() } = {}) => {
+    pastePlainText: async ({
+      text,
+      target = null,
+      mode = currentV2AuthoringMode(),
+    }: { text?: unknown; target?: unknown; mode?: unknown } = {}) => {
       if (typeof text !== 'string') {
         return createV2AuthoringFailure('invalid-text', 'text must be a string');
       }
@@ -1151,8 +1571,8 @@ const onV2EditorReady = (payload) => {
       });
     },
   };
-  const facade = {
-    editorVersion: 2,
+  const facade: Omit<Editor, 'getHTML'> & Partial<Pick<Editor, 'getHTML'>> = {
+    editorVersion: 2 as const,
     documentId,
     host,
     mount,
@@ -1236,7 +1656,8 @@ const onV2EditorReady = (payload) => {
     reviewWindow: {
       getDiagnostics: () => v2ReviewWindowController.getDiagnostics(),
       getSnapshot: () => v2ReviewWindowController.getSnapshot?.() ?? null,
-      subscribe: (listener) => v2ReviewWindowController.subscribe?.(listener) ?? (() => undefined),
+      subscribe: (listener: Parameters<NonNullable<typeof v2ReviewWindowController.subscribe>>[0]) =>
+        v2ReviewWindowController.subscribe?.(listener) ?? (() => undefined),
     },
     // Narrow public v2 extension facet (commands + diagnostics). Null when no
     // `config.extensions` are registered on the active document. Backed by the
@@ -1262,28 +1683,28 @@ const onV2EditorReady = (payload) => {
     view: null,
   };
 
-  const doc = getDocument(documentId);
+  const doc: ShellDocument | undefined = getDocument(documentId);
   if (doc) {
     doc.isReady = true;
     if (typeof doc.setEditor === 'function') doc.setEditor(facade);
   }
   const runtimeRegistered = registerV2Runtime({ documentId, host, mount, facade });
   if (!runtimeRegistered) {
-    proxy.$superdoc.setActiveEditor(facade);
+    proxy.$superdoc.setActiveEditor(facade as Editor);
   }
   if (collaborationProvider) {
     const provider = markRaw(collaborationProvider);
     proxy.$superdoc.provider = provider;
     if (doc) doc.provider = provider;
   }
-  proxy.$superdoc.broadcastEditorCreate(facade);
+  proxy.$superdoc.broadcastEditorCreate(facade as Editor);
   if (host && firstPartyCommandMutation) {
-    registerFirstPartyCommandMutation(proxy.$superdoc, host, firstPartyCommandMutation);
+    registerFirstPartyCommandMutation(proxy.$superdoc, host, firstPartyCommandMutation as V2CommandMutation);
   }
   installV2CommandShortcutBinding({ documentId, bindEditShortcuts });
   installV2SessionShortcutBinding({ documentId, bindSessionShortcuts, documentApi, firstPartyCommandMutation });
   if (collaborationProvider && resolveDocumentV2Collaboration(getDocument(documentId)).state === 'valid') {
-    onEditorCollaborationReady({ editor: facade });
+    onEditorCollaborationReady({ editor: facade as Editor });
   }
   // ui-phase4-002: flip the reactive readiness signal so the ruler template
   // re-evaluates `shouldShowV2Ruler(doc)` now that pageMetrics + pageLayout
@@ -1321,7 +1742,7 @@ const onV2EditorReady = (payload) => {
       moveFragmentWordIds: (ids) => host.getHandles().trackChanges.moveFragmentWordIds(ids),
     });
   }
-  if (areDocumentsReady.value && !proxy.$superdoc.config.collaboration) {
+  if (areDocumentsReady.value && !(proxy.$superdoc.config as ShellConfig).collaboration) {
     isReady.value = true;
   }
   // Mark floating-comments fallback so the v2-mode shell does not idle on
@@ -1335,11 +1756,11 @@ const onV2EditorReady = (payload) => {
 // which v2 never emits, so we maintain a separate flag and feed the floating
 // "+" tool from the v2 selection snapshot instead.
 const v2HasRangeSelection = ref(false);
-const v2SelectionSnapshot = shallowRef(null);
+const v2SelectionSnapshot = shallowRef<V2SelectionSnapshot | null>(null);
 /** True after a viewing-mode range was mirrored from the browser DOM selection. */
 const v2DomMirroredRange = ref(false);
 let v2SelectionToolbarRafHandle = 0;
-let v2SelectionToolbarTimeoutHandle = 0;
+let v2SelectionToolbarTimeoutHandle: ReturnType<typeof setTimeout> | 0 = 0;
 let v2DomSelectionRafHandle = 0;
 const V2_SELECTION_TOOLBAR_SYNC_RETRY_FRAMES = 3;
 const buildV2EditorUpdatePayload = ({
@@ -1348,7 +1769,7 @@ const buildV2EditorUpdatePayload = ({
   surface = 'body',
   headerId = null,
   sectionType = null,
-} = {}) => {
+}: Partial<EditorUpdateEvent> = {}): EditorUpdateEvent => {
   const activeEditor = proxy.$superdoc?.activeEditor ?? null;
   const effectiveEditor = editor ?? sourceEditor ?? activeEditor ?? undefined;
   return {
@@ -1360,7 +1781,7 @@ const buildV2EditorUpdatePayload = ({
   };
 };
 
-const emitV2EditorUpdate = (payload = {}) => {
+const emitV2EditorUpdate = (payload: Partial<EditorUpdateEvent> = {}) => {
   proxy.$superdoc.emit('editor-update', buildV2EditorUpdatePayload(payload));
 };
 
@@ -1410,7 +1831,7 @@ const clearV2SelectionToolbarState = () => {
   syncV2SelectionToolbarState();
 };
 
-const isV2DomRangeSelection = (selection, root) => {
+const isV2DomRangeSelection = (selection: Selection | null, root: HTMLElement | null) => {
   if (!selection || selection.rangeCount < 1 || selection.isCollapsed || !root) return false;
   const range = selection.getRangeAt(0);
   return root.contains(range.startContainer) && root.contains(range.endContainer);
@@ -1420,9 +1841,9 @@ const applyCurrentV2DomSelection = () => {
   v2DomSelectionRafHandle = 0;
   if (!isV2Mode.value) return;
 
-  let handles = null;
+  let handles: V2HostHandles | null = null;
   try {
-    handles = proxy.$superdoc?.activeEditor?.host?.getHandles?.() ?? null;
+    handles = (proxy.$superdoc?.activeEditor as V2ActiveEditorView | null | undefined)?.host?.getHandles?.() ?? null;
   } catch {
     handles = null;
   }
@@ -1516,7 +1937,10 @@ const handleDocumentSelectionChange = () => {
   scheduleV2DomSelectionSync();
 };
 
-const onV2SelectionChanged = ({ hasRangeSelection, snapshot } = {}) => {
+const onV2SelectionChanged = ({
+  hasRangeSelection,
+  snapshot,
+}: { hasRangeSelection?: boolean; snapshot?: V2SelectionSnapshot | null } = {}) => {
   recordInteraction(proxy.$superdoc, 'selection:changed', () => ({ hasRangeSelection, selection: snapshot }));
   v2HasRangeSelection.value = hasRangeSelection === true;
   v2SelectionSnapshot.value = hasRangeSelection === true ? (snapshot ?? null) : null;
@@ -1529,11 +1953,15 @@ const onV2SelectionChanged = ({ hasRangeSelection, snapshot } = {}) => {
   syncV2SelectionToolbarState();
 };
 
-const getActiveV2MountContainer = () => {
-  return v2GeometryRender.value?.mountContainer ?? proxy.$superdoc?.activeEditor?.mount?.container ?? null;
+const getActiveV2MountContainer = (): HTMLElement | null => {
+  return (
+    v2GeometryRender.value?.mountContainer ??
+    (proxy.$superdoc?.activeEditor as V2ActiveEditorView | null | undefined)?.mount?.container ??
+    null
+  );
 };
 
-const escapeCssIdent = (value) => {
+const escapeCssIdent = (value: unknown) => {
   const raw = String(value);
   if (globalThis.CSS?.escape) return globalThis.CSS.escape(raw);
   return raw.replace(/["\\]/g, '\\$&');
@@ -1559,7 +1987,7 @@ const findV2SelectionAnchorElement = () => {
   return null;
 };
 
-function getSelectionBoundingBox(root = null) {
+function getSelectionBoundingBox(root: HTMLElement | null = null) {
   const selection = window.getSelection?.();
   if (!selection || selection.rangeCount < 1 || selection.isCollapsed) return null;
 
@@ -1580,7 +2008,7 @@ function getSelectionBoundingBox(root = null) {
   }
 }
 
-const rectToLayerBounds = (rect) => {
+const rectToLayerBounds = (rect: DOMRect | null) => {
   if (!rect || !layers.value) return null;
   const layerRect = layers.value.getBoundingClientRect();
   return {
@@ -1593,8 +2021,8 @@ const rectToLayerBounds = (rect) => {
   };
 };
 
-const readV2PageIndex = (element) => {
-  let current = element;
+const readV2PageIndex = (element: HTMLElement | null) => {
+  let current: HTMLElement | null = element;
   while (current && current.nodeType === 1) {
     const raw = current.dataset?.pageIndex;
     if (raw != null && raw !== '') {
@@ -1677,7 +2105,7 @@ const syncV2SelectionToolbarState = () => {
   handleSelectionChange(selection);
 };
 
-const publishV2PendingPositionEntry = (entry) => {
+const publishV2PendingPositionEntry = (entry: ReturnType<typeof buildV2PendingPositionEntry>) => {
   if (!entry) return;
   handleEditorLocationsUpdate({
     ...(editorCommentPositions.value ?? {}),
@@ -1737,9 +2165,12 @@ const clearV2TrackedChangeRestampGeometryRetention = () => {
   v2TrackedChangeRestampRetentionReason = null;
 };
 
-const resolveV2GeometryPublishOptions = (options) => (typeof options === 'function' ? options() : options);
+type V2GeometryPublishOptionsInput = V2GeometryPublishOptions | (() => V2GeometryPublishOptions) | undefined;
 
-const scheduleV2GeometryPublish = (payload, options = undefined) => {
+const resolveV2GeometryPublishOptions = (options: V2GeometryPublishOptionsInput) =>
+  typeof options === 'function' ? options() : options;
+
+const scheduleV2GeometryPublish = (payload: V2GeometryPayload, options: V2GeometryPublishOptionsInput = undefined) => {
   v2GeometryRender.value = payload;
   if (v2GeometryRafHandle && typeof cancelAnimationFrame === 'function') {
     cancelAnimationFrame(v2GeometryRafHandle);
@@ -1754,7 +2185,7 @@ const scheduleV2GeometryPublish = (payload, options = undefined) => {
   });
 };
 
-const onV2Render = (payload) => {
+const onV2Render = (payload: V2GeometryPayload | null | undefined) => {
   if (!payload) return;
   scheduleV2GeometryPublish(payload, () => takeV2TrackedChangeRestampGeometryRetention());
   if (v2HasRangeSelection.value) scheduleV2SelectionToolbarStateSync();
@@ -1763,10 +2194,10 @@ const onV2Render = (payload) => {
 // ui-phase4-001: receive v2 page metrics snapshots from V2DocumentEditor so
 // SuperDoc consumers receive a stable `pagination-update` event. Snapshot shape:
 //   `{ snapshot: V2PageMetricsSnapshot, host, mount, stage }`.
-const v2PageMetricsSnapshot = shallowRef(null);
-const v2MountStagesByDocumentId = new Map();
-let latestV2MountStage = null;
-const onV2PageMetrics = (payload) => {
+const v2PageMetricsSnapshot = shallowRef<{ pages?: unknown } | null>(null);
+const v2MountStagesByDocumentId = new Map<string, HTMLElement>();
+let latestV2MountStage: HTMLElement | null = null;
+const onV2PageMetrics = (payload: { snapshot?: { pages?: unknown } | null; stage?: unknown } | null | undefined) => {
   if (!payload?.snapshot) return;
   const snapshot = payload.snapshot;
   const metricStage = payload.stage;
@@ -1792,7 +2223,7 @@ const onV2PageMetrics = (payload) => {
   });
 };
 
-const onV2RenderCleared = (payload) => {
+const onV2RenderCleared = (payload: { documentId?: string | null } | null | undefined) => {
   linkPopover.destroy();
   cancelScheduledV2DomSelectionSync();
   cancelScheduledV2SelectionToolbarSync();
@@ -1830,7 +2261,7 @@ const onV2RenderCleared = (payload) => {
   syncV2RulerActiveEditor();
 };
 
-const onV2HostEvent = (document, event) => {
+const onV2HostEvent = (document: ShellDocument | null | undefined, event: V2HostEvent | null | undefined) => {
   if (!event) return;
   recordInteraction(proxy.$superdoc, event.type, () => ({ ...event, documentId: document?.id ?? null }));
   // Previews are forwarded for diagnostics only; they must not acquire
@@ -1957,7 +2388,7 @@ const onV2HostEvent = (document, event) => {
   if (event.reviewMutation?.token) {
     const reviewMutation = event.reviewMutation;
     const allResolved = Boolean(reviewImpact?.allResolved ?? event.trackedChangeAllResolved);
-    const settleReviewMutation = (result) => {
+    const settleReviewMutation = (result: { ok?: boolean; allResolved?: boolean } | null | undefined) => {
       const reconciledAllResolved = allResolved && result?.ok === true && result?.allResolved === true;
       v2ReviewWindowController.settleMutation(reviewMutation.token, {
         outcome: 'committed',
@@ -1972,11 +2403,11 @@ const onV2HostEvent = (document, event) => {
   void Promise.resolve(reconciliation).catch(() => undefined);
 };
 
-const onV2LinkClick = (payload) => {
+const onV2LinkClick = (payload: Parameters<typeof linkPopover.handleLinkClick>[0]) => {
   linkPopover.handleLinkClick(payload);
 };
 
-const onV2CommentCreated = async (payload) => {
+const onV2CommentCreated = async (payload: { commentId?: unknown } | null | undefined) => {
   try {
     await commentsStore.announceV2CommentCreated?.({
       superdoc: proxy.$superdoc,
@@ -1987,7 +2418,7 @@ const onV2CommentCreated = async (payload) => {
   }
 };
 
-const recollectV2GeometryIfActive = (options = undefined) => {
+const recollectV2GeometryIfActive = (options: V2GeometryPublishOptionsInput = undefined) => {
   if (!isV2Mode.value) return;
   if (!v2GeometryPublisher.getLastPayload()) return;
   // Scroll / resize / zoom may change layer-relative coords without advancing
@@ -2050,7 +2481,7 @@ const handleV2DocumentModeChange = () => {
   });
 };
 
-const getV2EditorFailureMessage = (reason) => {
+const getV2EditorFailureMessage = (reason: string) => {
   switch (reason) {
     case 'editing-mount-required':
       return 'SuperDoc could not load the document editor because the page did not provide a mount container.';
@@ -2093,22 +2524,23 @@ const getV2EditorFailureMessage = (reason) => {
   }
 };
 
-const normalizeV2EditorFailureDetail = (detail) =>
+const normalizeV2EditorFailureDetail = (detail: unknown) =>
   typeof detail === 'string' && detail.trim().length > 0 ? detail.trim() : null;
 
-const onV2EditorFailed = (payload) => {
+const onV2EditorFailed = (payload: V2EditorFailedPayload | null | undefined) => {
   documents.value.find((doc) => doc.id === payload?.documentId)?.loadScope?.finish();
   const reason = typeof payload?.reason === 'string' && payload.reason.length > 0 ? payload.reason : 'open-failed';
   const detail = normalizeV2EditorFailureDetail(payload?.detail);
   const documentId =
     typeof payload?.documentId === 'string' && payload.documentId.length > 0 ? payload.documentId : null;
-  const retiredDocument = reason === 'collaboration-session-invalidated' && documentId ? getDocument(documentId) : null;
+  const retiredDocument: ShellDocument | null | undefined =
+    reason === 'collaboration-session-invalidated' && documentId ? getDocument(documentId) : null;
   const retiredExporter = retiredDocument?.getEditor?.();
   clearActiveV2EditorFacade(payload?.documentId ?? null);
   if (retiredExporter?.editorVersion === 2 && typeof retiredExporter.exportDocx === 'function') {
-    retiredDocument.isReady = false;
-    if (v2Runtimes.has(documentId)) clearV2RuntimeRegistration(documentId);
-    retiredDocument.setEditor?.(retiredExporter);
+    retiredDocument!.isReady = false;
+    if (v2Runtimes.has(documentId!)) clearV2RuntimeRegistration(documentId!);
+    retiredDocument!.setEditor?.(retiredExporter);
   }
   if (reason === 'worker-transport-failed') {
     proxy.$superdoc.emit('exception', {
@@ -2175,11 +2607,11 @@ const onV2EditorFailed = (payload) => {
   // a synthetic aggregate.
   const bootErrorName = typeof payload?.bootErrorName === 'string' ? payload.bootErrorName : undefined;
   const bootDiagnostic = translateBootFailureReason(reason, detail, { documentId, editor: null, bootErrorName });
-  const openDiagnostics = Array.isArray(payload?.diagnostics) ? payload.diagnostics : [];
+  const openDiagnostics: V2DiagnosticRecord[] = Array.isArray(payload?.diagnostics) ? payload.diagnostics : [];
   const generation = getV2DiagnosticGeneration(payload);
   const translatedRecords = openDiagnostics
     .map((record) => ({ record, diagnostic: translateUnzipDiagnostic(record, { documentId, editor: null }) }))
-    .filter((entry) => entry.diagnostic);
+    .filter((entry) => entry.diagnostic) as { record: V2DiagnosticRecord; diagnostic: V2Diagnostic }[];
   // `bootDiagnostic.internalCode === reason` means it came from the generic
   // reason-string branch (e.g. `source-load-failed`), which is always a
   // proxy for a package-integrity failure that already has its own specific
@@ -2201,12 +2633,15 @@ const onV2EditorFailed = (payload) => {
 // on every render-readiness transition (debug-only console forwarding
 // exists internally), but nothing here listened for it. Mid-session
 // render/layout diagnostics reach `onException` through this handler.
-const onV2RenderReadiness = (doc, payload) => {
+const onV2RenderReadiness = (
+  doc: ShellDocument | null | undefined,
+  payload: V2DiagnosticsPayload | null | undefined,
+) => {
   const documentId = doc?.id ?? null;
   const diagnostics = payload?.snapshot?.diagnostics;
   if (!Array.isArray(diagnostics) || diagnostics.length === 0) return;
   const generation = getV2DiagnosticGeneration(payload);
-  for (const diag of diagnostics) {
+  for (const diag of diagnostics as Parameters<typeof translateRenderReadinessDiagnostic>[0][]) {
     const diagnostic = translateRenderReadinessDiagnostic(diag, { documentId, editor: null });
     if (!diagnostic) continue;
     if (!v2DiagnosticDedupe.shouldEmit(documentId, generation, diagnostic.internalCode)) continue;
@@ -2217,12 +2652,15 @@ const onV2RenderReadiness = (doc, payload) => {
 // SuperDoc Diagnostics MVP: non-fatal open/replacement diagnostics
 // (`v2-open-diagnostics`, emitted only on success — failed opens route
 // through `onV2EditorFailed` instead so one incident never produces both).
-const onV2OpenDiagnostics = (doc, payload) => {
+const onV2OpenDiagnostics = (
+  doc: ShellDocument | null | undefined,
+  payload: V2DiagnosticsPayload | null | undefined,
+) => {
   const documentId = doc?.id ?? (typeof payload?.documentId === 'string' ? payload.documentId : null);
   const diagnostics = payload?.diagnostics;
   if (!Array.isArray(diagnostics) || diagnostics.length === 0) return;
   const generation = getV2DiagnosticGeneration(payload);
-  for (const record of diagnostics) {
+  for (const record of diagnostics as V2DiagnosticRecord[]) {
     const diagnostic = translateUnzipDiagnostic(record, { documentId, editor: null });
     if (!diagnostic) continue;
     if (!v2DiagnosticDedupe.shouldEmit(documentId, generation, diagnostic.internalCode)) continue;
@@ -2236,16 +2674,16 @@ const onV2OpenDiagnostics = (doc, payload) => {
 // does nothing editor-semantic — no painter DOM inspection, no coordinate
 // mapping, no command dispatch, no selection semantics. Activation outside any
 // marked root is a no-op (the registry returns no owner).
-const activateRuntimeFromEvent = (event, reason) => {
-  proxy.$superdoc?.activateRuntimeFromEventTarget?.(event.target, reason);
+const activateRuntimeFromEvent = (event: Event, reason: string) => {
+  proxy.$superdoc?.['activateRuntimeFromEventTarget']?.(event.target, reason);
 };
-const handleRuntimeFocusIn = (event) => activateRuntimeFromEvent(event, 'focusin');
-const handleRuntimePointerDown = (event) => activateRuntimeFromEvent(event, 'pointerdown');
+const handleRuntimeFocusIn = (event: Event) => activateRuntimeFromEvent(event, 'focusin');
+const handleRuntimePointerDown = (event: Event) => activateRuntimeFromEvent(event, 'pointerdown');
 // `mousedown` is a fallback for environments that do not dispatch pointer
 // events consistently; it routes through the same idempotent activation path.
-const handleRuntimeMouseDown = (event) => activateRuntimeFromEvent(event, 'mousedown');
+const handleRuntimeMouseDown = (event: Event) => activateRuntimeFromEvent(event, 'mousedown');
 
-const onEditorCollaborationReady = ({ editor }) => {
+const onEditorCollaborationReady = ({ editor }: { editor: Editor }) => {
   proxy.$superdoc.emit('collaboration-ready', { editor });
 
   nextTick(() => {
@@ -2265,7 +2703,7 @@ const markContextMenuOpen = () => {
 
 const shouldSuppressCommentActivation = () => Date.now() < suppressCommentActivationUntilTs;
 
-const handleDocumentContextMenu = (event) => {
+const handleDocumentContextMenu = (event: Event) => {
   const root = superdocRoot.value;
   if (!root) return;
   if (!(event.target instanceof Node) || !root.contains(event.target)) return;
@@ -2279,7 +2717,7 @@ const handleDocumentContextMenu = (event) => {
   markContextMenuOpen();
 };
 
-const editorOptions = (doc) => {
+const editorOptions = (doc: ShellDocument) => {
   // We only want to run the font check if the user has provided a callback
   // The font check might request extra permissions, and we don't want to run it unless the developer has requested it
   // So, if the callback is not defined, we won't run the font check
@@ -2288,13 +2726,13 @@ const editorOptions = (doc) => {
   const useLayoutEngine = proxy.$superdoc.config.useLayoutEngine !== false;
 
   const isNewFile = doc.isNewFile;
-  const benchmarkTraceEnabled = proxy.$superdoc.config?.benchmarkTraceEnabled === true;
+  const benchmarkTraceEnabled = (proxy.$superdoc.config as ShellConfig)?.benchmarkTraceEnabled === true;
   const collaborationResolution = resolveDocumentV2Collaboration(doc);
   const v2Collaboration = collaborationResolution.state === 'valid' ? collaborationResolution.config : null;
   const collaborationPreflightFailure =
     proxy.$superdoc.config.v2CollaborationPreflightFailure ??
     (collaborationResolution.state === 'invalid' ? collaborationResolution.failure : null);
-  const options = {
+  const options: { onReviewWindowCommitted: (payload: V2CommittedPageWindow) => void; [key: string]: unknown } = {
     ...(isWorkflowRecordingEnabled(proxy.$superdoc.config)
       ? { isInteractionRecording: () => getWorkflowRecording(proxy.$superdoc)?.active === true }
       : {}),
@@ -2314,7 +2752,7 @@ const editorOptions = (doc) => {
     rulers: doc.rulers,
     rulerContainer: resolvedRulerContainer.value,
     isInternal: proxy.$superdoc.config.isInternal,
-    annotations: proxy.$superdoc.config.annotations,
+    annotations: (proxy.$superdoc.config as ShellConfig).annotations,
     isCommentsEnabled: Boolean(commentsModuleConfig.value),
     isAiEnabled: proxy.$superdoc.config.modules?.ai,
     contextMenuConfig: (() => {
@@ -2400,7 +2838,10 @@ const editorOptions = (doc) => {
       ? {
           ...(proxy.$superdoc.config.layoutEngineOptions || {}),
           proofing: resolvedProofingConfig.value,
-          debugLabel: proxy.$superdoc.config.layoutEngineOptions?.debugLabel ?? doc.name ?? doc.id,
+          debugLabel:
+            (proxy.$superdoc.config.layoutEngineOptions as LegacyLayoutEngineOptions | undefined)?.debugLabel ??
+            doc.name ??
+            doc.id,
           zoom: (activeZoom.value ?? 100) / 100,
           emitCommentPositionsInViewing: isViewingMode() && shouldRenderCommentsInViewing.value,
           enableCommentsInViewing: isViewingCommentsVisible.value,
@@ -2451,7 +2892,10 @@ const REPLAY_MUTABLE_COMMENT_FIELDS = new Set([
   'docxCommentJSON',
 ]);
 
-const applyReplayIsDoneResolutionFallback = (target, payload = {}) => {
+const applyReplayIsDoneResolutionFallback = (
+  target: ReplayCommentPayload | null | undefined,
+  payload: ReplayCommentPayload = {},
+) => {
   if (!target || payload.isDone === undefined) return;
   if (
     payload.resolvedTime != null ||
@@ -2478,7 +2922,11 @@ const applyReplayIsDoneResolutionFallback = (target, payload = {}) => {
   target.resolvedByName = null;
 };
 
-const applyReplayUpdateToComment = (commentModel, payload, resolvedText) => {
+const applyReplayUpdateToComment = (
+  commentModel: ReplayCommentPayload | null | undefined,
+  payload: ReplayCommentPayload | null | undefined,
+  resolvedText: unknown,
+) => {
   if (!commentModel || !payload) return;
 
   if (Array.isArray(payload.elements)) {
@@ -2500,8 +2948,8 @@ const applyReplayUpdateToComment = (commentModel, payload, resolvedText) => {
   applyReplayIsDoneResolutionFallback(commentModel, payload);
 };
 
-const normalizeReplayCommentModelPayload = (payload = {}) => {
-  const normalizedPayload = { ...payload };
+const normalizeReplayCommentModelPayload = (payload: ReplayCommentPayload = {}) => {
+  const normalizedPayload: ReplayCommentPayload = { ...payload };
   if (!normalizedPayload.commentText && normalizedPayload.text) {
     normalizedPayload.commentText = normalizedPayload.text;
   }
@@ -2512,7 +2960,7 @@ const normalizeReplayCommentModelPayload = (payload = {}) => {
   return normalizedPayload;
 };
 
-const syncInstantSidebarAlignmentFromEditorSelection = (commentId) => {
+const syncInstantSidebarAlignmentFromEditorSelection = (commentId: string | null | undefined) => {
   if (Number.isFinite(peekInstantSidebarAlignment())) {
     return;
   }
@@ -2534,7 +2982,7 @@ const syncInstantSidebarAlignmentFromEditorSelection = (commentId) => {
   clearInstantSidebarAlignment();
 };
 
-const isSameActiveCommentSelection = (commentId) => {
+const isSameActiveCommentSelection = (commentId: string | null | undefined) => {
   if (commentId == null || activeComment.value == null) {
     return false;
   }
@@ -2542,7 +2990,7 @@ const isSameActiveCommentSelection = (commentId) => {
   return String(activeComment.value) === String(commentId);
 };
 
-const syncSidebarActiveCommentFromV2ReviewTarget = (target) => {
+const syncSidebarActiveCommentFromV2ReviewTarget = (target: V2ReviewTarget | null | undefined) => {
   if (target?.origin !== 'document') return;
   if (shouldSuppressCommentActivation()) return;
 
@@ -2557,18 +3005,18 @@ const syncSidebarActiveCommentFromV2ReviewTarget = (target) => {
   }, 0);
 };
 
-const onEditorCommentsUpdate = (params = {}) => {
+const onEditorCommentsUpdate = (params: EditorCommentsUpdateParams = {}) => {
   // Set the active comment in the store
   let { activeCommentId, type, comment: commentPayload } = params;
   // Only sync active state when the event explicitly requests it.
   // Replay add/update events often omit activeCommentId; inferring it here can
   // cause repeated focus toggles while replay emits batched updates.
   let shouldSyncActiveComment = Object.prototype.hasOwnProperty.call(params, 'activeCommentId');
-  const resolveCommentEventIds = (payload) => {
+  const resolveCommentEventIds = (payload: ReplayCommentPayload) => {
     const ids = [payload?.importedId, payload?.commentId].filter(Boolean).map((value) => String(value));
     return [...new Set(ids)];
   };
-  const resolveDocumentScopedCommentMatch = (payload) => {
+  const resolveDocumentScopedCommentMatch = (payload: ReplayCommentPayload) => {
     const candidateIds = [payload?.importedId, payload?.commentId].filter(Boolean).map((value) => String(value));
     const activeDocumentId =
       proxy.$superdoc?.activeEditor?.options?.documentId != null
@@ -2622,7 +3070,7 @@ const onEditorCommentsUpdate = (params = {}) => {
 
     const { id, existingComment } = resolveDocumentScopedCommentMatch(commentPayload);
     if (id && !existingComment) {
-      const commentModel = useComment(commentPayload);
+      const commentModel = useComment(commentPayload as UseCommentParams);
       addHydratedComment({
         superdoc: proxy.$superdoc,
         comment: commentModel,
@@ -2640,7 +3088,7 @@ const onEditorCommentsUpdate = (params = {}) => {
         applyReplayUpdateToComment(existingComment, commentPayload, resolvedText);
       } else {
         const normalizedPayload = normalizeReplayCommentModelPayload(commentPayload);
-        const commentModel = useComment(normalizedPayload);
+        const commentModel = useComment(normalizedPayload as UseCommentParams);
         addHydratedComment({
           superdoc: proxy.$superdoc,
           comment: commentModel,
@@ -2657,7 +3105,7 @@ const onEditorCommentsUpdate = (params = {}) => {
         proxy.$superdoc?.activeEditor?.options?.documentId != null
           ? String(proxy.$superdoc.activeEditor.options.documentId)
           : null;
-      const isInActiveDocument = (comment) => {
+      const isInActiveDocument = (comment: ShellCommentRecord) => {
         if (!activeDocumentId || typeof belongsToDocument !== 'function') return true;
         return belongsToDocument(comment, activeDocumentId);
       };
@@ -2725,7 +3173,7 @@ const onEditorCommentsUpdate = (params = {}) => {
 
   // Bubble up the event to the user, if handled
   if (typeof proxy.$superdoc.config.onCommentsUpdate === 'function') {
-    proxy.$superdoc.config.onCommentsUpdate(params);
+    proxy.$superdoc.config.onCommentsUpdate(params as SuperDocCommentsUpdatePayload);
   }
 };
 
@@ -2742,12 +3190,12 @@ const pdfDocuments = computed(() =>
 const hasPdfDocument = computed(() => pdfDocuments.value.length > 0);
 const shouldRenderPdfCommentAnchors = computed(() => hasPdfDocument.value && isCommentsEnabled.value);
 const openPdfDocumentIds = computed(() => new Set(pdfDocuments.value.map((doc) => String(doc.id))));
-const isFinitePdfBound = (value) => {
+const isFinitePdfBound = (value: unknown) => {
   if (typeof value === 'number') return Number.isFinite(value);
   if (typeof value === 'string' && value.trim() !== '') return Number.isFinite(Number(value));
   return false;
 };
-const hasFinitePdfSelectionBounds = (comment) => {
+const hasFinitePdfSelectionBounds = (comment: ShellCommentRecord | null | undefined) => {
   const bounds = comment?.selection?.selectionBounds;
   return (
     !!bounds &&
@@ -2757,18 +3205,18 @@ const hasFinitePdfSelectionBounds = (comment) => {
     isFinitePdfBound(bounds.bottom)
   );
 };
-const getPdfCommentDocumentId = (comment) => {
+const getPdfCommentDocumentId = (comment: ShellCommentRecord | null | undefined) => {
   const id = comment?.fileId ?? comment?.documentId ?? comment?.selection?.documentId;
   return id != null ? String(id) : null;
 };
-const belongsToOpenPdfDocument = (comment) => {
+const belongsToOpenPdfDocument = (comment: ShellCommentRecord | null | undefined) => {
   const ids = openPdfDocumentIds.value;
   if (!ids.size) return false;
   const documentId = getPdfCommentDocumentId(comment);
   if (documentId) return ids.has(documentId);
   return ids.size === 1;
 };
-const isPositionablePdfComment = (comment) =>
+const isPositionablePdfComment = (comment: ShellCommentRecord | null | undefined) =>
   comment?.selection?.source === 'pdf' && hasFinitePdfSelectionBounds(comment) && belongsToOpenPdfDocument(comment);
 // Any submitted or pending PDF comment that can position from selection bounds.
 const hasPdfFloatingComments = computed(() => {
@@ -2779,7 +3227,7 @@ const hasPdfFloatingComments = computed(() => {
 });
 
 const shouldUseSidebarComments = computed(() => {
-  const layout = commentsModuleConfig.value?.layout ?? DEFAULT_COMMENTS_LAYOUT;
+  const layout: string = (commentsModuleConfig.value as ShellCommentsConfig | null)?.layout ?? DEFAULT_COMMENTS_LAYOUT;
   if (!VALID_COMMENTS_LAYOUTS.has(layout)) return true;
   if (layout === 'sidebar') return true;
   if (layout === 'inline') return false;
@@ -2847,7 +3295,7 @@ const showActiveSelection = computed(() => {
   return !getConfig.value?.readOnly && selectionPosition.value;
 });
 watch(showCommentsSidebar, (value) => {
-  proxy.$superdoc.broadcastSidebarToggle(value);
+  proxy.$superdoc.broadcastSidebarToggle(value as boolean);
 });
 
 // Viewport fit tracking: maintains viewport metrics, emits `viewport-change`,
@@ -2869,7 +3317,7 @@ useViewportFit({
  *
  * @param {String} commentId The commentId to scroll to
  */
-const scrollToComment = (commentId) => {
+const scrollToComment = (commentId: string) => {
   proxy.$superdoc.scrollToComment(commentId);
 };
 
@@ -2882,10 +3330,10 @@ const handleViewportScrollOrResize = () => {
   recollectV2GeometryIfActive();
 };
 
-const handleV2TrackedChangeCarriersRestamped = (event) => {
+const handleV2TrackedChangeCarriersRestamped = (event: V2RestampEvent) => {
   if (!isV2Mode.value) return;
-  const itemIds = Array.isArray(event?.detail?.itemIds)
-    ? event.detail.itemIds.map((id) => (id == null ? '' : String(id))).filter(Boolean)
+  const itemIds: string[] = Array.isArray(event?.detail?.itemIds)
+    ? event.detail.itemIds.map((id: unknown) => (id == null ? '' : String(id))).filter(Boolean)
     : [];
   armV2TrackedChangeRestampGeometryRetention(event?.detail?.refreshReason ?? 'tracked-change-restamp');
   recollectV2GeometryIfActive({
@@ -2904,7 +3352,10 @@ onMounted(() => {
   claimFindShortcut(findShortcutOwner);
   superdocRoot.value?.addEventListener('pointerdown', handleFindOwnershipInteraction, true);
   superdocRoot.value?.addEventListener('focusin', handleFindOwnershipInteraction, true);
-  superdocRoot.value?.addEventListener(TRACKED_CHANGE_CARRIERS_RESTAMPED_EVENT, handleV2TrackedChangeCarriersRestamped);
+  superdocRoot.value?.addEventListener(
+    TRACKED_CHANGE_CARRIERS_RESTAMPED_EVENT,
+    handleV2TrackedChangeCarriersRestamped as EventListener,
+  );
   if (typeof window !== 'undefined') {
     window.addEventListener('scroll', handleViewportScrollOrResize, true);
     window.addEventListener('resize', handleViewportScrollOrResize, true);
@@ -2953,11 +3404,11 @@ watch(layers, () => {
   recollectV2GeometryIfActive();
 });
 
-function isFindShortcutEvent(e) {
+function isFindShortcutEvent(e: KeyboardEvent) {
   return (e.metaKey || e.ctrlKey) && !e.altKey && e.key?.toLowerCase?.() === 'f';
 }
 
-function isFormattingMarksShortcutEvent(e) {
+function isFormattingMarksShortcutEvent(e: KeyboardEvent) {
   return (e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey && (e.code === 'Digit8' || e.key === '8' || e.key === '*');
 }
 
@@ -2970,7 +3421,7 @@ function isFocusInsideSuperDoc() {
     return true;
   }
 
-  const activeEditorDom = proxy.$superdoc?.activeEditor?.view?.dom;
+  const activeEditorDom = (proxy.$superdoc?.activeEditor?.view as { dom?: unknown } | null | undefined)?.dom;
   return (
     activeEditorDom instanceof Node && (activeElement === activeEditorDom || activeEditorDom.contains?.(activeElement))
   );
@@ -2987,7 +3438,7 @@ function isFocusInsideSuperDoc() {
  */
 const findShortcutOwner = {};
 
-function handleFindShortcut(e) {
+function handleFindShortcut(e: KeyboardEvent) {
   if (!isFindShortcutEvent(e)) return;
   if (!isFindReplaceEnabled.value) return;
   if (!shouldHandleFindShortcut(e, { focusInside: isFocusInsideSuperDoc(), owner: findShortcutOwner })) return;
@@ -3018,7 +3469,7 @@ function handleOpenFindRequest() {
   findReplace.open();
 }
 
-function handleFormattingMarksShortcut(e) {
+function handleFormattingMarksShortcut(e: KeyboardEvent) {
   if (!isFormattingMarksShortcutEvent(e)) return;
   // ui-phase2-001: formatting-marks toggling is a v1 layout-engine
   // preference. The v2 host does not expose a formatting-marks layout
@@ -3036,7 +3487,7 @@ function handleFormattingMarksShortcut(e) {
  * Use a capture listener because the dev shell and presentation-mode bridge
  * do not always leave keyboard focus on a node that bubbles through the root.
  */
-function handleDocumentShortcut(e) {
+function handleDocumentShortcut(e: KeyboardEvent) {
   if (e.key === 'Escape' && activeCompactComment.value) {
     e.preventDefault();
     e.stopPropagation();
@@ -3048,7 +3499,7 @@ function handleDocumentShortcut(e) {
   handleFormattingMarksShortcut(e);
 }
 
-function handleContainerKeydown(e) {
+function handleContainerKeydown(e: KeyboardEvent) {
   handleFindShortcut(e);
   if (e.defaultPrevented) return;
   handleFormattingMarksShortcut(e);
@@ -3080,7 +3531,7 @@ onBeforeUnmount(() => {
   superdocRoot.value?.removeEventListener('focusin', handleFindOwnershipInteraction, true);
   superdocRoot.value?.removeEventListener(
     TRACKED_CHANGE_CARRIERS_RESTAMPED_EVENT,
-    handleV2TrackedChangeCarriersRestamped,
+    handleV2TrackedChangeCarriersRestamped as EventListener,
   );
   releaseFindShortcut(findShortcutOwner);
   if (typeof window !== 'undefined') {
@@ -3101,7 +3552,7 @@ onBeforeUnmount(() => {
   proxy.$superdoc?.off?.('active-editor-change', syncV2RulerActiveEditor);
 });
 
-const selectionLayer = ref(null);
+const selectionLayer = ref<HTMLDivElement | null>(null);
 const isDragging = ref(false);
 
 const getSelectionPosition = computed(() => {
@@ -3113,8 +3564,8 @@ const getSelectionPosition = computed(() => {
   const zoom = isPdf ? (activeZoom.value ?? 100) / 100 : 1;
   const top = selectionPosition.value.top * zoom;
   const left = selectionPosition.value.left * zoom;
-  const right = selectionPosition.value.right * zoom;
-  const bottom = selectionPosition.value.bottom * zoom;
+  const right = selectionPosition.value.right! * zoom;
+  const bottom = selectionPosition.value.bottom! * zoom;
   const style = {
     zIndex: 500,
     borderRadius: '4px',
@@ -3126,7 +3577,7 @@ const getSelectionPosition = computed(() => {
   return style;
 });
 
-const handleSelectionChange = (selection) => {
+const handleSelectionChange = (selection: ShellSelection) => {
   if (isViewingMode() && !allowSelectionInViewMode()) {
     resetSelection();
     return;
@@ -3146,20 +3597,20 @@ const handleSelectionChange = (selection) => {
   });
 
   if (!selectionPosition.value) return;
-  const selectionIsWideEnough = Math.abs(selectionPosition.value.left - selectionPosition.value.right) > 5;
-  const selectionIsTallEnough = Math.abs(selectionPosition.value.top - selectionPosition.value.bottom) > 5;
+  const selectionIsWideEnough = Math.abs(selectionPosition.value.left - selectionPosition.value.right!) > 5;
+  const selectionIsTallEnough = Math.abs(selectionPosition.value.top - selectionPosition.value.bottom!) > 5;
   if (!selectionIsWideEnough || !selectionIsTallEnough) {
     if (selectionLayer.value?.style) selectionLayer.value.style.pointerEvents = 'none';
     resetSelection();
     return;
   }
 
-  activeSelection.value = selection;
+  activeSelection.value = selection as Record<string, unknown>;
 
   // Place the tools menu at the level of the selection
-  const isPdf = selection.source === 'pdf' || selection.source?.value === 'pdf';
+  const isPdf = selection.source === 'pdf' || (selection.source as { value?: unknown } | null)?.value === 'pdf';
   const zoom = isPdf ? (activeZoom.value ?? 100) / 100 : 1;
-  const top = selection.selectionBounds.top * zoom;
+  const top = selection.selectionBounds!.top * zoom;
   toolsMenuPosition.top = top + 'px';
   toolsMenuPosition.right = isMobileView ? '0' : '-25px';
 };
@@ -3169,7 +3620,21 @@ const resetSelection = () => {
   toolsMenuPosition.top = null;
 };
 
-const updateSelection = ({ startX, startY, x, y, source, page }) => {
+const updateSelection = ({
+  startX,
+  startY,
+  x,
+  y,
+  source,
+  page,
+}: {
+  startX?: number;
+  startY?: number;
+  x?: number;
+  y?: number;
+  source?: unknown;
+  page?: number | null;
+}) => {
   const hasStartCoords = typeof startX === 'number' || typeof startY === 'number';
   const hasEndCoords = typeof x === 'number' || typeof y === 'number';
 
@@ -3188,7 +3653,7 @@ const updateSelection = ({ startX, startY, x, y, source, page }) => {
       bottom: startY,
       startX,
       startY,
-      source,
+      source: source as string | null,
       page: page ?? null,
     };
   }
@@ -3198,7 +3663,7 @@ const updateSelection = ({ startX, startY, x, y, source, page }) => {
 
   // Reverse the selection if the user drags up or left
   if (typeof y === 'number') {
-    const selectionTop = selectionPosition.value.startY;
+    const selectionTop = selectionPosition.value.startY!;
     if (y < selectionTop) {
       selectionPosition.value.top = y;
     } else {
@@ -3207,7 +3672,7 @@ const updateSelection = ({ startX, startY, x, y, source, page }) => {
   }
 
   if (typeof x === 'number') {
-    const selectionLeft = selectionPosition.value.startX;
+    const selectionLeft = selectionPosition.value.startX!;
     if (x < selectionLeft) {
       selectionPosition.value.left = x;
     } else {
@@ -3216,12 +3681,12 @@ const updateSelection = ({ startX, startY, x, y, source, page }) => {
   }
 };
 
-const getPdfPageNumberFromEvent = (event) => {
+const getPdfPageNumberFromEvent = (event: MouseEvent | null | undefined) => {
   const x = event?.clientX;
   const y = event?.clientY;
   if (typeof x !== 'number' || typeof y !== 'number') return null;
   const elements = document.elementsFromPoint(x, y);
-  const pageEl = elements.find((el) => el?.dataset?.pdfPage != null);
+  const pageEl = (elements as HTMLElement[]).find((el) => el?.dataset?.pdfPage != null);
   if (pageEl) {
     const pageNumber = Number(pageEl.dataset?.pageNumber);
     return Number.isFinite(pageNumber) ? pageNumber : null;
@@ -3229,41 +3694,41 @@ const getPdfPageNumberFromEvent = (event) => {
   return null;
 };
 
-const handleSelectionStart = (e) => {
+const handleSelectionStart = (e: MouseEvent) => {
   resetSelection();
-  selectionLayer.value.style.pointerEvents = 'auto';
+  selectionLayer.value!.style.pointerEvents = 'auto';
 
   nextTick(() => {
     isDragging.value = true;
-    selectionLayer.value.style.pointerEvents = 'none';
+    selectionLayer.value!.style.pointerEvents = 'none';
     const pageNumber = getPdfPageNumberFromEvent(e);
-    selectionLayer.value.style.pointerEvents = 'auto';
+    selectionLayer.value!.style.pointerEvents = 'auto';
     if (!pageNumber) {
       isDragging.value = false;
-      selectionLayer.value.style.pointerEvents = 'none';
+      selectionLayer.value!.style.pointerEvents = 'none';
       return;
     }
-    const layerBounds = selectionLayer.value.getBoundingClientRect();
+    const layerBounds = selectionLayer.value!.getBoundingClientRect();
     const zoom = activeZoom.value / 100;
     const x = (e.clientX - layerBounds.left) / zoom;
     const y = (e.clientY - layerBounds.top) / zoom;
     updateSelection({ startX: x, startY: y, page: pageNumber, source: 'pdf' });
-    selectionLayer.value.addEventListener('mousemove', handleDragMove);
+    selectionLayer.value!.addEventListener('mousemove', handleDragMove);
   });
 };
 
-const handleDragMove = (e) => {
+const handleDragMove = (e: MouseEvent) => {
   if (!isDragging.value) return;
-  const layerBounds = selectionLayer.value.getBoundingClientRect();
+  const layerBounds = selectionLayer.value!.getBoundingClientRect();
   const zoom = activeZoom.value / 100;
   const x = (e.clientX - layerBounds.left) / zoom;
   const y = (e.clientY - layerBounds.top) / zoom;
   updateSelection({ x, y });
 };
 
-const handleDragEnd = (e) => {
+const handleDragEnd = (e: MouseEvent) => {
   if (!isDragging.value) return;
-  selectionLayer.value.removeEventListener('mousemove', handleDragMove);
+  selectionLayer.value!.removeEventListener('mousemove', handleDragMove);
 
   if (!selectionPosition.value) return;
   const pageNumber = selectionPosition.value.page ?? getPdfPageNumberFromEvent(e);
@@ -3280,13 +3745,13 @@ const handleDragEnd = (e) => {
   });
 
   handleSelectionChange(selection);
-  selectionLayer.value.style.pointerEvents = 'none';
+  selectionLayer.value!.style.pointerEvents = 'none';
 };
 
 const shouldShowSelection = computed(() => {
   if (!proxy.$superdoc.uiConfig.comments.enabled) return false;
-  const config = proxy.$superdoc.config.modules?.comments;
-  if (!config || config === false) return false;
+  const config: ShellCommentsConfig | false | null | undefined = proxy.$superdoc.config.modules?.comments;
+  if (!config || (config as unknown) === false) return false;
   return !config.readOnly;
 });
 
@@ -3294,14 +3759,14 @@ const shouldShowSelection = computed(() => {
 // a plain property (no Vue tracking), so readiness and active-document changes
 // are shadowed through refs for template updates.
 const v2RulerReady = ref(false);
-const v2RulerActiveDocumentId = ref(null);
+const v2RulerActiveDocumentId = ref<string | null>(null);
 
-const unwrapDocField = (value) => {
+const unwrapDocField = (value: unknown) => {
   if (value && typeof value === 'object' && 'value' in value) return value.value;
   return value;
 };
 
-const shouldShowV2Ruler = (doc) => {
+const shouldShowV2Ruler = (doc: ShellDocument) => {
   if (!isV2Mode.value) return false;
   if (!doc || doc.type !== DOCX) return false;
   // Parity contract (plan WS1): the ruler is paginated-only. v1 hid the ruler
@@ -3330,15 +3795,15 @@ const shouldShowV2Ruler = (doc) => {
 // ui-phase4-002: ruler container alignment. Mirrors v1 document editor's
 // `syncRulerOffset` but anchors to the active v2 page instead of a
 // v1-specific viewport class.
-const v2RulerHostStyle = ref({});
-const v2RulerPageRect = ref(null);
-let v2RulerEditorObserver = null;
-let v2RulerContainerObserver = null;
-let v2RulerObservedLayers = null;
-let v2RulerObservedContainer = null;
+const v2RulerHostStyle = ref<{ paddingLeft?: string; paddingRight?: string }>({});
+const v2RulerPageRect = ref<{ left: number; top: number; width: number; height: number } | null>(null);
+let v2RulerEditorObserver: ResizeObserver | null = null;
+let v2RulerContainerObserver: ResizeObserver | null = null;
+let v2RulerObservedLayers: HTMLElement | null = null;
+let v2RulerObservedContainer: HTMLElement | null = null;
 let v2RulerActivePageIndex = 0;
-let v2RulerContextPageLayout = null;
-let unsubscribeV2RulerContext = null;
+let v2RulerContextPageLayout: V2RulerPageLayout | null = null;
+let unsubscribeV2RulerContext: (() => void) | null = null;
 
 // Where the ruler mounts, resolved once from the built-in UI profile. The
 // profile folds `ui.ruler.container` over the legacy `rulerContainer` alias and
@@ -3347,18 +3812,20 @@ let unsubscribeV2RulerContext = null;
 // not render.
 const resolvedRulerContainer = computed(() => proxy.$superdoc?.uiConfig?.ruler?.container ?? null);
 
-const resolveV2RulerContainer = () => {
+const resolveV2RulerContainer = (): HTMLElement | null => {
   const container = resolvedRulerContainer.value;
   if (!container) return null;
   if (typeof container === 'string') {
     const doc = typeof document !== 'undefined' ? document : globalThis.document;
-    return doc?.querySelector(container) ?? null;
+    return doc?.querySelector<HTMLElement>(container) ?? null;
   }
   return typeof HTMLElement !== 'undefined' && container instanceof HTMLElement ? container : null;
 };
 
-const getActiveV2DocumentId = () =>
-  proxy.$superdoc?.activeEditor?.documentId ?? proxy.$superdoc?.activeEditor?.options?.documentId ?? null;
+const getActiveV2DocumentId = (): string | null =>
+  (proxy.$superdoc?.activeEditor as V2ActiveEditorView | null | undefined)?.documentId ??
+  proxy.$superdoc?.activeEditor?.options?.documentId ??
+  null;
 
 const resolveV2RulerAlignmentContainer = () => {
   if (resolvedRulerContainer.value) return resolveV2RulerContainer();
@@ -3380,8 +3847,12 @@ const getV2ActivePageRect = () => {
     );
     return page?.getBoundingClientRect() ?? null;
   }
-  const wrapper = Array.from(stage.children).find((element) => element.dataset?.v2PaintWrapper === 'true') ?? stage;
-  const pages = Array.from(wrapper.children).filter((element) => element.classList?.contains('superdoc-page'));
+  const wrapper =
+    (Array.from(stage.children) as HTMLElement[]).find((element) => element.dataset?.v2PaintWrapper === 'true') ??
+    stage;
+  const pages = (Array.from(wrapper.children) as HTMLElement[]).filter((element) =>
+    element.classList?.contains('superdoc-page'),
+  );
   const activePage = pages.find((element) => Number(element.dataset?.pageIndex) === v2RulerActivePageIndex) ?? pages[0];
   return (activePage ?? wrapper).getBoundingClientRect();
 };
@@ -3441,14 +3912,14 @@ const cleanupV2RulerContextSubscription = () => {
   }
 };
 
-const setupV2RulerContextSubscription = (pageLayout) => {
+const setupV2RulerContextSubscription = (pageLayout: V2RulerPageLayout | null | undefined) => {
   cleanupV2RulerContextSubscription();
   if (!pageLayout) return;
   v2RulerContextPageLayout = pageLayout;
   try {
     v2RulerActivePageIndex = pageLayout.getActiveRulerContext?.()?.pageIndex ?? 0;
     unsubscribeV2RulerContext =
-      pageLayout.subscribeActiveRulerContext?.((context) => {
+      pageLayout.subscribeActiveRulerContext?.((context: { pageIndex?: number } | null | undefined) => {
         if (v2RulerContextPageLayout !== pageLayout) return;
         const pageIndex = context?.pageIndex ?? 0;
         if (pageIndex === v2RulerActivePageIndex) return;
@@ -3461,7 +3932,7 @@ const setupV2RulerContextSubscription = (pageLayout) => {
 };
 
 const syncV2RulerActiveEditor = () => {
-  const editor = proxy.$superdoc?.activeEditor;
+  const editor = proxy.$superdoc?.activeEditor as V2ActiveEditorView | null | undefined;
   const activeDocumentId = editor?.documentId ?? editor?.options?.documentId ?? null;
   v2RulerActiveDocumentId.value = activeDocumentId;
 
@@ -3523,14 +3994,17 @@ const setupV2RulerObservers = () => {
 // ui-phase4-002: handle margin change events from V2Ruler. Mirrors the v1
 // `handledocument editorPageMarginsChange` path so existing consumers reading
 // `doc.documentMarginsLastChange` keep working without per-version branching.
-const handleV2PageMarginsChange = (doc, event) => {
+const handleV2PageMarginsChange = (
+  doc: ShellDocument | null | undefined,
+  event: V2PageMarginsChangeEvent | null | undefined,
+) => {
   if (!doc || !event) return;
   doc.documentMarginsLastChange = event.pageMargins ?? null;
   // Emit a `page-margins-change` event so external listeners can react. The
   // payload includes the section that was edited for v2 multi-section
   // discoverability.
   proxy.$superdoc.emit('page-margins-change', {
-    documentId: doc.id,
+    documentId: doc.id!,
     editorVersion: 2,
     sectionId: event.sectionId,
     sectionIndex: event.sectionIndex,
@@ -3540,14 +4014,22 @@ const handleV2PageMarginsChange = (doc, event) => {
   });
 };
 
-const handlePdfClick = (e) => {
+const handlePdfClick = (e: MouseEvent) => {
   if (!isCommentsEnabled.value) return;
   resetSelection();
   isDragging.value = true;
   handleSelectionStart(e);
 };
 
-const handlePdfSelectionRaw = ({ selectionBounds, documentId, page }) => {
+const handlePdfSelectionRaw = ({
+  selectionBounds,
+  documentId,
+  page,
+}: {
+  selectionBounds?: ShellSelection['selectionBounds'];
+  documentId?: string;
+  page?: number;
+}) => {
   if (!selectionBounds || !documentId) return;
   const selection = useSelection({
     selectionBounds,
@@ -3562,8 +4044,8 @@ const handlePdfSelectionRaw = ({ selectionBounds, documentId, page }) => {
 // to non-PDF sub-document containers so zoom works for PM fallback rendering.
 // PDF documents are excluded because pdfViewer.updateScale() handles their zoom
 // separately; applying both would result in double-zoom.
-const applyFallbackZoomStyles = (zoomFactor) => {
-  const subDocs = layers.value?.querySelectorAll('.superdoc__sub-document');
+const applyFallbackZoomStyles = (zoomFactor: number) => {
+  const subDocs = layers.value?.querySelectorAll<HTMLElement>('.superdoc__sub-document');
   subDocs?.forEach((el) => {
     if (el.querySelector('.sd-pdf-viewer')) return;
     if (zoomFactor === 1) {
@@ -3687,7 +4169,7 @@ const whiteboardInteractive = computed(() => whiteboardEnabled.value);
       <!-- Floating tools menu (shows up when user has text selection)-->
       <!-- ui-phase3-002: v2 reuses the existing shell comment tool by
            synthesizing the same selection state the v1 path consumes. -->
-      <div v-if="showToolsFloatingMenu" class="superdoc__tools tools" :style="toolsMenuPosition">
+      <div v-if="showToolsFloatingMenu" class="superdoc__tools tools" :style="toolsMenuPosition as StyleValue">
         <div class="tools-item" data-id="is-tool" @mousedown.stop.prevent="handleToolClick('comments')">
           <div class="superdoc__tools-icon" v-html="superdocIcons.comment"></div>
         </div>
@@ -3702,7 +4184,7 @@ const whiteboardInteractive = computed(() => whiteboardEnabled.value);
           ref="selectionLayer"
         >
           <div
-            :style="getSelectionPosition"
+            :style="getSelectionPosition as StyleValue"
             class="superdoc__temp-selection temp-selection sd-highlight sd-initial-highlight"
             v-if="selectionPosition && shouldShowSelection"
           ></div>
@@ -3711,13 +4193,13 @@ const whiteboardInteractive = computed(() => whiteboardEnabled.value);
         <div
           class="superdoc__sub-document sub-document"
           v-for="doc in documents"
-          :key="`${doc.id}:${doc.editorMountNonce}`"
-          :ref="(el) => setSubDocumentRoot(doc, el)"
+          :key="`${doc.id}:${(doc as ShellDocument).editorMountNonce}`"
+          :ref="(el) => setSubDocumentRoot(doc, el as HTMLElement | null)"
         >
           <!-- PDF renderer -->
           <PdfViewer
             v-if="doc.type === PDF"
-            :file="doc.data"
+            :file="doc.data!"
             :file-id="doc.id"
             :initial-scale="(activeZoom ?? 100) / 100"
             :config="pdfConfig"
@@ -3736,19 +4218,19 @@ const whiteboardInteractive = computed(() => whiteboardEnabled.value);
             <Teleport v-if="resolvedRulerContainer" :to="resolvedRulerContainer">
               <div class="v2-ruler-host" :style="v2RulerHostStyle">
                 <V2Ruler
-                  :page-layout="proxy.$superdoc.activeEditor.pageLayout"
+                  :page-layout="(proxy.$superdoc.activeEditor as V2ActiveEditorView).pageLayout"
                   :measurement-unit="measurementUnit"
                   :active-page-rect="v2RulerPageRect"
-                  @page-margins-change="(event) => handleV2PageMarginsChange(doc, event)"
+                  @page-margins-change="(event: V2PageMarginsChangeEvent) => handleV2PageMarginsChange(doc, event)"
                 />
               </div>
             </Teleport>
             <div v-else class="v2-ruler-host" :style="v2RulerHostStyle">
               <V2Ruler
-                :page-layout="proxy.$superdoc.activeEditor.pageLayout"
+                :page-layout="(proxy.$superdoc.activeEditor as V2ActiveEditorView).pageLayout"
                 :measurement-unit="measurementUnit"
                 :active-page-rect="v2RulerPageRect"
-                @page-margins-change="(event) => handleV2PageMarginsChange(doc, event)"
+                @page-margins-change="(event: V2PageMarginsChangeEvent) => handleV2PageMarginsChange(doc, event)"
               />
             </div>
           </template>
@@ -3764,12 +4246,12 @@ const whiteboardInteractive = computed(() => whiteboardEnabled.value);
             @v2-render="onV2Render"
             @v2-render-cleared="onV2RenderCleared"
             @v2-selection-changed="onV2SelectionChanged"
-            @v2-host-event="(event) => onV2HostEvent(doc, event)"
+            @v2-host-event="(event: V2HostEvent) => onV2HostEvent(doc, event)"
             @v2-link-click="onV2LinkClick"
             @v2-comment-created="onV2CommentCreated"
             @v2-page-metrics="onV2PageMetrics"
-            @v2-render-readiness="(payload) => onV2RenderReadiness(doc, payload)"
-            @v2-open-diagnostics="(payload) => onV2OpenDiagnostics(doc, payload)"
+            @v2-render-readiness="(payload: V2DiagnosticsPayload) => onV2RenderReadiness(doc, payload)"
+            @v2-open-diagnostics="(payload: V2DiagnosticsPayload) => onV2OpenDiagnostics(doc, payload)"
           />
         </div>
 
@@ -3798,18 +4280,18 @@ const whiteboardInteractive = computed(() => whiteboardEnabled.value);
         <FloatingComments
           v-if="hasInitializedLocations && (floatingComments.length > 0 || pendingComment)"
           v-for="doc in documentsWithConverations"
-          :parent="layers"
+          :parent="layers!"
           :current-document="doc"
         />
       </div>
     </div>
 
     <div v-if="activeCompactComment" class="superdoc__compact-comment-popover" :style="compactCommentPopoverStyle">
-      <CommentDialog :comment="activeCompactComment" :parent="layers" />
+      <CommentDialog :comment="activeCompactComment" :parent="layers!" />
     </div>
 
     <!-- Surface host — generic dialog/floating overlay system -->
-    <SurfaceHost :geometry-target="layers" />
+    <SurfaceHost :geometry-target="layers!" />
   </div>
 </template>
 

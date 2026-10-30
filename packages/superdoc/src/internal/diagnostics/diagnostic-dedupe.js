@@ -13,7 +13,7 @@
  * event only fires on success, fires AFTER the diagnostics events on the
  * success path, and never fires at all for a failed attempt.
  *
- * @param {{generation?: unknown}} [payload]
+ * @param {{generation?: unknown} | null} [payload]
  * @returns {number}
  */
 export function getV2DiagnosticGeneration(payload) {

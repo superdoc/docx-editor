@@ -19,7 +19,7 @@ import type {
   SurfaceOutcome,
   SurfaceRequest,
 } from '../core/types/index.js';
-import type { SuperDocUI } from '../public/ui/types.js';
+import type { BorrowedSuperDocUI } from '../public/ui/types.js';
 
 type HyperlinkActivationResolution = HyperlinkActivationResult | LinkPopoverResolution;
 
@@ -197,9 +197,9 @@ interface AnchorNavigationOptions {
 }
 
 interface UseLinkPopoverOptions {
-  getSurfaceManager: () => SurfaceManager | null | undefined;
+  getSurfaceManager: () => Pick<SurfaceManager, 'open'> | null | undefined;
   getActiveEditor: () => Editor | null | undefined;
-  getUi: () => SuperDocUI | null | undefined;
+  getUi: () => BorrowedSuperDocUI | null | undefined;
   getActivationHandler: () => HyperlinkActivationHandler | LinkPopoverResolver | null | undefined;
   getActivationHandlerSource?: () => 'hyperlinks.onActivate' | 'compatibility' | null | undefined;
   getBuiltInEditorDisabled?: () => boolean;

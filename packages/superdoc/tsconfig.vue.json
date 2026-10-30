@@ -4,7 +4,8 @@
     "noEmit": true,
     "declaration": false,
     "emitDeclarationOnly": false,
-    "composite": false
+    "composite": false,
+    "lib": ["ES2020", "ES2022.Error", "DOM"]
   },
   "include": ["src/vite-env.d.ts", "src/**/*.vue"],
   "exclude": ["src/dev/**", "**/*.test.vue", "**/*.spec.vue", "**/__tests__/**"]

@@ -170,7 +170,7 @@ export function normalizeMutationOptions(
   ) {
     throw new DocumentApiValidationError(
       'INVALID_INPUT',
-      'author/date are supported only for tracked plain-text doc.insert, doc.delete, doc.replace, and inline format calls.',
+      'author/date are supported only for tracked plain-text doc.insert, doc.delete, doc.replace, inline format and doc.lists calls.',
     );
   }
   validateChangeMode(options?.changeMode);

@@ -35,9 +35,9 @@ if (!receipt.success) {
 
 The replacement remains open for review. Saving the DOCX preserves that review state until a person or programmatic workflow accepts or rejects it.
 
-### Attribute one tracked text edit
+### Attribute one tracked edit
 
-Use `author: { name }` to set the display name on one tracked plain-text insert, delete, or replace without changing the session user:
+Use `author: { name }` and an optional `date` to attribute one tracked plain-text insert, delete, replace, inline format, or list edit without changing the session user:
 
 ```ts
 const author = { name: 'Automated Reviewer' };
@@ -48,11 +48,14 @@ await doc.replace({ ref: toReplace.items[0].handle.ref, text: 'Northstar' }, { c
 const toDelete = await doc.query.match({ select: { type: 'text', pattern: 'Suggested text' }, require: 'first' });
 if (!toDelete.items[0]) throw new Error('No text to delete.');
 await doc.delete({ ref: toDelete.items[0].handle.ref }, { changeMode: 'tracked', author });
+
+const { items } = await doc.lists.list({});
+await doc.lists.indent({ target: items[0].address }, { changeMode: 'tracked', author, date: '2026-05-01T12:00:00Z' });
 ```
 
-Resolve a fresh target and revision before each dependent edit; refs from an earlier mutation may be stale. The name is copied when you call the method, before a browser worker queues it. Without `author`, the session's startup author is used. Separate sessions with different startup users remain an alternative.
+Resolve a fresh target and revision before each dependent edit; refs from an earlier mutation may be stale. The name is copied when you call the method, before a browser worker queues it. Without `author`, the session's startup author is used. `date` is an ISO 8601 UTC timestamp written as the revision date; without it, the time of the call is used. Separate sessions with different startup users remain an alternative.
 
-Only a non-empty `name` is accepted. This is application-provided display attribution, **not** a verified identity or permission grant: the integration remains responsible for authenticating callers and authorizing edits. `email`, `initials`, and `authorImage` are not accepted in this option. It is not supported for direct edits, HTML/Markdown, structural writes, lists, or `mutations.apply/preview`; those option combinations return `INVALID_INPUT`. Cross-paragraph replacements that restructure the document, cross-cell deletions, and appended control payloads that create paragraphs may be rejected instead of silently changing attribution. In a shared room, presence identifies the session participant, while each surviving tracked revision records the author of its mutation. Concurrent edits can still be rejected by the document's normal conflict rules; the author option does not decide conflicts.
+Only a non-empty `name` is accepted. This is application-provided display attribution, **not** a verified identity or permission grant: the integration remains responsible for authenticating callers and authorizing edits. `email`, `initials`, and `authorImage` are not accepted in this option. It is not supported for direct edits, HTML/Markdown, structural writes, or `mutations.apply/preview`; those option combinations return `INVALID_INPUT`. Cross-paragraph replacements that restructure the document, cross-cell deletions, and appended control payloads that create paragraphs may be rejected instead of silently changing attribution. In a shared room, presence identifies the session participant, while each surviving tracked revision records the author of its mutation. Concurrent edits can still be rejected by the document's normal conflict rules; the author option does not decide conflicts.
 
 ## Review the result in the Editor
 

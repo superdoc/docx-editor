@@ -217,6 +217,7 @@ const renderedInlineImageRunVersion = (image: ImageRun): string =>
   [
     'img',
     image.src ?? '',
+    image.inlineDrawingId ?? '',
     image.width ?? '',
     image.height ?? '',
     image.alt ?? '',

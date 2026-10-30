@@ -565,6 +565,22 @@ describe('MeasureCache', () => {
   });
 
   describe('top-level drawing caching', () => {
+    it('invalidates the lightweight inline-drawing measure flag when placement ownership changes', () => {
+      const drawing = vectorShapeBlock('drawing-1', 100, 30, '#ff0000');
+      cache.set(drawing, 400, 600, { totalHeight: 30 });
+      expect(cache.get({ ...drawing, attrs: { inlineParagraphRunIndex: 0 } }, 400, 600)).toBeUndefined();
+    });
+
+    it('keeps baseline drawing line metrics distinct from an equal-sized bitmap placeholder', () => {
+      const image = blockWithImage('paragraph', imageRun('', 100, 30));
+      const drawing = blockWithImage('paragraph', {
+        ...imageRun('', 100, 30),
+        inlineDrawingId: 'drawing',
+        verticalAlign: 'baseline',
+      });
+      cache.set(image, 400, 600, { totalHeight: 30 });
+      expect(cache.get(drawing, 400, 600)).toBeUndefined();
+    });
     it('invalidates cache when intrinsic geometry changes under a stable block id', () => {
       const before = vectorShapeBlock('drawing-1', 189, 84, '#ff0000');
       const after = vectorShapeBlock('drawing-1', 219, 104, '#ff0000');

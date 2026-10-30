@@ -836,7 +836,14 @@ export function* renderLineWork({
     return isListParagraph ? listIndentOffset : indentLeft + firstLineOffsetForCumX;
   };
   const lineTextStartOffsetPx =
-    paragraphMarkLeftOffsetOverride != null ? paragraphMarkLeftOffsetOverride : resolveLineIndentOffset();
+    (paragraphMarkLeftOffsetOverride != null ? paragraphMarkLeftOffsetOverride : resolveLineIndentOffset()) +
+    (isBaselineImageOnlyLine && runsForLine.some((run) => isImageRun(run) && run.inlineDrawingId != null)
+      ? paragraphAttrs.alignment === 'center'
+        ? Math.max(0, (availableWidth - line.width) / 2)
+        : paragraphAttrs.alignment === 'right'
+          ? Math.max(0, availableWidth - line.width)
+          : 0
+      : 0);
   const paragraphMarkLeftOffsetPx = lineTextStartOffsetPx;
 
   if (spacingPerSpace !== 0) {

@@ -4066,9 +4066,17 @@ function* layoutDocumentBodySteps(
             continue;
           }
 
+          const inlineOwner =
+            typeof block.attrs?.anchorParagraphId === 'string'
+              ? blocksById.get(block.attrs.anchorParagraphId)
+              : undefined;
           layoutDrawingBlock({
             block: block as DrawingBlock,
             measure: measure as DrawingMeasure,
+            inlineParagraphBound:
+              block.attrs?.inlineParagraphRunIndex != null &&
+              inlineOwner?.kind === 'paragraph' &&
+              inlineOwner.runs.some((run) => run.kind === 'image' && run.inlineDrawingId === block.id),
             columns: getCurrentColumns(),
             ensurePage: paginator.ensurePage,
             advanceColumn: paginator.advanceColumn,

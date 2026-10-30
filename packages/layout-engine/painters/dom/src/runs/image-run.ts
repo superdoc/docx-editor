@@ -173,6 +173,28 @@ export const renderImageRun = (
   context: RunRenderContext,
   trackedConfig?: TrackedChangesRenderConfig,
 ): HTMLElement | null => {
+  if (run.inlineDrawingId) {
+    const slot = context.doc.createElement('span');
+    slot.classList.add('superdoc-inline-drawing-slot');
+    slot.dataset.inlineDrawingId = run.inlineDrawingId;
+    slot.setAttribute('data-v2-unpainted-inline-object', 'true');
+    slot.dataset.layoutEpoch = String(context.layoutEpoch);
+    slot.setAttribute('aria-hidden', 'true');
+    slot.style.display = 'inline-block';
+    slot.style.width = `${run.width}px`;
+    slot.style.height = `${run.height}px`;
+    slot.style.verticalAlign = resolveImageVerticalAlign(run);
+    if (run.pmStart != null) slot.dataset.pmStart = String(run.pmStart);
+    if (run.pmEnd != null) slot.dataset.pmEnd = String(run.pmEnd);
+    if (run.distTop) slot.style.marginTop = `${run.distTop}px`;
+    if (run.distBottom) slot.style.marginBottom = `${run.distBottom}px`;
+    if (run.distLeft) slot.style.marginLeft = `${run.distLeft}px`;
+    if (run.distRight) slot.style.marginRight = `${run.distRight}px`;
+    context.applySdtDataset(slot, run.sdt);
+    if (run.dataAttrs) applyRunDataAttributes(slot, run.dataAttrs);
+    applyImageTrackedChangeDecorations(slot, run, context, trackedConfig);
+    return slot;
+  }
   if (!run.src) {
     if (!run.placeholder) return null;
 

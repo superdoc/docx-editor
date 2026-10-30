@@ -820,6 +820,7 @@ export type RenderPlaceholder = {
  */
 export type ImageRun = {
   kind: 'image';
+  inlineDrawingId?: string;
   /** Image source URL (data URI or external URL). */
   src: string;
   /** Image width in pixels. */
@@ -3366,6 +3367,7 @@ export type ImageMeasure = {
 
 export type DrawingMeasure = {
   kind: 'drawing';
+  inlineDrawing?: boolean;
   drawingKind: DrawingKind;
   width: number;
   height: number;

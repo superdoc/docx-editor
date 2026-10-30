@@ -37,6 +37,7 @@ import { resolveListTextStartPx, resolveListMarkerGeometry } from '@superdoc/com
 import { DEFAULT_FONT_MEASURE_CONTEXT, type FaceKey, type FontMeasureContext } from '@superdoc/font-system';
 import {
   getCalibratedNaturalSingleLine,
+  measureInlineDrawingTextMetrics,
   collectCjkJustificationBoundaries,
   isCjkBreakOpportunityChar,
   nextCodePointBoundary,
@@ -509,6 +510,7 @@ const INLINE_IMAGE_BASELINE_TOLERANCE_PX = 0.5;
 
 /** One inline-image candidate tracked on the current remeasured line. */
 type RemeasureImageCandidate = {
+  baselineDrawing?: boolean;
   runIndex: number;
   imageWidth: number;
   imageHeight: number;
@@ -522,6 +524,7 @@ const makeRemeasureImageCandidate = (
   imageWidth: number,
   imageHeight: number,
 ): RemeasureImageCandidate => ({
+  baselineDrawing: run.inlineDrawingId != null && run.verticalAlign === 'baseline',
   runIndex,
   imageWidth,
   imageHeight,
@@ -2278,15 +2281,24 @@ export function remeasureParagraph(
     // Reflowed lines still preserve line-expanding image height, matching
     // measuring/dom's `max(textLineHeight, maxImageHeight)` behavior.
     const textLineHeight = lineHeightForRuns(runs, startRun, endRun, lastMeasuredFontSize, spacing, fontContext);
-    const lineHeight = Math.max(textLineHeight, lineMaxImageHeight);
+    const drawingAscent = Math.max(
+      0,
+      ...lineImageCandidates.filter((candidate) => candidate.baselineDrawing).map((candidate) => candidate.imageHeight),
+    );
+    const textMetrics =
+      drawingAscent > 0
+        ? measureInlineDrawingTextMetrics(runs, startRun, endRun, fontContext)
+        : { ascent: 0, descent: 0 };
+    const ascent = drawingAscent > 0 ? Math.max(drawingAscent, textMetrics.ascent) : 0;
+    const lineHeight = Math.max(textLineHeight, lineMaxImageHeight, ascent + textMetrics.descent);
     const line: Line = {
       fromRun: startRun,
       fromChar: startChar,
       toRun: endRun,
       toChar: endChar,
       width,
-      ascent: 0,
-      descent: 0,
+      ascent,
+      descent: textMetrics.descent,
       lineHeight,
       maxWidth: effectiveMaxWidth,
     };

@@ -182,6 +182,7 @@ const writeListBlock = (block: ListBlock, write: HashWriter, capabilities?: Font
 };
 
 const writeDrawingBlock = (block: DrawingBlock, write: HashWriter, capabilities?: FontMeasureCapabilities): void => {
+  if (block.attrs?.inlineParagraphRunIndex != null) write('inline-drawing:');
   if (block.drawingKind === 'image') {
     write(`drawing:image:${hashImageLikeBlock(block)}`);
     return;
@@ -442,7 +443,9 @@ const writeTableHash = (tableBlock: TableBlock, write: HashWriter, capabilities?
           // stale cached height until an unrelated edit perturbs the key.
           if (run.kind === 'image') {
             const imgRun = run as ImageRun;
-            append(`img:${imgRun.src.slice(0, 50)}:${imgRun.width}x${imgRun.height}`);
+            append(
+              `img:${imgRun.src.slice(0, 50)}:${imgRun.width}x${imgRun.height}${imgRun.inlineDrawingId ? ':inline-drawing' : ''}`,
+            );
             continue;
           }
           if (run.kind === 'math') {
@@ -621,7 +624,7 @@ const hashRuns = (block: FlowBlock, capabilities?: FontMeasureCapabilities): str
         const imgRun = run as ImageRun;
         // Hash the src (first 50 chars to keep key manageable) + dimensions
         const srcHash = imgRun.src.slice(0, 50);
-        return `img:${srcHash}:${imgRun.width}x${imgRun.height}`;
+        return `img:${srcHash}:${imgRun.width}x${imgRun.height}${imgRun.inlineDrawingId ? ':inline-drawing' : ''}`;
       }
 
       if (run.kind === 'fieldAnnotation') {

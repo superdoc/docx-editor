@@ -12,6 +12,7 @@ import { getFragmentZIndex } from '@superdoc/contracts';
  * callbacks for positioning the drawing fragment on the current page/column.
  */
 export type DrawingLayoutContext = {
+  inlineParagraphBound?: boolean;
   /** The drawing block to layout */
   block: DrawingBlock;
   /** Measured dimensions and geometry data for the drawing */
@@ -69,8 +70,9 @@ export function layoutDrawingBlock({
   advanceColumn,
   columnX,
   textboxContentMeasures,
+  inlineParagraphBound,
 }: DrawingLayoutContext): void {
-  if (block.anchor?.isAnchored) {
+  if (block.anchor?.isAnchored || inlineParagraphBound === true) {
     return;
   }
 

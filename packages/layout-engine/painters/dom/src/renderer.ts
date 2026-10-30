@@ -3136,6 +3136,7 @@ export class DomPainter {
     if (typeof b.ownerBlockId === 'string') ds.sdTextboxOwnerBlock = b.ownerBlockId;
     ds.sdTextboxCanMove = b.canMove === true ? 'true' : 'false';
     ds.sdTextboxCanResize = b.canResize === true ? 'true' : 'false';
+    ds.sdTextboxInlineFlow = attrs?.inlineParagraphRunIndex != null ? 'true' : 'false';
     const unsupportedReason =
       (b.canMove !== true && typeof b.moveReason === 'string' ? (b.moveReason as string) : null) ??
       (b.canResize !== true && typeof b.resizeReason === 'string' ? (b.resizeReason as string) : null);

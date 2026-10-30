@@ -1077,6 +1077,7 @@ function finalizeLineMetrics(
     maxFontInfo?: FontInfo;
     fontMetricEnvelope?: FontLineMetricEnvelope;
     maxImageHeight?: number;
+    imageRunCandidates?: InlineImageCandidate[];
     structuralFallbackFontSize?: number;
     structuralFallbackFontInfo?: FontInfo;
   },
@@ -1104,6 +1105,16 @@ function finalizeLineMetrics(
   if (imageH > metrics.lineHeight) {
     metrics.lineHeight = imageH;
   }
+  const drawingAscent = Math.max(
+    0,
+    ...(line.imageRunCandidates ?? [])
+      .filter((candidate) => candidate.baselineDrawing)
+      .map((candidate) => candidate.imageHeight),
+  );
+  if (drawingAscent > 0) {
+    metrics.ascent = Math.max(metrics.ascent, drawingAscent);
+    metrics.lineHeight = Math.max(metrics.lineHeight, metrics.ascent + metrics.descent);
+  }
   return { ...metrics, textLineHeight };
 }
 
@@ -1120,6 +1131,7 @@ const INLINE_IMAGE_BASELINE_TOLERANCE_PX = 0.5;
 
 /** One inline-image candidate tracked on the current line for alignment resolution. */
 type InlineImageCandidate = {
+  baselineDrawing?: boolean;
   /** Index into `runsToProcess` (remapped to block.runs space with the line at the end). */
   runIndex: number;
   /** Image width including authored horizontal spacing (distLeft + distRight). */
@@ -1155,6 +1167,7 @@ function makeInlineImageCandidate(
   imageHeight: number,
 ): InlineImageCandidate {
   return {
+    baselineDrawing: run.inlineDrawingId != null && run.verticalAlign === 'baseline',
     runIndex,
     imageWidth,
     imageHeight,
@@ -1297,6 +1310,25 @@ function getFontInfoFromRun(run: TextRun, fontContext: FontMeasureContext, resol
     bold: run.bold,
     italic: run.italic,
   };
+}
+
+export function measureInlineDrawingTextMetrics(
+  runs: Run[],
+  fromRun: number,
+  toRun: number,
+  fontContext: FontMeasureContext = DEFAULT_FONT_MEASURE_CONTEXT,
+): { ascent: number; descent: number } {
+  let ascent = 0;
+  let descent = 0;
+  const ctx = getCanvasContext(fontContext);
+  for (let index = fromRun; index <= toRun; index++) {
+    const run = runs[index];
+    if (!run || !isTextRun(run) || run.vanish) continue;
+    const metrics = measuredFontMetrics(ctx, getFontInfoFromRun(run, fontContext));
+    ascent = Math.max(ascent, metrics.ascent);
+    descent = Math.max(descent, metrics.descent);
+  }
+  return { ascent, descent };
 }
 
 type MutableLineFontMetricState = {
@@ -1836,7 +1868,8 @@ export async function measureBlock(
       : undefined;
   try {
     if (block.kind === 'drawing') {
-      return await measureDrawingBlock(block as DrawingBlock, normalized, fontContext, renderDiagnosticOwner);
+      const measure = await measureDrawingBlock(block as DrawingBlock, normalized, fontContext, renderDiagnosticOwner);
+      return block.attrs?.inlineParagraphRunIndex != null ? { ...measure, inlineDrawing: true } : measure;
     }
 
     if (block.kind === 'image') {
@@ -5935,7 +5968,7 @@ async function measureDrawingBlock(
 
   const widthScale = maxWidth / naturalWidth;
   const heightScale = maxHeight / naturalHeight;
-  const normalizedScale = Math.min(1, widthScale, heightScale);
+  const normalizedScale = block.attrs?.inlineParagraphRunIndex != null ? 1 : Math.min(1, widthScale, heightScale);
   const scale = Number.isFinite(normalizedScale) ? normalizedScale : 1;
 
   const width = naturalWidth * scale;

@@ -255,7 +255,10 @@ export const extractBlockPmRange = (block: { attrs?: Record<string, unknown> } |
 
 /** Positioned drawings are laid out by their owner, rather than consuming a flow slot. */
 export function isOutOfFlowDrawing(block: FlowBlock): boolean {
-  return (block.kind === 'image' || block.kind === 'drawing') && block.anchor?.isAnchored === true;
+  return (
+    ((block.kind === 'image' || block.kind === 'drawing') && block.anchor?.isAnchored === true) ||
+    (block.kind === 'drawing' && block.attrs?.inlineParagraphRunIndex != null)
+  );
 }
 
 /** Find the kept paragraph whose page decision also owns this flow block. */

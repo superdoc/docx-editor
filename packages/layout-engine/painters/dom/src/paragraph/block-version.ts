@@ -104,6 +104,7 @@ export const deriveParagraphBlockVersion = (
         return [
           'img',
           imgRun.src,
+          imgRun.inlineDrawingId ?? '',
           imgRun.width,
           imgRun.height,
           imgRun.alt ?? '',

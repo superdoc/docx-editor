@@ -1671,3 +1671,5 @@ export {
   isMeasuredVisualBidiLineCurrent,
   type MeasuredVisualBidiLine,
 } from './visual-bidi-geometry.js';
+
+export { placeInlineDrawings } from './place-inline-drawings.js';

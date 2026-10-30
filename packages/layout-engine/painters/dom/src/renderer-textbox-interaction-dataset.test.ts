@@ -125,6 +125,24 @@ describe('painter textbox interaction dataset', () => {
     expect(el.dataset.sdTextboxInstanceKey).toContain('tb0');
   });
 
+  it.each([true, false])('stamps inline paragraph flow independently from locked capabilities: %s', (inlineFlow) => {
+    const block = textboxBlock('tb-flow', {
+      textboxId: 'tb-flow',
+      geometryRevision: 'tbgeo:locked',
+      canMove: false,
+      canResize: false,
+      moveReason: 'geometry-locked',
+      resizeReason: 'geometry-locked',
+    }) as TextboxDrawing;
+    if (inlineFlow) block.attrs = { ...block.attrs, inlineParagraphRunIndex: 0 };
+    else block.anchor = { isAnchored: true };
+    const painter = createDomPainter({ blocks: [block], measures: [textboxMeasure()] });
+    painter.paint(singlePageLayout(block), mount);
+    const el = mount.querySelector<HTMLElement>('.superdoc-drawing-fragment')!;
+    expect(el.dataset.sdTextboxInlineFlow).toBe(String(inlineFlow));
+    expect(el.dataset.sdTextboxUnsupportedReason).toBe('geometry-locked');
+  });
+
   it('marks an unsupported case and carries a stable reason, no active capability', () => {
     const block = textboxBlock('tb-owner-2', {
       textboxId: 'tb0',

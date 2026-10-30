@@ -5530,6 +5530,21 @@ describe('measureBlock', () => {
   describe('inline image baseline alignment', () => {
     const inlineImageSrc = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/';
 
+    it('reserves a baseline drawing above the baseline while retaining surrounding text descent', async () => {
+      const block: FlowBlock = {
+        kind: 'paragraph',
+        id: 'inline-drawing',
+        runs: [
+          { kind: 'text', text: 'gy', fontFamily: 'Arial', fontSize: 16 },
+          { kind: 'image', src: '', inlineDrawingId: 'drawing', width: 40, height: 40, verticalAlign: 'baseline' },
+        ],
+      };
+      const line = expectParagraphMeasure(await measureBlock(block, 1000)).lines[0];
+      expect(line.ascent).toBeGreaterThanOrEqual(40);
+      expect(line.descent).toBeGreaterThan(0);
+      expect(line.lineHeight).toBeGreaterThanOrEqual(line.ascent + line.descent);
+    });
+
     it('emits baseline alignment for a tiny inline image that fits the text line', async () => {
       const block: FlowBlock = {
         kind: 'paragraph',
@@ -5911,6 +5926,26 @@ describe('measureBlock', () => {
   });
 
   describe('drawing measurement', () => {
+    for (const [axis, constraints, expectedWidth, expectedHeight] of [
+      ['width', { maxWidth: 320, maxHeight: 1000 }, 320, (200 * 320) / 384],
+      ['height', { maxWidth: 1000, maxHeight: 100 }, 192, 100],
+    ] as const) {
+      it(`preserves the authored inline slot extent beyond the ${axis} constraint while ordinary drawings remain bounded`, async () => {
+        const block: DrawingBlock = {
+          kind: 'drawing',
+          id: `bound-${axis}`,
+          drawingKind: 'vectorShape',
+          geometry: { width: 384, height: 200 },
+          attrs: { inlineParagraphRunIndex: 0 },
+        };
+        const bound = expectDrawingMeasure(await measureBlock(block, constraints));
+        const ordinary = expectDrawingMeasure(await measureBlock({ ...block, attrs: undefined }, constraints));
+        expect(bound).toMatchObject({ width: 384, height: 200, scale: 1 });
+        expect(ordinary.width).toBeCloseTo(expectedWidth);
+        expect(ordinary.height).toBeCloseTo(expectedHeight);
+        expect(ordinary.scale).toBeLessThan(1);
+      });
+    }
     it('measures textbox content with canonical font metrics', async () => {
       const block: DrawingBlock = {
         kind: 'drawing',

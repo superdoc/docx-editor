@@ -3092,6 +3092,17 @@ describe('remeasureParagraph', () => {
     const imageRun = (overrides?: Partial<Run>): Run =>
       ({ kind: 'image', src: 'data:image/png;base64,AAAA', width: 11, height: 10, ...overrides }) as Run;
 
+    it('retains a drawing baseline and text descent after width reflow', () => {
+      const block = createBlock([
+        textRun('gy'),
+        imageRun({ src: '', inlineDrawingId: 'drawing', width: 40, height: 40, verticalAlign: 'baseline' }),
+      ]);
+      const line = remeasureParagraph(block, 500).lines[0];
+      expect(line.ascent).toBeGreaterThanOrEqual(40);
+      expect(line.descent).toBeGreaterThan(0);
+      expect(line.lineHeight).toBeGreaterThanOrEqual(line.ascent + line.descent);
+    });
+
     it('emits baseline alignment for a small inline image + text after reflow', () => {
       const block = createBlock([textRun('1.'), imageRun({ pmStart: 2, pmEnd: 3 }), textRun(' Title')]);
       const measure = remeasureParagraph(block, 500);

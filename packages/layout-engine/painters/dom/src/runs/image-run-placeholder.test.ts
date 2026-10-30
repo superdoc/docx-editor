@@ -21,6 +21,29 @@ const createContext = (doc: Document): RunRenderContext => ({
 });
 
 describe('renderImageRun fail-closed placeholder', () => {
+  it('retains a canonical editable atom for a drawing slot without bitmap metadata', () => {
+    const doc = document.implementation.createHTMLDocument('inline-drawing');
+    const element = renderImageRun(
+      {
+        kind: 'image',
+        src: '',
+        inlineDrawingId: 'shape',
+        width: 100,
+        height: 30,
+        verticalAlign: 'baseline',
+        pmStart: 7,
+        pmEnd: 8,
+      },
+      createContext(doc),
+    )!;
+    expect(element.getAttribute('data-v2-unpainted-inline-object')).toBe('true');
+    expect(element.dataset.inlineDrawingId).toBe('shape');
+    expect(element.dataset.pmStart).toBe('7');
+    expect(element.dataset.pmEnd).toBe('8');
+    expect(element.classList.contains('superdoc-inline-image')).toBe(false);
+    expect(element.dataset.sdImageId).toBeUndefined();
+    expect(element.textContent).toBe('');
+  });
   it('preserves authored geometry and exposes the owning diagnostic', () => {
     const doc = document.implementation.createHTMLDocument('inline-image-placeholder');
     const run: ImageRun = {

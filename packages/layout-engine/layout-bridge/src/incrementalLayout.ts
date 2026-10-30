@@ -1,3 +1,4 @@
+import { placeInlineDrawings } from './place-inline-drawings.js';
 import {
   areValidPageCheckpointDependencyClasses,
   cloneColumnLayout,
@@ -6771,7 +6772,7 @@ async function incrementalLayoutComplete(
     HeaderFooterCacheLogger.logStats(cacheStats);
   }
   const layoutExposureStart = performance.now();
-  const exposedLayout =
+  const currentLayout =
     layoutReuseSummary.tailAdoption && !adoptedPagesGuardedForFinalizers
       ? guardAdoptedLayoutPages(
           layout,
@@ -6779,6 +6780,16 @@ async function incrementalLayoutComplete(
           localizedSectionNumbering ? null : numberingCtx,
         )
       : layout;
+  const exposedLayout = placeInlineDrawings(
+    currentLayout,
+    currentBlocks,
+    currentMeasures,
+    layoutReuse?.currentBlockIndexById ?? effectiveMeasureReuseProof?.currentBlockIndexById ?? undefined,
+    {
+      prefixEndPageIndex: layoutReuseSummary.mode === 'full' ? 0 : (layoutReuseSummary.checkpointPageIndex ?? 0),
+      tail: layoutReuseSummary.tailAdoption ?? undefined,
+    },
+  );
   footnoteWarningKeysByOwner.set(exposedLayout, emittedFootnoteWarningKeys);
   const layoutExposureTime = performance.now() - layoutExposureStart;
   const totalBridgeTime = performance.now() - bridgeStartedAt;

@@ -5552,6 +5552,60 @@ describe('paragraph adjacency across in-flow blocks (SD-3377)', () => {
 });
 
 describe('layoutHeaderFooter', () => {
+  it.each([
+    { top: 120, header: 48, relativeFrom: 'margin', expected: -47 },
+    { top: 160, header: 48, relativeFrom: 'margin', expected: -7 },
+    { top: 120, header: 96, relativeFrom: 'margin', expected: -95 },
+    { top: 120, header: 48, relativeFrom: 'page', expected: -119 },
+  ] as const)('SD-6076 normalizes a behindDoc header without changing flow height: %j', (geometry) => {
+    const imageBlock: ImageBlock = {
+      kind: 'image',
+      id: 'header-background',
+      src: 'data:image/png;base64,AAAA',
+      width: 812,
+      height: 1064,
+      anchor: {
+        isAnchored: true,
+        hRelativeFrom: 'page',
+        offsetH: 0,
+        vRelativeFrom: geometry.relativeFrom,
+        offsetV: -119,
+        behindDoc: true,
+      },
+      wrap: { type: 'None' },
+    };
+    const originalImage = structuredClone(imageBlock);
+    const paragraphMeasure = makeMeasure([15]);
+    const imageMeasure: ImageMeasure = { kind: 'image', width: 812, height: 1064 };
+    const constraints = {
+      width: 624,
+      height: geometry.top - geometry.header,
+      pageWidth: 816,
+      pageHeight: 1056,
+      margins: { left: 96, right: 96, top: geometry.top, bottom: 96, header: geometry.header },
+    };
+    const paragraphOnly = layoutHeaderFooter([block], [paragraphMeasure], constraints, 'header');
+    const layout = layoutHeaderFooter([block, imageBlock], [paragraphMeasure, imageMeasure], constraints, 'header');
+
+    expect(layout.pages).toHaveLength(1);
+    expect(layout.pages[0].fragments.find((fragment) => fragment.kind === 'image')).toMatchObject({
+      x: 0,
+      y: geometry.expected,
+      width: 812,
+      height: 1064,
+      isAnchored: true,
+      behindDoc: true,
+    });
+    expect(layout.pages[0].fragments.filter((fragment) => fragment.kind === 'para')).toEqual(
+      paragraphOnly.pages[0].fragments,
+    );
+    expect(layout.height).toBe(paragraphOnly.height);
+    expect(layout.height).toBe(15);
+    expect(layout.minY).toBe(geometry.expected);
+    expect(layout.maxY).toBe(geometry.expected + 1064);
+    expect(imageBlock).toEqual(originalImage);
+  });
+
   it('lays out content within the provided constraints', () => {
     const layout = layoutHeaderFooter([block], [makeMeasure([30, 10])], { width: 400, height: 80 });
 

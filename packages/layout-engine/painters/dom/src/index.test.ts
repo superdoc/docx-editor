@@ -5,6 +5,7 @@ import { DomPainter } from './renderer.js';
 import { DOM_CLASS_NAMES } from './constants.js';
 import { underlineOffsetFromLineTop } from './runs/tab-run.js';
 import { resolveLayout } from '@superdoc/layout-resolved';
+import { layoutHeaderFooter } from '@superdoc/layout-engine';
 import type { DomPainterOptions, DomPainterInput, PaintSnapshot } from './index.js';
 import { resolveListMarkerGeometry } from '../../../../../shared/common/list-marker-utils.js';
 import type {
@@ -7273,6 +7274,88 @@ describe('DomPainter', () => {
       expect(footerFragmentEl).toBeTruthy();
       expect(footerFragmentEl.getAttribute('dir')).toBe('rtl');
       expect(footerFragmentEl.style.direction).toBe('rtl');
+    });
+
+    it.each([
+      { top: 120, header: 48, relativeFrom: 'margin', expected: 1 },
+      { top: 160, header: 48, relativeFrom: 'margin', expected: 41 },
+      { top: 120, header: 96, relativeFrom: 'margin', expected: 1 },
+      { top: 120, header: 48, relativeFrom: 'page', expected: -119 },
+    ] as const)('SD-6076 paints the real header layout in the physical anchor frame: %j', (geometry) => {
+      const headerImage: FlowBlock = {
+        kind: 'image',
+        id: 'margin-header-background',
+        src: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+        width: 812,
+        height: 1064,
+        anchor: {
+          isAnchored: true,
+          hRelativeFrom: 'page',
+          offsetH: 0,
+          vRelativeFrom: geometry.relativeFrom,
+          offsetV: -119,
+          behindDoc: true,
+        },
+        wrap: { type: 'None' },
+      };
+      const headerBlocks: FlowBlock[] = [{ ...block, id: 'header-carrier' }, headerImage];
+      const headerMeasures: Measure[] = [measure, { kind: 'image', width: 812, height: 1064 }];
+      const margins = { left: 96, right: 96, top: geometry.top, bottom: 96, header: geometry.header };
+      const headerLayout = layoutHeaderFooter(
+        headerBlocks,
+        headerMeasures,
+        {
+          width: 624,
+          height: geometry.top - geometry.header,
+          pageWidth: 816,
+          pageHeight: 1056,
+          margins,
+        },
+        'header',
+      );
+      const bodyLayout: Layout = {
+        pageSize: { w: 816, h: 1056 },
+        pages: [
+          {
+            number: 1,
+            margins,
+            fragments: [{ ...layout.pages[0].fragments[0], x: 96, y: geometry.top, width: 624 }],
+          },
+        ],
+      };
+      const controlMount = document.createElement('div');
+      createTestPainter({ blocks: [block], measures: [measure] }).paint(bodyLayout, controlMount);
+      const controlBody = controlMount.querySelector('[data-block-id="block-1"]') as HTMLElement;
+      const painter = createTestPainter({
+        headerProvider: () => ({
+          fragments: headerLayout.pages[0].fragments,
+          height: headerLayout.height,
+          offset: geometry.header,
+          marginLeft: 96,
+        }),
+      });
+      painter.setData([block], [measure], headerBlocks, headerMeasures);
+      painter.paint(bodyLayout, mount);
+
+      const page = mount.querySelector('.superdoc-page') as HTMLElement;
+      const backgrounds = page.querySelectorAll('[data-behind-doc-section="header"]');
+      expect(backgrounds).toHaveLength(1);
+      const background = backgrounds[0] as HTMLElement;
+      const body = page.querySelector('[data-block-id="block-1"]') as HTMLElement;
+      expect(background.parentElement).toBe(page);
+      expect(background.dataset.blockId).toBe(headerImage.id);
+      expect(background.style.left).toBe('0px');
+      expect(background.style.width).toBe('812px');
+      expect(background.style.height).toBe('1064px');
+      expect(background.style.zIndex).toBe('0');
+      expect(background.querySelectorAll('img')).toHaveLength(1);
+      expect(background.compareDocumentPosition(body) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(body.style.cssText).toBe(controlBody.style.cssText);
+      expect(body.textContent).toBe('Hello world');
+      expect(body.querySelector('.superdoc-line')?.outerHTML).toBe(
+        controlBody.querySelector('.superdoc-line')?.outerHTML,
+      );
+      expect(background.style.top).toBe(`${geometry.expected}px`);
     });
 
     it('renders page-relative behindDoc header media at absolute page Y', () => {

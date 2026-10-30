@@ -164,7 +164,7 @@ function normalizeFloatingFooterTableFragment(
 function isHeaderMarginContentBlock(block: FlowBlock): block is ImageBlock | DrawingBlock {
   if (block.kind !== 'image' && block.kind !== 'drawing') return false;
   if (block.anchor?.vRelativeFrom !== 'margin') return false;
-  if (block.anchor.behindDoc === true) return false;
+  if (block.anchor.behindDoc === true && block.wrap?.type !== 'None') return false;
   return true;
 }
 

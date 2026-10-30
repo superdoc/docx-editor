@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vite-plus/test';
+import { describe, expect, it } from 'bun:test';
 import type { FlowBlock, Fragment, Measure } from '@superdoc/contracts';
 import { normalizeFragmentsForRegion } from './normalize-header-footer-fragments.js';
 
@@ -186,6 +186,72 @@ describe('normalizeFragmentsForRegion', () => {
   });
 
   describe('margin-relative anchors in header', () => {
+    describe.each(['image', 'drawing'] as const)('SD-6076 behindDoc %s overlays', (kind) => {
+      it.each([
+        { top: 120, header: 48, relativeFrom: 'margin', expected: -47 },
+        { top: 160, header: 48, relativeFrom: 'margin', expected: -7 },
+        { top: 120, header: 96, relativeFrom: 'margin', expected: -95 },
+        { top: 120, header: 48, relativeFrom: 'page', expected: -119 },
+      ] as const)('preserves the physical anchor frame: %j', (geometry) => {
+        const anchor = {
+          isAnchored: true,
+          hRelativeFrom: 'page' as const,
+          offsetH: 0,
+          vRelativeFrom: geometry.relativeFrom,
+          offsetV: -119,
+          behindDoc: true,
+        };
+        const block: FlowBlock =
+          kind === 'image'
+            ? {
+                kind,
+                id: 'background',
+                src: 'data:image/png;base64,AAAA',
+                width: 812,
+                height: 1064,
+                anchor,
+                wrap: { type: 'None' },
+              }
+            : {
+                kind,
+                id: 'background',
+                drawingKind: 'vectorShape',
+                geometry: { width: 812, height: 1064 },
+                anchor,
+                wrap: { type: 'None' },
+              };
+        const originalBlock = structuredClone(block);
+        const fragment: Fragment = {
+          kind,
+          blockId: block.id,
+          x: 0,
+          y: -119,
+          width: 812,
+          height: 1064,
+          isAnchored: true,
+          behindDoc: true,
+          ...(kind === 'drawing' ? { drawingKind: 'vectorShape' as const } : {}),
+        } as Fragment;
+
+        normalizeFragmentsForRegion([{ number: 1, fragments: [fragment] }], [block], [], 'header', {
+          width: 624,
+          pageWidth: 816,
+          pageHeight: 1056,
+          margins: { left: 96, right: 96, top: geometry.top, bottom: 96, header: geometry.header },
+        });
+
+        expect(fragment).toMatchObject({
+          x: 0,
+          y: geometry.expected,
+          width: 812,
+          height: 1064,
+          isAnchored: true,
+          behindDoc: true,
+        });
+        expect(block).toEqual(originalBlock);
+      });
+    });
+
     it('resolves a VML text watermark against the physical page margins', () => {
       const block: FlowBlock = {
         kind: 'image',
@@ -304,12 +370,15 @@ describe('normalizeFragmentsForRegion', () => {
       expect(fragment.y).toBe(0);
     });
 
-    it('does not normalize behind-doc header overlays', () => {
+    it.each([
+      { align: 'center', expected: 432 },
+      { align: 'bottom', expected: 828 },
+    ] as const)('SD-6076 resolves behind-doc no-wrap header alignment: %j', ({ align, expected }) => {
       const block: FlowBlock = {
         kind: 'image',
         id: 'header-watermark',
         src: 'watermark.png',
-        anchor: { isAnchored: true, vRelativeFrom: 'margin', alignV: 'center', offsetV: 0, behindDoc: true },
+        anchor: { isAnchored: true, vRelativeFrom: 'margin', alignV: align, offsetV: 0, behindDoc: true },
         wrap: { type: 'None' },
       };
       const fragment = makeAnchoredImageFragment('header-watermark', 400, 120);
@@ -317,8 +386,26 @@ describe('normalizeFragmentsForRegion', () => {
 
       normalizeFragmentsForRegion(pages, [block], [makeDummyMeasure()], 'header', fullConstraints);
 
-      expect(fragment.y).toBe(400);
+      expect(fragment.y).toBe(expected);
     });
+
+    it.each([undefined, 'Square', 'Tight'] as const)(
+      'preserves behind-doc header overlays with wrap %s',
+      (wrapType) => {
+        const block: FlowBlock = {
+          kind: 'image',
+          id: 'wrapped-header-watermark',
+          src: 'watermark.png',
+          anchor: { isAnchored: true, vRelativeFrom: 'margin', alignV: 'center', offsetV: 0, behindDoc: true },
+          ...(wrapType ? { wrap: { type: wrapType } } : {}),
+        };
+        const fragment = makeAnchoredImageFragment(block.id, 400, 120);
+
+        normalizeFragmentsForRegion([{ number: 1, fragments: [fragment] }], [block], [], 'header', fullConstraints);
+
+        expect(fragment.y).toBe(400);
+      },
+    );
   });
 
   describe('page-relative anchors in header', () => {

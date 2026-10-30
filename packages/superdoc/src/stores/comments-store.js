@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { ref, shallowRef, reactive, computed, watch, isReactive } from 'vue';
+import { ref, shallowRef, reactive, computed, watch } from 'vue';
 import { comments_module_events } from '@superdoc/common';
 import { useSuperdocStore } from '@superdoc/stores/superdoc-store';
 import { syncCommentsToClients } from '../core/collaboration/helpers.js';
@@ -16,8 +16,8 @@ import {
   buildTrackedChangeThreadOwnerIndex,
   buildTrackedChangeThreadIndex,
 } from './helpers/tracked-change-thread-index.js';
-import { trackedChangeThreadParentIdForComment as resolveTrackedChangeThreadParentId } from '../components/CommentsLayer/tracked-change-threading.js';
 import { normalizeV2CommentDraftText } from './helpers/comment-draft-text.js';
+import { createCommentIdentity, trackedChangeThreadParentIdForComment } from './helpers/comment-identity.js';
 import {
   cloneV2TrackedChangeStory,
   normalizeTrackedChangeCustomAttributes,
@@ -31,10 +31,8 @@ import {
   BODY_TRACKED_CHANGE_STORY,
   buildBodyTrackedChangeAnchorKey,
   buildTrackedChangeAnchorKeyForStory,
-  buildTrackedChangeImportedPositionId,
   getTrackedChangeStoryKey,
   isBodyTrackedChangeComment,
-  makeTrackedChangeAnchorKey,
   normalizeCommentId,
   normalizeTrackedChangePositionAliases,
   normalizeTrackedChangeStoryKey,
@@ -209,236 +207,12 @@ export const useCommentsStore = defineStore('comments', () => {
     }
   };
 
-  const positionEntriesByAlias = computed(() => {
-    const aliases = new Map();
-    for (const [key, entry] of Object.entries(editorCommentPositions.value || {})) {
-      for (const alias of [normalizeCommentId(entry?.key), normalizeCommentId(entry?.threadId)]) {
-        if (alias && !aliases.has(alias)) aliases.set(alias, { key, entry });
-      }
-    }
-    return aliases;
-  });
-
-  const getPositionEntryByAlias = (id) => {
-    const normalizedId = normalizeCommentId(id);
-    if (!normalizedId) return { key: null, entry: null };
-
-    const positions = editorCommentPositions.value || {};
-    if (positions[normalizedId] !== undefined) {
-      return { key: normalizedId, entry: positions[normalizedId] };
-    }
-
-    return positionEntriesByAlias.value.get(normalizedId) ?? { key: null, entry: null };
-  };
-
-  const boundsOverlap = (a, b) => {
-    if (!a || !b) return false;
-    const left = Math.max(Number(a.left), Number(b.left));
-    const right = Math.min(Number(a.right), Number(b.right));
-    const top = Math.max(Number(a.top), Number(b.top));
-    const bottom = Math.min(Number(a.bottom), Number(b.bottom));
-    return [left, right, top, bottom].every(Number.isFinite) && right > left && bottom > top;
-  };
-
-  const isEquivalentTrackedChangePosition = (candidate, existing) => {
-    if (!candidate || !existing) return false;
-    if (candidate.kind !== 'trackedChange' || existing.kind !== 'trackedChange') return false;
-    if (candidate.storyKey && existing.storyKey && candidate.storyKey !== existing.storyKey) return false;
-    const candidatePage = Number(candidate.pageIndex);
-    const existingPage = Number(existing.pageIndex);
-    if (Number.isFinite(candidatePage) && Number.isFinite(existingPage) && candidatePage !== existingPage) {
-      return false;
-    }
-
-    if (boundsOverlap(candidate.bounds, existing.bounds)) return true;
-
-    const candidateStart = Number(candidate.start);
-    const candidateEnd = Number(candidate.end);
-    const existingStart = Number(existing.start);
-    const existingEnd = Number(existing.end);
-    return (
-      [candidateStart, candidateEnd, existingStart, existingEnd].every(Number.isFinite) &&
-      candidateStart === existingStart &&
-      candidateEnd === existingEnd
-    );
-  };
-
-  const getTrackedChangeCommentByPositionAlias = (id) => {
-    const { entry: targetEntry } = getPositionEntryByAlias(id);
-    if (!targetEntry) return null;
-
-    const matches = commentsList.value.filter((comment) => {
-      if (!comment?.trackedChange) return false;
-
-      return getCommentAliasIds(comment).some((alias) => {
-        const { entry } = getPositionEntryByAlias(alias);
-        return isEquivalentTrackedChangePosition(targetEntry, entry);
-      });
+  const { getComment, getThreadParent, getCommentPositionKey, getCommentAliasIds, resolveCommentPositionEntry } =
+    createCommentIdentity({
+      getComments: () => commentsList.value,
+      getReviewDirectory: () => reviewDirectoryList.value,
+      getPositions: () => editorCommentPositions.value,
     });
-
-    return matches.length === 1 ? matches[0] : null;
-  };
-
-  const commentIdentityIndex = computed(() => {
-    const list = commentsList.value;
-    if (!isReactive(list)) return null;
-    const primary = new Map();
-    const aliases = new Map();
-    for (const comment of list) {
-      if (!isReactive(comment)) return null;
-      for (const key of ['commentId', 'importedId', 'trackedChangeAnchorKey', 'trackedChange']) {
-        const descriptor = Object.getOwnPropertyDescriptor(comment, key);
-        if (descriptor?.get || descriptor?.set || (!descriptor && key in comment)) return null;
-      }
-      const ids = [comment.commentId, comment.importedId, comment.trackedChangeAnchorKey];
-      if (ids.some((id) => id != null && typeof id !== 'string')) return null;
-      if (ids[0] != null && !primary.has(ids[0])) primary.set(ids[0], comment);
-      const importedPositionId = comment.trackedChange ? buildTrackedChangeImportedPositionId(ids[1]) : null;
-      for (const alias of [ids[1], ids[2], importedPositionId]) {
-        if (alias != null && !aliases.has(alias)) aliases.set(alias, comment);
-      }
-    }
-    return { primary, aliases };
-  });
-
-  /**
-   * Get a comment by either ID or imported ID
-   *
-   * @param {string} id The comment ID
-   * @returns {Record<string, unknown> | null | undefined} The comment object, `null` if no id was provided, or `undefined` if not found.
-   */
-  const getComment = (id) => {
-    if (id === undefined || id === null) return null;
-    // Real Word comment ids and tracked-change rows' raw OOXML `w:id` (exposed
-    // here as `importedId`) are independent numbering sequences that commonly
-    // collide on the same small integer (e.g. comment "2" and tracked-change
-    // insert w:id="2" in the same document). Resolve primary ids before alias
-    // ids inside each backing list so a tracked-change alias never wins over a
-    // real comment that lives in that same list, while preserving the existing
-    // cross-list precedence of commentsList before reviewDirectoryList.
-    const byPrimaryId = (c) => c.commentId == id;
-    const byAliasId = (c) =>
-      c.importedId == id ||
-      c.trackedChangeAnchorKey == id ||
-      (c?.trackedChange && buildTrackedChangeImportedPositionId(c.importedId) == id);
-    const findIn = (list) => list.find(byPrimaryId) ?? list.find(byAliasId);
-    const index = typeof id === 'string' ? commentIdentityIndex.value : null;
-    const comment = index ? (index.primary.get(id) ?? index.aliases.get(id)) : findIn(commentsList.value);
-    return comment ?? findIn(reviewDirectoryList.value) ?? getTrackedChangeCommentByPositionAlias(id);
-  };
-
-  const getThreadParent = (comment) => {
-    if (!comment?.parentCommentId) return comment;
-    return getComment(comment.parentCommentId);
-  };
-
-  const trackedChangeThreadParentIdForComment = (comment) => {
-    if (comment?.trackedChangeThreadParentId) return comment.trackedChangeThreadParentId;
-    if (isV2SyntheticTrackedChangeRow(comment) && comment?.trackedChange === true) return null;
-    return resolveTrackedChangeThreadParentId(comment);
-  };
-
-  /**
-   * Extract the position lookup key from a comment or comment ID.
-   * Prefers whichever key currently exists in editorCommentPositions.
-   *
-   * @param {Object | string | null | undefined} commentOrId The comment object or comment ID
-   * @returns {string | null} The position key
-   */
-  const getCommentPositionKey = (commentOrId) => {
-    if (!commentOrId) return null;
-
-    const positions = editorCommentPositions.value || {};
-
-    if (typeof commentOrId === 'string') {
-      if (positions[commentOrId]) {
-        return commentOrId;
-      }
-
-      const resolvedComment = getComment(commentOrId);
-      if (!resolvedComment) {
-        return commentOrId;
-      }
-
-      const commentId = resolvedComment.commentId ?? null;
-      const importedId = resolvedComment.importedId ?? null;
-      const importedPositionId = resolvedComment.trackedChange
-        ? buildTrackedChangeImportedPositionId(importedId)
-        : null;
-      const trackedChangeAnchorKey = resolvedComment.trackedChangeAnchorKey ?? null;
-      if (trackedChangeAnchorKey && positions[trackedChangeAnchorKey]) return trackedChangeAnchorKey;
-      if (commentId && positions[commentId]) return commentId;
-      if (importedId && positions[importedId]) return importedId;
-      if (importedPositionId && positions[importedPositionId]) return importedPositionId;
-      return trackedChangeAnchorKey ?? commentId ?? importedPositionId ?? importedId ?? null;
-    }
-
-    const commentId = commentOrId.commentId ?? null;
-    const importedId = commentOrId.importedId ?? null;
-    const importedPositionId = commentOrId.trackedChange ? buildTrackedChangeImportedPositionId(importedId) : null;
-    const trackedChangeAnchorKey = commentOrId.trackedChangeAnchorKey ?? null;
-    if (trackedChangeAnchorKey && positions[trackedChangeAnchorKey]) return trackedChangeAnchorKey;
-    if (commentId && positions[commentId]) return commentId;
-    if (importedId && positions[importedId]) return importedId;
-    if (importedPositionId && positions[importedPositionId]) return importedPositionId;
-    return trackedChangeAnchorKey ?? commentId ?? importedPositionId ?? importedId ?? null;
-  };
-
-  // Comments can be referenced by the imported DOCX id, the internal commentId, or a raw id
-  // coming from UI/editor events. Normalize everything to strings and keep all aliases so every
-  // lookup path resolves against the same set of ids.
-  const getCommentAliasIds = (commentOrId) => {
-    if (commentOrId === undefined || commentOrId === null) return [];
-
-    const rawId = typeof commentOrId === 'object' ? null : commentOrId;
-    const comment = typeof commentOrId === 'object' ? commentOrId : getComment(commentOrId);
-    const trackedChangePositionAliases = comment?.trackedChange
-      ? normalizeTrackedChangePositionAliases(comment?.trackedChangePositionAliases)
-      : [];
-    const trackedChangeStoryKey = normalizeTrackedChangeStoryKey(getTrackedChangeStoryKey(comment));
-    const seen = new Set();
-
-    return [
-      rawId,
-      getCommentPositionKey(comment),
-      comment?.trackedChangeAnchorKey,
-      comment?.commentId,
-      comment?.importedId,
-      comment?.trackedChange ? buildTrackedChangeImportedPositionId(comment?.importedId) : null,
-      ...trackedChangePositionAliases.flatMap((id) => [
-        trackedChangeStoryKey && !id.startsWith('tc::')
-          ? makeTrackedChangeAnchorKey({ storyKey: trackedChangeStoryKey, rawId: id })
-          : null,
-        id,
-      ]),
-    ]
-      .map((id) => normalizeCommentId(id))
-      .filter((id) => {
-        if (!id || seen.has(id)) return false;
-        seen.add(id);
-        return true;
-      });
-  };
-
-  const resolveCommentPositionEntry = (commentOrId, preferredId) => {
-    const currentPositions = editorCommentPositions.value || {};
-    const comment = typeof commentOrId === 'object' ? commentOrId : getComment(commentOrId);
-    const seen = new Set();
-
-    for (const key of [preferredId, ...getCommentAliasIds(commentOrId)]
-      .map((id) => normalizeCommentId(id))
-      .filter(Boolean)) {
-      if (seen.has(key)) continue;
-      seen.add(key);
-
-      const entry = currentPositions[key];
-      if (entry !== undefined && positionEntryMatchesTrackedChangeStory(entry, comment)) {
-        return { key, entry };
-      }
-    }
-
-    return { key: null, entry: null };
-  };
 
   const clearResolvedMetadata = (comment) => {
     if (!comment) return;

@@ -154,5 +154,8 @@ document host.
 
 To initialize a new room from a DOCX, set `roomMode: 'create'` for one worker. Later SDK sessions and editors use `roomMode: 'join'`. If multiple backend workers can start the same document, [coordinate room creation](/editor/collaboration/coordinate-room-creation) in your backend and collaboration server before calling `create`.
 
+To run an agent next to people editing in the browser, follow [Add an agent](/editor/collaboration/deploy-a-server#add-an-agent)
+in the collaboration server guide.
+
 Prefer Python? Follow the [Python SDK guide](/agents/automation/python-sdk) for the same deterministic workflow.
 For Rust, follow the [Rust SDK guide (Beta)](/agents/automation/rust-sdk).

@@ -7,6 +7,7 @@
     "start": "tsx server.ts",
     "token": "tsx scripts/create-token.ts",
     "create-room": "tsx scripts/create-room.ts",
+    "agent": "tsx scripts/agent.ts",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test --test-force-exit test/*.test.ts"
   },

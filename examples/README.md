@@ -22,7 +22,7 @@ Every example is typechecked and has a behavior test for the outcome its README 
 - [Search](https://go.superdoc.dev/examples/search) — enable the built-in find surface and navigate matches.
 - [Proofing](https://go.superdoc.dev/examples/proofing) — add local spell checking with suggestions and Ignore.
 - [Collaboration](https://go.superdoc.dev/examples/collaboration) — synchronize one DOCX between two browser pages.
-- [Collaboration server](./collaboration-server) — run a Hocuspocus server that checks access, keeps rooms across restarts, and autosaves each room as DOCX.
+- [Collaboration server](./collaboration-server) — run a Hocuspocus server that checks access, keeps rooms across restarts, autosaves each room as DOCX, and adds a backend agent that suggests tracked changes to browser editors.
 
 ## Run an example in this repository
 

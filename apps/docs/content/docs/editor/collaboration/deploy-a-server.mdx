@@ -158,6 +158,37 @@ What happens to the file next is up to you: overwrite, keep versions, or pass it
 
 Set `COLLABORATION_DOCX=off` to turn DOCX autosave off.
 
+## Add an agent
+
+A backend agent joins a room with the Node SDK like any other collaborator. Editors see its edits live, as tracked
+changes under the SDK `user` name, and accept or reject them:
+
+```ts
+import { joinAsAgent } from './src/agent/review-agent.ts';
+
+const agent = await joinAsAgent({ serverUrl, documentId: 'contract-42', token: agentToken });
+try {
+  const suggestion = await agent.suggest('thirty days', 'forty-five days');
+  const decision = await agent.waitForDecision(suggestion);
+} finally {
+  await agent.leave();
+}
+```
+
+`suggest` makes a tracked replacement and keeps the tracked change IDs from the
+[receipt](/document-api/receipts-and-errors), guarded by the document revision read before the match, so a
+concurrent edit can't shift it onto other words. `waitForDecision` checks those IDs until an editor has accepted or rejected the change, and
+reports `resolved`.
+`leave` closes the document without saving a local copy and shuts down the SDK's engine process. The template
+includes `pnpm agent <documentId> <find> <replacement>` to try it against an open room.
+
+- **Identity.** Your access check sees the `sub` in the agent's token. Editors see the SDK `user` as the author of
+  its tracked changes. Give each agent its own token, scoped to its documents.
+- **No browser needed.** The agent can edit while nobody has the document open. Editors who join later see its
+  suggestions, and an agent that joins later sees their edits.
+- **Presence.** The SDK does not publish presence, so the agent does not appear in participant lists.
+- **Saves.** A connected agent keeps the room from emptying, so the save on leave waits for the idle save.
+
 ## Before you deploy
 
 - Serve the server over `wss://`, for example behind a TLS-terminating reverse proxy, and set `HOST=0.0.0.0` only

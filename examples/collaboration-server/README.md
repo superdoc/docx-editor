@@ -284,6 +284,64 @@ Keep `@superdoc/sdk` close to the `superdoc` version your browsers use. Both der
 `documentId`, and they must agree. Opening a room makes a small write, so an editor who opens and leaves without
 editing still causes one save, with identical content.
 
+## Add a server-side agent
+
+`src/agent/review-agent.ts` joins a room with the Node SDK as a collaborator. Browser editors see its edits live,
+as tracked changes under its name, and decide on them. Try it with the room from "Run it" open in a browser:
+
+```bash
+pnpm agent contract-42 "thirty days" "forty-five days"
+```
+
+The script joins the room, suggests the replacement, prints the receipt, and waits up to ten minutes
+(`AGENT_WAIT_MS`) for an editor to accept or reject it. Then it leaves. It reads `COLLABORATION_URL`, and uses
+`COLLABORATION_TOKEN` or signs a token with `COLLABORATION_AUTH_SECRET`, like `pnpm create-room`. Exit code `2`
+means the text was not found and nothing was changed.
+
+```text
+Review Agent joined contract-42.
+{"event":"suggested","find":"thirty days","replacement":"forty-five days","trackedChangeIds":["..."],...}
+{"event":"decision","decision":"resolved","trackedChangeIds":["..."]}
+Review Agent left contract-42.
+```
+
+In your own backend, use `joinAsAgent` directly:
+
+```ts
+const agent = await joinAsAgent({ serverUrl, documentId: 'contract-42', token: agentToken });
+try {
+  const suggestion = await agent.suggest('thirty days', 'forty-five days');
+  const decision = await agent.waitForDecision(suggestion);
+} finally {
+  await agent.leave();
+}
+```
+
+- **Identity.** The agent has two: the `sub` in its token, which your access check sees, and the SDK `user`
+  name and email, which editors see as the author of its tracked changes. Give each agent its own token,
+  scoped to the documents it works on.
+- **Edits.** `suggest` finds the text with `query.match` and replaces it with `changeMode: 'tracked'`, so a
+  person decides. It reads the document revision with `info()` before matching and passes it as
+  `expectedRevision`, so an editor's change between the match and the replace makes it match again instead of
+  replacing other words. Any [Document API](https://docs.superdoc.dev/document-api/mental-model) operation works the
+  same way on the open document.
+- **Receipts.** Every edit returns a [receipt](https://docs.superdoc.dev/document-api/receipts-and-errors).
+  `suggest` keeps the tracked change IDs from it, and `waitForDecision` checks them until they are gone from
+  `trackChanges.list`, then reports `resolved`, or `pending` if the wait ends first. A resolved change no longer
+  says whether it was accepted or rejected; read the document if the agent needs to know. If no tracked change
+  was made, `suggest` throws instead of reporting a suggestion nobody can review.
+- **Working without a browser.** The agent's connection does not depend on any editor. It can edit while
+  nobody has the document open. The room is stored as usual, and editors who join later see the suggestion.
+- **Leaving and rejoining.** An agent can leave and a new one can join the same room later with
+  `roomMode: 'join'`. It reads the room's current content, including what editors did while it was away.
+- **Cleanup.** `leave` closes the document without saving a local copy, because the room already has every
+  edit, then shuts down the SDK's engine process. It is safe to call more than once. Always call it, even after
+  an error, or the engine process keeps running.
+
+Each agent runs a full SuperDoc engine, like the DOCX autosave. While an agent is connected the room never
+empties, so the save on leave waits for the idle save. The agent does not appear in editors' participant lists,
+because the SDK does not publish presence. Editors see it through its tracked changes.
+
 ## Check it
 
 ```bash
@@ -293,4 +351,4 @@ pnpm test
 
 The tests start a real server and connect Yjs clients to it. They check that a room keeps its content after its
 last client leaves and after the server restarts, that only a valid token for the room's document gets in, and
-when DOCX files are saved. The DOCX tests use a stand-in for the Node SDK.
+when DOCX files are saved. The DOCX and agent tests use a stand-in for the Node SDK.

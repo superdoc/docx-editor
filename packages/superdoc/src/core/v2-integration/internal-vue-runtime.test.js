@@ -33,6 +33,19 @@ describe('packaged internal Vue selection', () => {
     expect(globalThis[key].peer).toBe(peer);
   });
 
+  it('forwards readonly refs while requiring an installed runtime for calls', async () => {
+    delete globalThis[key];
+    const runtime = await import('./internal-vue-runtime.js');
+    expect(typeof runtime.readonly).toBe('function');
+    expect(() => runtime.readonly({ value: false })).toThrow(/initialize SuperDoc/);
+    globalThis[key] = { vue: Vue };
+    const source = Vue.ref(false);
+    const read = runtime.readonly(source);
+    expect(Vue.isReadonly(read)).toBe(true);
+    source.value = true;
+    expect(read.value).toBe(true);
+  });
+
   it('wraps refs as readonly through the installed runtime', async () => {
     globalThis[key] = { vue: Vue };
     const runtime = await import('./internal-vue-runtime.js');

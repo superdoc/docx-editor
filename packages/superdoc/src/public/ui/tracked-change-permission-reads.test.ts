@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
 import { isAllowed } from '../../core/collaboration/permissions.js';
+import { SuperDoc } from '../../core/SuperDoc.js';
+import { createPinia } from 'pinia';
+import { useCommentsStore } from '../../stores/comments-store.js';
 import { createSuperDocUI } from './create-super-doc-ui.js';
 
 const change = { id: 'tc-1', type: 'insert', author: 'Alice' };
@@ -335,4 +338,224 @@ describe('SD-5713 unsupported range commands', () => {
     }
     expect(h.decide).not.toHaveBeenCalled();
   });
+});
+
+const builtInDecisionCases = ['editor', 'suggester', 'viewer'].flatMap((role) =>
+  [false, true].flatMap((isInternal) =>
+    ['own', 'other', 'unknown'].flatMap((ownership) =>
+      ['accept', 'reject'].map((decision) => ({ role, isInternal, ownership, decision })),
+    ),
+  ),
+);
+
+it.each(builtInDecisionCases)(
+  'SD-5951 preserves $role/$isInternal $ownership $decision before avoiding built-in comment hydration',
+  async ({ role, isInternal, ownership, decision }) => {
+    const row = { ...change, author: ownership === 'other' ? 'Bob' : 'Alice' };
+    const original = structuredClone(row);
+    const h = mount(async () => ({ items: [] }), ['tc-1'], ownership === 'unknown' ? [] : [row]);
+    const getValues = vi.fn(() => ({ commentId: 'context-row', author: 'Different stored author' }));
+    const getComment = vi.fn(() => ({ getValues }));
+    Object.assign(h.superdoc.config, { role, isInternal });
+    Object.assign(h.superdoc, {
+      canPerformPermission: SuperDoc.prototype.canPerformPermission,
+      commentsStore: { getComment },
+    });
+    h.refresh();
+    const expected = role === 'editor' || (role === 'suggester' && ownership === 'own' && decision === 'reject');
+    const command = h.ui.commands.get(`track-changes-${decision}-selection`);
+    expect(command.getState().enabled).toBe(expected);
+    if (!expected) expect(command.getState().reason).toBe('permission-denied');
+    const result = await h.ui.toolbar.execute(`track-changes-${decision}-selection`);
+    expect(result).toEqual(expected ? { success: true } : false);
+    expect(h.decide).toHaveBeenCalledTimes(expected ? 1 : 0);
+    if (expected) expect(h.decide).toHaveBeenCalledWith(expect.objectContaining({ decision }));
+    expect(h.list).not.toHaveBeenCalled();
+    expect(row).toEqual(original);
+    expect(h.ui.trackChanges.getSnapshot().items.map((item) => item.id)).toEqual(
+      ownership === 'unknown' ? [] : ['tc-1'],
+    );
+    expect(
+      getComment,
+      'The live built-in matrix must not hydrate comments after ownership classification',
+    ).not.toHaveBeenCalled();
+    expect(getValues).not.toHaveBeenCalled();
+  },
+);
+
+function builtInHarness(rows: unknown[] = [{ ...change }]) {
+  const h = mount(async () => ({ items: [] }), ['tc-1'], rows);
+  const storedComment = { commentId: 'context-row', author: 'Stored author' };
+  const getValues = vi.fn(() => storedComment);
+  const getComment = vi.fn(() => ({ getValues }));
+  Object.assign(h.superdoc.config, { role: 'editor', isInternal: false });
+  Object.assign(h.superdoc, {
+    canPerformPermission: SuperDoc.prototype.canPerformPermission,
+    commentsStore: { getComment },
+  });
+  return { ...h, storedComment, getValues, getComment };
+}
+
+it('SD-5951 re-evaluates ownership, user and policy on the same live instance', () => {
+  const h = builtInHarness();
+  const enabled = () => h.ui.commands.get('track-changes-reject-selection').getState().enabled;
+  Object.assign(h.superdoc.config, { role: 'suggester' });
+  h.refresh();
+  expect(enabled()).toBe(true);
+  h.setWindowItems([{ ...change, author: 'Bob' }]);
+  h.refresh();
+  expect(enabled()).toBe(false);
+  h.superdoc.config.user = { name: 'Bob' };
+  h.refresh();
+  expect(enabled()).toBe(true);
+  Object.assign(h.superdoc.config, { role: 'viewer', isInternal: true });
+  h.refresh();
+  expect(enabled()).toBe(false);
+  Object.assign(h.superdoc.config, { role: 'editor', isInternal: false });
+  h.refresh();
+  expect(enabled()).toBe(true);
+  expect(h.getComment).not.toHaveBeenCalled();
+  expect(h.getValues).not.toHaveBeenCalled();
+});
+
+it.each(['top-level', 'deprecated'] as const)('SD-5951 retains live %s custom context and removal', (location) => {
+  const row = { ...change };
+  const h = builtInHarness([row]);
+  const resolver = vi.fn(() => false);
+  const comments = { permissionResolver: resolver as (() => false) | undefined };
+  if (location === 'top-level') Object.assign(h.superdoc.config, { permissionResolver: resolver });
+  else Object.assign(h.superdoc.config, { modules: { comments } });
+  h.refresh();
+  expect(h.ui.commands.get('track-changes-reject-selection').getState().enabled).toBe(false);
+  expect(resolver).toHaveBeenCalled();
+  expect(h.getComment).toHaveBeenCalledWith('tc-1');
+  expect(h.getValues).toHaveBeenCalledTimes(h.getComment.mock.calls.length);
+  for (const [payload] of resolver.mock.calls as unknown as [Record<string, unknown>][]) {
+    expect(payload).toEqual({
+      permission: payload.permission,
+      role: 'editor',
+      isInternal: false,
+      defaultDecision: true,
+      comment: h.storedComment,
+      currentUser: h.superdoc.config.user,
+      superdoc: h.superdoc,
+      trackedChange: row,
+    });
+  }
+  if (location === 'top-level') Object.assign(h.superdoc.config, { permissionResolver: undefined });
+  else comments.permissionResolver = undefined;
+  h.getComment.mockClear();
+  h.getValues.mockClear();
+  h.refresh();
+  expect(h.ui.commands.get('track-changes-reject-selection').getState().enabled).toBe(true);
+  expect(h.getComment).not.toHaveBeenCalled();
+  expect(h.getValues).not.toHaveBeenCalled();
+});
+
+it('SD-5951 preserves the exact unbranded method payload and receiver after replacement', () => {
+  const h = builtInHarness();
+  h.refresh();
+  const receivers: unknown[] = [];
+  const method = vi.fn(function (this: unknown, payload: Record<string, unknown>) {
+    receivers.push(this);
+    return false;
+  });
+  Object.assign(h.superdoc, { canPerformPermission: method });
+  h.refresh();
+  expect(h.ui.commands.get('track-changes-reject-selection').getState().enabled).toBe(false);
+  expect(method).toHaveBeenCalled();
+  for (const [payload] of method.mock.calls) {
+    expect(payload).toEqual({ permission: payload.permission, trackedChange: change, comment: null });
+  }
+  expect(receivers.every((receiver) => receiver === h.superdoc)).toBe(true);
+});
+
+it.each(['known', 'unknown'] as const)('SD-5951 preserves %s custom throw and nonboolean semantics', (ownership) => {
+  const h = builtInHarness(ownership === 'known' ? [{ ...change }] : []);
+  Object.assign(h.superdoc.config, {
+    permissionResolver: () => {
+      throw new Error('policy failed');
+    },
+  });
+  h.refresh();
+  expect(h.ui.commands.get('track-changes-accept-selection').getState().enabled).toBe(ownership === 'known');
+  Object.assign(h.superdoc.config, { permissionResolver: () => undefined });
+  h.refresh();
+  expect(h.ui.commands.get('track-changes-accept-selection').getState().enabled).toBe(true);
+  expect(h.getComment).toHaveBeenCalled();
+});
+
+it.each(['own', 'inherited'] as const)(
+  'SD-5951 does not consume a live %s resolver accessor before hydration',
+  (placement) => {
+    const h = builtInHarness();
+    const events: string[] = [];
+    let reads = 0;
+    const resolver = vi.fn(() => {
+      events.push('decision');
+      return false;
+    });
+    h.getComment.mockImplementation(() => {
+      reads = 0;
+      events.push('comment');
+      return { getValues: h.getValues };
+    });
+    h.getValues.mockImplementation(() => {
+      events.push('values');
+      return h.storedComment;
+    });
+    const owner = placement === 'own' ? h.superdoc.config : Object.create(Object.getPrototypeOf(h.superdoc.config));
+    if (placement === 'inherited') Object.setPrototypeOf(h.superdoc.config, owner);
+    Object.defineProperty(owner, 'permissionResolver', {
+      configurable: true,
+      get() {
+        reads += 1;
+        events.push(`resolver-${reads}`);
+        return reads <= 2 ? resolver : undefined;
+      },
+    });
+    h.refresh();
+    expect(h.ui.commands.get('track-changes-accept-selection').getState().enabled).toBe(false);
+    expect(resolver).toHaveBeenCalled();
+    expect(events.length % 5).toBe(0);
+    for (let i = 0; i < events.length; i += 5) {
+      expect(events.slice(i, i + 5)).toEqual(['comment', 'values', 'resolver-1', 'resolver-2', 'decision']);
+    }
+  },
+);
+
+it('SD-5951 retains a live permission-method getter without an additional method read', () => {
+  const h = builtInHarness();
+  const events: string[] = [];
+  Object.defineProperty(h.superdoc, 'canPerformPermission', {
+    configurable: true,
+    get() {
+      events.push('method');
+      return SuperDoc.prototype.canPerformPermission;
+    },
+  });
+  h.getComment.mockImplementation(() => {
+    events.push('comment');
+    return { getValues: h.getValues };
+  });
+  h.getValues.mockImplementation(() => {
+    events.push('values');
+    return h.storedComment;
+  });
+  h.refresh();
+  expect(h.ui.commands.get('track-changes-accept-selection').getState().enabled).toBe(true);
+  expect(h.getComment).toHaveBeenCalled();
+  expect(events.length % 3).toBe(0);
+  for (let i = 0; i < events.length; i += 3) expect(events.slice(i, i + 3)).toEqual(['method', 'comment', 'values']);
+});
+
+it('SD-5951 reaches the built-in path with the real Pinia comments action', () => {
+  const h = builtInHarness();
+  const store = useCommentsStore(createPinia());
+  const getComment = vi.spyOn(store, 'getComment');
+  Object.assign(h.superdoc, { commentsStore: store });
+  h.refresh();
+  expect(h.ui.commands.get('track-changes-reject-selection').getState().enabled).toBe(true);
+  expect(Object.getOwnPropertyDescriptor(store, 'getComment')).toHaveProperty('value');
+  expect(getComment).not.toHaveBeenCalled();
 });

@@ -132,6 +132,8 @@ export type DomPainterPersistentPageInput = {
   documentBackground?: DocumentBackground | null;
   derivedRunTextPlane?: DerivedRunTextPlane | null;
   captureSnapshot?: boolean;
+  beforePageContentChange?: (pageIndex: number) => void;
+  onPageContentRetained?: (pageIndex: number) => void;
 };
 
 /** Shell registry entry: the persistent page root and its geometry/style reuse key. */
@@ -714,7 +716,10 @@ function reconcileContentWindow(
     ) {
       const remap = planWindowPositionRemap(entry.state, packet);
       if (remap.kind !== 'demote') {
-        refreshPageBreakReviewPlacements(entry.state, packet, ctx.contentContext.recordChangedRoot);
+        if (refreshDecorations) input.beforePageContentChange?.(pageIndex);
+        refreshPageBreakReviewPlacements(entry.state, packet, ctx.contentContext.recordChangedRoot, () =>
+          input.beforePageContentChange?.(pageIndex),
+        );
         for (const label of expectedSdtLabels) sdtLabelsRendered.add(label);
         let decorationsRefreshed = false;
         if (refreshDecorations) {
@@ -736,6 +741,7 @@ function reconcileContentWindow(
           ctx.work.contentUntouched += 1;
           ctx.recordPageWork('untouchedContentPageIndices', pageIndex);
         }
+        if (!decorationsRefreshed) input.onPageContentRetained?.(pageIndex);
         continue;
       }
       // Fall through: stamps matched but the drift is not provably uniform —
@@ -744,6 +750,7 @@ function reconcileContentWindow(
       ctx.recordPageWork('pmDemotedContentPageIndices', pageIndex);
     }
 
+    input.beforePageContentChange?.(pageIndex);
     if (entry) {
       const work = patchPage(ctx.contentContext, entry.state, packet, pageIndex);
       entry.versionKey = versionKey;
@@ -777,6 +784,7 @@ function reconcileContentWindow(
     if (!entry) continue;
     // Dehydrate only after every entering page is filled. Root identity,
     // attributes, order, geometry, and scroll extent remain untouched.
+    input.beforePageContentChange?.(pageIndex);
     dehydratePageContent(shell.element, entry.state);
     state.content.delete(pageIndex);
     stampContentPosture(shell.element, false);

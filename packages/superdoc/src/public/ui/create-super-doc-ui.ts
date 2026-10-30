@@ -1,4 +1,5 @@
 import { readViewportBatch } from './viewport-batch.js';
+import { readBuiltInTrackedChangePermissionDecision } from '../../core/collaboration/permissions.js';
 import { beginInteraction, recordInteraction } from '../../internal/diagnostics/interaction-history.js';
 /**
  * v2-native `createSuperDocUI` controller.
@@ -5815,11 +5816,14 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       for (const candidate of permissions) {
         let allowed: unknown;
         try {
-          allowed = canPerform.call(superdoc, {
-            permission: candidate,
-            trackedChange: trackedChange ?? { id },
-            comment: null,
-          });
+          const permissionChange = trackedChange ?? { id };
+          allowed =
+            readBuiltInTrackedChangePermissionDecision(superdoc, canPerform, candidate, permissionChange) ??
+            canPerform.call(superdoc, {
+              permission: candidate,
+              trackedChange: permissionChange,
+              comment: null,
+            });
         } catch {
           return trackedChange ? undefined : SUPERDOC_UI_REASONS.permissionDenied;
         }
@@ -10373,12 +10377,6 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
         ? { ...effectiveInput, keys: [...EFFECTIVE_INLINE_UNIFORMITY_KEYS, 'highlight'], includeCaret: true }
         : null,
     );
-    if (effective?.fontFamily?.state === 'mixed') {
-      delete inlinePatch.fontFamily;
-      delete inlinePatch.rFonts;
-      mixedInlineKeys.add('fontFamily');
-      mixedInlineKeys.add('rFonts');
-    }
     for (const [markName, patchKey] of Object.entries(MARK_TO_PATCH)) {
       const entry = effective?.[markName];
       if (!entry) continue;
@@ -10389,6 +10387,17 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
         delete inlinePatch[patchKey];
         mixedInlineKeys.add(patchKey);
       }
+    }
+
+    const fontFamily = effective?.fontFamily;
+    if (fontFamily?.state === 'uniform' && typeof fontFamily.value === 'string') {
+      inlinePatch.fontFamily = fontFamily.value;
+      mixedInlineKeys.delete('fontFamily');
+    } else if (fontFamily) {
+      delete inlinePatch.fontFamily;
+      delete inlinePatch.rFonts;
+      mixedInlineKeys.add('fontFamily');
+      mixedInlineKeys.add('rFonts');
     }
 
     // getNode may expose text-only runs. Resolve highlight absence explicitly

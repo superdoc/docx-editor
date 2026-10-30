@@ -96,6 +96,66 @@ const defaultDecisionFor = (permission, role, isInternal) => {
   return PERMISSION_MATRIX[permission]?.[internalExternal]?.includes(role) ?? false;
 };
 
+const NON_DATA_PERMISSION_PROPERTY = Symbol();
+
+const readPermissionDataProperty = (source, key) => {
+  if (source == null) return undefined;
+  if (typeof source !== 'object' && typeof source !== 'function') return NON_DATA_PERMISSION_PROPERTY;
+  for (let owner = source; owner !== null; owner = Object.getPrototypeOf(owner)) {
+    const descriptor = Object.getOwnPropertyDescriptor(owner, key);
+    if (descriptor) return 'value' in descriptor ? descriptor.value : NON_DATA_PERMISSION_PROPERTY;
+  }
+  return undefined;
+};
+
+export const readBuiltInTrackedChangePermissionDecision = (superdoc, canPerform, permission, trackedChange) => {
+  try {
+    if (
+      readPermissionDataProperty(superdoc, 'canPerformPermission') !== canPerform ||
+      readPermissionDataProperty(canPerform, BUILT_IN_PERMISSION_METHOD) !== true
+    ) {
+      return null;
+    }
+    const config = readPermissionDataProperty(superdoc, 'config');
+    if (!config || typeof config !== 'object') return null;
+    const role = readPermissionDataProperty(config, 'role');
+    const isInternal = readPermissionDataProperty(config, 'isInternal');
+    const user = readPermissionDataProperty(config, 'user');
+    const resolver = readPermissionDataProperty(config, 'permissionResolver');
+    const modules = readPermissionDataProperty(config, 'modules');
+    const comments = readPermissionDataProperty(modules, 'comments');
+    const deprecatedResolver = readPermissionDataProperty(comments, 'permissionResolver');
+    const commentsStore = readPermissionDataProperty(superdoc, 'commentsStore');
+    const getComment = readPermissionDataProperty(commentsStore, 'getComment');
+    const comment = readPermissionDataProperty(trackedChange, 'comment');
+    const commentId = readPermissionDataProperty(trackedChange, 'commentId');
+    const id = readPermissionDataProperty(trackedChange, 'id');
+    if (
+      [
+        role,
+        isInternal,
+        user,
+        resolver,
+        modules,
+        comments,
+        deprecatedResolver,
+        commentsStore,
+        getComment,
+        comment,
+        commentId,
+        id,
+      ].includes(NON_DATA_PERMISSION_PROPERTY) ||
+      typeof resolver === 'function' ||
+      typeof deprecatedResolver === 'function'
+    ) {
+      return null;
+    }
+    return defaultDecisionFor(permission, role, isInternal);
+  } catch {
+    return null;
+  }
+};
+
 /**
  * Resolve a client-side permission through the built-in matrix and optional
  * resolver.

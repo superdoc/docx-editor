@@ -115,10 +115,12 @@ function placePageBreakReviewMarkers(
   page: ResolvedPage,
   item?: ResolvedPaintItem,
   pageRoot?: HTMLElement,
+  beforePlacementChange?: () => void,
 ): boolean {
   const frame = item?.kind === 'fragment' ? item : fragment;
   const signature = [frame.x, frame.y, frame.width, page.width, page.height].join('|');
   if (pageBreakReviewClipSignatures.get(root) === signature) return false;
+  beforePlacementChange?.();
   const markers = Array.from(root.querySelectorAll<HTMLElement>(PAGE_BREAK_REVIEW_SELECTOR));
   const visibleMarkers = markers.filter(isVisiblePageBreakReviewMarker);
   if (pageRoot) {
@@ -181,6 +183,7 @@ export function refreshPageBreakReviewPlacements(
   state: PageDomState,
   page: ResolvedPage,
   recordChangedRoot?: (root: HTMLElement) => void,
+  beforePlacementChange?: () => void,
 ): void {
   const fragments = pageBreakReviewFragments.get(state.element);
   if (!fragments) return;
@@ -189,7 +192,8 @@ export function refreshPageBreakReviewPlacements(
       fragments.delete(root);
       continue;
     }
-    if (placePageBreakReviewMarkers(root, frame.fragment, page, frame.item)) recordChangedRoot?.(root);
+    if (placePageBreakReviewMarkers(root, frame.fragment, page, frame.item, undefined, beforePlacementChange))
+      recordChangedRoot?.(root);
   }
 }
 

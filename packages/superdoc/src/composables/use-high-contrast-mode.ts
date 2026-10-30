@@ -17,11 +17,13 @@ export function createHighContrastMode(): HighContrastMode {
   };
 }
 
-const HIGH_CONTRAST_OFF: HighContrastMode = {
-  isHighContrastMode: readonly(ref(false)),
-  setHighContrastMode: () => {},
-};
+function createHighContrastOff(): HighContrastMode {
+  return {
+    isHighContrastMode: readonly(ref(false)),
+    setHighContrastMode: () => {},
+  };
+}
 
 export function useHighContrastMode(): HighContrastMode {
-  return inject(HIGH_CONTRAST_MODE_KEY, HIGH_CONTRAST_OFF);
+  return inject(HIGH_CONTRAST_MODE_KEY, createHighContrastOff, true);
 }

@@ -5,6 +5,7 @@ import { useSuperdocStore } from '@superdoc/stores/superdoc-store';
 import { syncCommentsToClients } from '../core/collaboration/helpers.js';
 import useComment, { COMMENT_RECONCILIATION_TOKEN } from '@superdoc/components/CommentsLayer/use-comment';
 import { DOCUMENT_EDITOR_SELECTION_SOURCE } from '../helpers/selection-source.js';
+import { isFiniteNumber } from '../helpers/is-finite-number.js';
 import { buildFloatingCommentInstances } from './helpers/floating-comment-instances.js';
 import {
   isSyntheticTrackedChangeCommentLaneItem,
@@ -95,10 +96,8 @@ const normalizeTrackedChangeImagePreview = (preview) => {
   const contentType =
     typeof preview.contentType === 'string' && preview.contentType.startsWith('image/') ? preview.contentType : null;
   const role = typeof preview.role === 'string' ? preview.role : null;
-  const width =
-    typeof preview.width === 'number' && Number.isFinite(preview.width) && preview.width > 0 ? preview.width : null;
-  const height =
-    typeof preview.height === 'number' && Number.isFinite(preview.height) && preview.height > 0 ? preview.height : null;
+  const width = isFiniteNumber(preview.width) && preview.width > 0 ? preview.width : null;
+  const height = isFiniteNumber(preview.height) && preview.height > 0 ? preview.height : null;
   const alt = typeof preview.alt === 'string' && preview.alt.length > 0 ? preview.alt : 'Tracked image preview';
   return {
     src,

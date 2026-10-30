@@ -1315,18 +1315,14 @@ watch(allPositions, (positions) => {
   const activePosition = activeCommentInstanceId.value
     ? positions.find((position) => position.id === activeCommentInstanceId.value)
     : null;
-  const activeAnchorTop =
-    typeof activePosition?.anchorTop === 'number' && Number.isFinite(activePosition.anchorTop)
-      ? activePosition.anchorTop
-      : null;
+  const activeAnchorTop = isFiniteNumber(activePosition?.anchorTop) ? activePosition.anchorTop : null;
   const sameActiveInstance = activeCommentInstanceId.value === prevActiveInstanceId;
   const activeAnchorMoved =
     sameActiveInstance &&
     activeAnchorTop != null &&
     prevActiveAnchorTop != null &&
     Math.abs(activeAnchorTop - prevActiveAnchorTop) > 1;
-  const activeLayoutTop =
-    typeof activePosition?.top === 'number' && Number.isFinite(activePosition.top) ? activePosition.top : null;
+  const activeLayoutTop = isFiniteNumber(activePosition?.top) ? activePosition.top : null;
   const activeLayoutMoved =
     sameActiveInstance &&
     activeLayoutTop != null &&

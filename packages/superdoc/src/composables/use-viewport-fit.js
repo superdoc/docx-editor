@@ -1,6 +1,7 @@
 import { onBeforeUnmount, nextTick, watch } from 'vue';
 import { DOCX, PDF } from '@superdoc/common';
 import { PDF_TO_CSS_UNITS } from '@superdoc/core/pdf/helpers/constants.js';
+import { isFiniteNumber } from '../helpers/is-finite-number.js';
 
 const CSS_PX_PER_INCH = 96;
 const SIDEBAR_SELECTOR = '.superdoc__right-sidebar';
@@ -18,14 +19,10 @@ export const FIT_WIDTH_DEFAULTS = Object.freeze({
 // min/max are reordered if swapped.
 export const resolveFitWidthOptions = (rawFitConfig) => {
   const raw = rawFitConfig && typeof rawFitConfig === 'object' ? rawFitConfig : {};
-  const positiveOr = (value, fallback) =>
-    typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : fallback;
+  const positiveOr = (value, fallback) => (isFiniteNumber(value) && value > 0 ? value : fallback);
   const min = positiveOr(raw.min, FIT_WIDTH_DEFAULTS.min);
   const max = positiveOr(raw.max, FIT_WIDTH_DEFAULTS.max);
-  const padding =
-    typeof raw.padding === 'number' && Number.isFinite(raw.padding) && raw.padding >= 0
-      ? raw.padding
-      : FIT_WIDTH_DEFAULTS.padding;
+  const padding = isFiniteNumber(raw.padding) && raw.padding >= 0 ? raw.padding : FIT_WIDTH_DEFAULTS.padding;
 
   return {
     min: Math.min(min, max),
@@ -77,13 +74,13 @@ export const normalizePdfPageMeasurement = (measured, scaleFactor, zoomFactor) =
 const resolveV2WidestPageWidth = (snapshot) => {
   if (!snapshot || typeof snapshot !== 'object') return 0;
   const published = snapshot.widestPageWidthPx;
-  if (typeof published === 'number' && Number.isFinite(published)) return published;
+  if (isFiniteNumber(published)) return published;
   let widestPage = 0;
   const pages = snapshot.pages;
   if (Array.isArray(pages)) {
     for (const page of pages) {
       const width = page?.base?.widthPx;
-      if (typeof width === 'number' && Number.isFinite(width) && width > widestPage) {
+      if (isFiniteNumber(width) && width > widestPage) {
         widestPage = width;
       }
     }
@@ -107,7 +104,7 @@ export const resolveEditorPageWidth = (editor) => {
     if (Array.isArray(pages)) {
       for (const page of pages) {
         const width = page?.size?.w;
-        if (typeof width === 'number' && Number.isFinite(width) && width > widestPage) {
+        if (isFiniteNumber(width) && width > widestPage) {
           widestPage = width;
         }
       }
@@ -124,7 +121,7 @@ export const resolveEditorPageWidth = (editor) => {
     pageStyles = null;
   }
   const pageWidthInches = pageStyles?.pageSize?.width;
-  if (typeof pageWidthInches === 'number' && Number.isFinite(pageWidthInches) && pageWidthInches > 0) {
+  if (isFiniteNumber(pageWidthInches) && pageWidthInches > 0) {
     return pageWidthInches * CSS_PX_PER_INCH;
   }
   return null;

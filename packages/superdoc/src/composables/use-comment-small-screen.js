@@ -5,11 +5,12 @@ import {
   DEFAULT_COMMENTS_SIDEBAR_LANE_PX,
   DEFAULT_DOCUMENT_VISIBLE_MIN_WIDTH_PX,
 } from '../helpers/comment-small-screen.js';
+import { isFiniteNumber } from '../helpers/is-finite-number.js';
 
 const SUPERDOC_DOCUMENT_SELECTOR = '.superdoc__document';
 
 const isValidCompactBreakpoint = (value) => {
-  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
+  return isFiniteNumber(value) && value >= 0;
 };
 const getRequiredSidebarWidth = (documentWidth) => {
   return documentWidth + DEFAULT_COMMENTS_SIDEBAR_LANE_PX + DEFAULT_COMMENTS_MIN_GUTTER_PX;

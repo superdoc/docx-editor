@@ -30,6 +30,7 @@
  *
  */
 import { SUPERDOC_UI_REASONS, type SuperDocUIReason } from './reasons.js';
+import { isFiniteNumber } from '../../helpers/is-finite-number.js';
 
 /**
  * The original v2-native command ids. These are the historically stable
@@ -335,7 +336,7 @@ export function normalizeZoomPayload(payload: unknown): unknown {
     if (!Number.isFinite(parsed)) return payload;
     return normalizeNumber(parsed, isPercent);
   }
-  if (typeof payload === 'number' && Number.isFinite(payload)) {
+  if (isFiniteNumber(payload)) {
     return normalizeNumber(payload, false);
   }
   return payload;

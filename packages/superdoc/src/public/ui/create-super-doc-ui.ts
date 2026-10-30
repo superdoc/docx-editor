@@ -1702,7 +1702,7 @@ function normalizeLayoutFontFamily(value: unknown): string | undefined {
 
 /** Convert a resolved run font size in CSS px to the toolbar's point value (SD-3652). */
 function normalizeLayoutFontSizePt(value: unknown): string | undefined {
-  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return undefined;
+  if (!isFiniteNumber(value) || value <= 0) return undefined;
   const pt = Math.round(value * 0.75 * 2) / 2;
   if (pt <= 0) return undefined;
   return String(pt);
@@ -2577,7 +2577,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     if (!pending || !(method in pending)) return undefined;
     const value = pending[method];
     if (typeof value === 'string' && value !== '') return value;
-    if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+    if (isFiniteNumber(value)) return String(value);
     return undefined;
   };
 
@@ -6973,7 +6973,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
 
   /** Validate normalized payloads before invoking public SuperDoc-instance methods. */
   const instanceCommandPayloadIsValid = (descriptor: CommandDescriptor, payload: unknown): boolean => {
-    if (descriptor.id === 'zoom') return typeof payload === 'number' && Number.isFinite(payload) && payload > 0;
+    if (descriptor.id === 'zoom') return isFiniteNumber(payload) && payload > 0;
     if (descriptor.id === 'document-mode') {
       return payload === 'editing' || payload === 'suggesting' || payload === 'viewing';
     }
@@ -7393,9 +7393,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     const familyValue = state.toolbar.commands['font-family']?.value;
     const sizeValue = state.toolbar.commands['font-size']?.value;
     const hadFamily = typeof familyValue === 'string' && familyValue.length > 0;
-    const hadSize =
-      (typeof sizeValue === 'string' && sizeValue.length > 0) ||
-      (typeof sizeValue === 'number' && Number.isFinite(sizeValue));
+    const hadSize = (typeof sizeValue === 'string' && sizeValue.length > 0) || isFiniteNumber(sizeValue);
     return (hadFamily && projected.fontFamily === undefined) || (hadSize && projected.fontSize === undefined);
   };
 
@@ -12505,7 +12503,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     x: unknown,
     y: unknown,
   ): { container: HTMLElement; elements: Element[]; x: number; y: number } | null => {
-    if (typeof x !== 'number' || typeof y !== 'number' || !Number.isFinite(x) || !Number.isFinite(y)) return null;
+    if (!isFiniteNumber(x) || !isFiniteNumber(y)) return null;
     // The DOM `document` is reached through `globalThis.document` because the
     // local `document: DocumentHandle` shadows it for type-checking. Guard SSR /
     // non-browser stubs explicitly so the call doesn't throw without a DOM.
@@ -13540,7 +13538,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     const record = result && typeof result === 'object' ? (result as LooseRecord) : null;
     if (!record) return null;
     const matches = Array.isArray(record.matches) ? record.matches : [];
-    const total = typeof record.total === 'number' && Number.isFinite(record.total) ? record.total : matches.length;
+    const total = isFiniteNumber(record.total) ? record.total : matches.length;
     const activeIndex =
       typeof record.activeMatchIndex === 'number'
         ? record.activeMatchIndex

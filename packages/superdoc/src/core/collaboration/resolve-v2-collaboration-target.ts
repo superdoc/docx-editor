@@ -1,5 +1,6 @@
 import { DOCX } from '@superdoc/common';
 import type { DocumentCollaborationConfig, HocuspocusRetryOptions } from '../types/index.js';
+import { isFiniteNumber } from '../../helpers/is-finite-number.js';
 
 /**
  * Centralized v2 collaboration target resolver.
@@ -198,7 +199,7 @@ function normalizeRoomMode(value: unknown): 'join' | 'create' | null {
 
 function normalizeSyncTimeoutMs(value: unknown): number | null | undefined {
   if (value === undefined) return undefined;
-  return typeof value === 'number' && Number.isFinite(value) && value > 0 && value <= 2_147_483_647 ? value : null;
+  return isFiniteNumber(value) && value > 0 && value <= 2_147_483_647 ? value : null;
 }
 
 function withSyncTimeout(

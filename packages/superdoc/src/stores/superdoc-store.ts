@@ -7,6 +7,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { useCommentsStore } from './comments-store';
 import { getFileObject, DOCX, PDF, HTML } from '@superdoc/common';
 import { normalizeDocumentEntry } from '../core/helpers/file.js';
+import { isFiniteNumber } from '../helpers/is-finite-number.js';
 import useDocument from '../composables/use-document.js';
 import BlankDOCX from '@superdoc/common/data/blank.docx?url';
 import type {
@@ -147,7 +148,7 @@ export const useSuperdocStore = defineStore('superdoc', () => {
     // the first paint renders directly at the configured zoom.
     if (config.zoom?.initial !== undefined) {
       const initialZoom = config.zoom.initial;
-      if (typeof initialZoom === 'number' && Number.isFinite(initialZoom) && initialZoom > 0) {
+      if (isFiniteNumber(initialZoom) && initialZoom > 0) {
         activeZoom.value = initialZoom;
       } else {
         console.warn('[SuperDoc] zoom.initial expects a positive number representing percentage');

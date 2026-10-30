@@ -284,8 +284,8 @@ const CLICK_OUTSIDE_HIT_SAMPLE_OFFSETS = [
 const TRACKED_CHANGE_PREVIEW_MAX_PX = 90;
 
 const trackedChangeImagePreviewStyle = (preview: DialogComment['trackedChangeImagePreview']) => {
-  const width = typeof preview?.width === 'number' && Number.isFinite(preview.width) ? preview.width : null;
-  const height = typeof preview?.height === 'number' && Number.isFinite(preview.height) ? preview.height : null;
+  const width = isFiniteNumber(preview?.width) ? preview.width : null;
+  const height = isFiniteNumber(preview?.height) ? preview.height : null;
   if (!width || !height || width <= 0 || height <= 0) return {};
   const scale = Math.min(TRACKED_CHANGE_PREVIEW_MAX_PX / width, TRACKED_CHANGE_PREVIEW_MAX_PX / height, 1);
   return {

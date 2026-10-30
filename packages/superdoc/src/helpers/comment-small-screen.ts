@@ -1,5 +1,6 @@
 import type { CommentsLayout, CommentsResponsiveConfig } from '../core/types/index.js';
 import { isPlainObject } from './object-guards.js';
+import { isFiniteNumber } from './is-finite-number.ts';
 
 export const COMPACT_ANCHOR_SELECTOR = '[data-track-change-id], .superdoc-comment-highlight, .sd-comment-anchor';
 
@@ -62,9 +63,7 @@ export function normalizeCommentsUiConfig(
   else normalized.compactMeasurementSelector = deprecatedTarget;
 
   const deprecatedBreakpoint = commentsConfig.compactBreakpointPx;
-  if (
-    !(typeof deprecatedBreakpoint === 'number' && Number.isFinite(deprecatedBreakpoint) && deprecatedBreakpoint >= 0)
-  ) {
+  if (!(isFiniteNumber(deprecatedBreakpoint) && deprecatedBreakpoint >= 0)) {
     delete normalized.compactBreakpointPx;
   }
 
@@ -75,7 +74,7 @@ export function normalizeCommentsUiConfig(
 
   const normalizedResponsive: CommentsResponsiveConfig = {};
   if (target !== undefined) normalizedResponsive.target = target;
-  if (typeof breakpoint === 'number' && Number.isFinite(breakpoint) && breakpoint >= 0) {
+  if (isFiniteNumber(breakpoint) && breakpoint >= 0) {
     normalizedResponsive.breakpoint = breakpoint;
   }
   if (Object.keys(normalizedResponsive).length > 0) normalized.responsive = normalizedResponsive;

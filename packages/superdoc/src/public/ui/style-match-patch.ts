@@ -1,4 +1,5 @@
 import type { FormatReadSelectionResult, InlineRunPatchKey, StylesStyleRunPatch } from '@superdoc/document-api';
+import { isFiniteNumber } from '../../helpers/is-finite-number.js';
 
 export const STYLE_MATCH_KEYS = [
   ['bold', 'bold'],
@@ -42,7 +43,7 @@ function toStyleValue(key: InlineRunPatchKey, value: unknown): unknown {
     case 'color':
       return typeof value === 'string' && value.length > 0 ? { val: value.replace(/^#/, '') } : null;
     case 'fontSize':
-      return typeof value === 'number' && Number.isFinite(value) ? Math.round(value * 2) : null;
+      return isFiniteNumber(value) ? Math.round(value * 2) : null;
     case 'rFonts':
       return fontsValue(value);
     default:

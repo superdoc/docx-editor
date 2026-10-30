@@ -43,6 +43,7 @@ import { normalizeInteractionConfig } from './config/normalize-interaction-confi
 import { normalizeSurfacesConfig } from './config/normalize-surfaces-config.js';
 import { warnForMissingDocumentFonts } from './helpers/font-diagnostics.js';
 import { normalizeCommentsUiConfig } from '../helpers/comment-small-screen.js';
+import { isFiniteNumber } from '../helpers/is-finite-number.js';
 import { EditorRuntimeRegistry } from './editor-runtime/editor-runtime-registry.js';
 import type { EditorRuntimeFocusOptions } from './editor-runtime/types.js';
 import { createBuiltInToolbar } from '../internal/toolbar/index.js';
@@ -3681,7 +3682,7 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
    * superdoc.setZoom(50);  // Set zoom to 50%
    */
   setZoom(percent: number) {
-    if (typeof percent !== 'number' || !Number.isFinite(percent) || percent <= 0) {
+    if (!isFiniteNumber(percent) || percent <= 0) {
       console.warn('[SuperDoc] setZoom expects a positive number representing percentage');
       return;
     }

@@ -3,6 +3,7 @@ import { ref, computed, watch, markRaw } from 'vue';
 import { floor } from '../../core/pdf/helpers/floor';
 import { readFileAsArrayBuffer } from '../../core/pdf/helpers/read-file';
 import { OUTPUT_SCALE } from '../../core/pdf/helpers/constants';
+import { isFiniteNumber } from '../../helpers/is-finite-number.js';
 import { PDFAdapterFactory, createPDFConfig } from '../../core/pdf/pdf-adapter';
 import PdfViewerDocument from './PdfViewerDocument.vue';
 
@@ -54,11 +55,7 @@ const pdf = ref(null);
 const pages = ref([]);
 // Zoom scale, seeded from the host's initial zoom (rounded the same way
 // updateScale rounds) so the first render already matches getZoom().
-const scale = ref(
-  typeof props.initialScale === 'number' && Number.isFinite(props.initialScale) && props.initialScale > 0
-    ? floor(props.initialScale, 2)
-    : 1,
-);
+const scale = ref(isFiniteNumber(props.initialScale) && props.initialScale > 0 ? floor(props.initialScale, 2) : 1);
 const totalPages = ref(0);
 const renderedPages = ref(0);
 

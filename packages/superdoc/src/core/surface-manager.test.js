@@ -114,7 +114,9 @@ describe('SurfaceManager', () => {
       const m = createManager({
         resolver: () => ({ type: 'none' }),
       });
-      expect(() => m.open({ kind: 'suppressed', mode: 'dialog' })).toThrow(/explicitly suppressed/);
+      expect(() => m.open({ kind: 'suppressed', mode: 'dialog' })).toThrow(
+        'resolver explicitly suppressed surface for kind "suppressed"',
+      );
     });
 
     it('falls through when resolver returns null', () => {
@@ -122,7 +124,7 @@ describe('SurfaceManager', () => {
         resolver: () => null,
       });
       // No built-in registry — should throw "no renderer resolved"
-      expect(() => m.open({ kind: 'unknown', mode: 'dialog' })).toThrow(/no renderer resolved/);
+      expect(() => m.open({ kind: 'unknown', mode: 'dialog' })).toThrow('no renderer resolved for kind "unknown"');
     });
 
     it('falls through when resolver returns undefined', () => {

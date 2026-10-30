@@ -41,7 +41,7 @@ const withTempPackage = (manifest, run) => {
  * shape can be asserted without touching a registry. Pack calls create a stub
  * file so the caller's real filesystem handling still runs.
  */
-const recordingEffects = ({ packOutput = 'package.tgz', deprecation = '' } = {}) => {
+const recordingEffects = ({ packOutput = 'package.tgz' } = {}) => {
   const calls = [];
   return {
     calls,
@@ -50,7 +50,7 @@ const recordingEffects = ({ packOutput = 'package.tgz', deprecation = '' } = {})
     },
     runCapture: (command, args) => {
       calls.push([command, ...args]);
-      if (args[0] === 'view' && args[2] === 'deprecated') return deprecation ? JSON.stringify(deprecation) : '';
+      if (args[0] === 'deprecate') return '';
       const destIndex = args.indexOf('--pack-destination');
       if (destIndex !== -1) {
         writeFileSync(path.join(args[destIndex + 1], packOutput), 'stub');
@@ -360,38 +360,76 @@ test('deprecation targets one exact version, never a range', () => {
   assert.equal(call[3], 'Moved to @superdoc/fonts');
 });
 
-test('a resumed mirror release skips an already matching deprecation', () => {
+test('mirror deprecation does not query metadata after npm accepts the publish', () => {
   const message = 'Moved to @superdoc/fonts';
-  const effects = recordingEffects({ deprecation: message });
+  const effects = recordingEffects();
+  const runCapture = effects.runCapture;
+  effects.runCapture = (command, args) => {
+    if (args[0] === 'view') throw new Error('E404 No match found for version 0.4.1');
+    return runCapture(command, args);
+  };
   deprecateVersion({ packageName: '@superdoc-dev/fonts', version: '0.4.1', message, effects, logger: silent });
-  assert.equal(effects.calls.some((call) => call[1] === 'deprecate'), false);
-  assert.deepEqual(effects.calls[0].slice(0, 5), ['npm', 'view', '@superdoc-dev/fonts@0.4.1', 'deprecated', '--json']);
+  assert.deepEqual(effects.calls, [
+    ['npm', 'deprecate', '@superdoc-dev/fonts@0.4.1', message, '--registry', 'https://registry.npmjs.org'],
+  ]);
 });
 
-test('a different mirror deprecation is updated', () => {
-  const effects = recordingEffects({ deprecation: 'Old message' });
-  deprecateVersion({ packageName: '@superdoc-dev/fonts', version: '0.4.1', message: 'New message', effects, logger: silent });
-  assert.ok(effects.calls.some((call) => call[1] === 'deprecate' && call[3] === 'New message'));
-});
-
-for (const failure of [new Error('E403 registry lookup denied'), new Error('ETIMEDOUT registry lookup')]) {
-  test(`mirror deprecation does not hide a failed metadata read: ${failure.message}`, () => {
+for (const failure of [new Error('E403 registry write denied'), new Error('ETIMEDOUT registry write')]) {
+  test(`mirror deprecation does not hide a failed command: ${failure.message}`, () => {
     const effects = recordingEffects();
-    effects.runCapture = () => { throw failure; };
+    effects.runCapture = (command, args) => {
+      effects.calls.push([command, ...args]);
+      throw failure;
+    };
     assert.throws(() => deprecateVersion({
       packageName: '@superdoc-dev/fonts', version: '0.4.1', message: 'Moved', effects, logger: silent,
     }), error => error === failure);
-    assert.equal(effects.calls.length, 0);
+    assert.deepEqual(effects.calls, [
+      ['npm', 'deprecate', '@superdoc-dev/fonts@0.4.1', 'Moved', '--registry', 'https://registry.npmjs.org'],
+    ]);
   });
 }
 
-test('mirror deprecation refuses malformed registry metadata', () => {
+test('mirror deprecation retries the command when npm metadata is still propagating', () => {
   const effects = recordingEffects();
-  effects.runCapture = () => 'not JSON';
+  const waits = [];
+  effects.runCapture = (command, args) => {
+    effects.calls.push([command, ...args]);
+    if (effects.calls.length <= 2) {
+      throw Object.assign(new Error('npm command failed'), { stderr: 'npm error code E404' });
+    }
+    return '';
+  };
+  effects.run = effects.runCapture;
+
+  deprecateVersion({
+    packageName: '@superdoc-dev/fonts', version: '0.4.1', message: 'Moved', effects, logger: silent,
+    waitForNextAttempt: delay => waits.push(delay),
+  });
+
+  assert.deepEqual(waits, [30_000, 30_000]);
+  assert.deepEqual(effects.calls, Array.from({ length: 3 }, () => [
+    'npm', 'deprecate', '@superdoc-dev/fonts@0.4.1', 'Moved', '--registry', 'https://registry.npmjs.org',
+  ]));
+});
+
+test('mirror deprecation stops retrying when npm keeps returning 404', () => {
+  const effects = recordingEffects();
+  const failure = Object.assign(new Error('npm command failed'), { stderr: 'npm error code E404' });
+  const waits = [];
+  effects.runCapture = (command, args) => {
+    effects.calls.push([command, ...args]);
+    throw failure;
+  };
+  effects.run = effects.runCapture;
+
   assert.throws(() => deprecateVersion({
     packageName: '@superdoc-dev/fonts', version: '0.4.1', message: 'Moved', effects, logger: silent,
-  }), SyntaxError);
-  assert.equal(effects.calls.length, 0);
+    waitForNextAttempt: delay => waits.push(delay),
+  }), error => error === failure);
+
+  assert.equal(effects.calls.length, 11);
+  assert.deepEqual(waits, Array(10).fill(30_000));
 });
 
 // --- resume safety -----------------------------------------------------------

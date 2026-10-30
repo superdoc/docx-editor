@@ -36,6 +36,7 @@ const path = require('node:path');
 const {
   defaultEffects,
   defaultRegistry,
+  isVersionLookupNotFoundError,
   makeChecksumLookup,
   makeRegistryLookup,
   rootDir,
@@ -413,22 +414,24 @@ const deprecateVersion = ({
   message,
   effects = defaultEffects,
   logger = console,
+  waitForNextAttempt = (delayMs) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delayMs),
 }) => {
-  const current = effects.runCapture(
-    'npm',
-    ['view', `${packageName}@${version}`, 'deprecated', '--json', '--registry', defaultRegistry()],
-    rootDir,
-  ).trim();
-  if (current && JSON.parse(current) === message) {
-    logger.log(`${packageName}@${version} already has the requested deprecation.`);
-    return;
-  }
   logger.log(`Deprecating ${packageName}@${version}...`);
-  effects.run(
-    'npm',
-    ['deprecate', `${packageName}@${version}`, message, '--registry', defaultRegistry()],
-    rootDir,
-  );
+  for (let attempt = 1; attempt <= 11; attempt += 1) {
+    try {
+      const output = effects.runCapture(
+        'npm',
+        ['deprecate', `${packageName}@${version}`, message, '--registry', defaultRegistry()],
+        rootDir,
+      );
+      if (output) logger.log(output);
+      return;
+    } catch (error) {
+      if (!isVersionLookupNotFoundError(error) || attempt === 11) throw error;
+      logger.log(`${packageName}@${version} is not visible to npm deprecate yet; retrying in 30 seconds (${attempt}/11).`);
+      waitForNextAttempt(30_000);
+    }
+  }
 };
 
 /**

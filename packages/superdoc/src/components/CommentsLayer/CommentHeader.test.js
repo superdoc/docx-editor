@@ -399,6 +399,27 @@ describe('CommentHeader.vue', () => {
     });
   });
 
+  describe('when allowResolve is omitted from a writable config', () => {
+    beforeEach(() => {
+      isAllowedMock = vi.fn(
+        (permission) => permission === PERMISSIONS.RESOLVE_OWN || permission === PERMISSIONS.RESOLVE_OTHER,
+      );
+    });
+
+    it('offers resolve and emits it on click', async () => {
+      const wrapper = mountHeader({
+        currentUser: { id: 'alice-id', email: 'shared@example.com', name: 'Alice' },
+        comment: makeComment(),
+        config: { readOnly: false },
+      });
+
+      const resolve = wrapper.find('[data-comment-action="resolve"]');
+      expect(resolve.exists()).toBe(true);
+      await resolve.trigger('click');
+      expect(wrapper.emitted('resolve')).toHaveLength(1);
+    });
+  });
+
   describe('reopen affordance (row 864)', () => {
     beforeEach(() => {
       // Reopen reuses the resolve permission; allow it for these cases.

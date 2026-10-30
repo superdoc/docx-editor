@@ -512,6 +512,56 @@ describe('CommentDialog', () => {
     });
   });
 
+  describe('when allowResolve is omitted from the comments config', () => {
+    const prepare = (overrides = {}) => {
+      commentsStore.init({ readOnly: false });
+      delete commentsStore.getConfig.allowResolve;
+      superdocStub.activeEditor.editorVersion = 2;
+      superdocStub.activeEditor.v2Comments = {
+        getCapabilityState: vi.fn(() => ({ canWrite: true })),
+        setActiveComment: vi.fn(),
+      };
+      const comment = useComment({
+        commentId: 'comment-allow-resolve-omitted',
+        fileId: 'doc-1',
+        commentText: 'Open',
+        ...overrides,
+      });
+      commentsStore.commentsList = [comment];
+      return comment;
+    };
+
+    it('resolves the comment through the store', async () => {
+      const comment = prepare();
+      expect(commentsStore.getConfig).not.toHaveProperty('allowResolve');
+      const resolve = vi.spyOn(commentsStore, 'resolveCommentV2').mockResolvedValue({ ok: true });
+
+      const wrapper = mountDialog(comment);
+      try {
+        wrapper.findComponent({ name: 'CommentHeader' }).vm.$emit('resolve');
+        await flushPromises();
+        expect(resolve).toHaveBeenCalledWith({ superdoc: superdocStub, commentId: comment.commentId });
+      } finally {
+        wrapper.unmount();
+      }
+    });
+
+    it('reopens the resolved comment through the store', async () => {
+      const comment = prepare({ resolvedTime: Date.now() });
+      expect(commentsStore.getConfig).not.toHaveProperty('allowResolve');
+      const reopen = vi.spyOn(commentsStore, 'reopenCommentV2').mockResolvedValue({ ok: true });
+
+      const wrapper = mountDialog(comment);
+      try {
+        wrapper.findComponent({ name: 'CommentHeader' }).vm.$emit('reopen');
+        await flushPromises();
+        expect(reopen).toHaveBeenCalledWith({ superdoc: superdocStub, commentId: comment.commentId });
+      } finally {
+        wrapper.unmount();
+      }
+    });
+  });
+
   describe('v2 edit completion ownership', () => {
     const deferred = () => {
       let resolve;

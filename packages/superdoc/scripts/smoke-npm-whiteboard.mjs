@@ -9,6 +9,9 @@ const require = createRequire(import.meta.url);
 const { npmDistRoot } = require('./build-output-paths.cjs');
 
 const dom = new JSDOM('<!doctype html><div id="host"></div>', { pretendToBeVisual: true });
+dom.window.HTMLCanvasElement.prototype.getContext = function getInertCanvas2dContext(contextType) {
+  return contextType === '2d' ? createInertCanvas2dContext(this) : null;
+};
 for (const key of Object.getOwnPropertyNames(dom.window)) {
   if (!(key in globalThis)) {
     try {
@@ -32,6 +35,7 @@ for (const [format, load] of Object.entries(entries)) {
     const container = document.createElement('div');
     document.body.appendChild(container);
     whiteboard.getPage(0).mount(container);
+    if (!container.querySelector('.konvajs-content canvas')) throw new Error('mount produced no Konva canvas');
   } catch (error) {
     failures.push(`${format}: ${error.message}`);
   }
@@ -45,6 +49,16 @@ if (failures.length > 0) {
 
 console.log('[smoke-npm-whiteboard] ES and CommonJS builds mount a whiteboard page');
 process.exit(0);
+
+function createInertCanvas2dContext(canvas) {
+  const ignoreDrawingCall = () => undefined;
+  return new Proxy(
+    { canvas },
+    {
+      get: (state, key) => (key in state || typeof key !== 'string' ? state[key] : ignoreDrawingCall),
+    },
+  );
+}
 
 async function waitFor(read) {
   const deadline = Date.now() + 5_000;

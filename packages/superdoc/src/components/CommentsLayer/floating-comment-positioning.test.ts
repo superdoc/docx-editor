@@ -10,13 +10,13 @@ import {
 
 describe('floating comment positioning', () => {
   it('keeps ordinary comments anchored at their document position', () => {
-    expect(normalizeFloatingAnchorTop(-240, { commentId: 'c-1' })).toBe(-240);
-    expect(normalizeFloatingAnchorTop(80, { commentId: 'c-1' })).toBe(80);
+    expect(normalizeFloatingAnchorTop(-240)).toBe(-240);
+    expect(normalizeFloatingAnchorTop(80)).toBe(80);
   });
 
   it('keeps tracked-change cards scroll-coupled to their document anchor', () => {
-    expect(normalizeFloatingAnchorTop(-240, { commentId: 'tc-1', trackedChange: true })).toBe(-240);
-    expect(normalizeFloatingAnchorTop(80, { commentId: 'tc-1', trackedChange: true })).toBe(80);
+    expect(normalizeFloatingAnchorTop(-240)).toBe(-240);
+    expect(normalizeFloatingAnchorTop(80)).toBe(80);
   });
 
   it('detects anchors outside the floating viewport', () => {
@@ -31,7 +31,6 @@ describe('floating comment positioning', () => {
   it('keeps all review cards at offscreen anchors instead of collision-packing them into view', () => {
     expect(
       shouldKeepFloatingCardAtAnchor({
-        comment: { commentId: 'tc-1', trackedChange: true },
         anchorTop: -24,
         anchorBottom: -4,
         viewportTop: 0,
@@ -40,7 +39,6 @@ describe('floating comment positioning', () => {
     ).toBe(true);
     expect(
       shouldKeepFloatingCardAtAnchor({
-        comment: { commentId: 'tc-1', trackedChange: true },
         anchorTop: 120,
         anchorBottom: 140,
         viewportTop: 0,
@@ -49,7 +47,6 @@ describe('floating comment positioning', () => {
     ).toBe(false);
     expect(
       shouldKeepFloatingCardAtAnchor({
-        comment: { commentId: 'c-1' },
         anchorTop: -24,
         anchorBottom: -4,
         viewportTop: 0,
@@ -61,7 +58,6 @@ describe('floating comment positioning', () => {
   it('positions persistent review cards outside the viewport once their anchors are fully offscreen', () => {
     expect(
       resolveOffscreenFloatingCardTop({
-        comment: { commentId: 'tc-1', trackedChange: true },
         anchorTop: -26,
         anchorBottom: -8,
         cardHeight: 92,
@@ -71,7 +67,6 @@ describe('floating comment positioning', () => {
     ).toBe(-93);
     expect(
       resolveOffscreenFloatingCardTop({
-        comment: { commentId: 'tc-1', trackedChange: true },
         anchorTop: 621,
         anchorBottom: 640,
         cardHeight: 92,
@@ -81,12 +76,29 @@ describe('floating comment positioning', () => {
     ).toBe(621);
     expect(
       resolveOffscreenFloatingCardTop({
-        comment: { commentId: 'tc-1', trackedChange: true },
         anchorTop: -10,
         anchorBottom: 8,
         cardHeight: 92,
         viewportTop: 0,
         viewportBottom: 620,
+      }),
+    ).toBeNull();
+  });
+
+  it.each([
+    ['anchorTop', { anchorTop: Number.NaN }],
+    ['viewportTop', { viewportTop: undefined }],
+    ['cardHeight', { cardHeight: null }],
+    ['cardHeight as Infinity', { cardHeight: Number.POSITIVE_INFINITY }],
+  ])('leaves an offscreen card unpositioned when %s is not a finite number', (_label, override) => {
+    expect(
+      resolveOffscreenFloatingCardTop({
+        anchorTop: -26,
+        anchorBottom: -8,
+        cardHeight: 92,
+        viewportTop: 0,
+        viewportBottom: 620,
+        ...override,
       }),
     ).toBeNull();
   });
@@ -97,7 +109,6 @@ describe('floating comment positioning', () => {
         id: 'c-1',
         visibleIds: new Set(),
         activeCommentInstanceId: null,
-        comment: { commentId: 'c-1' },
       }),
     ).toBe(false);
     expect(
@@ -105,7 +116,6 @@ describe('floating comment positioning', () => {
         id: 'c-1',
         visibleIds: new Set(['c-1']),
         activeCommentInstanceId: null,
-        comment: { commentId: 'c-1' },
       }),
     ).toBe(true);
     expect(
@@ -113,7 +123,6 @@ describe('floating comment positioning', () => {
         id: 'c-1',
         visibleIds: new Set(),
         activeCommentInstanceId: 'c-1',
-        comment: { commentId: 'c-1' },
       }),
     ).toBe(true);
     expect(
@@ -121,7 +130,6 @@ describe('floating comment positioning', () => {
         id: 'pending',
         visibleIds: new Set(),
         activeCommentInstanceId: null,
-        comment: { commentId: 'pending' },
       }),
     ).toBe(true);
   });
@@ -135,7 +143,6 @@ describe('floating comment positioning', () => {
         id,
         visibleIds,
         activeCommentInstanceId,
-        comment: { commentId: id, trackedChange: true },
       }),
     ).length;
 

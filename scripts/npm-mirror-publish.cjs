@@ -414,6 +414,15 @@ const deprecateVersion = ({
   effects = defaultEffects,
   logger = console,
 }) => {
+  const current = effects.runCapture(
+    'npm',
+    ['view', `${packageName}@${version}`, 'deprecated', '--json', '--registry', defaultRegistry()],
+    rootDir,
+  ).trim();
+  if (current && JSON.parse(current) === message) {
+    logger.log(`${packageName}@${version} already has the requested deprecation.`);
+    return;
+  }
   logger.log(`Deprecating ${packageName}@${version}...`);
   effects.run(
     'npm',

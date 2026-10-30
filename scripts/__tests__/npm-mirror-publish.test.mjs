@@ -41,7 +41,7 @@ const withTempPackage = (manifest, run) => {
  * shape can be asserted without touching a registry. Pack calls create a stub
  * file so the caller's real filesystem handling still runs.
  */
-const recordingEffects = ({ packOutput = 'package.tgz' } = {}) => {
+const recordingEffects = ({ packOutput = 'package.tgz', deprecation = '' } = {}) => {
   const calls = [];
   return {
     calls,
@@ -50,6 +50,7 @@ const recordingEffects = ({ packOutput = 'package.tgz' } = {}) => {
     },
     runCapture: (command, args) => {
       calls.push([command, ...args]);
+      if (args[0] === 'view' && args[2] === 'deprecated') return deprecation ? JSON.stringify(deprecation) : '';
       const destIndex = args.indexOf('--pack-destination');
       if (destIndex !== -1) {
         writeFileSync(path.join(args[destIndex + 1], packOutput), 'stub');
@@ -359,6 +360,40 @@ test('deprecation targets one exact version, never a range', () => {
   assert.equal(call[3], 'Moved to @superdoc/fonts');
 });
 
+test('a resumed mirror release skips an already matching deprecation', () => {
+  const message = 'Moved to @superdoc/fonts';
+  const effects = recordingEffects({ deprecation: message });
+  deprecateVersion({ packageName: '@superdoc-dev/fonts', version: '0.4.1', message, effects, logger: silent });
+  assert.equal(effects.calls.some((call) => call[1] === 'deprecate'), false);
+  assert.deepEqual(effects.calls[0].slice(0, 5), ['npm', 'view', '@superdoc-dev/fonts@0.4.1', 'deprecated', '--json']);
+});
+
+test('a different mirror deprecation is updated', () => {
+  const effects = recordingEffects({ deprecation: 'Old message' });
+  deprecateVersion({ packageName: '@superdoc-dev/fonts', version: '0.4.1', message: 'New message', effects, logger: silent });
+  assert.ok(effects.calls.some((call) => call[1] === 'deprecate' && call[3] === 'New message'));
+});
+
+for (const failure of [new Error('E403 registry lookup denied'), new Error('ETIMEDOUT registry lookup')]) {
+  test(`mirror deprecation does not hide a failed metadata read: ${failure.message}`, () => {
+    const effects = recordingEffects();
+    effects.runCapture = () => { throw failure; };
+    assert.throws(() => deprecateVersion({
+      packageName: '@superdoc-dev/fonts', version: '0.4.1', message: 'Moved', effects, logger: silent,
+    }), error => error === failure);
+    assert.equal(effects.calls.length, 0);
+  });
+}
+
+test('mirror deprecation refuses malformed registry metadata', () => {
+  const effects = recordingEffects();
+  effects.runCapture = () => 'not JSON';
+  assert.throws(() => deprecateVersion({
+    packageName: '@superdoc-dev/fonts', version: '0.4.1', message: 'Moved', effects, logger: silent,
+  }), SyntaxError);
+  assert.equal(effects.calls.length, 0);
+});
+
 // --- resume safety -----------------------------------------------------------
 
 const withTarball = (contents, run) => {
@@ -548,6 +583,7 @@ const runPublishWithMirror = ({
     runCapture: (command, args) => {
       calls.push([command, ...args]);
       if (args[0] === 'view') {
+        if (args[2] === 'deprecated') return '';
         const spec = args[1];
         if (!published.has(spec)) {
           const error = new Error('E404 Not found');

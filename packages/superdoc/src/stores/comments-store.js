@@ -4088,8 +4088,10 @@ export const useCommentsStore = defineStore('comments', () => {
                   !Number.isSafeInteger(previousVersion) ||
                   previousVersion < 1 ||
                   version <= previousVersion ||
-                  getTrackedChangeStoryKey(row) !==
-                    parseTrackedChangeAnchorKey(params.trackedChangeAnchorKey)?.storyKey ||
+                  normalizeTrackedChangeStoryKey(getTrackedChangeStoryKey(row)) !==
+                    normalizeTrackedChangeStoryKey(
+                      parseTrackedChangeAnchorKey(params.trackedChangeAnchorKey)?.storyKey,
+                    ) ||
                   row.trackedChangeType !== params.trackedChangeType ||
                   row.trackedChangeDisplayType !== params.trackedChangeDisplayType
                 )
@@ -4107,8 +4109,10 @@ export const useCommentsStore = defineStore('comments', () => {
                 row.trackedChangeCanonicalId === params.trackedChangeCanonicalId &&
                 row.trackedChangeType === params.trackedChangeType &&
                 row.trackedChangeDisplayType === params.trackedChangeDisplayType &&
-                getTrackedChangeStoryKey(row) ===
-                  parseTrackedChangeAnchorKey(params.trackedChangeAnchorKey)?.storyKey &&
+                normalizeTrackedChangeStoryKey(getTrackedChangeStoryKey(row)) ===
+                  normalizeTrackedChangeStoryKey(
+                    parseTrackedChangeAnchorKey(params.trackedChangeAnchorKey)?.storyKey,
+                  ) &&
                 !row.resolvedTime &&
                 !row.resolvedById &&
                 !row.resolvedByEmail &&

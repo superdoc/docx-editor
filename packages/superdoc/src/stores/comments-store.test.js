@@ -4418,6 +4418,97 @@ describe('comments-store committed review-window apply', () => {
     expect(patch).not.toHaveBeenCalled();
     expect(store.commentsList).toHaveLength(0);
   });
+
+  describe('header rows stored with a legacy story key', () => {
+    const headerStory = { kind: 'story', storyType: 'headerFooterPart', refId: 'rId-header' };
+
+    function headerParams(id, canonicalId, text) {
+      return {
+        event: 'add',
+        changeId: id,
+        documentId: 'doc-1',
+        trackedChangeCanonicalId: canonicalId,
+        trackedChangeText: text,
+        trackedChangeType: 'trackInsert',
+        trackedChangeDisplayType: 'insert',
+        trackedChangeStory: headerStory,
+        trackedChangeStoryKind: 'headerFooter',
+        trackedChangeStoryLabel: 'Header/Footer (rId-header)',
+        trackedChangeAnchorKey: `tc::hf:rId-header::${id}`,
+      };
+    }
+
+    function storeHeaderRow(id, storedAnchorKey, canonicalId, text) {
+      const row = useComment({
+        commentId: id,
+        fileId: 'doc-1',
+        trackedChange: true,
+        trackedChangeText: text,
+        trackedChangeType: 'trackInsert',
+        trackedChangeDisplayType: 'insert',
+        trackedChangeStory: headerStory,
+        trackedChangeAnchorKey: storedAnchorKey,
+        trackedChangeCanonicalId: canonicalId,
+        commentText: '',
+      });
+      store.commentsList = [row];
+      return row;
+    }
+
+    function publishHeader(params, version, rowVersion) {
+      return publishTracked(
+        [params],
+        trackedPublication([params], version, { rowVersions: { [params.changeId]: rowVersion } }),
+      );
+    }
+
+    it.each([
+      ['tc::hf:rId-header::hf-change'],
+      ['tc::hf:part:rId-header::hf-change'],
+      ['tc::headerFooterPart:rId-header::hf-change'],
+    ])('adopts a newer canonical identity for a header row stored as %s', (storedAnchorKey) => {
+      storeHeaderRow('hf-change', storedAnchorKey, 'canonical-old', 'old header text');
+
+      expect(publishHeader(headerParams('hf-change', 'canonical-new', 'v1 text'), 1, 1).ok).toBe(true);
+      expect(publishHeader(headerParams('hf-change', 'canonical-new', 'v2 text'), 2, 2).ok).toBe(true);
+
+      expect(store.commentsList).toHaveLength(1);
+      expect(store.commentsList[0]).toMatchObject({
+        commentId: 'hf-change',
+        trackedChangeCanonicalId: 'canonical-new',
+        trackedChangeText: 'v2 text',
+        trackedChangeAnchorKey: 'tc::hf:rId-header::hf-change',
+      });
+    });
+
+    it.each([['tc::hf:part:rId-other::hf-change'], ['tc::body::hf-change']])(
+      'leaves a row stored as %s untouched by a publication for another story',
+      (storedAnchorKey) => {
+        const row = storeHeaderRow('hf-change', storedAnchorKey, 'canonical-old', 'old header text');
+
+        expect(publishHeader(headerParams('hf-change', 'canonical-new', 'v1 text'), 1, 1).ok).toBe(true);
+        expect(publishHeader(headerParams('hf-change', 'canonical-new', 'v2 text'), 2, 2).ok).toBe(true);
+
+        expect(row.trackedChangeCanonicalId).toBe('canonical-old');
+        expect(row.trackedChangeText).toBe('old header text');
+        expect(row.trackedChangeAnchorKey).toBe(storedAnchorKey);
+      },
+    );
+
+    it.each([['tc::hf:rId-header::hf-same'], ['tc::hf:part:rId-header::hf-same']])(
+      'refreshes an unchanged-version header row stored as %s without losing it',
+      (storedAnchorKey) => {
+        const row = storeHeaderRow('hf-same', storedAnchorKey, 'canonical', 'header text');
+
+        expect(publishHeader(headerParams('hf-same', 'canonical', 'header text'), 1, 1).ok).toBe(true);
+        expect(publishHeader(headerParams('hf-same', 'canonical', 'header text'), 2, 1).ok).toBe(true);
+
+        expect(store.commentsList).toHaveLength(1);
+        expect(store.commentsList[0]).toBe(row);
+        expect(row.trackedChangeAnchorKey).toBe('tc::hf:rId-header::hf-same');
+      },
+    );
+  });
 });
 
 describe('comments-store pending selection event snapshots', () => {

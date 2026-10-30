@@ -4233,7 +4233,6 @@ describe('comments-store committed review-window apply', () => {
       ['doc-1', 'doc-1'],
       ['doc-2', 'doc-2'],
     ]);
-    expect(store.getCommentsByPosition.parentComments.map((row) => row.fileId)).toEqual(['doc-1', 'doc-2']);
   });
 
   it('publishes tracked and comment rows in one Pinia patch with no intermediate family state', () => {

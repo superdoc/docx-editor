@@ -170,7 +170,6 @@ type DialogCommentsStoreRefs = {
   pendingComment: Ref<CommentModel | null>;
   currentCommentText: Ref<string>;
   currentCommentMentions: Ref<CommentModel['mentions']>;
-  isDebugging?: Ref<boolean>;
   editingCommentId: Ref<string | null | undefined>;
   editorCommentPositions: Ref<Record<string, PositionEntry | undefined>>;
   isCommentHighlighted: Ref<boolean>;
@@ -256,7 +255,6 @@ const {
   pendingComment,
   currentCommentText,
   currentCommentMentions,
-  isDebugging,
   editingCommentId,
   editorCommentPositions,
   isCommentHighlighted,
@@ -1849,18 +1847,12 @@ watch(isV2WriteDisabled, (isDisabled) => {
         <!-- Show the comment text, unless we enter edit mode, then show an input and update buttons -->
         <div class="card-section comment-body" v-if="!comment.trackedChange">
           <div
-            v-if="!isDebugging && !isEditingThisComment(comment)"
+            v-if="!isEditingThisComment(comment)"
             class="comment"
             :class="index === 0 ? bodyOverflowClass : undefined"
             :ref="index === 0 ? setParentBodyRef : undefined"
             v-html="renderedCommentTexts.get(comment.commentId)"
           ></div>
-          <div v-else-if="isDebugging && !isEditingThisComment(comment)" class="comment">
-            {{
-              editorCommentPositions[String(comment.importedId !== undefined ? comment.importedId : comment.commentId)]
-                ?.bounds
-            }}
-          </div>
           <div v-else class="reply-expanded">
             <div class="reply-input-wrapper">
               <CommentInput

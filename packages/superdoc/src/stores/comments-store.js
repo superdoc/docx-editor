@@ -88,12 +88,10 @@ export const useCommentsStore = defineStore('comments', () => {
     trackChangesVisible: false,
   });
 
-  const isDebugging = false;
   const debounceTimers = {};
   const trackedChangeResolutionSnapshots = new WeakMap();
 
   const isBenchmarkCommentsDebugEnabled = () => {
-    if (isDebugging) return true;
     if (typeof window === 'undefined') return false;
     return '__labsSuperDocV2BenchmarkDebug' in window;
   };
@@ -108,16 +106,12 @@ export const useCommentsStore = defineStore('comments', () => {
   };
 
   const COMMENT_EVENTS = comments_module_events;
-  const hasInitializedComments = ref(false);
   const hasSyncedCollaborationComments = ref(false);
   const commentsParentElement = ref(null);
   const hasInitializedLocations = ref(false);
   const activeComment = ref(null);
   const activeFloatingCommentInstanceId = ref(null);
   const editingCommentId = ref(null);
-  const commentDialogs = ref([]);
-  const overlappingComments = ref([]);
-  const overlappedIds = new Set([]);
   const suppressInternalExternal = ref(true);
   const currentCommentText = ref('');
   const currentCommentMentions = ref([]);
@@ -153,8 +147,6 @@ export const useCommentsStore = defineStore('comments', () => {
   // Floating comments
   const floatingCommentsOffset = ref(0);
   const committedReviewPresentations = shallowRef({});
-  const sortedConversations = ref([]);
-  const visibleConversations = ref([]);
   const skipSelectionUpdate = ref(false);
   const isFloatingCommentsReady = ref(false);
   const generalCommentIds = ref([]);
@@ -1210,28 +1202,6 @@ export const useCommentsStore = defineStore('comments', () => {
   };
 
   /**
-   * Get the numeric position value for sorting a comment by document order.
-   * Checks multiple position properties to handle different editor position schemas
-   * (e.g., ProseMirror uses from/to, other editors may use start/pos).
-   *
-   * @param {Object} comment - The comment object
-   * @returns {number|null} The position value, or null if not found
-   */
-  const getPositionSortValue = (comment) => {
-    const position = resolveCommentPositionEntry(comment).entry;
-    if (!position) return null;
-    // Check different position properties to handle various editor position schemas
-    if (Number.isFinite(position.start)) return position.start;
-    if (Number.isFinite(position.pos)) return position.pos;
-    if (Number.isFinite(position.from)) return position.from;
-    if (Number.isFinite(position.to)) return position.to;
-    if (Number.isFinite(position.pageIndex) && Number.isFinite(position?.bounds?.top)) {
-      return position.pageIndex * 1_000_000 + position.bounds.top;
-    }
-    return null;
-  };
-
-  /**
    * Comparator that sorts comments by creation time (ascending).
    *
    * @param {Object} a - First comment
@@ -1239,28 +1209,6 @@ export const useCommentsStore = defineStore('comments', () => {
    * @returns {number} Comparison result
    */
   const compareByCreatedTime = (a, b) => (a.createdTime ?? 0) - (b.createdTime ?? 0);
-
-  /**
-   * Comparator that sorts comments by document position (ascending).
-   * Comments without positions are sorted after those with positions.
-   * Falls back to creation time when positions are equal or unavailable.
-   *
-   * @param {Object} a - First comment
-   * @param {Object} b - Second comment
-   * @returns {number} Comparison result
-   */
-  const compareByPosition = (a, b) => {
-    const posA = getPositionSortValue(a);
-    const posB = getPositionSortValue(b);
-
-    const hasA = Number.isFinite(posA);
-    const hasB = Number.isFinite(posB);
-
-    if (hasA && hasB && posA !== posB) return posA - posB;
-    if (hasA && !hasB) return -1;
-    if (!hasA && hasB) return 1;
-    return compareByCreatedTime(a, b);
-  };
 
   /**
    * Generate the comments list separating resolved and active.
@@ -1345,10 +1293,6 @@ export const useCommentsStore = defineStore('comments', () => {
       false,
   );
 
-  /** @type {import('vue').ComputedRef<{parentComments: Array, resolvedComments: Array}>} Comments grouped and sorted by document position */
-  const getCommentsByPosition = computed(() => buildGroupedComments(compareByPosition));
-
-  const hasOverlapId = (id) => overlappedIds.includes(id);
   const documentsWithConverations = computed(() => {
     return superdocStore.documents;
   });
@@ -1356,16 +1300,6 @@ export const useCommentsStore = defineStore('comments', () => {
   const getConfig = computed(() => {
     return commentsConfig;
   });
-
-  const getCommentLocation = (selection, parent) => {
-    const containerBounds = selection.getContainerLocation(parent);
-    const top = containerBounds.top + selection.selectionBounds.top;
-    const left = containerBounds.left + selection.selectionBounds.left;
-    return {
-      top: top,
-      left: left,
-    };
-  };
 
   /**
    * Get a new pending comment
@@ -4492,15 +4426,10 @@ export const useCommentsStore = defineStore('comments', () => {
 
   return {
     COMMENT_EVENTS,
-    isDebugging,
-    hasInitializedComments,
     hasSyncedCollaborationComments,
     editingCommentId,
     activeComment,
     activeFloatingCommentInstanceId,
-    commentDialogs,
-    overlappingComments,
-    overlappedIds,
     suppressInternalExternal,
     pendingComment,
     currentCommentText,
@@ -4520,8 +4449,6 @@ export const useCommentsStore = defineStore('comments', () => {
     // Floating comments
     floatingCommentsOffset,
     committedReviewPresentations,
-    sortedConversations,
-    visibleConversations,
     skipSelectionUpdate,
     isFloatingCommentsReady,
     instantSidebarAlignmentTargetY,
@@ -4533,7 +4460,6 @@ export const useCommentsStore = defineStore('comments', () => {
     getGroupedComments,
     getGroupedReviewDirectory,
     hasOpenTrackedChanges,
-    getCommentsByPosition,
     getFloatingComments,
     getFloatingCommentInstances,
     getCommentAliasIds,
@@ -4555,8 +4481,6 @@ export const useCommentsStore = defineStore('comments', () => {
     setViewingVisibility,
     getComment,
     setActiveComment,
-    getCommentLocation,
-    hasOverlapId,
     getPendingComment,
     showAddComment,
     addComment,

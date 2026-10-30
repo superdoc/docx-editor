@@ -8,6 +8,7 @@ import type {
   TablesSetCellPaddingInput,
   TablesSetLayoutInput,
   TablesSetTableOptionsInput,
+  TablesSortInput,
   TableBorderSpec,
   TableStyleOptionsPatch,
 } from '../types/table-operations.types.js';
@@ -246,6 +247,21 @@ export function executeTablesSetLayoutOp<TResult>(
 ): TResult {
   validateTablesSetLayoutInput(input);
   return adapter(input, normalizeMutationOptions(options));
+}
+
+export function executeTablesSortOp<TResult>(
+  adapter: (input: TablesSortInput, options?: MutationOptions) => TResult,
+  input: TablesSortInput,
+  options?: MutationOptions,
+): TResult {
+  if (input.skipHeaderRows !== undefined && (!Number.isSafeInteger(input.skipHeaderRows) || input.skipHeaderRows < 0)) {
+    throw new DocumentApiValidationError(
+      'INVALID_ARGUMENT',
+      'tables.sort: skipHeaderRows must be a nonnegative safe integer.',
+      { field: 'skipHeaderRows', value: input.skipHeaderRows },
+    );
+  }
+  return executeTableLocatorOp('tables.sort', adapter, input, options);
 }
 
 export function executeRowLocatorOp<TInput extends RowLocatorInput, TResult>(

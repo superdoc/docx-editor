@@ -4,12 +4,50 @@ import {
   executeTablesApplyStyle,
   executeTablesSetBorders,
   executeTablesSetTableOptions,
+  executeTablesSortOp,
   normalizeTablesSplitInput,
 } from './tables.js';
 import { DocumentApiValidationError } from '../errors.js';
+import type { TablesSortInput } from '../types/table-operations.types.js';
 
 const MOCK_ADAPTER = mock(() => ({ success: true }));
 const nodeId = 'table-1';
+
+describe('executeTablesSortOp', () => {
+  const keys: TablesSortInput['keys'] = [{ columnIndex: 0, direction: 'ascending', type: 'text' }];
+
+  for (const skipHeaderRows of [undefined, 0, 2, Number.MAX_SAFE_INTEGER]) {
+    it(`forwards skipHeaderRows ${String(skipHeaderRows)} and normalized mutation options`, () => {
+      const adapter = mock(() => ({ success: true }));
+      const input = { nodeId, keys, skipHeaderRows };
+      expect(executeTablesSortOp(adapter, input, { dryRun: true })).toEqual({ success: true });
+      expect(adapter).toHaveBeenCalledWith(input, { changeMode: 'direct', dryRun: true });
+    });
+  }
+
+  for (const skipHeaderRows of [-1, 0.5, NaN, Infinity, -Infinity, Number.MAX_SAFE_INTEGER + 1, '2', null, true]) {
+    it(`rejects invalid skipHeaderRows ${String(skipHeaderRows)} before the adapter`, () => {
+      const adapter = mock(() => ({ success: true }));
+      const input = { nodeId, keys, skipHeaderRows } as unknown as Parameters<typeof executeTablesSortOp>[1];
+      expect(() => executeTablesSortOp(adapter, input)).toThrow(DocumentApiValidationError);
+      try {
+        executeTablesSortOp(adapter, input);
+      } catch (error) {
+        expect(error).toMatchObject({ code: 'INVALID_ARGUMENT', message: expect.stringContaining('skipHeaderRows') });
+      }
+      expect(adapter).not.toHaveBeenCalled();
+    });
+  }
+
+  it('retains locator validation and existing empty-key forwarding', () => {
+    const adapter = mock(() => ({ success: false }));
+    expect(() => executeTablesSortOp(adapter, { keys })).toThrow('requires a target');
+    expect(adapter).not.toHaveBeenCalled();
+    const input = { nodeId, keys: [] } as unknown as Parameters<typeof executeTablesSortOp>[1];
+    expect(executeTablesSortOp(adapter, input)).toEqual({ success: false });
+    expect(adapter).toHaveBeenCalledWith(input, { changeMode: 'direct', dryRun: false, expectedRevision: undefined });
+  });
+});
 
 describe('normalizeTablesSplitInput', () => {
   it('passes through canonical rowIndex unchanged', () => {

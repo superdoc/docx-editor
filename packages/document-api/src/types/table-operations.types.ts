@@ -420,6 +420,7 @@ export interface TablesSortKey {
 
 export interface TablesSortInput extends TableLocator {
   keys: [TablesSortKey, ...TablesSortKey[]];
+  skipHeaderRows?: number;
 }
 
 export interface TablesSetAltTextInput extends TableLocator {

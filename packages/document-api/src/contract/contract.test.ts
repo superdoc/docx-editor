@@ -107,6 +107,21 @@ function expectBroadSDFragmentSchema(schema: ContractTestSchemaShape | undefined
 }
 
 describe('document-api contract catalog', () => {
+  it('publishes optional exact sort header exclusion without a schema default', () => {
+    const input = buildInternalContractSchemas().operations['tables.sort'].input as ContractTestSchemaShape;
+    expect(input.required).not.toContain('skipHeaderRows');
+    expect(input.properties?.skipHeaderRows).toMatchObject({
+      type: 'integer',
+      minimum: 0,
+      maximum: Number.MAX_SAFE_INTEGER,
+    });
+    expect(input.properties?.skipHeaderRows).not.toHaveProperty('default');
+    expect(input.properties?.skipHeaderRows).toHaveProperty(
+      'description',
+      expect.stringContaining('overriding automatic detection'),
+    );
+    expect(OPERATION_DEFINITIONS['tables.sort'].metadata.throws.preApply).toContain('INVALID_ARGUMENT');
+  });
   it('derives legacy tracked booleans from the canonical support level', () => {
     for (const operationId of OPERATION_IDS) {
       const metadata = OPERATION_DEFINITIONS[operationId].metadata;

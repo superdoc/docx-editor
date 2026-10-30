@@ -9328,6 +9328,13 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
         {
           target: tableAddressSchema,
           nodeId: { type: 'string' },
+          skipHeaderRows: {
+            type: 'integer',
+            minimum: 0,
+            maximum: Number.MAX_SAFE_INTEGER,
+            description:
+              'Exclude exactly this many leading rows, overriding automatic detection even when smaller than the repeating-header prefix. Omit to preserve the contiguous prefix of enabled repeating-header rows. Zero sorts all rows; the row count is a no-op; a larger count returns a nonmutating INVALID_TARGET failure receipt. Malformed counts throw INVALID_ARGUMENT before the adapter. Repetition flags and styling remain unchanged.',
+          },
           keys: {
             type: 'array',
             items: objectSchema(

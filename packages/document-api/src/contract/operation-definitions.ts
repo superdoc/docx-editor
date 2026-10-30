@@ -3819,7 +3819,8 @@ export const OPERATION_DEFINITIONS = {
   // -------------------------------------------------------------------------
   'tables.sort': {
     memberPath: 'tables.sort',
-    description: 'Sort table rows by a column value.',
+    description:
+      'Sort table rows by column values, preserving the leading repeating-header prefix unless skipHeaderRows specifies an exact override. Repetition flags and styling remain attached to their rows. Collaborative sessions reject structural table rewrites without mutation.',
     expectedResult: 'Returns a TableMutationResult receipt confirming rows were reordered.',
     requiresDocumentContext: true,
     metadata: mutationOperation({
@@ -3827,7 +3828,7 @@ export const OPERATION_DEFINITIONS = {
       supportsDryRun: true,
       trackedSupport: 'never',
       possibleFailureCodes: ['INVALID_TARGET'],
-      throws: T_NOT_FOUND_COMMAND,
+      throws: [...T_NOT_FOUND_COMMAND, 'INVALID_ARGUMENT'],
     }),
     referenceDocPath: 'tables/sort.mdx',
     referenceGroup: 'tables',

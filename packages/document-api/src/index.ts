@@ -516,6 +516,7 @@ import type { ExportToDocxInput, ExportToDocxResult } from './export/export.type
 import {
   executeTableLocatorOp,
   executeTablesSetLayoutOp,
+  executeTablesSortOp,
   executeRowLocatorOp,
   executeCellOrTableScopedCellLocatorOp,
   executeDocumentLevelTableOp,
@@ -3383,7 +3384,7 @@ export function createDocumentApi(adapters: DocumentApiAdapters): DocumentApi {
         );
       },
       sort(input, options?) {
-        return executeTableLocatorOp('tables.sort', adapters.tables.sort.bind(adapters.tables), input, options);
+        return executeTablesSortOp(adapters.tables.sort.bind(adapters.tables), input, options);
       },
       setAltText(input, options?) {
         return executeTableLocatorOp(

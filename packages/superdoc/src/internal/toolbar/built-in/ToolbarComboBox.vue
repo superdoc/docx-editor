@@ -17,7 +17,7 @@ interface ComboBoxOption {
 
 interface ComboBoxItem {
   id?: Ref<string>;
-  name?: Ref<string>;
+  name: Ref<string>;
   label?: Ref<string | number | null | undefined>;
   disabled?: Ref<boolean | undefined>;
   attributes?: Ref<{ ariaLabel?: string } | undefined>;

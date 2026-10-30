@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
 import { mount } from '@vue/test-utils';
-import { nextTick } from 'vue';
+import { defineComponent, h, nextTick } from 'vue';
 import ButtonGroup from './ButtonGroup.vue';
 import { useToolbarItem } from './use-toolbar-item.js';
 import { TOOLBAR_FONTS, TOOLBAR_FONT_SIZES } from './constants.js';
@@ -377,5 +377,82 @@ describe('ButtonGroup overflow menu', () => {
       }),
     );
     expect(document.body.querySelector('.sd-toolbar-overflow-menu')).not.toBeNull();
+  });
+});
+
+describe('ButtonGroup roving keyboard navigation', () => {
+  const makeButtons = () =>
+    ['bold', 'italic'].map((name) =>
+      useToolbarItem({ type: 'button', name, command: name, defaultLabel: name, attributes: { ariaLabel: name } }),
+    );
+  const containers = () => [...document.body.querySelectorAll('.sd-toolbar-item-ctn')];
+  const press = (target, key, init = {}) =>
+    target.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...init }));
+
+  it('moves the roving tabindex between items with ArrowRight and ArrowLeft', () => {
+    mountGroup(makeButtons());
+    const [first, second] = containers();
+
+    first.focus();
+    press(first, 'ArrowRight');
+    expect(document.activeElement).toBe(second);
+    expect(first.getAttribute('tabindex')).toBe('-1');
+    expect(second.getAttribute('tabindex')).toBe('0');
+
+    press(second, 'ArrowLeft');
+    expect(document.activeElement).toBe(first);
+    expect(second.getAttribute('tabindex')).toBe('-1');
+    expect(first.getAttribute('tabindex')).toBe('0');
+
+    press(first, 'ArrowLeft');
+    expect(document.activeElement).toBe(first);
+  });
+
+  it('hands Tab to the first enabled item of the next group and Shift+Tab back to the previous group', () => {
+    const firstGroupItems = makeButtons();
+    const secondGroupItems = ['underline', 'strike'].map((name, index) =>
+      useToolbarItem({
+        type: 'button',
+        name,
+        command: name,
+        defaultLabel: name,
+        disabled: index === 0,
+        attributes: { ariaLabel: name },
+      }),
+    );
+    const groupProps = (toolbarItems) => ({ toolbarItems, overflowItems: [], position: 'left' });
+    wrapper = mount(
+      defineComponent({
+        render: () =>
+          h('div', [h(ButtonGroup, groupProps(firstGroupItems)), h(ButtonGroup, groupProps(secondGroupItems))]),
+      }),
+      {
+        attachTo: document.body,
+        global: { config: { globalProperties: { $toolbar: { toolbarItems: [], overflowItems: [] } } } },
+      },
+    );
+    const [bold, , underline, strike] = containers();
+    expect(underline.classList.contains('sd-disabled')).toBe(true);
+
+    bold.focus();
+    press(bold, 'Tab');
+    expect(document.activeElement).toBe(strike);
+    expect(strike.getAttribute('tabindex')).toBe('0');
+
+    press(strike, 'Tab', { shiftKey: true });
+    expect(document.activeElement).toBe(bold);
+  });
+
+  it('moves Tab from the last group to the editor', () => {
+    mountGroup(makeButtons());
+    const editor = document.createElement('div');
+    editor.className = 'ProseMirror';
+    editor.tabIndex = -1;
+    document.body.append(editor);
+    const [first] = containers();
+
+    first.focus();
+    press(first, 'Tab');
+    expect(document.activeElement).toBe(editor);
   });
 });

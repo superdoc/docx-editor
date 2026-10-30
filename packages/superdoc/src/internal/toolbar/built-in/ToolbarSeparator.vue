@@ -1,4 +1,4 @@
-<script setup>
+<script setup lang="ts">
 import { useHighContrastMode } from '../../../composables/use-high-contrast-mode';
 const emit = defineEmits(['command']);
 const props = defineProps({

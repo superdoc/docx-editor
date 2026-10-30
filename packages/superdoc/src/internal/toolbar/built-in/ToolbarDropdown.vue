@@ -11,6 +11,7 @@ interface DropdownOption {
   props?: Record<string, unknown>;
   icon?: string | object | ((option: DropdownOption) => unknown);
   render?: () => unknown;
+  [member: string]: unknown;
 }
 
 interface DropdownMenuProps {

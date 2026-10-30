@@ -1,10 +1,15 @@
-<script setup>
+<script setup lang="ts">
+import type { PropType } from 'vue';
 import ToolbarComboBox from './ToolbarComboBox.vue';
 import { normalizeCustomFontSize } from './font-typeahead.js';
 
+type ComboBoxProps = InstanceType<typeof ToolbarComboBox>['$props'];
+type ComboBoxCommand = Parameters<NonNullable<ComboBoxProps['onCommand']>>[0];
+type ComboBoxTabOut = Parameters<NonNullable<ComboBoxProps['onTab-out']>>[0];
+
 const props = defineProps({
   item: {
-    type: Object,
+    type: Object as PropType<ComboBoxProps['item']>,
     required: true,
   },
   uiFontFamily: {
@@ -15,7 +20,12 @@ const props = defineProps({
 
 // Re-emit (rather than rely on attribute fallthrough) so this wrapper's own
 // emitted-event surface stays intact for `item`-driven consumers and tests.
-const emit = defineEmits(['command', 'item-clicked', 'tab-out', 'editor-handoff']);
+const emit = defineEmits<{
+  command: [payload: ComboBoxCommand];
+  'item-clicked': [];
+  'tab-out': [event: ComboBoxTabOut];
+  'editor-handoff': [];
+}>();
 </script>
 
 <template>

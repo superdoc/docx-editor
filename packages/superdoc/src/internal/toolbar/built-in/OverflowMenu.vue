@@ -1,19 +1,25 @@
-<script setup>
+<script setup lang="ts">
 import { computed, ref, unref } from 'vue';
+import type { PropType } from 'vue';
 import ToolbarButton from './ToolbarButton.vue';
 import ButtonGroup from './ButtonGroup.vue';
+import type { ToolbarGroupCommand, ToolbarGroupItem } from './ButtonGroup.vue';
 import ToolbarDropdown from './ToolbarDropdown.vue';
 import { preventEditorFocusTransfer } from './toolbar-focus-helpers.js';
 
-const emit = defineEmits(['buttonClick', 'close', 'command']);
+const emit = defineEmits<{
+  buttonClick: [item: ToolbarGroupItem];
+  close: [];
+  command: [payload: ToolbarGroupCommand];
+}>();
 
 const props = defineProps({
   toolbarItem: {
-    type: Object,
+    type: Object as PropType<ToolbarGroupItem>,
     required: true,
   },
   overflowItems: {
-    type: Array,
+    type: Array as PropType<ToolbarGroupItem[]>,
     required: true,
   },
   uiFontFamily: {
@@ -22,7 +28,7 @@ const props = defineProps({
   },
 });
 
-const dropdown = ref(null);
+const dropdown = ref<InstanceType<typeof ToolbarDropdown> | null>(null);
 const isOverflowMenuOpened = computed(() => props.toolbarItem.expand.value);
 const hasOpenDropdown = computed(() =>
   props.overflowItems.some((item) => item.type === 'dropdown' && unref(item.expand)),
@@ -33,7 +39,7 @@ const overflowToolbarItem = computed(() => ({
   active: isOverflowMenuOpened.value,
 }));
 
-const setOverflowMenuOpen = (open) => {
+const setOverflowMenuOpen = (open: boolean) => {
   if (open === isOverflowMenuOpened.value) return;
   if (open) {
     emit('buttonClick', props.toolbarItem);
@@ -42,7 +48,7 @@ const setOverflowMenuOpen = (open) => {
   emit('close');
 };
 
-const handleCommand = ({ item, argument, option }) => {
+const handleCommand = ({ item, argument, option }: ToolbarGroupCommand) => {
   if (item.name.value === 'watermark') {
     // The dialog must restore a mounted trigger after the overflow item disappears.
     emit('close');

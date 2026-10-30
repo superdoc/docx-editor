@@ -13,7 +13,7 @@ const SRC_ROOT = join(__dirname, '..', '..');
 // The publish-artifact audit enforces the packed boundary. This map keeps each
 // source seam explicit and auditable.
 const APPROVED_SEAMS = new Map([
-  ['core/v2-integration/v2-integration.js', '@superdoc/docx-engine'],
+  ['core/v2-integration/v2-integration.ts', '@superdoc/docx-engine'],
   ['public/collaboration-upgrade-engine.ts', '@superdoc/docx-engine/collaboration-upgrade-engine'],
   ['public/collaboration-worker.ts', '@superdoc/docx-engine/collaboration-worker'],
 ]);

@@ -68,17 +68,26 @@ describe('executeInsert: ref validation', () => {
     );
   });
 
-  it('rejects author on HTML before calling the adapter', () => {
+  it('passes a tracked author and date on HTML to the adapter, and rejects them outside tracked mode', () => {
     const writeAdapter = createStubWriteAdapter();
+    executeInsert(
+      createStubSelectionAdapter(),
+      writeAdapter,
+      { value: '<p>hi</p>', type: 'html' },
+      { changeMode: 'tracked', author: { name: 'Bot' }, date: '2026-05-01T12:00:00Z' },
+    );
+    expect(writeAdapter.insertStructured).toHaveBeenCalledWith(
+      { value: '<p>hi</p>', type: 'html' },
+      expect.objectContaining({ changeMode: 'tracked', author: { name: 'Bot' }, date: '2026-05-01T12:00:00.000Z' }),
+    );
     expect(() =>
       executeInsert(
         createStubSelectionAdapter(),
-        writeAdapter,
+        createStubWriteAdapter(),
         { value: '<p>hi</p>', type: 'html' },
-        { changeMode: 'tracked', author: { name: 'Bot' } },
+        { author: { name: 'Bot' } },
       ),
     ).toThrow(DocumentApiValidationError);
-    expect(writeAdapter.insertStructured).not.toHaveBeenCalled();
   });
   it('rejects empty string ref', () => {
     expect(() => exec({ value: 'hello', ref: '' })).toThrow('ref must be a non-empty string');

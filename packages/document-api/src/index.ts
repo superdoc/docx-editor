@@ -444,6 +444,7 @@ import type {
   MutationOptions,
   RevisionGuardOptions,
   RichContentMutationOptions,
+  TrackedAttribution,
   TrackedTextMutationOptions,
   TextMutationOptions,
   WriteAdapter,
@@ -1177,6 +1178,7 @@ export type {
   WriteAdapter,
   WriteRequest,
   RichContentMutationOptions,
+  TrackedAttribution,
   TrackedTextMutationOptions,
   TextMutationOptions,
 } from './write/write.js';

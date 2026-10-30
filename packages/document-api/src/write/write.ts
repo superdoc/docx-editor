@@ -66,19 +66,20 @@ export interface MutationOptions extends RevisionGuardOptions {
   dryRun?: boolean;
 }
 
-export interface RichContentMutationOptions extends MutationOptions {
-  author?: never;
-  date?: never;
+/** Display-only attribution for one tracked mutation. */
+export interface TrackedAttribution {
+  author?: { name: string };
+  /** ISO 8601 UTC revision timestamp. Omitted values use the transaction time. */
+  date?: string;
+}
+
+export interface RichContentMutationOptions extends MutationOptions, TrackedAttribution {
   /** Guard returned by `doc.capabilities.check` for an exact rich write. */
   supportCheck?: SDHtmlMarkdownCheckGuard;
 }
 
-/** Display-only attribution for one tracked plain-text or inline-format mutation. */
-export interface TrackedTextMutationOptions extends MutationOptions {
+export interface TrackedTextMutationOptions extends MutationOptions, TrackedAttribution {
   changeMode: 'tracked';
-  author?: { name: string };
-  /** ISO 8601 UTC revision timestamp. Omitted values use the transaction time. */
-  date?: string;
 }
 
 export type TextMutationOptions = MutationOptions | TrackedTextMutationOptions;
@@ -86,11 +87,18 @@ export type TextMutationOptions = MutationOptions | TrackedTextMutationOptions;
 export function normalizeTextMutationOptions(
   options?: RichContentMutationOptions | TextMutationOptions,
 ): RichContentMutationOptions | TrackedTextMutationOptions {
-  const { author, date, ...mutationOptions } = (options ?? {}) as MutationOptions & {
+  return normalizeRichMutationOptions(options);
+}
+
+export function normalizeRichMutationOptions(
+  options: (MutationOptions & TrackedAttribution & Partial<RichContentMutationOptions>) | undefined,
+  supportCheckOperation?: 'insert' | 'replace',
+): RichContentMutationOptions {
+  const { author, date, ...rest } = (options ?? {}) as RichContentMutationOptions & {
     author?: unknown;
     date?: unknown;
   };
-  const normalized = normalizeMutationOptions(mutationOptions);
+  const normalized = normalizeMutationOptions(rest, supportCheckOperation);
   if (!options || (author === undefined && date === undefined)) return normalized;
   if (
     options.changeMode !== 'tracked' ||
@@ -170,7 +178,7 @@ export function normalizeMutationOptions(
   ) {
     throw new DocumentApiValidationError(
       'INVALID_INPUT',
-      'author/date are supported only for tracked plain-text doc.insert, doc.delete, doc.replace, inline format and doc.lists calls.',
+      'author/date are supported only for tracked doc.insert, doc.delete, doc.replace, inline format and doc.lists calls.',
     );
   }
   validateChangeMode(options?.changeMode);

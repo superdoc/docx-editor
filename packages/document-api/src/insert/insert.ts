@@ -2,7 +2,7 @@ import { isOoxmlContentSource, validateOoxmlContentSource } from '../selection/s
 import type { OoxmlContentSource } from '../selection/selection.types.js';
 import {
   executeWrite,
-  normalizeMutationOptions,
+  normalizeRichMutationOptions,
   normalizeTextMutationOptions,
   type RichContentMutationOptions,
   type TextMutationOptions,
@@ -329,19 +329,11 @@ export function executeInsert(
       'CAPABILITY_UNAVAILABLE',
       'This runtime does not support native OOXML insertion.',
     );
-  if (isOoxmlContentSource(input)) return writeAdapter.insertStructured(input, normalizeMutationOptions(options));
-
-  if (
-    options &&
-    'author' in options &&
-    (isStructuralInsertInput(input) || input.type === 'html' || input.type === 'markdown')
-  ) {
-    throw new DocumentApiValidationError('INVALID_INPUT', 'author is supported only for tracked plain-text inserts.');
-  }
+  if (isOoxmlContentSource(input)) return writeAdapter.insertStructured(input, normalizeRichMutationOptions(options));
 
   // Structural content path: returns SDMutationReceipt directly
   if (isStructuralInsertInput(input)) {
-    return writeAdapter.insertStructured(input, normalizeMutationOptions(options));
+    return writeAdapter.insertStructured(input, normalizeRichMutationOptions(options));
   }
 
   // Text string path
@@ -350,7 +342,7 @@ export function executeInsert(
 
   // For non-text content types, delegate to the adapter's structured insert path.
   if (contentType !== 'text') {
-    return writeAdapter.insertStructured(input, normalizeMutationOptions(options, 'insert'));
+    return writeAdapter.insertStructured(input, normalizeRichMutationOptions(options, 'insert'));
   }
 
   // Text path with target/ref → route through SelectionMutationAdapter

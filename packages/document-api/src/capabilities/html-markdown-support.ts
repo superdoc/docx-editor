@@ -1,6 +1,7 @@
 import type { RichContentInsertInput } from '../insert/insert.js';
 import type { RichContentReplaceInput, ReplaceMutationOptions } from '../replace/replace.js';
-import type { ChangeMode } from '../write/write.js';
+import type { ChangeMode, TrackedAttribution } from '../write/write.js';
+import { normalizeRichMutationOptions } from '../write/write.js';
 import type {
   ProjectHtmlInput,
   ProjectMarkdownInput,
@@ -22,7 +23,6 @@ import { validateReplaceInput } from '../replace/replace.js';
 import { validateOptionalBoolean, validateProjectionReadInput } from '../content-projection/validation.js';
 import { assertNoUnknownFields } from '../validation-primitives.js';
 import { isRecord } from '../object-guards.js';
-import { validateChangeMode } from '../write/write.js';
 
 export interface SDHtmlMarkdownCheckGuard {
   version: 'sd-html-markdown-check/1';
@@ -33,11 +33,11 @@ export interface SDHtmlMarkdownCheckGuard {
 }
 
 export type SDHtmlMarkdownSupportCheckInput =
-  | { operation: 'insert'; input: RichContentInsertInput; options?: { changeMode?: ChangeMode } }
+  | { operation: 'insert'; input: RichContentInsertInput; options?: { changeMode?: ChangeMode } & TrackedAttribution }
   | {
       operation: 'replace';
       input: RichContentReplaceInput;
-      options?: Pick<ReplaceMutationOptions, 'changeMode' | 'replaceMode' | 'expectedSnapshotId'>;
+      options?: Pick<ReplaceMutationOptions, 'changeMode' | 'replaceMode' | 'expectedSnapshotId'> & TrackedAttribution;
     }
   | { operation: 'projectHtml'; input?: ProjectHtmlInput }
   | { operation: 'projectMarkdown'; input?: ProjectMarkdownInput };
@@ -80,7 +80,7 @@ export type SDHtmlMarkdownSupportCheckResult = SDHtmlMarkdownWriteCheckResult | 
 const CHECK_OPERATIONS = new Set(['insert', 'replace', 'projectHtml', 'projectMarkdown']);
 const WRITE_REQUEST_FIELDS = new Set(['operation', 'input', 'options']);
 const PROJECTION_REQUEST_FIELDS = new Set(['operation', 'input']);
-const WRITE_OPTION_FIELDS = new Set(['changeMode']);
+const WRITE_OPTION_FIELDS = new Set(['changeMode', 'author', 'date']);
 const PROJECTION_FIELDS = new Set(['in', 'reviewMode', 'scope', 'includeSourceMap']);
 
 export function validateSDHtmlMarkdownSupportCheckInput(
@@ -118,11 +118,11 @@ export function validateSDHtmlMarkdownSupportCheckInput(
       assertNoUnknownFields(
         input.options,
         input.operation === 'replace'
-          ? new Set(['changeMode', 'replaceMode', 'expectedSnapshotId'])
+          ? new Set(['changeMode', 'replaceMode', 'expectedSnapshotId', 'author', 'date'])
           : WRITE_OPTION_FIELDS,
         'capabilities.check options',
       );
-      validateChangeMode(input.options.changeMode);
+      normalizeRichMutationOptions(input.options);
     }
     return;
   }

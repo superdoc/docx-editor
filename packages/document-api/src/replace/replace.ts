@@ -23,7 +23,11 @@ import type { BlockNodeAddress } from '../types/base.js';
 import type { NestingPolicy } from '../types/placement.js';
 import type { SelectionMutationAdapter } from '../selection-mutation.js';
 import type { WriteAdapter } from '../write/write.js';
-import { normalizeMutationOptions, normalizeTextMutationOptions } from '../write/write.js';
+import {
+  normalizeMutationOptions,
+  normalizeRichMutationOptions,
+  normalizeTextMutationOptions,
+} from '../write/write.js';
 import { DocumentApiValidationError } from '../errors.js';
 import { isBlockNodeAddress, assertNoUnknownFields, validateNestingPolicyValue } from '../validation-primitives.js';
 import { isRecord } from '../object-guards.js';
@@ -484,31 +488,18 @@ export function executeReplace(
     );
   if (options?.replaceMode === 'contents' || isOoxmlContentSource(input)) {
     return writeAdapter.replaceStructured(input, {
-      ...normalizeMutationOptions(options, isRichContentReplaceInput(input) ? 'replace' : undefined),
+      ...normalizeRichMutationOptions(options, isRichContentReplaceInput(input) ? 'replace' : undefined),
       ...(options?.replaceMode ? { replaceMode: options.replaceMode } : {}),
       ...(options?.expectedSnapshotId ? { expectedSnapshotId: options.expectedSnapshotId } : {}),
     });
   }
 
-  if (
-    options &&
-    'author' in options &&
-    (isStructuralReplaceInput(input) ||
-      isRichContentReplaceInput(input) ||
-      (input.target && isBodyReplaceTarget(input.target)))
-  ) {
-    throw new DocumentApiValidationError(
-      'INVALID_INPUT',
-      'author is supported only for tracked plain-text replacements.',
-    );
-  }
-
   // Structural content path: returns SDMutationReceipt directly
   if (isStructuralReplaceInput(input)) {
-    return writeAdapter.replaceStructured(input, normalizeMutationOptions(options));
+    return writeAdapter.replaceStructured(input, normalizeRichMutationOptions(options));
   }
   if (isRichContentReplaceInput(input)) {
-    return writeAdapter.replaceStructured(input, normalizeMutationOptions(options, 'replace'));
+    return writeAdapter.replaceStructured(input, normalizeRichMutationOptions(options, 'replace'));
   }
 
   // Text replacement path: route through SelectionMutationAdapter

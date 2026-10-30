@@ -97,4 +97,19 @@ describe('controller against a partial host', () => {
       failure: { code: 'CAPABILITY_UNAVAILABLE' },
     });
   });
+
+  it('settles a runtime rejection as false, never as the raw rejected shape', async () => {
+    const ui = mountPartialHost();
+    const rejection = { status: 'rejected', reason: 'command-failed' };
+
+    const registration = ui.commands.register({
+      id: 'partial-host-rejection',
+      getState: () => ({ enabled: true, disabled: false, active: false, supported: true }),
+      execute: () => rejection as never,
+    });
+
+    expect(registration.handle.execute()).toBe(false);
+    await expect(registration.handle.executeAsync()).resolves.toBe(false);
+    await expect(ui.commands.executeAsync('partial-host-rejection')).resolves.toBe(false);
+  });
 });

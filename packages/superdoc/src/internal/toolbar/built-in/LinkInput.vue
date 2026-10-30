@@ -13,9 +13,7 @@ interface LinkItem {
   attributes?: Ref<{ href?: unknown } | undefined>;
 }
 
-type RuntimeRejection = { success?: undefined; status: 'rejected' };
-
-type LinkCommandResult = CommandExecutionResult | RuntimeRejection | null | undefined;
+type LinkCommandResult = CommandExecutionResult | null | undefined;
 
 interface LinkCommandPayload {
   href: string | null;
@@ -211,11 +209,7 @@ const applyLinkCommand = async (payload: LinkCommandPayload) => {
   commandError.value = '';
   try {
     const result = await runLinkCommand(payload);
-    if (
-      result === false ||
-      result == null ||
-      (typeof result === 'object' && (result.success === false || result.status === 'rejected'))
-    ) {
+    if (result === false || result == null || (typeof result === 'object' && result.success === false)) {
       commandError.value = 'Could not apply link. Check the selection and try again.';
       return;
     }

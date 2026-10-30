@@ -1663,6 +1663,8 @@ function remeasurePlainTextAcrossRegions(
     });
   }
 
+  if (lines.length === 0) return null;
+
   return {
     kind: 'paragraph',
     lines,

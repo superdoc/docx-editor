@@ -1200,6 +1200,49 @@ describe('remeasureParagraph', () => {
   });
 
   describe('Basic Functionality', () => {
+    it.each([
+      [12, 1],
+      [20, 2],
+    ])(
+      'SD-6121 retains empty %ipx paragraph lines with %i runs across disjoint float regions',
+      (fontSize, runCount) => {
+        const block = createBlock(Array.from({ length: runCount }, () => textRun('', { fontSize })));
+        const source = structuredClone(block);
+        const plain = remeasureParagraph(block, 300);
+        const singleRegion = remeasureParagraph(block, 300, 0, [[{ offsetX: 160, width: 140 }]]);
+        const disjoint = remeasureParagraph(block, 300, 0, [
+          [
+            { offsetX: 0, width: 80 },
+            { offsetX: 160, width: 140 },
+          ],
+        ]);
+
+        expect(plain.lines).toHaveLength(runCount);
+        expect(disjoint.lines).toHaveLength(plain.lines.length);
+        expect(disjoint.totalHeight).toBe(plain.totalHeight);
+        expect(disjoint.totalHeight).toBe(singleRegion.totalHeight);
+        expect(disjoint.totalHeight).toBeGreaterThan(0);
+        expect(disjoint.lines[0].maxWidth).toBe(140);
+        expect(block).toEqual(source);
+      },
+    );
+
+    it('SD-6121 preserves no-runs and exact zero-height carrier contracts across disjoint regions', () => {
+      const regions = [
+        [
+          { offsetX: 0, width: 80 },
+          { offsetX: 160, width: 140 },
+        ],
+      ];
+      const noRuns = createBlock([]);
+      expect(remeasureParagraph(noRuns, 300, 0, regions)).toEqual(remeasureParagraph(noRuns, 300));
+      const carrier = createBlock([textRun('')], { spacing: { line: 0, lineRule: 'exact' } });
+      const singleRegion = remeasureParagraph(carrier, 300, 0, [[regions[0][1]]]);
+      const disjoint = remeasureParagraph(carrier, 300, 0, regions);
+      expect(disjoint).toEqual(singleRegion);
+      expect(disjoint.totalHeight).toBe(0);
+    });
+
     it('measures single run on one line when text fits', () => {
       const block = createBlock([textRun('Hello')]);
       const measure = remeasureParagraph(block, 100);

@@ -127,7 +127,7 @@
     "test": "vp test"
   },
   "dependencies": {
-    "@superdoc/docx-engine": "0.27.0-next.18",
+    "@superdoc/docx-engine": "0.27.0-next.19",
     "@types/ws": "catalog:",
     "eventemitter3": "catalog:",
     "konva": "catalog:",

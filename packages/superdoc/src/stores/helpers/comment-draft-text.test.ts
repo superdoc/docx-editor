@@ -20,8 +20,16 @@ describe('normalizeV2CommentDraftText', () => {
     expect(normalizeV2CommentDraftText('&#65;&#x42;&#x4A;&#128512;')).toBe('ABJ\u{1F600}');
   });
 
-  it('keeps an uppercase hex marker undecoded', () => {
-    expect(normalizeV2CommentDraftText('&#X43;')).toBe('&#X43;');
+  it('decodes an uppercase hex marker', () => {
+    expect(normalizeV2CommentDraftText('&#X43;')).toBe('C');
+  });
+
+  it('keeps inherited object property names as typed', () => {
+    expect(normalizeV2CommentDraftText('&constructor;')).toBe('&constructor;');
+    expect(normalizeV2CommentDraftText('&CONSTRUCTOR;')).toBe('&CONSTRUCTOR;');
+    expect(normalizeV2CommentDraftText('&toString;')).toBe('&toString;');
+    expect(normalizeV2CommentDraftText('&hasOwnProperty;')).toBe('&hasOwnProperty;');
+    expect(normalizeV2CommentDraftText('&__proto__;')).toBe('&__proto__;');
   });
 
   it('keeps entities it cannot decode', () => {

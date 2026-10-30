@@ -4,19 +4,19 @@ const COMMENT_DRAFT_BLOCK_BOUNDARY =
 const COMMENT_DRAFT_BLOCK_OPEN_TAG = /<(?:p|div|li|blockquote|pre|h[1-6])(?:\s[^>]*)?\s*\/?>/gi;
 const COMMENT_DRAFT_BLOCK_CLOSE_TAG = /<\/(?:p|div|li|blockquote|pre|h[1-6])\s*>/gi;
 const COMMENT_DRAFT_ANY_TAG = /<\/?[A-Za-z][A-Za-z0-9:-]*(?:\s[^>]*)?\s*\/?>/g;
-const COMMENT_DRAFT_ENTITY = /&(#x[0-9a-fA-F]+|#\d+|[a-zA-Z][a-zA-Z0-9]+);/g;
-const COMMENT_DRAFT_NAMED_ENTITIES: Readonly<Record<string, string>> = {
-  amp: '&',
-  apos: "'",
-  gt: '>',
-  lt: '<',
-  nbsp: ' ',
-  quot: '"',
-};
+const COMMENT_DRAFT_ENTITY = /&(#[xX][0-9a-fA-F]+|#\d+|[a-zA-Z][a-zA-Z0-9]+);/g;
+const COMMENT_DRAFT_NAMED_ENTITIES: ReadonlyMap<string, string> = new Map([
+  ['amp', '&'],
+  ['apos', "'"],
+  ['gt', '>'],
+  ['lt', '<'],
+  ['nbsp', ' '],
+  ['quot', '"'],
+]);
 
 const decodeCommentDraftEntity = (entity: string): string | null => {
   const lower = entity.toLowerCase();
-  const named = COMMENT_DRAFT_NAMED_ENTITIES[lower];
+  const named = COMMENT_DRAFT_NAMED_ENTITIES.get(lower);
   if (named !== undefined) return named;
   const radix = lower.startsWith('#x') ? 16 : lower.startsWith('#') ? 10 : null;
   if (!radix) return null;

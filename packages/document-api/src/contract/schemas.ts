@@ -203,6 +203,7 @@ const conversionReportSchema = objectSchema(
   ['format', 'lossy', 'diagnostics'],
 );
 const receiptSuccessMetadataProperties: Record<string, JsonSchema> = {
+  status: { const: 'NO_OP' },
   changeTag: {
     type: 'string',
     description: 'Caller correlation for this commit only; never persisted or replayed on Undo/Redo.',
@@ -754,6 +755,9 @@ const SHARED_DEFS: Record<string, JsonSchema> = {
       trackedChangeType: { enum: [...trackChangeTypeValues] },
       side: { enum: ['inserted', 'deleted', 'source', 'destination'] },
       trackedChangeText: { type: 'string' },
+      trackedChangeDisplayType: { type: ['string', 'null'] },
+      trackedChangeStory: { oneOf: [ref('StoryLocator'), { type: 'null' }] },
+      trackedChangeAnchorKey: { type: ['string', 'null'] },
       insertedText: { type: 'string' },
       deletedText: { type: 'string' },
     },
@@ -2199,6 +2203,7 @@ const sectionsListResultSchema = discoveryResultSchema(sectionDomainItemSchema);
 const sectionMutationSuccessSchema = objectSchema(
   {
     success: { const: true },
+    dryRun: { type: 'boolean' },
     section: sectionAddressSchema,
     appliedChangeMode: { enum: ['direct', 'tracked'] },
   },
@@ -2221,6 +2226,8 @@ function sectionMutationResultSchemaFor(operationId: OperationId): JsonSchema {
 const documentMutationSuccessSchema = objectSchema(
   {
     success: { const: true },
+    dryRun: { type: 'boolean' },
+    changed: { type: 'boolean' },
   },
   ['success'],
 );
@@ -2262,6 +2269,7 @@ const createSectionBreakSuccessSchema = objectSchema(
   {
     success: { const: true },
     appliedChangeMode: { enum: ['direct', 'tracked'] },
+    trackedChangeRefs: arraySchema(trackChangeRefSchema),
     section: sectionAddressSchema,
     breakParagraph: blockNodeAddressSchema,
   },
@@ -2705,6 +2713,9 @@ const trackChangeTargetSchema: JsonSchema = {
       {
         kind: { enum: ['formatting'] },
         address: trackedChangeAddressSchema,
+        segments: { type: 'array', items: ref('TextSegment'), minItems: 1 },
+        story: storyLocatorSchema,
+        coordinateSpace: ref('TextCoordinateSpace'),
         subtype: { enum: ['run', 'paragraph', 'list', 'table', 'row', 'cell', 'section', 'content-control', 'image'] },
         targetKind: { enum: ['run', 'paragraph', 'list-item', 'table', 'row', 'cell', 'section', 'content-control'] },
         semanticSubtype: { type: 'string' },
@@ -5057,7 +5068,7 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
                             type: 'string',
                             description: 'Tracked change entity ID matching an entry in trackedChanges[].',
                           },
-                          type: { type: 'string', enum: ['insert', 'delete', 'format'] },
+                          type: { type: 'string', enum: [...trackChangeTypeValues] },
                         },
                         ['entityId', 'type'],
                       ),
@@ -5129,7 +5140,7 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
               },
               type: {
                 type: 'string',
-                enum: ['insert', 'delete', 'replacement', 'format'],
+                enum: [...trackChangeTypeValues],
                 description:
                   "Aggregate type at the entity level. In grouped replacement mode, a delete+insert pair shares one entity and this surfaces as 'replacement'; per-half type lives on block.textSpans[].trackedChanges[].",
               },
@@ -5555,6 +5566,7 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
           nodeType: { type: 'string' },
           textPreview: { oneOf: [{ type: 'string' }, { type: 'null' }] },
         }),
+        trackedChangeRefs: arraySchema(trackChangeRefSchema),
         invalidatedRefs: arraySchema(ref('AffectedRef')),
         affectedStories: arraySchema(ref('StoryLocator')),
         textRangeShifts: arraySchema(ref('TextRangeShift')),
@@ -5573,6 +5585,7 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
           nodeType: { type: 'string' },
           textPreview: { oneOf: [{ type: 'string' }, { type: 'null' }] },
         }),
+        trackedChangeRefs: arraySchema(trackChangeRefSchema),
         invalidatedRefs: arraySchema(ref('AffectedRef')),
         affectedStories: arraySchema(ref('StoryLocator')),
         textRangeShifts: arraySchema(ref('TextRangeShift')),
@@ -5733,6 +5746,7 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
         success: { const: true },
         appliedChangeMode: { enum: ['direct', 'tracked'] },
         moved: blockNodeAddressSchema,
+        trackedChangeRefs: arraySchema(trackChangeRefSchema),
         remappedRefs: arraySchema(ref('AffectedRefRemapping')),
         affectedStories: arraySchema(ref('StoryLocator')),
         txId: { type: 'string' },
@@ -5744,6 +5758,7 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
         success: { const: true },
         appliedChangeMode: { enum: ['direct', 'tracked'] },
         moved: blockNodeAddressSchema,
+        trackedChangeRefs: arraySchema(trackChangeRefSchema),
         remappedRefs: arraySchema(ref('AffectedRefRemapping')),
         affectedStories: arraySchema(ref('StoryLocator')),
         txId: { type: 'string' },
@@ -6976,6 +6991,7 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
                   customFormat: customNumberingFormatInputSchema,
                   lvlText: { type: 'string' },
                   start: { type: 'integer' },
+                  lvlRestart: { type: 'integer', minimum: 0 },
                   alignment: { enum: ['left', 'center', 'right'] },
                   indents: objectSchema({
                     left: { type: 'integer' },
@@ -7348,6 +7364,7 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
                   customFormat: customNumberingFormatInputSchema,
                   lvlText: { type: 'string' },
                   start: { type: 'integer' },
+                  lvlRestart: { type: 'integer', minimum: 0 },
                   alignment: { enum: ['left', 'center', 'right'] },
                   indents: objectSchema({
                     left: { type: 'integer' },
@@ -7432,6 +7449,7 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
                   customFormat: { type: 'string' },
                   lvlText: { type: 'string' },
                   start: { type: 'integer' },
+                  lvlRestart: { type: 'integer', minimum: 0 },
                   alignment: { enum: ['left', 'center', 'right'] },
                   indents: objectSchema({
                     left: { type: 'integer' },
@@ -7586,6 +7604,7 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
         customFormat: { type: 'string' },
         lvlText: { type: 'string' },
         start: { type: 'integer' },
+        lvlRestart: { type: 'integer', minimum: 0 },
         alignment: { enum: ['left', 'center', 'right'] },
         indents: objectSchema({
           left: { type: 'integer' },
@@ -7642,6 +7661,7 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
                   customFormat: customNumberingFormatInputSchema,
                   lvlText: { type: 'string' },
                   start: { type: 'integer' },
+                  lvlRestart: { type: 'integer', minimum: 0 },
                   alignment: { enum: ['left', 'center', 'right'] },
                   indents: objectSchema({
                     left: { type: 'integer' },

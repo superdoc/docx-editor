@@ -10,8 +10,12 @@ import { OPERATION_IDS, PRE_APPLY_THROW_CODES, isValidOperationIdFormat } from '
 import { Z_ORDER_RELATIVE_HEIGHT_MAX, Z_ORDER_RELATIVE_HEIGHT_MIN } from '../images/z-order.js';
 import type { TemplatesApplyFailureCode } from '../templates/index.js';
 import type { ReceiptFailureCode } from '../types/index.js';
+import { executeBlocksDelete, executeBlocksMove } from '../blocks/blocks.js';
+import type { BlocksDeleteResult, BlocksMoveResult } from '../types/blocks.types.js';
+import type { TrackChangeTarget } from '../types/track-changes.types.js';
 import { CAPABILITY_REASON_CODES } from '../capabilities/capabilities.js';
 import { LIST_CUSTOM_NUMBERING_FORMATS } from '../lists/lists.types.js';
+import type { CommentTrackedChangeLink } from '../comments/comments.types.js';
 
 const TRACK_CHANGES_DECIDE_RECEIPT_FAILURE_CODES = [
   'NO_OP',
@@ -328,6 +332,7 @@ describe('document-api contract catalog', () => {
       'item',
       'remappedRefs',
       'removed',
+      'status',
       'success',
       'temporary',
       'textRangeShifts',
@@ -606,6 +611,7 @@ describe('document-api contract catalog', () => {
       'remappedRefs',
       'removed',
       'resolution',
+      'status',
       'success',
       'temporary',
       'textRangeShifts',
@@ -884,6 +890,41 @@ describe('document-api contract catalog', () => {
     ]);
     expect(getVariants.some((variant) => variant.$ref === '#/$defs/CommentTrackedChangeLink')).toBe(true);
     expect(listVariants.some((variant) => variant.$ref === '#/$defs/CommentTrackedChangeLink')).toBe(true);
+  });
+
+  it('retains declared tracked comment link metadata while rejecting unknown link fields', () => {
+    const schemas = buildInternalContractSchemas();
+    const schema = schemas.$defs?.CommentTrackedChangeLink as ContractTestSchemaShape;
+    const link = {
+      trackedChange: true,
+      trackedChangeId: 'tracked-policy-1',
+      trackedChangeType: 'insertion',
+      side: 'inserted',
+      trackedChangeText: 'Tracked policy marker.',
+      trackedChangeDisplayType: 'insertion',
+      trackedChangeStory: { kind: 'story', storyType: 'body' },
+      trackedChangeAnchorKey: 'tracked-policy-1',
+    } satisfies CommentTrackedChangeLink;
+    expect(collectUnknownPropertySchemaErrors(schema, link)).toEqual([]);
+    expect(
+      collectUnknownPropertySchemaErrors(schema, {
+        ...link,
+        trackedChangeDisplayType: null,
+        trackedChangeStory: null,
+        trackedChangeAnchorKey: null,
+      }),
+    ).toEqual([]);
+    expect(schema.properties?.trackedChangeDisplayType).toEqual({ type: ['string', 'null'] });
+    expect(schema.properties?.trackedChangeStory).toEqual({
+      oneOf: [{ $ref: '#/$defs/StoryLocator' }, { type: 'null' }],
+    });
+    expect(schema.properties?.trackedChangeAnchorKey).toEqual({ type: ['string', 'null'] });
+    for (const field of ['trackedChangeDisplayType', 'trackedChangeStory', 'trackedChangeAnchorKey'])
+      expect(schema.required).not.toContain(field);
+    expect(schema.additionalProperties).toBe(false);
+    expect(collectUnknownPropertySchemaErrors(schema, { ...link, unsupportedLinkMetadata: 'must reject' })).toEqual([
+      '$.unsupportedLinkMetadata: unknown property',
+    ]);
   });
 
   it('preserves the broad public SDFragment union for structural insert content', () => {
@@ -1895,6 +1936,190 @@ describe('temporary mutation receipts', () => {
 });
 
 describe('public mutation result vocabulary', () => {
+  it('preserves declared formatting geometry in tracked-change list and get targets', () => {
+    const target: Extract<TrackChangeTarget, { kind: 'formatting' }> = {
+      kind: 'formatting',
+      address: { kind: 'entity', entityType: 'trackedChange', entityId: 'run-formatting' },
+      subtype: 'run',
+      segments: [{ blockId: 'formatted-paragraph', range: { start: 0, end: 25 } }],
+      story: { kind: 'story', storyType: 'body' },
+      coordinateSpace: 'tracked',
+      targetKind: 'run',
+      semanticSubtype: 'run-formatting',
+      carriers: ['w:rPrChange'],
+    };
+    const schemas = buildInternalContractSchemas();
+    const get = schemas.operations['trackChanges.get'].output as ContractTestSchemaShape;
+    const list = schemas.operations['trackChanges.list'].output as ContractTestSchemaShape;
+    for (const surface of [get, list.properties?.items?.items]) {
+      const branch = surface?.properties?.target?.oneOf?.find((candidate) =>
+        candidate.properties?.kind?.enum?.includes('formatting'),
+      );
+      expect(branch).toBeDefined();
+      expect(collectUnknownPropertySchemaErrors(branch, target)).toEqual([]);
+      expect(branch?.additionalProperties).toBe(false);
+      expect(collectUnknownPropertySchemaErrors(branch, { ...target, unexpected: true })).toContain(
+        '$.unexpected: unknown property',
+      );
+    }
+  });
+
+  it('accepts runtime preview flags inside section and document mutation receipts', () => {
+    const schemas = buildInternalContractSchemas();
+    const section = { success: true, section: { kind: 'section', sectionId: 'section-1' }, dryRun: true };
+    const document = { success: true, dryRun: true };
+    for (const [schema, receipt] of [
+      [schemas.operations['sections.setPageSetup'].success, section],
+      [schemas.operations['sections.setLinkToPrevious'].success, section],
+      [schemas.operations['sections.setOddEvenHeadersFooters'].success, document],
+    ] as const) {
+      expect(collectUnknownPropertySchemaErrors(schema as ContractTestSchemaShape, receipt)).toEqual([]);
+      expect(schema?.additionalProperties).toBe(false);
+      expect(
+        collectUnknownPropertySchemaErrors(schema as ContractTestSchemaShape, { ...receipt, unexpected: true }),
+      ).toContain('$.unexpected: unknown property');
+    }
+  });
+
+  it('accepts no-change document receipts and tracked section-break references on closed schemas', () => {
+    const schemas = buildInternalContractSchemas();
+    for (const [operation, receipt] of [
+      ['tables.setDefaultStyle', { success: true, changed: false }],
+      [
+        'create.sectionBreak',
+        {
+          success: true,
+          appliedChangeMode: 'tracked',
+          section: { kind: 'section', sectionId: 'section-1' },
+          trackedChangeRefs: [{ kind: 'entity', entityType: 'trackedChange', entityId: 'section-change' }],
+        },
+      ],
+    ] as const) {
+      for (const candidate of [schemas.operations[operation].output, schemas.operations[operation].success]) {
+        const root = candidate as ContractTestSchemaShape;
+        const schema = root.oneOf?.find((branch) => branch.properties?.success?.const === true) ?? root;
+        expect(schema.additionalProperties).toBe(false);
+        expect(collectUnknownPropertySchemaErrors(schema as ContractTestSchemaShape, receipt)).toEqual([]);
+        expect(
+          collectUnknownPropertySchemaErrors(schema as ContractTestSchemaShape, { ...receipt, unexpected: true }),
+        ).toContain('$.unexpected: unknown property');
+      }
+    }
+  });
+
+  it('keeps captured list restart metadata available on closed read and application schemas', () => {
+    const schemas = buildInternalContractSchemas();
+    for (const [operation, field] of [
+      ['lists.getStyle', 'style'],
+      ['lists.captureTemplate', 'template'],
+    ] as const) {
+      const receipt = { success: true, [field]: { version: 1, levels: [{ level: 1, lvlRestart: 0 }] } };
+      for (const candidate of [schemas.operations[operation].output, schemas.operations[operation].success]) {
+        const root = candidate as ContractTestSchemaShape;
+        const schema = root.oneOf?.find((branch) => branch.properties?.success?.const === true) ?? root;
+        expect(schema.additionalProperties).toBe(false);
+        expect(collectUnknownPropertySchemaErrors(schema as ContractTestSchemaShape, receipt)).toEqual([]);
+        const bad = { success: true, [field]: { version: 1, levels: [{ level: 1, lvlRestart: 0, unexpected: true }] } };
+        expect(collectUnknownPropertySchemaErrors(schema as ContractTestSchemaShape, bad)).toContain(
+          `$.${field}.levels[0].unexpected: unknown property`,
+        );
+      }
+    }
+    for (const [operation, field] of [
+      ['lists.applyStyle', 'style'],
+      ['lists.applyTemplate', 'template'],
+    ] as const) {
+      const input = {
+        target: { kind: 'block', nodeType: 'listItem', nodeId: 'list-1' },
+        [field]: { version: 1, levels: [{ level: 1, lvlRestart: 0 }] },
+      };
+      expect(
+        collectUnknownPropertySchemaErrors(schemas.operations[operation].input as ContractTestSchemaShape, input),
+      ).toEqual([]);
+    }
+  });
+
+  it('uses the public tracked-change vocabulary for aggregate and span extraction without opening objects', () => {
+    const schema = buildInternalContractSchemas().operations.extract.output as ContractTestSchemaShape;
+    const change = schema.properties!.trackedChanges!.items!;
+    const mark = schema.properties!.blocks!.items!.properties!.textSpans!.items!.properties!.trackedChanges!.items!;
+    const types = [
+      'insertion',
+      'deletion',
+      'replacement',
+      'formatting',
+      'move',
+      'structural',
+      'insert',
+      'delete',
+      'format',
+    ];
+    expect(change.properties!.type!.enum).toEqual(types);
+    expect(mark.properties!.type!.enum).toEqual(types);
+    expect(change.additionalProperties).toBe(false);
+    expect(mark.additionalProperties).toBe(false);
+    expect(
+      collectUnknownPropertySchemaErrors(change, { entityId: 'change-1', type: 'insertion', unexpected: true }),
+    ).toContain('$.unexpected: unknown property');
+  });
+
+  it('accepts the typed tracked block deletion receipt on closed output and success schemas', () => {
+    const receipt: BlocksDeleteResult = {
+      success: true,
+      appliedChangeMode: 'tracked',
+      deleted: { kind: 'block', nodeType: 'table', nodeId: 'tracked-table' },
+      trackedChangeRefs: [{ kind: 'entity', entityType: 'trackedChange', entityId: 'table-deletion' }],
+    };
+    const result = executeBlocksDelete({ delete: () => receipt }, { target: receipt.deleted });
+    const schemas = buildInternalContractSchemas().operations['blocks.delete'];
+    for (const schema of [schemas.output, schemas.success]) {
+      expect(collectUnknownPropertySchemaErrors(schema as ContractTestSchemaShape, result)).toEqual([]);
+      expect(schema?.additionalProperties).toBe(false);
+      expect(
+        collectUnknownPropertySchemaErrors(schema as ContractTestSchemaShape, { ...result, unexpected: true }),
+      ).toContain('$.unexpected: unknown property');
+    }
+  });
+
+  it('accepts paired tracked move references on closed output and success schemas', () => {
+    const receipt: BlocksMoveResult = {
+      success: true,
+      appliedChangeMode: 'tracked',
+      moved: { kind: 'block', nodeType: 'paragraph', nodeId: 'moved-paragraph' },
+      trackedChangeRefs: [{ kind: 'entity', entityType: 'trackedChange', entityId: 'paired-move' }],
+    };
+    const result = executeBlocksMove(
+      { move: () => receipt },
+      {
+        source: receipt.moved,
+        destination: { kind: 'block', nodeType: 'paragraph', nodeId: 'anchor-paragraph' },
+        placement: 'after',
+      },
+    );
+    const schemas = buildInternalContractSchemas().operations['blocks.move'];
+    for (const schema of [schemas.output, schemas.success]) {
+      expect(collectUnknownPropertySchemaErrors(schema as ContractTestSchemaShape, result)).toEqual([]);
+      expect(schema?.additionalProperties).toBe(false);
+      expect(
+        collectUnknownPropertySchemaErrors(schema as ContractTestSchemaShape, { ...result, unexpected: true }),
+      ).toContain('$.unexpected: unknown property');
+    }
+  });
+
+  it('accepts the successful clearContent NO_OP receipt without opening receipt objects', () => {
+    const schemas = buildInternalContractSchemas();
+    const defs = schemas.$defs as Record<string, ContractTestSchemaShape>;
+    const success = defs.ReceiptSuccess;
+    expect(schemas.operations.clearContent.success).toEqual({ $ref: '#/$defs/ReceiptSuccess' });
+    expect(collectUnknownPropertySchemaErrors(success, { success: true, status: 'NO_OP' })).toEqual([]);
+    expect(success.properties?.status).toEqual({ const: 'NO_OP' });
+    expect(success.required).not.toContain('status');
+    expect(success.additionalProperties).toBe(false);
+    expect(collectUnknownPropertySchemaErrors(success, { success: true, unexpected: true })).toEqual([
+      '$.unexpected: unknown property',
+    ]);
+  });
+
   it('declares optional physical shifts and replay identities on their runtime receipt surfaces', () => {
     const schemas = buildInternalContractSchemas();
     const defs = schemas.$defs as Record<string, ContractTestSchemaShape>;

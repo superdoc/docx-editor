@@ -1,4 +1,4 @@
-import type { BlockNodeAddress, ChangeMode, ReceiptFailure } from '../types/index.js';
+import type { BlockNodeAddress, ChangeMode, ReceiptFailure, TrackedChangeAddress } from '../types/index.js';
 import type { DiscoveryOutput } from '../types/discovery.js';
 
 export type SectionAddress = {
@@ -146,6 +146,7 @@ export type SectionsListResult = DiscoveryOutput<SectionDomain>;
 
 export interface SectionMutationSuccessResult {
   success: true;
+  dryRun?: boolean;
   section: SectionAddress;
   /** Committed review-aware content mode; omitted for dry runs, no-ops and non-reviewable settings. */
   appliedChangeMode?: ChangeMode;
@@ -164,6 +165,8 @@ export type SectionMutationResult = SectionMutationSuccessResult | SectionMutati
  */
 export interface DocumentMutationSuccessResult {
   success: true;
+  dryRun?: boolean;
+  changed?: boolean;
 }
 
 export type DocumentMutationResult = DocumentMutationSuccessResult | SectionMutationFailureResult;
@@ -171,6 +174,7 @@ export type DocumentMutationResult = DocumentMutationSuccessResult | SectionMuta
 export interface CreateSectionBreakSuccessResult {
   success: true;
   appliedChangeMode?: 'direct' | 'tracked';
+  trackedChangeRefs?: TrackedChangeAddress[];
   section: SectionAddress;
   /**
    * Present only when the break is represented as a dedicated paragraph.

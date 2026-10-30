@@ -15,7 +15,7 @@ export const ENGINE_NATIVE_RUNTIME_EXPORTS = Object.freeze([
   'createV2SingleDocCollaborationRuntime', 'createYWebsocketSingleDocAdapter', 'documentRpcErrorData',
   'isDocumentHostError', 'isDocumentRpcMethod', 'isDocumentRuntimeError', 'openDocumentRuntime',
   'openV2CollaborativeDocumentSession', 'openV2DocumentApiHost', 'redactForDiagnostics',
-  'resolveDocumentRpcResponseTimeout', 'saveCollaborativeDocumentSession', 'saveDocumentSessionWithDiagnostics',
+  'resolveDocumentRpcResponseTimeout', 'saveCollaborativeDocumentSession', 'saveDocumentSession', 'saveDocumentSessionWithDiagnostics',
 ].sort());
 
 export function isEngineRuntimeOutputDestination(id, destination) {

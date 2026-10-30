@@ -41,7 +41,22 @@ test('native runtime binds protected bytes, raw origins, policy and its closed e
   assert.deepEqual(verifyEngineNativeRuntime(directory, policy).inventory, inventory);
 });
 
+test('closed native runtime surface includes the original synchronous save alongside all existing exports', () => {
+  const expected = [
+    'COLLAB_V2_DIAGNOSTICS', 'CollabV2DiagnosticError', 'DocumentRpcInvalidParamsError',
+    'MAX_DOCUMENT_HOST_REQUEST_TIMEOUT_MS', 'createDocumentHost', 'createDocumentRuntimeSessionManager',
+    'createHocuspocusSingleDocAdapter', 'createLiveblocksSingleDocAdapter', 'createV2DocumentApiHost',
+    'createV2SingleDocCollaborationRuntime', 'createYWebsocketSingleDocAdapter', 'documentRpcErrorData',
+    'isDocumentHostError', 'isDocumentRpcMethod', 'isDocumentRuntimeError', 'openDocumentRuntime',
+    'openV2CollaborativeDocumentSession', 'openV2DocumentApiHost', 'redactForDiagnostics',
+    'resolveDocumentRpcResponseTimeout', 'saveCollaborativeDocumentSession', 'saveDocumentSession',
+    'saveDocumentSessionWithDiagnostics',
+  ].sort();
+  assert.deepEqual(ENGINE_NATIVE_RUNTIME_EXPORTS, expected);
+});
+
 for (const [name, mutate] of [
+  ['missing synchronous save export', ({ inventory }) => { inventory.exports = inventory.exports.filter(name => name !== 'saveDocumentSession'); }],
   ['wrong policy', ({ manifest }) => { manifest.protection.optionsSha256 = 'd'.repeat(64); }],
   ['missing protection entries', ({ manifest }) => { delete manifest.protection.entries; }],
   ['unprotected bytes', ({ manifest }) => { manifest.protection.entries[0].obfuscatedSha256 = 'd'.repeat(64); }],

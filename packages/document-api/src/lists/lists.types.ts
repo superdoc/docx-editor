@@ -293,6 +293,7 @@ export interface ListLevelTemplate {
   customFormat?: string;
   lvlText?: string;
   start?: number;
+  lvlRestart?: number;
   alignment?: LevelAlignment;
   indents?: {
     left?: number;

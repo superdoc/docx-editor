@@ -77,6 +77,27 @@ const stubAdapter = () =>
     setLevelLayout: mock(() => ({ success: true })),
   }) as any;
 
+describe('list restart template contract', () => {
+  it('preserves captured restart values through style and template forwarding', () => {
+    const adapter = stubAdapter();
+    const style = { version: 1 as const, levels: [{ level: 1, lvlRestart: 0 }] };
+    executeListsApplyStyle(adapter, { target: validTarget, style });
+    executeListsApplyTemplate(adapter, { target: validTarget, template: style });
+    expect(adapter.applyStyle.mock.calls[0][0].style).toBe(style);
+    expect(adapter.applyTemplate.mock.calls[0][0].template).toBe(style);
+  });
+  it('rejects malformed restart values before adapter entry', () => {
+    const adapter = stubAdapter();
+    for (const lvlRestart of ['0', 0.5, null, -1]) {
+      const style = { version: 1 as const, levels: [{ level: 1, lvlRestart }] } as any;
+      expect(() => executeListsApplyStyle(adapter, { target: validTarget, style })).toThrow();
+      expect(() => executeListsApplyTemplate(adapter, { target: validTarget, template: style })).toThrow();
+    }
+    expect(adapter.applyStyle).not.toHaveBeenCalled();
+    expect(adapter.applyTemplate).not.toHaveBeenCalled();
+  });
+});
+
 describe('custom numbering contract (SD-2513)', () => {
   const customFormat = '0001, 0002, 0003, ...';
 

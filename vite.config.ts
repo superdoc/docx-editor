@@ -65,6 +65,8 @@ export default defineConfig({
       'packages/sdk/langs/browser/src/intent-dispatch.ts',
       'tests/consumer-typecheck/tsconfig.matrix.json',
       'packages/sdk/langs/node/src/embedded-prompts.generated.ts',
+      'packages/sdk/codegen/src/node22-core-characters.json',
+      'packages/sdk/langs/rust/assets/action-policy.json',
     ],
   },
   // Oxlint settings for `vp lint` and the lint step of `vp check`. The ignore

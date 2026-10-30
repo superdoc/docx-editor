@@ -355,6 +355,13 @@ function validateListLevelTemplate(entry: unknown, path: string, operationName: 
     });
   }
   optionalInteger(e.start, `${path}.start`, operationName);
+  if (e.lvlRestart !== undefined && (!isInteger(e.lvlRestart) || (e.lvlRestart as number) < 0)) {
+    throw new DocumentApiValidationError(
+      'INVALID_INPUT',
+      `${operationName} ${path}.lvlRestart must be a non-negative integer.`,
+      { field: `${path}.lvlRestart`, value: e.lvlRestart },
+    );
+  }
   if (e.alignment !== undefined) {
     requireEnum(e.alignment, `${path}.alignment`, VALID_LEVEL_ALIGNMENTS, operationName);
   }

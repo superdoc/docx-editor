@@ -246,6 +246,7 @@ export type ReceiptSuccess = {
   /** Temporary-preview lifecycle and caller tag, also delivered through mutation events. */
   temporary?: import('./temporary-mutation.js').TemporaryMutationMetadata;
   success: true;
+  status?: 'NO_OP';
   /** Whether a successful request changed the document; false represents a no-op commit. */
   changed?: boolean;
   /** Tracked changes authored by this mutation. */

@@ -54,7 +54,6 @@ describe('createV2DiagnosticDedupe', () => {
     expect(dedupe.shouldEmit('doc-1', 1, 'render.page-geometry.failed')).toBe(true);
     expect(dedupe.shouldEmit('doc-1', 2, 'render.provider-error')).toBe(true);
     expect(dedupe.shouldEmit('doc-1', 2, 'render.page-geometry.failed')).toBe(true);
-    // And generation 2's entries are still deduped against themselves.
     expect(dedupe.shouldEmit('doc-1', 2, 'render.provider-error')).toBe(false);
   });
 

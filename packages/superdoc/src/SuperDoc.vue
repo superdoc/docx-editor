@@ -1097,7 +1097,7 @@ const v2ReviewWindowController = resolvedEditorIntegration.createReviewWindowCon
 const v2EditorFailures = ref<Record<string, V2EditorFailure>>({});
 
 // SuperDoc Diagnostics MVP: dedupe/generation logic lives in
-// internal/diagnostics/diagnostic-dedupe.js (unit-tested there) so it's
+// internal/diagnostics/diagnostic-dedupe.ts (unit-tested there) so it's
 // testable without mounting this whole component. `generation` is a
 // per-attempt number the v2 shell stamps on `v2-editor-failed` /
 // `v2-open-diagnostics` / `v2-render-readiness` payloads (bumped at the

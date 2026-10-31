@@ -12,12 +12,17 @@
  * come from the shell, not be inferred from `onV2EditorReady` timing: that
  * event only fires on success, fires AFTER the diagnostics events on the
  * success path, and never fires at all for a failed attempt.
- *
- * @param {{generation?: unknown} | null} [payload]
- * @returns {number}
  */
-export function getV2DiagnosticGeneration(payload) {
+export function getV2DiagnosticGeneration(payload?: { generation?: unknown } | null): number {
   return typeof payload?.generation === 'number' ? payload.generation : 0;
+}
+
+export interface V2DiagnosticDedupe {
+  shouldEmit(
+    documentId: string | null | undefined,
+    generation: number,
+    internalCode: string | null | undefined,
+  ): boolean;
 }
 
 /**
@@ -45,12 +50,10 @@ export function getV2DiagnosticGeneration(payload) {
  * a long-lived SuperDoc instance's life (e.g. a document-management app
  * cycling through many files); evicting on document removal would need to
  * hook document-lifecycle wiring, which is out of scope here.
- *
- * @returns {{ shouldEmit: (documentId: string | null | undefined, generation: number, internalCode: string | null | undefined) => boolean }}
  */
-export function createV2DiagnosticDedupe() {
-  const seenByScope = new Map();
-  const generationByScope = new Map();
+export function createV2DiagnosticDedupe(): V2DiagnosticDedupe {
+  const seenByScope = new Map<string, Set<string>>();
+  const generationByScope = new Map<string, number>();
 
   return {
     shouldEmit(documentId, generation, internalCode) {
@@ -81,12 +84,11 @@ export function createV2DiagnosticDedupe() {
  * `bootErrorName`-classified diagnostic (render-pipeline signal, not
  * package-integrity) is never redundant this way, since it carries genuinely
  * distinct information from the package diagnostics.
- *
- * @param {{internalCode?: string} | null} bootDiagnostic
- * @param {string} reason
- * @param {readonly unknown[]} translatedRecords
- * @returns {boolean}
  */
-export function isBootDiagnosticRedundant(bootDiagnostic, reason, translatedRecords) {
-  return Boolean(bootDiagnostic) && bootDiagnostic.internalCode === reason && translatedRecords.length > 0;
+export function isBootDiagnosticRedundant(
+  bootDiagnostic: { internalCode?: string } | null,
+  reason: string,
+  translatedRecords: readonly unknown[],
+): boolean {
+  return bootDiagnostic != null && bootDiagnostic.internalCode === reason && translatedRecords.length > 0;
 }

@@ -5,7 +5,7 @@ import { computed, getCurrentInstance } from 'vue';
  * This constant ensures consistency across the application.
  * @constant {string}
  */
-export const DEFAULT_UI_FONT_FAMILY = 'Arial, Helvetica, sans-serif';
+const DEFAULT_UI_FONT_FAMILY = 'Arial, Helvetica, sans-serif';
 
 /**
  * Vue composable that returns the computed UI font-family for SuperDoc surfaces.

@@ -1,7 +1,7 @@
 import type { FormatReadSelectionResult, InlineRunPatchKey, StylesStyleRunPatch } from '@superdoc/document-api';
 import { isFiniteNumber } from '../../helpers/is-finite-number.js';
 
-export const STYLE_MATCH_KEYS = [
+const STYLE_MATCH_KEYS = [
   ['bold', 'bold'],
   ['italic', 'italic'],
   ['underline', 'underline'],

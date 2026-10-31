@@ -22,7 +22,7 @@ import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 
-import { createBuiltInToolbar } from '../internal/toolbar/index.js';
+import { createBuiltInToolbar } from '../internal/toolbar/built-in-toolbar.js';
 import type { SuperDocUI } from '../public/ui/types.js';
 import { createHighContrastMode } from '../composables/use-high-contrast-mode.js';
 

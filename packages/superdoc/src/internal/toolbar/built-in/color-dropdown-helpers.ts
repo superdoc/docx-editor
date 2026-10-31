@@ -18,7 +18,7 @@ const closeDropdown = (dropdown: Pick<ToolbarItem, 'expand'>) => {
   dropdown.expand.value = false;
 };
 
-export const makeColorOption = (color: string, label: string): ColorOption => {
+const makeColorOption = (color: string, label: string): ColorOption => {
   return {
     label,
     icon: toolbarIcons.colorOption,
@@ -55,7 +55,7 @@ export const renderColorOptions = (
   ]);
 };
 
-export const icons: ColorOption[][] = [
+const icons: ColorOption[][] = [
   [
     makeColorOption('#111111', 'black'),
     makeColorOption('#333333', 'dark gray'),

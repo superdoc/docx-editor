@@ -49,7 +49,7 @@ export interface CompareApplyOutcome {
   readonly fallbackReason: 'tracked-deferred' | 'table-topology' | null;
 }
 
-export class CompareApplyFallbackError extends Error {
+class CompareApplyFallbackError extends Error {
   readonly changeMode = 'direct';
 
   constructor(

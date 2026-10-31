@@ -46,7 +46,7 @@ import { normalizeCommentsUiConfig } from '../helpers/comment-small-screen.js';
 import { isFiniteNumber } from '../helpers/is-finite-number.js';
 import { EditorRuntimeRegistry } from './editor-runtime/editor-runtime-registry.js';
 import type { EditorRuntimeFocusOptions } from './editor-runtime/types.js';
-import { createBuiltInToolbar } from '../internal/toolbar/index.js';
+import { createBuiltInToolbar } from '../internal/toolbar/built-in-toolbar.js';
 import { translateExportDiagnostic } from '../internal/diagnostics/translate-diagnostic.js';
 import { createSuperDocUI } from '../public/ui/create-super-doc-ui.js';
 import type { BorrowedSuperDocUI, SelectionSlice, SuperDocUI } from '../public/ui/types.js';

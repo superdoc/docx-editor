@@ -309,7 +309,7 @@ export interface CommandDescriptor {
 // ---------------------------------------------------------------------------
 
 /** Strip a trailing `pt` unit from v1-style font sizes (`"12pt"` → `"12"`). */
-export function normalizeFontSizePayload(payload: unknown): unknown {
+function normalizeFontSizePayload(payload: unknown): unknown {
   const strip = (value: unknown): unknown => (typeof value === 'string' ? value.replace(/\s*pt$/i, '').trim() : value);
   if (typeof payload === 'string') return strip(payload);
   if (payload && typeof payload === 'object' && 'value' in (payload as Record<string, unknown>)) {
@@ -325,7 +325,7 @@ export function normalizeFontSizePayload(payload: unknown): unknown {
  * Percentages pass through as numbers; legacy fraction-style values in the
  * `0..5` range are converted to percentages (`1.5` → `150`).
  */
-export function normalizeZoomPayload(payload: unknown): unknown {
+function normalizeZoomPayload(payload: unknown): unknown {
   const normalizeNumber = (value: number, percentLiteral: boolean): number => {
     if (!percentLiteral && value > 0 && value <= 5) return value * 100;
     return value;
@@ -348,7 +348,7 @@ export function normalizeZoomPayload(payload: unknown): unknown {
  * a `{ value }` wrapper, or common long forms (`"inches"`, `"centimeters"`).
  * An unrecognized value passes through so the instance method can reject it.
  */
-export function normalizeMeasurementUnitPayload(payload: unknown): unknown {
+function normalizeMeasurementUnitPayload(payload: unknown): unknown {
   const raw =
     payload && typeof payload === 'object' && 'value' in (payload as Record<string, unknown>)
       ? (payload as Record<string, unknown>).value
@@ -376,7 +376,7 @@ export function normalizeMeasurementUnitPayload(payload: unknown): unknown {
  * `"RRGGBB"`, or `{ value }`. `null` (clear) passes through unchanged; an
  * unrecognized value is returned as-is so the operation can reject it.
  */
-export function normalizeColorPayload(payload: unknown): unknown {
+function normalizeColorPayload(payload: unknown): unknown {
   const coerce = (value: unknown): unknown => {
     if (value === null) return null;
     if (typeof value !== 'string') return value;
@@ -405,7 +405,7 @@ function unwrapScalar(payload: unknown, keys: readonly string[]): unknown {
 }
 
 /** Normalize a v1 alignment payload (`"left"`, `{ value }`, `"justified"`) to a `ParagraphAlignment`. */
-export function normalizeAlignmentPayload(payload: unknown): unknown {
+function normalizeAlignmentPayload(payload: unknown): unknown {
   const raw = unwrapScalar(payload, ['alignment', 'value']);
   if (typeof raw !== 'string') return raw;
   const v = raw.trim().toLowerCase();
@@ -449,7 +449,7 @@ function readPageNumbersRecord(payload: unknown): Record<string, unknown> | null
  * of the page, as in Word. Other omitted options keep the section's settings.
  * Returns null for a value it does not recognize, so the command fails closed.
  */
-export function normalizePageNumbersApplyPayload(payload: unknown): PageNumbersApplyCommandInput | null {
+function normalizePageNumbersApplyPayload(payload: unknown): PageNumbersApplyCommandInput | null {
   const input = readPageNumbersRecord(payload);
   if (!input) return null;
   const kind = readPageNumberKind(input);
@@ -476,7 +476,7 @@ export function normalizePageNumbersApplyPayload(payload: unknown): PageNumbersA
 }
 
 /** Normalize a page-numbers-remove payload: an optional `position` or `kind`. */
-export function normalizePageNumbersRemovePayload(payload: unknown): PageNumbersRemoveCommandInput | null {
+function normalizePageNumbersRemovePayload(payload: unknown): PageNumbersRemoveCommandInput | null {
   const input = readPageNumbersRecord(payload);
   if (!input) return null;
   const kind = readPageNumberKind(input);
@@ -484,7 +484,7 @@ export function normalizePageNumbersRemovePayload(payload: unknown): PageNumbers
   return kind ? { kind } : {};
 }
 
-export function normalizeLineHeightPayload(payload: unknown): unknown {
+function normalizeLineHeightPayload(payload: unknown): unknown {
   const raw = unwrapScalar(payload, ['line', 'lineHeight', 'value']);
   const num = typeof raw === 'number' ? raw : typeof raw === 'string' ? Number.parseFloat(raw.trim()) : NaN;
   if (!Number.isFinite(num) || num <= 0) return raw;
@@ -492,7 +492,7 @@ export function normalizeLineHeightPayload(payload: unknown): unknown {
 }
 
 /** Preserve semantic style intent; normalize legacy linked-style payloads to a concrete ID. */
-export function normalizeStyleIdPayload(payload: unknown): unknown {
+function normalizeStyleIdPayload(payload: unknown): unknown {
   if (payload && typeof payload === 'object' && 'role' in (payload as Record<string, unknown>)) {
     return payload;
   }
@@ -501,7 +501,7 @@ export function normalizeStyleIdPayload(payload: unknown): unknown {
 }
 
 /** Resolve a document-mode payload (`"viewing"` or `{ mode }`) to the mode string. */
-export function normalizeDocumentModePayload(payload: unknown): unknown {
+function normalizeDocumentModePayload(payload: unknown): unknown {
   if (typeof payload === 'string') return payload;
   if (payload && typeof payload === 'object') {
     const mode = (payload as Record<string, unknown>).mode;

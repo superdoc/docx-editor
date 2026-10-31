@@ -8,7 +8,7 @@
  * @param {Record<string, any> | null | undefined} comment
  * @returns {boolean}
  */
-export const hasLegacyTrackedChangeThreadSignal = (comment) =>
+const hasLegacyTrackedChangeThreadSignal = (comment) =>
   Boolean(comment?.trackedChangeLink) ||
   Boolean(comment?.trackedChangeType) ||
   Boolean(comment?.trackedChangeDisplayType) ||

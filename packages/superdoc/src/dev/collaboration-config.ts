@@ -1,9 +1,9 @@
 export type DevCollaborationRoomMode = 'auto' | 'create' | 'join';
 export type DevResolvedCollaborationRoomMode = Exclude<DevCollaborationRoomMode, 'auto'>;
 
-export const DEFAULT_DEV_COLLABORATION_SERVER_URL = 'ws://localhost:8081/v2/collaboration';
-export const DEFAULT_DEV_LIVEBLOCKS_URL = 'http://localhost:1153';
-export const LIVEBLOCKS_DEV_PUBLIC_KEY = 'pk_localdev';
+const DEFAULT_DEV_COLLABORATION_SERVER_URL = 'ws://localhost:8081/v2/collaboration';
+const DEFAULT_DEV_LIVEBLOCKS_URL = 'http://localhost:1153';
+const LIVEBLOCKS_DEV_PUBLIC_KEY = 'pk_localdev';
 
 export type DevCollaborationProvider = 'y-websocket' | 'liveblocks';
 

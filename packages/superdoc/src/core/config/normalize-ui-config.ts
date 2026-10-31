@@ -767,4 +767,4 @@ export function normalizeUiConfig(config: UiConfigSource = {}): NormalizedUiConf
   };
 }
 
-export { BUILT_IN_SURFACES, HISTORICAL_DEFAULTS };
+export { BUILT_IN_SURFACES };

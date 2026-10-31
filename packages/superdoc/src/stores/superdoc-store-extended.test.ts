@@ -3,7 +3,6 @@ import { createPinia, setActivePinia } from 'pinia';
 import { useSuperdocStore } from './superdoc-store.js';
 import { DOCX, PDF } from '@superdoc/common';
 
-// Minimal File/Blob shims for Node
 class BlobMock {
   constructor(parts = [], options = {}) {
     this.parts = parts;

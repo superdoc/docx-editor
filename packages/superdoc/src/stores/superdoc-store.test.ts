@@ -4,7 +4,6 @@ import { useSuperdocStore } from './superdoc-store.js';
 import { DOCX, PDF, HTML, getFileObject } from '@superdoc/common';
 import { normalizeDocumentEntry } from '../core/helpers/file.js';
 
-// Mock getFileObject while keeping the rest of the module's exports intact
 vi.mock('@superdoc/common', async (importOriginal) => {
   const actual = await importOriginal();
   return {
@@ -13,7 +12,6 @@ vi.mock('@superdoc/common', async (importOriginal) => {
   };
 });
 
-// Mock Blob/File constructors for the Node.js environment
 class BlobMock {
   constructor(blobParts = [], options = {}) {
     this.parts = blobParts;
@@ -188,8 +186,6 @@ describe('SuperDoc Store - Blob Support', () => {
 
       await store.init(config);
 
-      // Access the private method through the store's internal methods
-      // Since _initializeDocumentData is private, we test through the public init method
       expect(store.documents.length).toBe(1);
     });
 
@@ -201,7 +197,6 @@ describe('SuperDoc Store - Blob Support', () => {
       await store.init(config);
 
       expect(store.documents.length).toBe(1);
-      // The blob should be converted to a File internally
       const document = store.documents[0];
       expect(document.data).toBeInstanceOf(File);
       expect(document.data.name).toBe('test.docx');
@@ -215,7 +210,6 @@ describe('SuperDoc Store - Blob Support', () => {
       await store.init(config);
 
       expect(store.documents.length).toBe(1);
-      // The blob should be converted to a File with generated name
       const document = store.documents[0];
       expect(document.data).toBeInstanceOf(File);
       expect(document.data.name).toBe('document.docx');
@@ -238,7 +232,6 @@ describe('SuperDoc Store - Blob Support', () => {
         const document = store.documents[0];
         expect(document.data.name).toBe(testCase.expectedName);
 
-        // Reset for next test
         store.reset();
       }
     });
@@ -256,7 +249,7 @@ describe('SuperDoc Store - Blob Support', () => {
     });
 
     it('should use document type if blob type is not available', async () => {
-      const blob = new Blob(['test content']); // No type specified
+      const blob = new Blob(['test content']);
 
       const config = createTestConfig([{ data: blob, name: 'test.docx', type: DOCX }]);
 
@@ -279,11 +272,9 @@ describe('SuperDoc Store - Blob Support', () => {
 
       expect(store.documents.length).toBe(2);
 
-      // First document should remain as File
       expect(store.documents[0].data).toBeInstanceOf(File);
       expect(store.documents[0].data.name).toBe('file.docx');
 
-      // Second document should be converted from Blob to File
       expect(store.documents[1].data).toBeInstanceOf(File);
       expect(store.documents[1].data.name).toBe('blob.docx');
     });
@@ -292,13 +283,11 @@ describe('SuperDoc Store - Blob Support', () => {
       const file = new File(['file content'], 'test.docx');
       const blob = new Blob(['blob content']);
 
-      // Test our instanceof logic
       expect(file instanceof File).toBe(true);
       expect(file instanceof Blob).toBe(true);
       expect(blob instanceof File).toBe(false);
       expect(blob instanceof Blob).toBe(true);
 
-      // Test the specific check used in the code: blob instanceof Blob && !(blob instanceof File)
       expect(blob instanceof Blob && !(blob instanceof File)).toBe(true);
       expect(file instanceof Blob && !(file instanceof File)).toBe(false);
     });
@@ -320,8 +309,6 @@ describe('SuperDoc Store - Blob Support', () => {
 
       await store.init(config);
 
-      // Should not crash, but document might not be added due to error
-      // The exact behavior depends on error handling implementation
       expect(store.documents.length).toBe(0);
     });
 
@@ -460,11 +447,9 @@ describe('SuperDoc Store - measurementUnit seeding', () => {
   });
 
   it('does not leak a prior cm unit into a later default document', async () => {
-    // A document that opts into cm...
     await store.init(configWithUnit('cm'));
     expect(store.measurementUnit).toBe('cm');
 
-    // ...must not survive into a later default (no measurementUnit) document.
     await store.init(configWithUnit(undefined));
     expect(store.measurementUnit).toBe('in');
   });

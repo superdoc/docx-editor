@@ -83,7 +83,7 @@ const routes = [
   ['agents/build/legacy-tools/index.html', 'Legacy tools'],
   ['agents/automation/node-sdk/index.html', 'Automate a DOCX with Node.js'],
   ['agents/automation/python-sdk/index.html', 'Automate a DOCX with Python'],
-  ['agents/automation/rust-sdk/index.html', 'Automate a DOCX with Rust (Beta)'],
+  ['agents/automation/rust-sdk/index.html', 'Automate a DOCX with Rust'],
   ['agents/automation/cli/index.html', 'Automate a DOCX from the CLI'],
   ['agents/workflows/review-tracked-changes/index.html', 'Review tracked changes'],
   ['agents/operate/safety/index.html', 'Safety'],
@@ -1480,8 +1480,14 @@ test('Rust automation exports its runnable source, shared reference, and discove
   assert.match(markdown, /collaboration_auth: Some\(CollaborationAuth::token\(token\)\?\)/u);
   assert.match(markdown, /\/document-api\/reference/u);
   assert.doesNotMatch(markdown, /<include>/u);
+  assert.match(markdown, /^cargo add superdoc-sdk$/mu);
+  assert.doesNotMatch(markdown, /\bbeta\b|superdoc-sdk@/iu);
+  const html = await readFile(new URL('../out/agents/automation/rust-sdk/index.html', import.meta.url), 'utf8');
+  assert.match(html, /<h1\b[^>]*>Automate a DOCX with Rust<\/h1>/u);
+  assert.doesNotMatch(html, /\bbeta\b|superdoc-sdk@/iu);
   const home = await readFile(new URL('../out/index.html', import.meta.url), 'utf8');
-  assert.match(home, /Resolve changes with Rust \(Beta\)/u);
+  assert.match(home, /Resolve changes with Rust<\//u);
+  assert.doesNotMatch(home, /Rust(?: SDK)? \(Beta\)/u);
 });
 
 test('initialization explains create, join, and reopening without promising persistence', async () => {

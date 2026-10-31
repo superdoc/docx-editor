@@ -1,12 +1,8 @@
 ---
-title: Automate a DOCX with Rust (Beta)
-navTitle: Rust SDK (Beta)
+title: Automate a DOCX with Rust
+navTitle: Rust SDK
 description: Accept tracked changes and save a separate DOCX from Rust.
 ---
-
-<Callout variant='warning' title='Beta'>
-  The Rust SDK is in beta. Its API can change between releases, so pin the exact crate version.
-</Callout>
 
 Use the Rust SDK when application code already knows which document operation to run. This guide accepts every
 tracked change in a DOCX and writes the result to a separate file. Later sections build on the same project.
@@ -18,12 +14,12 @@ The SDK requires Rust 1.85 or newer and uses Tokio. Create a project and add the
 ```bash
 cargo new accept-changes
 cd accept-changes
-cargo add superdoc-sdk@=0.1.0-next.beta.31
+cargo add superdoc-sdk
 cargo add serde_json@1
 cargo add tokio@1 --features macros,rt
 ```
 
-Cargo installs prerelease crates only when you name the version, so keep the `=` pin.
+Cargo selects the latest stable release and records the resolved version in `Cargo.lock`.
 
 ## 2. Prepare a document
 
@@ -96,7 +92,7 @@ Each method takes a generated parameter type. Build simple ones with the constru
 `trackedChangeId`, inside `json!`.
 
 The [Rust API reference on docs.rs](https://docs.rs/superdoc-sdk/latest/superdoc_sdk/) lists every generated type and
-method. Select the docs.rs version that matches your pin.
+method. Select the docs.rs version that matches your installed crate.
 
 ## Add several comments in one request
 

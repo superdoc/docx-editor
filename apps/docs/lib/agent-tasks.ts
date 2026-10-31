@@ -41,7 +41,7 @@ export const AGENT_TASKS: readonly AgentTask[] = [
   },
   {
     id: 'resolve-rust',
-    title: 'Resolve changes with Rust (Beta)',
+    title: 'Resolve changes with Rust',
     summary: 'Accept or reject existing changes from Rust',
     guideHref: '/agents/automation/rust-sdk',
     instruction:

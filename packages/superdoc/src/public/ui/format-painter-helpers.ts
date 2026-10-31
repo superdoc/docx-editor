@@ -1,33 +1,34 @@
+import { isPlainObject } from '../../helpers/object-guards.js';
+
 /**
  * Maps SDRunProps field names to InlineRunPatch field names.
  * SDRunProps (read-side) and InlineRunPatch (write-side) use different keys
  * for the same properties; direct assignment between them is forbidden.
- *
- * @param {Record<string, unknown>} props - SDRunProps object from doc.getNodeById
- * @returns {Record<string, unknown>} InlineRunPatch ready for doc.format.apply
  */
-export function sdRunPropsToInlineRunPatch(props) {
+export function sdRunPropsToInlineRunPatch(props: Record<string, unknown>): Record<string, unknown> {
   if (!props || typeof props !== 'object') return {};
-  const patch = {};
-  if (props.fonts) {
+  const patch: Record<string, unknown> = {};
+  const fonts = props.fonts;
+  if (isPlainObject(fonts)) {
     patch.rFonts = {
-      ascii: props.fonts.ascii,
-      hAnsi: props.fonts.hAnsi,
-      eastAsia: props.fonts.eastAsia,
-      cs: props.fonts.cs,
-      asciiTheme: props.fonts.asciiTheme,
-      hAnsiTheme: props.fonts.hAnsiTheme,
-      eastAsiaTheme: props.fonts.eastAsiaTheme,
-      csTheme: props.fonts.csTheme,
-      hint: props.fonts.hint,
+      ascii: fonts.ascii,
+      hAnsi: fonts.hAnsi,
+      eastAsia: fonts.eastAsia,
+      cs: fonts.cs,
+      asciiTheme: fonts.asciiTheme,
+      hAnsiTheme: fonts.hAnsiTheme,
+      eastAsiaTheme: fonts.eastAsiaTheme,
+      csTheme: fonts.csTheme,
+      hint: fonts.hint,
     };
   }
   if (props.fontFamily != null) patch.fontFamily = props.fontFamily;
-  if (props.lang) {
+  const lang = props.lang;
+  if (isPlainObject(lang)) {
     patch.lang = {
-      val: props.lang.val,
-      eastAsia: props.lang.eastAsia,
-      bidi: props.lang.bidi,
+      val: lang.val,
+      eastAsia: lang.eastAsia,
+      bidi: lang.bidi,
     };
   }
   if (props.fontSize != null) patch.fontSize = props.fontSize;
@@ -76,26 +77,31 @@ export function sdRunPropsToInlineRunPatch(props) {
   return patch;
 }
 
-function projectColorRefToInlineColor(color) {
+function projectColorRefToInlineColor(color: unknown): unknown {
   if (!color) return undefined;
   if (typeof color === 'string') return color;
+  if (!isPlainObject(color)) return undefined;
   if (color.model === 'rgb') return color.value;
   if (color.model === 'auto') return 'auto';
   return undefined;
 }
 
-function projectUnderlineToInlinePatch(underline) {
+function projectUnderlineToInlinePatch(underline: unknown): Record<string, unknown> | true | undefined {
   if (underline == null) return undefined;
-  const patch = {};
+  if (!isPlainObject(underline)) return true;
+  const patch: Record<string, unknown> = {};
   if (underline.style != null) patch.style = underline.style;
-  if (underline.color?.model === 'rgb') patch.color = underline.color.value;
-  if (underline.color?.model === 'theme') patch.themeColor = underline.color.theme;
+  const color = underline.color;
+  if (isPlainObject(color)) {
+    if (color.model === 'rgb') patch.color = color.value;
+    else if (color.model === 'theme') patch.themeColor = color.theme;
+  }
   return Object.keys(patch).length > 0 ? patch : true;
 }
 
-function projectShadingToInlinePatch(shading) {
-  if (!shading) return undefined;
-  const patch = {};
+function projectShadingToInlinePatch(shading: unknown): Record<string, unknown> | undefined {
+  if (!isPlainObject(shading)) return undefined;
+  const patch: Record<string, unknown> = {};
   const fill = projectColorRefToInlineColor(shading.fill);
   if (fill != null) patch.fill = fill;
   const color = projectColorRefToInlineColor(shading.color);
@@ -104,9 +110,9 @@ function projectShadingToInlinePatch(shading) {
   return Object.keys(patch).length > 0 ? patch : undefined;
 }
 
-function projectBorderToInlinePatch(border) {
-  if (!border) return undefined;
-  const patch = {};
+function projectBorderToInlinePatch(border: unknown): Record<string, unknown> | undefined {
+  if (!isPlainObject(border)) return undefined;
+  const patch: Record<string, unknown> = {};
   if (border.style != null) patch.val = border.style;
   if (border.width != null) patch.sz = border.width;
   if (border.space != null) patch.space = border.space;
@@ -121,11 +127,8 @@ function projectBorderToInlinePatch(border) {
  *
  * Falls back to the plain text target when the host has not populated an
  * explicit `selectionTarget` yet.
- *
- * @param {{ selectionTarget?: unknown; target?: unknown } | null | undefined} selection
- * @returns {string}
  */
-export function selectionKey(selection) {
+export function selectionKey(selection: { selectionTarget?: unknown; target?: unknown } | null | undefined): string {
   const target = selection?.selectionTarget ?? selection?.target;
   if (!selection || !target) return '';
   try {

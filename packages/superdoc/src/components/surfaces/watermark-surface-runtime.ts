@@ -1,14 +1,15 @@
-// @ts-check
 import { nextTick } from 'vue';
 import WatermarkSurface from './WatermarkSurface.vue';
 
-/**
- * Keeps Vue rendering and post-dismissal announcements outside the public type graph.
- * @param {(() => HTMLElement | null) | undefined} getContainer
- */
-export function createWatermarkSurfaceRuntime(getContainer) {
-  /** @type {HTMLDivElement | null} */
-  let status = null;
+/** Keeps Vue rendering and post-dismissal announcements outside the public type graph. */
+export function createWatermarkSurfaceRuntime(getContainer?: () => HTMLElement | null): {
+  component: unknown;
+  captureFocusReturn(): (isCurrent: () => boolean) => Promise<void>;
+  mount(): void;
+  announce(message: string): void;
+  destroy(): void;
+} {
+  let status: HTMLDivElement | null = null;
   let disposed = false;
   return {
     component: WatermarkSurface,
@@ -20,8 +21,7 @@ export function createWatermarkSurfaceRuntime(getContainer) {
       const toolbar = item?.closest('[data-sd-part="toolbar"]');
       const container = toolbar?.parentElement;
       const isWatermarkEntry = item?.querySelector('[data-item="btn-watermark"], [data-item="btn-overflow"]');
-      /** @param {() => boolean} isCurrent */
-      return async (isCurrent) => {
+      return async (isCurrent: () => boolean) => {
         // Let the dialog shell restore focus before recovering a detached toolbar opener.
         await nextTick();
         if (disposed || !isCurrent() || !isWatermarkEntry || opener?.isConnected || !container?.isConnected) return;
@@ -59,8 +59,7 @@ export function createWatermarkSurfaceRuntime(getContainer) {
       });
       container.appendChild(status);
     },
-    /** @param {string} message */
-    announce(message) {
+    announce(message: string) {
       if (!disposed && status) status.textContent = message;
     },
     destroy() {

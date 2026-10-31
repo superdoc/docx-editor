@@ -4,10 +4,6 @@ import { shallowRef, defineComponent, h, nextTick } from 'vue';
 import SurfaceHost from './SurfaceHost.vue';
 import SurfaceDialog from './SurfaceDialog.vue';
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 /** Minimal SurfaceManager stub that exposes the same reactive refs */
 function createManagerStub() {
   const activeDialog = shallowRef(null);
@@ -74,10 +70,6 @@ function mountHost(managerStub) {
     },
   });
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 describe('SurfaceHost', () => {
   let manager;
@@ -290,10 +282,6 @@ describe('SurfaceHost', () => {
   });
 
   describe('floating Escape — document-level listener', () => {
-    afterEach(() => {
-      // Clean up any leftover document listeners by unmounting
-    });
-
     it('closes floating on Escape via document-level listener', async () => {
       manager.activeFloating.value = createSurface({
         id: 'float-1',
@@ -308,7 +296,6 @@ describe('SurfaceHost', () => {
       const wrapper = mountHost(manager);
       await nextTick();
 
-      // Simulate Escape at the document level (not inside the floating)
       const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true });
       document.dispatchEvent(event);
 
@@ -374,11 +361,9 @@ describe('SurfaceHost', () => {
       const wrapper = mountHost(manager);
       await nextTick();
 
-      // Remove the floating
       manager.activeFloating.value = null;
       await nextTick();
 
-      // Escape should not call close
       const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true });
       document.dispatchEvent(event);
 
@@ -402,7 +387,6 @@ describe('SurfaceHost', () => {
       const wrapper = mountHost(manager);
       await nextTick();
 
-      // Pointer down outside the floating surface
       const event = new PointerEvent('pointerdown', { bubbles: true });
       document.dispatchEvent(event);
 
@@ -532,7 +516,6 @@ describe('SurfaceHost', () => {
       document.querySelectorAll('.superdoc').forEach((el) => el.remove());
     });
 
-    /** Flush enough ticks for Vue reactivity + flush:'post' watcher to settle */
     async function flushGeometry() {
       await nextTick();
       await nextTick();
@@ -546,7 +529,7 @@ describe('SurfaceHost', () => {
 
       const host = wrapper.find('.sd-surface-host');
       expect(host.exists()).toBe(true);
-      // JSDOM returns zero rects, so style has position:fixed with 0px values
+      // happy-dom returns zero rects, so style has position:fixed with 0px values
       expect(host.element.style.position).toBe('fixed');
       wrapper.unmount();
     });
@@ -613,7 +596,6 @@ describe('SurfaceHost', () => {
       const { wrapper } = mountHostInSuperdoc(manager);
       await flushGeometry();
 
-      // Remove the surface
       manager.activeDialog.value = null;
       await flushGeometry();
 
@@ -646,11 +628,8 @@ describe('SurfaceHost', () => {
       const { wrapper, superdocRoot } = mountHostInSuperdoc(manager);
       await flushGeometry();
 
-      // The host should measure .superdoc__layers, not .superdoc itself.
-      // We verify by checking the style is set (meaning a target was found).
       const host = wrapper.find('.sd-surface-host');
       expect(host.element.style.position).toBe('fixed');
-      // Confirm layers exists as expected
       expect(superdocRoot.querySelector('.superdoc__layers')).not.toBeNull();
 
       wrapper.unmount();
@@ -670,8 +649,7 @@ describe('SurfaceHost', () => {
       layers.className = 'superdoc__layers';
       superdocRoot.appendChild(layers);
 
-      // Mock getComputedStyle so the ancestor walk detects the clipping overflow.
-      // JSDOM's getComputedStyle doesn't resolve inline styles to overflowX/overflowY.
+      // happy-dom's getComputedStyle doesn't resolve inline styles to overflowX/overflowY.
       const origGetComputedStyle = window.getComputedStyle;
       vi.spyOn(window, 'getComputedStyle').mockImplementation((el) => {
         const real = origGetComputedStyle(el);
@@ -701,7 +679,6 @@ describe('SurfaceHost', () => {
         height: 700,
       });
 
-      // Mock window dimensions
       const origInnerWidth = window.innerWidth;
       const origInnerHeight = window.innerHeight;
       Object.defineProperty(window, 'innerWidth', { value: 1024, configurable: true });
@@ -727,7 +704,6 @@ describe('SurfaceHost', () => {
       expect(host.element.style.height).toBe('300px');
       expect(host.element.style.width).toBe('800px');
 
-      // Restore
       Object.defineProperty(window, 'innerWidth', { value: origInnerWidth, configurable: true });
       Object.defineProperty(window, 'innerHeight', { value: origInnerHeight, configurable: true });
       wrapper.unmount();

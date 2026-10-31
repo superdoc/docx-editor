@@ -3,10 +3,6 @@ import { mount } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import PasswordPromptSurface from './PasswordPromptSurface.vue';
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 const DEFAULT_TEXTS = {
   title: 'Password Required',
   invalidTitle: 'Incorrect Password',
@@ -47,10 +43,6 @@ const mountPrompt = (overrides = {}) => {
     },
   });
 };
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 describe('PasswordPromptSurface', () => {
   it('renders password input, cancel, and submit buttons', () => {
@@ -108,12 +100,9 @@ describe('PasswordPromptSurface', () => {
     await wrapper.find('.sd-password-prompt__btn--submit').trigger('click');
     await nextTick();
 
-    // Input should be disabled during busy state
     expect(wrapper.find('input[type="password"]').attributes('disabled')).toBeDefined();
-    // Submit button shows busy text
     expect(wrapper.find('.sd-password-prompt__btn--submit').text()).toContain('Decrypting');
 
-    // Resolve the attempt
     resolveAttempt({ success: true });
     await nextTick();
   });
@@ -128,7 +117,6 @@ describe('PasswordPromptSurface', () => {
 
     await wrapper.find('input[type="password"]').setValue('correct');
     await wrapper.find('.sd-password-prompt__btn--submit').trigger('click');
-    // Wait for the async attemptPassword to complete
     await nextTick();
     await nextTick();
 
@@ -149,7 +137,6 @@ describe('PasswordPromptSurface', () => {
 
     expect(wrapper.find('.sd-password-prompt__error').exists()).toBe(true);
     expect(wrapper.find('.sd-password-prompt__error').text()).toContain('Incorrect password');
-    // Input should be re-enabled
     expect(wrapper.find('input[type="password"]').attributes('disabled')).toBeUndefined();
   });
 
@@ -207,7 +194,6 @@ describe('PasswordPromptSurface', () => {
       texts: { title: 'Enter password', invalidTitle: 'Try again' },
     });
 
-    // Initially shows the base title
     expect(wrapper.find('.sd-password-prompt__heading').text()).toBe('Enter password');
 
     await wrapper.find('input[type="password"]').setValue('wrong');
@@ -215,7 +201,6 @@ describe('PasswordPromptSurface', () => {
     await nextTick();
     await nextTick();
 
-    // After failed attempt, heading switches to invalidTitle
     expect(wrapper.find('.sd-password-prompt__heading').text()).toBe('Try again');
   });
 
@@ -228,8 +213,6 @@ describe('PasswordPromptSurface', () => {
 
     expect(attemptPassword).toHaveBeenCalledWith('secret');
   });
-
-  // ---- new tests for customizable strings ---------------------------------
 
   it('uses custom description text', () => {
     const wrapper = mountPrompt({ texts: { description: 'Unlock this file' } });

@@ -1,5 +1,5 @@
 import { h } from 'vue';
-import type { Component, Ref, StyleValue } from 'vue';
+import type { Component } from 'vue';
 import type {
   HeaderFooterKind,
   HeaderFooterPageNumberAlignment,
@@ -11,6 +11,7 @@ import type {
 import { sanitizeNumber } from './helpers';
 import { normalizeFontOption } from './font-options.js';
 import { useToolbarItem } from './use-toolbar-item';
+import type { ToolbarItemAttributes } from './use-toolbar-item';
 import AlignmentButtons from './AlignmentButtons.vue';
 import StyleButtonsList from './StyleButtonsList.vue';
 import { bulletStyleButtons, numberedStyleButtons } from './list-style-buttons.js';
@@ -30,58 +31,11 @@ import { executeFirstPartyCommandAsync, readFirstPartyPageNumbers } from '../../
 import checkIconSvg from '@superdoc/common/icons/check.svg?raw';
 import { RESPONSIVE_BREAKPOINTS, TOOLBAR_FONTS, TOOLBAR_FONT_SIZES } from './constants.js';
 import { tableActionCommandId } from '../compatibility-catalog.js';
-import type { BuiltInToolbar, ToolbarItem, ToolbarItemOption } from '../built-in-toolbar.js';
+import type { BuiltInToolbar, ToolbarItem } from '../built-in-toolbar.js';
 import type { CommandExecutionResult, SelectionSlice } from '../../../public/ui/types.js';
 import { isPlainObject } from '../../../helpers/object-guards.js';
 import { toolbarIcons as builtInToolbarIcons } from './toolbarIcons.js';
 import { toolbarTexts as builtInToolbarTexts } from './toolbarTexts.js';
-
-type ToolbarItemAttributes = ToolbarItem['attributes']['value'];
-
-type DefaultToolbarItem = ToolbarItem & {
-  layoutWidth?: Ref<number | undefined>;
-  childItem?: unknown;
-  parentItem?: unknown;
-};
-
-type ActivationAttributes = Record<string, unknown>;
-
-interface DefaultItemOptions {
-  type: 'button' | 'options' | 'separator' | 'dropdown' | 'overflow';
-  name: string;
-  command?: string | null;
-  noArgumentCommand?: string;
-  splitButton?: boolean;
-  splitButtonCommand?: string;
-  icon?: string;
-  tooltip?: string;
-  group?: string;
-  allowWithoutEditor?: boolean;
-  attributes?: ToolbarItemAttributes;
-  disabled?: boolean;
-  active?: boolean;
-  style?: StyleValue;
-  dropdownStyles?: StyleValue;
-  defaultLabel?: string;
-  label?: string;
-  markName?: string;
-  labelAttr?: string;
-  hasCaret?: boolean;
-  hasInlineTextInput?: boolean;
-  inlineTextInputVisible?: boolean;
-  isWide?: boolean;
-  isNarrow?: boolean;
-  hideLabel?: boolean;
-  suppressActiveHighlight?: boolean;
-  restoreEditorFocus?: boolean;
-  dropdownValueKey?: string;
-  selectedValue?: string;
-  options?: ToolbarItemOption[];
-  onActivate?: (attributes: ActivationAttributes, isMultiple?: boolean) => void;
-  onDeactivate?: () => void;
-}
-
-const defaultToolbarItem = (options: DefaultItemOptions): DefaultToolbarItem => useToolbarItem(options);
 
 type DefaultItemsToolbar = Pick<
   BuiltInToolbar,
@@ -111,7 +65,7 @@ interface DefaultItemsInput {
   configuredItemNames?: ReadonlySet<string> | null;
   configuredItemOrder?: readonly string[] | null;
   excludedItemNames?: ReadonlySet<string> | null;
-  additionalItems?: readonly DefaultToolbarItem[];
+  additionalItems?: readonly ToolbarItem[];
 }
 
 type FontOption = {
@@ -171,7 +125,7 @@ const closeDropdown = (dropdown: Pick<ToolbarItem, 'expand'>) => {
   dropdown.expand.value = false;
 };
 
-const getToolbarItemWidth = (item: DefaultToolbarItem): number => {
+const getToolbarItemWidth = (item: ToolbarItem): number => {
   const configuredWidth = item.layoutWidth?.value;
   if (typeof configuredWidth === 'number' && Number.isFinite(configuredWidth) && configuredWidth > 0) {
     return configuredWidth;
@@ -180,8 +134,8 @@ const getToolbarItemWidth = (item: DefaultToolbarItem): number => {
   return controlSizes.get(item.name.value) || DEFAULT_CONTROL_WIDTH;
 };
 
-const collapseSeparatorRun = (items: DefaultToolbarItem[]) => {
-  const result: DefaultToolbarItem[] = [];
+const collapseSeparatorRun = (items: ToolbarItem[]) => {
+  const result: ToolbarItem[] = [];
   for (const item of items) {
     if (item.type === 'separator') {
       const previous = result[result.length - 1];
@@ -195,8 +149,8 @@ const collapseSeparatorRun = (items: DefaultToolbarItem[]) => {
   return result;
 };
 
-const normalizeSeparators = (items: DefaultToolbarItem[]) => {
-  const byGroup = new Map<string, DefaultToolbarItem[]>();
+const normalizeSeparators = (items: ToolbarItem[]) => {
+  const byGroup = new Map<string, ToolbarItem[]>();
   for (const item of items) {
     const group = item.group?.value || 'center';
     const groupItems = byGroup.get(group);
@@ -204,7 +158,7 @@ const normalizeSeparators = (items: DefaultToolbarItem[]) => {
     else byGroup.set(group, [item]);
   }
 
-  const kept = new Set<DefaultToolbarItem>();
+  const kept = new Set<ToolbarItem>();
   for (const groupItems of byGroup.values()) {
     for (const item of collapseSeparatorRun(groupItems)) kept.add(item);
   }
@@ -212,7 +166,7 @@ const normalizeSeparators = (items: DefaultToolbarItem[]) => {
   return items.filter((item) => kept.has(item));
 };
 
-const normalizeSeparatorsIgnoringOverflow = (items: DefaultToolbarItem[]) => {
+const normalizeSeparatorsIgnoringOverflow = (items: ToolbarItem[]) => {
   const overflowTrigger = items.find((item) => item.type === 'overflow');
   const withoutOverflow = items.filter((item) => item !== overflowTrigger);
   const kept = new Set(normalizeSeparators(withoutOverflow));
@@ -295,10 +249,10 @@ export const makeDefaultItems = ({
   configuredItemOrder,
   excludedItemNames,
   additionalItems = [],
-}: DefaultItemsInput): { defaultItems: DefaultToolbarItem[]; overflowItems: DefaultToolbarItem[] } => {
+}: DefaultItemsInput): { defaultItems: ToolbarItem[]; overflowItems: ToolbarItem[] } => {
   const toolbarIcons = stringEntries(configuredIcons, builtInToolbarIcons);
   const toolbarTexts = stringEntries(configuredTexts, builtInToolbarTexts);
-  const bold = defaultToolbarItem({
+  const bold = useToolbarItem({
     type: 'button',
     name: 'bold',
     command: 'toggleBold',
@@ -310,7 +264,7 @@ export const makeDefaultItems = ({
   });
 
   const fontOptions: FontOption[] = (toolbarFonts ?? TOOLBAR_FONTS).map(normalizeFontOption);
-  const fontButton = defaultToolbarItem({
+  const fontButton = useToolbarItem({
     type: 'dropdown',
     name: 'fontFamily',
     tooltip: toolbarTexts.fontFamily,
@@ -361,7 +315,7 @@ export const makeDefaultItems = ({
     },
   });
 
-  const aiButton = defaultToolbarItem({
+  const aiButton = useToolbarItem({
     type: 'dropdown',
     name: 'ai',
     dropdownStyles: {
@@ -386,7 +340,7 @@ export const makeDefaultItems = ({
     ],
   });
 
-  function renderAiDropdown(aiButton: DefaultToolbarItem) {
+  function renderAiDropdown(aiButton: ToolbarItem) {
     const selection = currentSelectionSnapshot(superToolbar);
     const selectionTarget = selection?.selectionTarget ?? selectionTargetFromTextTarget(selection?.target);
     const selectedText = selection?.empty ? '' : selectionText(selection);
@@ -413,7 +367,7 @@ export const makeDefaultItems = ({
   }
 
   const fontSizeOptions = TOOLBAR_FONT_SIZES;
-  const fontSize = defaultToolbarItem({
+  const fontSize = useToolbarItem({
     type: 'dropdown',
     name: 'fontSize',
     defaultLabel: '12',
@@ -472,56 +426,52 @@ export const makeDefaultItems = ({
   });
 
   const createSeparator = () =>
-    defaultToolbarItem({
+    useToolbarItem({
       type: 'separator',
       name: 'separator',
       isNarrow: true,
     });
 
-  const italic = defaultToolbarItem({
+  const italic = useToolbarItem({
     type: 'button',
     name: 'italic',
     command: 'toggleItalic',
     icon: toolbarIcons.italic,
-    active: false,
     tooltip: toolbarTexts.italic,
     attributes: {
       ariaLabel: 'Italic',
     },
   });
 
-  const underline = defaultToolbarItem({
+  const underline = useToolbarItem({
     type: 'button',
     name: 'underline',
     command: 'toggleUnderline',
     icon: toolbarIcons.underline,
-    active: false,
     tooltip: toolbarTexts.underline,
     attributes: {
       ariaLabel: 'Underline',
     },
   });
 
-  const strikethrough = defaultToolbarItem({
+  const strikethrough = useToolbarItem({
     type: 'button',
     name: 'strike',
     command: 'toggleStrike',
     icon: toolbarIcons.strikethrough,
-    active: false,
     tooltip: toolbarTexts.strikethrough,
     attributes: {
       ariaLabel: 'Strikethrough',
     },
   });
 
-  const highlight = defaultToolbarItem({
+  const highlight = useToolbarItem({
     type: 'dropdown',
     name: 'highlight',
     icon: toolbarIcons.highlight,
     hideLabel: true,
     markName: 'highlight',
     labelAttr: 'color',
-    active: false,
     tooltip: toolbarTexts.highlight,
     command: 'setHighlight',
     noArgumentCommand: 'unsetHighlight',
@@ -542,14 +492,13 @@ export const makeDefaultItems = ({
     onDeactivate: () => (highlight.iconColor.value = ''),
   });
 
-  const colorButton = defaultToolbarItem({
+  const colorButton = useToolbarItem({
     type: 'dropdown',
     name: 'color',
     icon: toolbarIcons.color,
     hideLabel: true,
     markName: 'textStyle',
     labelAttr: 'color',
-    active: false,
     tooltip: toolbarTexts.color,
     command: 'setColor',
     suppressActiveHighlight: true,
@@ -569,11 +518,10 @@ export const makeDefaultItems = ({
     onDeactivate: () => (colorButton.iconColor.value = '#000'),
   });
 
-  const search = defaultToolbarItem({
+  const search = useToolbarItem({
     type: 'button',
     name: 'search',
     allowWithoutEditor: true,
-    active: false,
     icon: toolbarIcons.search,
     tooltip: toolbarTexts.search,
     group: 'right',
@@ -582,12 +530,11 @@ export const makeDefaultItems = ({
     },
   });
 
-  const link = defaultToolbarItem({
+  const link = useToolbarItem({
     type: 'dropdown',
     name: 'link',
     markName: 'link',
     icon: toolbarIcons.link,
-    active: false,
     tooltip: toolbarTexts.link,
     attributes: {
       ariaLabel: 'Link dropdown',
@@ -608,7 +555,7 @@ export const makeDefaultItems = ({
     },
   });
 
-  function renderLinkDropdown(link: DefaultToolbarItem) {
+  function renderLinkDropdown(link: ToolbarItem) {
     const capture = superToolbar.pendingSelectionCapture;
     const liveSelection = currentSelectionSnapshot(superToolbar);
     const selection =
@@ -650,21 +597,19 @@ export const makeDefaultItems = ({
     ]);
   }
 
-  const linkInput = defaultToolbarItem({
+  const linkInput = useToolbarItem({
     type: 'options',
     name: 'linkInput',
     command: 'toggleLink',
-    active: false,
   });
   link.childItem = linkInput;
   linkInput.parentItem = link;
 
-  const image = defaultToolbarItem({
+  const image = useToolbarItem({
     type: 'button',
     name: 'image',
     command: 'startImageUpload',
     icon: toolbarIcons.image,
-    active: false,
     tooltip: toolbarTexts.image,
     disabled: false,
     attributes: {
@@ -672,12 +617,11 @@ export const makeDefaultItems = ({
     },
   });
 
-  const tableOfContents = defaultToolbarItem({
+  const tableOfContents = useToolbarItem({
     type: 'button',
     name: 'tableOfContents',
     command: 'insertTableOfContents',
     icon: toolbarIcons.tableOfContents,
-    active: false,
     tooltip: toolbarTexts.tableOfContents,
     disabled: false,
     attributes: {
@@ -685,7 +629,7 @@ export const makeDefaultItems = ({
     },
   });
 
-  const watermark = defaultToolbarItem({
+  const watermark = useToolbarItem({
     type: 'button',
     name: 'watermark',
     icon: toolbarIcons.watermark,
@@ -695,7 +639,7 @@ export const makeDefaultItems = ({
     attributes: { ariaLabel: toolbarTexts.watermark },
   });
 
-  const pageNumber = defaultToolbarItem({
+  const pageNumber = useToolbarItem({
     type: 'dropdown',
     name: 'pageNumber',
     icon: toolbarIcons.pageNumber,
@@ -716,7 +660,7 @@ export const makeDefaultItems = ({
 
   let lastPageNumberChoice: RememberedPageNumberChoice | null = null;
 
-  function renderPageNumberMenu(item: DefaultToolbarItem) {
+  function renderPageNumberMenu(item: ToolbarItem) {
     const ui = superToolbar.ui;
     const commandState = (id: string) => ui?.commands?.get?.(id)?.getState?.() ?? null;
     const runCommand = (id: string, payload?: unknown): Promise<CommandExecutionResult> => {
@@ -760,13 +704,12 @@ export const makeDefaultItems = ({
     });
   }
 
-  const tableItem = defaultToolbarItem({
+  const tableItem = useToolbarItem({
     type: 'dropdown',
     name: 'table',
     icon: toolbarIcons.table,
     hideLabel: true,
     labelAttr: 'table',
-    active: false,
     tooltip: toolbarTexts.table,
     command: 'insertTable',
     suppressActiveHighlight: true,
@@ -782,7 +725,7 @@ export const makeDefaultItems = ({
     ],
   });
 
-  function renderTableGrid(tableItem: DefaultToolbarItem) {
+  function renderTableGrid(tableItem: ToolbarItem) {
     const handleSelect = (e: unknown) => {
       superToolbar.emitCommand({ item: tableItem, argument: e });
       closeDropdown(tableItem);
@@ -796,7 +739,7 @@ export const makeDefaultItems = ({
     ]);
   }
 
-  const tableActionsItem = defaultToolbarItem({
+  const tableActionsItem = useToolbarItem({
     type: 'dropdown',
     name: 'tableActions',
     command: 'executeTableCommand',
@@ -919,7 +862,7 @@ export const makeDefaultItems = ({
     },
   ];
 
-  function renderTableActions(tableActionsItem: DefaultToolbarItem) {
+  function renderTableActions(tableActionsItem: ToolbarItem) {
     return h(TableActions as Component, {
       options: tableActionsOptions.map((option) => ({
         ...option,
@@ -934,7 +877,7 @@ export const makeDefaultItems = ({
     });
   }
 
-  const alignment = defaultToolbarItem({
+  const alignment = useToolbarItem({
     type: 'dropdown',
     name: 'textAlign',
     tooltip: toolbarTexts.textAlign,
@@ -977,7 +920,7 @@ export const makeDefaultItems = ({
     },
   });
 
-  const setAlignmentIcon = (alignment: DefaultToolbarItem, e: unknown) => {
+  const setAlignmentIcon = (alignment: ToolbarItem, e: unknown) => {
     let alignValue = e === 'both' ? 'justify' : e;
     let icons: Readonly<Partial<Record<string, string>>> = {
       left: toolbarIcons.alignLeft,
@@ -990,7 +933,7 @@ export const makeDefaultItems = ({
     alignment.icon.value = icon;
   };
 
-  const bulletedList = defaultToolbarItem({
+  const bulletedList = useToolbarItem({
     type: 'dropdown',
     name: 'list',
     command: 'toggleBulletListStyle',
@@ -1024,7 +967,7 @@ export const makeDefaultItems = ({
     ],
   });
 
-  const numberedList = defaultToolbarItem({
+  const numberedList = useToolbarItem({
     type: 'dropdown',
     name: 'numberedlist',
     command: 'toggleOrderedListStyle',
@@ -1058,12 +1001,11 @@ export const makeDefaultItems = ({
     ],
   });
 
-  const indentLeft = defaultToolbarItem({
+  const indentLeft = useToolbarItem({
     type: 'button',
     name: 'indentleft',
     command: 'decreaseTextIndent',
     icon: toolbarIcons.indentLeft,
-    active: false,
     tooltip: toolbarTexts.indentLeft,
     disabled: false,
     attributes: {
@@ -1071,12 +1013,11 @@ export const makeDefaultItems = ({
     },
   });
 
-  const indentRight = defaultToolbarItem({
+  const indentRight = useToolbarItem({
     type: 'button',
     name: 'indentright',
     command: 'increaseTextIndent',
     icon: toolbarIcons.indentRight,
-    active: false,
     tooltip: toolbarTexts.indentRight,
     disabled: false,
     attributes: {
@@ -1084,19 +1025,18 @@ export const makeDefaultItems = ({
     },
   });
 
-  const overflow = defaultToolbarItem({
+  const overflow = useToolbarItem({
     type: 'overflow',
     name: 'overflow',
     command: null,
     icon: toolbarIcons.overflow,
-    active: false,
     disabled: false,
     attributes: {
       ariaLabel: 'Overflow items',
     },
   });
 
-  const zoom = defaultToolbarItem({
+  const zoom = useToolbarItem({
     type: 'dropdown',
     name: 'zoom',
     allowWithoutEditor: true,
@@ -1128,7 +1068,7 @@ export const makeDefaultItems = ({
     },
   });
 
-  const measurementUnit = defaultToolbarItem({
+  const measurementUnit = useToolbarItem({
     type: 'dropdown',
     name: 'measurementUnit',
     allowWithoutEditor: true,
@@ -1154,7 +1094,7 @@ export const makeDefaultItems = ({
     },
   });
 
-  const undo = defaultToolbarItem({
+  const undo = useToolbarItem({
     type: 'button',
     name: 'undo',
     disabled: true,
@@ -1167,7 +1107,7 @@ export const makeDefaultItems = ({
     },
   });
 
-  const redo = defaultToolbarItem({
+  const redo = useToolbarItem({
     type: 'button',
     disabled: true,
     name: 'redo',
@@ -1180,7 +1120,7 @@ export const makeDefaultItems = ({
     },
   });
 
-  const acceptTrackedChangeBySelection = defaultToolbarItem({
+  const acceptTrackedChangeBySelection = useToolbarItem({
     type: 'button',
     disabled: false,
     name: 'acceptTrackedChangeBySelection',
@@ -1193,7 +1133,7 @@ export const makeDefaultItems = ({
     },
   });
 
-  const rejectTrackedChangeOnSelection = defaultToolbarItem({
+  const rejectTrackedChangeOnSelection = useToolbarItem({
     type: 'button',
     disabled: false,
     name: 'rejectTrackedChangeOnSelection',
@@ -1206,7 +1146,7 @@ export const makeDefaultItems = ({
     },
   });
 
-  const clearFormatting = defaultToolbarItem({
+  const clearFormatting = useToolbarItem({
     type: 'button',
     name: 'clearFormatting',
     command: 'clearFormat',
@@ -1217,13 +1157,12 @@ export const makeDefaultItems = ({
     },
   });
 
-  const copyFormat = defaultToolbarItem({
+  const copyFormat = useToolbarItem({
     type: 'button',
     name: 'copyFormat',
     tooltip: toolbarTexts.copyFormat,
     icon: toolbarIcons.copyFormat,
     command: 'copyFormat',
-    active: false,
     attributes: {
       ariaLabel: 'Copy formatting',
     },
@@ -1241,7 +1180,7 @@ export const makeDefaultItems = ({
     else return 'Viewing';
   };
 
-  const documentMode = defaultToolbarItem({
+  const documentMode = useToolbarItem({
     type: 'dropdown',
     name: 'documentMode',
     command: 'setDocumentMode',
@@ -1290,7 +1229,7 @@ export const makeDefaultItems = ({
     },
   ];
 
-  function renderDocumentMode(renderDocumentButton: DefaultToolbarItem) {
+  function renderDocumentMode(renderDocumentButton: ToolbarItem) {
     const optionsAfterRole = getDocumentOptionsAfterRole(role, documentOptions);
     return h(DocumentMode as Component, {
       options: optionsAfterRole,
@@ -1308,33 +1247,31 @@ export const makeDefaultItems = ({
 
   const stickyItemNames = ['search', 'ruler', 'undo', 'overflow', 'documentMode'];
 
-  const ruler = defaultToolbarItem({
+  const ruler = useToolbarItem({
     type: 'button',
     name: 'ruler',
     command: 'toggleRuler',
     allowWithoutEditor: true,
     icon: toolbarIcons.ruler,
-    active: false,
     tooltip: toolbarTexts.ruler,
     attributes: {
       ariaLabel: 'Ruler',
     },
   });
 
-  const formattingMarks = defaultToolbarItem({
+  const formattingMarks = useToolbarItem({
     type: 'button',
     name: 'formattingMarks',
     command: 'toggleFormattingMarks',
     allowWithoutEditor: true,
     icon: toolbarIcons.formattingMarks,
-    active: false,
     tooltip: toolbarTexts.formattingMarks,
     attributes: {
       ariaLabel: 'Formatting marks',
     },
   });
 
-  const linkedStyles = defaultToolbarItem({
+  const linkedStyles = useToolbarItem({
     type: 'dropdown',
     name: 'linkedStyles',
     command: 'setLinkedStyle',
@@ -1400,7 +1337,7 @@ export const makeDefaultItems = ({
     return h('div', { innerHTML: checkIconSvg, class: 'dropdown-select-icon' });
   };
 
-  const lineHeight = defaultToolbarItem({
+  const lineHeight = useToolbarItem({
     type: 'dropdown',
     name: 'lineHeight',
     tooltip: toolbarTexts.lineHeight,
@@ -1450,7 +1387,7 @@ export const makeDefaultItems = ({
     };
   }
 
-  let toolbarItems: DefaultToolbarItem[] = [
+  let toolbarItems: ToolbarItem[] = [
     undo,
     redo,
     acceptTrackedChangeBySelection,
@@ -1509,7 +1446,7 @@ export const makeDefaultItems = ({
     toolbarItems = toolbarItems.filter((item) => !filterItems.includes(item.name.value));
   }
 
-  const devItems: DefaultToolbarItem[] = [];
+  const devItems: ToolbarItem[] = [];
   if (!isDev) {
     if (role === 'viewer') {
       devItems.push(acceptTrackedChangeBySelection, rejectTrackedChangeOnSelection);
@@ -1527,17 +1464,17 @@ export const makeDefaultItems = ({
   }
   toolbarItems = normalizeSeparatorsIgnoringOverflow(toolbarItems);
 
-  const isStickyItem = (item: DefaultToolbarItem) => stickyItemNames.includes(item.name.value);
+  const isStickyItem = (item: ToolbarItem) => stickyItemNames.includes(item.name.value);
   const overflowTrigger = toolbarItems.find((item) => item.name.value === 'overflow');
   const layoutItems = toolbarItems.filter((item) => item !== overflowTrigger);
   if (configuredItemOrder) {
     const orderIndex = new Map(configuredItemOrder.map((name, index) => [name, index]));
-    const rank = (item: DefaultToolbarItem) => orderIndex.get(item.name.value) ?? Number.MAX_SAFE_INTEGER;
+    const rank = (item: ToolbarItem) => orderIndex.get(item.name.value) ?? Number.MAX_SAFE_INTEGER;
     layoutItems.sort((a, b) => rank(a) - rank(b));
   }
   const partitionItems = (reserveOverflowTrigger: boolean) => {
-    const overflowItems: DefaultToolbarItem[] = [];
-    const visibleItems: DefaultToolbarItem[] = [];
+    const overflowItems: ToolbarItem[] = [];
+    const visibleItems: ToolbarItem[] = [];
     const stickyItemsWidth = layoutItems
       .filter(isStickyItem)
       .reduce((total, item) => total + getToolbarItemWidth(item), 0);

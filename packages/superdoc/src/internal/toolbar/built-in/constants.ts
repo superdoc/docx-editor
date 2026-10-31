@@ -1,21 +1,7 @@
-/**
- * Built-in toolbar font dropdown defaults.
- *
- * The v1 toolbar derived these from `@superdoc/font-system`'s offering registry.
- * On the V2 `superdoc` package that registry is NOT importable from the published
- * ES build (it is aliased only for the dev/CDN/test builds), so this module must
- * stay free of any `@superdoc/font-system` value import. The activation-aware family
- * list is computed host-side and surfaced through `superdoc.fonts.getFontFamilyOptions()`;
- * {@link mapFontFamilyOptionsToToolbar} turns it into toolbar options. The static
- * {@link TOOLBAR_FONTS} below is the fallback used only when no font runtime is yet
- * available (e.g. before an editor mounts).
- *
- * Per the toolbar font option shape: `label` is the Word-facing logical family
- * (stored on the selection + used for active-state matching; the dropdown emits
- * the label), `key` is a stable option key, and `props.style.fontFamily` is the
- * preview stack the row renders in.
- */
-const DEFAULT_TOOLBAR_FONT_FAMILIES = [
+import type { DocumentFontOption, FontFamilyOption } from '@superdoc/font-system';
+import type { ToolbarFontOption } from '../../../core/types/index.js';
+
+const DEFAULT_TOOLBAR_FONT_FAMILIES: ReadonlyArray<readonly [family: string, generic: string]> = [
   ['Arial', 'sans-serif'],
   ['Arial Black', 'sans-serif'],
   ['Arial Narrow', 'sans-serif'],
@@ -40,7 +26,7 @@ const DEFAULT_TOOLBAR_FONT_FAMILIES = [
   ['Verdana', 'sans-serif'],
 ];
 
-export const TOOLBAR_FONTS = DEFAULT_TOOLBAR_FONT_FAMILIES.map(([family, generic]) => ({
+export const TOOLBAR_FONTS: ToolbarFontOption[] = DEFAULT_TOOLBAR_FONT_FAMILIES.map(([family, generic]) => ({
   label: family,
   key: family,
   props: {
@@ -49,13 +35,13 @@ export const TOOLBAR_FONTS = DEFAULT_TOOLBAR_FONT_FAMILIES.map(([family, generic
   },
 }));
 
-function normalizeToolbarFamily(value) {
+function normalizeToolbarFamily(value: unknown): string {
   return String(value ?? '')
     .trim()
     .toLowerCase();
 }
 
-function firstToolbarFamilyToken(value) {
+function firstToolbarFamilyToken(value: unknown): string {
   const raw = String(value ?? '').trim();
   if (!raw) return '';
 
@@ -83,28 +69,16 @@ function firstToolbarFamilyToken(value) {
   return token.trim().replace(/^["']|["']$/g, '');
 }
 
-function compareToolbarFontOptions(a, b) {
+function compareToolbarFontOptions(a: ToolbarFontOption, b: ToolbarFontOption): number {
   return String(a.label ?? '')
     .trim()
     .localeCompare(String(b.label ?? '').trim(), 'en', { sensitivity: 'base' });
 }
 
-/**
- * The single seam that composes the font dropdown options: it turns the active document's
- * {@link import('@superdoc/font-system').DocumentFontOption}s into toolbar font options and unions them
- * with the bundled defaults. The toolbar only asks for the result; it does not know how a font previews.
- *
- * - A consumer-provided `configFonts` list is returned UNCHANGED (custom toolbars own their list).
- * - With no document options, returns `undefined` so the caller keeps its fallback to {@link TOOLBAR_FONTS}.
- * - Otherwise: bundled defaults and document fonts are deduped by normalized logical family, then sorted
- *   alphabetically by the visible font name. `label`/`key` stay the pure logical family (active-state
- *   matching + the stored value), and the preview renders in `previewFamily`.
- *
- * @param {ReadonlyArray<import('@superdoc/font-system').DocumentFontOption>} documentOptions
- * @param {Array} [configFonts] - the consumer's `fonts` config, if any
- * @returns {Array|undefined}
- */
-export function composeToolbarFontOptions(documentOptions, configFonts) {
+export function composeToolbarFontOptions(
+  documentOptions: readonly DocumentFontOption[] | null | undefined,
+  configFonts?: readonly ToolbarFontOption[],
+): readonly ToolbarFontOption[] | undefined {
   if (configFonts) return configFonts;
   if (!documentOptions?.length) return undefined;
   const seen = new Set(TOOLBAR_FONTS.map((option) => normalizeToolbarFamily(option.label)));
@@ -127,18 +101,9 @@ export function composeToolbarFontOptions(documentOptions, configFonts) {
   return merged.length > TOOLBAR_FONTS.length ? merged.sort(compareToolbarFontOptions) : undefined;
 }
 
-/**
- * Map the host-computed, activation-aware font-family options onto the toolbar option shape. PURE: it
- * receives the already-resolved list from `superdoc.fonts.getFontFamilyOptions()` (the host owns the
- * `@superdoc/font-system` computation this module must not import). Returns `undefined` for an empty
- * list so the caller keeps its {@link TOOLBAR_FONTS} fallback. `label` is the Word-facing logical
- * family (stored on the selection + used for active-state matching), `key` is a stable option key, and
- * the row preview renders in `previewFamily` (falling back to the label).
- *
- * @param {ReadonlyArray<import('@superdoc/font-system').FontFamilyOption>} options
- * @returns {Array|undefined}
- */
-export function mapFontFamilyOptionsToToolbar(options) {
+export function mapFontFamilyOptionsToToolbar(
+  options: readonly FontFamilyOption[] | null | undefined,
+): ToolbarFontOption[] | undefined {
   if (!options?.length) return undefined;
   return options.map((option) => ({
     label: option.label,

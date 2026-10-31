@@ -25,7 +25,7 @@
 import { EventEmitter } from 'eventemitter3';
 import { executeFirstPartyCommandAsync } from '../../public/ui/create-super-doc-ui.js';
 import { createApp, shallowRef } from 'vue';
-import type { App, Component, ComponentPublicInstance, Ref, StyleValue } from 'vue';
+import type { App, Component, ComponentPublicInstance } from 'vue';
 import { vClickOutside } from '@superdoc/common';
 import type {
   Editor,
@@ -56,6 +56,7 @@ import { createImageFilePicker, resolveImageSrc } from './image-upload.js';
 import Toolbar from './built-in/Toolbar.vue';
 import { makeDefaultItems, withLinkHref } from './built-in/default-items.js';
 import { useToolbarItem } from './built-in/use-toolbar-item.js';
+import type { ToolbarItem, ToolbarItemOption } from './built-in/use-toolbar-item.js';
 import { toolbarIcons } from './built-in/toolbarIcons.js';
 import { toolbarTexts } from './built-in/toolbarTexts.js';
 import { mapFontFamilyOptionsToToolbar } from './built-in/constants.js';
@@ -63,59 +64,7 @@ import { renderColorOptions } from './built-in/color-dropdown-helpers.js';
 import { findElementBySelector } from './built-in/general.js';
 import { HIGH_CONTRAST_MODE_KEY, type HighContrastMode } from '../../composables/use-high-contrast-mode.js';
 
-export interface ToolbarItemOption {
-  key?: string | number;
-  label?: string;
-  type?: string;
-  disabled?: boolean;
-  class?: unknown;
-  props?: Record<string, unknown>;
-  icon?: string | object | ((option: ToolbarItemOption) => unknown);
-  render?: () => unknown;
-  [member: string]: unknown;
-}
-
-type ToolbarItemAttributes = { ariaLabel?: string; className?: unknown; [attribute: string]: unknown };
-
-export interface ToolbarItem {
-  type: string;
-  id: Ref<string>;
-  name: Ref<string>;
-  command?: unknown;
-  splitButtonCommand?: unknown;
-  group: Ref<string>;
-  attributes: Ref<ToolbarItemAttributes>;
-  disabled: Ref<boolean>;
-  active: Ref<boolean>;
-  expand: Ref<boolean>;
-  nestedOptions: Ref<ToolbarItemOption[]>;
-  label: Ref<string | undefined>;
-  defaultLabel: Ref<string | undefined>;
-  icon: Ref<string | undefined>;
-  selectedValue: Ref<string | number | null | undefined>;
-  hideLabel: Ref<boolean | undefined>;
-  iconColor: Ref<string | undefined>;
-  hasCaret: Ref<boolean | undefined>;
-  splitButton: Ref<boolean>;
-  inlineTextInputVisible: Ref<boolean | undefined>;
-  hasInlineTextInput: Ref<boolean | undefined>;
-  style: Ref<StyleValue | undefined>;
-  isNarrow: Ref<boolean | undefined>;
-  isWide: Ref<boolean | undefined>;
-  tooltip: Ref<string | undefined>;
-  argument: Ref<unknown>;
-  restoreEditorFocus: boolean;
-  dropdownStyles: Ref<StyleValue | undefined>;
-  dropdownValueKey: Ref<string | undefined>;
-  allowWithoutEditor: Ref<boolean | undefined>;
-  initiallyDisabled: boolean;
-  isCustomToolbarItem?: boolean;
-  activate(attributes?: Record<string, unknown>, ...args: unknown[]): void;
-  deactivate(): void;
-  setDisabled(state: boolean): void;
-  resetDisabled(): void;
-  onActivate(attributes?: Record<string, unknown>, ...args: unknown[]): unknown;
-}
+export type { ToolbarItem, ToolbarItemOption };
 
 export type ToolbarCommandItem = Pick<ToolbarItem, 'name'> &
   Partial<Pick<ToolbarItem, 'type' | 'command' | 'isCustomToolbarItem'>>;

@@ -1,18 +1,24 @@
 import { h } from 'vue';
+import type { Component } from 'vue';
 import IconGrid from './IconGrid.vue';
 import { toolbarIcons } from './toolbarIcons.js';
 import { refocusEditorSurface } from './toolbar-focus-helpers.js';
+import type { BuiltInToolbar, ToolbarItem } from '../built-in-toolbar.js';
 
-const closeDropdown = (dropdown) => {
+type ColorOption = { label: string; icon: string; value: string; style: Record<string, string> };
+
+type ColorDropdownToolbar = Pick<BuiltInToolbar, 'emitCommand' | 'superdoc' | 'activeEditor'>;
+
+type ColorDropdownButton = Pick<
+  ToolbarItem,
+  'name' | 'type' | 'command' | 'isCustomToolbarItem' | 'iconColor' | 'expand'
+>;
+
+const closeDropdown = (dropdown: Pick<ToolbarItem, 'expand'>) => {
   dropdown.expand.value = false;
 };
 
-// A color chosen on a collapsed caret carries into the next typed text via the host
-// stored-marks engine, so no selection restore is needed here (SD-3654). Do NOT
-// restore a captured selection: it re-applies the captured range asynchronously and
-// clobbers the live selection (e.g. the format-painter target).
-
-export const makeColorOption = (color, label = null) => {
+export const makeColorOption = (color: string, label: string): ColorOption => {
   return {
     label,
     icon: toolbarIcons.colorOption,
@@ -25,16 +31,21 @@ export const makeColorOption = (color, label = null) => {
   };
 };
 
-export const renderColorOptions = (superToolbar, button, customIcons = [], hasNoneIcon = false) => {
-  const handleSelect = (e) => {
-    button.iconColor.value = e;
-    superToolbar.emitCommand({ item: button, argument: e });
+export const renderColorOptions = (
+  superToolbar: ColorDropdownToolbar,
+  button: ColorDropdownButton,
+  customIcons: ColorOption[][] = [],
+  hasNoneIcon = false,
+) => {
+  const handleSelect = (color: string) => {
+    button.iconColor.value = color;
+    superToolbar.emitCommand({ item: button, argument: color });
     closeDropdown(button);
     refocusEditorSurface(superToolbar);
   };
 
   return h('div', {}, [
-    h(IconGrid, {
+    h(IconGrid as Component, {
       icons,
       customIcons,
       activeColor: button.iconColor,
@@ -44,7 +55,7 @@ export const renderColorOptions = (superToolbar, button, customIcons = [], hasNo
   ]);
 };
 
-export const icons = [
+export const icons: ColorOption[][] = [
   [
     makeColorOption('#111111', 'black'),
     makeColorOption('#333333', 'dark gray'),

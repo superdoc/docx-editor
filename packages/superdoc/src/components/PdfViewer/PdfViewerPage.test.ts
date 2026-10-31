@@ -38,7 +38,6 @@ const mountPage = (propsOverrides = {}) => {
 
 describe('PdfViewerPage.vue', () => {
   beforeEach(() => {
-    // happy-dom canvas stub: provide a minimal getContext
     HTMLCanvasElement.prototype.getContext = vi.fn(() => ({
       drawImage: vi.fn(),
       fillRect: vi.fn(),
@@ -140,7 +139,6 @@ describe('PdfViewerPage.vue', () => {
       config: { pdfLib: {} },
     });
     await flushPromises();
-    // No text-layer-rendered emitted
     expect(wrapper.emitted('text-layer-rendered')).toBeFalsy();
   });
 

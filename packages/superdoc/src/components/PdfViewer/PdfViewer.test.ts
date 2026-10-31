@@ -90,7 +90,6 @@ describe('PdfViewer.vue', () => {
     adapterGetDocument = vi.fn(async () => {
       throw new Error('load failed');
     });
-    // silence console.error from error path
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const wrapper = mountViewer();
     await flushPromises();
@@ -147,7 +146,6 @@ describe('PdfViewer.vue', () => {
   it('emits document-ready after all pages are rendered', async () => {
     const wrapper = mountViewer();
     await flushPromises();
-    // Simulate each page reporting rendered
     const doc = wrapper.findComponent({ name: 'PdfViewerDocumentStub' });
     doc.vm.$emit('page-rendered', { page: { pdfjsPage: {} } });
     doc.vm.$emit('page-rendered', { page: { pdfjsPage: {} } });

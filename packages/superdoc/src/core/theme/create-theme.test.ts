@@ -139,7 +139,6 @@ describe('createTheme', () => {
     it('returns class name even with empty config', () => {
       const cls = createTheme({ name: 'empty' });
       expect(cls).toBe('sd-theme-empty');
-      // No style element injected for empty config
       expect(document.querySelector('[data-sd-theme="sd-theme-empty"]')).toBeNull();
     });
   });

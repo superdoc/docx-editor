@@ -67,6 +67,18 @@ if (textEntry?.kind === 'text') {
   void [sourceBlockId, sourceStart];
 }
 
+const guardedComment = doc.comments.create({
+  text: 'Check this figure.',
+  target: {
+    kind: 'selection',
+    captureState: 'opaque-browser-capture',
+    start: { kind: 'text', blockId: 'b1', offset: 7 },
+    end: { kind: 'text', blockId: 'b1', offset: 14 },
+  },
+  expectedText: 'Revenue',
+});
+const guardedFailureCode: string | undefined = guardedComment.success ? undefined : guardedComment.failure.code;
+
 void [
   htmlProjection,
   markdownProjection,
@@ -84,4 +96,5 @@ void [
   outputOffset,
   annotationStatus,
   markdownResult,
+  guardedFailureCode,
 ];

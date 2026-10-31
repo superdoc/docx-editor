@@ -505,6 +505,11 @@ const SHARED_DEFS: Record<string, JsonSchema> = {
   // -- Address types --
   TextAddress: objectSchema(
     {
+      captureState: {
+        type: 'string',
+        description:
+          'Opaque browser selection capture state. Preserve it when passing a selection target to comments.create. Changed or unverifiable state is refused before writing.',
+      },
       kind: { const: 'text' },
       blockId: { type: 'string' },
       range: ref('Range'),
@@ -521,6 +526,11 @@ const SHARED_DEFS: Record<string, JsonSchema> = {
   ),
   TextTarget: objectSchema(
     {
+      captureState: {
+        type: 'string',
+        description:
+          'Opaque browser selection capture state. Preserve it when passing a selection target to comments.create. Changed or unverifiable state is refused before writing.',
+      },
       kind: { const: 'text' },
       segments: { type: 'array', items: ref('TextSegment'), minItems: 1 },
       story: ref('StoryLocator'),
@@ -724,6 +734,11 @@ const SHARED_DEFS: Record<string, JsonSchema> = {
   } satisfies JsonSchema,
   SelectionTarget: objectSchema(
     {
+      captureState: {
+        type: 'string',
+        description:
+          'Opaque browser selection capture state. Preserve it when passing a selection target to comments.create. Changed or unverifiable state is refused before writing.',
+      },
       kind: { const: 'selection' },
       start: ref('SelectionPoint'),
       end: ref('SelectionPoint'),
@@ -7890,6 +7905,11 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
         authorEmail: { type: 'string', minLength: 1, description: 'Caller-owned author email.' },
         authorImage: { type: 'string', minLength: 1, description: 'Caller-owned author image URL.' },
         metadata: commentMetadataSchema,
+        expectedText: {
+          type: 'string',
+          description:
+            'Require the exact text currently at target before creating the comment. Pass the text the user selected, such as selection.current({ includeText: true }).text. A mismatch fails with PRECONDITION_FAILED and creates nothing. Only single-paragraph text targets support this guard; it checks the words, so it does not tell repeated identical text apart.',
+        },
       },
       ['text'],
     ),

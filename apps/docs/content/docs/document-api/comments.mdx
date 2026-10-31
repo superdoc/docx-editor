@@ -22,6 +22,12 @@ A root comment needs text and a document target. A text query returns a `Selecti
 
 Do not derive the target from the rendered DOM or from `highlightRange`. DOM positions belong to layout. `highlightRange` describes the displayed snippet. The query target addresses document content.
 
+Browser selections returned by `editor.doc.selection.current()` include an opaque `captureState` on both `target` and `selectionTarget`. Pass the complete target unchanged to `comments.create()`, including when handing it to an SDK session in the same collaboration room. The call refuses with `PRECONDITION_FAILED` if the shared document state has changed or cannot be verified. Capture again after a refusal. Any intervening room mutation can invalidate a capture, including unrelated edits and comment changes.
+
+This capture check distinguishes identical text occurrences and refuses after deletion or replacement, even when the visible text is restored. It reads shared state without writing to the room, so a read-only browser can capture a selection. A standalone browser capture is valid only in its original session.
+
+Manually constructed numeric targets and targets captured by older versions have no capture proof and continue to address current coordinates. `expectedText` adds a text equality assertion; it cannot establish the identity of repeated text. For server-resolved targets, keep the exact target and its `evaluatedRevision`, and pass that revision as `expectedRevision` in the same session.
+
 On success, the creation receipt includes the new thread ID. Keep that ID for replies and later lifecycle changes.
 
 ## Add replies without another target

@@ -2887,9 +2887,9 @@ export const OPERATION_DEFINITIONS = {
   'comments.create': {
     memberPath: 'comments.create',
     description:
-      'Create a new comment thread (or reply when parentCommentId is given). Accepts TextAddress / TextTarget anchors, or a TrackedChangeCommentTarget that names a logical tracked-change id. The tracked-change target accepts both the explicit kind form and the Labs-compatible trackedChangeId-only form; the adapter normalizes it to a Word-compatible content anchor on the requested revision side. Callers may supply a durable externalId, or use the v1-compatible caller-supplied commentId alias, plus author fields and arbitrary JSON metadata for integration correlation. The caller-owned id remains distinct from the generated Word-compatible commentId.',
+      'Create a new comment thread (or reply when parentCommentId is given). Accepts TextAddress / TextTarget anchors, or a TrackedChangeCommentTarget that names a logical tracked-change id. The tracked-change target accepts both the explicit kind form and the Labs-compatible trackedChangeId-only form; the adapter normalizes it to a Word-compatible content anchor on the requested revision side. Callers may supply a durable externalId, or use the v1-compatible caller-supplied commentId alias, plus author fields and arbitrary JSON metadata for integration correlation. The caller-owned id remains distinct from the generated Word-compatible commentId. Pass expectedText with a single-paragraph text target to refuse the comment when the text at that target has changed since it was selected.',
     expectedResult:
-      'Returns a Receipt with the new commentId in `id` and `inserted` on success; rejects whitespace-only bodies, unsupported anchor contexts, and cross-story targets. Tracked-change comment targets support insertion, deletion, replacement, and paired-move revisions; they fail with `TARGET_NOT_FOUND` for stale ids, `CAPABILITY_UNAVAILABLE` for formatting / structural revisions and unpaired move sides, and `INVALID_TARGET` for incompatible side requests or ambiguous replacement targets that omit a required `side`.',
+      'Returns a Receipt with the new commentId in `id` and `inserted` on success; rejects whitespace-only bodies, unsupported anchor contexts, and cross-story targets. When expectedText is given and the target text differs, fails with `PRECONDITION_FAILED` before any change. Tracked-change comment targets support insertion, deletion, replacement, and paired-move revisions; they fail with `TARGET_NOT_FOUND` for stale ids, `CAPABILITY_UNAVAILABLE` for formatting / structural revisions and unpaired move sides, and `INVALID_TARGET` for incompatible side requests or ambiguous replacement targets that omit a required `side`.',
     requiresDocumentContext: true,
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
@@ -2901,6 +2901,7 @@ export const OPERATION_DEFINITIONS = {
         'INVALID_CONTEXT',
         'TARGET_NOT_FOUND',
         'CAPABILITY_UNAVAILABLE',
+        'PRECONDITION_FAILED',
       ],
       throws: [...T_NOT_FOUND_CAPABLE, 'INVALID_TARGET', 'INVALID_INPUT'],
       returnsReceipt: true,

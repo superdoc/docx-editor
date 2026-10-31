@@ -56,6 +56,7 @@ export interface AddCommentInput extends CommentCreateAttributionInput {
   target?: CommentTarget;
   /** The comment body text. */
   text: string;
+  expectedText?: string;
 }
 
 export interface EditCommentInput {
@@ -160,6 +161,7 @@ export interface CommentsCreateInput extends CommentCreateAttributionInput {
    * both when they contain the same value.
    */
   parentId?: string;
+  expectedText?: string;
 }
 
 /**
@@ -274,6 +276,7 @@ const CREATE_COMMENT_ALLOWED_KEYS = new Set([
   'authorEmail',
   'authorImage',
   'metadata',
+  'expectedText',
 ]);
 
 /**
@@ -329,7 +332,7 @@ function normalizeCreateCommentInput(input: unknown): CommentsCreateInput {
   const attribution = normalizeCommentCreateAttribution(normalizedInput);
   if (attribution) normalizedInput = { ...normalizedInput, ...attribution };
 
-  const { target, text, parentCommentId: normalizedParentCommentId, trackedChangeId } = normalizedInput;
+  const { target, text, parentCommentId: normalizedParentCommentId, trackedChangeId, expectedText } = normalizedInput;
   const hasTarget = target !== undefined;
   const isReply = normalizedParentCommentId !== undefined;
 
@@ -338,6 +341,14 @@ function normalizeCreateCommentInput(input: unknown): CommentsCreateInput {
       field: 'text',
       value: text,
     });
+  }
+
+  if (expectedText !== undefined && (typeof expectedText !== 'string' || isReply)) {
+    throw new DocumentApiValidationError(
+      'INVALID_INPUT',
+      'expectedText requires a string and an explicit single-paragraph text target.',
+      { field: 'expectedText' },
+    );
   }
 
   // Replies only need parentCommentId + text: skip target validation
@@ -373,6 +384,14 @@ function normalizeCreateCommentInput(input: unknown): CommentsCreateInput {
 
   const effectiveTarget = hasTarget ? target : buildTrackedChangeTargetFromCreateShorthand(normalizedInput);
 
+  if (expectedText !== undefined && !isSingleParagraphTextTarget(effectiveTarget)) {
+    throw new DocumentApiValidationError(
+      'INVALID_INPUT',
+      'expectedText requires a string and an explicit single-paragraph text target.',
+      { field: 'expectedText' },
+    );
+  }
+
   if (isTrackedChangeCommentTarget(effectiveTarget)) {
     validateTrackedChangeCommentTarget(effectiveTarget, 'comments.create');
     return normalizedInput;
@@ -395,6 +414,17 @@ function normalizeCreateCommentInput(input: unknown): CommentsCreateInput {
   }
 
   return normalizedInput;
+}
+
+function isSingleParagraphTextTarget(target: unknown): boolean {
+  if (isTextAddress(target)) return true;
+  if (isTextTarget(target)) return target.segments.length === 1 && target.coordinateSpace !== 'tracked';
+  return (
+    isSelectionTarget(target) &&
+    target.start.kind === 'text' &&
+    target.end.kind === 'text' &&
+    target.start.blockId === target.end.blockId
+  );
 }
 
 function buildTrackedChangeTargetFromCreateShorthand(

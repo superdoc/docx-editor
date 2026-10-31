@@ -52,6 +52,17 @@ comment.id satisfies string;
 comment.affectedStories?.[0]?.kind satisfies 'story' | undefined;
 comment.txId satisfies string | undefined;
 
+const guardedComment = await document.comments.create({
+  text: 'Comment on the selected words',
+  target: {
+    kind: 'selection',
+    start: { kind: 'text', blockId: 'body', offset: 0 },
+    end: { kind: 'text', blockId: 'body', offset: 1 },
+  },
+  expectedText: 'A',
+});
+guardedComment.id satisfies string;
+
 const comments = await document.comments.list({});
 comments.items[0]?.commentId satisfies string | undefined;
 comments.items[0]?.replyCount satisfies number | undefined;

@@ -20,6 +20,7 @@ export type TextCoordinateSpace = 'visible' | 'tracked';
 
 export type TextAddress = {
   kind: 'text';
+  captureState?: string;
   blockId: string;
   range: Range;
   /** Story containing this text. Omit for body (backward compatible). */
@@ -52,6 +53,7 @@ export type TextSegment = {
  */
 export type TextTarget = {
   kind: 'text';
+  captureState?: string;
   segments: [TextSegment, ...TextSegment[]];
   /** Story containing this text target. Omit for body (backward compatible). */
   story?: StoryLocator;
@@ -113,6 +115,7 @@ export type SelectionPoint =
  */
 export type SelectionTarget = {
   kind: 'selection';
+  captureState?: string;
   start: SelectionPoint;
   end: SelectionPoint;
   /** Story containing this selection. Omit for body (backward compatible). */

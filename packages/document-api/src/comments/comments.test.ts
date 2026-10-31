@@ -207,6 +207,67 @@ describe('executeCommentsCreate validation', () => {
   });
 });
 
+describe('executeCommentsCreate expectedText (SD-6055)', () => {
+  const selection = {
+    kind: 'selection' as const,
+    start: { kind: 'text' as const, blockId: 'b1', offset: 6 },
+    end: { kind: 'text' as const, blockId: 'b1', offset: 13 },
+  };
+
+  it.each([
+    ['SelectionTarget', selection],
+    ['TextAddress', { kind: 'text' as const, blockId: 'b1', range: { start: 6, end: 13 } }],
+    ['one-segment TextTarget', { kind: 'text' as const, segments: [{ blockId: 'b1', range: { start: 6, end: 13 } }] }],
+  ])('passes expectedText to the adapter for a %s', (_name, target) => {
+    const adapter = stubAdapter();
+    executeCommentsCreate(adapter, { text: 'comment', target, expectedText: 'Revenue' });
+    expect(adapter.add).toHaveBeenCalledWith({ text: 'comment', target, expectedText: 'Revenue' }, undefined);
+  });
+
+  it.each([
+    ['a non-string value', { target: selection, expectedText: 7 }],
+    [
+      'a cross-paragraph selection',
+      { target: { ...selection, end: { ...selection.end, blockId: 'b2' } }, expectedText: 'x' },
+    ],
+    [
+      'a multi-segment TextTarget',
+      {
+        target: {
+          kind: 'text',
+          segments: [
+            { blockId: 'b1', range: { start: 6, end: 9 } },
+            { blockId: 'b2', range: { start: 0, end: 2 } },
+          ],
+        },
+        expectedText: 'x',
+      },
+    ],
+    [
+      'a tracked TextTarget',
+      {
+        target: {
+          kind: 'text',
+          coordinateSpace: 'tracked',
+          segments: [{ blockId: 'b1', range: { start: 6, end: 13 } }],
+        },
+        expectedText: 'x',
+      },
+    ],
+    ['a tracked-change target', { target: { trackedChangeId: 'tc-1' }, expectedText: 'x' }],
+    ['the trackedChangeId shorthand', { trackedChangeId: 'tc-1', expectedText: 'x' }],
+    ['a text-search target', { target: { text: 'Revenue' }, expectedText: 'Revenue' }],
+    ['a reply', { parentCommentId: 'c1', expectedText: 'x' }],
+  ])('rejects expectedText with %s before calling the adapter', (_name, input) => {
+    const adapter = stubAdapter();
+    expect(() => executeCommentsCreate(adapter, { text: 'comment', ...input } as any)).toThrow(
+      /expectedText requires a string and an explicit single-paragraph text target/,
+    );
+    expect(adapter.add).not.toHaveBeenCalled();
+    expect(adapter.reply).not.toHaveBeenCalled();
+  });
+});
+
 describe('executeCommentsPatch validation', () => {
   it('rejects null input', () => {
     expect(() => executeCommentsPatch(stubAdapter(), null as any)).toThrow(/non-null object/);

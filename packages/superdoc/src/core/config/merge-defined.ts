@@ -18,15 +18,27 @@
  *
  * Later sources win, as with spread. Non-object sources are ignored so callers
  * can pass a possibly-absent block without guarding first.
- *
- * @param {...unknown} sources
- * @returns {Record<string, unknown>}
  */
-export function mergeDefined(...sources) {
-  const merged = {};
+export function mergeDefined(...sources: unknown[]): Record<string, unknown> {
+  const merged: Record<string, unknown> = {};
   for (const source of sources) {
     if (typeof source !== 'object' || source === null) continue;
-    for (const [key, value] of Object.entries(source)) {
+    const entries: Array<[string, unknown]> = Object.entries(source);
+    for (const [key, value] of entries) {
+      if (value === undefined) continue;
+      merged[key] = value;
+    }
+  }
+  return merged;
+}
+
+export function mergeDefinedFields<T extends object>(...sources: Array<T | undefined>): Partial<T> {
+  const merged: Partial<T> = {};
+  for (const source of sources) {
+    if (typeof source !== 'object' || source === null) continue;
+    for (const key in source) {
+      if (!Object.prototype.hasOwnProperty.call(source, key)) continue;
+      const value = source[key];
       if (value === undefined) continue;
       merged[key] = value;
     }
@@ -40,11 +52,8 @@ export function mergeDefined(...sources) {
  *
  * `??` already does this for null and undefined together, which is wrong when
  * `null` carries meaning — clearing an inherited resolver, for instance.
- *
- * @param {...unknown} values
- * @returns {unknown}
  */
-export function firstDefined(...values) {
+export function firstDefined(...values: unknown[]): unknown {
   for (const value of values) {
     if (value !== undefined) return value;
   }

@@ -1,7 +1,7 @@
 /**
  * The profile has to reach the runtime, not just resolve correctly.
  *
- * `normalize-ui-config.test.js` proves the table. These cases prove the
+ * `normalize-ui-config.test.ts` proves the table. These cases prove the
  * instance exposes it and that the toolbar — the one surface whose mount
  * decision lives in `SuperDoc.ts` rather than the Vue shell — follows it.
  */
@@ -619,7 +619,7 @@ describe('uiConfig reaches the runtime', () => {
       // recomputed here. An earlier version of this block restated the
       // precedence rule as a local mirror, which passed just as well after
       // production stopped reading the canonical option at all. The cases in
-      // `normalize-ui-config.test.js` stop at `enabled`, and `chrome` is the
+      // `normalize-ui-config.test.ts` stop at `enabled`, and `chrome` is the
       // whole option bag this surface has.
       //
       // Precedence only. That the value then reaches the painter is the one

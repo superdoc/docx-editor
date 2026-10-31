@@ -5,12 +5,11 @@ import { mergeDefined } from './merge-defined.js';
  *
  * The responsive options can be migrated independently, so merge that nested
  * bag by field while keeping canonical values authoritative.
- *
- * @param {Record<string, unknown>} config
- * @param {Record<string, unknown>} presentation
- * @returns {Record<string, unknown>}
  */
-export function mergeCommentsConfig(config, presentation) {
+export function mergeCommentsConfig(
+  config: Record<string, unknown>,
+  presentation: Record<string, unknown>,
+): Record<string, unknown> {
   const merged = mergeDefined(config, presentation);
   const responsive = mergeDefined(config?.responsive, presentation?.responsive);
 

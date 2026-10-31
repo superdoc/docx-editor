@@ -21,7 +21,7 @@
  *     historical default rather than inheriting from its siblings.
  */
 
-import { firstDefined, mergeDefined } from './merge-defined.js';
+import { firstDefined, mergeDefined } from './merge-defined.ts';
 import { normalizeCommentsUiConfig } from '../../helpers/comment-small-screen.ts';
 import { TOOLBAR_ITEM_ALIASES } from '../../internal/toolbar/toolbar-item-aliases.js';
 import { isPlainObject } from '../../helpers/object-guards.js';

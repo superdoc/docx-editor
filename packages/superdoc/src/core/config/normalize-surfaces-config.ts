@@ -13,8 +13,17 @@
  * this config stays live even when every built-in surface is off.
  */
 
-import { mergeDefined } from './merge-defined.js';
+import { mergeDefinedFields } from './merge-defined.js';
 import { isPlainObject } from '../../helpers/object-guards.js';
+import type { Config, SurfaceResolver, SurfacesConfig, SurfacesModuleConfig } from '../types/index.js';
+
+type SurfacesSource = Pick<Config, 'surfaces' | 'modules'>;
+
+type NormalizedSurfacesConfig = {
+  resolver: SurfaceResolver | null;
+  dialog: NonNullable<SurfacesConfig['dialog']>;
+  floating: NonNullable<SurfacesConfig['floating']>;
+};
 
 /**
  * Resolve the generic surface infrastructure config.
@@ -26,17 +35,10 @@ import { isPlainObject } from '../../helpers/object-guards.js';
  * The resolved shape mirrors the public `SurfacesConfig`, with every member
  * present: the presets are merged objects rather than optional, and `resolver`
  * is a function or `null` once a non-function value has been rejected.
- *
- * @param {Record<string, any>} [config] Raw consumer config.
- * @returns {{
- *   resolver: import('../types/index.js').SurfaceResolver | null,
- *   dialog: NonNullable<import('../types/index.js').SurfacesConfig['dialog']>,
- *   floating: NonNullable<import('../types/index.js').SurfacesConfig['floating']>,
- * }}
  */
-export function normalizeSurfacesConfig(config = {}) {
-  const next = isPlainObject(config.surfaces) ? config.surfaces : {};
-  const legacy = isPlainObject(config.modules?.surfaces) ? config.modules.surfaces : {};
+export function normalizeSurfacesConfig(config: SurfacesSource = {}): NormalizedSurfacesConfig {
+  const next: SurfacesConfig = isPlainObject(config.surfaces) ? config.surfaces : {};
+  const legacy: SurfacesModuleConfig = isPlainObject(config.modules?.surfaces) ? config.modules.surfaces : {};
 
   // `null` clears, `undefined` falls through. Clearing a resolver inherited
   // from the legacy block is what `surfaces.resolver: null` is for, so plain
@@ -50,7 +52,7 @@ export function normalizeSurfacesConfig(config = {}) {
     // Per-key merge rather than whole-object replacement: an application that
     // sets only `dialog.maxWidth` in the new spelling should keep any
     // `closeOnEscape` it set in the old one.
-    dialog: mergeDefined(legacy.dialog, next.dialog),
-    floating: mergeDefined(legacy.floating, next.floating),
+    dialog: mergeDefinedFields(legacy.dialog, next.dialog),
+    floating: mergeDefinedFields(legacy.floating, next.floating),
   };
 }

@@ -5,6 +5,18 @@
  */
 
 import { isPlainObject } from '../../helpers/object-guards.js';
+import type {
+  Config,
+  HyperlinkActivationHandler,
+  HyperlinksConfig,
+  LinkPopoverConfig,
+  LinkPopoverResolver,
+  UIConfig,
+} from '../types/index.js';
+
+type HyperlinkHandler = HyperlinkActivationHandler | LinkPopoverResolver;
+type HyperlinkHandlerSource = 'hyperlinks.onActivate' | 'compatibility';
+type HyperlinkHandlerCandidate = { value: HyperlinkHandler | undefined; source: HyperlinkHandlerSource };
 
 /**
  * Resolve hyperlink activation behavior.
@@ -12,36 +24,34 @@ import { isPlainObject } from '../../helpers/object-guards.js';
  * A canonical handler remains active under `ui: false` because an application
  * may navigate or render its own interface. Without a canonical handler, the
  * existing UI suppression rules keep their current behavior.
- *
- * @param {Record<string, any>} [config] Raw consumer config.
- * @returns {{
- *   handler: import('../types/index.js').HyperlinkActivationHandler | import('../types/index.js').LinkPopoverResolver | undefined,
- *   handlerSource: 'hyperlinks.onActivate' | 'compatibility' | undefined,
- *   editableActivationDisabled: boolean,
- *   builtInEditorDisabled: boolean,
- *   interceptsNavigationOnly: boolean,
- * }}
  */
-export function normalizeHyperlinksConfig(config = {}) {
-  const canonical = isPlainObject(config.hyperlinks) ? config.hyperlinks : {};
+export function normalizeHyperlinksConfig(config: Pick<Config, 'hyperlinks' | 'ui' | 'modules'> = {}): {
+  handler: HyperlinkHandler | undefined;
+  handlerSource: HyperlinkHandlerSource | undefined;
+  editableActivationDisabled: boolean;
+  builtInEditorDisabled: boolean;
+  interceptsNavigationOnly: boolean;
+} {
+  const canonical: HyperlinksConfig = isPlainObject(config.hyperlinks) ? config.hyperlinks : {};
   const hasCanonicalHandler = typeof canonical.onActivate === 'function';
-  const ui = isPlainObject(config.ui) ? config.ui : {};
-  const legacyUi = isPlainObject(ui.linkPopover) ? ui.linkPopover : {};
+  const ui: UIConfig = isPlainObject(config.ui) ? config.ui : {};
+  const legacyUi: LinkPopoverConfig = isPlainObject(ui.linkPopover) ? ui.linkPopover : {};
 
   const allActivationDisabled = config.hyperlinks === false;
   const builtInEditorDisabled = config.ui === false || ui.linkPopover === false;
-  const selectedHandler = [
+  const candidates: HyperlinkHandlerCandidate[] = [
     { value: canonical.onActivate, source: 'hyperlinks.onActivate' },
     { value: legacyUi.popoverResolver, source: 'compatibility' },
     { value: config.modules?.links?.popoverResolver, source: 'compatibility' },
-  ].find(({ value }) => value !== undefined);
+  ];
+  const selectedHandler = candidates.find(({ value }) => value !== undefined);
   const editableActivationDisabled = allActivationDisabled || (!hasCanonicalHandler && builtInEditorDisabled);
   const handler =
     !editableActivationDisabled && typeof selectedHandler?.value === 'function' ? selectedHandler.value : undefined;
 
   return {
     handler,
-    handlerSource: handler ? selectedHandler.source : undefined,
+    handlerSource: handler ? selectedHandler?.source : undefined,
     editableActivationDisabled,
     builtInEditorDisabled,
     interceptsNavigationOnly: allActivationDisabled || hasCanonicalHandler,

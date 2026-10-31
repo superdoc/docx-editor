@@ -12,8 +12,7 @@
  * Both are kept off the public surface by removing them from the source
  * `Config` / `SuperDocLayoutEngineOptions` interfaces in
  * `packages/superdoc/src/core/types/index.ts`. Internal callsites that need
- * the augmented shape use the `InternalConfig` /
- * `InternalSuperDocLayoutEngineOptions` extensions instead.
+ * the augmented shape use the `InternalConfig` extension instead.
  *
  * The fixture pins both the standalone alias surface AND the nested /
  * constructor surface that the reviewer caught leaking past an earlier

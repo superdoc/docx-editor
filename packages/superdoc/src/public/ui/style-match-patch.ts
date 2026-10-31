@@ -12,7 +12,7 @@ const STYLE_MATCH_KEYS = [
 
 export const STYLE_MATCH_READ_KEYS: InlineRunPatchKey[] = [...STYLE_MATCH_KEYS.map(([readKey]) => readKey), 'rStyle'];
 
-export interface StyleMatchPatchOptions {
+interface StyleMatchPatchOptions {
   selectionUsesStyle: boolean;
 }
 

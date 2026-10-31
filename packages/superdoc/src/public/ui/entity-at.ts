@@ -21,7 +21,7 @@ import type { ViewportEntityHit } from './types.js';
  * fresh). Kept off the public {@link ViewportEntityHit} so consumers still only
  * switch on the typed public shape.
  */
-export interface CollectedEntityHit extends ViewportEntityHit {
+interface CollectedEntityHit extends ViewportEntityHit {
   storyKey?: string;
 }
 

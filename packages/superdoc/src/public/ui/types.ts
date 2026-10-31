@@ -44,7 +44,6 @@ export type {
   ScrollIntoViewOutput,
   DocumentApi,
   EntityAddress,
-  CommentsListQuery as DocumentApiCommentsListQuery,
   CommentsListResult,
   TrackChangesListResult,
   ContentControlsListResult,

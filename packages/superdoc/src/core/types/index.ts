@@ -28,19 +28,9 @@ import type {
 
 export type {
   DocumentFontOption,
-  FontAssetUrlContext,
-  FontAssetUrlResolver,
-  FontFaceSlot,
   FontFamilyOption,
-  FontLoadResult,
-  FontLoadStatus,
   FontLoadSummary,
-  FontResolutionReason,
   FontResolutionRecord,
-  GlyphException,
-  ResolvedFontEvidence,
-  SubstitutePolicyAction,
-  SubstituteVerdict,
 } from '@superdoc/font-system';
 
 import type { SuperDoc as SuperDocClass } from '../SuperDoc.js';
@@ -3011,7 +3001,7 @@ export type DocumentMode = 'editing' | 'viewing' | 'suggesting';
  * - 'print': Print Layout View — displays document as it prints (default)
  * - 'web': Web Page View — content reflows to fit container (mobile/accessibility)
  */
-export type ViewLayout = 'print' | 'web';
+type ViewLayout = 'print' | 'web';
 
 /**
  * Document view options for controlling how the document is displayed.
@@ -3247,7 +3237,7 @@ export interface SuperDocCommentsUpdatePayload {
   pendingSelection?: SelectionInfo | null;
 }
 
-export interface EditorTransactionLike {
+interface EditorTransactionLike {
   readonly docChanged?: boolean;
   readonly doc?: {
     readonly content?: { readonly size?: number };
@@ -4912,20 +4902,6 @@ export interface InternalConfig extends Config {
   user: AwarenessUser;
   /** Normalized to `{}` by `#init` if the consumer passes nothing or `undefined`. */
   layoutEngineOptions: SuperDocLayoutEngineOptions;
-}
-
-/**
- * Internal augmentation of `SuperDocLayoutEngineOptions` for unstable tuning
- * fields. The public `SuperDocLayoutEngineOptions` interface above is the
- * customer-facing contract; this type adds fields the implementation may
- * read but that are intentionally not part of the v1 stable API.
- */
-export interface InternalSuperDocLayoutEngineOptions extends SuperDocLayoutEngineOptions {
-  /**
-   * Internal-only semantic mode tuning options. Shape may change without
-   * notice; not part of the public surface.
-   */
-  semanticOptions?: object;
 }
 
 export type ProofingStatus = 'idle' | 'checking' | 'disabled' | 'degraded';

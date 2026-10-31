@@ -407,7 +407,7 @@ const EMPTY_SELECTION: SelectionSlice = {
  * tested set. Keys are coordinator cache keys (exact) or key families
  * (prefix). See the gate in `readAsync` for the runtime semantics.
  */
-export interface HeavyDocReadPolicyEntry {
+interface HeavyDocReadPolicyEntry {
   key: string;
   match: 'exact' | 'prefix';
   /** Audit rationale — why this key is catalog-scale (or reserved). */

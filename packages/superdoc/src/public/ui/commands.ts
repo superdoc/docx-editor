@@ -180,7 +180,7 @@ export interface FieldCommandSpec {
 }
 
 /** Number style of a section's pages, as Word's Format Page Numbers names them. */
-export type PageNumberFormat =
+type PageNumberFormat =
   | 'decimal'
   | 'lowerLetter'
   | 'upperLetter'
@@ -191,7 +191,7 @@ export type PageNumberFormat =
   | 'hebrew2';
 
 /** Normalized input of the page-numbers-apply command. Omitted options keep the section's settings. */
-export interface PageNumbersApplyCommandInput {
+interface PageNumbersApplyCommandInput {
   /** 'header' numbers the top of the page, 'footer' the bottom. */
   kind: 'header' | 'footer';
   alignment?: 'left' | 'center' | 'right';
@@ -202,7 +202,7 @@ export interface PageNumbersApplyCommandInput {
 }
 
 /** Normalized input of the page-numbers-remove command. */
-export interface PageNumbersRemoveCommandInput {
+interface PageNumbersRemoveCommandInput {
   /** Remove only the header's or the footer's numbers. Omitted removes both. */
   kind?: 'header' | 'footer';
 }

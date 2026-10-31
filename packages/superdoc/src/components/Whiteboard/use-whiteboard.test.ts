@@ -181,6 +181,21 @@ describe('useWhiteboard', () => {
       expect(exposed().whiteboardPages.value).toHaveLength(1);
     });
 
+    it('never becomes ready when $superdoc has no whiteboard', async () => {
+      const noWbProxy = { $superdoc: { emit: emitSpy } };
+      const { exposed } = mountWithComposable({
+        proxy: noWbProxy,
+        layers,
+        documents,
+        modules: { whiteboard: { enabled: true } },
+      });
+      exposed().handleWhiteboardPageReady({ pageIndex: 0, width: 200, height: 300 });
+      exposed().handleWhiteboardPageReady({ pageIndex: 1, width: 200, height: 300 });
+      await nextTick();
+      expect(exposed().whiteboardReady.value).toBe(false);
+      expect(emitSpy).not.toHaveBeenCalledWith('whiteboard:ready', expect.anything());
+    });
+
     it('skips PDF handling when no documents are available', () => {
       documents.value = [];
       const { exposed } = mountWithComposable({ proxy, layers, documents, modules: {} });

@@ -4266,7 +4266,7 @@ const whiteboardInteractive = computed(() => whiteboardEnabled.value);
              owns pointer events. PdfCommentsLayer renders the durable, clickable
              PDF comment anchors. Neither renders for DOCX v2 documents. -->
         <WhiteboardLayer
-          v-if="shouldRenderPdfWhiteboard"
+          v-if="shouldRenderPdfWhiteboard && whiteboard"
           class="superdoc__whiteboard-layer"
           :whiteboard="whiteboard"
           :pages="whiteboardPages"

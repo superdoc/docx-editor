@@ -1,6 +1,11 @@
-import { createV2MutationRejectionCause, createV2MutationRejectionNotificationGate } from './v2-mutation-exception.js';
+import { isPlainObject } from './object-guards.js';
+import {
+  createV2MutationRejectionCause,
+  createV2MutationRejectionNotificationGate,
+  type V2MutationRejectedEvent,
+} from './v2-mutation-exception.js';
 
-const EDIT_INPUT_KINDS = new Set([
+const EDIT_INPUT_KINDS: ReadonlySet<unknown> = new Set([
   'keydown',
   'beforeinput',
   'compositionend',
@@ -10,7 +15,7 @@ const EDIT_INPUT_KINDS = new Set([
   'pointerup',
   'programmatic',
 ]);
-const EDIT_COMMAND_KINDS = new Set([
+const EDIT_COMMAND_KINDS: ReadonlySet<unknown> = new Set([
   'insert-text',
   'replace-text',
   'delete-backward',
@@ -38,25 +43,31 @@ const EDIT_COMMAND_KINDS = new Set([
   'tab:list-outdent-range',
   'tab:table-append-row',
 ]);
-const EDIT_INPUT_WITHOUT_COMMAND_KINDS = new Set(['beforeinput', 'compositionend', 'cut', 'paste', 'drop']);
-const EDIT_FAILURE_SOURCES = new Set(['shell', 'receipt']);
+const EDIT_INPUT_WITHOUT_COMMAND_KINDS: ReadonlySet<unknown> = new Set([
+  'beforeinput',
+  'compositionend',
+  'cut',
+  'paste',
+  'drop',
+]);
+const EDIT_FAILURE_SOURCES: ReadonlySet<unknown> = new Set(['shell', 'receipt']);
 
 export const V2_EDIT_REJECTED_CODE = 'edit-rejected';
 export const V2_EDIT_REJECTED_MESSAGE = 'This edit couldn’t be completed. Adjust the selection and try again.';
 
-export function isV2KeyboardEditRejection(event) {
-  return Boolean(
-    event &&
+export function isV2KeyboardEditRejection(event: unknown): event is V2MutationRejectedEvent {
+  return (
+    isPlainObject(event) &&
     event.type === 'mutation:rejected' &&
     event.origin === 'document-surface' &&
     EDIT_FAILURE_SOURCES.has(event.failureSource) &&
     EDIT_INPUT_KINDS.has(event.inputKind) &&
     (EDIT_COMMAND_KINDS.has(event.editableCommandKind) ||
-      (event.editableCommandKind == null && EDIT_INPUT_WITHOUT_COMMAND_KINDS.has(event.inputKind))),
+      (event.editableCommandKind == null && EDIT_INPUT_WITHOUT_COMMAND_KINDS.has(event.inputKind)))
   );
 }
 
-export function createV2KeyboardEditRejectionException(documentId, event) {
+export function createV2KeyboardEditRejectionException(documentId: string | null | undefined, event?: unknown) {
   return {
     error: new Error(V2_EDIT_REJECTED_MESSAGE, { cause: createV2MutationRejectionCause(event) }),
     code: V2_EDIT_REJECTED_CODE,

@@ -82,7 +82,7 @@ import {
   V2_AUTHOR_REQUIRED_CODE,
   V2_AUTHOR_REQUIRED_MESSAGE,
 } from './helpers/v2-author-required-rejection.js';
-import { toV2BulkDecisionEvent } from './helpers/v2-bulk-decision-event.js';
+import { toV2BulkDecisionEvent, type V2TrackedChangeBulkDecisionFact } from './helpers/v2-bulk-decision-event.js';
 import {
   createV2KeyboardEditRejectionException,
   createV2KeyboardEditRejectionNotificationGate,
@@ -374,7 +374,7 @@ type V2HostEvent = Record<string, unknown> & {
   reviewChanged?: boolean;
   diagnostics?: Parameters<typeof translateSsigParseDiagnostic>[0][];
   generation?: unknown;
-  trackedChangeBulkDecision?: unknown;
+  trackedChangeBulkDecision?: V2TrackedChangeBulkDecisionFact | null;
   trackedChangeAllResolved?: unknown;
   origin?: string;
   direction?: string;

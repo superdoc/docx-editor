@@ -8,7 +8,7 @@
  * typing and backspace bursts. The `text.*` aliases cover integrations that
  * forward Document API style command ids rather than editable-input kinds.
  */
-const V2_TYPING_COMMAND_KINDS = new Set([
+const V2_TYPING_COMMAND_KINDS: ReadonlySet<unknown> = new Set([
   'insert-text',
   'replace-text',
   'plain-text-paste',
@@ -44,11 +44,10 @@ const V2_TYPING_COMMAND_KINDS = new Set([
  * Events without a forwarded `editableCommandKind` (programmatic Document API
  * mutations, history commits, unclassified structural commands) return false
  * so they keep hydrating immediately.
- *
- * @param {{ type?: string, origin?: string, editableCommandKind?: string } | null | undefined} event
- * @returns {boolean}
  */
-export const isV2EditableTextMutationEvent = (event) => {
+export const isV2EditableTextMutationEvent = (
+  event: { type?: unknown; origin?: unknown; editableCommandKind?: unknown } | null | undefined,
+): boolean => {
   if (event?.type !== 'mutation:committed' || event.origin !== 'command') return false;
   return V2_TYPING_COMMAND_KINDS.has(event.editableCommandKind);
 };

@@ -61,7 +61,7 @@ function resolveV2DistRelativeImportsPlugin(v2DistRoot) {
 // Rolldown doesn't support regex capture groups ($1) in alias replacements,
 // so we list these explicitly instead of using /^@superdoc\/(.*)$/.
 // Update this list when adding new src/ subdirectories imported via @superdoc/.
-const superdocSrcAliases = ['components', 'composables', 'core', 'helpers', 'stores', 'icons.js', 'public'];
+const superdocSrcAliases = ['components', 'composables', 'core', 'helpers', 'stores', 'icons.ts', 'public'];
 
 // V2 branch: the customer `superdoc` package consumes the internal v2 runtime
 // through the stable `@superdoc/docx-engine` contract. `superdoc/v2` is a SEPARATE pnpm
@@ -269,7 +269,7 @@ export default defineConfig(({ mode, command }) => {
         include: ['src/**'],
         exclude: [
           'src/dev/**',
-          'src/main.js',
+          'src/main.ts',
           // Pure JSDoc typedef files (body is `export {}`, no runtime code)
           'src/core/types/**',
           '**/types.js',
@@ -352,7 +352,7 @@ export default defineConfig(({ mode, command }) => {
     },
     resolve: {
       // Under Vitest and the dev server (command 'serve'), alias @superdoc/font-system to its
-      // source: cdn-entry.test.js needs it for the import cdn-entry.js makes, and the dev
+      // source: cdn-entry.test.ts needs it for the import cdn-entry.ts makes, and the dev
       // playground imports it transitively through layout rendering. font-system
       // lives under shared/, so it is NOT covered by vite.sourceResolve's packages/** aliases.
       // The production CDN build aliases it in vite.config.cdn.js; the ES build never imports

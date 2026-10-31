@@ -1951,7 +1951,7 @@ test('no source claims SuperDoc fetches no font assets without a pack', async ()
   // Only public-tree sources: a public clone has no v2 sibling to read.
   const sources = [
     '../../../packages/superdoc/src/core/types/index.ts',
-    '../../../packages/superdoc/src/cdn-entry.js',
+    '../../../packages/superdoc/src/cdn-entry.ts',
     '../content/docs/editor/fonts.mdx',
     '../generated/editor-config-reference.json',
   ];

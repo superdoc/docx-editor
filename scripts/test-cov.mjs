@@ -34,6 +34,7 @@ const coverageExcludePatterns = [
   '**/index.js',
   '**/types.js',
   '**/main.js',
+  '**/main.ts',
   '**/migration_after_0_4_14.js',
 ];
 

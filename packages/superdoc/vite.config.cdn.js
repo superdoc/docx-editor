@@ -17,7 +17,7 @@ function readExactEngineVersion() {
   const engineSpec = manifest.dependencies?.[ENGINE_PACKAGE_NAME];
   return resolveExactEngineVersion(engineSpec, engineSpec?.startsWith('workspace:') === true);
 }
-// CDN-only alias: this IIFE build inlines superdoc's own modules, and cdn-entry.js
+// CDN-only alias: this IIFE build inlines superdoc's own modules, and cdn-entry.ts
 // imports the font-asset base setter from @superdoc/font-system (superdoc only depends on
 // it transitively). Kept OUT of the shared getAliases so the dts build's resolver is
 // unaffected (an alias there would make vite-plugin-dts emit unresolvable source paths).
@@ -61,7 +61,7 @@ export default defineConfig(({ command }) => {
       target: 'es2022',
       cssCodeSplit: false,
       lib: {
-        entry: 'src/cdn-entry.js',
+        entry: 'src/cdn-entry.ts',
         formats: ['iife'],
         name: 'SuperDoc',
         cssFileName: 'superdoc.min',

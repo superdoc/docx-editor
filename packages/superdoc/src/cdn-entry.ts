@@ -1,5 +1,3 @@
-/* global __DOCX_ENGINE_CDN_BASE_URL__, __DOCX_ENGINE_VERSION__ */
-
 // Entry point for the CDN IIFE build (vite.config.cdn.js → superdoc.min.js).
 // Exposes the SuperDoc class as `window.SuperDoc` directly (so consumers write
 // `new SuperDoc({...})`) while still attaching every named export as a static
@@ -29,7 +27,7 @@ configureCdnEngineLoader({
 for (const [key, value] of Object.entries(namespace)) {
   if (key === 'SuperDoc' || key === 'default') continue;
   if (!Object.prototype.hasOwnProperty.call(SuperDoc, key)) {
-    SuperDoc[key] = value;
+    Reflect.set(SuperDoc, key, value);
   }
 }
 

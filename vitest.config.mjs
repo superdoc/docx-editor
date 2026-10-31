@@ -30,6 +30,7 @@ export default defineConfig({
         '**/postcss.config.cjs',
         '**/postcss.config.mjs',
         '**/main.js',
+        '**/main.ts',
         '**/types.js',
         '**/migration_after_0_4_14.js',
       ],

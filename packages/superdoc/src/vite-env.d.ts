@@ -1,5 +1,7 @@
 declare const __APP_VERSION__: string;
 declare const __SUPERDOC_BUILD__: string | undefined;
+declare const __DOCX_ENGINE_VERSION__: string | undefined;
+declare const __DOCX_ENGINE_CDN_BASE_URL__: string | undefined;
 
 interface ImportMetaEnv {
   readonly DEV: boolean;

@@ -1,4 +1,4 @@
-const MIME_TYPES = {
+const MIME_TYPES: Record<string, string> = {
   docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   pdf: 'application/pdf',
   zip: 'application/zip',
@@ -7,7 +7,7 @@ const MIME_TYPES = {
   json: 'application/json',
 };
 
-const getMimeType = (extension) => {
+const getMimeType = (extension: string): string => {
   if (!extension || typeof extension.toLowerCase !== 'function') return 'application/octet-stream';
   return MIME_TYPES[extension.toLowerCase()] || 'application/octet-stream';
 };
@@ -15,7 +15,7 @@ const getMimeType = (extension) => {
 const blobSizeGetter =
   typeof Blob === 'function' ? Object.getOwnPropertyDescriptor(Blob.prototype, 'size')?.get : undefined;
 
-const isBlob = (value) => {
+const isBlob = (value: unknown): value is Blob => {
   if (!blobSizeGetter) return false;
 
   try {
@@ -26,12 +26,15 @@ const isBlob = (value) => {
   }
 };
 
-const ensureBlob = (data, extension) => {
+export type DownloadData = Blob | ArrayBuffer | ArrayBufferView<ArrayBuffer> | string;
+
+const ensureBlob = (data: DownloadData, extension: string): Blob => {
   const mimeType = getMimeType(extension);
 
   if (isBlob(data)) {
     if (data instanceof Blob) return data;
-    return new Blob([data], { type: data.type || mimeType });
+    const crossRealmBlob: Blob = data;
+    return new Blob([crossRealmBlob], { type: crossRealmBlob.type || mimeType });
   }
 
   if (data instanceof ArrayBuffer) {
@@ -55,15 +58,7 @@ const ensureBlob = (data, extension) => {
   throw new TypeError(`Cannot create download from value of type ${typeof data}`);
 };
 
-/**
- * Create a download link for a blob
- *
- * @param {Blob|ArrayBuffer|ArrayBufferView|string} data The data to download
- * @param {string} name The name of the file
- * @param {string} extension The extension of the file
- * @returns {Blob} The blob that was used for the download.
- */
-export const createDownload = (data, name, extension) => {
+export const createDownload = (data: DownloadData, name: string, extension: string): Blob => {
   const blob = ensureBlob(data, extension);
 
   if (typeof URL === 'undefined' || typeof URL.createObjectURL !== 'function') return blob;
@@ -89,13 +84,7 @@ export const createDownload = (data, name, extension) => {
   return blob;
 };
 
-/**
- * Generate a filename safe string
- *
- * @param {string} currentName The current name of the file
- * @returns {string} The cleaned name
- */
-export const cleanName = (currentName) => {
+export const cleanName = (currentName: string): string => {
   const lowerName = currentName.toLowerCase();
   if (lowerName.endsWith('.docx')) {
     return currentName.slice(0, -5);

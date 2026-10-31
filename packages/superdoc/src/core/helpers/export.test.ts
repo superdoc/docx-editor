@@ -60,6 +60,29 @@ describe('createDownload', () => {
     expect(createdBlob).toBe(input);
   });
 
+  it('wraps a Blob from another realm in a new Blob that keeps its type', () => {
+    const crossRealmBlob = Object.setPrototypeOf(new Blob(['hello'], { type: 'text/plain' }), Object.prototype);
+
+    const result = createDownload(crossRealmBlob, 'notes', 'docx');
+
+    expect(crossRealmBlob).not.toBeInstanceOf(Blob);
+    expect(result).toBeInstanceOf(Blob);
+    expect(result).not.toBe(crossRealmBlob);
+    expect(result.type).toBe('text/plain');
+    expect(URL.createObjectURL.mock.calls[0][0]).toBe(result);
+  });
+
+  it('uses the extension mime type for a Blob from another realm without a type', () => {
+    const crossRealmBlob = Object.setPrototypeOf(new Blob(['hello']), Object.prototype);
+
+    const result = createDownload(crossRealmBlob, 'notes', 'docx');
+
+    expect(crossRealmBlob).not.toBeInstanceOf(Blob);
+    expect(result).toBeInstanceOf(Blob);
+    expect(result).not.toBe(crossRealmBlob);
+    expect(result.type).toBe('application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+  });
+
   it('wraps string input with the correct mime type', () => {
     const result = createDownload('payload', 'data', 'json');
 

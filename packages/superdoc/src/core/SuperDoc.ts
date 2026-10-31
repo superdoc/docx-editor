@@ -1243,7 +1243,7 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
     // block first — the sentinel only ever meant "enabled with no options".
     if (this.#uiConfig.comments.enabled) {
       // The declared type is `false | object | undefined`, but JS callers do
-      // pass the `true` sentinel (see `collaboration.test.js`), and
+      // pass the `true` sentinel (see `collaboration.test.ts`), and
       // `Object.assign` onto a primitive silently discards every value. Compare
       // through `unknown` so the runtime guard survives the narrower type.
       if ((this.config.modules.comments as unknown) === true) this.config.modules.comments = {};

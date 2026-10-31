@@ -55,7 +55,6 @@ describe('createV2AwarenessDiffer', () => {
     const leave = differ.next({ remoteActors: [{ actorLabel: 'B', email: 'b@example.com' }] });
     expect(leave.removed).toEqual([1]);
     expect(leave.added).toEqual([]);
-    // B keeps its stable id 2 across snapshots.
     expect(leave.states.find((s) => s.email === 'b@example.com')?.clientId).toBe(2);
   });
 
@@ -67,7 +66,6 @@ describe('createV2AwarenessDiffer', () => {
         { actorLabel: 'A (second tab)', email: 'dupe@example.com' },
       ],
     });
-    // local + one deduped remote
     expect(payload.states).toHaveLength(2);
   });
 

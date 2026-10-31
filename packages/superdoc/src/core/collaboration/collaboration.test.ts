@@ -125,13 +125,11 @@ describe('collaboration helpers', () => {
     expect(superdoc.provider.on).toHaveBeenCalledWith('synced', expect.any(Function));
     expect(commentsArray._observers.size).toBe(1);
 
-    // Trigger synced event
     const syncedHandler = superdoc.provider.on.mock.calls[0][1];
     syncedHandler();
     expect(superdoc.commentsStore.hasSyncedCollaborationComments).toBe(true);
     expect(superdoc.provider.off).toHaveBeenCalledWith('synced', syncedHandler);
 
-    // Trigger observation from another user
     commentsArray.items = [
       new MockYMap(Object.entries({ commentId: 'c1', text: 'Hello' })),
       new MockYMap(Object.entries({ commentId: 'c1', text: 'Duplicate' })),
@@ -146,11 +144,9 @@ describe('collaboration helpers', () => {
     expect(useCommentMock).toHaveBeenCalledTimes(2);
     expect(superdoc.commentsStore.commentsList).toEqual([{ normalized: 'c1' }, { normalized: 'c2' }]);
 
-    // Event from same user should be ignored
     commentsArray.emit({ transaction: { origin: { user: superdoc.config.user } } });
     expect(useCommentMock).toHaveBeenCalledTimes(2);
 
-    // Same email but different actor id should not be ignored.
     commentsArray.emit({
       transaction: { origin: { user: { id: 'other-id', name: 'Other', email: superdoc.config.user.email } } },
     });

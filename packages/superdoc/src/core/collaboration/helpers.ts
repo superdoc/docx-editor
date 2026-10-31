@@ -4,7 +4,7 @@ import { actorIdentitiesMatch, type CommentEvent } from '@superdoc/common';
 import type { SuperDoc } from '../SuperDoc.js';
 import type { Modules, User } from '../types/index.js';
 
-import { addYComment, updateYComment, deleteYComment } from './collaboration-comments';
+import { addYComment, updateYComment, deleteYComment, type CollaborationCommentEvent } from './collaboration-comments';
 
 type PropertyBag = Readonly<Record<string, unknown>>;
 
@@ -25,10 +25,7 @@ type CommentsSyncHost = {
   config?: { modules?: Modules; user?: User };
 };
 
-type CommentsSyncEvent = {
-  type: CommentEvent;
-  comment: unknown;
-};
+type CommentsSyncEvent = CollaborationCommentEvent & { type: CommentEvent };
 
 const isPropertyBag = (value: unknown): value is PropertyBag =>
   (typeof value === 'object' && value !== null) || typeof value === 'function';

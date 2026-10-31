@@ -1,4 +1,4 @@
-import type { DocumentApi } from '@superdoc/document-api';
+import type { DocumentApi } from 'superdoc/ui';
 
 export async function commentOnOneClause(doc: DocumentApi) {
   const result = await doc.query.match({

@@ -6,7 +6,7 @@ const fixtureRoot = dirname(fileURLToPath(import.meta.url));
 const snippetRoot = join(fixtureRoot, '..', '..', 'apps', 'docs', 'snippets');
 const destination = join(fixtureRoot, 'src', 'docs-snippets');
 
-export const DOCS_SNIPPETS = ['editor/selected-content-controls.ts'];
+export const DOCS_SNIPPETS = ['editor/selected-content-controls.ts', 'document-api/reference-query-match.ts'];
 
 export function syncDocsSnippets() {
   rmSync(destination, { recursive: true, force: true });

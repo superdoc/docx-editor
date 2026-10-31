@@ -7,7 +7,7 @@ use superdoc_sdk::{
         DocTrackChangesDecideBoundParams,
     },
     installation::{host_target, RuntimeManifest},
-    Client, Document, HostMode,
+    Client, Document,
 };
 
 #[tokio::main(flavor = "current_thread")]
@@ -17,7 +17,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let runtime = manifest
         .resolve(cache, target)
         .or_else(|_| manifest.install(cache, target))?;
-    let client = Client::connect(runtime.host_options(HostMode::Cli)?).await?;
+    let client = Client::connect(runtime.host_options()?).await?;
 
     let result = accept_contract(&client).await;
 

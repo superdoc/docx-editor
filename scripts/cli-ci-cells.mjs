@@ -9,8 +9,8 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 export const CLI_CI_CELLS = Object.freeze({
   'cli-core': ['pnpm', '--prefix', 'apps/cli', 'run', 'test'],
   'node-agent-actions': ['pnpm', '--prefix', 'packages/sdk/langs/node', 'run', 'test:agent-actions'],
-  'node-document-host': ['pnpm', '--prefix', 'packages/sdk/langs/node', 'run', 'test:document-host'],
-  'python-document-host': ['pnpm', 'run', 'test:sdk-python-document-host'],
+  'node-cli-host': ['pnpm', '--prefix', 'packages/sdk/langs/node', 'run', 'test:cli-host'],
+  'python-cli-host': ['pnpm', 'run', 'test:sdk-python-cli-host'],
 });
 
 export function verifyCliCellInventory(script) {

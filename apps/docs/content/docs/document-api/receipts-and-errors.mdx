@@ -125,7 +125,7 @@ from a mutation receipt. The CLI-backed Node SDK promotes a failed receipt to
 `SuperDocCliError`: its public failure is nested at `error.details.failure`, so
 pass `error.details.failure.details` to the helper after narrowing the unknown
 error and details objects. The SDK outer code can differ from the nested failure
-code. Document-host SDK calls that return receipts use the receipt path.
+code. SDK calls that return receipts use the receipt path.
 
 A reason may be absent when the failure is unrelated or the runtime cannot
 identify one of these exact contexts. For example, rich HTML/Markdown replacement

@@ -71,9 +71,7 @@ tenant identities or client configurations. The example's file-list command
 uses local documents; the worker supports collaboration jobs supplied by your
 application.
 
-The default Node SDK uses its embedded CLI host. An explicitly configured
-standalone document host is a different execution surface and needs its own
-capacity measurements.
+The Node SDK uses its embedded CLI host.
 
 Reuse amortizes host startup; it does not promise a lower busy memory peak or
 indefinitely flat memory use. Ten documents is a finite recycling policy, not a

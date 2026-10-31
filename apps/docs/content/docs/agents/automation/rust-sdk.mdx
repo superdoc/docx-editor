@@ -198,7 +198,7 @@ let document = join_collaboration_document(
 ```
 
 The returned `Document` supports the same `document.api()` operations as a local file. For a y-websocket server, set
-`providerType` to `y-websocket`. Token authentication is not available for Liveblocks or `HostMode::Document`.
+`providerType` to `y-websocket`. Token authentication is not available for Liveblocks.
 
 `roomMode: "join"` expects the room to exist. To create a room from a DOCX, add `"doc": "./contract.docx"` and use
 `"roomMode": "create"` in one worker only. See [Coordinate room creation](/editor/collaboration/coordinate-room-creation).

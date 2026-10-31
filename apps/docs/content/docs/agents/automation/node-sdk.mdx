@@ -86,7 +86,7 @@ What that lifetime means in practice:
 
 - **A handle is a session.** Open a document once and keep the handle for as long as the workflow needs it. One client can hold several open documents; each handle is its own session.
 - **One host runs one request at a time.** Operations on the same client queue. For parallel throughput across documents, run a small pool of clients and lease one per in-flight workflow. A client's `requestTimeoutMs` is fixed when its host starts; individual calls can still pass their own `timeoutMs`.
-- **Restart is automatic, sessions are not.** If the host process exits, the next request starts a new one and every previously open handle is gone; reopen the document. Unsaved changes do not survive that: on the default host the session rehydrates from its on-disk context and loses whatever the last autosave had not yet written, and on the standalone document host the client refuses further requests with `HOST_DISCONNECTED` instead. Neither is a substitute for saving at a point you choose.
+- **Restart is automatic, sessions are not.** If the host process exits, the next request starts a new one and every previously open handle is gone; reopen the document. Unsaved changes do not survive that: the session rehydrates from its on-disk context and loses whatever the last autosave had not yet written. Save at a point you choose.
 - **Refs expire, node ids do not.** A `query.match` ref is bound to the revision that produced it and stops resolving after any mutation. Block `nodeId` values stay stable across edits, so target follow-up work with `{ kind: 'block', nodeType, nodeId }` and re-run `query.match` only when you need a text range.
 
 Typical cost of each lifecycle for a 53-operation agent turn on a mid-sized document:
@@ -149,8 +149,7 @@ const document = await client.open(
 ```
 
 The credential is separate from the collaboration profile and command-line arguments. It applies to the provider
-created for this open request. Per-open token authentication is not supported for Liveblocks or the standalone
-document host.
+created for this open request. Per-open token authentication is not supported for Liveblocks.
 
 To initialize a new room from a DOCX, set `roomMode: 'create'` for one worker. Later SDK sessions and editors use `roomMode: 'join'`. If multiple backend workers can start the same document, [coordinate room creation](/editor/collaboration/coordinate-room-creation) in your backend and collaboration server before calling `create`.
 

@@ -26,7 +26,7 @@ import type {
   EditorRuntimeUnsubscribe,
 } from '../index.js';
 
-export interface FakeV2RuntimeOptions {
+interface FakeV2RuntimeOptions {
   id?: EditorRuntimeId;
   documentId?: string;
   root?: HTMLElement;

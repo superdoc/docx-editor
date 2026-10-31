@@ -26,7 +26,7 @@ export type SupportedV2ProviderFamily = 'y-websocket' | 'hocuspocus' | 'livebloc
  * collaboration room. These strings are part of the diagnostic contract and are
  * safe to assert against in tests; they never carry caller-provided values.
  */
-export type V2CollaborationUnsupportedReason =
+type V2CollaborationUnsupportedReason =
   | 'missing-target'
   | 'invalid-document-id'
   | 'invalid-server-url'
@@ -77,7 +77,7 @@ export interface NormalizedV2CollaborationTarget {
   roomMode: 'join' | 'create';
 }
 
-export type V2CollaborationTargetResolution =
+type V2CollaborationTargetResolution =
   | { ok: true; target: NormalizedV2CollaborationTarget }
   | {
       ok: false;
@@ -99,7 +99,7 @@ export interface LegacyCollaborationLike {
   [key: string]: unknown;
 }
 
-export interface ResolveV2CollaborationTargetInput {
+interface ResolveV2CollaborationTargetInput {
   /** Preferred connection settings. Explicit null or invalid input never falls back to the alias. */
   collaboration?: unknown;
   /** Compatibility spelling for document-level connection settings. */

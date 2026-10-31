@@ -41,7 +41,7 @@ export interface EditorRuntimeRegistryActiveChange {
   readonly legacyEditorProjection: unknown | null;
 }
 
-export type EditorRuntimeRegistryListener = (change: EditorRuntimeRegistryActiveChange) => void;
+type EditorRuntimeRegistryListener = (change: EditorRuntimeRegistryActiveChange) => void;
 export type EditorRuntimeRegistryUnsubscribe = () => void;
 
 /**

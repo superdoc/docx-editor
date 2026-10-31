@@ -2,9 +2,9 @@ import { DOCX, PDF, HTML } from '@superdoc/common';
 import { readCollaborationConfig } from '../collaboration/resolve-v2-collaboration-target.js';
 import type { Document, DocumentSource } from '../types/index.js';
 
-export type BrowserFile = File | Blob;
+type BrowserFile = File | Blob;
 
-export type DocumentByteSource = ArrayBuffer | Uint8Array;
+type DocumentByteSource = ArrayBuffer | Uint8Array;
 
 type EntryFields = {
   originFileObj?: unknown;

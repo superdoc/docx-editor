@@ -35,13 +35,13 @@
 import { getCommandDescriptor } from '../../public/ui/commands.js';
 
 /** Layout regions a built-in toolbar item can be placed in. */
-export type ToolbarGroup = 'left' | 'center' | 'right';
+type ToolbarGroup = 'left' | 'center' | 'right';
 
 /** How a documented built-in toolbar item is (or is not) backed on V2. */
-export type ToolbarItemDisposition = 'controller-routed' | 'host-routed' | 'shell-owned' | 'unsupported' | 'unresolved';
+type ToolbarItemDisposition = 'controller-routed' | 'host-routed' | 'shell-owned' | 'unsupported' | 'unresolved';
 
 /** One documented built-in toolbar item and how it maps onto V2. */
-export interface BuiltInToolbarItemEntry {
+interface BuiltInToolbarItemEntry {
   /** Legacy built-in item name (the id v1 toolbars and the docs use). */
   readonly name: string;
   /**

@@ -64,7 +64,7 @@ interface PageNumberCommandRoute {
   execute: () => Promise<unknown>;
 }
 
-export interface CreateV2SessionShortcutRoutesDeps {
+interface CreateV2SessionShortcutRoutesDeps {
   /** Resolve the live toolbar container element for this SuperDoc instance. */
   resolveToolbarElement: () => HTMLElement | null | undefined;
   /** Resolve the live public Document API facade, or null when unavailable. */

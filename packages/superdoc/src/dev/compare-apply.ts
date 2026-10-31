@@ -1,9 +1,9 @@
-export interface CompareApplyResult {
+interface CompareApplyResult {
   readonly appliedOperations?: number;
   readonly diagnostics?: readonly string[];
 }
 
-export interface CompareApplyDebugSnapshot {
+interface CompareApplyDebugSnapshot {
   readonly textLength: number | null;
   readonly hostFacadeTextLength: number | null;
   readonly projectionBlockCount: number | null;
@@ -12,7 +12,7 @@ export interface CompareApplyDebugSnapshot {
   readonly hostFacadeMatchesEditorDoc: boolean | null;
 }
 
-export interface CompareApplyDocApi {
+interface CompareApplyDocApi {
   readonly diff: {
     apply(
       input: { diff: unknown },
@@ -42,7 +42,7 @@ export interface CompareApplyDocApi {
   } | null;
 }
 
-export interface CompareApplyOutcome {
+interface CompareApplyOutcome {
   readonly applyResult: CompareApplyResult;
   readonly changeMode: 'tracked' | 'direct';
   readonly fallbackFromTracked: boolean;

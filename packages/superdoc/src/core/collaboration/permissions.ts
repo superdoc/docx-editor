@@ -68,7 +68,7 @@ const PERMISSION_MATRIX: Readonly<Partial<Record<string, PermissionAudienceRoles
   },
 });
 
-export interface PermissionContext {
+interface PermissionContext {
   comment?: object | null;
   superdoc?: SuperDoc | null;
   currentUser?: User | null;

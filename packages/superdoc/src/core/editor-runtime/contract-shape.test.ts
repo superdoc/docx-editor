@@ -8,7 +8,6 @@ const INDEX_PATH = join(__dirname, 'index.ts');
 // list deliberately when the contract changes.
 const EXPECTED_TYPE_NAMES = [
   // identity + lifecycle
-  'EditorRuntimeKind',
   'EditorRuntimeId',
   'EditorRuntimeDocumentMode',
   'EditorRuntimeUser',
@@ -18,24 +17,11 @@ const EXPECTED_TYPE_NAMES = [
   'EditorRuntimeSnapshot',
   // capabilities
   'EditorRuntimeCapabilities',
-  'RuntimeLifecycleCapabilities',
-  'RuntimeSelectionCapabilities',
-  'RuntimeCommandCapabilities',
-  'RuntimeFindReplaceCapabilities',
-  'RuntimeAiCapabilities',
-  'RuntimeCommentCapabilities',
-  'RuntimeTrackedChangeCapabilities',
-  'RuntimeToolbarCapabilities',
-  'RuntimeLayoutCapabilities',
-  'RuntimeZoomCapabilities',
-  'RuntimeNavigationCapabilities',
-  'RuntimePersistenceCapabilities',
   // commands + results
   'EditorRuntimeCommand',
   'EditorRuntimeCommandKind',
   'EditorRuntimeCommandResult',
   'EditorRuntimeRejectionCode',
-  'EditorRuntimeNoopReason',
   // reads + snapshots
   'EditorRuntimeSelectionSnapshot',
   'EditorRuntimeFindSessionSnapshot',
@@ -45,17 +31,12 @@ const EXPECTED_TYPE_NAMES = [
   'EditorRuntimePositionToken',
   // options + targets
   'EditorRuntimeFocusOptions',
-  'EditorRuntimeSaveOptions',
   'EditorRuntimeExportOptions',
   'EditorRuntimeNavigationTarget',
   // events
   'EditorRuntimeEvent',
   'EditorRuntimeListener',
   'EditorRuntimeUnsubscribe',
-  // neutral JSON helpers
-  'RuntimeJsonPrimitive',
-  'RuntimeJsonValue',
-  'RuntimeJsonObject',
 ].sort();
 
 /** Extract the identifiers inside the `export type {... } from './types.js'` block. */

@@ -27,7 +27,7 @@
 // ---------------------------------------------------------------------------
 
 /** A structured-clone / JSON-safe primitive. */
-export type RuntimeJsonPrimitive = string | number | boolean | null;
+type RuntimeJsonPrimitive = string | number | boolean | null;
 
 /** A structured-clone / JSON-safe value. */
 export type RuntimeJsonValue = RuntimeJsonPrimitive | RuntimeJsonValue[] | { [key: string]: RuntimeJsonValue };

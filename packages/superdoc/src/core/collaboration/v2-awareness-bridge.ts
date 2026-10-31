@@ -33,7 +33,7 @@ export interface V2AwarenessSnapshotLike {
 }
 
 /** Core `awareness-update` payload (the `superdoc` backref is added by the caller). */
-export interface V2AwarenessPayloadCore {
+interface V2AwarenessPayloadCore {
   states: AwarenessState[];
   added: number[];
   removed: number[];

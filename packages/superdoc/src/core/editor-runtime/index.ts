@@ -7,7 +7,6 @@
 
 export type {
   // identity + lifecycle
-  EditorRuntimeKind,
   EditorRuntimeId,
   EditorRuntimeDocumentMode,
   EditorRuntimeUser,
@@ -17,24 +16,11 @@ export type {
   EditorRuntimeSnapshot,
   // capabilities
   EditorRuntimeCapabilities,
-  RuntimeLifecycleCapabilities,
-  RuntimeSelectionCapabilities,
-  RuntimeCommandCapabilities,
-  RuntimeFindReplaceCapabilities,
-  RuntimeAiCapabilities,
-  RuntimeCommentCapabilities,
-  RuntimeTrackedChangeCapabilities,
-  RuntimeToolbarCapabilities,
-  RuntimeLayoutCapabilities,
-  RuntimeZoomCapabilities,
-  RuntimeNavigationCapabilities,
-  RuntimePersistenceCapabilities,
   // commands + results
   EditorRuntimeCommand,
   EditorRuntimeCommandKind,
   EditorRuntimeCommandResult,
   EditorRuntimeRejectionCode,
-  EditorRuntimeNoopReason,
   // reads + snapshots
   EditorRuntimeSelectionSnapshot,
   EditorRuntimeFindSessionSnapshot,
@@ -44,15 +30,10 @@ export type {
   EditorRuntimePositionToken,
   // options + targets
   EditorRuntimeFocusOptions,
-  EditorRuntimeSaveOptions,
   EditorRuntimeExportOptions,
   EditorRuntimeNavigationTarget,
   // events
   EditorRuntimeEvent,
   EditorRuntimeListener,
   EditorRuntimeUnsubscribe,
-  // neutral JSON helpers
-  RuntimeJsonPrimitive,
-  RuntimeJsonValue,
-  RuntimeJsonObject,
 } from './types.js';

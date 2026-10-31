@@ -17,16 +17,16 @@ export type GroupableComment = {
   resolvedTime?: number | null;
 };
 
-export type GroupedComments<Comment> = {
+type GroupedComments<Comment> = {
   parentComments: Comment[];
   resolvedComments: Comment[];
 };
 
-export type CommittedReviewPresentation = {
+type CommittedReviewPresentation = {
   groupOrder: { open: readonly CommentId[]; resolved: readonly CommentId[] };
 };
 
-export type CommittedReviewPresentations = Readonly<Record<string, CommittedReviewPresentation>>;
+type CommittedReviewPresentations = Readonly<Record<string, CommittedReviewPresentation>>;
 
 const compareByCreatedTime = (a: GroupableComment, b: GroupableComment): number =>
   (a.createdTime ?? 0) - (b.createdTime ?? 0);

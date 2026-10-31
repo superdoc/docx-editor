@@ -17,7 +17,7 @@ export interface V2GeometryPayload {
 
 export type V2CommittedPageWindow = Readonly<Record<string, unknown>>;
 
-export interface V2GeometryPublisherOptions {
+interface V2GeometryPublisherOptions {
   getLayersContainer: () => HTMLElement | null;
   isCommentsEnabled: () => boolean;
   publishPositions: (positions: Record<string, unknown>, options?: V2GeometryPublishOptions) => void;
@@ -26,7 +26,7 @@ export interface V2GeometryPublisherOptions {
   setGeometryAvailable?: (value: boolean) => void;
 }
 
-export interface V2GeometryPublisher {
+interface V2GeometryPublisher {
   publish(payload: V2GeometryPayload | null, options?: V2GeometryPublishOptions): Promise<void> | void;
   recollect(options?: V2GeometryPublishOptions): Promise<void> | void;
   noteCommittedPageWindow?(window: V2CommittedPageWindow | null | undefined): void;
@@ -35,7 +35,7 @@ export interface V2GeometryPublisher {
   getLastPayload(): V2GeometryPayload | null;
 }
 
-export interface V2ReviewWindowContext {
+interface V2ReviewWindowContext {
   superdoc: unknown;
   documentId: string;
   commentsAdapter: unknown;
@@ -44,7 +44,7 @@ export interface V2ReviewWindowContext {
   moveFragmentWordIds: (ids: readonly string[]) => unknown;
 }
 
-export interface V2ReviewWindowResult {
+interface V2ReviewWindowResult {
   comments?: {
     items?: readonly unknown[];
     requestedIds?: readonly string[];
@@ -58,23 +58,23 @@ export interface V2ReviewWindowResult {
   preparedReview?: unknown;
 }
 
-export interface V2ReviewWindowControllerOptions {
+interface V2ReviewWindowControllerOptions {
   applyReviewWindow?: ((context: V2ReviewWindowContext, result: V2ReviewWindowResult) => unknown) | null;
 }
 
-export interface V2ReviewMutationSettlement {
+interface V2ReviewMutationSettlement {
   outcome: 'aborted' | 'rejected' | 'committed';
   allResolved?: boolean;
   resumeDomains?: readonly ('comments' | 'trackedChanges')[];
   trackedRowCount?: number | null;
 }
 
-export interface V2ReviewWindowSnapshot {
+interface V2ReviewWindowSnapshot {
   readonly status: 'pending' | 'ready' | 'stale';
   readonly [field: string]: unknown;
 }
 
-export interface V2ReviewWindowDiagnostics {
+interface V2ReviewWindowDiagnostics {
   generation: number;
   reviewEpoch: number;
   hasContext: boolean;
@@ -84,7 +84,7 @@ export interface V2ReviewWindowDiagnostics {
   records: readonly Record<string, unknown>[];
 }
 
-export interface V2ReviewWindowController {
+interface V2ReviewWindowController {
   setContext(context: V2ReviewWindowContext | null): void;
   onCommittedPagePaint?(commit: V2CommittedPageWindow): void;
   refreshCommittedWindow(reason?: string): void;
@@ -97,7 +97,7 @@ export interface V2ReviewWindowController {
   getDiagnostics(): V2ReviewWindowDiagnostics | null;
 }
 
-export interface SuperDocV2Integration {
+interface SuperDocV2Integration {
   version: number;
   capabilities: unknown;
   EditorComponent: Component;

@@ -1,16 +1,50 @@
-import { createApp } from 'vue';
-import { createPinia } from 'pinia';
+import { createApp, type App as VueApp, type Component } from 'vue';
+import { createPinia, type Pinia } from 'pinia';
 
 import { vClickOutside } from '@superdoc/common';
 import { useSuperdocStore } from '../stores/superdoc-store';
 import { useCommentsStore } from '../stores/comments-store';
 import App from '../SuperDoc.vue';
-import { HIGH_CONTRAST_MODE_KEY } from '../composables/use-high-contrast-mode';
+import { HIGH_CONTRAST_MODE_KEY, type HighContrastMode } from '../composables/use-high-contrast-mode';
 
 const PINIA_DEVTOOLS_SETUP_EVENT = 'devtools-plugin:setup';
 const PINIA_DEVTOOLS_PLUGIN_ID = 'dev.esm.pinia';
 
-const piniaDevtoolsSuppressionState = {
+type DevtoolsQueuePush = unknown[]['push'];
+
+interface DevtoolsHook {
+  emit: (event: unknown, ...args: unknown[]) => unknown;
+}
+
+interface PiniaDevtoolsSuppressionState {
+  disabledAppRefCounts: Map<unknown, number>;
+  hook: DevtoolsHook | null;
+  originalHookEmit: DevtoolsHook['emit'] | null;
+  isHookPropertyPatched: boolean;
+  originalHookPropertyDescriptor: PropertyDescriptor | null;
+  hookPropertyValue: unknown;
+  isQueuePropertyPatched: boolean;
+  originalQueuePropertyDescriptor: PropertyDescriptor | null;
+  queuePropertyValue: unknown;
+  queue: unknown[] | null;
+  originalQueuePush: DevtoolsQueuePush | null;
+}
+
+type DevtoolsGlobal = typeof globalThis & {
+  __VUE_DEVTOOLS_PLUGINS__?: unknown;
+  __VUE_DEVTOOLS_GLOBAL_HOOK__?: unknown;
+};
+
+const devtoolsGlobal: DevtoolsGlobal = globalThis;
+
+const isUnknownArray = (value: unknown): value is unknown[] => Array.isArray(value);
+
+const readField = (value: unknown, key: string): unknown =>
+  (typeof value === 'object' && value !== null) || typeof value === 'function' ? Reflect.get(value, key) : undefined;
+
+const isDevtoolsHook = (value: unknown): value is DevtoolsHook => typeof readField(value, 'emit') === 'function';
+
+const piniaDevtoolsSuppressionState: PiniaDevtoolsSuppressionState = {
   disabledAppRefCounts: new Map(),
   hook: null,
   originalHookEmit: null,
@@ -24,31 +58,35 @@ const piniaDevtoolsSuppressionState = {
   originalQueuePush: null,
 };
 
-const isPiniaDevtoolsSetupForSuppressedApp = (event, descriptor) =>
-  event === PINIA_DEVTOOLS_SETUP_EVENT &&
-  descriptor?.id === PINIA_DEVTOOLS_PLUGIN_ID &&
-  descriptor?.app &&
-  piniaDevtoolsSuppressionState.disabledAppRefCounts.has(descriptor.app);
+const isPiniaDevtoolsSetupForSuppressedApp = (event: unknown, descriptor: unknown): boolean => {
+  if (event !== PINIA_DEVTOOLS_SETUP_EVENT || readField(descriptor, 'id') !== PINIA_DEVTOOLS_PLUGIN_ID) {
+    return false;
+  }
 
-const isPiniaDevtoolsQueueEntryForSuppressedApp = (entry) =>
-  Array.isArray(entry) && isPiniaDevtoolsSetupForSuppressedApp(PINIA_DEVTOOLS_SETUP_EVENT, entry[0]);
+  const app = readField(descriptor, 'app');
+  return Boolean(app) && piniaDevtoolsSuppressionState.disabledAppRefCounts.has(app);
+};
 
-const setDevtoolsQueueValue = (value) => {
+const isPiniaDevtoolsQueueEntryForSuppressedApp = (entry: unknown): boolean =>
+  isUnknownArray(entry) && isPiniaDevtoolsSetupForSuppressedApp(PINIA_DEVTOOLS_SETUP_EVENT, entry[0]);
+
+const setDevtoolsQueueValue = (value: unknown[]) => {
   if (piniaDevtoolsSuppressionState.isQueuePropertyPatched) {
     piniaDevtoolsSuppressionState.queuePropertyValue = value;
     return;
   }
 
-  globalThis.__VUE_DEVTOOLS_PLUGINS__ = value;
+  devtoolsGlobal.__VUE_DEVTOOLS_PLUGINS__ = value;
 };
 
-const purgeDevtoolsPluginQueueForApp = (app) => {
-  const queue = globalThis.__VUE_DEVTOOLS_PLUGINS__;
-  if (!Array.isArray(queue)) return;
+const purgeDevtoolsPluginQueueForApp = (app: VueApp) => {
+  const queue = devtoolsGlobal.__VUE_DEVTOOLS_PLUGINS__;
+  if (!isUnknownArray(queue)) return;
 
   for (let i = queue.length - 1; i >= 0; i--) {
-    const [descriptor] = queue[i];
-    if (descriptor?.id === PINIA_DEVTOOLS_PLUGIN_ID && descriptor?.app === app) {
+    const entry = queue[i];
+    const descriptor = isUnknownArray(entry) ? entry[0] : undefined;
+    if (readField(descriptor, 'id') === PINIA_DEVTOOLS_PLUGIN_ID && readField(descriptor, 'app') === app) {
       queue.splice(i, 1);
     }
   }
@@ -75,14 +113,14 @@ const restoreDevtoolsHookEmitPatch = () => {
 };
 
 const ensureDevtoolsQueuePushPatched = () => {
-  const existingQueue = globalThis.__VUE_DEVTOOLS_PLUGINS__;
+  const existingQueue = devtoolsGlobal.__VUE_DEVTOOLS_PLUGINS__;
   if (existingQueue == null) {
     setDevtoolsQueueValue([]);
     ensureDevtoolsQueuePushPatched();
     return;
   }
 
-  if (!Array.isArray(existingQueue)) {
+  if (!isUnknownArray(existingQueue)) {
     return;
   }
 
@@ -102,7 +140,7 @@ const ensureDevtoolsQueuePushPatched = () => {
   piniaDevtoolsSuppressionState.queue = queue;
   piniaDevtoolsSuppressionState.originalQueuePush = originalQueuePush;
 
-  queue.push = function patchedQueuePush(...entries) {
+  queue.push = function patchedQueuePush(this: unknown[], ...entries: unknown[]) {
     const retainedEntries = entries.filter((entry) => !isPiniaDevtoolsQueueEntryForSuppressedApp(entry));
     if (retainedEntries.length === 0) {
       return this.length;
@@ -118,22 +156,22 @@ const ensureDevtoolsQueueAssignmentPatched = () => {
     return;
   }
 
-  const queueDescriptor = Object.getOwnPropertyDescriptor(globalThis, '__VUE_DEVTOOLS_PLUGINS__');
+  const queueDescriptor = Object.getOwnPropertyDescriptor(devtoolsGlobal, '__VUE_DEVTOOLS_PLUGINS__');
   if (queueDescriptor?.configurable === false) {
     ensureDevtoolsQueuePushPatched();
     return;
   }
 
   piniaDevtoolsSuppressionState.originalQueuePropertyDescriptor = queueDescriptor ?? null;
-  piniaDevtoolsSuppressionState.queuePropertyValue = globalThis.__VUE_DEVTOOLS_PLUGINS__;
+  piniaDevtoolsSuppressionState.queuePropertyValue = devtoolsGlobal.__VUE_DEVTOOLS_PLUGINS__;
 
-  Object.defineProperty(globalThis, '__VUE_DEVTOOLS_PLUGINS__', {
+  Object.defineProperty(devtoolsGlobal, '__VUE_DEVTOOLS_PLUGINS__', {
     configurable: true,
     enumerable: queueDescriptor?.enumerable ?? true,
     get() {
       return piniaDevtoolsSuppressionState.queuePropertyValue;
     },
-    set(value) {
+    set(value: unknown) {
       piniaDevtoolsSuppressionState.queuePropertyValue = value;
       ensureDevtoolsQueuePushPatched();
     },
@@ -150,24 +188,24 @@ const restoreDevtoolsQueueAssignmentPatch = () => {
 
   const { queuePropertyValue, originalQueuePropertyDescriptor } = piniaDevtoolsSuppressionState;
 
-  delete globalThis.__VUE_DEVTOOLS_PLUGINS__;
+  delete devtoolsGlobal.__VUE_DEVTOOLS_PLUGINS__;
 
   if (originalQueuePropertyDescriptor) {
     if ('value' in originalQueuePropertyDescriptor) {
-      Object.defineProperty(globalThis, '__VUE_DEVTOOLS_PLUGINS__', {
+      Object.defineProperty(devtoolsGlobal, '__VUE_DEVTOOLS_PLUGINS__', {
         configurable: originalQueuePropertyDescriptor.configurable,
         enumerable: originalQueuePropertyDescriptor.enumerable,
         writable: originalQueuePropertyDescriptor.writable,
         value: queuePropertyValue,
       });
     } else {
-      Object.defineProperty(globalThis, '__VUE_DEVTOOLS_PLUGINS__', originalQueuePropertyDescriptor);
+      Object.defineProperty(devtoolsGlobal, '__VUE_DEVTOOLS_PLUGINS__', originalQueuePropertyDescriptor);
       if (typeof originalQueuePropertyDescriptor.set === 'function') {
-        originalQueuePropertyDescriptor.set.call(globalThis, queuePropertyValue);
+        originalQueuePropertyDescriptor.set.call(devtoolsGlobal, queuePropertyValue);
       }
     }
   } else if (queuePropertyValue !== undefined) {
-    globalThis.__VUE_DEVTOOLS_PLUGINS__ = queuePropertyValue;
+    devtoolsGlobal.__VUE_DEVTOOLS_PLUGINS__ = queuePropertyValue;
   }
 
   piniaDevtoolsSuppressionState.isQueuePropertyPatched = false;
@@ -176,8 +214,8 @@ const restoreDevtoolsQueueAssignmentPatch = () => {
 };
 
 const ensureDevtoolsHookEmitPatched = () => {
-  const hook = globalThis?.__VUE_DEVTOOLS_GLOBAL_HOOK__;
-  if (!hook || typeof hook.emit !== 'function') {
+  const hook = devtoolsGlobal.__VUE_DEVTOOLS_GLOBAL_HOOK__;
+  if (!isDevtoolsHook(hook)) {
     return;
   }
 
@@ -191,7 +229,7 @@ const ensureDevtoolsHookEmitPatched = () => {
   piniaDevtoolsSuppressionState.hook = hook;
   piniaDevtoolsSuppressionState.originalHookEmit = originalHookEmit;
 
-  hook.emit = function patchedEmit(event, ...args) {
+  hook.emit = function patchedEmit(this: unknown, event: unknown, ...args: unknown[]) {
     const [pluginDescriptor] = args;
     if (isPiniaDevtoolsSetupForSuppressedApp(event, pluginDescriptor)) {
       return undefined;
@@ -207,22 +245,22 @@ const ensureDevtoolsHookAssignmentPatched = () => {
     return;
   }
 
-  const hookDescriptor = Object.getOwnPropertyDescriptor(globalThis, '__VUE_DEVTOOLS_GLOBAL_HOOK__');
+  const hookDescriptor = Object.getOwnPropertyDescriptor(devtoolsGlobal, '__VUE_DEVTOOLS_GLOBAL_HOOK__');
   if (hookDescriptor?.configurable === false) {
     ensureDevtoolsHookEmitPatched();
     return;
   }
 
   piniaDevtoolsSuppressionState.originalHookPropertyDescriptor = hookDescriptor ?? null;
-  piniaDevtoolsSuppressionState.hookPropertyValue = globalThis.__VUE_DEVTOOLS_GLOBAL_HOOK__;
+  piniaDevtoolsSuppressionState.hookPropertyValue = devtoolsGlobal.__VUE_DEVTOOLS_GLOBAL_HOOK__;
 
-  Object.defineProperty(globalThis, '__VUE_DEVTOOLS_GLOBAL_HOOK__', {
+  Object.defineProperty(devtoolsGlobal, '__VUE_DEVTOOLS_GLOBAL_HOOK__', {
     configurable: true,
     enumerable: hookDescriptor?.enumerable ?? true,
     get() {
       return piniaDevtoolsSuppressionState.hookPropertyValue;
     },
-    set(value) {
+    set(value: unknown) {
       piniaDevtoolsSuppressionState.hookPropertyValue = value;
       ensureDevtoolsHookEmitPatched();
     },
@@ -239,24 +277,24 @@ const restoreDevtoolsHookAssignmentPatch = () => {
 
   const { hookPropertyValue, originalHookPropertyDescriptor } = piniaDevtoolsSuppressionState;
 
-  delete globalThis.__VUE_DEVTOOLS_GLOBAL_HOOK__;
+  delete devtoolsGlobal.__VUE_DEVTOOLS_GLOBAL_HOOK__;
 
   if (originalHookPropertyDescriptor) {
     if ('value' in originalHookPropertyDescriptor) {
-      Object.defineProperty(globalThis, '__VUE_DEVTOOLS_GLOBAL_HOOK__', {
+      Object.defineProperty(devtoolsGlobal, '__VUE_DEVTOOLS_GLOBAL_HOOK__', {
         configurable: originalHookPropertyDescriptor.configurable,
         enumerable: originalHookPropertyDescriptor.enumerable,
         writable: originalHookPropertyDescriptor.writable,
         value: hookPropertyValue,
       });
     } else {
-      Object.defineProperty(globalThis, '__VUE_DEVTOOLS_GLOBAL_HOOK__', originalHookPropertyDescriptor);
+      Object.defineProperty(devtoolsGlobal, '__VUE_DEVTOOLS_GLOBAL_HOOK__', originalHookPropertyDescriptor);
       if (typeof originalHookPropertyDescriptor.set === 'function') {
-        originalHookPropertyDescriptor.set.call(globalThis, hookPropertyValue);
+        originalHookPropertyDescriptor.set.call(devtoolsGlobal, hookPropertyValue);
       }
     }
   } else if (hookPropertyValue !== undefined) {
-    globalThis.__VUE_DEVTOOLS_GLOBAL_HOOK__ = hookPropertyValue;
+    devtoolsGlobal.__VUE_DEVTOOLS_GLOBAL_HOOK__ = hookPropertyValue;
   }
 
   piniaDevtoolsSuppressionState.isHookPropertyPatched = false;
@@ -275,7 +313,7 @@ const restoreDevtoolsSuppressionPatchesIfIdle = () => {
   restoreDevtoolsQueueAssignmentPatch();
 };
 
-const setPiniaDevtoolsSuppressedForApp = (app, isSuppressed) => {
+const setPiniaDevtoolsSuppressedForApp = (app: VueApp, isSuppressed: boolean): (() => void) => {
   if (!isSuppressed) {
     return () => {};
   }
@@ -301,32 +339,28 @@ const setPiniaDevtoolsSuppressedForApp = (app, isSuppressed) => {
   };
 };
 
-/**
- * Result of `createSuperdocVueApp()`. Internal-only: the shape is consumed
- * by `SuperDoc.#initVueApp` and is not part of the public surface.
- *
- * @typedef {Object} SuperdocVueAppRefs
- * @property {import('vue').App} app The Vue 3 app instance
- * @property {import('pinia').Pinia} pinia The Pinia store instance attached to `app`
- * @property {ReturnType<typeof useSuperdocStore>} superdocStore The SuperDoc Pinia store
- * @property {ReturnType<typeof useCommentsStore>} commentsStore The Comments Pinia store
- */
+interface SuperdocVueAppOptions {
+  disablePiniaDevtools?: boolean;
+  highContrastMode: HighContrastMode;
+}
 
-/**
- * Generate the superdoc vue app
- *
- * @param {Object} options
- * @param {boolean} [options.disablePiniaDevtools=false] Disable Pinia devtools registration for this app instance
- * @param {import('../composables/use-high-contrast-mode').HighContrastMode} options.highContrastMode The owning SuperDoc's high-contrast state, provided to the app
- * @returns {SuperdocVueAppRefs} An object containing the vue app, the pinia reference, and the superdoc/comments Pinia stores
- */
-export const createSuperdocVueApp = ({ disablePiniaDevtools = false, highContrastMode }) => {
-  const app = createApp(App);
+interface SuperdocVueAppRefs {
+  app: VueApp;
+  pinia: Pinia;
+  superdocStore: ReturnType<typeof useSuperdocStore>;
+  commentsStore: ReturnType<typeof useCommentsStore>;
+}
+
+export const createSuperdocVueApp = ({
+  disablePiniaDevtools = false,
+  highContrastMode,
+}: SuperdocVueAppOptions): SuperdocVueAppRefs => {
+  const app = createApp(App as Component);
   const pinia = createPinia();
   const cleanupPiniaDevtoolsSuppression = setPiniaDevtoolsSuppressedForApp(app, disablePiniaDevtools);
 
-  let superdocStore;
-  let commentsStore;
+  let superdocStore: ReturnType<typeof useSuperdocStore>;
+  let commentsStore: ReturnType<typeof useCommentsStore>;
 
   try {
     app.use(pinia);

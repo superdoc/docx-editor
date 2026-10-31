@@ -23,8 +23,8 @@
 
 import { firstDefined, mergeDefined } from './merge-defined.ts';
 import { normalizeCommentsUiConfig } from '../../helpers/comment-small-screen.ts';
-import { TOOLBAR_ITEM_ALIASES } from '../../internal/toolbar/toolbar-item-aliases.js';
-import { isPlainObject } from '../../helpers/object-guards.js';
+import { TOOLBAR_ITEM_ALIASES } from '../../internal/toolbar/toolbar-item-aliases.ts';
+import { isPlainObject } from '../../helpers/object-guards.ts';
 import type { Config, Modules, UIConfig } from '../types/index.js';
 
 type UiConfigSource = Pick<

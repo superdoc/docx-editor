@@ -473,7 +473,7 @@ type EditorCommentsUpdateParams = {
   comment?: ReplayCommentPayload | null;
 };
 type ShellSelection = {
-  selectionBounds?: { top: number; left: number; right: number; bottom: number } | null;
+  selectionBounds?: { top: number; left: number; right?: number; bottom?: number } | null;
   source?: unknown;
 };
 type V2PageMarginsChangeEvent = Omit<SuperDocPageMarginsChangePayload, 'documentId' | 'editorVersion'>;

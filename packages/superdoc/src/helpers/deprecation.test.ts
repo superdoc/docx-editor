@@ -157,6 +157,20 @@ describe('unwrapEditor', () => {
     expect(unwrapEditor(proxy)).toBe(editor);
   });
 
+  it('should return a raw class-instance editor from a proxy', () => {
+    class ClassEditor {
+      #id = 'class-editor';
+      getId() {
+        return this.#id;
+      }
+    }
+    const editor = new ClassEditor();
+    const proxy = createDeprecatedEditorProxy(editor);
+    expect(proxy).not.toBe(editor);
+    expect(unwrapEditor(proxy)).toBe(editor);
+    expect(unwrapEditor(editor)).toBe(editor);
+  });
+
   it('should return a raw editor unchanged', () => {
     const editor = createMockEditor();
     expect(unwrapEditor(editor)).toBe(editor);

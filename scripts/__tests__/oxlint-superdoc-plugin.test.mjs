@@ -8,29 +8,37 @@ import { fileURLToPath } from 'node:url';
 const PUBLIC_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const VP = join(PUBLIC_ROOT, 'node_modules/.bin/vp');
 
-function lint(files) {
+function lintPaths(paths) {
+  let output;
+  try {
+    output = execFileSync(VP, ['lint', '-f', 'json', ...paths], {
+      cwd: PUBLIC_ROOT,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+  } catch (error) {
+    output = error.stdout;
+  }
+  return JSON.parse(output).diagnostics;
+}
+
+function lintDiagnostics(files) {
   const dir = mkdtempSync(join(PUBLIC_ROOT, 'packages/superdoc/src/__oxlint-plugin-test-'));
   try {
     for (const [name, source] of Object.entries(files)) writeFileSync(join(dir, name), source);
-    let output;
-    try {
-      output = execFileSync(VP, ['lint', '-f', 'json', relative(PUBLIC_ROOT, dir)], {
-        cwd: PUBLIC_ROOT,
-        encoding: 'utf8',
-        stdio: ['ignore', 'pipe', 'ignore'],
-      });
-    } catch (error) {
-      output = error.stdout;
-    }
-    const hits = new Map();
-    for (const { code, filename } of JSON.parse(output).diagnostics) {
-      const name = filename.split('/').at(-1);
-      hits.set(name, [...(hits.get(name) ?? []), code]);
-    }
-    return hits;
+    return lintPaths([relative(PUBLIC_ROOT, dir)]);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+}
+
+function lint(files) {
+  const hits = new Map();
+  for (const { code, filename } of lintDiagnostics(files)) {
+    const name = filename.split('/').at(-1);
+    hits.set(name, [...(hits.get(name) ?? []), code]);
+  }
+  return hits;
 }
 
 const SUPPRESSES = {
@@ -73,4 +81,17 @@ test('no-local-object-guard flags a local guard and names the package helper', (
   });
   assert.deepEqual(hits.get('guard.js'), ['superdoc(no-local-object-guard)']);
   assert.equal(hits.get('kind-check.js'), undefined);
+});
+
+test('no-local-object-guard points at the TypeScript home of isPlainObject', () => {
+  const diagnostics = lintDiagnostics({
+    'guard.js': "export const isObj = (value) => typeof value === 'object' && value !== null;\n",
+  });
+  const guard = diagnostics.find(({ code }) => code === 'superdoc(no-local-object-guard)');
+  assert.match(guard?.message ?? '', /'packages\/superdoc\/src\/helpers\/object-guards\.ts'/);
+});
+
+test('no-local-object-guard does not flag the isPlainObject home itself', () => {
+  const diagnostics = lintPaths(['packages/superdoc/src/helpers/object-guards.ts']);
+  assert.deepEqual(diagnostics, []);
 });

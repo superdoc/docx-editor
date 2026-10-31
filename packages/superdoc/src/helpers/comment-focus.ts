@@ -1,6 +1,19 @@
+type ClientRectSource = { getBoundingClientRect?: () => { top: number } };
+
+type ThreadPositionEntry = { bounds?: { top?: number } | null } | null | undefined;
+
+type ThreadAnchorPresentation = {
+  getReachableThreadAnchorClientY: (threadId: string, targetClientY: number) => number | null | undefined;
+  scrollThreadAnchorToClientY: (
+    threadId: string,
+    targetClientY: number,
+    options: { behavior: ScrollBehavior },
+  ) => boolean | null | undefined;
+};
+
 const COMMENT_FOCUS_VIEWPORT_RATIO = 0.38;
 const COMMENT_HIGHLIGHT_SELECTOR = '.superdoc-comment-highlight';
-const isElementVisibleInViewport = (element) => {
+const isElementVisibleInViewport = (element: Element) => {
   if (typeof element?.getBoundingClientRect !== 'function') return false;
 
   const bounds = element.getBoundingClientRect();
@@ -11,7 +24,7 @@ const isElementVisibleInViewport = (element) => {
   return bounds.bottom > 0 && bounds.top < window.innerHeight;
 };
 
-const parseCommaSeparated = (value) => {
+const parseCommaSeparated = (value: string | null): string[] => {
   if (!value) return [];
   return value
     .split(',')
@@ -19,8 +32,8 @@ const parseCommaSeparated = (value) => {
     .filter(Boolean);
 };
 
-const parseImportedIdMap = (value) => {
-  const ids = [];
+const parseImportedIdMap = (value: string | null): string[] => {
+  const ids: string[] = [];
   if (!value) return ids;
 
   value.split(',').forEach((entry) => {
@@ -33,15 +46,17 @@ const parseImportedIdMap = (value) => {
   return ids.filter(Boolean);
 };
 
-export const getPreferredCommentFocusTargetClientY = () => {
+export const getPreferredCommentFocusTargetClientY = (): number => {
   return Math.round(window.innerHeight * COMMENT_FOCUS_VIEWPORT_RATIO);
 };
 
-export const getVisibleThreadAnchorClientY = (layersElement, positionEntry) => {
+export const getVisibleThreadAnchorClientY = (
+  layersElement: ClientRectSource | null | undefined,
+  positionEntry: ThreadPositionEntry,
+): number | null => {
   const anchorTop = positionEntry?.bounds?.top;
-  if (!Number.isFinite(anchorTop) || typeof layersElement?.getBoundingClientRect !== 'function') {
-    return null;
-  }
+  if (typeof anchorTop !== 'number' || !Number.isFinite(anchorTop)) return null;
+  if (typeof layersElement?.getBoundingClientRect !== 'function') return null;
 
   const anchorClientY = layersElement.getBoundingClientRect().top + anchorTop;
   if (anchorClientY < 0 || anchorClientY >= window.innerHeight) {
@@ -51,16 +66,18 @@ export const getVisibleThreadAnchorClientY = (layersElement, positionEntry) => {
   return anchorClientY;
 };
 
-export const getVisibleThreadHighlightClientY = (threadIds) => {
+export const getVisibleThreadHighlightClientY = (
+  threadIds: ReadonlyArray<string | number | null | undefined> | null | undefined,
+): number | null => {
   if (typeof document === 'undefined') return null;
 
   const candidateIds = new Set((threadIds ?? []).map((id) => String(id)).filter(Boolean));
   if (candidateIds.size === 0) return null;
 
-  let visibleTop = null;
+  let visibleTop: number | null = null;
   const highlights = document.querySelectorAll(COMMENT_HIGHLIGHT_SELECTOR);
 
-  for (const highlight of highlights) {
+  for (const highlight of Array.from(highlights)) {
     const highlightIds = new Set([
       ...parseCommaSeparated(highlight.getAttribute('data-comment-ids')),
       ...parseImportedIdMap(highlight.getAttribute('data-comment-imported-ids')),
@@ -79,21 +96,26 @@ export const getVisibleThreadHighlightClientY = (threadIds) => {
   return visibleTop;
 };
 
-export const scrollThreadAnchorToFocusTarget = (presentation, primaryThreadId, fallbackThreadId, targetClientY) => {
-  if (!presentation || !Number.isFinite(targetClientY)) return null;
+export const scrollThreadAnchorToFocusTarget = (
+  presentation: ThreadAnchorPresentation | null | undefined,
+  primaryThreadId: string | null | undefined,
+  fallbackThreadId: string | null | undefined,
+  targetClientY: number | null | undefined,
+): number | null => {
+  if (!presentation || typeof targetClientY !== 'number' || !Number.isFinite(targetClientY)) return null;
 
-  const tryThread = (threadId) => {
+  const tryThread = (threadId: string | null | undefined): number | null => {
     if (!threadId) return null;
 
     const reachableClientY = presentation.getReachableThreadAnchorClientY(threadId, targetClientY);
-    if (!Number.isFinite(reachableClientY)) return null;
+    if (typeof reachableClientY !== 'number' || !Number.isFinite(reachableClientY)) return null;
 
     const didResolveThread = presentation.scrollThreadAnchorToClientY(threadId, targetClientY, { behavior: 'auto' });
     return didResolveThread ? reachableClientY : null;
   };
 
   const primaryTargetY = tryThread(primaryThreadId);
-  if (Number.isFinite(primaryTargetY)) {
+  if (primaryTargetY !== null) {
     return primaryTargetY;
   }
 

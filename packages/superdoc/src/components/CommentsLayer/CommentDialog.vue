@@ -914,11 +914,11 @@ const setFocus = async () => {
         ? null
         : scrollThreadAnchorToFocusTarget(presentation, cursorId, fallbackThreadId, targetClientY);
     }
-    if (Number.isFinite(visibleHighlightTargetY)) {
+    if (isFiniteNumber(visibleHighlightTargetY)) {
       instantAlignmentTargetY = visibleHighlightTargetY;
-    } else if (Number.isFinite(visibleAnchorTargetY)) {
+    } else if (isFiniteNumber(visibleAnchorTargetY)) {
       instantAlignmentTargetY = visibleAnchorTargetY;
-    } else if (Number.isFinite(reachableTargetY)) {
+    } else if (isFiniteNumber(reachableTargetY)) {
       instantAlignmentTargetY = reachableTargetY;
     }
   }

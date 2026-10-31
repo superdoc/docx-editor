@@ -1,5 +1,5 @@
 import type { CommentsLayout, CommentsResponsiveConfig } from '../core/types/index.js';
-import { isPlainObject } from './object-guards.js';
+import { isPlainObject } from './object-guards.ts';
 import { isFiniteNumber } from './is-finite-number.ts';
 
 export const COMPACT_ANCHOR_SELECTOR = '[data-track-change-id], .superdoc-comment-highlight, .sd-comment-anchor';

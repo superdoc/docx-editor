@@ -10,7 +10,7 @@ const OBJECT_GUARD_HOMES = [
   { scope: 'packages/sdk/', home: 'packages/sdk/langs/node/src/guards.ts', name: 'isRecord' },
   { scope: 'apps/cli/', home: 'apps/cli/src/lib/guards.ts', name: 'isRecord' },
   { scope: 'packages/layout-engine/contracts/', home: 'packages/layout-engine/contracts/src/ooxml-z-index.ts', name: 'isPlainObject' },
-  { scope: 'packages/superdoc/', home: 'packages/superdoc/src/helpers/object-guards.js', name: 'isPlainObject' },
+  { scope: 'packages/superdoc/', home: 'packages/superdoc/src/helpers/object-guards.ts', name: 'isPlainObject' },
   { scope: '', home: null, name: 'isPlainObject', from: '@superdoc/contracts' },
 ];
 

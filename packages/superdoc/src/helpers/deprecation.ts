@@ -9,17 +9,16 @@
  * boundary wraps the editor with a Proxy.
  */
 
+import type { Editor } from '../core/types/index.js';
+
 const MIGRATION_URL = 'https://docs.superdoc.dev/guides/migration/document-api';
 
-/** @type {Set<string>} */
-const _warned = new Set();
+const _warned = new Set<string>();
 
 /**
  * Log a console.warn once per key. Subsequent calls with the same key are no-ops.
- * @param {string} key
- * @param {string} message
  */
-export function warnOnce(key, message) {
+export function warnOnce(key: string, message: string): void {
   if (_warned.has(key)) return;
   _warned.add(key);
   console.warn(message);
@@ -28,9 +27,8 @@ export function warnOnce(key, message) {
 /**
  * Map of deprecated property names to the human-readable access path shown
  * in the warning message.
- * @type {Record<string, string>}
  */
-const DEPRECATED_PROPERTIES = {
+const DEPRECATED_PROPERTIES: Readonly<Record<string, string>> = {
   state: 'editor.state',
   view: 'editor.view',
   schema: 'editor.schema',
@@ -40,11 +38,16 @@ const DEPRECATED_PROPERTIES = {
   dispatch: 'editor.dispatch()',
 };
 
-/** @type {symbol} */
 const RAW_EDITOR = Symbol.for('superdoc:rawEditor');
 
-/** @type {WeakMap<object, Map<string|symbol, Function>>} */
-const _boundFns = new WeakMap();
+const _boundFns = new WeakMap<object, Map<string | symbol, unknown>>();
+
+type WrappedEditor = Editor & { readonly [RAW_EDITOR]?: Editor };
+
+const rawEditorOf = (editor: WrappedEditor | null | undefined): Editor | undefined => editor?.[RAW_EDITOR];
+
+const deprecatedName = (prop: string | symbol): string | undefined =>
+  typeof prop === 'string' ? DEPRECATED_PROPERTIES[prop] : undefined;
 
 /**
  * Wrap an Editor instance in a Proxy that emits one-time deprecation
@@ -53,23 +56,21 @@ const _boundFns = new WeakMap();
  * The proxy is fully transparent — all property access and method calls are
  * forwarded to the underlying editor. Only the warning side-effect is added.
  *
- * @param {import('../core/types/index.js').Editor} editor
- * @returns {import('../core/types/index.js').Editor} Proxied editor (or the
- *   original if null/already wrapped)
+ * @returns Proxied editor (or the original if null/already wrapped)
  */
-export function createDeprecatedEditorProxy(editor) {
-  if (!editor || editor[RAW_EDITOR]) return editor;
+export function createDeprecatedEditorProxy<T extends Editor | null | undefined>(editor: T): T {
+  if (!editor || rawEditorOf(editor)) return editor;
 
   return new Proxy(editor, {
     get(target, prop) {
       // Escape hatch for internal code that needs the unwrapped editor
       if (prop === RAW_EDITOR) return target;
 
-      const deprecatedName = DEPRECATED_PROPERTIES[prop];
-      if (deprecatedName) {
+      const name = deprecatedName(prop);
+      if (name) {
         warnOnce(
           `deprecated:${String(prop)}`,
-          `[SuperDoc] ${deprecatedName} is deprecated and will be removed in a future version. ` +
+          `[SuperDoc] ${name} is deprecated and will be removed in a future version. ` +
             `Use the Document API (editor.doc) instead. See ${MIGRATION_URL}`,
         );
       }
@@ -77,7 +78,7 @@ export function createDeprecatedEditorProxy(editor) {
       // Bind to target (not receiver/proxy) so private-field brand checks
       // on the Editor class work correctly. Cache the bound function so
       // repeated access returns the same reference (preserves identity).
-      const value = Reflect.get(target, prop, target);
+      const value: unknown = Reflect.get(target, prop, target);
       if (typeof value === 'function') {
         let cache = _boundFns.get(target);
         if (!cache) {
@@ -97,10 +98,7 @@ export function createDeprecatedEditorProxy(editor) {
 /**
  * Unwrap a potentially proxied editor back to the raw Editor instance.
  * Safe to call on an already-raw editor — returns it unchanged.
- *
- * @param {import('../core/types/index.js').Editor | null | undefined} editor
- * @returns {import('../core/types/index.js').Editor | null | undefined}
  */
-export function unwrapEditor(editor) {
-  return editor?.[RAW_EDITOR] ?? editor;
+export function unwrapEditor(editor: Editor | null | undefined): Editor | null | undefined {
+  return rawEditorOf(editor) ?? editor;
 }

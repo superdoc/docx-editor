@@ -153,6 +153,29 @@ created for this open request. Per-open token authentication is not supported fo
 
 To initialize a new room from a DOCX, set `roomMode: 'create'` for one worker. Later SDK sessions and editors use `roomMode: 'join'`. If multiple backend workers can start the same document, [coordinate room creation](/editor/collaboration/coordinate-room-creation) in your backend and collaboration server before calling `create`.
 
+## Close a Liveblocks collaboration session
+
+In a Liveblocks room, `close()` waits until Liveblocks confirms it has every change from the session, then leaves
+the room. You can close right after your last edit; you don't need a delay or a poll of the room first.
+
+The wait ends at the collaboration profile's `syncTimeoutMs` (30 seconds by default) or shortly before the close
+request's own timeout, whichever comes first. If Liveblocks has not confirmed by then, the session is still released
+and `close()` throws `COLLABORATION_SYNC_TIMEOUT`. Treat that as
+"the room may be missing edits from this session":
+
+```js
+import { SuperDocCliError } from '@superdoc/sdk';
+
+try {
+  await document.close({ discard: true });
+} catch (error) {
+  if (error instanceof SuperDocCliError && error.code === 'COLLABORATION_SYNC_TIMEOUT') {
+    // Reopen the room with roomMode: 'join' and check or reapply the session's edits.
+  }
+  throw error;
+}
+```
+
 To run an agent next to people editing in the browser, follow [Add an agent](/editor/collaboration/deploy-a-server#add-an-agent)
 in the collaboration server guide.
 

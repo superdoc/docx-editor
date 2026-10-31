@@ -195,6 +195,28 @@ document = await client.open(
 The credential is separate from the collaboration profile and command-line arguments. It applies to the provider
 created for this open request. Per-open token authentication is not supported for Liveblocks.
 
+## Close a Liveblocks collaboration session
+
+In a Liveblocks room, `close` waits until Liveblocks confirms it has every change from the session, then leaves
+the room. You can close right after your last edit; you don't need a delay or a poll of the room first.
+
+The wait ends at the collaboration profile's `syncTimeoutMs` (30 seconds by default) or shortly before the close
+request's own timeout, whichever comes first. If Liveblocks has not confirmed by then, the session is still released
+and `close` raises `COLLABORATION_SYNC_TIMEOUT`. Treat that as
+"the room may be missing edits from this session":
+
+```python
+from superdoc import SuperDocError
+
+try:
+    document.close({"discard": True})
+except SuperDocError as error:
+    if error.code == "COLLABORATION_SYNC_TIMEOUT":
+        # Reopen the room with roomMode "join" and check or reapply the session's edits.
+        pass
+    raise
+```
+
 Use the [Node.js SDK](/agents/automation/node-sdk) for the same deterministic workflow from JavaScript or TypeScript.
 For Rust, follow the [Rust SDK guide](/agents/automation/rust-sdk).
 For the operation and receipt model shared by every SDK, continue with the

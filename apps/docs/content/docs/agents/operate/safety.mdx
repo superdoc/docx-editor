@@ -122,6 +122,10 @@ try {
 
 Make cleanup best-effort. A close failure that throws will mask the error that actually ended the run.
 
+In a Liveblocks collaboration session, log close failures instead of dropping them. `COLLABORATION_SYNC_TIMEOUT` from
+`close` means Liveblocks did not confirm it received every edit from the session, so the room may be missing some.
+See [Close a Liveblocks collaboration session](/agents/automation/node-sdk#close-a-liveblocks-collaboration-session).
+
 ## Treat tool calls as untrusted input
 
 A model chooses tool names from what it was shown, but nothing guarantees it stays there. It can invent a name, and it can be persuaded toward one by text inside the document it is editing.

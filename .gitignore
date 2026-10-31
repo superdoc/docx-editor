@@ -12,6 +12,7 @@ dist-devapp
 dist-ssr
 dist-types
 companion-dist
+packages/sdk/langs/python/platforms/*/build/
 *.local
 .env
 .npmrc

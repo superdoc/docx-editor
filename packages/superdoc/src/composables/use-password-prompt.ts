@@ -1,19 +1,21 @@
-// @ts-check
-import { shallowRef, markRaw } from 'vue';
-
-/** @typedef {import('../core/types').PasswordPromptConfig} PasswordPromptConfig */
-/** @typedef {import('../core/types').ResolvedPasswordPromptTexts} ResolvedPasswordPromptTexts */
-/** @typedef {import('../core/types').PasswordPromptHandle} PasswordPromptHandle */
-/** @typedef {import('../core/types').PasswordPromptContext} PasswordPromptContext */
-/** @typedef {import('../core/types').PasswordPromptResolution} PasswordPromptResolution */
-/** @typedef {import('../core/types').PasswordPromptAttemptResult} PasswordPromptAttemptResult */
+import { shallowRef } from 'vue';
+import { markRawComponent } from '../helpers/mark-raw-component.js';
+import type { SurfaceManager } from '../core/surface-manager.js';
+import type {
+  Editor,
+  PasswordPromptAttemptResult,
+  PasswordPromptConfig,
+  PasswordPromptContext,
+  PasswordPromptHandle,
+  ResolvedPasswordPromptTexts,
+  SurfaceHandle,
+} from '../core/types/index.js';
 
 const RECOVERABLE_CODES = ['DOCX_PASSWORD_REQUIRED', 'DOCX_PASSWORD_INVALID'];
 
 const SIGNAL_TIMEOUT_MS = 30_000;
 
-/** @type {ResolvedPasswordPromptTexts} */
-const DEFAULT_TEXTS = {
+const DEFAULT_TEXTS: ResolvedPasswordPromptTexts = {
   title: 'Password Required',
   invalidTitle: 'Incorrect Password',
   description: 'This document is password protected. Enter the password to open it.',
@@ -21,11 +23,64 @@ const DEFAULT_TEXTS = {
   inputAriaLabel: 'Document password',
   submitLabel: 'Open',
   cancelLabel: 'Cancel',
-  busyLabel: 'Decrypting\u2026',
+  busyLabel: 'Decrypting…',
   invalidMessage: 'Incorrect password. Please try again.',
   timeoutMessage: 'Timed out while decrypting. Please try again.',
   genericErrorMessage: 'Unable to decrypt this document.',
 };
+
+export interface PasswordPromptDocument {
+  id: string;
+  password?: string;
+  editorMountNonce: number;
+}
+
+export interface PasswordPromptException {
+  error?: Error;
+  editor?: Editor | null;
+}
+
+type PasswordPromptRender = NonNullable<PasswordPromptConfig['render']>;
+
+type PasswordPromptResolver = NonNullable<PasswordPromptConfig['resolver']>;
+
+export interface UsePasswordPromptOptions {
+  getSurfaceManager: () => SurfaceManager | null;
+  getPasswordPromptConfig: () => boolean | PasswordPromptConfig | undefined;
+  /**
+   * Called when a queued prompt cannot be shown (resolver returned `none`, config error, or resolver threw).
+   * Receives the original exception payload so the host can re-emit it unchanged.
+   */
+  onUnhandled?: (doc: PasswordPromptDocument, errorCode: string, originalException?: PasswordPromptException) => void;
+}
+
+interface QueueEntry {
+  doc: PasswordPromptDocument;
+  errorCode: string;
+  originalException?: PasswordPromptException;
+}
+
+interface PendingSignal {
+  resolve: (result: PasswordPromptAttemptResult) => void;
+  timer: ReturnType<typeof setTimeout>;
+}
+
+interface ResolvedPromptConfig {
+  enabled: boolean;
+  texts: ResolvedPasswordPromptTexts;
+  component?: unknown;
+  props?: Record<string, unknown>;
+  render?: PasswordPromptRender;
+  resolver?: PasswordPromptResolver;
+}
+
+interface PromptRendering {
+  suppressed?: boolean;
+  component?: unknown;
+  props?: Record<string, unknown>;
+  render?: PasswordPromptRender;
+  builtin?: boolean;
+}
 
 /**
  * Composable that coordinates password-prompt dialogs for encrypted DOCX files.
@@ -33,49 +88,41 @@ const DEFAULT_TEXTS = {
  * Owns a FIFO queue of pending prompts (one active dialog at a time), and a
  * `pendingSignals` map that bridges the async gap between triggering a remount
  * and observing the result via `onEditorReady` / `onEditorException`.
- *
- * @param {Object} options
- * @param {() => import('../core/surface-manager').SurfaceManager | null} options.getSurfaceManager
- * @param {() => boolean | PasswordPromptConfig | undefined} options.getPasswordPromptConfig
- * @param {(doc: any, errorCode: string, originalException?: { error?: Error, editor?: any }) => void} [options.onUnhandled] Called when a queued prompt cannot be shown (resolver returned `none`, config error, or resolver threw). Receives the original exception payload so the host can re-emit it unchanged.
  */
-export function usePasswordPrompt({ getSurfaceManager, getPasswordPromptConfig, onUnhandled }) {
-  // ---- internal state -------------------------------------------------------
-
+export function usePasswordPrompt({
+  getSurfaceManager,
+  getPasswordPromptConfig,
+  onUnhandled,
+}: UsePasswordPromptOptions) {
   /**
-   * Pending password-prompt request waiting for a free `activePrompt` slot.
+   * Pending password-prompt requests waiting for a free `activePrompt` slot.
    * `originalException` is preserved so `onUnhandled` can re-emit the host's
    * original exception payload verbatim if the prompt cannot render.
-   * @typedef {Object} QueueEntry
-   * @property {any} doc
-   * @property {string} errorCode
-   * @property {{ error?: Error, editor?: any }} [originalException]
    */
-  /** @type {QueueEntry[]} */
-  const queue = [];
+  const queue: QueueEntry[] = [];
 
-  /** @type {import('vue').ShallowRef<{ doc: any, surfaceHandle: any } | null>} */
-  const activePrompt = shallowRef(null);
+  const activePrompt = shallowRef<{ doc: PasswordPromptDocument; surfaceHandle: SurfaceHandle | null } | null>(null);
 
   /**
    * One-shot rendezvous: the coordinator registers a resolve callback before
    * triggering a remount; `handleEditorReady` / `handleEncryptionError` resolves it.
-   * @type {Map<string, { resolve: (result: PasswordPromptAttemptResult) => void, timer: ReturnType<typeof setTimeout> }>}
    */
-  const pendingSignals = new Map();
+  const pendingSignals = new Map<string, PendingSignal>();
 
   let destroyed = false;
 
-  // ---- public API -----------------------------------------------------------
-
   /**
    * Called from `onEditorException` in SuperDoc.vue.
-   * @param {any} doc  The reactive document object from the store.
-   * @param {string} errorCode  e.g. `'DOCX_PASSWORD_REQUIRED'`
-   * @param {{ error?: Error, editor?: any }} [originalException] The original exception payload, preserved for re-emission if the prompt cannot render.
-   * @returns {boolean} Whether the error was taken over by the password prompt flow.
+   * @param doc  The reactive document object from the store.
+   * @param errorCode  e.g. `'DOCX_PASSWORD_REQUIRED'`
+   * @param originalException The original exception payload, preserved for re-emission if the prompt cannot render.
+   * @returns Whether the error was taken over by the password prompt flow.
    */
-  function handleEncryptionError(doc, errorCode, originalException) {
+  function handleEncryptionError(
+    doc: PasswordPromptDocument | null | undefined,
+    errorCode: string,
+    originalException?: PasswordPromptException,
+  ): boolean {
     if (!doc || !RECOVERABLE_CODES.includes(errorCode)) return false;
     if (getPasswordPromptConfig() === false) return false;
     if (!getSurfaceManager()) return false;
@@ -90,7 +137,6 @@ export function usePasswordPrompt({ getSurfaceManager, getPasswordPromptConfig, 
       return true;
     }
 
-    // Dedupe: update code if already queued or active
     const existing = queue.find((e) => e.doc.id === doc.id);
     if (existing) {
       existing.errorCode = errorCode;
@@ -104,11 +150,8 @@ export function usePasswordPrompt({ getSurfaceManager, getPasswordPromptConfig, 
     return true;
   }
 
-  /**
-   * Called from `onEditorReady` in SuperDoc.vue.
-   * @param {any} doc
-   */
-  function handleEditorReady(doc) {
+  /** Called from `onEditorReady` in SuperDoc.vue. */
+  function handleEditorReady(doc: PasswordPromptDocument | null | undefined): void {
     if (!doc) return;
     const pending = pendingSignals.get(doc.id);
     if (pending) {
@@ -119,7 +162,7 @@ export function usePasswordPrompt({ getSurfaceManager, getPasswordPromptConfig, 
   }
 
   /** Tear down the coordinator, resolving any pending signals and clearing the queue. */
-  function destroy() {
+  function destroy(): void {
     destroyed = true;
     for (const [, signal] of pendingSignals) {
       clearTimeout(signal.timer);
@@ -130,9 +173,7 @@ export function usePasswordPrompt({ getSurfaceManager, getPasswordPromptConfig, 
     activePrompt.value = null;
   }
 
-  // ---- internals ------------------------------------------------------------
-
-  function drainQueue() {
+  function drainQueue(): void {
     if (destroyed) return;
     if (activePrompt.value) return;
     if (queue.length === 0) return;
@@ -152,10 +193,7 @@ export function usePasswordPrompt({ getSurfaceManager, getPasswordPromptConfig, 
     });
   }
 
-  /**
-   * @param {{ doc: any, errorCode: string, originalException?: { error?: Error, editor?: any } }} entry
-   */
-  async function showPrompt({ doc, errorCode, originalException }) {
+  async function showPrompt({ doc, errorCode, originalException }: QueueEntry): Promise<void> {
     const manager = getSurfaceManager();
     if (!manager || destroyed) return;
 
@@ -164,10 +202,8 @@ export function usePasswordPrompt({ getSurfaceManager, getPasswordPromptConfig, 
     /**
      * Async bridge passed to the dialog component. Sets the password on the doc,
      * increments the mount nonce to trigger a remount, and waits for the outcome.
-     * @param {string} password
-     * @returns {Promise<PasswordPromptAttemptResult>}
      */
-    const attemptPassword = (password) => {
+    const attemptPassword = (password: string): Promise<PasswordPromptAttemptResult> => {
       doc.password = password;
       // editorMountNonce is a ref inside a reactive store — Vue auto-unwraps it,
       // so on the reactive proxy it's already a number, not a Ref.
@@ -183,16 +219,14 @@ export function usePasswordPrompt({ getSurfaceManager, getPasswordPromptConfig, 
       });
     };
 
-    /** @type {PasswordPromptHandle} */
-    const passwordPrompt = {
+    const passwordPrompt: PasswordPromptHandle = {
       documentId: doc.id,
       errorCode,
       texts: config.texts,
       attemptPassword,
     };
 
-    /** @type {PasswordPromptContext} */
-    const resolverCtx = {
+    const resolverCtx: PasswordPromptContext = {
       documentId: doc.id,
       errorCode,
       texts: config.texts,
@@ -213,19 +247,17 @@ export function usePasswordPrompt({ getSurfaceManager, getPasswordPromptConfig, 
     // (e.g. the built-in path lazy-imports the component).
     activePrompt.value = { doc, surfaceHandle: null };
 
-    let handle;
+    let handle: SurfaceHandle;
 
     if (resolution.component) {
-      // Custom Vue component (from resolver or direct config)
       handle = manager.open({
         mode: 'dialog',
         closeOnBackdrop: false,
         ariaLabel: config.texts.title,
-        component: markRaw(resolution.component),
+        component: markRawComponent(resolution.component),
         props: { ...resolution.props, passwordPrompt },
       });
     } else if (resolution.render) {
-      // External renderer (from resolver or direct config)
       const userRender = resolution.render;
       handle = manager.open({
         mode: 'dialog',
@@ -244,23 +276,19 @@ export function usePasswordPrompt({ getSurfaceManager, getPasswordPromptConfig, 
     } else {
       // Built-in component — use ariaLabelledBy pointing to the component's
       // reactive heading, so the accessible name updates after a bad password
-      // (e.g. "Password Required" → "Incorrect Password"). The `.vue` shim
-      // types the default export as `unknown`; narrow to `object` for
-      // `markRaw()`.
+      // (e.g. "Password Required" → "Incorrect Password").
       const mod = await import('../components/surfaces/PasswordPromptSurface.vue');
-      const PasswordPromptSurface = /** @type {object} */ (mod.default);
       const surfaceId = `password-prompt-${doc.id}`;
       handle = manager.open({
         id: surfaceId,
         mode: 'dialog',
         closeOnBackdrop: false,
         ariaLabelledBy: `sd-password-prompt-heading-${surfaceId}`,
-        component: markRaw(PasswordPromptSurface),
+        component: markRawComponent(mod.default),
         props: { passwordPrompt },
       });
     }
 
-    // Update with the resolved handle
     activePrompt.value = { doc, surfaceHandle: handle };
 
     // Block until the dialog settles (submitted / closed / replaced / destroyed)
@@ -273,16 +301,15 @@ export function usePasswordPrompt({ getSurfaceManager, getPasswordPromptConfig, 
   /**
    * Normalise `getPasswordPromptConfig()` into a full config with defaults.
    * Throws on invalid combinations (component + render).
-   * @returns {{ enabled: boolean, texts: ResolvedPasswordPromptTexts, component?: unknown, props?: Record<string, unknown>, render?: Function, resolver?: Function }}
    */
-  function resolveConfig() {
+  function resolveConfig(): ResolvedPromptConfig {
     const raw = getPasswordPromptConfig();
 
     if (raw === false) {
       return { enabled: false, texts: DEFAULT_TEXTS };
     }
 
-    const cfg = typeof raw === 'object' && raw !== null ? raw : {};
+    const cfg: PasswordPromptConfig = typeof raw === 'object' && raw !== null ? raw : {};
 
     if (cfg.component != null && typeof cfg.render === 'function') {
       throw new Error(
@@ -290,8 +317,7 @@ export function usePasswordPrompt({ getSurfaceManager, getPasswordPromptConfig, 
       );
     }
 
-    /** @type {ResolvedPasswordPromptTexts} */
-    const texts = {
+    const texts: ResolvedPasswordPromptTexts = {
       title: cfg.title ?? DEFAULT_TEXTS.title,
       invalidTitle: cfg.invalidTitle ?? DEFAULT_TEXTS.invalidTitle,
       description: cfg.description ?? DEFAULT_TEXTS.description,
@@ -320,13 +346,8 @@ export function usePasswordPrompt({ getSurfaceManager, getPasswordPromptConfig, 
    * 1. Dedicated passwordPrompt.resolver
    * 2. Direct passwordPrompt.component / passwordPrompt.render
    * 3. Built-in PasswordPromptSurface
-   *
-   * @param {ReturnType<typeof resolveConfig>} config
-   * @param {PasswordPromptContext} resolverCtx
-   * @returns {{ suppressed?: boolean, component?: unknown, props?: Record<string, unknown>, render?: Function, builtin?: boolean }}
    */
-  function resolveRendering(config, resolverCtx) {
-    // Tier 1: dedicated resolver
+  function resolveRendering(config: ResolvedPromptConfig, resolverCtx: PasswordPromptContext): PromptRendering {
     if (typeof config.resolver === 'function') {
       const resolution = config.resolver(resolverCtx);
 
@@ -338,11 +359,9 @@ export function usePasswordPrompt({ getSurfaceManager, getPasswordPromptConfig, 
       // null / undefined / { type: 'default' } → fall through
     }
 
-    // Tier 2: direct component/render from config
     if (config.component != null) return { component: config.component, props: config.props };
     if (typeof config.render === 'function') return { render: config.render };
 
-    // Tier 3: built-in
     return { builtin: true };
   }
 

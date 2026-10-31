@@ -76,14 +76,14 @@ describe('useField', () => {
 
 describe('useFieldValueWatcher', () => {
   it('wraps primitive values in a ref', () => {
-    const { value } = useFieldValueWatcher(makeField(), 'hello');
+    const { value } = useFieldValueWatcher('hello');
     expect(isRef(value)).toBe(true);
     expect(value.value).toBe('hello');
   });
 
   it('wraps object values reactively and clones them', () => {
     const original = { a: 1, b: 2 };
-    const { value } = useFieldValueWatcher(makeField(), original);
+    const { value } = useFieldValueWatcher(original);
     expect(isReactive(value)).toBe(true);
     expect(value).not.toBe(original);
     expect(value).toEqual(original);
@@ -91,14 +91,14 @@ describe('useFieldValueWatcher', () => {
 
   it('does not mutate the source object when the reactive copy changes', async () => {
     const original = { a: 1 };
-    const { value } = useFieldValueWatcher(makeField(), original);
+    const { value } = useFieldValueWatcher(original);
     value.a = 99;
     await nextTick();
     expect(original.a).toBe(1);
   });
 
   it('handles null as a primitive value', () => {
-    const { value } = useFieldValueWatcher(makeField(), null);
+    const { value } = useFieldValueWatcher(null);
     expect(isRef(value)).toBe(true);
     expect(value.value).toBeNull();
   });

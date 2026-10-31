@@ -1,4 +1,5 @@
-import { ref, computed, markRaw, watch, type Ref } from 'vue';
+import { ref, computed, watch, type Ref } from 'vue';
+import { markRawComponent } from '../helpers/mark-raw-component.js';
 import { createReplaceContinuation } from './replace-continuation.js';
 import type { SurfaceManager } from '../core/surface-manager.js';
 import type {
@@ -53,13 +54,6 @@ function isThenable(value: unknown): boolean {
     'then' in value &&
     typeof value.then === 'function'
   );
-}
-
-function markRawComponent(component: unknown): unknown {
-  if ((typeof component === 'object' && component !== null) || typeof component === 'function') {
-    return markRaw(component);
-  }
-  return component;
 }
 
 const DEFAULT_TEXTS: ResolvedFindReplaceTexts = {

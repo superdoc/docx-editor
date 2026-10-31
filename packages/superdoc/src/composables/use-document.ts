@@ -1,5 +1,5 @@
 import { ref, shallowRef } from 'vue';
-import { useField } from './use-field';
+import { useField, type FieldDefinition } from './use-field';
 import { documentTypes } from '@superdoc/common';
 import useComment from '../components/CommentsLayer/use-comment.js';
 import type { UseCommentParams } from '../components/CommentsLayer/use-comment.js';
@@ -24,7 +24,7 @@ type UseDocumentParams = Pick<
   html?: string;
   markdown?: string;
   socket?: unknown;
-  fields?: unknown[];
+  fields?: FieldDefinition[];
   annotations?: unknown[];
   conversations?: UseCommentParams[];
   commentThreadingProfile?: unknown;

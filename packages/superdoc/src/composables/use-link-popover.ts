@@ -1,4 +1,4 @@
-import { markRaw } from 'vue';
+import { markRawComponent } from '../helpers/mark-raw-component.js';
 import type { HyperlinkTarget, TextAddress } from '@superdoc/document-api';
 import LinkInput from '../internal/toolbar/built-in/LinkInput.vue';
 import { scrollToElement } from '../internal/toolbar/built-in/scroll-helpers.js';
@@ -231,13 +231,6 @@ function linkPopoverDocumentApi(editor: Editor | null | undefined): LinkPopoverD
 
 function isLinkNavigationHost(value: unknown): value is LinkNavigationHost {
   return isPlainObject(value) || typeof value === 'function';
-}
-
-function markRawComponent(component: unknown): unknown {
-  if ((typeof component === 'object' && component !== null) || typeof component === 'function') {
-    return markRaw(component);
-  }
-  return component;
 }
 
 function isHyperlinkTarget(value: unknown): value is HyperlinkTarget {

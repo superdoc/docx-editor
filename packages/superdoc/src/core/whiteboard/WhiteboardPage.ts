@@ -1,126 +1,249 @@
 import { flattenPoints } from './helpers/flattenPoints';
 import { getRandomId } from './helpers/getRandomId';
 import { createTextarea } from './helpers/createTextarea';
+import { isFiniteNumber } from '../../helpers/is-finite-number';
 
 const DEFAULT_TEXT_FONT_SIZE = 18;
 
-/**
- * @typedef {{ width: number, height: number, originalWidth?: number, originalHeight?: number }} WhiteboardPageSize
- * @typedef {{ x: number, y: number }} Point
- *
- * Authored input shapes — what `addStroke`/`addText`/`addImage` accept
- * from a consumer (pixel-space coordinates, optional ids). The
- * add* methods normalize these into the stored shapes below.
- *
- * @typedef {{ points: number[][], color?: string, width?: number, type?: 'draw'|'erase' }} WhiteboardStroke
- * @typedef {{ id?: string|number, x: number, y: number, content: string, fontSize?: number, width?: number }} WhiteboardTextItem
- * @typedef {{ id?: string|number, stickerId?: string, x: number, y: number, src: string, width?: number, height?: number, type?: string }} WhiteboardImageItem
- *
- * Stored / normalized shapes — what the page actually holds in
- * `this.strokes` / `this.text` / `this.images` and what gets
- * serialized via `toJSON()` and re-applied via `applyData()`. Fields
- * suffixed with `N` (pointsN, xN, yN, widthN, heightN, fontSizeN) are
- * normalized to the page's 0..1 coordinate space; raw `width`/`height`
- * pairs are kept where consumers expect pixel sizes.
- *
- * SD-3213 follow-up: the public types were previously `any[]` for the
- * fields and the toJSON / applyData signatures; consumers reading
- * `page.strokes[0].points` would have hit pointsN at runtime with no
- * IntelliSense. The named shapes below restore typing without
- * over-committing the authored shapes (which the add* methods
- * normalize away).
- *
- * @typedef {{ pointsN: number[][], widthN?: number, color?: string, type?: 'draw'|'erase' }} WhiteboardStoredStroke
- * @typedef {{ id: string|number, xN: number, yN: number, content: string, fontSizeN?: number, widthN?: number | null }} WhiteboardStoredTextItem
- * @typedef {{ id: string|number, stickerId?: string | number | null, xN: number, yN: number, src: string, widthN?: number | null, heightN?: number | null, type?: string }} WhiteboardStoredImageItem
- *
- * @typedef {{
- *  strokes?: WhiteboardStoredStroke[],
- *  text?: WhiteboardStoredTextItem[],
- *  images?: WhiteboardStoredImageItem[],
- * }} WhiteboardStoredPageData
- *
- * @typedef {{
- *  pageIndex: number,
- *  enabled: boolean,
- *  Renderer: any,
- *  onChange?: () => void,
- *  onToolChange?: (tool: string) => void,
- * }} WhiteboardPageInit
- */
+export type WhiteboardPageSize = { width: number; height: number; originalWidth?: number; originalHeight?: number };
 
-/**
- * Per-page whiteboard renderer/controller.
- */
+export type Point = { x: number; y: number };
+
+export type WhiteboardItemId = string | number;
+
+export type WhiteboardStrokeType = 'draw' | 'erase';
+
+export type WhiteboardStroke = { points: number[][]; color?: string; width?: number; type?: WhiteboardStrokeType };
+
+export type WhiteboardTextItem = {
+  id?: WhiteboardItemId;
+  x: number;
+  y: number;
+  content: string;
+  fontSize?: number;
+  width?: number;
+};
+
+export type WhiteboardImageItem = {
+  id?: WhiteboardItemId;
+  stickerId?: string;
+  x: number;
+  y: number;
+  src: string;
+  width?: number;
+  height?: number;
+  type?: string;
+};
+
+export type WhiteboardStoredStroke = {
+  pointsN: number[][];
+  widthN?: number;
+  color?: string;
+  type?: WhiteboardStrokeType;
+};
+
+export type WhiteboardStoredTextItem = {
+  id: WhiteboardItemId;
+  xN: number;
+  yN: number;
+  content: string;
+  fontSizeN?: number;
+  widthN?: number | null;
+};
+
+export type WhiteboardStoredImageItem = {
+  id: WhiteboardItemId;
+  stickerId?: WhiteboardItemId | null;
+  xN: number;
+  yN: number;
+  src: string;
+  widthN?: number | null;
+  heightN?: number | null;
+  type?: string;
+};
+
+export type WhiteboardStoredPageData = {
+  strokes?: WhiteboardStoredStroke[];
+  text?: WhiteboardStoredTextItem[];
+  images?: WhiteboardStoredImageItem[];
+};
+
+export type WhiteboardSerializedPage = {
+  strokes: WhiteboardStoredStroke[];
+  text: WhiteboardStoredTextItem[];
+  images: WhiteboardStoredImageItem[];
+};
+
+export type WhiteboardRendererEvent = { target?: unknown; cancelBubble?: boolean };
+
+export interface WhiteboardRendererNode {
+  _whiteboardId?: WhiteboardItemId;
+  on(events: string, handler: (event: WhiteboardRendererEvent) => void): unknown;
+  destroy(): unknown;
+  name(): string;
+  name(name: string): unknown;
+}
+
+export interface WhiteboardShapeNode extends WhiteboardRendererNode {
+  x(): number;
+  x(value: number): unknown;
+  y(): number;
+  y(value: number): unknown;
+  width(): number;
+  width(value: number): unknown;
+  height(): number;
+  height(value: number): unknown;
+  scaleX(): number;
+  scaleY(): number;
+  scale(scale: Point): unknown;
+  draggable(value: boolean): unknown;
+  position(): Point;
+}
+
+export interface WhiteboardTextNode extends WhiteboardShapeNode {
+  scaleY(): number;
+  scaleY(value: number): unknown;
+  setAttrs(attrs: { width: number; scaleX: number; scaleY?: number }): unknown;
+  text(): string;
+  text(value: string): unknown;
+  fontSize(): number;
+  fontFamily(): string;
+  fill(): string | CanvasGradient;
+}
+
+export interface WhiteboardLineNode extends WhiteboardRendererNode {
+  points(points: number[]): unknown;
+}
+
+export type WhiteboardBox = { x: number; y: number; width: number; height: number; rotation: number };
+
+export type WhiteboardBoundBoxFunc = (oldBox: WhiteboardBox, newBox: WhiteboardBox) => WhiteboardBox;
+
+export interface WhiteboardTransformerNode {
+  destroy(): unknown;
+  nodes(nodes: WhiteboardShapeNode[]): unknown;
+  enabledAnchors(anchors: string[]): unknown;
+  boundBoxFunc(fn: WhiteboardBoundBoxFunc): unknown;
+}
+
+export interface WhiteboardLayerNode {
+  add(child: WhiteboardRendererNode | WhiteboardTransformerNode): unknown;
+  find(selector: string): WhiteboardShapeNode[];
+  destroyChildren(): unknown;
+  batchDraw(): unknown;
+  listening(listening: boolean): unknown;
+  getCanvas(): { setPixelRatio(ratio: number): unknown };
+}
+
+export interface WhiteboardStageNode {
+  on(events: string, handler: (event: WhiteboardRendererEvent) => void): unknown;
+  add(layer: WhiteboardLayerNode): unknown;
+  size(size: { width: number; height: number }): unknown;
+  getPointerPosition(): Point | null;
+  destroy(): unknown;
+}
+
+export type WhiteboardLineConfig = {
+  points: number[];
+  stroke: string;
+  strokeWidth: number;
+  lineCap: 'round';
+  lineJoin: 'round';
+  globalCompositeOperation: 'destination-out' | 'source-over';
+};
+
+export interface WhiteboardPageRenderer {
+  Stage: new (config: { container: HTMLDivElement; width: number; height: number }) => WhiteboardStageNode;
+  Layer: new () => WhiteboardLayerNode;
+  Line: new (config: WhiteboardLineConfig) => WhiteboardLineNode;
+  Text: new (config: {
+    x: number;
+    y: number;
+    text: string;
+    fontSize: number;
+    fontFamily: string;
+    fill: string;
+    draggable: boolean;
+    width: number | undefined;
+  }) => WhiteboardTextNode;
+  Image: new (config: {
+    x: number;
+    y: number;
+    image: HTMLImageElement;
+    width: number;
+    height: number;
+    draggable: boolean;
+  }) => WhiteboardShapeNode;
+  Transformer: new (config: {
+    enabledAnchors: string[];
+    rotateEnabled: boolean;
+    keepRatio: boolean;
+    boundBoxFunc: WhiteboardBoundBoxFunc;
+  }) => WhiteboardTransformerNode;
+}
+
+export type WhiteboardPageInit = {
+  pageIndex: number;
+  enabled: boolean;
+  Renderer?: WhiteboardPageRenderer;
+  onChange?: () => void;
+  onToolChange?: (tool: string) => void;
+};
+
+type WhiteboardTextGeometry = { x?: number; y?: number; width?: number | null; fontSize?: number };
+
+type WhiteboardImageGeometry = { x?: number; y?: number; width?: number; height?: number };
+
 export class WhiteboardPage {
-  /** @type {number} */
-  pageIndex;
+  pageIndex: number;
 
-  /** @type {WhiteboardStoredStroke[]} */
-  strokes = [];
+  strokes: WhiteboardStoredStroke[] = [];
 
-  /** @type {WhiteboardStoredTextItem[]} */
-  text = [];
+  text: WhiteboardStoredTextItem[] = [];
 
-  /** @type {WhiteboardStoredImageItem[]} */
-  images = [];
+  images: WhiteboardStoredImageItem[] = [];
 
-  /** @type {WhiteboardPageSize|null} */
-  size = null;
+  size: WhiteboardPageSize | null = null;
 
-  /** @type {{ width: number|null, height: number|null }|null} */
-  originalSize = null;
+  originalSize: { width: number | null; height: number | null } | null = null;
 
-  #Renderer = null;
+  #Renderer: WhiteboardPageRenderer | undefined;
 
-  #stage = null;
+  #stage: WhiteboardStageNode | null = null;
 
-  #layer = null;
+  #layer: WhiteboardLayerNode | null = null;
 
-  #strokesLayer = null;
+  #strokesLayer: WhiteboardLayerNode | null = null;
 
-  #transformer = null;
+  #transformer: WhiteboardTransformerNode | null = null;
 
-  #containerEl = null;
+  #containerEl: HTMLElement | null = null;
 
-  #pendingImageIds = new Set();
+  #pendingImageIds = new Set<WhiteboardItemId>();
 
   #isDrawing = false;
 
-  #currentLine = null;
+  #currentLine: WhiteboardLineNode | null = null;
 
-  #currentPoints = [];
+  #currentPoints: number[] = [];
 
-  #currentStrokeWidth = null;
+  #currentStrokeWidth: number | null = null;
 
   #currentTool = 'select';
 
   #enabled = false;
 
-  #selectedNode = null;
+  #selectedNode: WhiteboardShapeNode | null = null;
 
   #strokeColor = '#2293fb';
 
   #strokeWidth = 5;
 
-  #onChange = null;
+  #onChange: (() => void) | undefined;
 
-  #onToolChange = null;
+  #onToolChange: ((tool: string) => void) | undefined;
 
-  /**
-   * Create a page controller.
-   * @param {WhiteboardPageInit} props
-   */
-  constructor(props) {
-    this.#init(props);
-  }
-
-  /**
-   * @private
-   * Initialize internal state.
-   * @param {WhiteboardPageInit} props
-   */
-  #init(props) {
+  constructor(props: WhiteboardPageInit) {
     this.#Renderer = props.Renderer;
     this.#enabled = props.enabled;
     this.pageIndex = props.pageIndex;
@@ -129,136 +252,107 @@ export class WhiteboardPage {
     this.#onToolChange = props.onToolChange;
   }
 
-  /**
-   * @private
-   * Convert normalized stroke (0..1) -> px using current page size.
-   * `widthN` is normalized by average page size.
-   * @param {WhiteboardStroke} stroke
-   * @returns {{ points: number[][], strokeWidth: number }}
-   */
-  #fromNormalizedStroke(stroke) {
+  #fromNormalizedStroke(stroke: WhiteboardStoredStroke): { points: number[][]; strokeWidth: number } {
     const { width: pageWidth = 1, height: pageHeight = 1 } = this.size || {};
     const pointsN = Array.isArray(stroke.pointsN) ? stroke.pointsN : [];
     const points = pointsN.map((pair) => {
       return [pair[0] * pageWidth, pair[1] * pageHeight];
     });
-    const strokeWidth = Number.isFinite(stroke.widthN)
+    const strokeWidth = isFiniteNumber(stroke.widthN)
       ? stroke.widthN * ((pageWidth + pageHeight) / 2)
       : this.#strokeWidth;
     return { points, strokeWidth };
   }
 
-  /**
-   * @private
-   * Convert stroke from px -> normalized (0..1).
-   * `widthN` is normalized by average page size.
-   * @param {WhiteboardStroke} stroke
-   * @returns {{ pointsN: number[][], widthN: number | undefined }}
-   */
-  #toNormalizedStroke(stroke) {
+  #toNormalizedStroke(stroke: WhiteboardStroke): { pointsN: number[][]; widthN: number | undefined } {
     const { width: pageWidth = 1, height: pageHeight = 1 } = this.size || {};
     const points = Array.isArray(stroke.points) ? stroke.points : [];
     const pointsN = points.map((pair) => [pair[0] / pageWidth, pair[1] / pageHeight]);
-    const widthN = Number.isFinite(stroke.width) ? stroke.width / ((pageWidth + pageHeight) / 2) : undefined;
+    const widthN = isFiniteNumber(stroke.width) ? stroke.width / ((pageWidth + pageHeight) / 2) : undefined;
     return { pointsN, widthN };
   }
 
-  /**
-   * @private
-   * Convert normalized text (0..1) -> px using current page size.
-   * `fontSizeN` is normalized by original page height.
-   * @param {WhiteboardTextItem} item
-   * @returns {{ x: number, y: number, width: number | undefined, fontSize: number }}
-   */
-  #fromNormalizedText(item) {
+  #fromNormalizedText(item: WhiteboardStoredTextItem): {
+    x: number;
+    y: number;
+    width: number | undefined;
+    fontSize: number;
+  } {
     const { width: pageWidth = 1, height: pageHeight = 1 } = this.size || {};
     const x = (item.xN ?? 0) * pageWidth;
     const y = (item.yN ?? 0) * pageHeight;
-    const width = Number.isFinite(item.widthN) ? item.widthN * pageWidth : undefined;
-    const fontSize = Number.isFinite(item.fontSizeN) ? item.fontSizeN * pageHeight : DEFAULT_TEXT_FONT_SIZE;
+    const width = isFiniteNumber(item.widthN) ? item.widthN * pageWidth : undefined;
+    const fontSize = isFiniteNumber(item.fontSizeN) ? item.fontSizeN * pageHeight : DEFAULT_TEXT_FONT_SIZE;
     return { x, y, width, fontSize };
   }
 
-  /**
-   * @private
-   * Convert text from px -> normalized (0..1).
-   * `fontSizeN` is normalized by original page height.
-   * @param {WhiteboardTextItem} item
-   * @returns {{ xN: number, yN: number, widthN: number | null, fontSizeN: number }}
-   */
-  #toNormalizedText(item) {
+  #toNormalizedText(item: WhiteboardTextGeometry): {
+    xN: number;
+    yN: number;
+    widthN: number | null;
+    fontSizeN: number;
+  } {
     const { width: pageWidth = 1, height: pageHeight = 1 } = this.size || {};
     const originalHeight = this.originalSize?.height ?? pageHeight;
     const xN = (item.x ?? 0) / pageWidth;
     const yN = (item.y ?? 0) / pageHeight;
-    const widthN = Number.isFinite(item.width) ? item.width / pageWidth : null;
-    const fontSizeN = Number.isFinite(item.fontSize)
+    const widthN = isFiniteNumber(item.width) ? item.width / pageWidth : null;
+    const fontSizeN = isFiniteNumber(item.fontSize)
       ? item.fontSize / originalHeight
       : DEFAULT_TEXT_FONT_SIZE / originalHeight;
     return { xN, yN, widthN, fontSizeN };
   }
 
-  /**
-   * @private
-   * Convert normalized image (0..1) -> px using current page size.
-   * @param {WhiteboardImageItem} item
-   * @returns {{ x: number, y: number, width: number | undefined, height: number | undefined }}
-   */
-  #fromNormalizedImage(item) {
+  #fromNormalizedImage(item: WhiteboardStoredImageItem): {
+    x: number;
+    y: number;
+    width: number | undefined;
+    height: number | undefined;
+  } {
     const { width: pageWidth = 1, height: pageHeight = 1 } = this.size || {};
     const x = (item.xN ?? 0) * pageWidth;
     const y = (item.yN ?? 0) * pageHeight;
-    const width = Number.isFinite(item.widthN) ? item.widthN * pageWidth : undefined;
-    const height = Number.isFinite(item.heightN) ? item.heightN * pageHeight : undefined;
+    const width = isFiniteNumber(item.widthN) ? item.widthN * pageWidth : undefined;
+    const height = isFiniteNumber(item.heightN) ? item.heightN * pageHeight : undefined;
     return { x, y, width, height };
   }
 
-  /**
-   * @private
-   * Convert image from px -> normalized (0..1).
-   * @param {WhiteboardImageItem} item
-   * @returns {{ xN: number, yN: number, widthN: number | null, heightN: number | null }}
-   */
-  #toNormalizedImage(item) {
+  #toNormalizedImage(item: WhiteboardImageGeometry): {
+    xN: number;
+    yN: number;
+    widthN: number | null;
+    heightN: number | null;
+  } {
     const { width: pageWidth = 1, height: pageHeight = 1 } = this.size || {};
     const xN = (item.x ?? 0) / pageWidth;
     const yN = (item.y ?? 0) / pageHeight;
-    const widthN = Number.isFinite(item.width) ? item.width / pageWidth : null;
-    const heightN = Number.isFinite(item.height) ? item.height / pageHeight : null;
+    const widthN = isFiniteNumber(item.width) ? item.width / pageWidth : null;
+    const heightN = isFiniteNumber(item.height) ? item.height / pageHeight : null;
     return { xN, yN, widthN, heightN };
   }
 
-  /**
-   * @private
-   * Get current page scale relative to the original width.
-   * @returns {number}
-   */
-  #getCurrentScale() {
+  #getCurrentScale(): number {
     const current = this.size?.width;
     const original = this.originalSize?.width ?? current;
-    if (!Number.isFinite(current) || !Number.isFinite(original) || !original) return 1;
+    if (!isFiniteNumber(current) || !isFiniteNumber(original) || !original) return 1;
     return current / original;
   }
 
-  /**
-   * @private
-   * Attach Konva stage listeners.
-   */
   #attachEventListeners() {
     if (!this.#stage || !this.#layer) {
       return;
     }
 
-    this.#stage.on('mousedown touchstart', (event) => {
-      this.#handleDrawStart(event);
+    this.#stage.on('mousedown touchstart', () => {
+      this.#handleDrawStart();
     });
 
-    this.#stage.on('mousemove touchmove', (event) => {
-      this.#handleDrawMove(event);
+    this.#stage.on('mousemove touchmove', () => {
+      this.#handleDrawMove();
     });
 
-    this.#stage.on('mouseup touchend', (event) => {
-      this.#handleDrawEnd(event);
+    this.#stage.on('mouseup touchend', () => {
+      this.#handleDrawEnd();
     });
 
     this.#stage.on('click tap', (event) => {
@@ -268,71 +362,43 @@ export class WhiteboardPage {
     window.addEventListener('keydown', this.#handleKeydown);
   }
 
-  /**
-   * Set tool for this page.
-   * @param {string} tool
-   */
-  setTool(tool) {
+  setTool(tool: string): void {
     this.#currentTool = tool;
     this.#updateStrokesLayerListening();
     this.#clearSelection();
     this.render();
   }
 
-  /**
-   * Get current tool for this page.
-   * @returns {string}
-   */
-  getTool() {
+  getTool(): string {
     return this.#currentTool;
   }
 
-  /**
-   * Enable/disable interactivity for this page.
-   * @param {boolean} enabled
-   */
-  setEnabled(enabled) {
+  setEnabled(enabled: boolean): void {
     this.#enabled = Boolean(enabled);
     this.#updateStrokesLayerListening();
     this.#clearSelection();
     this.render();
   }
 
-  /**
-   * @returns {boolean}
-   */
-  isEnabled() {
+  isEnabled(): boolean {
     return this.#enabled;
   }
 
-  /**
-   * Store page size (does not resize canvas).
-   * @param {WhiteboardPageSize} size
-   */
-  setSize(size) {
+  setSize(size: WhiteboardPageSize): void {
     if (!size) return;
     const { width, height, originalWidth, originalHeight } = size;
     this.size = { width, height };
     this.originalSize = { width: originalWidth ?? null, height: originalHeight ?? null };
   }
 
-  /**
-   * Resize the Konva stage.
-   * @param {number} width
-   * @param {number} height
-   */
-  resize(width, height) {
+  resize(width: number, height: number): void {
     if (!this.#stage) return;
     this.#stage.size({ width, height });
     this.#applyPixelRatio();
     this.render();
   }
 
-  /**
-   * Mount Konva stage into a container.
-   * @param {HTMLElement} container
-   */
-  mount(container) {
+  mount(container: HTMLDivElement): void {
     if (!container) {
       return;
     }
@@ -344,13 +410,18 @@ export class WhiteboardPage {
       this.destroy();
     }
 
+    const Renderer = this.#Renderer;
+    if (!Renderer) {
+      throw new Error('WhiteboardPage.mount requires a Renderer');
+    }
+
     const width = this.size?.width || container.clientWidth || 1;
     const height = this.size?.height || container.clientHeight || 1;
 
     this.#containerEl = container;
-    this.#stage = new this.#Renderer.Stage({ container, width, height });
-    this.#layer = new this.#Renderer.Layer();
-    this.#strokesLayer = new this.#Renderer.Layer();
+    this.#stage = new Renderer.Stage({ container, width, height });
+    this.#layer = new Renderer.Layer();
+    this.#strokesLayer = new Renderer.Layer();
     this.#stage.add(this.#layer);
     this.#stage.add(this.#strokesLayer);
     this.#applyPixelRatio();
@@ -361,11 +432,10 @@ export class WhiteboardPage {
     this.render();
   }
 
-  /**
-   * Re-render all content for this page.
-   */
-  render() {
-    if (!this.#layer) {
+  render(): void {
+    const layer = this.#layer;
+    const strokesLayer = this.#strokesLayer;
+    if (!layer || !strokesLayer) {
       return;
     }
 
@@ -374,22 +444,18 @@ export class WhiteboardPage {
       this.#transformer = null;
     }
 
-    const texts = this.#layer.find('.wb-text');
+    const texts = layer.find('.wb-text');
     texts.forEach((node) => node.destroy());
-    this.#strokesLayer.destroyChildren();
+    strokesLayer.destroyChildren();
 
     this.renderStrokes();
     this.renderText();
     this.renderImages();
 
-    this.#layer.batchDraw();
-    this.#strokesLayer.batchDraw();
+    layer.batchDraw();
+    strokesLayer.batchDraw();
   }
 
-  /**
-   * @private
-   * Reduce canvas memory by limiting device pixel ratio.
-   */
   #applyPixelRatio() {
     const ratio = Math.min(window.devicePixelRatio || 1, 1.5);
     if (this.#layer?.getCanvas) {
@@ -400,11 +466,6 @@ export class WhiteboardPage {
     }
   }
 
-  /**
-   * @private
-   * Enable stroke layer hit-testing only in draw/erase.
-   * NOTE: If listening is enabled outside draw/erase, strokes can block selecting items beneath.
-   */
   #updateStrokesLayerListening() {
     if (!this.#strokesLayer) return;
     const isDrawMode = this.#currentTool === 'draw' || this.#currentTool === 'erase';
@@ -412,13 +473,13 @@ export class WhiteboardPage {
     this.#strokesLayer.listening(isListening);
   }
 
-  /**
-   * Render stroke paths.
-   */
-  renderStrokes() {
+  renderStrokes(): void {
+    const Renderer = this.#Renderer;
+    const strokesLayer = this.#strokesLayer;
+    if (!Renderer || !strokesLayer) return;
     this.strokes.forEach((stroke) => {
       const { points, strokeWidth } = this.#fromNormalizedStroke(stroke);
-      const line = new this.#Renderer.Line({
+      const line = new Renderer.Line({
         points: flattenPoints(points),
         stroke: stroke.color || this.#strokeColor,
         strokeWidth,
@@ -427,17 +488,17 @@ export class WhiteboardPage {
         globalCompositeOperation: stroke.type === 'erase' ? 'destination-out' : 'source-over',
       });
       line.name('wb-stroke');
-      this.#strokesLayer.add(line);
+      strokesLayer.add(line);
     });
   }
 
-  /**
-   * Render text nodes.
-   */
-  renderText() {
+  renderText(): void {
+    const Renderer = this.#Renderer;
+    const layer = this.#layer;
+    if (!Renderer || !layer) return;
     this.text.forEach((item) => {
       const { x, y, width, fontSize } = this.#fromNormalizedText(item);
-      const textNode = new this.#Renderer.Text({
+      const textNode = new Renderer.Text({
         x,
         y,
         text: item.content,
@@ -452,17 +513,11 @@ export class WhiteboardPage {
       textNode._whiteboardId = item.id;
       this.#attachTextNodeEvents(textNode, item);
 
-      this.#layer.add(textNode);
+      layer.add(textNode);
     });
   }
 
-  /**
-   * @private
-   * Attach text node events.
-   * @param {any} textNode
-   * @param {WhiteboardTextItem} item
-   */
-  #attachTextNodeEvents(textNode, item) {
+  #attachTextNodeEvents(textNode: WhiteboardTextNode, item: WhiteboardStoredTextItem) {
     textNode.on('click tap', (event) => {
       if (this.#currentTool !== 'select' || !this.#enabled) return;
       event.cancelBubble = true;
@@ -510,35 +565,30 @@ export class WhiteboardPage {
     });
   }
 
-  /**
-   * Render image/sticker nodes.
-   * NOTE: Images are reconciled by id to avoid re-creating nodes (prevents flicker).
-   * If src changes for an existing id, this path does not reload the image.
-   */
-  renderImages() {
+  renderImages(): void {
     const existingNodes = this.#layer?.find('.wb-image') ?? [];
-    const existingById = new Map();
+    const existingById = new Map<WhiteboardItemId | undefined, WhiteboardShapeNode>();
 
     existingNodes.forEach((node) => {
       existingById.set(node._whiteboardId, node);
     });
 
-    const imageIds = new Set(this.images.map((item) => item.id));
+    const imageIds = new Set<WhiteboardItemId | undefined>(this.images.map((item) => item.id));
     existingNodes.forEach((node) => {
       if (!imageIds.has(node._whiteboardId)) {
         node.destroy();
       }
     });
 
-    const renderImageItem = (item, name) => {
+    const renderImageItem = (item: WhiteboardStoredImageItem, name: string) => {
       const { x, y, width, height } = this.#fromNormalizedImage(item);
       const existing = existingById.get(item.id);
 
       if (existing) {
         if (Number.isFinite(x)) existing.x(x);
         if (Number.isFinite(y)) existing.y(y);
-        if (Number.isFinite(width)) existing.width(width);
-        if (Number.isFinite(height)) existing.height(height);
+        if (isFiniteNumber(width)) existing.width(width);
+        if (isFiniteNumber(height)) existing.height(height);
         existing.draggable(this.#currentTool === 'select');
         return;
       }
@@ -555,11 +605,13 @@ export class WhiteboardPage {
           this.#pendingImageIds.delete(item.id);
           return;
         }
-        if (!this.#layer) {
+        const layer = this.#layer;
+        const Renderer = this.#Renderer;
+        if (!layer || !Renderer) {
           this.#pendingImageIds.delete(item.id);
           return;
         }
-        const imageNode = new this.#Renderer.Image({
+        const imageNode = new Renderer.Image({
           x,
           y,
           image: imageObj,
@@ -572,8 +624,8 @@ export class WhiteboardPage {
         imageNode._whiteboardId = item.id;
         this.#attachImageNodeEvents(imageNode, item);
 
-        this.#layer.add(imageNode);
-        this.#layer.batchDraw();
+        layer.add(imageNode);
+        layer.batchDraw();
         this.#pendingImageIds.delete(item.id);
       };
       imageObj.onerror = () => {
@@ -585,13 +637,7 @@ export class WhiteboardPage {
     this.images.forEach((item) => renderImageItem(item, 'wb-image'));
   }
 
-  /**
-   * @private
-   * Attach image node events.
-   * @param {any} imageNode
-   * @param {WhiteboardImageItem} item
-   */
-  #attachImageNodeEvents(imageNode, item) {
+  #attachImageNodeEvents(imageNode: WhiteboardShapeNode, item: WhiteboardStoredImageItem) {
     imageNode.on('click tap', (event) => {
       if (this.#currentTool !== 'select' || !this.#enabled) return;
       event.cancelBubble = true;
@@ -624,10 +670,7 @@ export class WhiteboardPage {
     });
   }
 
-  /**
-   * Destroy Konva stage and clean up listeners.
-   */
-  destroy() {
+  destroy(): void {
     if (this.#stage) {
       this.#stage.destroy();
     }
@@ -645,16 +688,7 @@ export class WhiteboardPage {
     window.removeEventListener('keydown', this.#handleKeydown);
   }
 
-  /**
-   * Serialize page data.
-   * Returns the page's serializable shape. SD-3213 follow-up: fixed
-   * stale JSDoc that said `stickers` (which never existed on the
-   * runtime return) and typed the values as the stored normalized
-   * shapes instead of `any[]`.
-   *
-   * @returns {{ strokes: WhiteboardStoredStroke[], text: WhiteboardStoredTextItem[], images: WhiteboardStoredImageItem[] }}
-   */
-  toJSON() {
+  toJSON(): WhiteboardSerializedPage {
     return {
       strokes: this.strokes,
       text: this.text,
@@ -662,11 +696,7 @@ export class WhiteboardPage {
     };
   }
 
-  /**
-   * Apply data to this page and re-render.
-   * @param {WhiteboardStoredPageData} data
-   */
-  applyData(data = {}) {
+  applyData(data: WhiteboardStoredPageData = {}): void {
     const strokes = Array.isArray(data.strokes) ? data.strokes : [];
     const text = Array.isArray(data.text) ? data.text : [];
     const images = Array.isArray(data.images) ? data.images : [];
@@ -678,21 +708,13 @@ export class WhiteboardPage {
     this.render();
   }
 
-  /**
-   * @private
-   * Notify change listeners.
-   */
   #triggerChanged() {
     if (this.#onChange) {
       this.#onChange();
     }
   }
 
-  /**
-   * Add a stroke to the model.
-   * @param {WhiteboardStroke} stroke
-   */
-  addStroke(stroke) {
+  addStroke(stroke: WhiteboardStroke): void {
     if (!stroke || !Array.isArray(stroke.points)) {
       return;
     }
@@ -705,11 +727,7 @@ export class WhiteboardPage {
     });
   }
 
-  /**
-   * Add a text item to the model.
-   * @param {WhiteboardTextItem} item
-   */
-  addText(item) {
+  addText(item: WhiteboardTextItem): void {
     if (!item || typeof item.content !== 'string') {
       return;
     }
@@ -728,17 +746,13 @@ export class WhiteboardPage {
     this.#triggerChanged();
   }
 
-  /**
-   * Add an image/sticker to the model.
-   * @param {WhiteboardImageItem} item
-   */
-  addImage(item) {
+  addImage(item: WhiteboardImageItem): void {
     if (!item || !item.src) {
       return;
     }
 
     const { xN, yN, widthN, heightN } = this.#toNormalizedImage(item);
-    const imageItem = {
+    const imageItem: WhiteboardStoredImageItem = {
       id: item.id ?? getRandomId('image'),
       stickerId: item.stickerId ?? (item.type === 'sticker' ? (item.id ?? null) : null),
       xN,
@@ -754,10 +768,6 @@ export class WhiteboardPage {
     this.#triggerChanged();
   }
 
-  /**
-   * @private
-   * Clear current selection/transformer.
-   */
   #clearSelection() {
     if (!this.#transformer) return;
     this.#transformer.destroy();
@@ -766,13 +776,10 @@ export class WhiteboardPage {
     this.#layer?.batchDraw();
   }
 
-  /**
-   * @private
-   * Select a node and attach transformer.
-   * @param {any} node
-   */
-  #selectNode(node) {
-    if (!this.#layer) {
+  #selectNode(node: WhiteboardShapeNode) {
+    const layer = this.#layer;
+    const Renderer = this.#Renderer;
+    if (!layer || !Renderer) {
       return;
     }
 
@@ -783,7 +790,7 @@ export class WhiteboardPage {
     const imageAnchors = ['top-left', 'top-right', 'bottom-left', 'bottom-right'];
     const anchors = isText ? textAnchors : imageAnchors;
 
-    const boundBoxFunc = (oldBox, newBox) => {
+    const boundBoxFunc: WhiteboardBoundBoxFunc = (oldBox, newBox) => {
       const min = 20;
       if (newBox.width < min) return oldBox;
       if (isText) {
@@ -798,27 +805,23 @@ export class WhiteboardPage {
     };
 
     if (!this.#transformer) {
-      this.#transformer = new this.#Renderer.Transformer({
-        nodes: [node],
+      this.#transformer = new Renderer.Transformer({
         enabledAnchors: anchors,
         rotateEnabled: false,
         keepRatio: false,
         boundBoxFunc,
       });
-      this.#layer.add(this.#transformer);
+      this.#transformer.nodes([node]);
+      layer.add(this.#transformer);
     } else {
       this.#transformer.nodes([node]);
       this.#transformer.enabledAnchors(anchors);
       this.#transformer.boundBoxFunc(boundBoxFunc);
     }
 
-    this.#layer.batchDraw();
+    layer.batchDraw();
   }
 
-  /**
-   * @private
-   * Delete currently selected node.
-   */
   #deleteSelectedNode() {
     if (!this.#selectedNode) {
       return;
@@ -827,7 +830,7 @@ export class WhiteboardPage {
     const node = this.#selectedNode;
     const name = node.name && node.name();
 
-    const deleteHandlers = {
+    const deleteHandlers: Partial<Record<string, () => void>> = {
       'wb-text': () => {
         const id = node._whiteboardId;
         this.text = this.text.filter((item) => item.id !== id);
@@ -846,17 +849,13 @@ export class WhiteboardPage {
     this.render();
   }
 
-  /**
-   * @private
-   * Handle keydown for delete/backspace.
-   * @param {KeyboardEvent} event
-   */
-  #handleKeydown = (event) => {
+  #handleKeydown = (event: KeyboardEvent): void => {
     if (!this.#selectedNode || !this.#enabled || this.#currentTool !== 'select') {
       return;
     }
 
-    const targetTag = event.target?.tagName;
+    const target = event.target;
+    const targetTag = target && 'tagName' in target ? target.tagName : undefined;
     if (targetTag === 'INPUT' || targetTag === 'TEXTAREA') {
       return;
     }
@@ -868,24 +867,20 @@ export class WhiteboardPage {
     }
   };
 
-  /**
-   * @private
-   * Handle stage click/tap.
-   * @param {any} event
-   */
-  #handleStageClick(event) {
-    if (!this.#enabled || !this.#stage) {
+  #handleStageClick(event: WhiteboardRendererEvent) {
+    const stage = this.#stage;
+    if (!this.#enabled || !stage) {
       return;
     }
 
-    const handlers = {
+    const handlers: Partial<Record<string, () => void>> = {
       text: () => {
-        const pos = this.#stage.getPointerPosition();
+        const pos = stage.getPointerPosition();
         if (!pos) return;
         this.#startTextInput(pos.x, pos.y);
       },
       select: () => {
-        if (event?.target === this.#stage) {
+        if (event?.target === stage) {
           this.#clearSelection();
         }
       },
@@ -895,21 +890,21 @@ export class WhiteboardPage {
     if (handler) handler();
   }
 
-  /**
-   * @private
-   * Begin drawing/erasing.
-   */
   #handleDrawStart() {
     if (!this.#enabled || (this.#currentTool !== 'draw' && this.#currentTool !== 'erase')) {
       return;
     }
     this.#isDrawing = true;
-    const pos = this.#stage.getPointerPosition();
+    const stage = this.#stage;
+    const strokesLayer = this.#strokesLayer;
+    const Renderer = this.#Renderer;
+    if (!stage || !strokesLayer || !Renderer) return;
+    const pos = stage.getPointerPosition();
     if (!pos) return;
     const isErase = this.#currentTool === 'erase';
     const strokeWidth = this.#strokeWidth * this.#getCurrentScale();
     this.#currentPoints = [pos.x, pos.y];
-    this.#currentLine = new this.#Renderer.Line({
+    this.#currentLine = new Renderer.Line({
       points: this.#currentPoints,
       stroke: this.#strokeColor,
       strokeWidth: isErase ? strokeWidth * 3 : strokeWidth,
@@ -918,13 +913,9 @@ export class WhiteboardPage {
       globalCompositeOperation: isErase ? 'destination-out' : 'source-over',
     });
     this.#currentStrokeWidth = strokeWidth;
-    this.#strokesLayer.add(this.#currentLine);
+    strokesLayer.add(this.#currentLine);
   }
 
-  /**
-   * @private
-   * Continue drawing/erasing.
-   */
   #handleDrawMove() {
     if (!this.#enabled || (this.#currentTool !== 'draw' && this.#currentTool !== 'erase')) {
       return;
@@ -932,17 +923,16 @@ export class WhiteboardPage {
     if (!this.#isDrawing || !this.#currentLine) {
       return;
     }
-    const pos = this.#stage.getPointerPosition();
+    const stage = this.#stage;
+    const strokesLayer = this.#strokesLayer;
+    if (!stage || !strokesLayer) return;
+    const pos = stage.getPointerPosition();
     if (!pos) return;
     this.#currentPoints.push(pos.x, pos.y);
     this.#currentLine.points(this.#currentPoints);
-    this.#strokesLayer.batchDraw();
+    strokesLayer.batchDraw();
   }
 
-  /**
-   * @private
-   * Finish drawing/erasing.
-   */
   #handleDrawEnd() {
     if (!this.#enabled || (this.#currentTool !== 'draw' && this.#currentTool !== 'erase')) {
       return;
@@ -951,7 +941,7 @@ export class WhiteboardPage {
       return;
     }
     this.#isDrawing = false;
-    const pairs = [];
+    const pairs: number[][] = [];
     for (let i = 0; i < this.#currentPoints.length; i += 2) {
       pairs.push([this.#currentPoints[i], this.#currentPoints[i + 1]]);
     }
@@ -969,15 +959,9 @@ export class WhiteboardPage {
     this.#currentStrokeWidth = null;
   }
 
-  /**
-   * @private
-   * Start text input at coordinates.
-   * @param {number} x
-   * @param {number} y
-   * @param {string} [initialValue]
-   */
-  #startTextInput(x, y) {
-    if (!this.#containerEl) {
+  #startTextInput(x: number, y: number) {
+    const containerEl = this.#containerEl;
+    if (!containerEl) {
       return;
     }
 
@@ -991,7 +975,7 @@ export class WhiteboardPage {
       fontSize,
       color: '#2293fb',
     });
-    this.#containerEl.append(textarea);
+    containerEl.append(textarea);
 
     textarea.focus();
     textarea.select();
@@ -1008,7 +992,7 @@ export class WhiteboardPage {
         }
       }
       if (textarea.parentNode === this.#containerEl) {
-        this.#containerEl.removeChild(textarea);
+        containerEl.removeChild(textarea);
       }
     };
 
@@ -1025,13 +1009,7 @@ export class WhiteboardPage {
     textarea.addEventListener('blur', finish);
   }
 
-  /**
-   * @private
-   * Edit an existing text node.
-   * @param {any} textNode
-   * @param {WhiteboardTextItem} item
-   */
-  #editTextNode(textNode, item) {
+  #editTextNode(textNode: WhiteboardTextNode, item: WhiteboardStoredTextItem) {
     if (!this.#containerEl || !this.#stage) {
       return;
     }
@@ -1064,7 +1042,7 @@ export class WhiteboardPage {
       if (value) {
         textNode.text(value);
         item.content = value;
-        this.#layer.batchDraw();
+        this.#layer?.batchDraw();
         this.#triggerChanged();
       }
       if (textarea.parentNode) {

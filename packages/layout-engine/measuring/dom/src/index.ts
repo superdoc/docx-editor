@@ -44,6 +44,7 @@ import {
   type ListBlock,
   type Measure,
   type Line,
+  type LineSegment,
   type InlineBoxSpan,
   type LineInlineBox,
   type LineInlineImageAlignment,
@@ -2474,6 +2475,12 @@ async function measureParagraphBlock(
   const alignmentTabStopsPx = tabStops
     .map((stop, index) => ({ stop, index }))
     .filter(({ stop }) => stop.val === 'end' || stop.val === 'center' || stop.val === 'decimal');
+  const useRightAlignedCustomTabs =
+    block.attrs?.alignment === 'right' &&
+    getParagraphInlineDirection(block.attrs) !== 'rtl' &&
+    !isWordLayoutList &&
+    !block.runs.some((run) => run.kind === 'tab' && run.positionedTab) &&
+    tabStops.some((stop) => stop.source === 'explicit' && stop.val !== 'bar' && stop.val !== 'clear');
   const decimalSeparator = sanitizeDecimalSeparator(block.attrs?.decimalSeparator);
 
   // Extract bar tab stops for paragraph-level rendering (OOXML: bars on all lines)
@@ -2599,6 +2606,7 @@ async function measureParagraphBlock(
     /** Every in-progress line owns a concrete segment collection. */
     segments: NonNullable<Line['segments']>;
     leaders?: Line['leaders'];
+    leadingTabSegments?: LineSegment[];
     /** Count of breakable spaces already included on this line (for justify-aware fitting) */
     spaceCount: number;
     /** Measured tab widths keyed by tab run pmStart (mirrors Line.tabWidths). */
@@ -2640,6 +2648,7 @@ async function measureParagraphBlock(
     const { textLineHeight, ...lineMetrics } = metrics;
     const {
       imageRunCandidates,
+      leadingTabSegments,
       fontMetricEnvelope: _fontMetricEnvelope,
       collapsedWrapSpaces: _collapsedWrapSpaces,
       ...rest
@@ -2655,6 +2664,54 @@ async function measureParagraphBlock(
     );
     if (alignments) {
       completedLine.inlineImageAlignments = alignments;
+    }
+    if (useRightAlignedCustomTabs && completedLine.tabWidths) {
+      const segmentStarts = new Map<LineSegment, number>();
+      let cursorX = 0;
+      let extent = completedLine.width;
+      for (const segment of completedLine.segments ?? []) {
+        const startX = segment.x ?? cursorX;
+        segmentStarts.set(segment, startX);
+        cursorX = startX + segment.width;
+        extent = Math.max(extent, cursorX);
+      }
+      const translatedSegments = leadingTabSegments?.length
+        ? [...completedLine.segments!, ...leadingTabSegments].sort(
+            (left, right) => left.runIndex - right.runIndex || left.fromChar - right.fromChar,
+          )
+        : completedLine.segments!;
+      for (const tab of leadingTabSegments ?? []) {
+        const next = translatedSegments
+          .slice(translatedSegments.indexOf(tab) + 1)
+          .find(
+            (segment) =>
+              !(
+                isVanishedRun(runsToProcess[segment.runIndex]) &&
+                segment.width === 0 &&
+                segment.x === undefined &&
+                segment.precedingTabEndX === undefined
+              ),
+          );
+        tab.width =
+          (next?.precedingTabEndX ?? next?.x ?? (next ? segmentStarts.get(next) : undefined) ?? tab.x! + tab.width) -
+          tab.x!;
+        extent = Math.max(extent, tab.x! + tab.width);
+      }
+      const shift = Math.max(0, lineState.maxWidth - extent);
+      if (shift > TAB_EPSILON) {
+        completedLine.segments = translatedSegments;
+        for (const segment of translatedSegments) {
+          const startX = segment.x ?? segmentStarts.get(segment)!;
+          segment.x = roundValue(startX + shift);
+          if (segment.precedingTabEndX !== undefined) segment.precedingTabEndX += shift;
+        }
+        completedLine.leaders?.forEach((leader) => {
+          leader.from += shift;
+          leader.to += shift;
+        });
+        completedLine.width = roundValue(extent + shift);
+        if (completedLine.naturalWidth != null) completedLine.naturalWidth += shift;
+      }
     }
     addBarTabsToLine(completedLine);
     return completedLine;
@@ -3277,7 +3334,7 @@ async function measureParagraphBlock(
       const originX = currentLine.width;
       // Use first-line effective indent (accounts for hanging) on first line, body indent otherwise
       const effectiveIndent = lines.length === 0 ? firstLineTabIndent : indentLeft;
-      const absCurrentX = currentLine.width + effectiveIndent;
+      const absCurrentX: number = currentLine.width + effectiveIndent;
       let stop: TabStopPx | undefined;
       let target: number;
       const resolvedTabIndex =
@@ -3316,7 +3373,22 @@ async function measureParagraphBlock(
       } else {
         const greedy = getNextTabStopPx(absCurrentX, tabStops, tabStopCursor);
         const greedyOnDefault = greedy.stop?.source === 'default';
-        const forcedAlignment = greedyOnDefault ? getAlignmentStopForOrdinal(resolvedTabIndex, runIndex) : null;
+        const nextCustomIndex: number = useRightAlignedCustomTabs
+          ? tabStops.findIndex(
+              (candidate, index) =>
+                index >= tabStopCursor &&
+                candidate.source === 'explicit' &&
+                candidate.val !== 'bar' &&
+                candidate.val !== 'clear' &&
+                candidate.pos > absCurrentX + TAB_EPSILON,
+            )
+          : -1;
+        const forcedAlignment: { stop: TabStopPx; index: number } | null =
+          nextCustomIndex >= 0
+            ? { stop: tabStops[nextCustomIndex], index: nextCustomIndex }
+            : !useRightAlignedCustomTabs && greedyOnDefault
+              ? getAlignmentStopForOrdinal(resolvedTabIndex, runIndex)
+              : null;
         if (forcedAlignment && forcedAlignment.stop.pos > absCurrentX + TAB_EPSILON) {
           stop = forcedAlignment.stop;
           target = forcedAlignment.stop.pos;
@@ -3354,6 +3426,15 @@ async function measureParagraphBlock(
       const blockRunIndex = runIndexMap[runIndex] ?? runIndex;
       if (!currentLine.tabWidths) currentLine.tabWidths = {};
       currentLine.tabWidths[blockRunIndex] = tabAdvance;
+      if (useRightAlignedCustomTabs && currentLine.segments.every((segment) => segment.width === 0)) {
+        (currentLine.leadingTabSegments ??= []).push({
+          runIndex,
+          fromChar: 0,
+          toChar: 1,
+          x: originX,
+          width: tabAdvance,
+        });
+      }
 
       // A visible tab can be the first visible metric contributor after vanished content.
       if (currentLine.maxFontSize <= 0) {
@@ -3961,6 +4042,10 @@ async function measureParagraphBlock(
             pendingTabAlignment = null;
             pendingLeader = null;
             lastAppliedTabAlign = null;
+            if (useRightAlignedCustomTabs) {
+              activeTabGroup = null;
+              clearPendingPrecedingTabEndX();
+            }
 
             // Body line, so use bodyContentWidth for hanging indent
             currentLine = {
@@ -4028,6 +4113,14 @@ async function measureParagraphBlock(
         segmentStartX = undefined;
         hasPendingSegmentTabGeometry = false;
         clearPendingPrecedingTabEndX();
+        if (useRightAlignedCustomTabs) {
+          activeTabGroup = null;
+          inActiveTabGroup = false;
+          pendingTabAlignment = null;
+          pendingLeader = null;
+          lastAppliedTabAlign = null;
+          tabStopCursor = 0;
+        }
       };
 
       for (let wordIndex = 0; wordIndex < words.length; wordIndex++) {
@@ -4183,7 +4276,10 @@ async function measureParagraphBlock(
           availableWidth =
             textWrapWidth(currentLine.maxWidth, runIndex) +
             (acceptsSubpixelOverflow ? WIDTH_FUDGE_PX : -WIDTH_FUDGE_PX);
-          shouldBreak = !inActiveTabGroup && totalWidthWithWord > availableWidth && currentLine.width > 0;
+          shouldBreak =
+            (!inActiveTabGroup || useRightAlignedCustomTabs) &&
+            totalWidthWithWord > availableWidth &&
+            currentLine.width > 0;
 
           if (shouldBreak && justifyAlignment) {
             const candidateSpaces = currentLine.spaceCount ?? 0;
@@ -4228,7 +4324,7 @@ async function measureParagraphBlock(
         if (
           currentLine &&
           currentLine.width > 0 &&
-          !inActiveTabGroup &&
+          (!inActiveTabGroup || useRightAlignedCustomTabs) &&
           // Drop caps narrow the available width by line index, but the chunker
           // budgets every continuation chunk before any of them is pushed, so the
           // two would disagree. Keep drop-cap paragraphs on the plain wrap path.
@@ -4347,6 +4443,7 @@ async function measureParagraphBlock(
                 fromChar: chunkStartChar,
                 toChar: chunkEndChar,
                 width: chunk.width,
+                ...(useRightAlignedCustomTabs && segmentStartX !== undefined ? { x: segmentStartX } : {}),
               });
               currentLine.spaceCount += countNbspOccurrences(chunk.text);
 
@@ -4639,6 +4736,7 @@ async function measureParagraphBlock(
           trimTrailingWrapSpaces(currentLine);
           const completedLine: Line = closeLineWithMetrics(currentLine);
           lines.push(completedLine);
+          if (useRightAlignedCustomTabs) clearWrapState();
           tabStopCursor = 0;
           pendingTabAlignment = null;
           pendingLeader = null;
@@ -4713,6 +4811,7 @@ async function measureParagraphBlock(
             pendingTabAlignment = null;
             pendingLeader = null;
             currentLine = null;
+            if (useRightAlignedCustomTabs) clearWrapState();
             // advance past space
             charPosInRun = wordEndNoSpace + 1;
             continue;

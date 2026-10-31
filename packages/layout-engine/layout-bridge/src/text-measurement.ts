@@ -699,7 +699,7 @@ function measureCharacterXSegmentBased(
       }
 
       // Handle tab runs
-      if (isTabRun(run)) {
+      if (isTabRun(run) || ('text' in run && run.text?.slice(segment.fromChar, segment.toChar) === '\t')) {
         // Tab counts as 1 character, position is at segment start or end
         return segmentBaseX + (offsetInSegment > 0 ? (segment.width ?? 0) : 0);
       }

@@ -12,6 +12,7 @@ import type {
   LineSegment,
   Run,
   ImageRun,
+  FieldAnnotationRun,
   TextRun,
   TabRun,
   TabStop,
@@ -809,6 +810,24 @@ function measureRunSliceWidth(run: Run, fromChar: number, toChar: number): numbe
   return (measureSliceBaseWidth(context, font, text) + letterSpacingTotal) * horizontalScale;
 }
 
+function measureFieldAnnotationWidth(
+  run: FieldAnnotationRun,
+  fontContext: FontMeasureContext,
+  alignmentGroup = false,
+): number {
+  const size = typeof run.fontSize === 'number' ? run.fontSize : Number.parseFloat(run.fontSize ?? '') || 16;
+  const face: FaceKey = { weight: run.bold ? '700' : '400', style: run.italic ? 'italic' : 'normal' };
+  const family = fontContext.resolvePhysical(run.fontFamily || (alignmentGroup ? 'Arial' : 'Arial, sans-serif'), face);
+  const font = `${run.italic ? 'italic' : 'normal'} ${run.bold ? 'bold' : 'normal'} ${size}px ${family}`;
+  const label = applyTextTransform(
+    run.displayLabel || '',
+    (run as { textTransform?: TextRun['textTransform'] }).textTransform,
+  );
+  const context = getCtx();
+  const textWidth = label ? (context ? measureSliceBaseWidth(context, font, label) : label.length * size * 0.6) : 0;
+  return textWidth + (alignmentGroup || run.highlighted !== false ? 8 : 0);
+}
+
 const runHorizontalScale = (run: Run | undefined): number => {
   if (!run || !('horizontalScale' in run)) return 1;
   const value = run.horizontalScale;
@@ -871,6 +890,7 @@ const scanTabAlignmentGroup = (
   startRunIndex: number,
   startChar: number,
   decimalSeparator: string,
+  atomicWidth: (run: Run) => number = getRunWidth,
 ): TabAlignmentGroupScan => {
   let totalWidth = 0;
   let beforeDecimalWidth: number | undefined;
@@ -891,7 +911,7 @@ const scanTabAlignmentGroup = (
 
     const text = runText(run);
     if (!text) {
-      const runWidth = getRunWidth(run);
+      const runWidth = atomicWidth(run);
       if (runWidth > 0) {
         totalWidth += runWidth;
         endRun = r;
@@ -1068,6 +1088,7 @@ const applyTabLayoutToLines = (
   firstLineTabOffset: number,
   marginWidth: number,
   isWordLayoutList: boolean,
+  useRightAlignedCustomTabs: boolean,
 ): void => {
   const totalTabRuns = runs.reduce((count, run) => (run.kind === 'tab' && !isVanishedRun(run) ? count + 1 : count), 0);
   const alignmentTabStopsPx = tabStops
@@ -1135,6 +1156,7 @@ const applyTabLayoutToLines = (
     let cursorX = 0;
     let lineWidth = 0;
     let tabStopCursor = 0;
+    let hasTabLayout = false;
     let pendingTabAlignStartX: PendingTabAlignStart | null = null;
     const segments: NonNullable<Line['segments']> = [];
     const leaders: NonNullable<Line['leaders']> = [];
@@ -1154,6 +1176,7 @@ const applyTabLayoutToLines = (
       tabOrdinal?: number,
       tabRunIdx?: number,
     ): void => {
+      hasTabLayout = true;
       const originX = cursorX;
       const absCurrentX = cursorX + effectiveIndent;
       let stop: TabStopPx | undefined;
@@ -1181,10 +1204,25 @@ const applyTabLayoutToLines = (
       } else {
         const greedy = getNextTabStopPx(absCurrentX, tabStops, tabStopCursor);
         const greedyOnDefault = greedy.stop?.source === 'default';
+        const nextCustomIndex = useRightAlignedCustomTabs
+          ? tabStops.findIndex(
+              (candidate, index) =>
+                index >= tabStopCursor &&
+                candidate.source === 'explicit' &&
+                candidate.val !== 'bar' &&
+                candidate.val !== 'clear' &&
+                candidate.pos > absCurrentX + TAB_EPSILON,
+            )
+          : -1;
         const forcedAlignment =
-          greedyOnDefault && typeof tabOrdinal === 'number' && Number.isFinite(tabOrdinal)
-            ? getAlignmentStopForOrdinal(tabOrdinal, tabRunIdx)
-            : null;
+          nextCustomIndex >= 0
+            ? { stop: tabStops[nextCustomIndex], index: nextCustomIndex }
+            : !useRightAlignedCustomTabs &&
+                greedyOnDefault &&
+                typeof tabOrdinal === 'number' &&
+                Number.isFinite(tabOrdinal)
+              ? getAlignmentStopForOrdinal(tabOrdinal, tabRunIdx)
+              : null;
         if (forcedAlignment && forcedAlignment.stop.pos > absCurrentX + TAB_EPSILON) {
           stop = forcedAlignment.stop;
           target = forcedAlignment.stop.pos;
@@ -1301,7 +1339,27 @@ const applyTabLayoutToLines = (
 
       const text = runText(run);
       if (!text) {
-        cursorX += getRunWidth(run);
+        if (isImageRun(run)) {
+          const segmentWidth = run.width + (run.distLeft ?? 0) + (run.distRight ?? 0);
+          const segment: LineSegment = { runIndex, fromChar: 0, toChar: 1, width: segmentWidth };
+          const pendingTabAlign = consumePendingTabAlignStart();
+          if (pendingTabAlign != null) {
+            segment.x = pendingTabAlign.paintX;
+            if (pendingTabAlign.precedingTabEndX !== undefined) {
+              segment.precedingTabEndX = pendingTabAlign.precedingTabEndX;
+            }
+            cursorX = pendingTabAlign.layoutX + segmentWidth;
+          } else {
+            cursorX += segmentWidth;
+          }
+          segments.push(segment);
+        } else {
+          const segmentWidth = getRunWidth(run);
+          if (run.kind === 'math') {
+            segments.push({ runIndex, fromChar: 0, toChar: 1, width: segmentWidth });
+          }
+          cursorX += segmentWidth;
+        }
         lineWidth = Math.max(lineWidth, cursorX);
         continue;
       }
@@ -1374,6 +1432,24 @@ const applyTabLayoutToLines = (
     }
     if (lineWidth > 0) {
       line.width = Math.max(line.width, lineWidth);
+    }
+    if (useRightAlignedCustomTabs && hasTabLayout) {
+      const shift = Math.max(0, (line.maxWidth ?? lineWidth) - lineWidth);
+      if (shift > TAB_EPSILON) {
+        let cursorX = 0;
+        for (const segment of line.segments ?? []) {
+          const startX = segment.x ?? cursorX;
+          segment.x = startX + shift;
+          if (segment.precedingTabEndX !== undefined) segment.precedingTabEndX += shift;
+          cursorX = startX + segment.width;
+        }
+        line.leaders?.forEach((leader) => {
+          leader.from += shift;
+          leader.to += shift;
+        });
+        line.width = lineWidth + shift;
+        if (line.naturalWidth != null) line.naturalWidth += shift;
+      }
     }
   });
 };
@@ -1899,6 +1975,24 @@ export function remeasureParagraph(
       ? Math.max(0, floatingMarkerGeometry.textStartPx - indentLeft - firstRegion.offsetX)
       : 0;
 
+  const hasTabRun = runs.some((run) => run.kind === 'tab');
+  const hasTextTab = runs.some(
+    (run) => (run.kind == null || run.kind === 'text') && !isVanishedRun(run) && run.text.includes('\t'),
+  );
+  const useRightAlignedCustomTabs =
+    (hasTabRun || hasTextTab) &&
+    attrs?.alignment === 'right' &&
+    getParagraphInlineDirection(block.attrs) !== 'rtl' &&
+    !isWordLayoutList &&
+    !runs.some((run) => run.kind === 'tab' && run.positionedTab) &&
+    tabStops.some((stop) => stop.source === 'explicit' && stop.val !== 'bar' && stop.val !== 'clear');
+  const alignmentGroupWidth = (run: Run): number => {
+    if (run.kind === 'image') return run.width + (run.distLeft ?? 0) + (run.distRight ?? 0);
+    if (run.kind === 'math') return run.width ?? 20;
+    if (run.kind === 'fieldAnnotation') return measureFieldAnnotationWidth(run, fontContext, true);
+    return 0;
+  };
+
   let currentRun = 0;
   let currentChar = 0;
   // Match measuring/dom behavior: prefer the first visible text run for leading
@@ -1959,6 +2053,174 @@ export function remeasureParagraph(
     let lineMaxImageHeight = 0;
     let previousRunLetterSpacing = 0;
     const lineImageCandidates: RemeasureImageCandidate[] = [];
+    const segments: LineSegment[] = [];
+    const leadingTabSegments: LineSegment[] = [];
+    const leaders: LeaderDecoration[] = [];
+    let tabWidths: Record<number, number> = {};
+    let hasTabLayout = false;
+    let geometryWidthCorrection = 0;
+    let activeGroup: { currentX: number; target: number; val: TabStopPx['val']; endRun: number } | undefined;
+    let pendingStart: PendingTabAlignStart | undefined;
+    let nextLineCursor: { run: number; char: number } | undefined;
+
+    const snapshotGeometry = () => ({
+      segmentCount: segments.length,
+      leadingTabCount: leadingTabSegments.length,
+      lastSegment: segments.length ? { ...segments[segments.length - 1] } : undefined,
+      leaders: leaders.map((leader) => ({ ...leader })),
+      tabWidths: { ...tabWidths },
+      activeGroup: activeGroup ? { ...activeGroup } : undefined,
+      pendingStart: pendingStart ? { ...pendingStart } : undefined,
+      tabStopCursor,
+      hasTabLayout,
+      hasAuthoredTabStop,
+      geometryWidthCorrection,
+    });
+    let breakGeometry: ReturnType<typeof snapshotGeometry> | undefined;
+    let cjkGeometry: ReturnType<typeof snapshotGeometry> | undefined;
+    const restoreGeometry = (snapshot: ReturnType<typeof snapshotGeometry> | undefined): void => {
+      if (!snapshot) return;
+      segments.length = snapshot.segmentCount;
+      leadingTabSegments.length = snapshot.leadingTabCount;
+      if (snapshot.lastSegment) segments[segments.length - 1] = { ...snapshot.lastSegment };
+      leaders.splice(0, leaders.length, ...snapshot.leaders.map((leader) => ({ ...leader })));
+      tabWidths = { ...snapshot.tabWidths };
+      activeGroup = snapshot.activeGroup ? { ...snapshot.activeGroup } : undefined;
+      pendingStart = snapshot.pendingStart ? { ...snapshot.pendingStart } : undefined;
+      tabStopCursor = snapshot.tabStopCursor;
+      hasTabLayout = snapshot.hasTabLayout;
+      hasAuthoredTabStop = snapshot.hasAuthoredTabStop;
+      geometryWidthCorrection = snapshot.geometryWidthCorrection;
+    };
+    const finalizeTextGeometry = (): void => {
+      const segment = segments.at(-1);
+      if (!segment) return;
+      const run = runs[segment.runIndex];
+      if ((run.kind != null && run.kind !== 'text') || isEmptySdtPlaceholderRun(run)) return;
+      const shapedWidth = measureRunSliceWidth(run, segment.fromChar, segment.toChar);
+      const correction = shapedWidth - segment.width;
+      segment.width = shapedWidth;
+      geometryWidthCorrection += correction;
+      if (activeGroup) activeGroup.currentX += correction;
+    };
+    const appendGeometry = (
+      runIndex: number,
+      fromChar: number,
+      toChar: number,
+      advance: number,
+      positioned: boolean,
+    ): void => {
+      const previous = segments.at(-1);
+      const mergePrevious =
+        previous &&
+        previous.runIndex === runIndex &&
+        previous.toChar === fromChar &&
+        fromChar !== toChar &&
+        !pendingStart;
+      if (!mergePrevious) finalizeTextGeometry();
+      const pending = positioned ? pendingStart : undefined;
+      const x = positioned ? (activeGroup?.currentX ?? pending?.paintX) : undefined;
+      if (pending) {
+        width = pending.layoutX;
+        pendingStart = undefined;
+      }
+      if (mergePrevious) {
+        previous.toChar = toChar;
+        previous.width += advance;
+      } else {
+        segments.push({
+          runIndex,
+          fromChar,
+          toChar,
+          width: advance,
+          ...(x !== undefined ? { x } : {}),
+          ...(pending?.precedingTabEndX !== undefined ? { precedingTabEndX: pending.precedingTabEndX } : {}),
+        });
+      }
+      if (positioned && activeGroup) activeGroup.currentX += advance;
+    };
+    const finishGroupRun = (runIndex: number): void => {
+      finalizeTextGeometry();
+      if (activeGroup && runIndex + 1 >= activeGroup.endRun) {
+        if (activeGroup.val === 'end') {
+          width = activeGroup.target;
+          geometryWidthCorrection = 0;
+        }
+        activeGroup = undefined;
+      }
+    };
+    const applyCustomTab = (runIndex: number, char: number, ordinary: boolean): void => {
+      finalizeTextGeometry();
+      const origin = width + geometryWidthCorrection;
+      const absolute = origin + effectiveIndent;
+      const customIndex = tabStops.findIndex(
+        (stop, index) =>
+          index >= tabStopCursor &&
+          stop.source === 'explicit' &&
+          stop.val !== 'bar' &&
+          stop.val !== 'clear' &&
+          stop.pos > absolute + TAB_EPSILON,
+      );
+      const resolved =
+        customIndex >= 0
+          ? { stop: tabStops[customIndex], target: tabStops[customIndex].pos, nextIndex: customIndex + 1 }
+          : getNextTabStopPx(absolute, tabStops, tabStopCursor);
+      const target = Math.min(resolved.target, effectiveMaxWidth + effectiveIndent);
+      const relative = target - effectiveIndent;
+      tabStopCursor = resolved.nextIndex;
+      hasTabLayout = true;
+      if (ordinary) tabWidths[runIndex] = Math.max(0, relative - origin);
+      if (segments.every((segment) => segment.width === 0)) {
+        leadingTabSegments.push({
+          runIndex,
+          fromChar: ordinary ? 0 : char - 1,
+          toChar: ordinary ? 1 : char,
+          x: origin,
+          width: Math.max(0, relative - origin),
+        });
+      }
+      const stop = resolved.stop;
+      if (stop?.source === 'explicit') hasAuthoredTabStop = true;
+      let leader: LeaderDecoration | undefined;
+      if (stop?.leader && stop.leader !== 'none') {
+        leader = { from: Math.min(absolute, target), to: Math.max(absolute, target), style: stop.leader };
+        leaders.push(leader);
+      }
+      activeGroup = undefined;
+      pendingStart = undefined;
+      width = Math.max(width, relative);
+      geometryWidthCorrection = 0;
+      if (stop && (stop.val === 'end' || stop.val === 'center' || stop.val === 'decimal')) {
+        const group = scanTabAlignmentGroup(
+          runs,
+          ordinary ? runIndex + 1 : runIndex,
+          ordinary ? 0 : char,
+          decimalSeparator,
+          alignmentGroupWidth,
+        );
+        if (group.totalWidth > 0) {
+          const startX = Math.max(
+            0,
+            relative -
+              (stop.val === 'center'
+                ? group.totalWidth / 2
+                : stop.val === 'decimal'
+                  ? (group.beforeDecimalWidth ?? group.totalWidth)
+                  : group.totalWidth),
+          );
+          activeGroup = { currentX: startX, target: relative, val: stop.val, endRun: group.resumeRun };
+          width = startX;
+          if (leader) leader.to = startX + effectiveIndent;
+        }
+      } else if (stop) {
+        const compensate = indentLeft < 0 && effectiveIndent === indentLeft && stop.source !== 'explicit';
+        pendingStart = {
+          layoutX: relative,
+          paintX: compensate ? relative - Math.min(effectiveIndent, 0) : relative,
+          ...(compensate ? { precedingTabEndX: relative } : {}),
+        };
+      }
+    };
 
     for (let r = currentRun; r < runs.length; r += 1) {
       const run = runs[r];
@@ -1973,12 +2235,27 @@ export function remeasureParagraph(
         break;
       }
       if (isVanishedRun(run)) {
+        if (useRightAlignedCustomTabs) {
+          if (run.kind === 'tab') tabWidths[r] = 0;
+          appendGeometry(r, r === currentRun ? currentChar : 0, runAddressableLength(run), 0, false);
+        }
         endRun = r;
         endChar = runAddressableLength(run);
         previousRunLetterSpacing = 0;
         continue;
       }
       if (run.kind === 'tab') {
+        if (useRightAlignedCustomTabs) {
+          applyCustomTab(r, 0, true);
+          endRun = r;
+          endChar = 1;
+          lastBreakRun = r;
+          lastBreakChar = 1;
+          widthAtLastBreak = width;
+          breakGeometry = snapshotGeometry();
+          previousRunLetterSpacing = 0;
+          continue;
+        }
         const absCurrentX = width + effectiveIndent;
         const positioned = (run as TabRun).positionedTab;
         const boundary = positioned?.relativeTo === 'margin' ? maxWidth : effectiveMaxWidth + effectiveIndent;
@@ -2063,9 +2340,10 @@ export function remeasureParagraph(
           didBreakInThisLine = true;
           break;
         }
+        if (useRightAlignedCustomTabs) appendGeometry(r, 0, 0, placeholderWidth, false);
         width += placeholderWidth;
         endRun = r;
-        endChar = text.length > 0 ? text.length : start + 1;
+        endChar = useRightAlignedCustomTabs ? 0 : text.length > 0 ? text.length : start + 1;
         previousRunLetterSpacing = runLetterSpacing(run);
         continue;
       }
@@ -2075,16 +2353,35 @@ export function remeasureParagraph(
         // so reflowed lines keep the same baseline-vs-top decision as initial
         // measurement.
         const imageWidth = run.width + (run.distLeft ?? 0) + (run.distRight ?? 0);
-        if (width > 0 && width + imageWidth > effectiveMaxWidth - WIDTH_FUDGE_PX) {
+        if (
+          (!useRightAlignedCustomTabs || !activeGroup) &&
+          width > 0 &&
+          width + imageWidth > effectiveMaxWidth - WIDTH_FUDGE_PX
+        ) {
           didBreakInThisLine = true;
           break;
         }
+        if (useRightAlignedCustomTabs) appendGeometry(r, 0, 1, imageWidth, true);
         width += imageWidth;
         endRun = r;
         endChar = 1;
         const imageHeight = run.height + (run.distTop ?? 0) + (run.distBottom ?? 0);
         lineMaxImageHeight = Math.max(lineMaxImageHeight, imageHeight);
         lineImageCandidates.push(makeRemeasureImageCandidate(r, run, imageWidth, imageHeight));
+        if (useRightAlignedCustomTabs) finishGroupRun(r);
+        previousRunLetterSpacing = 0;
+        continue;
+      }
+      if (useRightAlignedCustomTabs && (run.kind === 'math' || run.kind === 'fieldAnnotation')) {
+        const advance = run.kind === 'math' ? (run.width ?? 20) : measureFieldAnnotationWidth(run, fontContext);
+        if (run.kind === 'fieldAnnotation' && width > 0 && width + advance > effectiveMaxWidth - WIDTH_FUDGE_PX) {
+          didBreakInThisLine = true;
+          break;
+        }
+        appendGeometry(r, 0, 1, advance, run.kind === 'fieldAnnotation' && !activeGroup);
+        width += advance;
+        endRun = r;
+        endChar = 1;
         previousRunLetterSpacing = 0;
         continue;
       }
@@ -2113,6 +2410,19 @@ export function remeasureParagraph(
         }
         return total;
       };
+      const adjustGeometryBoundary = (from: number, to: number): void => {
+        if (!useRightAlignedCustomTabs || from === to) return;
+        if (to > from) {
+          appendGeometry(r, from, to, measureCharRange(from, to), true);
+          return;
+        }
+        while (segments.at(-1)?.runIndex === r && segments.at(-1)!.fromChar >= to) segments.pop();
+        const last = segments.at(-1);
+        if (last?.runIndex === r && last.toChar > to) {
+          last.width -= measureCharRange(to, last.toChar);
+          last.toChar = to;
+        }
+      };
       // Astral characters (CJK extension planes) are two UTF-16 units, so the
       // cursor advances by code point: measuring or breaking on half a surrogate
       // pair both mis-measures the glyph and emits invalid ranges.
@@ -2120,6 +2430,17 @@ export function remeasureParagraph(
         chEnd = nextCodePointBoundary(text, c);
         const ch = text.slice(c, chEnd);
         if (ch === '\t') {
+          if (useRightAlignedCustomTabs) {
+            applyCustomTab(r, chEnd, false);
+            endRun = r;
+            endChar = chEnd;
+            lastBreakRun = r;
+            lastBreakChar = chEnd;
+            widthAtLastBreak = width;
+            breakGeometry = snapshotGeometry();
+            previousRunLetterSpacing = 0;
+            continue;
+          }
           const absCurrentX = width + effectiveIndent;
           const { target, nextIndex, stop } = getNextTabStopPx(absCurrentX, tabStops, tabStopCursor);
           if (stop?.source === 'explicit') hasAuthoredTabStop = true;
@@ -2189,6 +2510,24 @@ export function remeasureParagraph(
             ? effectiveMaxWidth + WIDTH_FUDGE_PX
             : effectiveMaxWidth - WIDTH_FUDGE_PX;
         if (width + w > fitThreshold && width > 0) {
+          if (ch === ' ' && useRightAlignedCustomTabs) {
+            const terminalSpaces = runs
+              .slice(r)
+              .every(
+                (tail, index) =>
+                  isVanishedRun(tail) ||
+                  ((tail.kind == null || tail.kind === 'text') &&
+                    !isEmptySdtPlaceholderRun(tail) &&
+                    /^ *$/.test(tail.text.slice(index === 0 ? c : 0))),
+              );
+            endRun = terminalSpaces ? runs.length - 1 : r;
+            endChar = terminalSpaces ? runAddressableLength(runs[endRun]) : c;
+            nextLineCursor = terminalSpaces
+              ? { run: runs.length, char: 0 }
+              : { run: r, char: chEnd < text.length ? chEnd : c };
+            didBreakInThisLine = true;
+            break;
+          }
           if (ch === ' ') {
             // The space is only a wrap delimiter. Consume it so the next line
             // starts at the following word, but do not charge its width to the
@@ -2200,6 +2539,7 @@ export function remeasureParagraph(
           }
           const canKeepBorderlineUnbreakableText = lastBreakRun < 0 && width + w <= effectiveMaxWidth + WIDTH_FUDGE_PX;
           if (canKeepBorderlineUnbreakableText) {
+            if (useRightAlignedCustomTabs) appendGeometry(r, c, chEnd, w, true);
             width += w;
             endRun = r;
             endChar = chEnd;
@@ -2227,26 +2567,35 @@ export function remeasureParagraph(
               // An opener carries down to the next line.
               width -= measureCharRange(boundary, c);
             }
+            adjustGeometryBoundary(c, boundary);
             endRun = r;
             endChar = boundary;
           } else if (usableCjkBreak) {
             const boundary = resolveKinsokuBoundary(text, start, lastCjkBreakChar);
             width = widthAtLastCjkBreak;
+            if (useRightAlignedCustomTabs) restoreGeometry(cjkGeometry);
             if (boundary > lastCjkBreakChar) {
               width += measureCharRange(lastCjkBreakChar, boundary);
             } else if (boundary < lastCjkBreakChar) {
               width -= measureCharRange(boundary, lastCjkBreakChar);
             }
+            adjustGeometryBoundary(lastCjkBreakChar, boundary);
             endRun = r;
             endChar = boundary;
           } else {
             endRun = lastBreakRun;
             endChar = lastBreakChar;
             width = widthAtLastBreak >= 0 ? widthAtLastBreak : width;
+            if (useRightAlignedCustomTabs) {
+              restoreGeometry(breakGeometry);
+              nextLineCursor = { run: endRun, char: endChar };
+            }
           }
           didBreakInThisLine = true;
           break;
         }
+        const beforeSpace = useRightAlignedCustomTabs && ch === ' ' ? snapshotGeometry() : undefined;
+        if (useRightAlignedCustomTabs) appendGeometry(r, c, chEnd, w, true);
         width += w;
         endRun = r;
         endChar = chEnd;
@@ -2254,7 +2603,9 @@ export function remeasureParagraph(
           lastBreakRun = r;
           lastBreakChar = chEnd;
           widthAtLastBreak = width - w;
+          if (useRightAlignedCustomTabs) breakGeometry = beforeSpace;
         } else if (ch === '\t' || ch === '-') {
+          if (useRightAlignedCustomTabs) breakGeometry = snapshotGeometry();
           lastBreakRun = r;
           lastBreakChar = chEnd;
           widthAtLastBreak = width;
@@ -2265,9 +2616,11 @@ export function remeasureParagraph(
           lastCjkBreakRun = r;
           lastCjkBreakChar = chEnd;
           widthAtLastCjkBreak = width;
+          if (useRightAlignedCustomTabs) cjkGeometry = snapshotGeometry();
         }
       }
       if (didBreakInThisLine) break;
+      if (useRightAlignedCustomTabs) finishGroupRun(r);
       if (text.length > start) {
         previousRunLetterSpacing = runLetterSpacing(run);
       }
@@ -2293,12 +2646,13 @@ export function remeasureParagraph(
         : { ascent: 0, descent: 0 };
     const ascent = drawingAscent > 0 ? Math.max(drawingAscent, textMetrics.ascent) : 0;
     const lineHeight = Math.max(textLineHeight, lineMaxImageHeight, ascent + textMetrics.descent);
+    if (useRightAlignedCustomTabs) finalizeTextGeometry();
     const line: Line = {
       fromRun: startRun,
       fromChar: startChar,
       toRun: endRun,
       toChar: endChar,
-      width,
+      width: width + geometryWidthCorrection,
       ascent,
       descent: textMetrics.descent,
       lineHeight,
@@ -2311,6 +2665,63 @@ export function remeasureParagraph(
     );
     if (inlineImageAlignments) {
       line.inlineImageAlignments = inlineImageAlignments;
+    }
+    if (useRightAlignedCustomTabs) {
+      line.segments = segments;
+      if (Object.keys(tabWidths).length) line.tabWidths = tabWidths;
+      if (leaders.length) line.leaders = leaders;
+      if (hasAuthoredTabStop) line.hasExplicitTabStops = true;
+      if (hasTabLayout) {
+        const segmentStarts = new Map<LineSegment, number>();
+        let cursor = 0;
+        let extent = line.width;
+        for (const segment of segments) {
+          const x = segment.x ?? cursor;
+          segmentStarts.set(segment, x);
+          cursor = x + segment.width;
+          extent = Math.max(extent, cursor);
+        }
+        const translatedSegments = leadingTabSegments.length
+          ? [...segments, ...leadingTabSegments].sort(
+              (left, right) => left.runIndex - right.runIndex || left.fromChar - right.fromChar,
+            )
+          : segments;
+        for (const tab of leadingTabSegments) {
+          const next = translatedSegments
+            .slice(translatedSegments.indexOf(tab) + 1)
+            .find(
+              (segment) =>
+                !(
+                  isVanishedRun(runs[segment.runIndex]) &&
+                  segment.width === 0 &&
+                  segment.x === undefined &&
+                  segment.precedingTabEndX === undefined
+                ),
+            );
+          tab.width =
+            (next?.precedingTabEndX ?? next?.x ?? (next ? segmentStarts.get(next) : undefined) ?? tab.x! + tab.width) -
+            tab.x!;
+          extent = Math.max(extent, tab.x! + tab.width);
+        }
+        line.width = extent;
+        const shift = Math.max(0, effectiveMaxWidth - extent);
+        if (shift > TAB_EPSILON) {
+          line.segments = translatedSegments;
+          for (const segment of translatedSegments) {
+            const x = segment.x ?? segmentStarts.get(segment)!;
+            segment.x = x + shift;
+            if (segment.precedingTabEndX !== undefined) segment.precedingTabEndX += shift;
+          }
+          for (const leader of leaders) {
+            leader.from += shift;
+            leader.to += shift;
+          }
+          line.width = extent + shift;
+          if (line.naturalWidth != null) line.naturalWidth += shift;
+        }
+      }
+      const bars = tabStops.filter((stop) => stop.val === 'bar').map((stop) => ({ x: stop.pos }));
+      if (bars.length) line.bars = bars;
     }
     lines.push(line);
     if (lineMaxTextFontSize > 0) {
@@ -2339,8 +2750,8 @@ export function remeasureParagraph(
       }
       currentChar = 0;
     } else {
-      currentRun = endRun;
-      currentChar = endChar;
+      currentRun = nextLineCursor?.run ?? endRun;
+      currentChar = nextLineCursor?.char ?? endChar;
     }
     if (currentRun >= runs.length) {
       break;
@@ -2351,18 +2762,10 @@ export function remeasureParagraph(
     }
   }
 
-  const hasTabRun = runs.some((run) => run?.kind === 'tab');
-  const hasTextTab = runs.some(
-    (run) =>
-      run?.kind === 'text' &&
-      !isVanishedRun(run) &&
-      typeof (run as TextRun).text === 'string' &&
-      (run as TextRun).text.includes('\t'),
-  );
   const hasLineRegionOffsets = resolvedLineRegions?.some((regions) =>
     regions.some((region) => Number.isFinite(region.offsetX) && Math.abs(region.offsetX) > 0.01),
   );
-  if (hasTabRun || hasTextTab || hasLineRegionOffsets) {
+  if (!useRightAlignedCustomTabs && (hasTabRun || hasTextTab || hasLineRegionOffsets)) {
     applyTabLayoutToLines(
       lines,
       runs,
@@ -2372,6 +2775,11 @@ export function remeasureParagraph(
       firstLineTabOffset,
       maxWidth,
       isWordLayoutList,
+      attrs?.alignment === 'right' &&
+        getParagraphInlineDirection(block.attrs) !== 'rtl' &&
+        !isWordLayoutList &&
+        !runs.some((run) => run.kind === 'tab' && run.positionedTab) &&
+        tabStops.some((stop) => stop.source === 'explicit' && stop.val !== 'bar' && stop.val !== 'clear'),
     );
   }
 

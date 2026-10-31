@@ -91,6 +91,149 @@ const createOverwideGridTable = (attrs: TableBlock['attrs'] = {}): TableBlock =>
 });
 
 describe('measureBlock', () => {
+  describe('right-aligned ordinary custom tabs', () => {
+    it.each([false, true])(
+      'uses the first custom stop and translates every segment with split runs=%s',
+      async (split) => {
+        const text = (value: string): TextRun => ({
+          text: value,
+          fontFamily: 'Times New Roman',
+          fontSize: 16,
+          bold: true,
+        });
+        const prefix = split ? [text('CONFI'), text('DENTIAL')] : [text('CONFIDENTIAL')];
+        const company = split ? [text('Example '), text('Company')] : [text('Example Company')];
+        const block: FlowBlock = {
+          kind: 'paragraph',
+          id: `right-custom-${split}`,
+          attrs: {
+            alignment: 'right',
+            tabs: [
+              { val: 'center', pos: 4680, leader: 'dot' },
+              { val: 'end', pos: 9360 },
+            ],
+          },
+          runs: [...prefix, { kind: 'tab', text: '\t' }, ...company],
+        };
+        const line = expectParagraphMeasure(await measureBlock(block, 624)).lines[0];
+        const segments = line.segments!;
+        const prefixWidth = segments
+          .filter((segment) => segment.runIndex < prefix.length)
+          .reduce((sum, segment) => sum + segment.width, 0);
+        const companyWidth = segments
+          .filter((segment) => segment.runIndex > prefix.length)
+          .reduce((sum, segment) => sum + segment.width, 0);
+        const shift = 624 - (312 + companyWidth / 2);
+
+        expect(segments[0].x).toBeCloseTo(shift, 4);
+        expect(segments[prefix.length].x).toBeCloseTo(shift + 312 - companyWidth / 2, 4);
+        expect(line.width).toBeCloseTo(624, 4);
+        expect(line.leaders?.[0]).toMatchObject({ style: 'dot' });
+        expect(line.leaders?.[0].from).toBeCloseTo(shift + prefixWidth, 4);
+        expect(line.leaders?.[0].to).toBeCloseTo(shift + 312 - companyWidth / 2, 4);
+        for (const [runIndex, run] of block.runs.entries()) {
+          if (run.kind === 'tab') continue;
+          expect(
+            segments
+              .filter((segment) => segment.runIndex === runIndex)
+              .map((segment) => run.text.slice(segment.fromChar, segment.toChar))
+              .join(''),
+          ).toBe(run.text);
+        }
+      },
+    );
+
+    it.each([
+      ['extra words', 'CONFIDENTIAL', 'Example Company Extra', 300, 4680],
+      ['CJK opener', 'A', '甲乙丙丁戊己（庚辛壬', 120, 1440],
+    ] as const)(
+      'admits the %s custom-tab group within its physical line budget',
+      async (_name, prefix, suffix, width, stop) => {
+        const prototype = Object.getPrototypeOf(document.createElement('canvas').getContext('2d'));
+        const measureText = vi.spyOn(prototype, 'measureText').mockImplementation((value: string) => ({
+          width: value.length * 10,
+          actualBoundingBoxAscent: 12,
+          actualBoundingBoxDescent: 4,
+        }));
+        const block: FlowBlock = {
+          kind: 'paragraph',
+          id: `bounded-initial-${_name}`,
+          attrs: {
+            alignment: 'right',
+            tabs: [
+              { val: 'center', pos: stop },
+              { val: 'end', pos: 9360 },
+            ],
+          },
+          runs: [
+            { text: prefix, fontFamily: 'Arial', fontSize: 16 },
+            { kind: 'tab', text: '\t' },
+            { text: suffix, fontFamily: 'Arial', fontSize: 16 },
+          ],
+        };
+        const source = structuredClone(block);
+        block.runs.forEach(Object.freeze);
+        Object.freeze(block.runs);
+        Object.freeze(block);
+        try {
+          clearTextMeasurementCaches();
+          clearMeasurementCache();
+          const measure = expectParagraphMeasure(await measureBlock(block, width));
+          expect.soft(measure.lines).toHaveLength(2);
+          expect.soft(measure.lines.every((line) => line.width <= width)).toBe(true);
+          expect
+            .soft(
+              measure.lines
+                .flatMap((line) => line.segments ?? [])
+                .every((segment) => (segment.x ?? 0) + segment.width <= width),
+            )
+            .toBe(true);
+          const chars = measure.lines.flatMap((line) =>
+            (line.segments ?? [])
+              .filter((segment) => segment.runIndex === 2)
+              .flatMap((segment) =>
+                Array.from({ length: segment.toChar - segment.fromChar }, (_, index) => segment.fromChar + index),
+              ),
+          );
+          expect
+            .soft(chars)
+            .toEqual(
+              Array.from({ length: suffix.length }, (_, index) => index).filter(
+                (index) => _name !== 'extra words' || index !== 7,
+              ),
+            );
+        } finally {
+          measureText.mockRestore();
+          clearTextMeasurementCaches();
+          clearMeasurementCache();
+        }
+        expect(block).toEqual(source);
+      },
+    );
+
+    it('keeps the two-tab date on the final custom stop without an extra translation', async () => {
+      const block: FlowBlock = {
+        kind: 'paragraph',
+        id: 'right-custom-date',
+        attrs: {
+          alignment: 'right',
+          tabs: [
+            { val: 'center', pos: 4680 },
+            { val: 'end', pos: 9360 },
+          ],
+        },
+        runs: [
+          { kind: 'tab', text: '\t' },
+          { kind: 'tab', text: '\t' },
+          { text: 'January 1, 2026', fontFamily: 'Times New Roman', fontSize: 16, bold: true },
+        ],
+      };
+      const line = expectParagraphMeasure(await measureBlock(block, 624)).lines[0];
+      const date = line.segments!.at(-1)!;
+      expect(date.x! + date.width).toBeCloseTo(624, 4);
+      expect(line.width).toBeCloseTo(624, 4);
+    });
+  });
   // Ensure we're in a jsdom environment
   beforeAll(() => {
     expect(typeof document).toBe('object');

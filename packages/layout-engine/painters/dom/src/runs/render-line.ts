@@ -1120,7 +1120,8 @@ function* renderExplicitlyPositionedRuns({
     if (baseRun.kind === 'tab') {
       // Find where the immediate next content begins (if it's right after this tab)
       const immediateNextSegment = findImmediateNextSegment(runIndex);
-      const tabStartX = cumulativeX;
+      const tabSegment = segmentsByRun.get(runIndex)?.[0];
+      const tabStartX = tabSegment?.x ?? cumulativeX;
       // When the line-level underline overlay owns this tab's underline, render the tab box
       // without its own border and let the overlay draw the mark; capture the tab's measured
       // span so the overlay covers exactly the geometry the tab occupies.
@@ -1136,10 +1137,10 @@ function* renderExplicitlyPositionedRuns({
         runContext.layoutEpoch,
         tabStartX,
         indentOffset,
-        immediateNextSegment,
+        tabSegment ? undefined : immediateNextSegment,
         styleId,
         !coveredByOverlay,
-        line.tabWidths?.[runIndex],
+        tabSegment?.width ?? line.tabWidths?.[runIndex],
       );
       runContext.applyTrackedChangeDecorations(tabEl, baseRun, trackedConfig);
       appendToLineGeo(tabEl, baseRun, tabStartX + indentOffset, actualTabWidth);
@@ -1321,8 +1322,23 @@ function* renderExplicitlyPositionedRuns({
         segmentOffset + (segment.toChar - segment.fromChar),
       );
 
-      const elem = renderRun(segmentRun, context, runContext, trackedConfig);
+      const literalTab = segmentText === '\t' && segment.x !== undefined;
+      const elem = literalTab
+        ? renderPositionedTabRun(
+            { ...segmentRun, kind: 'tab', text: '\t' },
+            line,
+            runContext.doc,
+            runContext.layoutEpoch,
+            segment.x!,
+            indentOffset,
+            undefined,
+            styleId,
+            !coveredByOverlay,
+            segment.width,
+          ).element
+        : renderRun(segmentRun, context, runContext, trackedConfig);
       if (elem) {
+        if (literalTab) runContext.applyTrackedChangeDecorations(elem, segmentRun, trackedConfig);
         if (
           spacingPerSpace !== 0 &&
           typeof segmentRun.horizontalScale === 'number' &&

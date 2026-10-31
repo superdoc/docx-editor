@@ -14,7 +14,6 @@ import CommentDialog from './CommentDialog.vue';
 import { isFiniteNumber } from '../../helpers/is-finite-number.js';
 import type { CommentModel } from './use-comment';
 import {
-  normalizeFloatingAnchorTop,
   resolveRemovedReviewCardContinuityTarget,
   resolveOffscreenFloatingCardTop,
   shouldMountFloatingCommentDialog,
@@ -320,7 +319,7 @@ const resolveFloatingInstanceId = (threadId: string | null, preferredInstanceId:
   }
 
   if (preferredInstanceId != null) {
-    const preferredInstance = matchingInstances.find((instance) => String(instance.id) === String(preferredInstanceId));
+    const preferredInstance = matchingInstances.find((instance) => instance.id === preferredInstanceId);
     if (preferredInstance) {
       return preferredInstance.id;
     }
@@ -396,13 +395,12 @@ const geometryBearingInstances = computed(() => {
     const threadId = getThreadId(instance?.comment);
     const anchorTop = getAnchorTop(instance);
     if (id == null || threadId == null || !isFiniteNumber(anchorTop)) continue;
-    const top = normalizeFloatingAnchorTop(anchorTop);
     positioned.push({
       id,
       threadId,
       instance,
-      top,
-      anchorBottom: getAnchorBottom(instance, top),
+      top: anchorTop,
+      anchorBottom: getAnchorBottom(instance, anchorTop),
     });
   }
   return positioned;
@@ -671,7 +669,7 @@ const measuredReviewContext = computed((): ReviewContextInput | null => {
   return {
     decisionContinuity: ownsContinuity ? { ...captured.request } : null,
     activeThreadId: activeComment.value == null ? null : String(activeComment.value),
-    activeInstanceId: activeCommentInstanceId.value == null ? null : String(activeCommentInstanceId.value),
+    activeInstanceId: activeCommentInstanceId.value,
     editingRowId: editingCommentId.value == null ? null : String(editingCommentId.value),
     retainedThreadIds: [],
     visibility: {
@@ -1118,7 +1116,7 @@ const prepareSidebarContinuityForDirectDecision = (event: MouseEvent) => {
 
   const removedElement = actionElement.closest?.('[data-comment-id]');
   const removedKey = removedElement?.getAttribute?.('data-comment-id');
-  if (!removedKey || String(activeCommentInstanceId.value ?? '') === String(removedKey)) return;
+  if (!removedKey || activeCommentInstanceId.value === removedKey) return;
 
   const previousIds = allPositions.value
     .filter((position) => position.commentRef?.trackedChange)

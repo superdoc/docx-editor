@@ -2,7 +2,7 @@ import { trackedChangeThreadParentIdForComment } from '../../components/Comments
 
 type CommentId = string | number;
 
-type TrackedChangeSideGroup = 'source' | 'destination';
+export type TrackedChangeSideGroup = 'source' | 'destination';
 
 type TrackedChangeLinkFields = {
   parentCommentId?: CommentId | null;
@@ -29,7 +29,9 @@ const trackedChangeSideGroup = (side: string | null | undefined): TrackedChangeS
   return null;
 };
 
-const trackedChangeRowSideGroup = (comment: { semanticColorKey?: string | null }): TrackedChangeSideGroup | null => {
+export const trackedChangeRowSideGroup = (comment: {
+  semanticColorKey?: string | null;
+}): TrackedChangeSideGroup | null => {
   if (comment.semanticColorKey === 'move-from') return 'source';
   if (comment.semanticColorKey === 'move-to') return 'destination';
   return null;

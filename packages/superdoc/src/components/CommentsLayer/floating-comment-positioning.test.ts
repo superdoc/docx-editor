@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vite-plus/test';
 import {
   isAnchorOutsideFloatingViewport,
-  normalizeFloatingAnchorTop,
   resolveRemovedReviewCardContinuityTarget,
   resolveOffscreenFloatingCardTop,
   shouldKeepFloatingCardAtAnchor,
@@ -9,16 +8,6 @@ import {
 } from './floating-comment-positioning.js';
 
 describe('floating comment positioning', () => {
-  it('keeps ordinary comments anchored at their document position', () => {
-    expect(normalizeFloatingAnchorTop(-240)).toBe(-240);
-    expect(normalizeFloatingAnchorTop(80)).toBe(80);
-  });
-
-  it('keeps tracked-change cards scroll-coupled to their document anchor', () => {
-    expect(normalizeFloatingAnchorTop(-240)).toBe(-240);
-    expect(normalizeFloatingAnchorTop(80)).toBe(80);
-  });
-
   it('detects anchors outside the floating viewport', () => {
     expect(isAnchorOutsideFloatingViewport(-20, 0, 620, -1)).toBe(true);
     expect(isAnchorOutsideFloatingViewport(-20, 0, 620, 10)).toBe(false);

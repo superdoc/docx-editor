@@ -1499,6 +1499,66 @@ describe('CommentDialog', () => {
       }
     });
 
+    it.each([
+      ['move-from', 'source'],
+      ['move-to', 'destination'],
+    ])('targets the %s side when replying on a tracked move card', async (semanticColorKey, side) => {
+      prepare('editing');
+      const comment = useComment({
+        commentId: `tc-${semanticColorKey}`,
+        trackedChange: true,
+        trackedChangeCanonicalId: 'move-1',
+        semanticColorKey,
+        fileId: 'doc-1',
+      });
+      commentsStore.commentsList = [comment];
+      commentsStore.activeComment = comment.commentId;
+      const reply = vi.spyOn(commentsStore, 'replyCommentV2').mockResolvedValue({ ok: true });
+      const wrapper = mountDialog(comment, { CommentHeader: false });
+      try {
+        await wrapper.find('.reply-pill').trigger('click');
+        commentsStore.currentCommentText = '<p>Move reply</p>';
+        await flushPromises();
+        await wrapper.find('button.reply-btn-primary').trigger('click');
+        await flushPromises();
+        expect(reply).toHaveBeenCalledOnce();
+        expect(reply.mock.calls[0][0].trackedChangeTarget).toMatchObject({
+          kind: 'trackedChange',
+          trackedChangeId: 'move-1',
+          side,
+        });
+      } finally {
+        wrapper.unmount();
+      }
+    });
+
+    it('sends no side when replying on a tracked change that is not a move', async () => {
+      prepare('editing');
+      const comment = useComment({
+        commentId: 'tc-insert',
+        trackedChange: true,
+        trackedChangeCanonicalId: 'insert-1',
+        semanticColorKey: 'insert',
+        fileId: 'doc-1',
+      });
+      commentsStore.commentsList = [comment];
+      commentsStore.activeComment = comment.commentId;
+      const reply = vi.spyOn(commentsStore, 'replyCommentV2').mockResolvedValue({ ok: true });
+      const wrapper = mountDialog(comment, { CommentHeader: false });
+      try {
+        await wrapper.find('.reply-pill').trigger('click');
+        commentsStore.currentCommentText = '<p>Insert reply</p>';
+        await flushPromises();
+        await wrapper.find('button.reply-btn-primary').trigger('click');
+        await flushPromises();
+        const target = reply.mock.calls[0][0].trackedChangeTarget;
+        expect(target).toMatchObject({ kind: 'trackedChange', trackedChangeId: 'insert-1' });
+        expect(target).not.toHaveProperty('side');
+      } finally {
+        wrapper.unmount();
+      }
+    });
+
     it.each(['editing', 'viewing'])('edits the own comment through its menu in %s mode', async (mode) => {
       const comment = prepare(mode);
       const edit = vi.spyOn(commentsStore, 'editCommentV2').mockResolvedValue({ ok: true });

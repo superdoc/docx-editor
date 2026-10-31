@@ -30,6 +30,10 @@ import { COMMENT_RECONCILIATION_TOKEN, type CommentModel } from './use-comment';
 import Avatar from '../general/Avatar.vue';
 import { renderCommentHtml } from './comment-urls.js';
 import { isFiniteNumber } from '../../helpers/is-finite-number.js';
+import {
+  trackedChangeRowSideGroup,
+  type TrackedChangeSideGroup,
+} from '../../stores/helpers/tracked-change-thread-index.js';
 
 type PositionBounds = { top?: number; left?: number; right?: number; bottom?: number };
 
@@ -82,7 +86,7 @@ type V2TrackedChangeCommentTarget = {
   kind: 'trackedChange';
   trackedChangeId: string;
   story?: CommentModel['trackedChangeStory'];
-  side?: 'source' | 'destination';
+  side?: TrackedChangeSideGroup;
 };
 
 type TrackedChangeBubbleHandler = (comment: CommentModel, editor: Editor | null) => void;
@@ -387,8 +391,8 @@ const getV2TrackedChangeCommentTarget = (comment: CommentModel) => {
 
   const target: V2TrackedChangeCommentTarget = { kind: 'trackedChange', trackedChangeId };
   if (comment.trackedChangeStory) target.story = comment.trackedChangeStory;
-  if (comment.semanticColorKey === 'move-from') target.side = 'source';
-  if (comment.semanticColorKey === 'move-to') target.side = 'destination';
+  const side = trackedChangeRowSideGroup(comment);
+  if (side) target.side = side;
   return target;
 };
 

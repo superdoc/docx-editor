@@ -1768,7 +1768,7 @@ export const useCommentsStore = defineStore('comments', () => {
    * @param {string | null} [param0.parentCommentId] The comment or tracked-change row being replied to.
    * @param {string} [param0.text] The reply text.
    * @param {Array<{ name?: string | null, email?: string | null }>} [param0.mentions] Users mentioned in the reply.
-   * @param {{ kind: 'trackedChange', trackedChangeId: string, story?: unknown, side?: 'source' | 'destination' }} [param0.trackedChangeTarget] The tracked change a first reply anchors to.
+   * @param {{ kind: 'trackedChange', trackedChangeId: string, story?: unknown, side?: import('./helpers/tracked-change-thread-index.js').TrackedChangeSideGroup }} [param0.trackedChangeTarget] The tracked change a first reply anchors to.
    */
   const replyCommentV2 = async ({ superdoc, parentCommentId, text, mentions = [], trackedChangeTarget } = {}) => {
     if (commentsAreReadOnly()) return readOnlyMutationOutcome();

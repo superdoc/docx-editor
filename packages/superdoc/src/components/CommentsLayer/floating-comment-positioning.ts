@@ -25,10 +25,6 @@ type RemovedReviewCardContinuityInput = {
   removedId: string | null | undefined;
 };
 
-export const normalizeFloatingAnchorTop = (top: number): number => {
-  return top;
-};
-
 export const isAnchorOutsideFloatingViewport = (
   anchorTop: OptionalNumber,
   viewportTop: OptionalNumber,
@@ -89,11 +85,11 @@ export const shouldMountFloatingCommentDialog = ({
     return true;
   }
 
-  if (activeCommentInstanceId != null && String(id) === String(activeCommentInstanceId)) {
+  if (activeCommentInstanceId != null && id === activeCommentInstanceId) {
     return true;
   }
 
-  if (visibleIds?.has?.(id)) {
+  if (visibleIds?.has(id)) {
     return true;
   }
 
@@ -105,7 +101,7 @@ export const resolveRemovedReviewCardContinuityTarget = ({
   currentIds,
   removedId,
 }: RemovedReviewCardContinuityInput): string | null => {
-  if (!Array.isArray(previousIds) || !(currentIds instanceof Set) || !removedId) return null;
+  if (!removedId) return null;
 
   const removedIndex = previousIds.indexOf(removedId);
   if (removedIndex < 0) return null;

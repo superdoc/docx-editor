@@ -58,4 +58,4 @@ export const toolbarTexts = {
   documentViewingModeDescription: 'View clean version of document only',
   linkedStyles: 'Linked styles',
   updateLinkedStyle: 'Update to match selection',
-};
+} satisfies Record<string, string>;

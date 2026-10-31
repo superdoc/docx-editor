@@ -1,4 +1,3 @@
-// @ts-check
 /**
  * The find/replace panel's settled-replace continuation.
  *
@@ -9,12 +8,20 @@
  * longer looking at.
  *
  * A leaf module rather than a closure inside `useFindReplace`, following
- * `find-shortcut-owner.js`. The guard previously lived in two byte-identical
+ * `find-shortcut-owner.ts`. The guard previously lived in two byte-identical
  * inline closures, each of which needed a full composable driving a
  * worker-backed host caught mid-swap to reach one branch. Nothing could, so it
  * shipped with a comment admitting it was verified by inspection only. The
  * duplication was the tell: logic worth stating twice is worth naming once.
  */
+
+type ReplaceSession = { getSnapshot: () => unknown };
+
+type ReplaceContinuationDeps<S extends ReplaceSession> = {
+  getCurrentSession: () => S | null;
+  applySlice: (snapshot: unknown) => void;
+  onSettled: () => void;
+};
 
 /**
  * Build the continuation that publishes a settled replace back into the panel.
@@ -22,15 +29,11 @@
  * The session handle itself is the identity. `onSettled` always runs, including
  * when the write is skipped: it clears the pending flag that gates the replace
  * controls, and leaving it set would disable them with nothing left to settle.
- *
- * @param {{ getSnapshot: () => unknown }} session The handle captured when the replace was issued.
- * @param {object} deps
- * @param {() => unknown} deps.getCurrentSession Reads the live session identity.
- * @param {(snapshot: unknown) => void} deps.applySlice Publishes a snapshot into the panel.
- * @param {() => void} deps.onSettled Runs whether or not the write was skipped.
- * @returns {() => void}
  */
-export function createReplaceContinuation(session, { getCurrentSession, applySlice, onSettled }) {
+export function createReplaceContinuation<S extends ReplaceSession>(
+  session: S,
+  { getCurrentSession, applySlice, onSettled }: ReplaceContinuationDeps<S>,
+): () => void {
   return () => {
     if (session === getCurrentSession()) {
       try {

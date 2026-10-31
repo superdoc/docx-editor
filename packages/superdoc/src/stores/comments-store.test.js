@@ -977,6 +977,59 @@ describe('comments-store open tracked-change presence', () => {
   });
 });
 
+describe('comments-store grouped comment sources', () => {
+  let store;
+
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    store = useCommentsStore();
+  });
+
+  it('applies viewing visibility to the grouped comments', () => {
+    store.commentsList = [
+      useComment(makeOpenRow({ commentId: 'c1', createdTime: 1 })),
+      makeTrackedChangeRow({ commentId: 'tc-1', createdTime: 2 }),
+    ];
+    store.setViewingVisibility({ documentMode: 'viewing', commentsVisible: false, trackChangesVisible: true });
+
+    expect(store.getGroupedComments.parentComments.map((row) => row.commentId)).toEqual(['tc-1']);
+
+    store.setViewingVisibility({ commentsVisible: true, trackChangesVisible: false });
+
+    expect(store.getGroupedComments.parentComments.map((row) => row.commentId)).toEqual(['c1']);
+  });
+
+  it('orders a presented document by its committed group order instead of created time', () => {
+    store.commentsList = [
+      useComment(makeOpenRow({ commentId: 'a', createdTime: 1 })),
+      useComment(makeOpenRow({ commentId: 'b', createdTime: 2 })),
+    ];
+
+    expect(store.getGroupedComments.parentComments.map((row) => row.commentId)).toEqual(['a', 'b']);
+
+    store.committedReviewPresentations = { 'doc-1': { groupOrder: { open: ['b', 'a'], resolved: [] } } };
+
+    expect(store.getGroupedComments.parentComments.map((row) => row.commentId)).toEqual(['b', 'a']);
+  });
+
+  it('groups the review directory from its own list under viewing visibility', () => {
+    store.commentsList = [useComment(makeOpenRow({ commentId: 'c1', createdTime: 1 }))];
+    store.reviewDirectoryList = [
+      useComment(makeOpenRow({ commentId: 'directory-comment', createdTime: 2 })),
+      makeTrackedChangeRow({ commentId: 'directory-tc', createdTime: 3 }),
+    ];
+
+    expect(store.getGroupedReviewDirectory.parentComments.map((row) => row.commentId)).toEqual([
+      'directory-comment',
+      'directory-tc',
+    ]);
+
+    store.setViewingVisibility({ documentMode: 'viewing', commentsVisible: false, trackChangesVisible: true });
+
+    expect(store.getGroupedReviewDirectory.parentComments.map((row) => row.commentId)).toEqual(['directory-tc']);
+  });
+});
+
 describe('comments-store v2 reopen mutation', () => {
   let store;
 

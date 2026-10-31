@@ -6,6 +6,7 @@ import { syncCommentsToClients } from '../core/collaboration/helpers.js';
 import useComment, { COMMENT_RECONCILIATION_TOKEN } from '@superdoc/components/CommentsLayer/use-comment';
 import { DOCUMENT_EDITOR_SELECTION_SOURCE } from '../helpers/selection-source.js';
 import { buildFloatingCommentInstances } from './helpers/floating-comment-instances.js';
+import { groupCommittedComments, groupComments, hasOpenTrackedChange } from './helpers/comment-grouping.js';
 import {
   isSyntheticTrackedChangeCommentLaneItem,
   isV2SyntheticTrackedChangeRow,
@@ -13,7 +14,6 @@ import {
 import { endInteractionSpan, startInteractionSpan, withInteractionSpan } from '../helpers/interaction-trace.js';
 import {
   buildTrackedChangeDecisionLinkIndex,
-  buildTrackedChangeThreadOwnerIndex,
   buildTrackedChangeThreadIndex,
 } from './helpers/tracked-change-thread-index.js';
 import { normalizeV2CommentDraftText } from './helpers/comment-draft-text.js';
@@ -905,97 +905,12 @@ export const useCommentsStore = defineStore('comments', () => {
       : { ok: false, reason: 'pending-comment-superseded' };
   };
 
-  /**
-   * Comparator that sorts comments by creation time (ascending).
-   *
-   * @param {Object} a - First comment
-   * @param {Object} b - Second comment
-   * @returns {number} Comparison result
-   */
-  const compareByCreatedTime = (a, b) => (a.createdTime ?? 0) - (b.createdTime ?? 0);
-
-  /**
-   * Generate the comments list separating resolved and active.
-   * We only return parent comments here, since CommentDialog.vue will handle threaded comments.
-   *
-   * @param {(a: Object, b: Object) => number} sorter - Comparator function for sorting comments
-   * @returns {{parentComments: Array, resolvedComments: Array}} Grouped and sorted comments
-   */
-  const buildGroupedCommentsFrom = (source, sorter) => {
-    const parentComments = [];
-    const resolvedComments = [];
-    const childCommentMap = new Map();
-    const trackedChangeThreadOwnerIndex = buildTrackedChangeThreadOwnerIndex(source);
-
-    source.forEach((comment) => {
-      if (!isThreadVisible(comment)) return;
-      const trackedChangeThreadParentId = trackedChangeThreadOwnerIndex.get(comment)?.commentId ?? null;
-      const parentId = comment.trackedChange ? null : comment.parentCommentId || trackedChangeThreadParentId;
-      // Track resolved comments
-      if (comment.resolvedTime) {
-        resolvedComments.push(comment);
-      }
-
-      // Track parent comments
-      else if (!parentId && !comment.resolvedTime) {
-        parentComments.push({ ...comment });
-      }
-
-      // Track child comments (threaded comments)
-      else if (parentId) {
-        if (!childCommentMap.has(parentId)) {
-          childCommentMap.set(parentId, []);
-        }
-        childCommentMap.get(parentId).push(comment);
-      }
-    });
-
-    // Return only parent comments
-    const sortedParentComments = parentComments.sort(sorter);
-    const sortedResolvedComments = resolvedComments.sort(sorter);
-
-    return {
-      parentComments: sortedParentComments,
-      resolvedComments: sortedResolvedComments,
-    };
-  };
-
-  const buildGroupedComments = (sorter) => {
-    const presentations = committedReviewPresentations.value;
-    if (!Object.keys(presentations).length) return buildGroupedCommentsFrom(commentsList.value, sorter);
-    const rows = new Map(
-      commentsList.value.map((row) => [JSON.stringify([String(row.fileId), String(row.commentId)]), row]),
-    );
-    const legacy = buildGroupedCommentsFrom(
-      commentsList.value.filter((row) => !presentations[String(row.fileId)]),
-      sorter,
-    );
-    for (const [documentId, presentation] of Object.entries(presentations)) {
-      legacy.parentComments.push(
-        ...presentation.groupOrder.open
-          .map((id) => rows.get(JSON.stringify([documentId, String(id)])))
-          .filter((row) => row && isThreadVisible(row)),
-      );
-      legacy.resolvedComments.push(
-        ...presentation.groupOrder.resolved
-          .map((id) => rows.get(JSON.stringify([documentId, String(id)])))
-          .filter((row) => row && isThreadVisible(row)),
-      );
-    }
-    return legacy;
-  };
-
-  /** @type {import('vue').ComputedRef<{parentComments: Array, resolvedComments: Array}>} Comments grouped and sorted by creation time */
-  const getGroupedComments = computed(() => buildGroupedComments(compareByCreatedTime));
-  const getGroupedReviewDirectory = computed(() =>
-    buildGroupedCommentsFrom(reviewDirectoryList.value, compareByCreatedTime),
+  const getGroupedComments = computed(() =>
+    groupCommittedComments(commentsList.value, committedReviewPresentations.value, isThreadVisible),
   );
+  const getGroupedReviewDirectory = computed(() => groupComments(reviewDirectoryList.value, isThreadVisible));
 
-  const hasOpenTrackedChanges = computed(
-    () =>
-      getGroupedComments.value?.parentComments.some((comment) => comment.trackedChange && !comment.resolvedTime) ??
-      false,
-  );
+  const hasOpenTrackedChanges = computed(() => hasOpenTrackedChange(getGroupedComments.value));
 
   const documentsWithConverations = computed(() => {
     return superdocStore.documents;

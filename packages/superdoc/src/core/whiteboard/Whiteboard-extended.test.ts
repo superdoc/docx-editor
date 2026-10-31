@@ -94,7 +94,6 @@ describe('Whiteboard extended', () => {
       const wb = new Whiteboard();
       wb.setPageSize(0, { width: 100, height: 100 });
       wb.setPageSize(1, { width: 100, height: 100 });
-      // render is a no-op without a stage — shouldn't throw
       expect(() => wb.rerender()).not.toThrow();
     });
   });

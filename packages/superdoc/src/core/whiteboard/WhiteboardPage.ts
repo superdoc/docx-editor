@@ -1017,6 +1017,7 @@ export class WhiteboardPage {
     this.#clearSelection();
 
     const textPosition = textNode.position();
+    const fill = textNode.fill ? textNode.fill() : undefined;
     const textarea = createTextarea({
       value: textNode.text(),
       left: textPosition.x,
@@ -1025,7 +1026,7 @@ export class WhiteboardPage {
       height: Math.max(textNode.height(), 24),
       fontSize: textNode.fontSize(),
       fontFamily: textNode.fontFamily(),
-      color: textNode.fill ? textNode.fill() : '#2293fb',
+      color: typeof fill === 'string' ? fill : '#2293fb',
       background: 'white',
       resize: 'both',
     });

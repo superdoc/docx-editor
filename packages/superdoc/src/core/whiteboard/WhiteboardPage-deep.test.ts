@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vite-plus/test';
 import { WhiteboardPage } from './WhiteboardPage.js';
 
-// Reuse a minimal Konva fake mirroring the primary test harness.
 const makeNode = () => {
   const listeners = new Map();
   let _name = '';
@@ -115,7 +114,6 @@ describe('WhiteboardPage: image async + transform paths', () => {
 
   beforeEach(() => {
     loadedImages = [];
-    // Stub window.Image to fire onload synchronously when src is set.
     window.Image = class {
       constructor() {
         this.onload = null;
@@ -123,15 +121,12 @@ describe('WhiteboardPage: image async + transform paths', () => {
         loadedImages.push(this);
       }
       set src(_value) {
-        // Trigger onload on next microtask to simulate image decode
         queueMicrotask(() => this.onload && this.onload());
       }
     };
   });
 
   afterEach(() => {
-    // Destroy mounted pages so the window keydown listeners they installed
-    // are removed. Leaking them across tests causes cross-test coupling.
     while (mountedPages.length) mountedPages.pop().destroy();
     while (mountedContainers.length) mountedContainers.pop().remove();
     window.Image = originalImage;
@@ -143,13 +138,11 @@ describe('WhiteboardPage: image async + transform paths', () => {
       images: [{ id: 'i1', xN: 0, yN: 0, src: '/x.png', type: 'image' }],
     });
     page.render();
-    // Flush microtasks so onload fires
     await Promise.resolve();
     expect(renderer.Image).toHaveBeenCalled();
   });
 
   it('image onerror clears pending state without creating a node', async () => {
-    // Override src setter to fire onerror instead
     window.Image = class {
       constructor() {
         this.onload = null;
@@ -175,7 +168,6 @@ describe('WhiteboardPage: image async + transform paths', () => {
     await Promise.resolve();
     const callsBefore = renderer.Image.mock.calls.length;
 
-    // Re-render with same id — should update existing, not recreate
     page.applyData({
       images: [{ id: 'i1', xN: 0.2, yN: 0.2, src: '/x.png', widthN: 0.5, heightN: 0.5 }],
     });
@@ -198,7 +190,6 @@ describe('WhiteboardPage: image async + transform paths', () => {
     const i1Node = createdNodes.find((n) => n._whiteboardId === 'i1');
     expect(i1Node).toBeDefined();
 
-    // Drop i1 from the model and re-render
     page.applyData({ images: [{ id: 'i2', xN: 0, yN: 0, src: '/b.png' }] });
     page.render();
     await Promise.resolve();
@@ -251,7 +242,6 @@ describe('WhiteboardPage: image async + transform paths', () => {
     const layer = stage._layers[0];
     const childCountBefore = layer._children.length;
     imageNode._listeners.get('click')({});
-    // Selection attaches a Transformer node to the visible layer
     expect(layer._children.length).toBe(childCountBefore + 1);
   });
 
@@ -292,6 +282,28 @@ describe('WhiteboardPage: image async + transform paths', () => {
     expect(textarea).not.toBeNull();
   });
 
+  it('text editor uses the node fill as its color', () => {
+    const { page, renderer, container } = mountPage();
+    page.setTool('select');
+    page.applyData({ text: [{ id: 't1', xN: 0, yN: 0, content: 'hi', fontSizeN: 0.1 }] });
+    page.render();
+    const textNode = renderer.Text.mock.results.at(-1).value;
+    textNode.fill.mockReturnValue('#ff0000');
+    textNode._listeners.get('dblclick')({});
+    expect(container.querySelector('textarea').style.color).toBe('#ff0000');
+  });
+
+  it('text editor falls back to the default color when the fill is a gradient', () => {
+    const { page, renderer, container } = mountPage();
+    page.setTool('select');
+    page.applyData({ text: [{ id: 't1', xN: 0, yN: 0, content: 'hi', fontSizeN: 0.1 }] });
+    page.render();
+    const textNode = renderer.Text.mock.results.at(-1).value;
+    textNode.fill.mockReturnValue({ addColorStop: vi.fn() });
+    textNode._listeners.get('dblclick')({});
+    expect(container.querySelector('textarea').style.color).toBe('#2293fb');
+  });
+
   it('dbl-click ignored when tool is not select', () => {
     const { page, renderer, container } = mountPage();
     page.setTool('draw');
@@ -324,7 +336,7 @@ describe('WhiteboardPage: image async + transform paths', () => {
     const textNode = renderer.Text.mock.results.at(-1).value;
     textNode._listeners.get('dblclick')({});
     const textarea = container.querySelector('textarea');
-    textarea.value = ''; // empty -> does not commit
+    textarea.value = '';
     textarea.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     expect(container.querySelector('textarea')).toBeNull();
     expect(page.text[0].content).toBe('hi');

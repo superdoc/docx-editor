@@ -1,4 +1,19 @@
-export function createTextarea(options = {}) {
+export type TextareaSize = number | string;
+
+export interface TextareaOptions {
+  value?: string;
+  left?: number;
+  top?: number;
+  width?: TextareaSize;
+  height?: TextareaSize;
+  fontSize?: TextareaSize;
+  fontFamily?: string;
+  color?: string;
+  background?: string;
+  resize?: string;
+}
+
+export function createTextarea(options: TextareaOptions = {}): HTMLTextAreaElement {
   const {
     value = '',
     left,
@@ -21,7 +36,7 @@ export function createTextarea(options = {}) {
   if (top != null) style.top = `${top}px`;
   if (width != null) style.width = typeof width === 'number' ? `${width}px` : width;
   if (height != null) style.height = typeof height === 'number' ? `${height}px` : height;
-  style.minWidth = 120;
+  style.minWidth = '120';
   style.fontSize = typeof fontSize === 'number' ? `${fontSize}px` : fontSize;
   style.fontFamily = fontFamily;
   style.color = color;

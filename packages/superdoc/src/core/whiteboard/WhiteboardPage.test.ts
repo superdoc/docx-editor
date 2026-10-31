@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vite-plus/test';
 import { WhiteboardPage } from './WhiteboardPage.js';
 
-/** Lightweight Konva fakes that record calls and fire registered listeners. */
 const makeNode = (extras = {}) => {
   const listeners = new Map();
   let _name = '';
@@ -272,7 +271,6 @@ describe('WhiteboardPage', () => {
       const page = makePage();
       const container = mountWithSize(page);
       expect(page._renderer?.Stage ?? page._Renderer ?? true).toBeTruthy();
-      // indirect check: the container is present
       expect(container).toBeInstanceOf(HTMLElement);
     });
 
@@ -336,7 +334,6 @@ describe('WhiteboardPage', () => {
   });
 
   describe('drawing interactions', () => {
-    // Helper to reach the stage instance captured by the Renderer mock
     const getStage = (renderer) => renderer.Stage.mock.results[0].value;
 
     it('draw start/move/end records a stroke and fires onChange', () => {
@@ -628,15 +625,10 @@ describe('WhiteboardPage', () => {
       });
       page.setSize({ width: 100, height: 100 });
       page.mount(document.body.appendChild(document.createElement('div')));
-      // Manually insert an image item with a loaded image node
       const item = { id: 'i1', xN: 0, yN: 0, src: '/x.png' };
       page.images.push(item);
-      // Simulate render that triggers image load callback
       page.render();
       const imageConstructors = renderer.Image.mock.results.length;
-      // The image is loaded asynchronously via `new window.Image()` + onload
-      // For coverage, directly trigger onload by invoking our Image mock listener.
-      // Not trivially testable here, so assert render does not throw.
       expect(() => page.render()).not.toThrow();
     });
   });
@@ -652,7 +644,6 @@ describe('WhiteboardPage', () => {
         images: [],
       });
       mountWithSize(page);
-      // directly invoke keydown handler while no selection — early return, no throw
       const event = new KeyboardEvent('keydown', { key: 'Delete' });
       window.dispatchEvent(event);
       expect(onChange).not.toHaveBeenCalled();
@@ -671,7 +662,6 @@ describe('WhiteboardPage', () => {
       const e = new KeyboardEvent('keydown', { key: 'Delete' });
       Object.defineProperty(e, 'target', { value: target });
       window.dispatchEvent(e);
-      // The text item was NOT deleted because the keydown came from an input element
       expect(page.text.find((t) => t.id === 't1')).toBeDefined();
       expect(onChange).not.toHaveBeenCalled();
       target.remove();

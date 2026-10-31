@@ -18,8 +18,8 @@
   "internal/toolbar/built-in-toolbar.ts": {
     "firstParty": 2
   },
-  "internal/toolbar/built-in/default-items.js": {
-    "firstParty": 6
+  "internal/toolbar/built-in/default-items.ts": {
+    "firstParty": 4
   },
   "internal/toolbar/built-in/LinkInput.vue": {
     "firstParty": 2

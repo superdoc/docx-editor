@@ -1,4 +1,12 @@
 import { h } from 'vue';
+import type { Component, Ref, StyleValue } from 'vue';
+import type {
+  HeaderFooterKind,
+  HeaderFooterPageNumberAlignment,
+  SelectionInfo,
+  SelectionTarget,
+  TextTarget,
+} from '@superdoc/document-api';
 
 import { sanitizeNumber } from './helpers';
 import { normalizeFontOption } from './font-options.js';
@@ -22,26 +30,158 @@ import { executeFirstPartyCommandAsync, readFirstPartyPageNumbers } from '../../
 import checkIconSvg from '@superdoc/common/icons/check.svg?raw';
 import { RESPONSIVE_BREAKPOINTS, TOOLBAR_FONTS, TOOLBAR_FONT_SIZES } from './constants.js';
 import { tableActionCommandId } from '../compatibility-catalog.js';
+import type { BuiltInToolbar, ToolbarItem, ToolbarItemOption } from '../built-in-toolbar.js';
+import type { CommandExecutionResult, SelectionSlice } from '../../../public/ui/types.js';
+import { isPlainObject } from '../../../helpers/object-guards.js';
+import { toolbarIcons as builtInToolbarIcons } from './toolbarIcons.js';
+import { toolbarTexts as builtInToolbarTexts } from './toolbarTexts.js';
 
-const closeDropdown = (dropdown) => {
+type ToolbarItemAttributes = ToolbarItem['attributes']['value'];
+
+type DefaultToolbarItem = ToolbarItem & {
+  layoutWidth?: Ref<number | undefined>;
+  childItem?: unknown;
+  parentItem?: unknown;
+};
+
+type ActivationAttributes = Record<string, unknown>;
+
+interface DefaultItemOptions {
+  type: 'button' | 'options' | 'separator' | 'dropdown' | 'overflow';
+  name: string;
+  command?: string | null;
+  noArgumentCommand?: string;
+  splitButton?: boolean;
+  splitButtonCommand?: string;
+  icon?: string;
+  tooltip?: string;
+  group?: string;
+  allowWithoutEditor?: boolean;
+  attributes?: ToolbarItemAttributes;
+  disabled?: boolean;
+  active?: boolean;
+  style?: StyleValue;
+  dropdownStyles?: StyleValue;
+  defaultLabel?: string;
+  label?: string;
+  markName?: string;
+  labelAttr?: string;
+  hasCaret?: boolean;
+  hasInlineTextInput?: boolean;
+  inlineTextInputVisible?: boolean;
+  isWide?: boolean;
+  isNarrow?: boolean;
+  hideLabel?: boolean;
+  suppressActiveHighlight?: boolean;
+  restoreEditorFocus?: boolean;
+  dropdownValueKey?: string;
+  selectedValue?: string;
+  options?: ToolbarItemOption[];
+  onActivate?: (attributes: ActivationAttributes, isMultiple?: boolean) => void;
+  onDeactivate?: () => void;
+}
+
+const defaultToolbarItem = (options: DefaultItemOptions): DefaultToolbarItem => useToolbarItem(options);
+
+type DefaultItemsToolbar = Pick<
+  BuiltInToolbar,
+  | 'config'
+  | 'ui'
+  | 'superdoc'
+  | 'activeEditor'
+  | 'pendingSelectionCapture'
+  | 'emitCommand'
+  | 'isCommandEnabled'
+  | 'getLinkedStyleOptions'
+  | 'getActiveLinkedStyleId'
+  | 'updateLinkedStyleToMatchSelection'
+>;
+
+type ToolbarStrings = Readonly<Partial<Record<string, string>>>;
+
+interface DefaultItemsInput {
+  superToolbar: DefaultItemsToolbar;
+  toolbarIcons: Readonly<Record<string, unknown>>;
+  toolbarTexts: Readonly<Record<string, unknown>>;
+  toolbarFonts?: readonly FontOption[] | null;
+  hideButtons: boolean;
+  availableWidth: number;
+  role: string;
+  isDev?: boolean;
+  configuredItemNames?: ReadonlySet<string> | null;
+  configuredItemOrder?: readonly string[] | null;
+  excludedItemNames?: ReadonlySet<string> | null;
+  additionalItems?: readonly DefaultToolbarItem[];
+}
+
+type FontOption = {
+  label: string;
+  key: string;
+  value?: string;
+  props?: { style?: { fontFamily?: string; [key: string]: unknown }; [key: string]: unknown };
+};
+
+type SelectionSnapshot = SelectionSlice | SelectionInfo;
+
+interface RememberedPageNumberChoice {
+  position: 'top' | 'bottom';
+  alignment: HeaderFooterPageNumberAlignment | null;
+  showOnFirstPage: boolean;
+}
+
+type PageNumberMenuOutcome =
+  | { action: 'apply'; choice: RememberedPageNumberChoice }
+  | { action: 'remove'; kinds: HeaderFooterKind[] }
+  | { action: 'cursor' };
+
+interface DocumentModeOption {
+  label: string | undefined;
+  value: string;
+  icon: string | undefined;
+  description: string | undefined;
+}
+
+const SEPARATOR_WIDTH = 20;
+const DEFAULT_CONTROL_WIDTH = 32;
+
+const controlSizes: ReadonlyMap<string, number> = new Map([
+  ['separator', SEPARATOR_WIDTH],
+  ['zoom', 71],
+  ['measurementUnit', 52],
+  ['fontFamily', 118],
+  ['fontSize', 57],
+  ['textAlign', 40],
+  ['linkedStyles', 142],
+  ['documentMode', 47],
+  ['default', DEFAULT_CONTROL_WIDTH],
+]);
+
+function stringEntries(
+  record: Readonly<Record<string, unknown>>,
+  builtIn: Readonly<Record<string, string>>,
+): ToolbarStrings {
+  const strings: Partial<Record<string, string>> = { ...builtIn };
+  for (const [key, value] of Object.entries(record)) {
+    if (typeof value === 'string') strings[key] = value;
+  }
+  return strings;
+}
+
+const closeDropdown = (dropdown: Pick<ToolbarItem, 'expand'>) => {
   dropdown.expand.value = false;
 };
 
-const getToolbarItemWidth = (item, controlSizes) => {
+const getToolbarItemWidth = (item: DefaultToolbarItem): number => {
   const configuredWidth = item.layoutWidth?.value;
-  if (Number.isFinite(configuredWidth) && configuredWidth > 0) return configuredWidth;
-  if (item.type === 'separator') return controlSizes.get('separator');
-  return controlSizes.get(item.name.value) || controlSizes.get('default');
+  if (typeof configuredWidth === 'number' && Number.isFinite(configuredWidth) && configuredWidth > 0) {
+    return configuredWidth;
+  }
+  if (item.type === 'separator') return SEPARATOR_WIDTH;
+  return controlSizes.get(item.name.value) || DEFAULT_CONTROL_WIDTH;
 };
 
-// A run of one-or-more separators is only meaningful when it has a real,
-// visible control on both sides *within the same rendered group* -- Toolbar.vue
-// renders left/center/right as three independent lists, so a separator flanked
-// by a different-group neighbor in the raw sequence can still be an orphan edge
-// item once its own group is rendered alone. Collapse to at most one separator
-// per boundary, and drop any separator with nothing left to divide.
-const collapseSeparatorRun = (items) => {
-  const result = [];
+const collapseSeparatorRun = (items: DefaultToolbarItem[]) => {
+  const result: DefaultToolbarItem[] = [];
   for (const item of items) {
     if (item.type === 'separator') {
       const previous = result[result.length - 1];
@@ -55,15 +195,16 @@ const collapseSeparatorRun = (items) => {
   return result;
 };
 
-const normalizeSeparators = (items) => {
-  const byGroup = new Map();
+const normalizeSeparators = (items: DefaultToolbarItem[]) => {
+  const byGroup = new Map<string, DefaultToolbarItem[]>();
   for (const item of items) {
     const group = item.group?.value || 'center';
-    if (!byGroup.has(group)) byGroup.set(group, []);
-    byGroup.get(group).push(item);
+    const groupItems = byGroup.get(group);
+    if (groupItems) groupItems.push(item);
+    else byGroup.set(group, [item]);
   }
 
-  const kept = new Set();
+  const kept = new Set<DefaultToolbarItem>();
   for (const groupItems of byGroup.values()) {
     for (const item of collapseSeparatorRun(groupItems)) kept.add(item);
   }
@@ -71,37 +212,23 @@ const normalizeSeparators = (items) => {
   return items.filter((item) => kept.has(item));
 };
 
-// The overflow trigger isn't yet decided to be visible at this point --
-// `partitionItems` excludes it from the width walk and only splices it back in
-// conditionally -- so it must not count as a neighbor that "saves" an adjacent
-// separator here, or that separator gets charged width it may never need.
-const normalizeSeparatorsIgnoringOverflow = (items) => {
+const normalizeSeparatorsIgnoringOverflow = (items: DefaultToolbarItem[]) => {
   const overflowTrigger = items.find((item) => item.type === 'overflow');
   const withoutOverflow = items.filter((item) => item !== overflowTrigger);
   const kept = new Set(normalizeSeparators(withoutOverflow));
   return items.filter((item) => item === overflowTrigger || kept.has(item));
 };
 
-/**
- * Set or clear the link item's `href` without disturbing the rest of its
- * attributes. The static configuration (`ariaLabel`, and anything added later)
- * lives in the same object as the transient href, so rebuilding that object
- * from the keys a caller knows about silently drops the others.
- *
- * Exported because the built-in toolbar's `updateToolbarState()` writes the
- * href on its own path, without going through this item's handlers. Both
- * callers share this one rule so the two cannot drift apart.
- */
-export function withLinkHref(attributes, href) {
+export function withLinkHref(attributes: ToolbarItemAttributes, href: unknown): ToolbarItemAttributes {
   const next = { ...attributes };
   if (href) next.href = href;
   else delete next.href;
   return next;
 }
 
-function selectionTargetFromTextTarget(target) {
+function selectionTargetFromTextTarget(target: TextTarget | null | undefined): SelectionTarget | null {
   const segments = Array.isArray(target?.segments) ? target.segments : [];
-  if (target?.kind !== 'text' || !segments.length) return null;
+  if (!target || target.kind !== 'text' || !segments.length) return null;
   const first = segments[0];
   const last = segments[segments.length - 1];
   if (!first?.blockId || !last?.blockId || !first.range || !last.range) return null;
@@ -124,28 +251,41 @@ function selectionTargetFromTextTarget(target) {
   };
 }
 
-function selectionText(selection) {
-  if (typeof selection?.quotedText === 'string') return selection.quotedText;
-  if (typeof selection?.text === 'string') return selection.text;
+function quotedTextOf(selection: SelectionSnapshot | null | undefined): string | undefined {
+  return selection && 'quotedText' in selection ? selection.quotedText : undefined;
+}
+
+function selectionText(selection: SelectionSnapshot | null): string {
+  const quotedText = quotedTextOf(selection);
+  if (typeof quotedText === 'string') return quotedText;
+  if (selection && 'text' in selection && typeof selection.text === 'string') return selection.text;
   return '';
 }
 
-function currentSelectionSnapshot(superToolbar) {
+function currentSelectionSnapshot(superToolbar: DefaultItemsToolbar): SelectionSnapshot | null {
   return superToolbar.ui?.selection?.get?.() ?? superToolbar.ui?.selection?.current?.() ?? null;
 }
 
-function hasAiModule(superToolbar) {
-  return Boolean(superToolbar.config?.superdoc?.config?.modules?.ai || superToolbar.superdoc?.config?.modules?.ai);
+function readMember(value: unknown, key: string): unknown {
+  return isPlainObject(value) ? value[key] : undefined;
 }
 
-function aiModuleConfig(superToolbar) {
-  return superToolbar.config?.superdoc?.config?.modules?.ai ?? superToolbar.superdoc?.config?.modules?.ai ?? {};
+function configuredAiModule(superToolbar: DefaultItemsToolbar): unknown {
+  return readMember(readMember(readMember(readMember(superToolbar.config, 'superdoc'), 'config'), 'modules'), 'ai');
+}
+
+function hasAiModule(superToolbar: DefaultItemsToolbar) {
+  return Boolean(configuredAiModule(superToolbar) || superToolbar.superdoc?.config?.modules?.ai);
+}
+
+function aiModuleConfig(superToolbar: DefaultItemsToolbar): unknown {
+  return configuredAiModule(superToolbar) ?? superToolbar.superdoc?.config?.modules?.ai ?? {};
 }
 
 export const makeDefaultItems = ({
   superToolbar,
-  toolbarIcons,
-  toolbarTexts,
+  toolbarIcons: configuredIcons,
+  toolbarTexts: configuredTexts,
   toolbarFonts,
   hideButtons,
   availableWidth,
@@ -155,9 +295,10 @@ export const makeDefaultItems = ({
   configuredItemOrder,
   excludedItemNames,
   additionalItems = [],
-} = {}) => {
-  // bold
-  const bold = useToolbarItem({
+}: DefaultItemsInput): { defaultItems: DefaultToolbarItem[]; overflowItems: DefaultToolbarItem[] } => {
+  const toolbarIcons = stringEntries(configuredIcons, builtInToolbarIcons);
+  const toolbarTexts = stringEntries(configuredTexts, builtInToolbarTexts);
+  const bold = defaultToolbarItem({
     type: 'button',
     name: 'bold',
     command: 'toggleBold',
@@ -168,9 +309,8 @@ export const makeDefaultItems = ({
     },
   });
 
-  // font
-  const fontOptions = (toolbarFonts ?? TOOLBAR_FONTS).map(normalizeFontOption);
-  const fontButton = useToolbarItem({
+  const fontOptions: FontOption[] = (toolbarFonts ?? TOOLBAR_FONTS).map(normalizeFontOption);
+  const fontButton = defaultToolbarItem({
     type: 'dropdown',
     name: 'fontFamily',
     tooltip: toolbarTexts.fontFamily,
@@ -191,25 +331,24 @@ export const makeDefaultItems = ({
     options: fontOptions,
     onActivate: ({ fontFamily } = {}, isMultiple = false) => {
       if (isMultiple) {
-        // A selection spanning multiple font families shows a blank field.
         fontButton.label.value = '';
         fontButton.selectedValue.value = '';
         return;
       }
 
-      if (!fontFamily) return;
-      fontFamily = fontFamily.split(',')[0]; // in case of fonts with fallbacks
-      const optionValue = (option) => option.value ?? option.label;
+      if (typeof fontFamily !== 'string' || !fontFamily) return;
+      const family = fontFamily.split(',')[0];
+      const optionValue = (option: FontOption) => option.value ?? option.label;
       const defaultFont = fontOptions.find((option) => optionValue(option) === fontButton.defaultLabel.value);
-      const foundFont = fontOptions.find((option) => optionValue(option) === fontFamily);
+      const foundFont = fontOptions.find((option) => optionValue(option) === family);
       if (foundFont) {
         fontButton.label.value = foundFont.label;
         fontButton.selectedValue.value = foundFont.key;
       } else if (defaultFont) {
-        fontButton.label.value = fontFamily;
+        fontButton.label.value = family;
         fontButton.selectedValue.value = defaultFont.key;
       } else {
-        fontButton.label.value = fontFamily;
+        fontButton.label.value = family;
         fontButton.selectedValue.value = '';
       }
     },
@@ -222,7 +361,7 @@ export const makeDefaultItems = ({
     },
   });
 
-  const aiButton = useToolbarItem({
+  const aiButton = defaultToolbarItem({
     type: 'dropdown',
     name: 'ai',
     dropdownStyles: {
@@ -247,7 +386,7 @@ export const makeDefaultItems = ({
     ],
   });
 
-  function renderAiDropdown(aiButton) {
+  function renderAiDropdown(aiButton: DefaultToolbarItem) {
     const selection = currentSelectionSnapshot(superToolbar);
     const selectionTarget = selection?.selectionTarget ?? selectionTargetFromTextTarget(selection?.target);
     const selectedText = selection?.empty ? '' : selectionText(selection);
@@ -261,28 +400,24 @@ export const makeDefaultItems = ({
     };
 
     return h('div', {}, [
-      h(AIWriter, {
+      h(AIWriter as Component, {
         handleClose: close,
         selectedText,
         target: selectionTarget,
         doc: superToolbar.superdoc?.activeEditor?.doc ?? null,
-        apiKey: config?.apiKey || superToolbar.config?.aiApiKey || '',
-        endpoint: config?.endpoint || superToolbar.config?.aiEndpoint || '',
+        apiKey: readMember(config, 'apiKey') || readMember(superToolbar.config, 'aiApiKey') || '',
+        endpoint: readMember(config, 'endpoint') || readMember(superToolbar.config, 'aiEndpoint') || '',
         restoreSelection,
       }),
     ]);
   }
 
-  // font size
   const fontSizeOptions = TOOLBAR_FONT_SIZES;
-  const fontSize = useToolbarItem({
+  const fontSize = defaultToolbarItem({
     type: 'dropdown',
     name: 'fontSize',
     defaultLabel: '12',
     label: '12',
-    // Fixed width keeps the combobox (input + chevron) from collapsing and holds
-    // the toolbar layout stable as the size label changes. Mirrors fontFamily's
-    // `style.width`; the combobox reads `item.style` for its root sizing.
     style: { width: '56px' },
     markName: 'textStyle',
     labelAttr: 'fontSize',
@@ -299,7 +434,6 @@ export const makeDefaultItems = ({
     options: fontSizeOptions,
     onActivate: ({ fontSize: size }, isMultiple = false) => {
       if (isMultiple) {
-        // if there are multiple sizes in the selection.
         fontSize.label.value = '';
         fontSize.selectedValue.value = '';
         return;
@@ -313,7 +447,7 @@ export const makeDefaultItems = ({
         return;
       }
 
-      let sanitizedValue = sanitizeNumber(size, 12);
+      let sanitizedValue: number = sanitizeNumber(size, 12);
       if (sanitizedValue < 8) sanitizedValue = 8;
       if (sanitizedValue > 96) sanitizedValue = 96;
       let sanitizedValueStr = String(sanitizedValue);
@@ -327,7 +461,6 @@ export const makeDefaultItems = ({
         fontSize.selectedValue.value = '';
       }
 
-      // no units
       fontSize.label.value = sanitizedValueStr;
     },
     onDeactivate: () => {
@@ -338,16 +471,14 @@ export const makeDefaultItems = ({
     },
   });
 
-  // ButtonGroup keys siblings by item ID, so every separator slot needs its own item.
   const createSeparator = () =>
-    useToolbarItem({
+    defaultToolbarItem({
       type: 'separator',
       name: 'separator',
       isNarrow: true,
     });
 
-  // italic
-  const italic = useToolbarItem({
+  const italic = defaultToolbarItem({
     type: 'button',
     name: 'italic',
     command: 'toggleItalic',
@@ -359,8 +490,7 @@ export const makeDefaultItems = ({
     },
   });
 
-  // underline
-  const underline = useToolbarItem({
+  const underline = defaultToolbarItem({
     type: 'button',
     name: 'underline',
     command: 'toggleUnderline',
@@ -372,7 +502,7 @@ export const makeDefaultItems = ({
     },
   });
 
-  const strikethrough = useToolbarItem({
+  const strikethrough = defaultToolbarItem({
     type: 'button',
     name: 'strike',
     command: 'toggleStrike',
@@ -384,8 +514,7 @@ export const makeDefaultItems = ({
     },
   });
 
-  // highlight
-  const highlight = useToolbarItem({
+  const highlight = defaultToolbarItem({
     type: 'dropdown',
     name: 'highlight',
     icon: toolbarIcons.highlight,
@@ -408,13 +537,12 @@ export const makeDefaultItems = ({
       },
     ],
     onActivate: ({ color }) => {
-      highlight.iconColor.value = color || '';
+      highlight.iconColor.value = typeof color === 'string' ? color : '';
     },
     onDeactivate: () => (highlight.iconColor.value = ''),
   });
 
-  // color
-  const colorButton = useToolbarItem({
+  const colorButton = defaultToolbarItem({
     type: 'dropdown',
     name: 'color',
     icon: toolbarIcons.color,
@@ -436,17 +564,12 @@ export const makeDefaultItems = ({
       },
     ],
     onActivate: ({ color }) => {
-      colorButton.iconColor.value = color;
+      colorButton.iconColor.value = typeof color === 'string' ? color : undefined;
     },
     onDeactivate: () => (colorButton.iconColor.value = '#000'),
   });
 
-  // search — a plain button that opens the shared find/replace surface (the
-  // same one Cmd/Ctrl+F opens). SuperToolbar.emitCommand routes the 'search'
-  // click to a `search:open` event on the SuperDoc instance, which the shell
-  // handles by opening the surface. This replaces the older inline toolbar
-  // search popover so there is a single search UI.
-  const search = useToolbarItem({
+  const search = defaultToolbarItem({
     type: 'button',
     name: 'search',
     allowWithoutEditor: true,
@@ -459,8 +582,7 @@ export const makeDefaultItems = ({
     },
   });
 
-  // link
-  const link = useToolbarItem({
+  const link = defaultToolbarItem({
     type: 'dropdown',
     name: 'link',
     markName: 'link',
@@ -477,13 +599,6 @@ export const makeDefaultItems = ({
         render: () => renderLinkDropdown(link),
       },
     ],
-    // `attributes` mixes the transient `href` with everything static the item
-    // was configured with, `ariaLabel` among it. These handlers replaced the
-    // whole object to record an href, dropping the rest; because the toolbar
-    // calls `deactivate()` on every state sync, the control lost its accessible
-    // name on the first refresh and the live region announced "undefined unset".
-    // Carry the existing attributes forward so this stays correct for whatever
-    // the item is configured with, not just the two keys it has today.
     onActivate: ({ href }) => {
       link.attributes.value = withLinkHref(link.attributes.value, href);
     },
@@ -493,15 +608,12 @@ export const makeDefaultItems = ({
     },
   });
 
-  function renderLinkDropdown(link) {
-    // Capture the selection the user had before opening the dropdown so the link
-    // command wraps the highlighted text, not a stale/collapsed selection. Mirrors
-    // the AI dropdown: `textTarget` pins the range explicitly and `restoreSelection`
-    // re-applies the toolbar's pre-interaction capture before the command runs.
+  function renderLinkDropdown(link: DefaultToolbarItem) {
     const capture = superToolbar.pendingSelectionCapture;
     const liveSelection = currentSelectionSnapshot(superToolbar);
     const selection =
-      liveSelection?.quotedText &&
+      liveSelection &&
+      quotedTextOf(liveSelection) &&
       JSON.stringify(liveSelection.selectionTarget ?? liveSelection.target) !==
         JSON.stringify(capture?.selectionTarget ?? capture?.target)
         ? liveSelection
@@ -509,17 +621,17 @@ export const makeDefaultItems = ({
     const selectionTarget =
       selection?.selectionTarget ?? selectionTargetFromTextTarget(selection?.target) ?? selection?.target;
     const restoreSelection = () => {
-      if (selection === capture && typeof superToolbar.ui?.selection?.restore === 'function') {
+      if (capture && selection === capture && typeof superToolbar.ui?.selection?.restore === 'function') {
         superToolbar.ui.selection.restore(capture);
       }
     };
 
     return h('div', {}, [
-      h(LinkInput, {
+      h(LinkInput as Component, {
         ui: superToolbar.ui,
         linkItem: link,
         textTarget: selectionTarget,
-        selectedText: selection?.quotedText ?? null,
+        selectedText: quotedTextOf(selection) ?? null,
         restoreSelection,
         closePopover: () => {
           closeDropdown(link);
@@ -528,10 +640,8 @@ export const makeDefaultItems = ({
         goToAnchor: () => {
           closeDropdown(link);
           const href = link.attributes.value?.href;
-          if (!href) return;
+          if (typeof href !== 'string' || !href) return;
           const anchorName = href.slice(1);
-          // Best-effort in-document anchor navigation through the public host
-          // viewport surface; no-ops when the host element is unavailable.
           const container = superToolbar.ui?.viewport?.getHost?.() ?? null;
           const anchor = container?.querySelector?.(`a[name='${anchorName}']`);
           if (anchor) scrollToElement(anchor);
@@ -540,7 +650,7 @@ export const makeDefaultItems = ({
     ]);
   }
 
-  const linkInput = useToolbarItem({
+  const linkInput = defaultToolbarItem({
     type: 'options',
     name: 'linkInput',
     command: 'toggleLink',
@@ -549,8 +659,7 @@ export const makeDefaultItems = ({
   link.childItem = linkInput;
   linkInput.parentItem = link;
 
-  // image
-  const image = useToolbarItem({
+  const image = defaultToolbarItem({
     type: 'button',
     name: 'image',
     command: 'startImageUpload',
@@ -563,7 +672,7 @@ export const makeDefaultItems = ({
     },
   });
 
-  const tableOfContents = useToolbarItem({
+  const tableOfContents = defaultToolbarItem({
     type: 'button',
     name: 'tableOfContents',
     command: 'insertTableOfContents',
@@ -576,7 +685,7 @@ export const makeDefaultItems = ({
     },
   });
 
-  const watermark = useToolbarItem({
+  const watermark = defaultToolbarItem({
     type: 'button',
     name: 'watermark',
     icon: toolbarIcons.watermark,
@@ -586,7 +695,7 @@ export const makeDefaultItems = ({
     attributes: { ariaLabel: toolbarTexts.watermark },
   });
 
-  const pageNumber = useToolbarItem({
+  const pageNumber = defaultToolbarItem({
     type: 'dropdown',
     name: 'pageNumber',
     icon: toolbarIcons.pageNumber,
@@ -605,35 +714,40 @@ export const makeDefaultItems = ({
     ],
   });
 
-  // The choice survives closing the popover, so adding numbers again starts
-  // from the last position the user picked.
-  let lastPageNumberChoice = null;
+  let lastPageNumberChoice: RememberedPageNumberChoice | null = null;
 
-  function renderPageNumberMenu(item) {
+  function renderPageNumberMenu(item: DefaultToolbarItem) {
     const ui = superToolbar.ui;
-    const commandState = (id) => ui?.commands?.get?.(id)?.getState?.() ?? null;
+    const commandState = (id: string) => ui?.commands?.get?.(id)?.getState?.() ?? null;
+    const runCommand = (id: string, payload?: unknown): Promise<CommandExecutionResult> => {
+      if (!ui) throw new TypeError(`Cannot run ${id} without a SuperDoc UI controller`);
+      return executeFirstPartyCommandAsync(ui, id, payload);
+    };
     const finish = () => {
       closeDropdown(item);
-      // A completed action from the overflow menu also closes that menu.
       if (overflow.expand.value) closeDropdown(overflow);
       refocusEditorSurface(superToolbar);
     };
 
     const selection = currentSelectionSnapshot(superToolbar);
+    const start = selection?.selectionTarget?.start;
     const story =
-      selection?.selectionTarget?.story ?? selection?.selectionTarget?.start?.story ?? selection?.target?.story ?? null;
+      selection?.selectionTarget?.story ??
+      (start && 'story' in start ? start.story : undefined) ??
+      selection?.target?.story ??
+      null;
 
-    return h(PageNumberMenu, {
+    return h(PageNumberMenu as Component, {
       pageNumbersState: commandState('page-numbers-apply'),
       atCursorState: commandState('page-number-insert'),
       inHeaderFooter: story?.storyType === 'headerFooterPart' || story?.storyType === 'headerFooterSlot',
       suggesting: ui?.document?.getSnapshot?.()?.mode === 'suggesting',
       initialChoice: lastPageNumberChoice,
       loadCurrent: () => (ui ? readFirstPartyPageNumbers(ui) : Promise.resolve(null)),
-      applyPageNumbers: (choice) => executeFirstPartyCommandAsync(ui, 'page-numbers-apply', choice),
-      removePageNumbers: () => executeFirstPartyCommandAsync(ui, 'page-numbers-remove'),
-      insertAtCursor: () => executeFirstPartyCommandAsync(ui, 'page-number-insert'),
-      close: (outcome) => {
+      applyPageNumbers: (choice: unknown) => runCommand('page-numbers-apply', choice),
+      removePageNumbers: () => runCommand('page-numbers-remove'),
+      insertAtCursor: () => runCommand('page-number-insert'),
+      close: (outcome: PageNumberMenuOutcome | null | undefined) => {
         finish();
         const host = ui?.viewport?.getHost?.();
         if (outcome?.action === 'apply') {
@@ -646,8 +760,7 @@ export const makeDefaultItems = ({
     });
   }
 
-  // table
-  const tableItem = useToolbarItem({
+  const tableItem = defaultToolbarItem({
     type: 'dropdown',
     name: 'table',
     icon: toolbarIcons.table,
@@ -669,22 +782,21 @@ export const makeDefaultItems = ({
     ],
   });
 
-  function renderTableGrid(tableItem) {
-    const handleSelect = (e) => {
+  function renderTableGrid(tableItem: DefaultToolbarItem) {
+    const handleSelect = (e: unknown) => {
       superToolbar.emitCommand({ item: tableItem, argument: e });
       closeDropdown(tableItem);
       refocusEditorSurface(superToolbar);
     };
 
     return h('div', {}, [
-      h(TableGrid, {
+      h(TableGrid as Component, {
         onSelect: handleSelect,
       }),
     ]);
   }
 
-  // table actions
-  const tableActionsItem = useToolbarItem({
+  const tableActionsItem = defaultToolbarItem({
     type: 'dropdown',
     name: 'tableActions',
     command: 'executeTableCommand',
@@ -807,13 +919,13 @@ export const makeDefaultItems = ({
     },
   ];
 
-  function renderTableActions(tableActionsItem) {
-    return h(TableActions, {
+  function renderTableActions(tableActionsItem: DefaultToolbarItem) {
+    return h(TableActions as Component, {
       options: tableActionsOptions.map((option) => ({
         ...option,
         disabled: !superToolbar.isCommandEnabled(tableActionCommandId(option.command)),
       })),
-      onSelect: (event) => {
+      onSelect: (event: { command: string }) => {
         closeDropdown(tableActionsItem);
         const { command } = event;
         superToolbar.emitCommand({ item: tableActionsItem, argument: { command } });
@@ -822,8 +934,7 @@ export const makeDefaultItems = ({
     });
   }
 
-  // alignment
-  const alignment = useToolbarItem({
+  const alignment = defaultToolbarItem({
     type: 'dropdown',
     name: 'textAlign',
     tooltip: toolbarTexts.textAlign,
@@ -840,7 +951,7 @@ export const makeDefaultItems = ({
       {
         type: 'render',
         render: () => {
-          const handleSelect = (e) => {
+          const handleSelect = (e: string) => {
             closeDropdown(alignment);
             const buttonWithCommand = { ...alignment, command: 'setTextAlign' };
             buttonWithCommand.command = 'setTextAlign';
@@ -850,7 +961,7 @@ export const makeDefaultItems = ({
           };
 
           return h('div', {}, [
-            h(AlignmentButtons, {
+            h(AlignmentButtons as Component, {
               onSelect: handleSelect,
             }),
           ]);
@@ -866,21 +977,20 @@ export const makeDefaultItems = ({
     },
   });
 
-  const setAlignmentIcon = (alignment, e) => {
+  const setAlignmentIcon = (alignment: DefaultToolbarItem, e: unknown) => {
     let alignValue = e === 'both' ? 'justify' : e;
-    let icons = {
+    let icons: Readonly<Partial<Record<string, string>>> = {
       left: toolbarIcons.alignLeft,
       right: toolbarIcons.alignRight,
       center: toolbarIcons.alignCenter,
       justify: toolbarIcons.alignJustify,
     };
 
-    let icon = icons[alignValue] ?? icons.left;
+    let icon = (typeof alignValue === 'string' ? icons[alignValue] : undefined) ?? icons.left;
     alignment.icon.value = icon;
   };
 
-  // bullet list
-  const bulletedList = useToolbarItem({
+  const bulletedList = defaultToolbarItem({
     type: 'dropdown',
     name: 'list',
     command: 'toggleBulletListStyle',
@@ -898,12 +1008,12 @@ export const makeDefaultItems = ({
         type: 'render',
         key: 'bullet-style-buttons',
         render: () => {
-          const handleSelect = (style) => {
+          const handleSelect = (style: string) => {
             closeDropdown(bulletedList);
             const item = { ...bulletedList, command: 'toggleBulletListStyle' };
             superToolbar.emitCommand({ item, argument: style });
           };
-          return h(StyleButtonsList, {
+          return h(StyleButtonsList as Component, {
             buttons: bulletStyleButtons,
             iconSize: 25,
             selectedStyle: bulletedList.selectedValue.value,
@@ -914,8 +1024,7 @@ export const makeDefaultItems = ({
     ],
   });
 
-  // number list
-  const numberedList = useToolbarItem({
+  const numberedList = defaultToolbarItem({
     type: 'dropdown',
     name: 'numberedlist',
     command: 'toggleOrderedListStyle',
@@ -933,12 +1042,12 @@ export const makeDefaultItems = ({
         type: 'render',
         key: 'numbered-style-buttons',
         render: () => {
-          const handleSelect = (style) => {
+          const handleSelect = (style: string) => {
             closeDropdown(numberedList);
             const item = { ...numberedList, command: 'toggleOrderedListStyle' };
             superToolbar.emitCommand({ item, argument: style });
           };
-          return h(StyleButtonsList, {
+          return h(StyleButtonsList as Component, {
             buttons: numberedStyleButtons,
             iconSize: 30,
             selectedStyle: numberedList.selectedValue.value,
@@ -949,8 +1058,7 @@ export const makeDefaultItems = ({
     ],
   });
 
-  // indent left
-  const indentLeft = useToolbarItem({
+  const indentLeft = defaultToolbarItem({
     type: 'button',
     name: 'indentleft',
     command: 'decreaseTextIndent',
@@ -963,8 +1071,7 @@ export const makeDefaultItems = ({
     },
   });
 
-  // indent right
-  const indentRight = useToolbarItem({
+  const indentRight = defaultToolbarItem({
     type: 'button',
     name: 'indentright',
     command: 'increaseTextIndent',
@@ -977,8 +1084,7 @@ export const makeDefaultItems = ({
     },
   });
 
-  // overflow
-  const overflow = useToolbarItem({
+  const overflow = defaultToolbarItem({
     type: 'overflow',
     name: 'overflow',
     command: null,
@@ -990,8 +1096,7 @@ export const makeDefaultItems = ({
     },
   });
 
-  // zoom
-  const zoom = useToolbarItem({
+  const zoom = defaultToolbarItem({
     type: 'dropdown',
     name: 'zoom',
     allowWithoutEditor: true,
@@ -1001,7 +1106,6 @@ export const makeDefaultItems = ({
     hasCaret: true,
     command: 'setZoom',
     isWide: true,
-    // Keep the control width stable so changing labels (e.g. 50% -> 100%) does not shift nearby items.
     style: { width: '71px', minWidth: '71px' },
     inlineTextInputVisible: false,
     hasInlineTextInput: true,
@@ -1020,14 +1124,11 @@ export const makeDefaultItems = ({
     onActivate: ({ zoom: value }) => {
       if (!value) return;
 
-      zoom.label.value = value;
+      zoom.label.value = String(value);
     },
   });
 
-  // measurement unit (inches / centimeters) — Word's "measurement units"
-  // preference. Routes through the public SuperDoc.setMeasurementUnit() instance
-  // method and drives the ruler + the header/footer measurement fields.
-  const measurementUnit = useToolbarItem({
+  const measurementUnit = defaultToolbarItem({
     type: 'dropdown',
     name: 'measurementUnit',
     allowWithoutEditor: true,
@@ -1037,7 +1138,6 @@ export const makeDefaultItems = ({
     hasCaret: true,
     command: 'setMeasurementUnit',
     group: 'right',
-    // Narrow control: the label is only ever "in" or "cm".
     style: { width: '52px', minWidth: '52px' },
     inlineTextInputVisible: false,
     hasInlineTextInput: false,
@@ -1050,12 +1150,11 @@ export const makeDefaultItems = ({
     ],
     onActivate: ({ measurementUnit: value }) => {
       if (!value) return;
-      measurementUnit.label.value = value;
+      measurementUnit.label.value = String(value);
     },
   });
 
-  // undo
-  const undo = useToolbarItem({
+  const undo = defaultToolbarItem({
     type: 'button',
     name: 'undo',
     disabled: true,
@@ -1068,8 +1167,7 @@ export const makeDefaultItems = ({
     },
   });
 
-  // redo
-  const redo = useToolbarItem({
+  const redo = defaultToolbarItem({
     type: 'button',
     disabled: true,
     name: 'redo',
@@ -1082,7 +1180,7 @@ export const makeDefaultItems = ({
     },
   });
 
-  const acceptTrackedChangeBySelection = useToolbarItem({
+  const acceptTrackedChangeBySelection = defaultToolbarItem({
     type: 'button',
     disabled: false,
     name: 'acceptTrackedChangeBySelection',
@@ -1095,7 +1193,7 @@ export const makeDefaultItems = ({
     },
   });
 
-  const rejectTrackedChangeOnSelection = useToolbarItem({
+  const rejectTrackedChangeOnSelection = defaultToolbarItem({
     type: 'button',
     disabled: false,
     name: 'rejectTrackedChangeOnSelection',
@@ -1108,7 +1206,7 @@ export const makeDefaultItems = ({
     },
   });
 
-  const clearFormatting = useToolbarItem({
+  const clearFormatting = defaultToolbarItem({
     type: 'button',
     name: 'clearFormatting',
     command: 'clearFormat',
@@ -1119,7 +1217,7 @@ export const makeDefaultItems = ({
     },
   });
 
-  const copyFormat = useToolbarItem({
+  const copyFormat = defaultToolbarItem({
     type: 'button',
     name: 'copyFormat',
     tooltip: toolbarTexts.copyFormat,
@@ -1131,19 +1229,19 @@ export const makeDefaultItems = ({
     },
   });
 
-  const getDocumentOptionsAfterRole = (role, documentOptions) => {
+  const getDocumentOptionsAfterRole = (role: string, documentOptions: DocumentModeOption[]) => {
     if (role === 'editor') return documentOptions;
     else if (role === 'suggester') return documentOptions.filter((option) => option.value === 'suggesting');
     else return documentOptions.filter((option) => option.value === 'viewing');
   };
 
-  const getDefaultLabel = (role) => {
+  const getDefaultLabel = (role: string) => {
     if (role === 'editor') return 'Editing';
     else if (role === 'suggester') return 'Suggesting';
     else return 'Viewing';
   };
 
-  const documentMode = useToolbarItem({
+  const documentMode = defaultToolbarItem({
     type: 'dropdown',
     name: 'documentMode',
     command: 'setDocumentMode',
@@ -1171,7 +1269,7 @@ export const makeDefaultItems = ({
     ],
   });
 
-  const documentOptions = [
+  const documentOptions: DocumentModeOption[] = [
     {
       label: toolbarTexts.documentEditingMode,
       value: 'editing',
@@ -1192,39 +1290,25 @@ export const makeDefaultItems = ({
     },
   ];
 
-  function renderDocumentMode(renderDocumentButton) {
+  function renderDocumentMode(renderDocumentButton: DefaultToolbarItem) {
     const optionsAfterRole = getDocumentOptionsAfterRole(role, documentOptions);
-    return h(DocumentMode, {
+    return h(DocumentMode as Component, {
       options: optionsAfterRole,
-      onSelect: (item) => {
+      onSelect: (item: DocumentModeOption) => {
         const selectedEditor = superToolbar.superdoc?.activeEditor ?? superToolbar.activeEditor;
         closeDropdown(renderDocumentButton);
         const { label, icon, value } = item;
         documentMode.label.value = label;
         documentMode.icon.value = icon;
-        // Route the canonical mode value (`editing` / `suggesting` / `viewing`)
-        // through the shared `document-mode` command, not the display label.
         superToolbar.emitCommand({ item: documentMode, argument: value });
         refocusEditorSurface(superToolbar, selectedEditor);
       },
     });
   }
 
-  // define sizes to calculate toolbar overflow items
-  const controlSizes = new Map([
-    ['separator', 20],
-    ['zoom', 71],
-    ['measurementUnit', 52],
-    ['fontFamily', 118],
-    ['fontSize', 57],
-    ['textAlign', 40],
-    ['linkedStyles', 142],
-    ['documentMode', 47],
-    ['default', 32],
-  ]);
   const stickyItemNames = ['search', 'ruler', 'undo', 'overflow', 'documentMode'];
 
-  const ruler = useToolbarItem({
+  const ruler = defaultToolbarItem({
     type: 'button',
     name: 'ruler',
     command: 'toggleRuler',
@@ -1237,7 +1321,7 @@ export const makeDefaultItems = ({
     },
   });
 
-  const formattingMarks = useToolbarItem({
+  const formattingMarks = defaultToolbarItem({
     type: 'button',
     name: 'formattingMarks',
     command: 'toggleFormattingMarks',
@@ -1250,7 +1334,7 @@ export const makeDefaultItems = ({
     },
   });
 
-  const linkedStyles = useToolbarItem({
+  const linkedStyles = defaultToolbarItem({
     type: 'dropdown',
     name: 'linkedStyles',
     command: 'setLinkedStyle',
@@ -1272,32 +1356,24 @@ export const makeDefaultItems = ({
         type: 'render',
         key: 'linkedStyle',
         render: () => {
-          const handleSelect = (style) => {
+          const handleSelect = (style: string | { id?: string } | null | undefined) => {
             closeDropdown(linkedStyles);
-            // Normalize the selected v2 catalogue item to its stable style id
-            // before routing. A bare id string is accepted too. The shared
-            // `linked-style` command targets `styles.paragraph.setStyle`.
             const styleId = typeof style === 'string' ? style : (style?.id ?? null);
             if (!styleId) return;
             const itemWithCommand = { ...linkedStyles, command: 'setLinkedStyle' };
             superToolbar.emitCommand({ item: itemWithCommand, argument: styleId });
           };
 
-          const handleUpdate = (style) => {
+          const handleUpdate = (style: string | { id?: string } | null | undefined) => {
             closeDropdown(linkedStyles);
             const styleId = typeof style === 'string' ? style : (style?.id ?? null);
             if (!styleId) return;
             void superToolbar.updateLinkedStyleToMatchSelection?.(styleId);
           };
 
-          // The dropdown is populated from the shared controller's public
-          // `superdoc/ui` style quick gallery (Document API `styles.getCatalog`,
-          // qFormat-driven with a v1 alphabetical fallback), never toolbar-local
-          // OOXML parsing. The active paragraph style seeds the selected option so
-          // the gallery reflects the current selection.
           const activeStyleId = superToolbar.getActiveLinkedStyleId?.() ?? null;
           return h('div', {}, [
-            h(LinkedStyle, {
+            h(LinkedStyle as Component, {
               styles: superToolbar.getLinkedStyleOptions?.() ?? [],
               onSelect: handleSelect,
               onUpdate: handleUpdate,
@@ -1309,8 +1385,6 @@ export const makeDefaultItems = ({
       },
     ],
     onActivate: ({ styleId, styleName }) => {
-      // The controller snapshot reports the active linked style id/name; show it
-      // when set, otherwise fall back to the default "Format text" label.
       const label = styleName || styleId;
       linkedStyles.label.value = styleId && styleId !== 'Normal' ? String(label) : toolbarTexts.formatText;
       linkedStyles.disabled.value = false;
@@ -1321,13 +1395,12 @@ export const makeDefaultItems = ({
     },
   });
 
-  const renderIcon = (value, selectedValue) => {
+  const renderIcon = (value: number, selectedValue: ToolbarItem['selectedValue']) => {
     if (selectedValue.value != value) return;
     return h('div', { innerHTML: checkIconSvg, class: 'dropdown-select-icon' });
   };
 
-  // line height
-  const lineHeight = useToolbarItem({
+  const lineHeight = defaultToolbarItem({
     type: 'dropdown',
     name: 'lineHeight',
     tooltip: toolbarTexts.lineHeight,
@@ -1355,12 +1428,6 @@ export const makeDefaultItems = ({
     }),
   });
 
-  // Responsive toolbar calculations.
-  // `availableWidth` comes from SuperToolbar and represents either:
-  // - container width when `responsiveToContainer: true`
-  // - viewport/document width when `responsiveToContainer: false`
-
-  // Extra headroom to prevent toolbar jitter at the XL edge.
   const XL_OVERFLOW_SAFETY_BUFFER = 20;
   const toolbarPadding = 32;
   const itemsToHideXL = ['linkedStyles', 'clearFormatting', 'copyFormat', 'formattingMarks'];
@@ -1383,7 +1450,7 @@ export const makeDefaultItems = ({
     };
   }
 
-  let toolbarItems = [
+  let toolbarItems: DefaultToolbarItem[] = [
     undo,
     redo,
     acceptTrackedChangeBySelection,
@@ -1430,12 +1497,10 @@ export const makeDefaultItems = ({
     ...additionalItems,
   ];
 
-  // Hide separators on small screens
   if (availableWidth <= RESPONSIVE_BREAKPOINTS.md && hideButtons) {
     toolbarItems = toolbarItems.filter((item) => item.type !== 'separator');
   }
 
-  // Remove docx only items
   if (superToolbar.config.mode !== 'docx') {
     const getLinkedStylesIndex = toolbarItems.findIndex((item) => item.name.value === 'linkedStyles');
     toolbarItems.splice(getLinkedStylesIndex - 1, 2);
@@ -1444,8 +1509,7 @@ export const makeDefaultItems = ({
     toolbarItems = toolbarItems.filter((item) => !filterItems.includes(item.name.value));
   }
 
-  // Track changes accept/reject are hidden outside dev mode for viewers.
-  const devItems = [];
+  const devItems: DefaultToolbarItem[] = [];
   if (!isDev) {
     if (role === 'viewer') {
       devItems.push(acceptTrackedChangeBySelection, rejectTrackedChangeOnSelection);
@@ -1453,9 +1517,6 @@ export const makeDefaultItems = ({
     toolbarItems = toolbarItems.filter((item) => !devItems.includes(item));
   }
 
-  // Composition and exclusions decide which controls exist before width
-  // decides where they fit. Keep the overflow trigger available; its final
-  // visibility is resolved after the configured controls are partitioned.
   if (configuredItemNames) {
     toolbarItems = toolbarItems.filter(
       (item) => item.name.value === 'overflow' || item.isCustomToolbarItem || configuredItemNames.has(item.name.value),
@@ -1466,42 +1527,28 @@ export const makeDefaultItems = ({
   }
   toolbarItems = normalizeSeparatorsIgnoringOverflow(toolbarItems);
 
-  // Always-visible items. The overflow trigger is reserved only after the
-  // first pass proves that another control needs it; otherwise a focused
-  // toolbar can overflow solely because space was held for a menu it did not
-  // need.
-  const isStickyItem = (item) => stickyItemNames.includes(item.name.value);
+  const isStickyItem = (item: DefaultToolbarItem) => stickyItemNames.includes(item.name.value);
   const overflowTrigger = toolbarItems.find((item) => item.name.value === 'overflow');
   const layoutItems = toolbarItems.filter((item) => item !== overflowTrigger);
-  // A composition map is a priority order, not just a set: when width can't
-  // fit every configured control, the ones the consumer listed first should
-  // be the ones that win the remaining space. Without this, the walk below
-  // always visits `layoutItems` in the fixed built-in registry order, so
-  // visibility/overflow membership would follow that order instead of the
-  // consumer's. Sticky items stay unaffected -- they're pulled out of the
-  // width budget entirely below, regardless of position.
   if (configuredItemOrder) {
     const orderIndex = new Map(configuredItemOrder.map((name, index) => [name, index]));
-    const rank = (item) => orderIndex.get(item.name.value) ?? Number.MAX_SAFE_INTEGER;
+    const rank = (item: DefaultToolbarItem) => orderIndex.get(item.name.value) ?? Number.MAX_SAFE_INTEGER;
     layoutItems.sort((a, b) => rank(a) - rank(b));
   }
-  const partitionItems = (reserveOverflowTrigger) => {
-    const overflowItems = [];
-    const visibleItems = [];
+  const partitionItems = (reserveOverflowTrigger: boolean) => {
+    const overflowItems: DefaultToolbarItem[] = [];
+    const visibleItems: DefaultToolbarItem[] = [];
     const stickyItemsWidth = layoutItems
       .filter(isStickyItem)
-      .reduce((total, item) => total + getToolbarItemWidth(item, controlSizes), 0);
+      .reduce((total, item) => total + getToolbarItemWidth(item), 0);
     let totalWidth =
       toolbarPadding +
       stickyItemsWidth +
-      (reserveOverflowTrigger && overflowTrigger ? getToolbarItemWidth(overflowTrigger, controlSizes) : 0);
+      (reserveOverflowTrigger && overflowTrigger ? getToolbarItemWidth(overflowTrigger) : 0);
 
     layoutItems.forEach((item, index) => {
-      const itemWidth = getToolbarItemWidth(item, controlSizes);
+      const itemWidth = getToolbarItemWidth(item);
 
-      // `linkedStyles` is moved as one visual unit with its trailing divider.
-      // Leaving that divider visible would start the next group with an orphan
-      // separator whenever the style picker is forced into overflow.
       if (
         item.type === 'separator' &&
         layoutItems[index - 1]?.name.value === 'linkedStyles' &&

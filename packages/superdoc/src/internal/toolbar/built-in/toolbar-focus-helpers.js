@@ -11,7 +11,7 @@ export const preventEditorFocusTransfer = (event) => {
 // table-size grid, ...): after a selection is made, the editable surface must get
 // keyboard focus back, or the popover's removal leaves focus on body/nowhere and
 // keystrokes stop reaching the editor until the user clicks back in.
-export const refocusEditorSurface = (superToolbar, preferredEditor = null) => {
+export const refocusEditorSurface = (superToolbar, preferredEditor) => {
   if (typeof preferredEditor?.focus === 'function') {
     preferredEditor.focus();
     return;

@@ -3043,6 +3043,7 @@ export interface EditorUpdateEvent {
    * available. Always present (defaults to `null`); may be `null`.
    */
   sectionType: string | null;
+  isRemote: boolean;
 }
 
 /**

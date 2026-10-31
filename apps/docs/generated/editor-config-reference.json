@@ -315,7 +315,7 @@
     },
     {
       "name": "onEditorUpdate",
-      "type": "(params: {\n  editor?: Editor;\n  sourceEditor?: Editor;\n  surface: \"body\" | \"header\" | \"footer\";\n  headerId: null | string;\n  sectionType: null | string;\n}) => void",
+      "type": "(params: {\n  editor?: Editor;\n  sourceEditor?: Editor;\n  surface: \"body\" | \"header\" | \"footer\";\n  headerId: null | string;\n  sectionType: null | string;\n  isRemote: boolean;\n}) => void",
       "typeName": "(params: EditorUpdateEvent) => void",
       "required": false,
       "description": "Callback when document is updated.",

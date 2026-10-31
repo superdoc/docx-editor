@@ -1770,6 +1770,7 @@ const buildV2EditorUpdatePayload = ({
   surface = 'body',
   headerId = null,
   sectionType = null,
+  isRemote = false,
 }: Partial<EditorUpdateEvent> = {}): EditorUpdateEvent => {
   const activeEditor = proxy.$superdoc?.activeEditor ?? null;
   const effectiveEditor = editor ?? sourceEditor ?? activeEditor ?? undefined;
@@ -1779,6 +1780,7 @@ const buildV2EditorUpdatePayload = ({
     surface,
     headerId,
     sectionType,
+    isRemote,
   };
 };
 
@@ -2298,6 +2300,7 @@ const onV2HostEvent = (document: ShellDocument | null | undefined, event: V2Host
       // coordinate; the controller still coalesces rapid remote updates.
       v2ReviewWindowController.refreshCommittedWindow('collaboration:remote-review-changed');
     }
+    emitV2EditorUpdate({ isRemote: true });
     return;
   }
   if (event.type === 'source:complete') {

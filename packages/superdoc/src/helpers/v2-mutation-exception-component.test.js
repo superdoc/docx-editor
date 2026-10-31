@@ -272,3 +272,63 @@ describe('SuperDoc interaction history remains passive', () => {
     closeInteractionHistory(superdoc);
   });
 });
+
+describe('SuperDoc editor-update for collaboration', () => {
+  const remoteChanged = (overrides = {}) => ({
+    type: 'collaboration:remote-changed',
+    remoteGeneration: 1,
+    changedStoryIds: ['body'],
+    changedPartUris: [],
+    reviewChanged: true,
+    ...overrides,
+  });
+
+  it.each([true, false])(
+    'emits one remote editor-update per remote change when reviewChanged=%s',
+    async (reviewChanged) => {
+      const { editor, onEditorUpdate, superdoc } = await mountShell();
+      onEditorUpdate.mockClear();
+
+      editor.vm.$emit('v2-host-event', remoteChanged({ reviewChanged }));
+      await nextTick();
+
+      expect(onEditorUpdate).toHaveBeenCalledTimes(1);
+      expect(onEditorUpdate.mock.calls[0][0]).toEqual({
+        editor: superdoc.activeEditor,
+        sourceEditor: superdoc.activeEditor,
+        surface: 'body',
+        headerId: null,
+        sectionType: null,
+        isRemote: true,
+      });
+    },
+  );
+
+  it('emits one remote editor-update for each remote generation', async () => {
+    const { editor, onEditorUpdate } = await mountShell();
+    onEditorUpdate.mockClear();
+
+    editor.vm.$emit('v2-host-event', remoteChanged({ remoteGeneration: 1 }));
+    editor.vm.$emit('v2-host-event', remoteChanged({ remoteGeneration: 2 }));
+    await nextTick();
+
+    expect(onEditorUpdate).toHaveBeenCalledTimes(2);
+    expect(onEditorUpdate.mock.calls.every(([event]) => event.isRemote === true)).toBe(true);
+  });
+
+  it('marks local commits as not remote and does not treat them as remote changes', async () => {
+    const { editor, onEditorUpdate } = await mountShell();
+    onEditorUpdate.mockClear();
+
+    editor.vm.$emit('v2-host-event', {
+      type: 'mutation:committed',
+      origin: 'command',
+      cause: 'user',
+      receipt: { success: true, txId: 'local-edit' },
+    });
+    await nextTick();
+
+    expect(onEditorUpdate).toHaveBeenCalledTimes(1);
+    expect(onEditorUpdate.mock.calls[0][0].isRemote).toBe(false);
+  });
+});

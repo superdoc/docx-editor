@@ -32,6 +32,11 @@ Copy any user or mode options you chose on the previous pages into this configur
 movement or pagination. Downloading a copy does not save changes to your application, so it does not clear the
 **Unsaved changes** status.
 
+In a collaborative room, `onEditorUpdate` also fires when another collaborator's change reaches this editor. The event's
+`isRemote` field is `true` for those changes and `false` for edits, undo, and redo made here. Skip `isRemote` events
+when the handler writes back to your application or marks this user's changes as unsaved. A remote event always
+reports `surface: 'body'` because the room does not say which part of the document changed.
+
 ## Handle rejected edits
 
 The browser Editor reports a rejected keyboard edit through `onException` (or the `exception` event),

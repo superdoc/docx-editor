@@ -36,7 +36,8 @@ superdoc.once('zoomChange', onZoom);
 superdoc.removeListener('zoomChange', onZoom);
 superdoc.on('editor-update', (event) => {
   const exact: Assert<Equal<typeof event, EditorUpdateEvent>> = true;
-  void exact;
+  const remote: Assert<Equal<typeof event.isRemote, boolean>> = true;
+  void [exact, remote];
 });
 superdoc.on('exception', (event) => {
   const exact: Assert<Equal<typeof event, SuperDocExceptionPayload>> = true;

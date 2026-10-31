@@ -9,8 +9,8 @@ import {
 } from './use-viewport-fit.js';
 
 // Full wiring (watchers, metric storage, emit dedup, mode-driven fit
-// application) is covered through the component in src/SuperDoc.test.js;
-// these tests lock the pure helpers.
+// application) is covered through a mounted component in
+// use-viewport-fit-wiring.test.ts; these tests lock the pure helpers.
 
 describe('resolveFitWidthOptions', () => {
   it('returns defaults when options are absent or not an object', () => {

@@ -1,7 +1,36 @@
-import { onBeforeUnmount, nextTick, watch } from 'vue';
+import { onBeforeUnmount, nextTick, watch, type Ref } from 'vue';
 import { DOCX, PDF } from '@superdoc/common';
-import { PDF_TO_CSS_UNITS } from '@superdoc/core/pdf/helpers/constants.js';
+import { PDF_TO_CSS_UNITS } from '../core/pdf/helpers/constants.js';
 import { isFiniteNumber } from '../helpers/is-finite-number.js';
+import type { SuperDoc } from '../core/SuperDoc.js';
+import type {
+  Editor,
+  RuntimeDocument,
+  SuperDocFitWidthOptions,
+  SuperDocViewportMetrics,
+  SuperDocZoomMode,
+} from '../core/types/index.js';
+import type { PageMetricsSnapshot } from '../public/ui/page-metrics.js';
+
+export type ResolvedFitWidthOptions = Required<SuperDocFitWidthOptions>;
+
+type EditorPageGeometry = Pick<Editor, 'pageMetrics'> & {
+  getPages?: () => Array<{ size?: { w?: unknown } } | null | undefined> | null | undefined;
+  getPageStyles?: () => { pageSize?: { width?: unknown } } | null | undefined;
+};
+
+interface UseViewportFitOptions {
+  getSuperdoc: () => SuperDoc | null | undefined;
+  superdocContainerWidth: Readonly<Ref<number>>;
+  isReady: Readonly<Ref<boolean>>;
+  activeZoom: Ref<number>;
+  zoomMode: Readonly<Ref<SuperDocZoomMode>>;
+  viewportMetrics: Ref<SuperDocViewportMetrics | null>;
+  showCommentsSidebar?: Readonly<Ref<unknown>>;
+  rightSidebarRef?: Readonly<Ref<HTMLElement | null>>;
+  superdocRoot: Readonly<Ref<HTMLElement | null>>;
+  documents?: Readonly<Ref<readonly RuntimeDocument[]>>;
+}
 
 const CSS_PX_PER_INCH = 96;
 const SIDEBAR_SELECTOR = '.superdoc__right-sidebar';
@@ -17,9 +46,12 @@ export const FIT_WIDTH_DEFAULTS = Object.freeze({
 // (`config.zoom.mode` / `setZoomMode`) decides whether the policy applies;
 // these are only its bounds. Invalid field values fall back to defaults;
 // min/max are reordered if swapped.
-export const resolveFitWidthOptions = (rawFitConfig) => {
-  const raw = rawFitConfig && typeof rawFitConfig === 'object' ? rawFitConfig : {};
-  const positiveOr = (value, fallback) => (isFiniteNumber(value) && value > 0 ? value : fallback);
+export const resolveFitWidthOptions = (
+  rawFitConfig: SuperDocFitWidthOptions | null | undefined,
+): ResolvedFitWidthOptions => {
+  const raw: SuperDocFitWidthOptions = rawFitConfig && typeof rawFitConfig === 'object' ? rawFitConfig : {};
+  const positiveOr = (value: unknown, fallback: number): number =>
+    isFiniteNumber(value) && value > 0 ? value : fallback;
   const min = positiveOr(raw.min, FIT_WIDTH_DEFAULTS.min);
   const max = positiveOr(raw.max, FIT_WIDTH_DEFAULTS.max);
   const padding = isFiniteNumber(raw.padding) && raw.padding >= 0 ? raw.padding : FIT_WIDTH_DEFAULTS.padding;
@@ -32,7 +64,7 @@ export const resolveFitWidthOptions = (rawFitConfig) => {
 };
 
 // Unclamped zoom percentage that fits `documentWidth` into `availableWidth`.
-export const computeFitZoom = (availableWidth, documentWidth) => {
+export const computeFitZoom = (availableWidth: number, documentWidth: number): number | null => {
   if (!(availableWidth > 0) || !(documentWidth > 0)) return null;
   return Math.round((availableWidth / documentWidth) * 100);
 };
@@ -41,7 +73,11 @@ export const computeFitZoom = (availableWidth, documentWidth) => {
 // Floored at 1: fractional bounds (e.g. a factor-style min of 0.4) plus a
 // degenerate container could otherwise round to 0, which the presentation
 // engine rejects with a throw.
-export const computeAppliedFitZoom = (availableWidth, documentWidth, options) => {
+export const computeAppliedFitZoom = (
+  availableWidth: number,
+  documentWidth: number,
+  options: ResolvedFitWidthOptions,
+): number | null => {
   const padded = computeFitZoom(availableWidth - options.padding, documentWidth);
   if (padded === null) return null;
   return Math.max(1, Math.round(Math.min(options.max, Math.max(options.min, padded))));
@@ -55,7 +91,11 @@ export const computeAppliedFitZoom = (availableWidth, documentWidth, options) =>
 // PDF_TO_CSS_UNITS converts back to CSS px at 100% zoom (verified live: a
 // 612pt letter page renders 816 CSS px at 100%). Without a readable scale
 // factor, fall back to dividing out the assumed zoom.
-export const normalizePdfPageMeasurement = (measured, scaleFactor, zoomFactor) => {
+export const normalizePdfPageMeasurement = (
+  measured: number,
+  scaleFactor: number,
+  zoomFactor: number,
+): number | null => {
   if (!(measured > 0)) return null;
   if (Number.isFinite(scaleFactor) && scaleFactor > 0) {
     return (measured / scaleFactor) * PDF_TO_CSS_UNITS;
@@ -71,7 +111,7 @@ export const normalizePdfPageMeasurement = (measured, scaleFactor, zoomFactor) =
 // `pagination-update` would materialize every retained page after each
 // keystroke. The producer publishes `widestPageWidthPx` for exactly this
 // reason; the walk stays only as a fallback for snapshots that predate it.
-const resolveV2WidestPageWidth = (snapshot) => {
+const resolveV2WidestPageWidth = (snapshot: PageMetricsSnapshot | null | undefined): number => {
   if (!snapshot || typeof snapshot !== 'object') return 0;
   const published = snapshot.widestPageWidthPx;
   if (isFiniteNumber(published)) return published;
@@ -88,7 +128,7 @@ const resolveV2WidestPageWidth = (snapshot) => {
   return widestPage;
 };
 
-export const resolveEditorPageWidth = (editor) => {
+export const resolveEditorPageWidth = (editor: EditorPageGeometry | null | undefined): number | null => {
   if (!editor) return null;
 
   let widestPage = 0;
@@ -114,7 +154,7 @@ export const resolveEditorPageWidth = (editor) => {
   }
   if (widestPage > 0) return widestPage;
 
-  let pageStyles = null;
+  let pageStyles: ReturnType<NonNullable<EditorPageGeometry['getPageStyles']>> = null;
   try {
     pageStyles = editor.getPageStyles?.() ?? null;
   } catch {
@@ -161,18 +201,18 @@ export function useViewportFit({
   rightSidebarRef,
   superdocRoot,
   documents,
-}) {
+}: UseViewportFitOptions) {
   // Widest rendered PDF page in CSS px at 100% zoom. See
   // `normalizePdfPageMeasurement` for the unit handling. Skipped entirely
   // when no PDF document is loaded: the query plus per-page computed-style
   // reads would otherwise run on every repagination of DOCX-only docs.
-  const resolvePdfPageWidth = () => {
+  const resolvePdfPageWidth = (): number | null => {
     const docs = documents?.value ?? [];
     if (!docs.some((doc) => doc?.type === PDF)) return null;
     const root = superdocRoot.value;
     if (!root?.querySelectorAll) return null;
     let widest = 0;
-    for (const page of root.querySelectorAll(PDF_PAGE_SELECTOR)) {
+    for (const page of Array.from(root.querySelectorAll(PDF_PAGE_SELECTOR))) {
       const measured = Number(page.clientWidth) || Number(page.getBoundingClientRect?.().width) || 0;
       let scaleFactor = NaN;
       if (typeof window !== 'undefined' && typeof window.getComputedStyle === 'function') {
@@ -189,10 +229,10 @@ export function useViewportFit({
   // documents. Zoom is global, so the fit must target the widest page:
   // otherwise one landscape or PDF document overflows while another fits.
   // HTML documents reflow to the container and contribute no fixed width.
-  const resolveBaseDocumentWidth = () => {
+  const resolveBaseDocumentWidth = (): number | null => {
     const superdoc = getSuperdoc();
     if (!superdoc) return null;
-    const widths = [];
+    const widths: number[] = [];
 
     const docs = documents?.value ?? [];
     for (const doc of docs) {
@@ -231,14 +271,14 @@ export function useViewportFit({
   // Width the comments sidebar takes from the container when visible.
   // Template ref first (owned by SuperDoc.vue, rename-proof); selector
   // only as a fallback for hosts that pass no ref.
-  const resolveSidebarWidth = () => {
+  const resolveSidebarWidth = (): number => {
     if (!showCommentsSidebar?.value) return 0;
-    const sidebarEl = rightSidebarRef?.value ?? superdocRoot.value?.querySelector?.(SIDEBAR_SELECTOR);
+    const sidebarEl = rightSidebarRef?.value ?? superdocRoot.value?.querySelector?.<HTMLElement>(SIDEBAR_SELECTOR);
     const measured = Number(sidebarEl?.offsetWidth) || Number(sidebarEl?.getBoundingClientRect?.().width) || 0;
     return measured > 0 ? measured : 0;
   };
 
-  const applyFitWidth = (superdoc, metrics) => {
+  const applyFitWidth = (superdoc: SuperDoc, metrics: SuperDocViewportMetrics): void => {
     const options = resolveFitWidthOptions(superdoc.config?.zoom?.fitWidth);
     const target = computeAppliedFitZoom(metrics.availableWidth, metrics.documentWidth, options);
     if (target === null) return;
@@ -254,7 +294,7 @@ export function useViewportFit({
     superdoc.emit('zoomChange', { zoom: target, mode: 'fit-width' });
   };
 
-  const evaluateViewport = () => {
+  const evaluateViewport = (): void => {
     const superdoc = getSuperdoc();
     if (!superdoc) return;
 

@@ -3306,7 +3306,7 @@ watch(
 );
 
 // Viewport fit tracking: maintains viewport metrics, emits `viewport-change`,
-// and applies the fit-width zoom policy. See composables/use-viewport-fit.js.
+// and applies the fit-width zoom policy. See composables/use-viewport-fit.ts.
 useViewportFit({
   getSuperdoc: () => proxy.$superdoc,
   superdocContainerWidth,

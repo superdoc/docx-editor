@@ -1,7 +1,46 @@
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch, type Ref } from 'vue';
 import { PDF } from '@superdoc/common';
 import { COMPACT_ANCHOR_SELECTOR } from '../helpers/comment-small-screen.js';
 import { isFiniteNumber } from '../helpers/is-finite-number.js';
+import type { RuntimeDocument } from '../core/types/index.js';
+
+type CompactComment = {
+  commentId?: unknown;
+  importedId?: unknown;
+  selection?: { source?: unknown } | null;
+};
+
+type CompactSelectionPosition = { top?: unknown; bottom?: unknown; source?: unknown };
+
+type CommentPositionLookup = (commentOrId: unknown) => {
+  entry: { bounds?: { top?: unknown; bottom?: unknown } | null } | null;
+};
+
+type ClickAnchor = {
+  x: number | null;
+  y: number | null;
+  ts: number;
+  anchorRect: { left: number; right: number; top: number; bottom: number } | null;
+};
+
+type PopoverStyle = { top: string; left?: string; right: string };
+
+interface UseCompactCommentPopoverOptions {
+  activeComment: Readonly<Ref<unknown>>;
+  pendingComment: Readonly<Ref<CompactComment | null | undefined>>;
+  activeCompactComment: Readonly<Ref<CompactComment | null | undefined>>;
+  showCommentsSidebar: Readonly<Ref<unknown>>;
+  selectionPosition: Readonly<Ref<CompactSelectionPosition | null | undefined>>;
+  activeZoom: Readonly<Ref<number | null | undefined>>;
+  superdocRoot: Readonly<Ref<HTMLElement | null>>;
+  layers: Readonly<Ref<HTMLElement | null>>;
+  documents: Readonly<Ref<readonly Pick<RuntimeDocument, 'type'>[] | null | undefined>>;
+  resolveCommentPositionEntry: CommentPositionLookup;
+  clearActiveComment: () => void;
+  clearPendingComment: () => void;
+}
+
+type AnchorRect = Pick<DOMRect, 'top' | 'bottom' | 'left' | 'width' | 'height'>;
 
 const POPOVER_WIDTH_PX = 320;
 const SAFE_MARGIN_PX = 12;
@@ -13,20 +52,20 @@ const COMMENT_HIGHLIGHT_SELECTOR = '.superdoc-comment-highlight[data-comment-ids
 const COMMENT_HIGHLIGHT_DATA_ATTR = 'data-comment-ids';
 const PDF_COMMENT_ANCHOR_SELECTOR = '.sd-comment-anchor';
 
-// Clamp a value into the given inclusive range.
-const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
-const toNumber = (value) => Number(value);
+const clamp = (value: number, min: number, max: number): number => Math.min(Math.max(value, min), max);
+const toNumber = (value: unknown): number => Number(value);
 
-const getCommentAnchorId = (comment) => comment?.commentId ?? comment?.importedId ?? null;
+const getCommentAnchorId = (comment: CompactComment | null | undefined): unknown =>
+  comment?.commentId ?? comment?.importedId ?? null;
 
-const parseCommentIds = (value) =>
+const parseCommentIds = (value: string | null): string[] =>
   String(value || '')
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);
 
 // Click anchor from pointerdown tracking: returns { x, y } in clientX/clientY space if within TTL.
-const resolveInteractionAnchor = (lastClickAnchor) => {
+const resolveInteractionAnchor = (lastClickAnchor: Ref<ClickAnchor>): { x: number; y: number } | null => {
   const anchor = lastClickAnchor?.value;
   if (!anchor) return null;
   const ts = toNumber(anchor.ts);
@@ -39,11 +78,19 @@ const resolveInteractionAnchor = (lastClickAnchor) => {
 };
 
 // DOM fallback: find the first highlight/TC span for the comment and return its bounding rect.
-const resolveInlineHighlightAnchorRect = ({ rootEl, comment, pendingComment }) => {
+const resolveInlineHighlightAnchorRect = ({
+  rootEl,
+  comment,
+  pendingComment,
+}: {
+  rootEl: HTMLElement;
+  comment: CompactComment;
+  pendingComment: UseCompactCommentPopoverOptions['pendingComment'];
+}): DOMRect | null => {
   const isPending = Boolean(pendingComment?.value && comment?.commentId === pendingComment.value?.commentId);
   if (isPending) {
     const nodes = rootEl.querySelectorAll(COMMENT_HIGHLIGHT_SELECTOR);
-    for (const node of nodes) {
+    for (const node of Array.from(nodes)) {
       if (!parseCommentIds(node.getAttribute(COMMENT_HIGHLIGHT_DATA_ATTR)).includes('pending')) continue;
       if (typeof node.getBoundingClientRect !== 'function') continue;
       return node.getBoundingClientRect();
@@ -55,7 +102,7 @@ const resolveInlineHighlightAnchorRect = ({ rootEl, comment, pendingComment }) =
   const safeId = String(anchorId);
 
   const highlightNodes = rootEl.querySelectorAll(COMMENT_HIGHLIGHT_SELECTOR);
-  for (const node of highlightNodes) {
+  for (const node of Array.from(highlightNodes)) {
     if (!parseCommentIds(node.getAttribute(COMMENT_HIGHLIGHT_DATA_ATTR)).includes(safeId)) continue;
     if (typeof node.getBoundingClientRect !== 'function') continue;
     return node.getBoundingClientRect();
@@ -68,7 +115,10 @@ const resolveInlineHighlightAnchorRect = ({ rootEl, comment, pendingComment }) =
 };
 
 // Primary anchor source: stored layout bounds for the active comment thread.
-const resolveEntryAnchorBottom = (resolveCommentPositionEntry, comment) => {
+const resolveEntryAnchorBottom = (
+  resolveCommentPositionEntry: CommentPositionLookup,
+  comment: CompactComment,
+): number => {
   const { entry } = resolveCommentPositionEntry(getCommentAnchorId(comment));
   const boundsBottom = toNumber(entry?.bounds?.bottom);
   if (isFiniteNumber(boundsBottom)) return boundsBottom;
@@ -76,13 +126,27 @@ const resolveEntryAnchorBottom = (resolveCommentPositionEntry, comment) => {
 };
 
 // Allow DOM-anchor fallback only in PDF-related contexts.
-const isPdfContextForAnchorLookup = ({ selectionPosition, comment, pendingComment }) =>
+const isPdfContextForAnchorLookup = ({
+  selectionPosition,
+  comment,
+  pendingComment,
+}: Pick<UseCompactCommentPopoverOptions, 'selectionPosition' | 'pendingComment'> & {
+  comment: CompactComment;
+}): boolean =>
   selectionPosition.value?.source === 'pdf' ||
   comment?.selection?.source === 'pdf' ||
   pendingComment.value?.selection?.source === 'pdf';
 
 // PDF fallback when stored bounds are missing: read anchor position from DOM.
-const resolvePdfDomAnchorBottom = ({ rootEl, layersRect, comment }) => {
+const resolvePdfDomAnchorBottom = ({
+  rootEl,
+  layersRect,
+  comment,
+}: {
+  rootEl: HTMLElement;
+  layersRect: AnchorRect;
+  comment: CompactComment;
+}): number => {
   const anchorId = getCommentAnchorId(comment);
   if (anchorId == null) return NaN;
   const anchorElement = rootEl.querySelector(`${PDF_COMMENT_ANCHOR_SELECTOR}[data-id="${String(anchorId)}"]`);
@@ -92,7 +156,14 @@ const resolvePdfDomAnchorBottom = ({ rootEl, layersRect, comment }) => {
 };
 
 // Pending-comment fallback: derive anchor position from current selection coordinates.
-const resolvePendingSelectionAnchorBottom = ({ comment, pendingComment, selectionPosition, activeZoom }) => {
+const resolvePendingSelectionAnchorBottom = ({
+  comment,
+  pendingComment,
+  selectionPosition,
+  activeZoom,
+}: Pick<UseCompactCommentPopoverOptions, 'pendingComment' | 'selectionPosition' | 'activeZoom'> & {
+  comment: CompactComment;
+}): number => {
   if (!pendingComment.value || comment?.commentId !== pendingComment.value?.commentId) return NaN;
   const selectedBottom = toNumber(selectionPosition.value?.bottom);
   if (isFiniteNumber(selectedBottom)) {
@@ -107,20 +178,30 @@ const resolvePendingSelectionAnchorBottom = ({ comment, pendingComment, selectio
   return selectedTop * zoom;
 };
 
-const toPopoverStyle = ({ top, left }) => ({
+const toPopoverStyle = ({ top, left }: { top: number; left: number }): PopoverStyle => ({
   top: `${Math.round(top)}px`,
   left: `${Math.round(left)}px`,
   right: 'auto',
 });
 
 // Keep the popover inside the superdoc viewport with safe margins.
-const resolvePopoverPosition = ({ rootRect, layersRect, anchorBottom, anchorClientX = NaN }) => {
+const resolvePopoverPosition = ({
+  rootRect,
+  layersRect,
+  anchorBottom,
+  anchorClientX = NaN,
+}: {
+  rootRect: AnchorRect;
+  layersRect: AnchorRect;
+  anchorBottom: number;
+  anchorClientX?: number;
+}): { top: number; left: number } => {
   const idealTop = layersRect.top - rootRect.top + anchorBottom + ANCHOR_TOP_OFFSET_PX;
   const maxTop = Math.max(SAFE_MARGIN_PX, rootRect.height - MIN_BOTTOM_SPACE_PX);
   const top = clamp(idealTop, SAFE_MARGIN_PX, maxTop);
 
   const maxLeft = Math.max(SAFE_MARGIN_PX, rootRect.width - POPOVER_WIDTH_PX - SAFE_MARGIN_PX);
-  let left;
+  let left: number;
   if (isFiniteNumber(anchorClientX)) {
     left = clamp(anchorClientX - rootRect.left + SAFE_MARGIN_PX, SAFE_MARGIN_PX, maxLeft);
   } else {
@@ -144,22 +225,26 @@ export function useCompactCommentPopover({
   resolveCommentPositionEntry,
   clearActiveComment,
   clearPendingComment,
-}) {
-  const fallback = {
+}: UseCompactCommentPopoverOptions) {
+  const fallback: PopoverStyle = {
     top: '12px',
     right: '12px',
   };
   const compactPopoverLayoutTick = ref(0);
-  const lastClickAnchor = ref({ x: null, y: null, ts: 0, anchorRect: null });
+  const lastClickAnchor = ref<ClickAnchor>({ x: null, y: null, ts: 0, anchorRect: null });
 
-  let compactPopoverRafId = null;
-  let compactPopoverReturnFocusEl = null;
+  let compactPopoverRafId: number | null = null;
+  let compactPopoverReturnFocusEl: HTMLElement | null = null;
 
   const resetClickAnchor = () => {
     lastClickAnchor.value = { x: null, y: null, ts: 0, anchorRect: null };
   };
 
-  const clearCompactPopoverIfPdfClickedOutside = (root, target, anchorElement) => {
+  const clearCompactPopoverIfPdfClickedOutside = (
+    root: HTMLElement,
+    target: Node | null,
+    anchorElement: Element | null,
+  ): boolean => {
     const isPdfDocument = documents.value?.some((doc) => doc.type === PDF);
     if (!isPdfDocument) return false;
     const compactPopoverEl = root.querySelector('.superdoc__compact-comment-popover');
@@ -176,9 +261,10 @@ export function useCompactCommentPopover({
     return true;
   };
 
-  const trackCompactPopoverClickAnchor = (e) => {
+  const trackCompactPopoverClickAnchor = (e: PointerEvent): void => {
     const root = superdocRoot.value;
-    if (!root || !layers.value?.contains(e.target)) return;
+    const target = e.target instanceof Node ? e.target : null;
+    if (!root || !layers.value?.contains(target)) return;
 
     const elementsAtPoint =
       typeof document.elementsFromPoint === 'function' ? document.elementsFromPoint(e.clientX, e.clientY) : [];
@@ -187,9 +273,9 @@ export function useCompactCommentPopover({
       elementsAtPoint
         .find((node) => node?.nodeType === 1 && root.contains(node) && node.closest(COMPACT_ANCHOR_SELECTOR))
         ?.closest(COMPACT_ANCHOR_SELECTOR) ??
-      (e.target?.nodeType === 1 ? e.target.closest(COMPACT_ANCHOR_SELECTOR) : null);
+      (target instanceof Element ? target.closest(COMPACT_ANCHOR_SELECTOR) : null);
 
-    if (clearCompactPopoverIfPdfClickedOutside(root, e.target, anchorElement)) return;
+    if (clearCompactPopoverIfPdfClickedOutside(root, target, anchorElement)) return;
 
     if (e.button !== 0 || e.pointerType !== 'mouse') return;
 
@@ -207,7 +293,7 @@ export function useCompactCommentPopover({
     };
   };
 
-  const compactCommentPopoverStyle = computed(() => {
+  const compactCommentPopoverStyle = computed((): PopoverStyle => {
     void compactPopoverLayoutTick.value;
 
     const comment = activeCompactComment.value;
@@ -262,7 +348,6 @@ export function useCompactCommentPopover({
     return toPopoverStyle(position);
   });
 
-  // Recompute style on compact-popover-relevant state changes via RAF.
   watch(
     [activeComment, pendingComment, selectionPosition, activeZoom, showCommentsSidebar, lastClickAnchor],
     () => {
@@ -280,7 +365,6 @@ export function useCompactCommentPopover({
     { deep: false },
   );
 
-  // Capture focus source when compact popover becomes active.
   watch(
     activeCompactComment,
     (current, previous) => {
@@ -294,7 +378,6 @@ export function useCompactCommentPopover({
     { deep: false },
   );
 
-  // Reset stale click anchor when a new pending comment opens.
   watch(pendingComment, (current, previous) => {
     if (!previous && current) resetClickAnchor();
   });
@@ -313,7 +396,6 @@ export function useCompactCommentPopover({
     compactPopoverReturnFocusEl = null;
   });
 
-  // Close compact popover and restore focus to the triggering element.
   const closeCompactCommentPopover = () => {
     if (!activeCompactComment.value) return;
     if (pendingComment.value) {

@@ -1,4 +1,4 @@
-import type { DocumentApi, ContentControlInfo } from '@superdoc/document-api';
+import type { DocumentApi, ContentControlInfo } from 'superdoc/ui';
 
 type Awaitable<T> = T | Promise<T>;
 type SelectionDocument = {

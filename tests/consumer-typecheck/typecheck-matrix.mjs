@@ -16,6 +16,7 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 
 import { installPackedSuperdocFixture } from './packed-fixture.mjs';
+import { syncDocsSnippets } from './sync-docs-snippets.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(__dirname, '..', '..');
@@ -26,6 +27,8 @@ if (skipPack && useExistingTarball) {
   console.error('--skip-pack and --use-existing-tarball are mutually exclusive.');
   process.exit(2);
 }
+
+syncDocsSnippets();
 
 console.log('Checking all-public-types.ts fixture against the classification...');
 try {

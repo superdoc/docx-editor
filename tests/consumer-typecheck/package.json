@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "pretypecheck": "node sync-docs-snippets.mjs",
     "typecheck": "tsc --noEmit",
     "typecheck:matrix": "node typecheck-matrix.mjs"
   },

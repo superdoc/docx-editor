@@ -32,6 +32,6 @@ async function inspectAtomicReceipt() {
 }
 void inspectAtomicReceipt;
 
-import { selectedContentControls } from '../../../apps/docs/snippets/editor/selected-content-controls.js';
+import { selectedContentControls } from './docs-snippets/editor__selected-content-controls.js';
 const selected: Promise<import('superdoc/ui').ContentControlInfo[]> = selectedContentControls(browserDoc);
 void selected;

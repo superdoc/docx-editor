@@ -1,8 +1,8 @@
 import type { ConfigExplorerData, ConfigField, ConfigFieldExample } from './config-explorer';
 import generatedProofingConfig from '@/generated/proofing-config-reference.json';
-import type { Config } from 'superdoc';
+import type { ProofingConfig } from 'superdoc';
 
-type ProofingFieldName = keyof NonNullable<Config['proofing']>;
+type ProofingFieldName = keyof ProofingConfig;
 
 type ProofingPresentation = {
   group: 'core' | 'behavior' | 'callbacks' | 'reserved';

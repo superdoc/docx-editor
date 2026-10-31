@@ -7,6 +7,7 @@ import type {
   ContentControlRef,
   ContextMenuConfig,
   DocumentMode,
+  ProofingProvider,
   SuperDocMeasurementUnit,
   ViewingTrackedChangesMode,
 } from 'superdoc';
@@ -210,8 +211,6 @@ type PageMetricsHandle = {
   getSnapshot(): PageMetricsSnapshot;
   subscribe(listener: (snapshot: PageMetricsSnapshot) => void): () => void;
 };
-
-type ProofingProvider = NonNullable<NonNullable<Config['proofing']>['provider']>;
 
 const proofingReplacements = new Map([
   ['mispelled', 'misspelled'],

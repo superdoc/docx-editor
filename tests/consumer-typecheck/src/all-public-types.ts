@@ -160,6 +160,19 @@ import type {
   PasswordPromptResolution,
   PermissionResolver,
   PermissionResolverParams,
+  ProofingCapabilities,
+  ProofingCheckRequest,
+  ProofingCheckResult,
+  ProofingConfig,
+  ProofingError,
+  ProofingIssue,
+  ProofingIssueKind,
+  ProofingProvider,
+  ProofingSegment,
+  ProofingSegmentMetadata,
+  ProofingStatus,
+  ProofingSuggestRequest,
+  ProofingSuggestResult,
   ResolvedFindReplaceTexts,
   ResolvedPasswordPromptTexts,
   ResolveRangeOutput,
@@ -445,6 +458,19 @@ const _real_PasswordPromptRenderContext: AssertNotAny<PasswordPromptRenderContex
 const _real_PasswordPromptResolution: AssertNotAny<PasswordPromptResolution> = true;
 const _real_PermissionResolver: AssertNotAny<PermissionResolver> = true;
 const _real_PermissionResolverParams: AssertNotAny<PermissionResolverParams> = true;
+const _real_ProofingCapabilities: AssertNotAny<ProofingCapabilities> = true;
+const _real_ProofingCheckRequest: AssertNotAny<ProofingCheckRequest> = true;
+const _real_ProofingCheckResult: AssertNotAny<ProofingCheckResult> = true;
+const _real_ProofingConfig: AssertNotAny<ProofingConfig> = true;
+const _real_ProofingError: AssertNotAny<ProofingError> = true;
+const _real_ProofingIssue: AssertNotAny<ProofingIssue> = true;
+const _real_ProofingIssueKind: AssertNotAny<ProofingIssueKind> = true;
+const _real_ProofingProvider: AssertNotAny<ProofingProvider> = true;
+const _real_ProofingSegment: AssertNotAny<ProofingSegment> = true;
+const _real_ProofingSegmentMetadata: AssertNotAny<ProofingSegmentMetadata> = true;
+const _real_ProofingStatus: AssertNotAny<ProofingStatus> = true;
+const _real_ProofingSuggestRequest: AssertNotAny<ProofingSuggestRequest> = true;
+const _real_ProofingSuggestResult: AssertNotAny<ProofingSuggestResult> = true;
 const _real_ResolvedFindReplaceTexts: AssertNotAny<ResolvedFindReplaceTexts> = true;
 const _real_ResolvedPasswordPromptTexts: AssertNotAny<ResolvedPasswordPromptTexts> = true;
 const _real_ResolveRangeOutput: AssertNotAny<ResolveRangeOutput> = true;

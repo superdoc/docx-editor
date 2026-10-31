@@ -1,13 +1,13 @@
 {
   "generatedAt": "2026-09-02T00:00:00.000Z",
   "summary": {
-    "total": 302,
+    "total": 315,
     "byBucket": {
       "legacy-root": 3,
-      "supported-root": 299
+      "supported-root": 312
     },
     "byConfidence": {
-      "high": 252,
+      "high": 265,
       "medium": 50
     }
   },
@@ -1138,6 +1138,149 @@
       "name": "PermissionResolverParams",
       "bucket": "supported-root",
       "rationale": "Payload passed to PermissionResolver callbacks.",
+      "confidence": "high",
+      "source": "config-supported",
+      "inDts": true,
+      "inDcts": true,
+      "inEsm": false,
+      "inCjs": false
+    },
+    {
+      "name": "ProofingCapabilities",
+      "bucket": "supported-root",
+      "rationale": "Optional capability report returned by ProofingProvider.getCapabilities().",
+      "confidence": "high",
+      "source": "config-supported",
+      "inDts": true,
+      "inDcts": true,
+      "inEsm": false,
+      "inCjs": false
+    },
+    {
+      "name": "ProofingCheckRequest",
+      "bucket": "supported-root",
+      "rationale": "Request SuperDoc passes to ProofingProvider.check(): the text segments, language, and abort signal.",
+      "confidence": "high",
+      "source": "config-supported",
+      "inDts": true,
+      "inDcts": true,
+      "inEsm": false,
+      "inCjs": false
+    },
+    {
+      "name": "ProofingCheckResult",
+      "bucket": "supported-root",
+      "rationale": "Result a ProofingProvider.check() call resolves to: the issues found in the requested segments.",
+      "confidence": "high",
+      "source": "config-supported",
+      "inDts": true,
+      "inDcts": true,
+      "inEsm": false,
+      "inCjs": false
+    },
+    {
+      "name": "ProofingConfig",
+      "bucket": "supported-root",
+      "rationale": "Type of Config.proofing. Lets applications declare proofing options outside the SuperDoc constructor call.",
+      "confidence": "high",
+      "source": "config-supported",
+      "inDts": true,
+      "inDcts": true,
+      "inEsm": false,
+      "inCjs": false
+    },
+    {
+      "name": "ProofingError",
+      "bucket": "supported-root",
+      "rationale": "Failure passed to ProofingConfig.onProofingError when a provider check fails or times out.",
+      "confidence": "high",
+      "source": "config-supported",
+      "inDts": true,
+      "inDcts": true,
+      "inEsm": false,
+      "inCjs": false
+    },
+    {
+      "name": "ProofingIssue",
+      "bucket": "supported-root",
+      "rationale": "One spelling, grammar, or style range a provider reports against a segment.",
+      "confidence": "high",
+      "source": "config-supported",
+      "inDts": true,
+      "inDcts": true,
+      "inEsm": false,
+      "inCjs": false
+    },
+    {
+      "name": "ProofingIssueKind",
+      "bucket": "supported-root",
+      "rationale": "Closed set of issue kinds a ProofingIssue and ProofingCapabilities use.",
+      "confidence": "high",
+      "source": "config-supported",
+      "inDts": true,
+      "inDcts": true,
+      "inEsm": false,
+      "inCjs": false
+    },
+    {
+      "name": "ProofingProvider",
+      "bucket": "supported-root",
+      "rationale": "Contract a custom proofing service implements and passes as Config.proofing.provider.",
+      "confidence": "high",
+      "source": "config-supported",
+      "inDts": true,
+      "inDcts": true,
+      "inEsm": false,
+      "inCjs": false
+    },
+    {
+      "name": "ProofingSegment",
+      "bucket": "supported-root",
+      "rationale": "Text segment SuperDoc supplies to a provider in check and suggest requests.",
+      "confidence": "high",
+      "source": "config-supported",
+      "inDts": true,
+      "inDcts": true,
+      "inEsm": false,
+      "inCjs": false
+    },
+    {
+      "name": "ProofingSegmentMetadata",
+      "bucket": "supported-root",
+      "rationale": "Location metadata on each ProofingSegment that a provider reads, such as its surface and page.",
+      "confidence": "high",
+      "source": "config-supported",
+      "inDts": true,
+      "inDcts": true,
+      "inEsm": false,
+      "inCjs": false
+    },
+    {
+      "name": "ProofingStatus",
+      "bucket": "supported-root",
+      "rationale": "Lifecycle status passed to ProofingConfig.onStatusChange.",
+      "confidence": "high",
+      "source": "config-supported",
+      "inDts": true,
+      "inDcts": true,
+      "inEsm": false,
+      "inCjs": false
+    },
+    {
+      "name": "ProofingSuggestRequest",
+      "bucket": "supported-root",
+      "rationale": "Request SuperDoc passes to ProofingProvider.suggest() when a user opens an issue menu.",
+      "confidence": "high",
+      "source": "config-supported",
+      "inDts": true,
+      "inDcts": true,
+      "inEsm": false,
+      "inCjs": false
+    },
+    {
+      "name": "ProofingSuggestResult",
+      "bucket": "supported-root",
+      "rationale": "Result a ProofingProvider.suggest() call resolves to: the replacement list.",
       "confidence": "high",
       "source": "config-supported",
       "inDts": true,

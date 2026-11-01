@@ -20,7 +20,7 @@ describe('worker render error identity', () => {
       severity: 'error',
       error,
     });
-    expect(result.error).toMatchObject(error);
+    expect(result!.error).toMatchObject(error);
     expect(result).toMatchObject({
       diagnosticCode: 'RENDER_ERROR',
       diagnosticStage: 'render',
@@ -55,10 +55,10 @@ describe('worker render error identity', () => {
       ...details,
     });
 
-    expect(result.error).toBeInstanceOf(Error);
-    expect(result.error).toMatchObject({ name, message });
-    expect(typeof result.error.stack).toBe('string');
-    expect(result.error.stack).toContain(message);
+    expect(result!.error).toBeInstanceOf(Error);
+    expect(result!.error).toMatchObject({ name, message });
+    expect(typeof result!.error.stack).toBe('string');
+    expect(result!.error.stack).toContain(message);
     expect(result).toMatchObject({
       diagnosticCode: 'RENDER_ERROR',
       diagnosticStage: 'render',
@@ -82,7 +82,7 @@ describe('translateUnzipDiagnostic', () => {
       severity: 'error',
       internalCode: 'package-not-zip',
     });
-    expect(result.error).toBeInstanceOf(Error);
+    expect(result!.error).toBeInstanceOf(Error);
   });
 
   it('maps an error-severity PKG-payload-* code to PERFORMANCE_ERROR', () => {
@@ -159,8 +159,8 @@ describe('translateUnzipDiagnostic', () => {
       { code: 'package-not-zip', severity: 'error', message: 'bad' },
       { documentId: 'doc-1', editor },
     );
-    expect(result.documentId).toBe('doc-1');
-    expect(result.editor).toBe(editor);
+    expect(result!.documentId).toBe('doc-1');
+    expect(result!.editor).toBe(editor);
   });
 });
 
@@ -179,7 +179,7 @@ describe('translateRenderReadinessDiagnostic', () => {
         internalCode: code,
         documentId: 'sd-5696',
       });
-      expect(result.error).toBeInstanceOf(Error);
+      expect(result!.error).toBeInstanceOf(Error);
     },
   );
 
@@ -498,8 +498,8 @@ describe('translateBootFailureReason', () => {
       documentId: 'doc-1',
       editor,
     });
-    expect(result.documentId).toBe('doc-1');
-    expect(result.editor).toBe(editor);
+    expect(result!.documentId).toBe('doc-1');
+    expect(result!.editor).toBe(editor);
   });
 });
 
@@ -601,7 +601,7 @@ describe('translateSsigParseDiagnostic', () => {
       { code: 'SSIG-SECT-parse-error', severity: 'error', message: 'boom' },
       { documentId: 'doc-1', editor },
     );
-    expect(result.documentId).toBe('doc-1');
-    expect(result.editor).toBe(editor);
+    expect(result!.documentId).toBe('doc-1');
+    expect(result!.editor).toBe(editor);
   });
 });

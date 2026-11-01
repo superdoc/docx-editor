@@ -89,4 +89,11 @@ describe('PDFAdapterFactory', () => {
   it('throws for unsupported adapter types', () => {
     expect(() => PDFAdapterFactory.create({ adapter: 'unknown', pdfLib: makePdfLib() })).toThrow(/Unsupported adapter/);
   });
+
+  it.each(['toString', 'constructor', '__proto__', 'default'])(
+    'throws for the inherited or reserved key %s',
+    (adapter) => {
+      expect(() => PDFAdapterFactory.create({ adapter, pdfLib: makePdfLib() })).toThrow(/Unsupported adapter/);
+    },
+  );
 });

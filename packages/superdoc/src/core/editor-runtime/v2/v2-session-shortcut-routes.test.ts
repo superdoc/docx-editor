@@ -167,7 +167,7 @@ describe('createV2SessionShortcutRoutes — page-field insert', () => {
 });
 
 describe('createV2SessionShortcutRoutes — PAGE through the built-in page-number command', () => {
-  function asyncSelectionDoc(insert: ReturnType<typeof vi.fn>) {
+  function asyncSelectionDoc(insert: (input: unknown) => unknown) {
     // The worker-backed facade answers selection reads asynchronously.
     const footerTarget = {
       kind: 'text',

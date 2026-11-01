@@ -80,23 +80,21 @@ export class PDFJSAdapter extends PDFAdapter {
     return pdfLib.getDocument(file).promise;
   }
 
-  async getPages(pdf: PDFDocumentProxy, firstPage: number, lastPage: number): Promise<PDFPageProxy[]> {
+  async getPages<Page = PDFPageProxy>(
+    pdf: { getPage(pageNumber: number): Promise<Page> },
+    firstPage: number,
+    lastPage: number,
+  ): Promise<Page[]> {
     const pagesPromises = range(firstPage, lastPage + 1).map((num) => pdf.getPage(num));
     return await Promise.all(pagesPromises);
   }
 }
 
 export class PDFAdapterFactory {
-  static create(config: PDFConfig): PDFJSAdapter {
-    const adapters = {
-      pdfjs: () => {
-        return new PDFJSAdapter(config);
-      },
-      default: () => {
-        throw new Error('Unsupported adapter');
-      },
-    };
-    const adapter = adapters[config.adapter] ?? adapters.default;
+  static create(config: PDFJSConfig & { adapter: string }): PDFJSAdapter {
+    const adapters = new Map<string, () => PDFJSAdapter>([['pdfjs', () => new PDFJSAdapter(config)]]);
+    const adapter = adapters.get(config.adapter);
+    if (!adapter) throw new Error('Unsupported adapter');
     return adapter();
   }
 }

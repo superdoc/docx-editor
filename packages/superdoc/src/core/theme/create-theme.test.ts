@@ -51,9 +51,10 @@ describe('createTheme', () => {
     });
 
     it('ignores null and undefined color values', () => {
+      const colors: Record<string, string | null | undefined> = { action: '#ff0000', bg: undefined, text: null };
       const { css } = buildTheme({
         name: 'null-test',
-        colors: { action: '#ff0000', bg: undefined, text: null },
+        colors,
       });
       expect(css).toContain('--sd-ui-action: #ff0000');
       expect(css).not.toContain('--sd-ui-bg');
@@ -61,9 +62,10 @@ describe('createTheme', () => {
     });
 
     it('ignores unknown color keys', () => {
+      const colors: Record<string, string> = { action: '#ff0000', notAColor: '#000' };
       const { css } = buildTheme({
         name: 'unknown-test',
-        colors: { action: '#ff0000', notAColor: '#000' },
+        colors,
       });
       expect(css).toContain('--sd-ui-action');
       expect(css).not.toContain('notAColor');
@@ -125,7 +127,7 @@ describe('createTheme', () => {
       const cls = createTheme({ name: 'inject', colors: { action: '#abc' } });
       const style = document.querySelector(`[data-sd-theme="${cls}"]`);
       expect(style).not.toBeNull();
-      expect(style.textContent).toContain('--sd-ui-action: #abc');
+      expect(style!.textContent).toContain('--sd-ui-action: #abc');
     });
 
     it('updates existing style element on re-call with same name', () => {

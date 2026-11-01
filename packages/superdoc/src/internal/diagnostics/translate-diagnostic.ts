@@ -36,7 +36,7 @@ type RenderReadinessDiagnostic = {
   code?: string;
   reason?: string;
   severity?: string;
-  error?: { name?: string; message?: string; stack?: string };
+  error?: { name?: unknown; message?: unknown; stack?: unknown };
 };
 
 // Package-open codes that are size/count/depth caps, not content-integrity
@@ -93,7 +93,7 @@ export function translateUnzipDiagnostic(
 export function translateRenderReadinessDiagnostic(
   diag: RenderReadinessDiagnostic | null | undefined,
   ctx: DiagnosticTranslationContext = {},
-): SuperDocExceptionDiagnosticPayload | null {
+): (SuperDocExceptionDiagnosticPayload & { error: Error }) | null {
   if (!diag || typeof diag.code !== 'string') return null;
   const { code, reason, severity } = diag;
   if (severity !== 'error' && severity !== 'warn') return null;

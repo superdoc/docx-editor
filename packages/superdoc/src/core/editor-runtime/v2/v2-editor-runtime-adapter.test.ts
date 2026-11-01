@@ -1,10 +1,12 @@
 import { describe, expect, it, vi } from 'vite-plus/test';
 
-import { createV2EditorRuntimeAdapter } from './v2-editor-runtime-adapter.js';
+import { createV2EditorRuntimeAdapter, type V2EditorRuntimeAdapterOptions } from './v2-editor-runtime-adapter.js';
+
+type Host = V2EditorRuntimeAdapterOptions['host'];
 
 function createReadyHost(overrides: Record<string, unknown> = {}) {
   return {
-    getSnapshot: () => ({
+    getSnapshot: (): ReturnType<Host['getSnapshot']> => ({
       state: 'editing-ready',
       documentMode: 'editing',
       editableSubset: {
@@ -14,16 +16,16 @@ function createReadyHost(overrides: Record<string, unknown> = {}) {
       commentCommandsReason: null,
     }),
     subscribe: () => () => {},
-    getDocumentMode: () => 'editing',
+    getDocumentMode: (): ReturnType<Host['getDocumentMode']> => 'editing',
     setDocumentMode: vi.fn(),
     setTrackedChangesRenderOptions: vi.fn(),
     setShowFormattingMarks: vi.fn(),
-    dispatch: vi.fn(async () => ({ status: 'committed', receipt: { success: true } })),
+    dispatch: vi.fn<Host['dispatch']>(async () => ({ status: 'committed', receipt: { success: true } })),
     save: vi.fn(async () => new ArrayBuffer(0)),
     dispose: vi.fn(async () => {}),
     getHandles: () => ({ editing: null }),
     getPageMetricsSnapshot: () => ({ pages: [], zoom: { percent: 100 } }),
-    setZoom: vi.fn(() => ({ status: 'ok' })),
+    setZoom: vi.fn<Host['setZoom']>(() => ({ status: 'ok' })),
     ...overrides,
   };
 }
@@ -226,7 +228,7 @@ describe('createV2EditorRuntimeAdapter review mutation route', () => {
     });
 
     expect(runtime.getSnapshot().state).toBe('review-ready');
-    expect(runtime.getCapabilities().trackedChanges.canDecide).toBe(false);
+    expect(runtime.getCapabilities().trackedChanges!.canDecide).toBe(false);
     expect(runtime.getCapabilities().commands.supportedCommands).not.toContain('trackedChanges.accept');
     await expect(runtime.dispatch({ kind: 'trackedChanges.accept', id: 'tc-1' })).resolves.toEqual({
       status: 'rejected',

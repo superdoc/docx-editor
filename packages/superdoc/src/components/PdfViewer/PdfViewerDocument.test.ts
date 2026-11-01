@@ -55,7 +55,7 @@ describe('PdfViewerDocument.vue', () => {
     const wrapper = mountDocument({ pages: [{ pageId: 'p-1' }] });
     await wrapper.find('.pdf-viewer-page-stub').trigger('click');
     expect(wrapper.emitted('page-rendered')).toBeTruthy();
-    expect(wrapper.emitted('page-rendered')[0][0]).toEqual({ pageId: 'p-1' });
+    expect(wrapper.emitted('page-rendered')![0][0]).toEqual({ pageId: 'p-1' });
   });
 
   it('forwards selection-raw events from child pages', async () => {

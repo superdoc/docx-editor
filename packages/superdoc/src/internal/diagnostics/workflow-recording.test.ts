@@ -158,7 +158,10 @@ it('attaches input listeners only while explicitly recording, including restart,
 it('cleans up partial listener setup failure and leaves normal history working', () => {
   const original = window.addEventListener;
   let registrations = 0;
-  const add = vi.spyOn(window, 'addEventListener').mockImplementation(function (...args) {
+  const add = vi.spyOn(window, 'addEventListener').mockImplementation(function (
+    this: Window,
+    ...args: Parameters<typeof window.addEventListener>
+  ) {
     if (++registrations === 3) throw new Error('listener setup failure');
     return original.apply(this, args);
   });

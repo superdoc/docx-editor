@@ -3863,6 +3863,27 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     }
   };
 
+  const seedAsyncRead = (
+    key: string,
+    token: string | null,
+    value: unknown,
+    inflightToken: string | null = null,
+  ): void => {
+    asyncReads.set(key, { token, value, hasSettled: true, inflightToken });
+  };
+
+  const selectionValidationSnapshot = (): { held: boolean; pendingToken: string | null } => ({
+    held: typedCaretValidationHeld,
+    pendingToken: pendingSelectionSeedValidationToken,
+  });
+
+  const setSelectionValidation = (next: { held: boolean; pendingToken: string | null }): void => {
+    typedCaretValidationHeld = next.held;
+    pendingSelectionSeedValidationToken = next.pendingToken;
+  };
+
+  const typingIsRecent = (): boolean => Date.now() - lastTypingMutationAtMs < HEAVY_READ_IDLE_MS;
+
   const selectionScopedAsyncReadKeys = (selection: SelectionSlice): ReadonlySet<string> => {
     const signature = selectionSignature(selection);
     const effectiveUniformityKey = effectiveInlineUniformityCacheKey(selection);
@@ -4259,17 +4280,11 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
         !seed.selectionTarget &&
         captureWholeTableParagraphSeed(host, seed, hostSelectionSnapshot as object)
       ) {
-        asyncReads.set('selection', {
-          token: asyncReads.get('selection')?.token ?? null,
-          value: seed,
-          hasSettled: true,
-          inflightToken: null,
-        });
+        seedAsyncRead('selection', asyncReads.get('selection')?.token ?? null, seed);
       }
     }
     if (isNonCollapsedHostSelection(hostSelectionSnapshot) && !(foreground && foreground.active > 0)) {
-      typedCaretValidationHeld = false;
-      pendingSelectionSeedValidationToken = null;
+      setSelectionValidation({ held: false, pendingToken: null });
       issueAsyncRead('selection', selectionReadToken(), selectionCurrentRun, normalizeSelectionInfo);
       return;
     }
@@ -4278,12 +4293,11 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     const seed = normalizeSelectionInfo(safeCall(() => (read as AnyFn).call(host), null));
     if (!seed) return;
     if (wholeTableSelectionChanged) {
-      typedCaretValidationHeld = false;
-      pendingSelectionSeedValidationToken = null;
+      setSelectionValidation({ held: false, pendingToken: null });
       wholeTableParagraphSeed = null;
       captureWholeTableParagraphSeed(host, seed, initialTableSelection);
       const token = selectionReadToken();
-      asyncReads.set('selection', { token, value: seed, hasSettled: true, inflightToken: null });
+      seedAsyncRead('selection', token, seed);
       issueAsyncRead('selection', token, selectionCurrentRun, normalizeSelectionInfo);
       return;
     }
@@ -4300,18 +4314,19 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       storyLocatorSignature(previousCaret.story) === storyLocatorSignature(nextCaret.story) &&
       previousRange?.start === nextRange?.start,
     );
-    typedCaretValidationHeld =
-      Boolean(foreground && foreground.active > 0) || (typedCaretValidationHeld && (afterTypingPaint || sameSeedCaret));
+    const validation = selectionValidationSnapshot();
+    const held =
+      Boolean(foreground && foreground.active > 0) || (validation.held && (afterTypingPaint || sameSeedCaret));
+    setSelectionValidation({ held, pendingToken: validation.pendingToken });
     const token = selectionReadToken();
     const deferAuthoritativeRead =
-      Boolean(foreground && (foreground.active > 0 || foreground.pending > 0)) ||
-      (typedCaretValidationHeld && Date.now() - lastTypingMutationAtMs < HEAVY_READ_IDLE_MS);
+      Boolean(foreground && (foreground.active > 0 || foreground.pending > 0)) || (held && typingIsRecent());
     if (!deferAuthoritativeRead) {
-      pendingSelectionSeedValidationToken = null;
+      setSelectionValidation({ held, pendingToken: null });
       const completed = issueAsyncRead('selection', token, selectionCurrentRun, normalizeSelectionInfo);
       if (completed) return;
     } else {
-      pendingSelectionSeedValidationToken = token;
+      setSelectionValidation({ held, pendingToken: token });
       scheduleForegroundAsyncRetry();
     }
     const prev = asyncReads.get('selection');
@@ -4344,17 +4359,17 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       : [];
     const seedChangeIds =
       Array.isArray(seed.activeChangeIds) && seed.activeChangeIds.length > 0 ? seed.activeChangeIds : carriedChangeIds;
-    asyncReads.set('selection', {
+    seedAsyncRead(
+      'selection',
       token,
-      value: {
+      {
         ...seed,
         activeMarks: seedMarks,
         activeCommentIds: seedCommentIds,
         activeChangeIds: seedChangeIds,
       },
-      hasSettled: true,
-      inflightToken: deferAuthoritativeRead ? null : (prev?.inflightToken ?? null),
-    });
+      deferAuthoritativeRead ? null : (prev?.inflightToken ?? null),
+    );
   };
 
   const selectionInfoMatchesHost = (info: SelectionInfo | null): boolean => {
@@ -4389,7 +4404,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     const mode = readDocumentMode();
 
     if (typeof current !== 'function') {
-      asyncReads.set('selection', { token, value: null, hasSettled: true, inflightToken: null });
+      seedAsyncRead('selection', token, null);
       recompute();
       return selectionSliceFromInfo(null, 'pending');
     }
@@ -4422,12 +4437,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       return attempt < 1 ? readSelectionInfoFresh(attempt + 1) : selectionSliceFromInfo(null, 'pending');
     }
 
-    asyncReads.set('selection', {
-      token: selectionReadToken(),
-      value: info,
-      hasSettled: true,
-      inflightToken: null,
-    });
+    seedAsyncRead('selection', selectionReadToken(), info);
     const selection = selectionSliceFromInfo(info, info ? 'ready' : 'pending');
     recompute();
     return selection;
@@ -13230,12 +13240,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       const resolved = await Promise.resolve(resolveMetadata({ id }));
       if (token !== localContentToken()) return null;
       const target = readMetadataResolvedTarget(resolved);
-      asyncReads.set(metadataResolveKey(id), {
-        token,
-        value: target,
-        hasSettled: true,
-        inflightToken: null,
-      });
+      seedAsyncRead(metadataResolveKey(id), token, target);
       return target;
     } catch {
       return null;

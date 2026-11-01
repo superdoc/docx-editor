@@ -41,9 +41,7 @@
  * Adding a file to CHECKED_FILES:
  *   1. Add `// @ts-check` as the first line.
  *   2. Append the file's repo-relative path to the `CHECKED_FILES`
- *      array in `./jsdoc-checked-files.cjs` (the shared source of
- *      truth consumed by both this gate and
- *      `report-js-contract-owners.cjs`).
+ *      array in `./jsdoc-checked-files.cjs`.
  *   3. Run `pnpm --filter superdoc run check:jsdoc` and fix what
  *      surfaces. If the file was on the debt snapshot, also rerun
  *      with `--write` to drop the stale entry.
@@ -72,11 +70,6 @@ const tsconfigPath = path.join(packageDir, 'tsconfig.json');
 const DEBT_SNAPSHOT_PATH = path.join(__dirname, 'jsdoc-debt-snapshot.json');
 const ALLOWLIST_PATH = path.join(__dirname, 'jsdoc-allowlist.cjs');
 
-// Hand-curated set of files explicitly gated by this script lives in
-// `./jsdoc-checked-files.cjs` so it's shared with
-// `report-js-contract-owners.cjs` (which classifies these files as
-// `checked-files` rather than `unaccounted`). Keep both consumers
-// reading from one place; edits go in the shared module.
 const {
   CHECKED_FILES,
   REACHABILITY_EXEMPT_CHECKED_FILES: REACHABILITY_EXEMPT_LIST,

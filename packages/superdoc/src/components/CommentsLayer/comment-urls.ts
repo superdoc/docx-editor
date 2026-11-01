@@ -1,6 +1,6 @@
 import { sanitizeHref } from '../../internal/toolbar/built-in/url-safety.js';
 
-function isAbsoluteWebUrl(value) {
+function isAbsoluteWebUrl(value: string): boolean {
   if (!/^https?:\/\/[^\s/?#\\]+/i.test(value) || /[\s\\]/u.test(value)) return false;
   try {
     const url = new URL(value);
@@ -10,14 +10,14 @@ function isAbsoluteWebUrl(value) {
   }
 }
 
-function trimUrlPunctuation(value) {
-  const closingDelimiter = { '(': ')', '[': ']', '{': '}' };
-  const balance = { ')': 0, ']': 0, '}': 0 };
+function trimUrlPunctuation(value: string): string {
+  const closingDelimiter: Record<string, string> = { '(': ')', '[': ']', '{': '}' };
+  const balance: Record<string, number> = { ')': 0, ']': 0, '}': 0 };
   for (const character of value) {
     const close = closingDelimiter[character];
     if (close) {
       balance[close] += 1;
-    } else if (Object.hasOwn(balance, character)) {
+    } else if (Object.prototype.hasOwnProperty.call(balance, character)) {
       balance[character] -= 1;
     }
   }
@@ -37,35 +37,38 @@ function trimUrlPunctuation(value) {
   return value.slice(0, end);
 }
 
-function configureLink(link, href) {
+function configureLink(link: Element, href: string): void {
   link.setAttribute('href', href);
   link.setAttribute('target', '_blank');
   link.setAttribute('rel', 'noopener noreferrer');
 }
 
 /** Render links without rewriting stored comment HTML or its rich-text structure. */
-export function renderCommentHtml(value) {
+export function renderCommentHtml(value: unknown): string {
   if (typeof value !== 'string') return '';
   if (typeof document === 'undefined') return value;
   const template = document.createElement('template');
   template.innerHTML = value;
 
-  for (const link of template.content.querySelectorAll('a')) {
-    const safe = sanitizeHref(link.getAttribute('href'));
+  for (const link of Array.from(template.content.querySelectorAll('a'))) {
+    const rawHref = link.getAttribute('href');
+    const safe = rawHref === null ? null : sanitizeHref(rawHref);
     // Preserve existing mail/tel links; only absolute web URLs are auto-detected.
     if (safe && (isAbsoluteWebUrl(safe.href) || /^(mailto|tel):\S+$/i.test(safe.href))) {
       configureLink(link, safe.href);
     } else {
-      link.replaceWith(...link.childNodes);
+      link.replaceWith(...Array.from(link.childNodes));
     }
   }
 
   const walker = document.createTreeWalker(template.content, NodeFilter.SHOW_TEXT);
-  const textNodes = [];
-  while (walker.nextNode()) textNodes.push(walker.currentNode);
+  const textNodes: Text[] = [];
+  while (walker.nextNode()) {
+    if (walker.currentNode instanceof Text) textNodes.push(walker.currentNode);
+  }
   for (const node of textNodes) {
     if (node.parentElement?.closest('a, script, style, textarea, code, pre')) continue;
-    const text = node.textContent;
+    const text = node.data;
     const fragment = document.createDocumentFragment();
     let end = 0;
     for (const match of text.matchAll(/(^|[\s([{])(https?:\/\/[^\s<>"']+)/gi)) {

@@ -1,9 +1,52 @@
 import { EventEmitter } from 'eventemitter3';
 import { setActivePinia } from 'pinia';
 import { createApp } from 'vue';
+import type { App, Component, ComponentPublicInstance } from 'vue';
 
 import { vClickOutside } from '@superdoc/common';
+import { isPlainObject } from '../../../helpers/object-guards.js';
+import type { SuperDoc } from '../../../core/types/index.js';
+import type { CommentsSlice, SnapshotSubscribable } from '../../../public/ui/types.js';
 import CommentsList from './commentsList.vue';
+
+type DirectoryFamily = 'comments' | 'trackChanges';
+
+type DirectorySlice = Pick<CommentsSlice, 'status' | 'listStatus'> & { items: readonly unknown[] };
+
+type DirectoryHandle = Pick<SnapshotSubscribable<DirectorySlice>, 'observe' | 'getSnapshot'>;
+
+type DirectoryItems = Record<DirectoryFamily, readonly unknown[] | null>;
+
+type ReviewDirectoryStore = {
+  isReviewDirectoryActive: boolean;
+  isReviewDirectoryLoading: boolean;
+  setReviewDirectoryFromV2(input: {
+    superdoc?: SuperDoc;
+    commentItems?: readonly unknown[];
+    trackedChangeItems?: readonly unknown[];
+  }): unknown;
+  clearReviewDirectory(): void;
+};
+
+const isReviewDirectoryStore = (value: unknown): value is ReviewDirectoryStore =>
+  isPlainObject(value) &&
+  typeof value.setReviewDirectoryFromV2 === 'function' &&
+  typeof value.clearReviewDirectory === 'function';
+
+const readCommentsStore = (superdoc: SuperDoc): ReviewDirectoryStore | undefined => {
+  const store: unknown = superdoc?.['commentsStore'];
+  return isReviewDirectoryStore(store) ? store : undefined;
+};
+
+type SuperCommentsConfig = {
+  comments: unknown[];
+  element: Element | string | null | undefined;
+  commentsStore: unknown;
+  selector?: string;
+  [key: string]: unknown;
+};
+
+type SuperCommentsOptions = Partial<SuperCommentsConfig>;
 
 /**
  * Comments list renderer (not floating comments)
@@ -11,15 +54,23 @@ import CommentsList from './commentsList.vue';
  * This renders a list of comments into an element, connected to main SuperDoc instance
  */
 export class SuperComments extends EventEmitter {
-  element;
+  element: Element | string | null | undefined;
 
-  config = {
+  config: SuperCommentsConfig = {
     comments: [],
     element: null,
     commentsStore: null,
   };
 
-  constructor(options, superdoc) {
+  app: App | null;
+  superdoc: SuperDoc;
+  container: ComponentPublicInstance | null | undefined;
+  stopDirectoryObservers: Array<() => void>;
+  directorySnapshots: DirectoryItems;
+  directoryItemRefs: DirectoryItems;
+  directoryGeneration: number;
+
+  constructor(options: SuperCommentsOptions | undefined, superdoc: SuperDoc) {
     super();
     this.config = { ...this.config, ...options };
     this.element = this.config.element;
@@ -33,7 +84,7 @@ export class SuperComments extends EventEmitter {
   }
 
   syncDirectory() {
-    const store = this.superdoc?.commentsStore;
+    const store = readCommentsStore(this.superdoc);
     if (!store) return;
     const comments = this.directorySnapshots.comments;
     const trackChanges = this.directorySnapshots.trackChanges;
@@ -48,17 +99,19 @@ export class SuperComments extends EventEmitter {
 
   startDirectoryObservers() {
     const generation = ++this.directoryGeneration;
-    const subscribe = (handle, family) => {
-      const acceptDirectorySnapshot = (snapshot) => {
+    const subscribe = (handle: DirectoryHandle, family: DirectoryFamily) => {
+      const acceptDirectorySnapshot = (snapshot: DirectorySlice) => {
         if (generation !== this.directoryGeneration) return;
         if ((snapshot?.listStatus ?? snapshot?.status) !== 'ready') {
-          if (this.superdoc?.commentsStore) this.superdoc.commentsStore.isReviewDirectoryLoading = true;
+          const store = readCommentsStore(this.superdoc);
+          if (store) store.isReviewDirectoryLoading = true;
           return;
         }
         const items = Array.isArray(snapshot.items) ? snapshot.items : [];
         if (this.directoryItemRefs[family] === items) {
-          if (this.superdoc?.commentsStore) {
-            this.superdoc.commentsStore.isReviewDirectoryLoading =
+          const store = readCommentsStore(this.superdoc);
+          if (store) {
+            store.isReviewDirectoryLoading =
               this.directorySnapshots.comments == null || this.directorySnapshots.trackChanges == null;
           }
           return;
@@ -77,16 +130,17 @@ export class SuperComments extends EventEmitter {
     };
     const ui = this.superdoc?.ui;
     if (!ui) return;
-    if (this.superdoc?.commentsStore) {
-      this.superdoc.commentsStore.isReviewDirectoryActive = true;
-      this.superdoc.commentsStore.isReviewDirectoryLoading = true;
+    const store = readCommentsStore(this.superdoc);
+    if (store) {
+      store.isReviewDirectoryActive = true;
+      store.isReviewDirectoryLoading = true;
     }
     this.stopDirectoryObservers = [subscribe(ui.comments, 'comments'), subscribe(ui.trackChanges, 'trackChanges')];
   }
 
   createVueApp() {
-    this.app = createApp(CommentsList);
-    const parentProvides = this.superdoc?.app?._context?.provides;
+    this.app = createApp(CommentsList as Component);
+    const parentProvides = this.superdoc?.['app']?._context?.provides;
     if (parentProvides && this.app?._context?.provides) {
       Object.setPrototypeOf(this.app._context.provides, parentProvides);
     }
@@ -111,10 +165,11 @@ export class SuperComments extends EventEmitter {
     for (const stop of this.stopDirectoryObservers.splice(0)) stop?.();
     this.directorySnapshots = { comments: null, trackChanges: null };
     this.directoryItemRefs = { comments: null, trackChanges: null };
-    if (this.superdoc?.commentsStore) {
-      this.superdoc.commentsStore.clearReviewDirectory();
-      this.superdoc.commentsStore.isReviewDirectoryActive = false;
-      this.superdoc.commentsStore.isReviewDirectoryLoading = false;
+    const store = readCommentsStore(this.superdoc);
+    if (store) {
+      store.clearReviewDirectory();
+      store.isReviewDirectoryActive = false;
+      store.isReviewDirectoryLoading = false;
     }
     if (this.app) {
       this.app.unmount();

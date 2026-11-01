@@ -1,14 +1,20 @@
-// @ts-check
+export type TrackedChangeThreadSource<Id> = {
+  trackedChangeThreadParentId?: Id | null;
+  trackedChangeParentId?: Id | null;
+  trackedChangeLink?: unknown;
+  trackedChangeType?: unknown;
+  trackedChangeDisplayType?: unknown;
+  trackedChangeText?: unknown;
+  deletedText?: unknown;
+  trackedChange?: unknown;
+};
 
 /**
  * Legacy comment payloads predate explicit tracked-change thread provenance.
  * These fields distinguish a true legacy review child from a v2 comment whose
  * anchor merely overlaps tracked content.
- *
- * @param {Record<string, any> | null | undefined} comment
- * @returns {boolean}
  */
-const hasLegacyTrackedChangeThreadSignal = (comment) =>
+const hasLegacyTrackedChangeThreadSignal = <Id>(comment: TrackedChangeThreadSource<Id> | null | undefined): boolean =>
   Boolean(comment?.trackedChangeLink) ||
   Boolean(comment?.trackedChangeType) ||
   Boolean(comment?.trackedChangeDisplayType) ||
@@ -20,11 +26,10 @@ const hasLegacyTrackedChangeThreadSignal = (comment) =>
  * Resolve explicit thread provenance first, then the guarded legacy fallback.
  * Spatial-only v2 comments carry neither the explicit field nor a legacy
  * review signal and therefore remain standalone.
- *
- * @param {Record<string, any> | null | undefined} comment
- * @returns {string | number | null}
  */
-export const trackedChangeThreadParentIdForComment = (comment) => {
+export const trackedChangeThreadParentIdForComment = <Id>(
+  comment: TrackedChangeThreadSource<Id> | null | undefined,
+): Id | null => {
   if (comment?.trackedChangeThreadParentId != null) return comment.trackedChangeThreadParentId;
   if (comment?.trackedChangeParentId != null && hasLegacyTrackedChangeThreadSignal(comment)) {
     return comment.trackedChangeParentId;

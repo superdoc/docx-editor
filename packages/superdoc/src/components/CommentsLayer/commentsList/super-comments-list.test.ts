@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vite-plus/test';
 import { defineComponent, h } from 'vue';
-import { createPinia } from 'pinia';
+import { createPinia, setActivePinia } from 'pinia';
+import { useCommentsStore } from '../../../stores/comments-store.js';
+import { useSuperdocStore } from '../../../stores/superdoc-store.js';
 
 vi.mock('./commentsList.vue', () => ({
   default: defineComponent({
@@ -11,7 +13,8 @@ vi.mock('./commentsList.vue', () => ({
   }),
 }));
 
-vi.mock('@superdoc/common', () => ({
+vi.mock('@superdoc/common', async (importOriginal) => ({
+  ...(await importOriginal()),
   vClickOutside: { mounted: vi.fn(), unmounted: vi.fn() },
 }));
 
@@ -134,6 +137,53 @@ describe('SuperComments', () => {
     expect(commentsStore.isReviewDirectoryActive).toBe(false);
     await Promise.resolve();
     expect(commentsStore.setReviewDirectoryFromV2).toHaveBeenCalledTimes(5);
+  });
+
+  it('drives the real Pinia comments store through open, ready snapshots and close', () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    useSuperdocStore().documents = [{ id: 'doc-1', type: 'docx' }];
+    const commentsStore = useCommentsStore();
+    const readyHandle = (items) => ({
+      observe: vi.fn((listener) => {
+        listener({ listStatus: 'ready', items });
+        return vi.fn();
+      }),
+      getSnapshot: vi.fn(() => ({ listStatus: 'pending', items: [] })),
+    });
+    const superdoc = {
+      ...superdocStub,
+      pinia,
+      commentsStore,
+      activeEditor: {
+        documentId: 'doc-1',
+        v2Comments: {
+          mapV2CommentToUseCommentInput: (item) => ({ commentId: item.id, fileId: 'doc-1', commentText: 'Body' }),
+        },
+        v2TrackedChanges: {
+          mapV2TrackedChangeToCommentParams: (item) => ({ changeId: item.id, documentId: 'doc-1' }),
+        },
+      },
+      ui: {
+        comments: readyHandle([{ id: 'directory-comment' }]),
+        trackChanges: readyHandle([{ id: 'directory-change' }]),
+      },
+    };
+
+    const instance = new SuperComments({ element }, superdoc);
+
+    expect(commentsStore.isReviewDirectoryActive).toBe(true);
+    expect(commentsStore.isReviewDirectoryLoading).toBe(false);
+    expect(commentsStore.reviewDirectoryList.map((row) => row.commentId)).toEqual([
+      'directory-comment',
+      'directory-change',
+    ]);
+
+    instance.close();
+
+    expect(commentsStore.reviewDirectoryList).toEqual([]);
+    expect(commentsStore.isReviewDirectoryActive).toBe(false);
+    expect(commentsStore.isReviewDirectoryLoading).toBe(false);
   });
 
   it('close() is a no-op when there is no app', () => {

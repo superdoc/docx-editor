@@ -1,18 +1,21 @@
-// @ts-check
+import { trackedChangeThreadParentIdForComment, type TrackedChangeThreadSource } from './tracked-change-threading.js';
 
-import { trackedChangeThreadParentIdForComment } from './tracked-change-threading.js';
+type RemovableComment = TrackedChangeThreadSource<unknown> & {
+  commentId?: unknown;
+  importedId?: unknown;
+  parentCommentId?: unknown;
+};
 
 /**
  * Expand deleted comment ids through comment and tracked-change descendants.
- *
- * @param {ReadonlyArray<Record<string, any>>} comments
- * @param {ReadonlyArray<string>} targetIds
- * @param {(comment: Record<string, any>) => boolean} [isInScope]
- * @returns {Set<string>}
  */
-export const collectRemovedCommentIds = (comments, targetIds, isInScope = () => true) => {
+export const collectRemovedCommentIds = <Comment extends RemovableComment>(
+  comments: ReadonlyArray<Comment>,
+  targetIds: ReadonlyArray<string>,
+  isInScope: (comment: Comment) => boolean = () => true,
+): Set<string> => {
   const targets = new Set(targetIds.map(String));
-  const removedIds = new Set();
+  const removedIds = new Set<string>();
 
   comments.forEach((comment) => {
     if (!isInScope(comment)) return;

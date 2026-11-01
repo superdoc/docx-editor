@@ -1,10 +1,7 @@
 /**
  * Comments helper to format dates from timestamp
- *
- * @param {Number} timestamp The timestamp to format
- * @returns {String} The formatted date
  */
-export function formatDate(timestamp) {
+export function formatDate(timestamp: number): string {
   const date = new Date(timestamp);
   const hours = date.getHours();
   const minutes = date.getMinutes();

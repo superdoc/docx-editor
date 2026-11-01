@@ -1,5 +1,3 @@
-// @ts-check
-
 import { trackedChangeThreadParentIdForComment } from './tracked-change-threading.js';
 
 /**
@@ -17,16 +15,22 @@ import { trackedChangeThreadParentIdForComment } from './tracked-change-threadin
  * Pure function — no side effects, no Vue, no store. Extracted from
  * CommentDialog.vue so the logic can be unit-tested in isolation.
  *
- * @template {{ commentId: string, parentCommentId?: string|null, threadingParentCommentId?: string|null, trackedChangeThreadParentId?: string|null }} Comment
- * @param {Comment} parentComment The tracked-change comment whose dialog this collects.
- * @param {ReadonlyArray<Comment>} allComments All known comments in the store.
- * @returns {Array<Comment>} Comments belonging to this tracked-change thread, in original list order.
+ * Returns the comments belonging to this tracked-change thread, in original list order.
  */
-export const collectTrackedChangeThread = (parentComment, allComments) => {
+export const collectTrackedChangeThread = <
+  Comment extends {
+    commentId: string;
+    parentCommentId?: string | null;
+    threadingParentCommentId?: string | null;
+    trackedChangeThreadParentId?: string | null;
+  },
+>(
+  parentComment: Comment,
+  allComments: ReadonlyArray<Comment>,
+): Array<Comment> => {
   const trackedChangeId = parentComment.commentId;
   const threadIds = new Set([trackedChangeId]);
-  /** @type {string[]} */
-  const queue = [];
+  const queue: string[] = [];
 
   allComments.forEach((comment) => {
     if (comment.commentId === trackedChangeId) return;

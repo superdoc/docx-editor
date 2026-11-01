@@ -9,10 +9,8 @@
 
 /**
  * Resolve a toolbar mount target from a selector string or element id.
- * @param {string|HTMLElement|null|undefined} selector
- * @returns {HTMLElement|null}
  */
-export const findElementBySelector = (selector) => {
+export const findElementBySelector = (selector: string | HTMLElement | null | undefined): HTMLElement | null => {
   if (!selector) return null;
   if (typeof selector !== 'string') {
     return selector instanceof HTMLElement ? selector : null;

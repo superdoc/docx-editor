@@ -15,10 +15,8 @@ const HAS_SCHEME = /^[a-z][a-z0-9+.-]*:/i;
 
 /**
  * Validate and normalize an href. Returns `{ href }` for safe values, or `null`.
- * @param {string} value
- * @returns {{ href: string }|null}
  */
-export function sanitizeHref(value) {
+export function sanitizeHref(value: unknown): { href: string } | null {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
   if (!trimmed) return null;
@@ -28,7 +26,6 @@ export function sanitizeHref(value) {
 
   if (DANGEROUS_SCHEME.test(trimmed)) return null;
 
-  // A scheme-bearing URL must use a known-safe scheme.
   if (HAS_SCHEME.test(trimmed)) {
     return SAFE_SCHEME.test(trimmed) ? { href: trimmed } : null;
   }

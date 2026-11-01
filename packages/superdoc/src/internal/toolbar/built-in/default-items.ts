@@ -590,7 +590,7 @@ export const makeDefaultItems = ({
           if (typeof href !== 'string' || !href) return;
           const anchorName = href.slice(1);
           const container = superToolbar.ui?.viewport?.getHost?.() ?? null;
-          const anchor = container?.querySelector?.(`a[name='${anchorName}']`);
+          const anchor = container?.querySelector?.<HTMLElement>(`a[name='${anchorName}']`);
           if (anchor) scrollToElement(anchor);
         },
       }),

@@ -1,3 +1,5 @@
+import type { ToolbarFontOption } from '../../../core/types/index.js';
+
 /**
  * Normalize a font dropdown option so each row renders in its own typeface.
  *
@@ -11,7 +13,7 @@
  * Idempotent: if `props.style.fontFamily` and `data-item` are already set,
  * the option is returned with those values preserved.
  */
-export const normalizeFontOption = (option) => {
+export const normalizeFontOption = <T extends ToolbarFontOption>(option: T): T => {
   if (!option) return option;
   const fontFamily = option.props?.style?.fontFamily ?? option.label ?? option.key;
   return {

@@ -14,13 +14,25 @@ export const IMAGE_PICKER_ACCEPT = '.png,.jpg,.jpeg,image/png,image/jpeg';
 const SUPPORTED_IMAGE_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/jpg']);
 const SUPPORTED_IMAGE_EXTENSIONS = /\.(png|jpe?g)$/i;
 
+type NamedBlob = Blob & { name?: string };
+
+interface ImageFilePickerOptions {
+  ownerDocument?: Document;
+  onPick?: (file: File) => void | Promise<void>;
+  onError?: (error: unknown) => void;
+}
+
+interface ImageFilePicker {
+  input: HTMLInputElement;
+  open: () => void;
+  destroy: () => void;
+}
+
 /**
  * Whether a picked/dropped file is an insertable image (PNG/JPEG). Falls back
  * to the file extension when the browser reports no MIME type.
- * @param {File | null | undefined} file
- * @returns {boolean}
  */
-export function isSupportedImageFile(file) {
+export function isSupportedImageFile(file: File | null | undefined): boolean {
   if (!file) return false;
   const type = typeof file.type === 'string' ? file.type.toLowerCase() : '';
   if (type) return SUPPORTED_IMAGE_MIME_TYPES.has(type);
@@ -34,10 +46,8 @@ export function isSupportedImageFile(file) {
  * accepts those by extension, but `readAsDataURL` would then produce an
  * `application/octet-stream` data URI that `create.image` rejects. Rewrite
  * the media type from the filename so extension-accepted files still insert.
- * @param {Blob & { name?: string }} file
- * @returns {Promise<string>}
  */
-export function fileToDataUri(file) {
+export function fileToDataUri(file: NamedBlob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(normalizeImageDataUri(String(reader.result), file));
@@ -49,11 +59,8 @@ export function fileToDataUri(file) {
 /**
  * Ensure a data URI read from a supported file carries a PNG/JPEG media type.
  * Leaves URIs already typed as a supported image (or uninferable ones) alone.
- * @param {string} dataUri
- * @param {(Blob & { name?: string }) | null | undefined} file
- * @returns {string}
  */
-function normalizeImageDataUri(dataUri, file) {
+function normalizeImageDataUri(dataUri: string, file: NamedBlob | null | undefined): string {
   const match = /^data:([^;,]*);base64,/.exec(dataUri);
   if (!match) return dataUri;
   const mime = match[1].toLowerCase();
@@ -69,11 +76,11 @@ function normalizeImageDataUri(dataUri, file) {
  * `handleImageUpload` callback when configured (V1 contract:
  * `(file: File) => Promise<string>`). A returned non-data URL is fetched and
  * embedded, because `create.image` requires an embedded base64 data URI.
- * @param {File} file
- * @param {((file: File) => Promise<string>) | null | undefined} handleImageUpload
- * @returns {Promise<string>}
  */
-export async function resolveImageSrc(file, handleImageUpload) {
+export async function resolveImageSrc(
+  file: File,
+  handleImageUpload: ((file: File) => Promise<string>) | null | undefined,
+): Promise<string> {
   if (typeof handleImageUpload === 'function') {
     const result = await handleImageUpload(file);
     if (typeof result !== 'string' || result.trim() === '') {
@@ -90,11 +97,8 @@ export async function resolveImageSrc(file, handleImageUpload) {
  * presigned URLs often respond `application/octet-stream`, so keep a filename
  * hint (URL path, falling back to the originally picked file) for the media
  * type normalization in `fileToDataUri`.
- * @param {string} url
- * @param {File | null | undefined} pickedFile
- * @returns {Promise<string>}
  */
-async function embedRemoteImage(url, pickedFile) {
+async function embedRemoteImage(url: string, pickedFile: File | null | undefined): Promise<string> {
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error(`image fetch failed: ${response.status}`);
@@ -110,15 +114,12 @@ async function embedRemoteImage(url, pickedFile) {
  * stays attached (hidden) so automation and tests can drive it; `destroy()`
  * removes it. Picking a file calls `onPick(file)`; an unsupported type or a
  * failed pick routes through `onError(error)`.
- *
- * @param {{
- *   ownerDocument?: Document,
- *   onPick?: (file: File) => unknown,
- *   onError?: (error: Error) => void,
- * }} options
- * @returns {{ input: HTMLInputElement, open: () => void, destroy: () => void }}
  */
-export function createImageFilePicker({ ownerDocument = document, onPick, onError } = {}) {
+export function createImageFilePicker({
+  ownerDocument = document,
+  onPick,
+  onError,
+}: ImageFilePickerOptions = {}): ImageFilePicker {
   const input = ownerDocument.createElement('input');
   input.type = 'file';
   input.accept = IMAGE_PICKER_ACCEPT;
@@ -138,7 +139,7 @@ export function createImageFilePicker({ ownerDocument = document, onPick, onErro
     try {
       const result = onPick?.(file);
       if (result && typeof result.then === 'function') {
-        result.catch((error) => onError?.(error));
+        result.catch((error: unknown) => onError?.(error));
       }
     } catch (error) {
       onError?.(error);

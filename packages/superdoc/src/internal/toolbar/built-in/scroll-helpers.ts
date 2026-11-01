@@ -1,5 +1,7 @@
-function getScrollableParent(element) {
-  let currentElement = element;
+type ScrollOptions = Pick<ScrollIntoViewOptions, 'behavior' | 'block'>;
+
+function getScrollableParent(element: HTMLElement): Element {
+  let currentElement: HTMLElement | null = element;
 
   while (currentElement) {
     const overflowY = window.getComputedStyle(currentElement).overflowY;
@@ -12,7 +14,10 @@ function getScrollableParent(element) {
   return document.scrollingElement || document.documentElement;
 }
 
-export function scrollToElement(targetElement, options = { behavior: 'smooth', block: 'start' }) {
+export function scrollToElement(
+  targetElement: HTMLElement | null | undefined,
+  options: ScrollOptions = { behavior: 'smooth', block: 'start' },
+): void {
   if (!targetElement) return;
 
   const container = getScrollableParent(targetElement);

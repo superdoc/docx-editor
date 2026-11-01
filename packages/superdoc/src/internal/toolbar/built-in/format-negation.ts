@@ -1,18 +1,15 @@
-// @ts-check
+type MarkAttrs = Record<string, unknown>;
 
 /**
  * Normalize "off" values used by cascade-aware formatting marks.
- * @param {unknown} value
- * @returns {boolean}
  */
-export const isOffValue = (value) => {
+export const isOffValue = (value: unknown): boolean => {
   if (value == null) return false;
   const normalized = String(value).toLowerCase();
   return normalized === '0' || normalized === 'false' || normalized === 'off';
 };
 
-/** @type {Record<string, (attrs?: Record<string, unknown>) => boolean>} */
-export const negationChecks = {
+export const negationChecks: Record<string, (attrs?: MarkAttrs) => boolean> = {
   bold: (attrs = {}) => isOffValue(attrs.value),
   italic: (attrs = {}) => isOffValue(attrs.value),
   strike: (attrs = {}) => isOffValue(attrs.value),
@@ -37,11 +34,8 @@ export const negationChecks = {
 
 /**
  * Determine whether a mark is currently negated (explicitly turning formatting off).
- * @param {string} name
- * @param {Record<string, unknown>} [attrs]
- * @returns {boolean}
  */
-export const isNegatedMark = (name, attrs = {}) => {
+export const isNegatedMark = (name: string, attrs: MarkAttrs = {}): boolean => {
   const checker = negationChecks[name];
   if (typeof checker !== 'function') return false;
   return Boolean(checker(attrs));

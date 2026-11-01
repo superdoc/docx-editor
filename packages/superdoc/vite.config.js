@@ -154,7 +154,7 @@ export default defineConfig(({ mode, command }) => {
         // Keep the runtime redirect out of resolve.alias: declaration generation
         // must continue resolving Vue's original public types.
         if (command === 'build' && v2Resolution.mode === 'package' && source === 'vue') {
-          return path.resolve(__dirname, 'src/core/v2-integration/internal-vue-runtime.js');
+          return path.resolve(__dirname, 'src/core/v2-integration/internal-vue-runtime.ts');
         }
         return null;
       },
@@ -163,7 +163,7 @@ export default defineConfig(({ mode, command }) => {
         const file = id.split('?')[0];
         const entries = [
           path.resolve(__dirname, 'src/public/ui/vue.ts'),
-          path.resolve(__dirname, 'src/core/v2-integration/browser-peer-runtime.js'),
+          path.resolve(__dirname, 'src/core/v2-integration/browser-peer-runtime.ts'),
         ];
         if (!entries.includes(file)) return null;
         return { code: code.replace(/from (['"])vue\1/g, "from 'superdoc-entry-vue'"), map: null };

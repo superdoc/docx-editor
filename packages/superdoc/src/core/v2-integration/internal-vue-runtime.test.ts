@@ -19,6 +19,38 @@ describe('packaged internal Vue selection', () => {
     expect(() => runtime.ref('value')).toThrow(/initialize SuperDoc/);
   });
 
+  it('throws the initialization error when the installed runtime has no vue', async () => {
+    globalThis[key] = { peer: {} };
+    const runtime = await import('./internal-vue-runtime.js');
+    expect(() => runtime.ref('value')).toThrow(/initialize SuperDoc/);
+  });
+
+  it('throws the initialization error when the installed vue has no callable createApp', async () => {
+    globalThis[key] = { vue: { ref: () => 'partial' } };
+    const runtime = await import('./internal-vue-runtime.js');
+    expect(() => runtime.ref('value')).toThrow(/initialize SuperDoc/);
+    globalThis[key] = { vue: { createApp: 'not a function', ref: () => 'partial' } };
+    expect(() => runtime.ref('value')).toThrow(/initialize SuperDoc/);
+  });
+
+  it('forwards calls and both Transition arguments to a runtime that provides createApp', async () => {
+    const calls = [];
+    const fakeRef = (value) => ({ forwarded: value });
+    const fakeTransition = (props, context) => {
+      calls.push([props, context]);
+      return 'transition-vnode';
+    };
+    globalThis[key] = { vue: { createApp: () => ({}), ref: fakeRef, Transition: fakeTransition } };
+    const runtime = await import('./internal-vue-runtime.js');
+    expect(runtime.ref(7)).toEqual({ forwarded: 7 });
+    const props = { name: 'fade' };
+    const context = { slots: {} };
+    expect(runtime.Transition.length).toBe(2);
+    expect(runtime.Transition(props, context)).toBe('transition-vnode');
+    expect(calls).toEqual([[props, context]]);
+    expect(calls[0][1]).toBe(context);
+  });
+
   it('forwards effects to the installed runtime without replacing registry peers', async () => {
     const peer = {};
     globalThis[key] = { vue: Vue, peer };

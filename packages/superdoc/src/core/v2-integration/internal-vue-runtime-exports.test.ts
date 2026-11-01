@@ -1,10 +1,10 @@
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { describe, expect, it } from 'vite-plus/test';
 
 const PACKAGE_ROOT = join(__dirname, '..', '..', '..');
 const SRC_ROOT = join(PACKAGE_ROOT, 'src');
-const EXTERNAL_VUE_ENTRIES = ['src/public/ui/vue.ts', 'src/core/v2-integration/browser-peer-runtime.js'];
+const EXTERNAL_VUE_ENTRIES = ['src/public/ui/vue.ts', 'src/core/v2-integration/browser-peer-runtime.ts'];
 const SOURCE_FILE = /\.(?:[cm]?[jt]s|tsx|vue)$/;
 const NON_PACKAGED_FILE = /\.(?:test|spec)\.|\.d\.ts$/;
 const NAMED_VUE_IMPORT = /\bimport\s+(type\s+)?\{([^}]*)\}\s*from\s*['"]vue['"]/g;
@@ -37,6 +37,10 @@ describe('packaged internal Vue runtime exports', () => {
   it('keeps the external Vue entries in step with the package build', () => {
     const viteConfig = readFileSync(join(PACKAGE_ROOT, 'vite.config.js'), 'utf8');
     for (const entry of EXTERNAL_VUE_ENTRIES) expect(viteConfig).toContain(`'${entry}'`);
+  });
+
+  it('names external Vue entries that exist in the package', () => {
+    for (const entry of EXTERNAL_VUE_ENTRIES) expect(existsSync(join(PACKAGE_ROOT, entry)), entry).toBe(true);
   });
 
   it('exports every Vue API that packaged sources import by name', async () => {

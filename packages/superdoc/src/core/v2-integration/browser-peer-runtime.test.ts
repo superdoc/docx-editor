@@ -20,4 +20,16 @@ describe('browser peer runtime', () => {
     expect(runtime.custom).toEqual({ ok: true });
     expect(runtime.vue).toBe(Vue);
   });
+
+  it.each([
+    ['an array', []],
+    ['a string', 'runtime'],
+  ])('treats %s on the runtime global as no installed runtime', (_label, stored) => {
+    const globalObject = { [SUPERDOC_V2_BROWSER_RUNTIME_GLOBAL_KEY]: stored };
+    expect(readSuperDocV2BrowserRuntime(globalObject)).toBeNull();
+    const runtime = installSuperDocV2BrowserRuntime({}, globalObject);
+    expect(Object.keys(runtime)).toEqual(['vue']);
+    expect(runtime.vue).toBe(Vue);
+    expect(globalObject[SUPERDOC_V2_BROWSER_RUNTIME_GLOBAL_KEY]).toBe(runtime);
+  });
 });

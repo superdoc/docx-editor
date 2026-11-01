@@ -4,20 +4,19 @@ const ENGINE_CDN_OVERRIDE = 'SUPERDOC_ENGINE_CDN_BASE_URL';
 const ENGINE_CDN_LOAD_STATE = Symbol.for('superdoc.docx-engine.cdn-load-state');
 const ENGINE_STYLESHEET_STATUS = 'superdocDocxEngineStatus';
 
-/**
- * @param {typeof globalThis} globalObject
- * @param {string} engineVersion
- * @param {string | null} buildOverride
- */
-export function resolveDocxEngineCdnBaseUrl(globalObject, engineVersion, buildOverride = null) {
-  const runtimeOverride = globalObject?.[ENGINE_CDN_OVERRIDE];
+export function resolveDocxEngineCdnBaseUrl(
+  globalObject: object,
+  engineVersion: string,
+  buildOverride: string | null = null,
+): string {
+  const runtimeOverride: unknown = Reflect.get(globalObject, ENGINE_CDN_OVERRIDE);
   const override = typeof runtimeOverride === 'string' && runtimeOverride.trim() ? runtimeOverride : buildOverride;
   if (typeof override === 'string' && override.trim()) return normalizeCdnBaseUrl(override);
   if (!engineVersion) throw new Error('SuperDoc: the CDN build is missing its exact DOCX Engine version');
   return `https://cdn.jsdelivr.net/npm/@superdoc/docx-engine@${engineVersion}`;
 }
 
-function normalizeCdnBaseUrl(value) {
+function normalizeCdnBaseUrl(value: string): string {
   const normalized = value.trim().replace(/\/+$/, '');
   const scheme = normalized.match(/^([a-z][a-z\d+.-]*):/iu)?.[1]?.toLowerCase();
   if (scheme && scheme !== 'http' && scheme !== 'https') {
@@ -26,48 +25,49 @@ function normalizeCdnBaseUrl(value) {
   return normalized;
 }
 
-/** @param {{ engineVersion: string, buildBaseUrl: string | null }} options */
-export function configureCdnEngineLoader({ engineVersion, buildBaseUrl }) {
+export function configureCdnEngineLoader({
+  engineVersion,
+  buildBaseUrl,
+}: {
+  engineVersion: string;
+  buildBaseUrl: string | null;
+}): void {
   configureDefaultV2IntegrationLoader(() => {
     const baseUrl = resolveDocxEngineCdnBaseUrl(globalThis, engineVersion, buildBaseUrl);
-    const existingState = globalThis[ENGINE_CDN_LOAD_STATE];
-    const state = existingState instanceof Map ? existingState : new Map();
-    globalThis[ENGINE_CDN_LOAD_STATE] = state;
-    if (!state.has(baseUrl)) {
-      const load = Promise.all([
-        import(/* @vite-ignore */ `${baseUrl}/dist-cdn/docx-engine.es.js`),
-        loadStylesheetOnce(`${baseUrl}/dist-cdn/style.css`),
-      ]).then(([engineModule]) => engineModule);
-      state.set(baseUrl, load);
-      void load.catch(() => {
-        if (state.get(baseUrl) === load) state.delete(baseUrl);
-      });
-    }
-    return state.get(baseUrl);
+    const existingState: unknown = Reflect.get(globalThis, ENGINE_CDN_LOAD_STATE);
+    const state: Map<string, Promise<unknown>> = existingState instanceof Map ? existingState : new Map();
+    Reflect.set(globalThis, ENGINE_CDN_LOAD_STATE, state);
+    const existingLoad = state.get(baseUrl);
+    if (existingLoad) return existingLoad;
+    const load: Promise<unknown> = Promise.all([
+      import(/* @vite-ignore */ `${baseUrl}/dist-cdn/docx-engine.es.js`),
+      loadStylesheetOnce(`${baseUrl}/dist-cdn/style.css`),
+    ]).then(([engineModule]) => engineModule);
+    state.set(baseUrl, load);
+    void load.catch(() => {
+      if (state.get(baseUrl) === load) state.delete(baseUrl);
+    });
+    return load;
   });
 }
 
-/**
- * @param {string} url
- * @returns {Promise<void>}
- */
-export function loadStylesheetOnce(url) {
+export function loadStylesheetOnce(url: string): Promise<void> {
   if (typeof document === 'undefined') return Promise.resolve();
   const absoluteUrl = new URL(url, document.baseURI).href;
-  const existing = Array.from(document.querySelectorAll('link[rel~="stylesheet"]')).find(
+  const existing = Array.from(document.querySelectorAll<HTMLLinkElement>('link[rel~="stylesheet"]')).find(
     (link) => link.href === absoluteUrl,
   );
   if (existing?.sheet || existing?.dataset[ENGINE_STYLESHEET_STATUS] === 'loaded') {
     return Promise.resolve();
   }
-  const canReuseExisting = existing?.dataset[ENGINE_STYLESHEET_STATUS] === 'loading';
-  if (existing && !canReuseExisting) existing.remove();
+  const reusableLink = existing?.dataset[ENGINE_STYLESHEET_STATUS] === 'loading' ? existing : null;
+  if (existing && !reusableLink) existing.remove();
 
   return new Promise((resolve, reject) => {
-    const link = canReuseExisting ? existing : document.createElement('link');
+    const link = reusableLink ?? document.createElement('link');
     let settled = false;
-    let observer;
-    const settle = (status, callback) => {
+    let observer: MutationObserver | undefined;
+    const settle = (status: 'loaded' | 'error', callback: () => void) => {
       if (settled) return;
       settled = true;
       observer?.disconnect();
@@ -90,7 +90,7 @@ export function loadStylesheetOnce(url) {
       observer = new globalThis.MutationObserver(handleRemoval);
       observer.observe(document.head, { childList: true });
     }
-    if (!canReuseExisting) {
+    if (!reusableLink) {
       link.rel = 'stylesheet';
       link.href = absoluteUrl;
       link.dataset.superdocDocxEngine = 'true';

@@ -4,9 +4,14 @@
   "description": "Shared font fallback helpers for SuperDoc layout packages",
   "private": true,
   "type": "module",
-  "main": "./index.js",
+  "main": "./index.ts",
+  "types": "./index.ts",
   "exports": {
-    ".": "./index.js"
+    ".": {
+      "source": "./index.ts",
+      "types": "./index.ts",
+      "default": "./index.ts"
+    }
   },
   "scripts": {
     "test": "bun test"

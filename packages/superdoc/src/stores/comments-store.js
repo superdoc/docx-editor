@@ -16,6 +16,13 @@ import {
   buildTrackedChangeDecisionLinkIndex,
   buildTrackedChangeThreadIndex,
 } from './helpers/tracked-change-thread-index.js';
+import {
+  clearV2ActiveTrackedChangeTarget,
+  collectReliableDecidedTrackedChangeIds,
+  collectTrackedChangeDecisionIdsWithAliases,
+  trackedChangeDecisionKeepsCommentAnchor,
+  waitForTrackedDecisionCanonicalPaint,
+} from './helpers/tracked-change-decision.js';
 import { normalizeV2CommentDraftText } from './helpers/comment-draft-text.js';
 import { createCommentIdentity, trackedChangeThreadParentIdForComment } from './helpers/comment-identity.js';
 import {
@@ -2729,36 +2736,6 @@ export const useCommentsStore = defineStore('comments', () => {
     return belongsToDocument(comment, activeDocumentId, { allowSingleDocumentMismatch: true });
   };
 
-  const normalizeTrackedChangeDecisionType = (value) => {
-    const lower = typeof value === 'string' ? value.toLowerCase() : '';
-    if (!lower) return null;
-    if (
-      lower === 'insert' ||
-      lower === 'insertion' ||
-      lower === 'trackinsert' ||
-      lower === 'tableinsert' ||
-      lower === 'paragraphsplit'
-    ) {
-      return 'insertion';
-    }
-    if (lower === 'delete' || lower === 'deletion' || lower === 'trackdelete' || lower === 'tabledelete') {
-      return 'deletion';
-    }
-    return lower;
-  };
-
-  const trackedChangeDecisionKeepsCommentAnchor = ({ comment, decision } = {}) => {
-    const normalizedDecision = decision === 'accept' || decision === 'reject' ? decision : null;
-    if (!normalizedDecision) return false;
-    const type =
-      normalizeTrackedChangeDecisionType(comment?.trackedChangeDisplayType) ??
-      normalizeTrackedChangeDecisionType(comment?.trackedChangeType);
-    return (
-      (normalizedDecision === 'accept' && type === 'insertion') ||
-      (normalizedDecision === 'reject' && type === 'deletion')
-    );
-  };
-
   // SD-4689: One logical body tracked change must produce one sidebar card.
   // Canonical rows only join on commentId: imported IDs and position aliases
   // can belong to distinct changes, and move sides share one canonical ID.
@@ -3075,21 +3052,8 @@ export const useCommentsStore = defineStore('comments', () => {
     return resolvedCount;
   };
 
-  const collectTrackedChangeDecisionIds = (comment) => {
-    const trackedChangeIds = new Set(getCommentAliasIds(comment));
-    if (comment?.trackedChangeCanonicalId != null) {
-      trackedChangeIds.add(String(comment.trackedChangeCanonicalId));
-    }
-    const anchorKey = comment?.trackedChangeAnchorKey != null ? String(comment.trackedChangeAnchorKey) : null;
-    if (anchorKey) {
-      trackedChangeIds.add(anchorKey);
-      if (anchorKey.startsWith('tc::')) {
-        const rawId = anchorKey.slice(anchorKey.lastIndexOf('::') + 2);
-        if (rawId) trackedChangeIds.add(rawId);
-      }
-    }
-    return trackedChangeIds;
-  };
+  const collectTrackedChangeDecisionIds = (comment) =>
+    collectTrackedChangeDecisionIdsWithAliases(comment, getCommentAliasIds(comment));
 
   const getTrackedChangeDecisionLinks = (comment) => {
     const linked = [];
@@ -3102,34 +3066,6 @@ export const useCommentsStore = defineStore('comments', () => {
       }
     }
     return linked;
-  };
-
-  const collectTrackedChangeEntityIdsFromReceipt = (receipt) => {
-    const record = receipt && typeof receipt === 'object' ? receipt : null;
-    if (!record?.success) return new Set();
-    const ids = new Set();
-    const collect = (entry) => {
-      const ref = entry && typeof entry === 'object' ? entry : null;
-      if (ref?.kind !== 'entity' || ref.entityType !== 'trackedChange') return;
-      if (ref.entityId != null && String(ref.entityId).length > 0) ids.add(String(ref.entityId));
-    };
-    if (Array.isArray(record.removed)) record.removed.forEach(collect);
-    if (Array.isArray(record.invalidatedRefs)) record.invalidatedRefs.forEach(collect);
-    return ids;
-  };
-
-  const collectReliableDecidedTrackedChangeIds = (outcome) => {
-    const ids = new Set();
-    if (outcome?.decidedId != null && String(outcome.decidedId).length > 0) {
-      ids.add(String(outcome.decidedId));
-    }
-    if (Array.isArray(outcome?.decidedIds)) {
-      outcome.decidedIds.forEach((id) => {
-        if (id != null && String(id).length > 0) ids.add(String(id));
-      });
-    }
-    collectTrackedChangeEntityIdsFromReceipt(outcome?.receipt).forEach((id) => ids.add(id));
-    return ids;
   };
 
   const detachLinkedCommentsForTrackedChangeDecision = ({ comment, decision } = {}) => {
@@ -3372,47 +3308,6 @@ export const useCommentsStore = defineStore('comments', () => {
     if (removed > 0) commentsList.value = next;
     if (activeWasRemoved) clearActiveCommentSelection();
     return { removed, removedIds };
-  };
-
-  const clearV2ActiveTrackedChangeTarget = (adapter, decidedId) => {
-    if (!decidedId || typeof adapter?.clearActiveTrackedChangeTargetIfMatches !== 'function') return;
-    try {
-      adapter.clearActiveTrackedChangeTargetIfMatches(decidedId);
-    } catch {
-      /* best-effort host clear */
-    }
-  };
-
-  const waitForTrackedDecisionCanonicalPaint = async ({ superdoc, receipt } = {}) => {
-    const readiness = superdoc?.activeEditor?.documentMutationReadiness;
-    if (
-      receipt?.success !== true ||
-      typeof receipt?.txId !== 'string' ||
-      !receipt.txId ||
-      typeof readiness?.whenPainted !== 'function'
-    ) {
-      return;
-    }
-    try {
-      await readiness.whenPainted(receipt);
-      const requestFrame = globalThis.requestAnimationFrame;
-      if (typeof requestFrame === 'function') {
-        await new Promise((resolve) => {
-          let settled = false;
-          const finish = () => {
-            if (settled) return;
-            settled = true;
-            clearTimeout(fallback);
-            resolve();
-          };
-          const fallback = setTimeout(finish, 250);
-          requestFrame(() => requestFrame(() => setTimeout(finish, 0)));
-        });
-      }
-    } catch {
-      // The decision is already committed. If the exact paint waiter becomes
-      // unavailable during teardown, converge the local sidebar immediately.
-    }
   };
 
   /**

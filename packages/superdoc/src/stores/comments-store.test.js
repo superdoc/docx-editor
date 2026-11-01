@@ -496,6 +496,42 @@ describe('comments-store read-only mutation policy (SD-3164)', () => {
     expect(linkedComment.resolvedTime).toEqual(expect.any(Number));
   });
 
+  it('resolves comments linked to the decided change through its comment id alone', async () => {
+    const trackedComment = makeTrackedChangeRow({
+      commentId: 'tc-alias-only',
+      trackedChangeAnchorKey: 'tc::body::tc-anchor-elsewhere',
+      trackedChangeType: 'delete',
+      trackedChangeDisplayType: 'delete',
+    });
+    const linkedComment = useComment({
+      commentId: 'linked-by-alias',
+      fileId: 'doc-1',
+      commentText: 'Linked through the comment id alias',
+      trackedChangeParentId: 'tc-alias-only',
+      trackedChangeThreadParentId: 'tc-alias-only',
+    });
+    store.commentsList = [linkedComment, trackedComment];
+    superdoc.commentsStore = store;
+    superdoc.interactionConfig = { trackedChanges: { allowDecisions: true } };
+    superdoc.activeEditor.documentId = 'doc-1';
+    trackedChangesAdapter.documentId = 'doc-1';
+    trackedChangesAdapter.accept.mockResolvedValue({
+      ok: true,
+      receipt: { success: true },
+      decidedId: 'tc-anchor-elsewhere',
+      documentId: 'doc-1',
+    });
+
+    const outcome = await store.decideTrackedChangeFromSidebar({
+      superdoc,
+      comment: trackedComment,
+      decision: 'accept',
+    });
+
+    expect(outcome).toMatchObject({ ok: true, success: true });
+    expect(linkedComment.resolvedTime).toEqual(expect.any(Number));
+  });
+
   it('blocks tracked-change decisions independently from writable comments', async () => {
     store.init({ readOnly: false, allowResolve: true });
     const trackedComment = makeTrackedChangeRow();

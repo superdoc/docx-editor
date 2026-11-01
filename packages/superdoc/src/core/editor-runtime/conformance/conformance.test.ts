@@ -6,7 +6,7 @@
 // rejection.
 
 import { describe, expect, it } from 'vite-plus/test';
-import type { EditorRuntimeCommand, EditorRuntimeCommandKind } from '../index.js';
+import type { EditorRuntimeCommand, EditorRuntimeCommandKind, EditorRuntimeEvent } from '../index.js';
 import { createFakeV2Runtime } from './fake-v2-runtime.js';
 
 const commandFixtureByKind = {
@@ -130,7 +130,7 @@ describe('editor-runtime conformance  -  v2', () => {
 
   it('emits disposed and stops notifying after dispose', async () => {
     const rt = createFakeV2Runtime();
-    const events = [];
+    const events: EditorRuntimeEvent[] = [];
     const unsubscribe = rt.subscribe((e) => events.push(e));
     await rt.dispose();
     expect(events.some((e) => e.type === 'disposed')).toBe(true);

@@ -19,7 +19,7 @@ const superdocCss = readFileSync(
   'utf8',
 );
 
-const extractRuleBody = (css, selector) => {
+const extractRuleBody = (css: string, selector: string) => {
   const idx = css.indexOf(selector);
   if (idx === -1) return null;
   const open = css.indexOf('{', idx);

@@ -1,4 +1,4 @@
-<script setup>
+<script setup lang="ts">
 import '@superdoc/common/styles/common-styles.css';
 import '../dev-styles.css';
 import '../themes/neon-night.css';

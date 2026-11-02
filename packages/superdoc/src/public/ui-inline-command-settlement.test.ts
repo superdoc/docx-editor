@@ -63,7 +63,8 @@ function setup() {
     on: (name: string, listener: (...args: unknown[]) => void) => publicListeners.set(name, listener),
     off: vi.fn(),
   };
-  const ui = createSuperDocUI({ superdoc });
+  const superdocHost: Record<string, unknown> = superdoc;
+  const ui = createSuperDocUI({ superdoc: superdocHost });
   return {
     ui,
     superdoc,

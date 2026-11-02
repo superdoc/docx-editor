@@ -57,7 +57,7 @@ describe('comment status changes honor the interaction policy', () => {
 /** Every write route on the comments controller, with the host ops recorded. */
 type CommentWrites = {
   createFromCapture: (capture: unknown, input: unknown) => { success: boolean };
-  createFromSelection: (input: unknown) => { success: boolean };
+  createFromSelection: (input: unknown) => { success: boolean; reason?: string };
   reply: (commentId: string, input: unknown) => { success: boolean };
   edit: (commentId: string, input: unknown) => { success: boolean };
   delete: (commentId: string) => { success: boolean };
@@ -187,7 +187,7 @@ describe('comment writes stay available in viewing mode when comments are writab
  */
 describe('editing a comment body is independent of allowResolve', () => {
   function mountForEdit(allowResolve: boolean) {
-    const patch = vi.fn(async () => ({ ok: true }));
+    const patch = vi.fn(async (_input: unknown) => ({ ok: true }));
     const ui = createSuperDocUI({
       superdoc: {
         interactionConfig: { comments: { readOnly: false, allowResolve } },

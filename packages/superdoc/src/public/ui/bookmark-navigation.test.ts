@@ -19,7 +19,7 @@ function deferred<T>() {
 
 function mount() {
   const apply = vi.fn(() => ({ ok: true }));
-  const scroll = vi.fn(async () => ({ success: true }));
+  const scroll = vi.fn(async (_input: unknown) => ({ success: true }));
   const list = vi.fn(async () => ({ items: [INFO], total: 1 }));
   const get = vi.fn(async () => INFO);
   const listeners = new Map<string, Set<(payload?: unknown) => void>>();

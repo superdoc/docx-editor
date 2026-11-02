@@ -141,7 +141,7 @@ function makeHost() {
 function readSemanticState(ui: ReturnType<typeof createSuperDocUI>, toolbar: BuiltInToolbar | null): Snap {
   const commands: Snap = {};
   for (const id of COMMANDS) {
-    const state = ui.commands.get(id).getState() as Record<string, unknown>;
+    const state = ui.commands.get(id).getState();
     commands[id] = {
       supported: state.supported ?? null,
       enabled: state.enabled ?? null,

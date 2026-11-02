@@ -65,7 +65,7 @@ function setup(opts: { selection?: unknown; readSelection?: () => unknown; mode?
     getCodeFieldEditingCommands: () => ({ insertAtSelection: codeInsert }),
     getCodePageNumberEditingCommands: () => ({ set: codeNumbering, remove: vi.fn(), get: codeRead }),
   };
-  const superdoc = {
+  const superdoc: Record<string, unknown> = {
     activeEditor: {
       editorVersion: 2,
       host,

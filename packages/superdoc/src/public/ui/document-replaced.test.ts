@@ -41,7 +41,7 @@ function createSwappableHost() {
   };
 
   const detachGeometry = vi.fn();
-  const observeGeometry = vi.fn(() => detachGeometry);
+  const observeGeometry = vi.fn((_callback: () => void): (() => void) | undefined => detachGeometry);
 
   // An async read so the `contentToken()` cache can be observed. Async slices
   // are keyed by editor identity plus mutation revision, and a replace changes

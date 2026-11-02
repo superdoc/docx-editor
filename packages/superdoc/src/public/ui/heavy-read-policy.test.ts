@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
 
+import type { StylesGetCatalogInput } from '@superdoc/document-api';
 import { createSuperDocUI, HEAVY_DOC_READ_POLICY, isHeavyDocReadKey } from './create-super-doc-ui.js';
 
 /**
@@ -96,7 +97,7 @@ function makeHarness(
   const ccList = vi.fn(options.contentControlsList ?? (() => ({ items: [{ id: 'cc-1' }] })));
   const ccListInRange = vi.fn(() => ({ items: [{ id: 'cc-1' }] }));
   const hyperlinksList = vi.fn((_input: unknown) => ({ items: [] }));
-  const stylesGetCatalog = vi.fn(() => ({
+  const stylesGetCatalog = vi.fn((_input?: unknown) => ({
     styles: [],
     items: [],
     defaults: { paragraphStyleId: 'Normal' },
@@ -654,7 +655,7 @@ describe('public ui — heavy-read policy behavior details', () => {
     await settle();
     expect(harness.countFor('styles:catalog:')).toBe(0);
 
-    const requested = { view: 'inUse', types: ['paragraph'], includePreview: false } as const;
+    const requested: StylesGetCatalogInput = { view: 'inUse', types: ['paragraph'], includePreview: false };
     harness.ui.styles.getCatalog(requested);
     await settle();
     harness.ui.styles.getCatalog(requested);

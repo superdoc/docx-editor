@@ -62,7 +62,7 @@ function makeHitStub(
   document.body.appendChild(container);
   cleanups.push(() => container.remove());
 
-  const superdoc = {
+  const superdoc: Record<string, unknown> = {
     activeEditor: {
       mount: { container },
       ...(editorHost ? { host: editorHost } : {}),
@@ -391,7 +391,7 @@ describe('viewport.entityAt / trackChanges.getAt — point hit-testing', () => {
 
     // Production v2: `activeEditor.mount` is a host handle WITHOUT a `container`
     // field; the visible host is reached via `superdoc.element` instead.
-    const superdoc = {
+    const superdoc: Record<string, unknown> = {
       element: container,
       activeEditor: {
         mount: { focus: () => {} },

@@ -184,7 +184,7 @@ Machine-readable documentation:
 
 Tool discovery:
 
-- The [MCP server](https://docs.superdoc.dev/agents/mcp/connect) serves every tool's JSON Schema, generated from the Document API contract. `getToolCatalog()` in `@superdoc/sdk` returns the same data. Read the advertised schema rather than a copy of it.
+- The [MCP server](https://docs.superdoc.dev/agents/mcp/connect) serves every tool's JSON Schema, generated from the Document API contract. `getToolCatalog('core')` or `getToolCatalog('legacy')` in `@superdoc/sdk` returns the same data for that preset. Read the advertised schema rather than a copy of it.
 - `superdoc discover "<intent>"` and `superdoc describe command <name>` search and explain the CLI contract.
 - The [custom-actions skill](https://docs.superdoc.dev/agents/build/skills) teaches Claude Code or Codex to extend the SDK's actions.
 - [Agent safety](https://docs.superdoc.dev/agents/operate/safety) covers filesystem boundaries, content sent to model providers, and review.

@@ -2,7 +2,16 @@
   "name": "superdoc",
   "type": "module",
   "version": "2.29.0-next.3",
-  "description": "The document engine for DOCX files. Open, edit, and render Word documents in the browser.",
+  "description": "Browser DOCX editor for reviewing, filling, and editing Word documents.",
+  "keywords": [
+    "docx editor",
+    "docx",
+    "ms word",
+    "docx api",
+    "docx agent",
+    "docx sdk",
+    "headless"
+  ],
   "license": "AGPL-3.0",
   "repository": {
     "type": "git",

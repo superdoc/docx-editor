@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vite-plus/test';
 import { SurfaceManager } from './surface-manager.js';
+import type { IntentSurfaceRequest, SurfaceResolver, SurfacesModuleConfig } from './types/index.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function createManager(moduleConfig = {}) {
+function createManager(moduleConfig: SurfacesModuleConfig = {}) {
   return new SurfaceManager({
     getModuleConfig: () => moduleConfig,
   });
@@ -15,7 +16,7 @@ function createManager(moduleConfig = {}) {
 const StubComponent = { template: '<div>stub</div>' };
 
 /** A minimal external renderer stub */
-function stubRenderer(ctx) {
+function stubRenderer() {
   return { destroy: vi.fn() };
 }
 
@@ -24,7 +25,7 @@ function stubRenderer(ctx) {
 // ---------------------------------------------------------------------------
 
 describe('SurfaceManager', () => {
-  let manager;
+  let manager: SurfaceManager;
 
   beforeEach(() => {
     manager = createManager();
@@ -50,13 +51,13 @@ describe('SurfaceManager', () => {
     it('sets activeDialog when mode is dialog', () => {
       manager.open({ mode: 'dialog', component: StubComponent });
       expect(manager.activeDialog.value).not.toBeNull();
-      expect(manager.activeDialog.value.mode).toBe('dialog');
+      expect(manager.activeDialog.value!.mode).toBe('dialog');
     });
 
     it('sets activeFloating when mode is floating', () => {
       manager.open({ mode: 'floating', component: StubComponent });
       expect(manager.activeFloating.value).not.toBeNull();
-      expect(manager.activeFloating.value.mode).toBe('floating');
+      expect(manager.activeFloating.value!.mode).toBe('floating');
     });
 
     it('uses provided id if given', () => {
@@ -76,15 +77,15 @@ describe('SurfaceManager', () => {
         component: StubComponent,
         props: { foo: 'bar' },
       });
-      expect(manager.activeDialog.value.props).toEqual({ foo: 'bar' });
+      expect(manager.activeDialog.value!.props).toEqual({ foo: 'bar' });
     });
   });
 
   describe('open() — direct render with external renderer', () => {
     it('sets the render function on the surface', () => {
       manager.open({ mode: 'dialog', render: stubRenderer });
-      expect(typeof manager.activeDialog.value.render).toBe('function');
-      expect(manager.activeDialog.value.component).toBeUndefined();
+      expect(typeof manager.activeDialog.value!.render).toBe('function');
+      expect(manager.activeDialog.value!.component).toBeUndefined();
     });
   });
 
@@ -98,8 +99,8 @@ describe('SurfaceManager', () => {
         resolver: (req) => ({ type: 'custom', component: StubComponent, props: { x: 1 } }),
       });
       m.open({ kind: 'test', mode: 'dialog' });
-      expect(m.activeDialog.value.component).toBe(StubComponent);
-      expect(m.activeDialog.value.props).toEqual({ x: 1 });
+      expect(m.activeDialog.value!.component).toBe(StubComponent);
+      expect(m.activeDialog.value!.props).toEqual({ x: 1 });
     });
 
     it('resolves via a custom resolver returning an external renderer', () => {
@@ -107,7 +108,7 @@ describe('SurfaceManager', () => {
         resolver: () => ({ type: 'external', render: stubRenderer }),
       });
       m.open({ kind: 'test', mode: 'floating' });
-      expect(typeof m.activeFloating.value.render).toBe('function');
+      expect(typeof m.activeFloating.value!.render).toBe('function');
     });
 
     it('throws when resolver returns { type: "none" }', () => {
@@ -141,14 +142,17 @@ describe('SurfaceManager', () => {
 
   describe('open() — validation errors', () => {
     it('throws if request is null', () => {
+      // @ts-expect-error
       expect(() => manager.open(null)).toThrow(/non-null object/);
     });
 
     it('throws if mode is missing', () => {
+      // @ts-expect-error
       expect(() => manager.open({ component: StubComponent })).toThrow(/mode must be/);
     });
 
     it('throws if mode is invalid', () => {
+      // @ts-expect-error
       expect(() => manager.open({ mode: 'popover', component: StubComponent })).toThrow(/mode must be/);
     });
 
@@ -168,6 +172,7 @@ describe('SurfaceManager', () => {
 
     it('throws if floating.placement is invalid', () => {
       expect(() =>
+        // @ts-expect-error
         manager.open({ mode: 'floating', component: StubComponent, floating: { placement: 'right-top' } }),
       ).toThrow(/floating\.placement must be one of/);
     });
@@ -189,7 +194,7 @@ describe('SurfaceManager', () => {
       const outcome = await h1.result;
       expect(outcome.status).toBe('replaced');
       expect(outcome.replacedBy).toBe(h2.id);
-      expect(manager.activeDialog.value.id).toBe(h2.id);
+      expect(manager.activeDialog.value!.id).toBe(h2.id);
     });
 
     it('replaces an existing floating and settles the previous handle', async () => {
@@ -268,7 +273,7 @@ describe('SurfaceManager', () => {
   describe('content-facing resolve/close', () => {
     it('resolve() settles with "submitted", data, and clears the slot', async () => {
       const handle = manager.open({ mode: 'dialog', component: StubComponent });
-      const surface = manager.activeDialog.value;
+      const surface = manager.activeDialog.value!;
 
       surface.resolve({ password: 'secret' });
 
@@ -280,7 +285,7 @@ describe('SurfaceManager', () => {
 
     it('resolve() clears the floating slot after submit', async () => {
       const handle = manager.open({ mode: 'floating', component: StubComponent });
-      const surface = manager.activeFloating.value;
+      const surface = manager.activeFloating.value!;
 
       surface.resolve({ query: 'contract' });
 
@@ -292,7 +297,7 @@ describe('SurfaceManager', () => {
 
     it('close() from content settles with "closed" and clears the slot', async () => {
       const handle = manager.open({ mode: 'dialog', component: StubComponent });
-      const surface = manager.activeDialog.value;
+      const surface = manager.activeDialog.value!;
 
       surface.close('cancelled');
 
@@ -303,10 +308,10 @@ describe('SurfaceManager', () => {
     });
     it('stale resolve() from a replaced dialog does not clear a replacement reusing the same id', async () => {
       const firstHandle = manager.open({ id: 'shared', mode: 'dialog', component: StubComponent });
-      const staleSurface = manager.activeDialog.value;
+      const staleSurface = manager.activeDialog.value!;
 
       const replacementHandle = manager.open({ id: 'shared', mode: 'dialog', component: StubComponent });
-      const replacementSurface = manager.activeDialog.value;
+      const replacementSurface = manager.activeDialog.value!;
 
       await expect(firstHandle.result).resolves.toEqual({ status: 'replaced', replacedBy: 'shared' });
 
@@ -328,10 +333,10 @@ describe('SurfaceManager', () => {
 
     it('stale close() from a replaced floating surface does not clear a replacement reusing the same id', async () => {
       const firstHandle = manager.open({ id: 'shared', mode: 'floating', component: StubComponent });
-      const staleSurface = manager.activeFloating.value;
+      const staleSurface = manager.activeFloating.value!;
 
       const replacementHandle = manager.open({ id: 'shared', mode: 'floating', component: StubComponent });
-      const replacementSurface = manager.activeFloating.value;
+      const replacementSurface = manager.activeFloating.value!;
 
       await expect(firstHandle.result).resolves.toEqual({ status: 'replaced', replacedBy: 'shared' });
 
@@ -359,7 +364,7 @@ describe('SurfaceManager', () => {
   describe('first settle wins', () => {
     it('ignores a second resolve() call', async () => {
       const handle = manager.open({ mode: 'dialog', component: StubComponent });
-      const surface = manager.activeDialog.value;
+      const surface = manager.activeDialog.value!;
 
       surface.resolve('first');
       surface.resolve('second');
@@ -370,7 +375,7 @@ describe('SurfaceManager', () => {
 
     it('ignores close() after resolve()', async () => {
       const handle = manager.open({ mode: 'dialog', component: StubComponent });
-      const surface = manager.activeDialog.value;
+      const surface = manager.activeDialog.value!;
 
       surface.resolve('data');
       surface.close('nope');
@@ -381,7 +386,7 @@ describe('SurfaceManager', () => {
 
     it('ignores resolve() after close()', async () => {
       const handle = manager.open({ mode: 'dialog', component: StubComponent });
-      const surface = manager.activeDialog.value;
+      const surface = manager.activeDialog.value!;
 
       surface.close();
       surface.resolve('too late');
@@ -447,7 +452,7 @@ describe('SurfaceManager', () => {
       });
       m.open({ mode: 'dialog', component: StubComponent });
 
-      const req = m.activeDialog.value.request;
+      const req = m.activeDialog.value!.request;
       expect(req.closeOnEscape).toBe(false);
       expect(req.closeOnBackdrop).toBe(false);
     });
@@ -458,7 +463,7 @@ describe('SurfaceManager', () => {
       });
       m.open({ mode: 'dialog', component: StubComponent, closeOnEscape: true });
 
-      expect(m.activeDialog.value.request.closeOnEscape).toBe(true);
+      expect(m.activeDialog.value!.request.closeOnEscape).toBe(true);
     });
 
     it('merges module-level floating defaults', () => {
@@ -467,79 +472,79 @@ describe('SurfaceManager', () => {
       });
       m.open({ mode: 'floating', component: StubComponent });
 
-      expect(m.activeFloating.value.request.closeOnEscape).toBe(false);
+      expect(m.activeFloating.value!.request.closeOnEscape).toBe(false);
     });
 
     it('defaults closeOnEscape to true when not configured', () => {
       manager.open({ mode: 'dialog', component: StubComponent });
-      expect(manager.activeDialog.value.request.closeOnEscape).toBe(true);
+      expect(manager.activeDialog.value!.request.closeOnEscape).toBe(true);
     });
 
     it('defaults closeOnBackdrop to true for dialogs', () => {
       manager.open({ mode: 'dialog', component: StubComponent });
-      expect(manager.activeDialog.value.request.closeOnBackdrop).toBe(true);
+      expect(manager.activeDialog.value!.request.closeOnBackdrop).toBe(true);
     });
 
     it('forces closeOnBackdrop to false for floating', () => {
       manager.open({ mode: 'floating', component: StubComponent });
-      expect(manager.activeFloating.value.request.closeOnBackdrop).toBe(false);
+      expect(manager.activeFloating.value!.request.closeOnBackdrop).toBe(false);
     });
 
     it('merges module-level dialog.maxWidth into request.dialog', () => {
       const m = createManager({ dialog: { maxWidth: '600px' } });
       m.open({ mode: 'dialog', component: StubComponent });
 
-      expect(m.activeDialog.value.request.dialog?.maxWidth).toBe('600px');
+      expect(m.activeDialog.value!.request.dialog?.maxWidth).toBe('600px');
     });
 
     it('request-level dialog.maxWidth wins over module-level', () => {
       const m = createManager({ dialog: { maxWidth: '600px' } });
       m.open({ mode: 'dialog', component: StubComponent, dialog: { maxWidth: '400px' } });
 
-      expect(m.activeDialog.value.request.dialog?.maxWidth).toBe('400px');
+      expect(m.activeDialog.value!.request.dialog?.maxWidth).toBe('400px');
     });
 
     it('defaults floating.placement to top-right when nothing is configured', () => {
       manager.open({ mode: 'floating', component: StubComponent });
-      expect(manager.activeFloating.value.request.floating?.placement).toBe('top-right');
+      expect(manager.activeFloating.value!.request.floating?.placement).toBe('top-right');
     });
 
     it('merges module-level floating.width into request.floating', () => {
       const m = createManager({ floating: { width: 500 } });
       m.open({ mode: 'floating', component: StubComponent });
 
-      expect(m.activeFloating.value.request.floating?.width).toBe(500);
+      expect(m.activeFloating.value!.request.floating?.width).toBe(500);
     });
 
     it('request-level floating.width wins over module-level', () => {
       const m = createManager({ floating: { width: 500 } });
       m.open({ mode: 'floating', component: StubComponent, floating: { width: 350 } });
 
-      expect(m.activeFloating.value.request.floating?.width).toBe(350);
+      expect(m.activeFloating.value!.request.floating?.width).toBe(350);
     });
 
     it('merges module-level floating.maxWidth into request.floating', () => {
       const m = createManager({ floating: { maxWidth: '800px' } });
       m.open({ mode: 'floating', component: StubComponent });
 
-      expect(m.activeFloating.value.request.floating?.maxWidth).toBe('800px');
+      expect(m.activeFloating.value!.request.floating?.maxWidth).toBe('800px');
     });
 
     it('merges module-level floating.maxHeight into request.floating', () => {
       const m = createManager({ floating: { maxHeight: '600px' } });
       m.open({ mode: 'floating', component: StubComponent });
 
-      expect(m.activeFloating.value.request.floating?.maxHeight).toBe('600px');
+      expect(m.activeFloating.value!.request.floating?.maxHeight).toBe('600px');
     });
 
     it('defaults floating.autoFocus to true', () => {
       manager.open({ mode: 'floating', component: StubComponent });
-      expect(manager.activeFloating.value.request.floating?.autoFocus).toBe(true);
+      expect(manager.activeFloating.value!.request.floating?.autoFocus).toBe(true);
     });
 
     it('defaults floating.closeOnOutsidePointerDown to false', () => {
       manager.open({ mode: 'floating', component: StubComponent });
-      expect(manager.activeFloating.value.request.floating?.closeOnOutsidePointerDown).toBe(false);
+      expect(manager.activeFloating.value!.request.floating?.closeOnOutsidePointerDown).toBe(false);
     });
 
     it('request-level explicit top/right/bottom/left pass through unchanged', () => {
@@ -549,7 +554,7 @@ describe('SurfaceManager', () => {
         floating: { top: 10, right: 20, bottom: 30, left: 40 },
       });
 
-      const opts = manager.activeFloating.value.request.floating;
+      const opts = manager.activeFloating.value!.request.floating!;
       expect(opts.top).toBe(10);
       expect(opts.right).toBe(20);
       expect(opts.bottom).toBe(30);
@@ -563,13 +568,13 @@ describe('SurfaceManager', () => {
 
   describe('resolver semantics', () => {
     it('resolver receives the normalized request (with generated id)', () => {
-      const resolverSpy = vi.fn(() => ({ type: 'custom', component: StubComponent }));
+      const resolverSpy = vi.fn<SurfaceResolver>(() => ({ type: 'custom', component: StubComponent }));
       const m = createManager({ resolver: resolverSpy });
 
       m.open({ kind: 'test', mode: 'dialog' });
 
       expect(resolverSpy).toHaveBeenCalledTimes(1);
-      const receivedReq = resolverSpy.mock.calls[0][0];
+      const receivedReq: Partial<IntentSurfaceRequest> = resolverSpy.mock.calls[0][0];
       expect(receivedReq.id).toBeDefined();
       expect(receivedReq.kind).toBe('test');
     });

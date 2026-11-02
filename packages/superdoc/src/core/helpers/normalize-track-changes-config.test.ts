@@ -1,8 +1,13 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vite-plus/test';
 import { normalizeTrackChangesConfig, __resetDeprecationWarnings } from './normalize-track-changes-config.js';
+import type { TrackChangesModuleConfig, ViewingTrackedChangesMode } from '../types/index.js';
+
+type TrackChangesConfigSource = Parameters<typeof normalizeTrackChangesConfig>[0] & {
+  layoutEngineOptions?: { trackedChanges?: Pick<TrackChangesModuleConfig, 'mode' | 'enabled'> };
+};
 
 describe('normalizeTrackChangesConfig', () => {
-  let warnSpy;
+  let warnSpy: MockInstance<typeof console.warn>;
 
   beforeEach(() => {
     __resetDeprecationWarnings();
@@ -15,18 +20,18 @@ describe('normalizeTrackChangesConfig', () => {
 
   describe('defaults (no user config)', () => {
     it('fills in safe defaults when nothing is provided', () => {
-      const config = {};
+      const config: TrackChangesConfigSource = {};
       const result = normalizeTrackChangesConfig(config);
 
       expect(result).toEqual({ visible: false, mode: 'review', enabled: true, replacements: 'paired' });
-      expect(config.modules.trackChanges).toEqual(result);
+      expect(config.modules!.trackChanges).toEqual(result);
       expect(config.trackChanges).toEqual({ visible: false, enabled: true, replacementMode: 'grouped' });
-      expect(config.layoutEngineOptions.trackedChanges).toEqual({ mode: 'review', enabled: true });
+      expect(config.layoutEngineOptions!.trackedChanges).toEqual({ mode: 'review', enabled: true });
       expect(warnSpy).not.toHaveBeenCalled();
     });
 
     it('defaults mode to "original" in viewing mode when visibility is off', () => {
-      const config = { documentMode: 'viewing' };
+      const config: TrackChangesConfigSource = { documentMode: 'viewing' };
       const result = normalizeTrackChangesConfig(config);
 
       expect(result.mode).toBe('original');
@@ -34,7 +39,7 @@ describe('normalizeTrackChangesConfig', () => {
     });
 
     it('defaults mode to "review" in viewing mode when visibility is on', () => {
-      const config = {
+      const config: TrackChangesConfigSource = {
         documentMode: 'viewing',
         modules: { trackChanges: { visible: true } },
       };
@@ -47,7 +52,7 @@ describe('normalizeTrackChangesConfig', () => {
 
   describe('viewing options', () => {
     it('prefers the viewer outcome over legacy visibility and render settings', () => {
-      const config = {
+      const config: TrackChangesConfigSource = {
         documentMode: 'viewing',
         viewing: { trackedChanges: 'final' },
         modules: { trackChanges: { visible: true, mode: 'review' } },
@@ -57,15 +62,15 @@ describe('normalizeTrackChangesConfig', () => {
 
       expect(result).toMatchObject({ visible: false, mode: 'final', enabled: true });
       expect(config.trackChanges).toEqual({ visible: false, enabled: true, replacementMode: 'grouped' });
-      expect(config.layoutEngineOptions.trackedChanges).toEqual({ mode: 'final', enabled: true });
+      expect(config.layoutEngineOptions!.trackedChanges).toEqual({ mode: 'final', enabled: true });
     });
 
-    it.each([
+    it.each<[ViewingTrackedChangesMode, TrackChangesModuleConfig['mode'], boolean]>([
       ['original', 'original', false],
       ['markup', 'review', true],
       ['final', 'final', false],
     ])('maps viewing.trackedChanges=%s to the internal renderer', (viewingMode, renderMode, visible) => {
-      const config = { documentMode: 'viewing', viewing: { trackedChanges: viewingMode } };
+      const config: TrackChangesConfigSource = { documentMode: 'viewing', viewing: { trackedChanges: viewingMode } };
 
       const result = normalizeTrackChangesConfig(config);
 
@@ -75,7 +80,7 @@ describe('normalizeTrackChangesConfig', () => {
 
   describe('deprecated track-changes module options', () => {
     it('keeps module options working and points to their top-level replacements', () => {
-      const config = {
+      const config: TrackChangesConfigSource = {
         modules: {
           trackChanges: { visible: true, mode: 'original', enabled: false },
         },
@@ -89,14 +94,14 @@ describe('normalizeTrackChangesConfig', () => {
     });
 
     it('preserves the normalized values on the internal module path', () => {
-      const config = {
+      const config: TrackChangesConfigSource = {
         modules: { trackChanges: { visible: true } },
       };
       normalizeTrackChangesConfig(config);
 
-      expect(config.modules.trackChanges.visible).toBe(true);
-      expect(config.modules.trackChanges.mode).toBe('review');
-      expect(config.modules.trackChanges.enabled).toBe(true);
+      expect(config.modules!.trackChanges!.visible).toBe(true);
+      expect(config.modules!.trackChanges!.mode).toBe('review');
+      expect(config.modules!.trackChanges!.enabled).toBe(true);
     });
 
     it('preserves the previous author color config for v2 tracked-change rendering', () => {
@@ -105,28 +110,28 @@ describe('normalizeTrackChangesConfig', () => {
         overrides: { Ada: '#8250df' },
         resolve: vi.fn(),
       };
-      const config = {
+      const config: TrackChangesConfigSource = {
         modules: { trackChanges: { authorColors } },
       };
       const result = normalizeTrackChangesConfig(config);
 
       expect(result.authorColors).toBe(authorColors);
-      expect(config.modules.trackChanges.authorColors).toBe(authorColors);
-      expect(config.trackChanges.authorColors).toBe(authorColors);
-      expect(config.layoutEngineOptions.trackedChanges).toEqual({ mode: 'review', enabled: true });
+      expect(config.modules!.trackChanges!.authorColors).toBe(authorColors);
+      expect(config.trackChanges!.authorColors).toBe(authorColors);
+      expect(config.layoutEngineOptions!.trackedChanges).toEqual({ mode: 'review', enabled: true });
     });
   });
 
   describe('top-level tracked-change options', () => {
     it('uses top-level behavior without a deprecation warning', () => {
-      const config = {
+      const config: TrackChangesConfigSource = {
         trackChanges: { enabled: false, replacementMode: 'separate' },
       };
 
       const result = normalizeTrackChangesConfig(config);
 
       expect(result).toMatchObject({ enabled: false, replacements: 'independent' });
-      expect(config.trackChanges.replacementMode).toBe('separate');
+      expect(config.trackChanges!.replacementMode).toBe('separate');
       expect(warnSpy).not.toHaveBeenCalled();
     });
 
@@ -136,21 +141,21 @@ describe('normalizeTrackChangesConfig', () => {
         overrides: { 'table-cell-insertion': '#1f6feb' },
         resolve: vi.fn(),
       };
-      const config = {
+      const config: TrackChangesConfigSource = {
         trackChanges: { semanticColors },
       };
       const result = normalizeTrackChangesConfig(config);
 
       // Same reference, not a clone, so the composed resolver keeps the callback.
       expect(result.semanticColors).toBe(semanticColors);
-      expect(config.modules.trackChanges.semanticColors).toBe(semanticColors);
-      expect(result.semanticColors.resolve).toBe(semanticColors.resolve);
+      expect(config.modules!.trackChanges!.semanticColors).toBe(semanticColors);
+      expect(result.semanticColors!.resolve).toBe(semanticColors.resolve);
     });
 
     it('preserves semanticColors and authorColors independently on the canonical path', () => {
       const authorColors = { overrides: { Ada: '#8250df' } };
       const semanticColors = { overrides: { 'cell-merge': '#d4a72c' } };
-      const config = {
+      const config: TrackChangesConfigSource = {
         trackChanges: { authorColors, semanticColors },
       };
       const result = normalizeTrackChangesConfig(config);
@@ -160,15 +165,16 @@ describe('normalizeTrackChangesConfig', () => {
     });
 
     it('omits semanticColors from the normalized result when not supplied', () => {
-      const config = { trackChanges: { enabled: true } };
+      const config: TrackChangesConfigSource = { trackChanges: { enabled: true } };
       const result = normalizeTrackChangesConfig(config);
 
       expect('semanticColors' in result).toBe(false);
-      expect(config.modules.trackChanges.semanticColors).toBeUndefined();
+      expect(config.modules!.trackChanges!.semanticColors).toBeUndefined();
     });
 
     it('ignores a non-object semanticColors value', () => {
-      const config = {
+      const config: TrackChangesConfigSource = {
+        // @ts-expect-error
         trackChanges: { enabled: true, semanticColors: 'nope' },
       };
       const result = normalizeTrackChangesConfig(config);
@@ -178,20 +184,20 @@ describe('normalizeTrackChangesConfig', () => {
 
     it('mirrors semantic colors to the internal module path only', () => {
       const semanticColors = { overrides: { 'move-from': '#00853d' } };
-      const config = {
+      const config: TrackChangesConfigSource = {
         trackChanges: { semanticColors },
       };
       normalizeTrackChangesConfig(config);
 
-      expect(config.trackChanges.semanticColors).toBe(semanticColors);
-      expect(config.modules.trackChanges.semanticColors).toBe(semanticColors);
-      expect(config.layoutEngineOptions.trackedChanges).toEqual({ mode: 'review', enabled: true });
-      expect('semanticColors' in config.layoutEngineOptions.trackedChanges).toBe(false);
+      expect(config.trackChanges!.semanticColors).toBe(semanticColors);
+      expect(config.modules!.trackChanges!.semanticColors).toBe(semanticColors);
+      expect(config.layoutEngineOptions!.trackedChanges).toEqual({ mode: 'review', enabled: true });
+      expect('semanticColors' in config.layoutEngineOptions!.trackedChanges!).toBe(false);
     });
 
     it('keeps semanticColors stable and by-reference across repeated normalizations', () => {
       const semanticColors = { overrides: { 'cell-split': '#bc4c00' }, resolve: vi.fn() };
-      const config = {
+      const config: TrackChangesConfigSource = {
         trackChanges: { semanticColors },
       };
 
@@ -207,7 +213,7 @@ describe('normalizeTrackChangesConfig', () => {
 
   describe('deprecated config.trackChanges.visible alias', () => {
     it('accepts visible via the legacy key and emits one deprecation warning', () => {
-      const config = { trackChanges: { visible: true } };
+      const config: TrackChangesConfigSource = { trackChanges: { visible: true } };
       const result = normalizeTrackChangesConfig(config);
 
       expect(result.visible).toBe(true);
@@ -217,7 +223,7 @@ describe('normalizeTrackChangesConfig', () => {
     });
 
     it('mirrors the resolved visible back onto the legacy key', () => {
-      const config = { trackChanges: { visible: true } };
+      const config: TrackChangesConfigSource = { trackChanges: { visible: true } };
       normalizeTrackChangesConfig(config);
 
       expect(config.trackChanges).toEqual({ visible: true, enabled: true, replacementMode: 'grouped' });
@@ -234,7 +240,7 @@ describe('normalizeTrackChangesConfig', () => {
 
   describe('legacy config.layoutEngineOptions.trackedChanges', () => {
     it('accepts mode/enabled via the legacy key and emits one deprecation warning', () => {
-      const config = {
+      const config: TrackChangesConfigSource = {
         layoutEngineOptions: { trackedChanges: { mode: 'original', enabled: false } },
       };
       const result = normalizeTrackChangesConfig(config);
@@ -246,28 +252,28 @@ describe('normalizeTrackChangesConfig', () => {
     });
 
     it('mirrors resolved mode/enabled back onto the legacy key', () => {
-      const config = {
+      const config: TrackChangesConfigSource = {
         layoutEngineOptions: { trackedChanges: { mode: 'original', enabled: false } },
       };
       normalizeTrackChangesConfig(config);
 
-      expect(config.layoutEngineOptions.trackedChanges).toEqual({ mode: 'original', enabled: false });
+      expect(config.layoutEngineOptions!.trackedChanges).toEqual({ mode: 'original', enabled: false });
     });
 
     it('does not clobber sibling layoutEngineOptions fields', () => {
-      const config = {
+      const config: TrackChangesConfigSource = {
         layoutEngineOptions: { flowMode: 'semantic', trackedChanges: { mode: 'original' } },
       };
       normalizeTrackChangesConfig(config);
 
-      expect(config.layoutEngineOptions.flowMode).toBe('semantic');
-      expect(config.layoutEngineOptions.trackedChanges.mode).toBe('original');
+      expect(config.layoutEngineOptions!.flowMode).toBe('semantic');
+      expect(config.layoutEngineOptions!.trackedChanges!.mode).toBe('original');
     });
   });
 
   describe('precedence: new > legacy', () => {
     it('prefers config.trackChanges.visible over modules.trackChanges.visible', () => {
-      const config = {
+      const config: TrackChangesConfigSource = {
         modules: { trackChanges: { visible: false } },
         trackChanges: { visible: true },
       };
@@ -277,7 +283,7 @@ describe('normalizeTrackChangesConfig', () => {
     });
 
     it('prefers modules.trackChanges.mode over layoutEngineOptions.trackedChanges.mode', () => {
-      const config = {
+      const config: TrackChangesConfigSource = {
         modules: { trackChanges: { mode: 'review' } },
         layoutEngineOptions: { trackedChanges: { mode: 'original' } },
       };
@@ -287,7 +293,7 @@ describe('normalizeTrackChangesConfig', () => {
     });
 
     it('falls through to the legacy value when the new path omits the field', () => {
-      const config = {
+      const config: TrackChangesConfigSource = {
         modules: { trackChanges: { visible: true } }, // no mode/enabled
         layoutEngineOptions: { trackedChanges: { mode: 'original', enabled: false } },
       };
@@ -299,8 +305,10 @@ describe('normalizeTrackChangesConfig', () => {
 
   describe('defensive parsing', () => {
     it('ignores non-object legacy values', () => {
-      const config = {
+      const config: TrackChangesConfigSource = {
+        // @ts-expect-error
         trackChanges: 'not-an-object',
+        // @ts-expect-error
         layoutEngineOptions: { trackedChanges: null },
       };
       const result = normalizeTrackChangesConfig(config);
@@ -310,8 +318,10 @@ describe('normalizeTrackChangesConfig', () => {
     });
 
     it('ignores array-typed modules/canonical/legacy objects', () => {
-      const config = {
+      const config: TrackChangesConfigSource = {
+        // @ts-expect-error
         modules: [],
+        // @ts-expect-error
         trackChanges: [],
         layoutEngineOptions: { trackedChanges: [] },
       };
@@ -322,7 +332,8 @@ describe('normalizeTrackChangesConfig', () => {
     });
 
     it('treats a null canonical object as missing', () => {
-      const config = {
+      const config: TrackChangesConfigSource = {
+        // @ts-expect-error
         modules: { trackChanges: null },
         trackChanges: { visible: true },
       };
@@ -332,7 +343,8 @@ describe('normalizeTrackChangesConfig', () => {
     });
 
     it('coerces invalid mode values to the derived default', () => {
-      const config = {
+      const config: TrackChangesConfigSource = {
+        // @ts-expect-error
         modules: { trackChanges: { mode: 'bogus' } },
       };
       const result = normalizeTrackChangesConfig(config);
@@ -341,8 +353,15 @@ describe('normalizeTrackChangesConfig', () => {
     });
 
     it('coerces non-boolean visible/enabled to the derived default', () => {
-      const config = {
-        modules: { trackChanges: { visible: 'yes', enabled: 0 } },
+      const config: TrackChangesConfigSource = {
+        modules: {
+          trackChanges: {
+            // @ts-expect-error
+            visible: 'yes',
+            // @ts-expect-error
+            enabled: 0,
+          },
+        },
       };
       const result = normalizeTrackChangesConfig(config);
 
@@ -353,11 +372,11 @@ describe('normalizeTrackChangesConfig', () => {
 
   describe("replacementMode: 'grouped' | 'separate'", () => {
     it("defaults to 'grouped' on the public path", () => {
-      const config = {};
+      const config: TrackChangesConfigSource = {};
       const result = normalizeTrackChangesConfig(config);
 
       expect(result.replacements).toBe('paired');
-      expect(config.trackChanges.replacementMode).toBe('grouped');
+      expect(config.trackChanges!.replacementMode).toBe('grouped');
     });
 
     it("maps replacementMode: 'separate' to the internal independent mode", () => {
@@ -366,18 +385,19 @@ describe('normalizeTrackChangesConfig', () => {
     });
 
     it('keeps the previous replacements setting as a compatibility alias', () => {
-      const config = {
+      const config: TrackChangesConfigSource = {
         modules: { trackChanges: { replacements: 'independent' } },
       };
       normalizeTrackChangesConfig(config);
 
-      expect(config.modules.trackChanges.replacements).toBe('independent');
-      expect(config.trackChanges.replacementMode).toBe('separate');
+      expect(config.modules!.trackChanges!.replacements).toBe('independent');
+      expect(config.trackChanges!.replacementMode).toBe('separate');
       expect(warnSpy.mock.calls[0][0]).toContain('config.modules.trackChanges');
     });
 
     it('coerces an invalid replacementMode to the grouped default', () => {
       const result = normalizeTrackChangesConfig({
+        // @ts-expect-error
         trackChanges: { replacementMode: 'whatever' },
       });
       expect(result.replacements).toBe('paired');
@@ -394,17 +414,17 @@ describe('normalizeTrackChangesConfig', () => {
 
   describe('extended mode values (final / off)', () => {
     it('preserves mode: "final" supplied via the legacy layout path', () => {
-      const config = {
+      const config: TrackChangesConfigSource = {
         layoutEngineOptions: { trackedChanges: { mode: 'final', enabled: true } },
       };
       const result = normalizeTrackChangesConfig(config);
 
       expect(result.mode).toBe('final');
-      expect(config.layoutEngineOptions.trackedChanges.mode).toBe('final');
+      expect(config.layoutEngineOptions!.trackedChanges!.mode).toBe('final');
     });
 
     it('preserves mode: "off" supplied via the legacy layout path', () => {
-      const config = {
+      const config: TrackChangesConfigSource = {
         layoutEngineOptions: { trackedChanges: { mode: 'off' } },
       };
       const result = normalizeTrackChangesConfig(config);
@@ -413,7 +433,7 @@ describe('normalizeTrackChangesConfig', () => {
     });
 
     it('accepts mode: "final" on the previous module path', () => {
-      const config = {
+      const config: TrackChangesConfigSource = {
         modules: { trackChanges: { mode: 'final' } },
       };
       const result = normalizeTrackChangesConfig(config);
@@ -424,7 +444,7 @@ describe('normalizeTrackChangesConfig', () => {
 
   describe('conflicting legacy buckets', () => {
     it('warns for both legacy paths and merges their fields independently', () => {
-      const config = {
+      const config: TrackChangesConfigSource = {
         trackChanges: { visible: true },
         layoutEngineOptions: { trackedChanges: { mode: 'original', enabled: false } },
       };
@@ -438,7 +458,7 @@ describe('normalizeTrackChangesConfig', () => {
     });
 
     it('warns for both deprecated visibility inputs when the module value wins', () => {
-      const config = {
+      const config: TrackChangesConfigSource = {
         modules: { trackChanges: { visible: false } },
         trackChanges: { visible: true },
       };
@@ -457,7 +477,7 @@ describe('normalizeTrackChangesConfig', () => {
 
   describe('idempotency on config reuse', () => {
     it('does not re-warn when the same config object is normalized twice', () => {
-      const config = {
+      const config: TrackChangesConfigSource = {
         modules: { trackChanges: { visible: true } },
       };
 
@@ -482,7 +502,7 @@ describe('normalizeTrackChangesConfig', () => {
     });
 
     it('produces stable values across repeated normalizations of the same config', () => {
-      const config = {
+      const config: TrackChangesConfigSource = {
         modules: { trackChanges: { visible: true, mode: 'final' } },
       };
       const first = normalizeTrackChangesConfig(config);

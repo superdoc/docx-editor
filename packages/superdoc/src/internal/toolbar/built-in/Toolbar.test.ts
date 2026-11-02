@@ -1,12 +1,28 @@
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
-import { mount } from '@vue/test-utils';
+import { mount, type VueWrapper } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import Toolbar from './Toolbar.vue';
 import ButtonGroup from './ButtonGroup.vue';
 import { getSuperDocUiOwnerId } from '../../../core/superdoc-ui-owner.js';
-import { useToolbarItem } from './use-toolbar-item.js';
+import { useToolbarItem, type ToolbarItem, type ToolbarItemType } from './use-toolbar-item.js';
+import { globalPropertiesWith } from '../../../test-support/global-properties.js';
 
-let wrapper;
+type ToolbarStub = {
+  superdoc: object;
+  config: { toolbarGroups: string[] };
+  readonly overflowItems: ToolbarItem[];
+  getToolbarItemByGroup: (group: string) => ToolbarItem[];
+  getAvailableWidth: () => number;
+  onToolbarResize: () => void;
+  on: (event: string, listener: () => void) => void;
+  off: (event: string) => void;
+  activeEditor?: object;
+  ui?: { selection: { capture: () => object; restore: () => void } };
+  emitCommand?: (command: { item: ToolbarItem; argument?: unknown; option?: unknown }) => void;
+  snapshot?: { commands: Record<string, { source: string }> };
+};
+
+let wrapper: VueWrapper | null;
 afterEach(() => {
   wrapper?.unmount();
   wrapper = null;
@@ -16,7 +32,7 @@ afterEach(() => {
 
 function mountToolbar({ overflowBelow = 0 } = {}) {
   let width = 1200;
-  const listeners = new Map();
+  const listeners = new Map<string, () => void>();
   const item = useToolbarItem({
     type: 'button',
     name: 'watermark',
@@ -29,29 +45,29 @@ function mountToolbar({ overflowBelow = 0 } = {}) {
     defaultLabel: 'Overflow items',
     attributes: { ariaLabel: 'Overflow items' },
   });
-  const toolbar = {
+  const toolbar: ToolbarStub = {
     superdoc: {},
     config: { toolbarGroups: ['left', 'center'] },
     get overflowItems() {
       return width < overflowBelow ? [item] : [];
     },
-    getToolbarItemByGroup: (group) => (group === 'center' ? [width < overflowBelow ? overflow : item] : []),
+    getToolbarItemByGroup: (group: string) => (group === 'center' ? [width < overflowBelow ? overflow : item] : []),
     getAvailableWidth: () => width,
     onToolbarResize: vi.fn(),
-    on: (event, listener) => listeners.set(event, listener),
-    off: (event) => listeners.delete(event),
+    on: (event: string, listener: () => void) => listeners.set(event, listener),
+    off: (event: string) => listeners.delete(event),
   };
   wrapper = mount(Toolbar, {
     attachTo: document.body,
-    global: { config: { globalProperties: { $toolbar: toolbar } } },
+    global: { config: { globalProperties: globalPropertiesWith({ $toolbar: toolbar }) } },
   });
   return {
     toolbar,
     overflow,
-    setWidth: (value) => {
+    setWidth: (value: number) => {
       width = value;
     },
-    emit: (event) => listeners.get(event)?.(),
+    emit: (event: string) => listeners.get(event)?.(),
   };
 }
 
@@ -62,7 +78,7 @@ describe('Toolbar responsive layout', () => {
     await nextTick();
     await nextTick();
     const owner = getSuperDocUiOwnerId(toolbar.superdoc);
-    expect(wrapper.get('[role="toolbar"]').attributes('data-superdoc-ui-owner')).toBe(owner);
+    expect(wrapper!.get('[role="toolbar"]').attributes('data-superdoc-ui-owner')).toBe(owner);
     expect(document.querySelector('.sd-toolbar-overflow-menu')?.getAttribute('data-superdoc-ui-owner')).toBe(owner);
   });
 
@@ -73,7 +89,7 @@ describe('Toolbar responsive layout', () => {
     window.dispatchEvent(new Event('resize'));
     await nextTick();
     await nextTick();
-    const opener = wrapper.get('[aria-label="Watermark"]').element;
+    const opener = wrapper!.get<HTMLElement>('[aria-label="Watermark"]').element;
     opener.focus();
 
     window.dispatchEvent(new Event('resize'));
@@ -91,18 +107,18 @@ describe('Toolbar responsive layout', () => {
     expect(toolbar.onToolbarResize).toHaveBeenCalledTimes(2);
     expect(opener.isConnected).toBe(false);
 
-    const resizedButton = wrapper.get('[aria-label="Watermark"]').element;
-    expect(wrapper.get('.superdoc-toolbar-group-side').element.style.minWidth).toBe('auto');
+    const resizedButton = wrapper!.get<HTMLElement>('[aria-label="Watermark"]').element;
+    expect(wrapper!.get<HTMLElement>('.superdoc-toolbar-group-side').element.style.minWidth).toBe('auto');
     setWidth(1366);
     emit('toolbar-items-changed');
     await nextTick();
     expect(resizedButton.isConnected).toBe(false);
-    expect(wrapper.get('.superdoc-toolbar-group-side').element.style.minWidth).toBe('120px');
+    expect(wrapper!.get<HTMLElement>('.superdoc-toolbar-group-side').element.style.minWidth).toBe('120px');
   });
 
   it.each(['resize', 'items'])('keeps the currently focused control after a %s rebuild', async (source) => {
     const { setWidth, emit } = mountToolbar();
-    const original = wrapper.get('[aria-label="Watermark"]').element;
+    const original = wrapper!.get<HTMLElement>('[aria-label="Watermark"]').element;
     original.focus();
     if (source === 'resize') {
       setWidth(768);
@@ -113,17 +129,17 @@ describe('Toolbar responsive layout', () => {
     await nextTick();
     await nextTick();
     expect(original.isConnected).toBe(false);
-    expect(document.activeElement).toBe(wrapper.get('[aria-label="Watermark"]').element);
+    expect(document.activeElement).toBe(wrapper!.get<HTMLElement>('[aria-label="Watermark"]').element);
   });
 
   it('moves focus to its own overflow trigger when the focused control moves into overflow', async () => {
     const { setWidth } = mountToolbar({ overflowBelow: 600 });
-    wrapper.get('[aria-label="Watermark"]').element.focus();
+    wrapper!.get<HTMLElement>('[aria-label="Watermark"]').element.focus();
     setWidth(320);
     window.dispatchEvent(new Event('resize'));
     await nextTick();
     await nextTick();
-    expect(document.activeElement).toBe(wrapper.get('[aria-label="Overflow items"]').element);
+    expect(document.activeElement).toBe(wrapper!.get<HTMLElement>('[aria-label="Overflow items"]').element);
   });
 
   it.each(['before', 'during'])('does not take focus from an external dialog focused %s rebuilding', async (timing) => {
@@ -134,7 +150,7 @@ describe('Toolbar responsive layout', () => {
     close.textContent = 'Close dialog';
     dialog.append(close);
     document.body.append(dialog);
-    wrapper.get('[aria-label="Watermark"]').element.focus();
+    wrapper!.get<HTMLElement>('[aria-label="Watermark"]').element.focus();
     if (timing === 'before') close.focus();
     setWidth(768);
     window.dispatchEvent(new Event('resize'));
@@ -152,7 +168,7 @@ describe('Toolbar responsive layout', () => {
     await nextTick();
     setWidth(320);
     window.dispatchEvent(new Event('resize'));
-    wrapper.unmount();
+    wrapper!.unmount();
     wrapper = null;
     await vi.advanceTimersByTimeAsync(300);
     expect(toolbar.onToolbarResize).toHaveBeenCalledOnce();
@@ -160,7 +176,7 @@ describe('Toolbar responsive layout', () => {
 });
 
 describe('Toolbar selection restoration', () => {
-  it.each([
+  it.each<{ name: string; type: ToolbarItemType; custom?: boolean; source?: string; restored: boolean }>([
     { name: 'bold', type: 'button', restored: false },
     { name: 'italic', type: 'button', restored: false },
     { name: 'underline', type: 'button', restored: false },
@@ -180,8 +196,8 @@ describe('Toolbar selection restoration', () => {
       toolbar.snapshot = { commands: { [name === 'strike' ? 'strikethrough' : name]: { source } } };
       const item = useToolbarItem({ type, name, defaultLabel: name });
       item.isCustomToolbarItem = custom;
-      await wrapper.get('[role="toolbar"]').trigger('mousedown');
-      wrapper.findComponent(ButtonGroup).vm.$emit('command', { item });
+      await wrapper!.get('[role="toolbar"]').trigger('mousedown');
+      wrapper!.findComponent(ButtonGroup).vm.$emit('command', { item });
       expect(toolbar.ui.selection.restore).toHaveBeenCalledTimes(restored ? 1 : 0);
       expect(toolbar.emitCommand).toHaveBeenCalledWith({ item, argument: undefined, option: undefined });
     },

@@ -2,8 +2,15 @@ import { describe, it, expect, vi } from 'vite-plus/test';
 import { mount } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import PasswordPromptSurface from './PasswordPromptSurface.vue';
+import type {
+  PasswordPromptAttemptResult,
+  PasswordPromptHandle,
+  ResolvedPasswordPromptTexts,
+  SurfaceComponentProps,
+} from '../../core/types/index.js';
+import { surfaceRequest } from '../../test-support/surface-request.js';
 
-const DEFAULT_TEXTS = {
+const DEFAULT_TEXTS: ResolvedPasswordPromptTexts = {
   title: 'Password Required',
   invalidTitle: 'Incorrect Password',
   description: 'This document is password protected. Enter the password to open it.',
@@ -17,8 +24,14 @@ const DEFAULT_TEXTS = {
   genericErrorMessage: 'Unable to decrypt this document.',
 };
 
-const mountPrompt = (overrides = {}) => {
-  const passwordPrompt = {
+type PromptOverrides = {
+  passwordPrompt?: Partial<PasswordPromptHandle>;
+  texts?: Partial<ResolvedPasswordPromptTexts>;
+  props?: Partial<SurfaceComponentProps>;
+};
+
+const mountPrompt = (overrides: PromptOverrides = {}) => {
+  const passwordPrompt: PasswordPromptHandle = {
     documentId: 'doc-1',
     errorCode: 'DOCX_PASSWORD_REQUIRED',
     texts: { ...DEFAULT_TEXTS },
@@ -35,7 +48,7 @@ const mountPrompt = (overrides = {}) => {
     props: {
       surfaceId: 'test-1',
       mode: 'dialog',
-      request: {},
+      request: surfaceRequest(),
       resolve: vi.fn(),
       close: vi.fn(),
       passwordPrompt,
@@ -87,10 +100,10 @@ describe('PasswordPromptSurface', () => {
   });
 
   it('shows busy state while attemptPassword is pending', async () => {
-    let resolveAttempt;
+    let resolveAttempt: ((result: PasswordPromptAttemptResult) => void) | undefined;
     const attemptPassword = vi.fn(
       () =>
-        new Promise((r) => {
+        new Promise<PasswordPromptAttemptResult>((r) => {
           resolveAttempt = r;
         }),
     );
@@ -103,7 +116,7 @@ describe('PasswordPromptSurface', () => {
     expect(wrapper.find('input[type="password"]').attributes('disabled')).toBeDefined();
     expect(wrapper.find('.sd-password-prompt__btn--submit').text()).toContain('Decrypting');
 
-    resolveAttempt({ success: true });
+    resolveAttempt!({ success: true });
     await nextTick();
   });
 
@@ -230,10 +243,10 @@ describe('PasswordPromptSurface', () => {
   });
 
   it('uses custom busy label', async () => {
-    let resolveAttempt;
+    let resolveAttempt: ((result: PasswordPromptAttemptResult) => void) | undefined;
     const attemptPassword = vi.fn(
       () =>
-        new Promise((r) => {
+        new Promise<PasswordPromptAttemptResult>((r) => {
           resolveAttempt = r;
         }),
     );
@@ -248,7 +261,7 @@ describe('PasswordPromptSurface', () => {
 
     expect(wrapper.find('.sd-password-prompt__btn--submit').text()).toBe('Working...');
 
-    resolveAttempt({ success: true });
+    resolveAttempt!({ success: true });
     await nextTick();
   });
 

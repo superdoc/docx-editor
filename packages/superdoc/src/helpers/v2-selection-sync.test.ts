@@ -1,4 +1,5 @@
-import { describe, it, expect } from 'vite-plus/test';
+import { afterEach, describe, it, expect } from 'vite-plus/test';
+import { caretAt, documentSelection, rangeAcross } from '../test-support/dom-selection.js';
 import {
   hasOutsideV2DomRangeSelection,
   isV2RangeSnapshot,
@@ -42,18 +43,20 @@ describe('isV2RangeSnapshot', () => {
 });
 
 describe('hasOutsideV2DomRangeSelection', () => {
+  afterEach(() => {
+    documentSelection(null);
+    document.body.replaceChildren();
+  });
+
   it('detects a non-collapsed DOM range whose endpoints are outside the v2 root', () => {
     const root = document.createElement('div');
     const outside = document.createElement('div');
     const startContainer = document.createTextNode('outside start');
     const endContainer = document.createTextNode('outside end');
     outside.append(startContainer, endContainer);
+    document.body.append(root, outside);
 
-    const selection = {
-      rangeCount: 1,
-      isCollapsed: false,
-      getRangeAt: () => ({ startContainer, endContainer }),
-    };
+    const selection = documentSelection(rangeAcross(startContainer, endContainer));
 
     expect(hasOutsideV2DomRangeSelection(selection, root)).toBe(true);
   });
@@ -63,22 +66,19 @@ describe('hasOutsideV2DomRangeSelection', () => {
     const startContainer = document.createTextNode('inside start');
     const endContainer = document.createTextNode('outside end');
     root.append(startContainer);
+    document.body.append(root, endContainer);
 
-    const selection = {
-      rangeCount: 1,
-      isCollapsed: false,
-      getRangeAt: () => ({ startContainer, endContainer }),
-    };
+    const selection = documentSelection(rangeAcross(startContainer, endContainer));
 
     expect(hasOutsideV2DomRangeSelection(selection, root)).toBe(false);
   });
 
   it('does not treat absent or collapsed native ranges as outside selections', () => {
     expect(hasOutsideV2DomRangeSelection(null, document.createElement('div'))).toBe(false);
-    expect(hasOutsideV2DomRangeSelection({ rangeCount: 0, isCollapsed: false }, document.createElement('div'))).toBe(
-      false,
-    );
-    expect(hasOutsideV2DomRangeSelection({ rangeCount: 1, isCollapsed: true }, document.createElement('div'))).toBe(
+    const text = document.createTextNode('caret');
+    document.body.append(text);
+    expect(hasOutsideV2DomRangeSelection(documentSelection(null), document.createElement('div'))).toBe(false);
+    expect(hasOutsideV2DomRangeSelection(documentSelection(caretAt(text, 2)), document.createElement('div'))).toBe(
       false,
     );
   });

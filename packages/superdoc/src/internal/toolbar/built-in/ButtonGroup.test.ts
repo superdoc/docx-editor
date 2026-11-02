@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
-import { mount } from '@vue/test-utils';
+import { mount, type VueWrapper } from '@vue/test-utils';
 import { defineComponent, h, nextTick } from 'vue';
 import ButtonGroup from './ButtonGroup.vue';
-import { useToolbarItem } from './use-toolbar-item.js';
+import { useToolbarItem, type ToolbarItem } from './use-toolbar-item.js';
 import { TOOLBAR_FONTS, TOOLBAR_FONT_SIZES } from './constants.js';
+import { globalPropertiesWith } from '../../../test-support/global-properties.js';
 
-let wrapper;
+let wrapper: VueWrapper | null;
 
 const makeFontControls = () => {
   const fontFamily = useToolbarItem({
@@ -19,7 +20,7 @@ const makeFontControls = () => {
     inlineTextInputVisible: true,
     isWide: true,
     attributes: { ariaLabel: 'Font family' },
-    options: TOOLBAR_FONTS,
+    options: TOOLBAR_FONTS.map((option) => ({ ...option })),
   });
   const separator = useToolbarItem({ type: 'separator', name: 'separator', isNarrow: true });
   const fontSize = useToolbarItem({
@@ -38,22 +39,22 @@ const makeFontControls = () => {
   return [fontFamily, separator, fontSize];
 };
 
-const mountGroup = (toolbarItems) => {
+const mountGroup = (toolbarItems: ToolbarItem[]) => {
   wrapper = mount(ButtonGroup, {
     props: { toolbarItems, overflowItems: [], position: 'center' },
     attachTo: document.body,
     global: {
       config: {
-        globalProperties: {
+        globalProperties: globalPropertiesWith({
           $toolbar: { toolbarItems, overflowItems: [] },
-        },
+        }),
       },
     },
   });
   return wrapper;
 };
 
-const mountOverflowGroup = (attachTo = document.body, additionalItems = []) => {
+const mountOverflowGroup = (attachTo: HTMLElement = document.body, additionalItems: ToolbarItem[] = []) => {
   const overflow = useToolbarItem({
     type: 'overflow',
     name: 'overflow',
@@ -85,9 +86,9 @@ const mountOverflowGroup = (attachTo = document.body, additionalItems = []) => {
     attachTo,
     global: {
       config: {
-        globalProperties: {
+        globalProperties: globalPropertiesWith({
           $toolbar: { emitCommand, toolbarItems, overflowItems },
-        },
+        }),
       },
     },
   });
@@ -111,9 +112,9 @@ describe('ButtonGroup button activation', () => {
     });
     mountGroup([item]);
     const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
-    wrapper.get('[aria-label="Watermark"]').element.dispatchEvent(event);
+    wrapper!.get('[aria-label="Watermark"]').element.dispatchEvent(event);
 
-    expect(wrapper.emitted('command')).toEqual([[{ item }]]);
+    expect(wrapper!.emitted('command')).toEqual([[{ item }]]);
     expect(event.defaultPrevented).toBe(true);
   });
 
@@ -128,9 +129,9 @@ describe('ButtonGroup button activation', () => {
     });
     mountGroup([item]);
 
-    wrapper.get('[aria-label="Right to left"]').element.click();
+    wrapper!.get<HTMLElement>('[aria-label="Right to left"]').element.click();
 
-    expect(wrapper.emitted('command')).toEqual([[{ item, argument: { direction: 'rtl' } }]]);
+    expect(wrapper!.emitted('command')).toEqual([[{ item, argument: { direction: 'rtl' } }]]);
   });
 });
 
@@ -154,12 +155,12 @@ describe('ButtonGroup font-family combobox wiring', () => {
   it('moves focus from the font-family combobox to the font-size field on Tab', async () => {
     mountGroup(makeFontControls());
 
-    const combobox = wrapper.get('[data-item="btn-fontFamily"] input[role="combobox"]');
+    const combobox = wrapper!.get<HTMLElement>('[data-item="btn-fontFamily"] input[role="combobox"]');
     combobox.element.focus();
     await combobox.trigger('keydown', { key: 'Tab' });
     await nextTick();
 
-    const fontSizeInput = document.getElementById('inlineTextInput-fontSize');
+    const fontSizeInput = document.getElementById('inlineTextInput-fontSize')!;
     expect(fontSizeInput).not.toBeNull();
     expect(document.activeElement).toBe(fontSizeInput);
   });
@@ -167,7 +168,7 @@ describe('ButtonGroup font-family combobox wiring', () => {
   it('moves focus from the font-size field back to the font-family combobox on Shift+Tab', async () => {
     mountGroup(makeFontControls());
 
-    const fontSizeInput = document.getElementById('inlineTextInput-fontSize');
+    const fontSizeInput = document.getElementById('inlineTextInput-fontSize')!;
     fontSizeInput.focus();
     fontSizeInput.dispatchEvent(
       new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true, cancelable: true }),
@@ -188,7 +189,7 @@ describe('ButtonGroup font-family combobox wiring', () => {
 
     mountGroup(makeFontControls());
 
-    const fontSizeInput = document.getElementById('inlineTextInput-fontSize');
+    const fontSizeInput = document.getElementById('inlineTextInput-fontSize')!;
     fontSizeInput.focus();
     fontSizeInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }));
     await nextTick();
@@ -215,7 +216,7 @@ describe('ButtonGroup font-family combobox wiring', () => {
     const boldButton = document.body.querySelector('[data-item="btn-bold"]');
     expect(boldButton).not.toBeNull();
 
-    const fontSizeInput = document.getElementById('inlineTextInput-fontSize');
+    const fontSizeInput = document.getElementById('inlineTextInput-fontSize')!;
     fontSizeInput.focus();
     fontSizeInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }));
     await nextTick();
@@ -234,10 +235,10 @@ describe('ButtonGroup overflow menu', () => {
       attributes: { ariaLabel: 'Watermark' },
     });
     const { emitCommand } = mountOverflowGroup(document.body, [watermark]);
-    const trigger = wrapper.get('[aria-label="Overflow items"]');
+    const trigger = wrapper!.get('[aria-label="Overflow items"]');
     await trigger.trigger('click');
     await nextTick();
-    const button = document.body.querySelector('[aria-label="Watermark"]');
+    const button = document.body.querySelector<HTMLElement>('[aria-label="Watermark"]')!;
     button.focus();
     let focusAtCommand;
     emitCommand.mockImplementation(() => {
@@ -259,10 +260,10 @@ describe('ButtonGroup overflow menu', () => {
     editor.focus();
 
     mountOverflowGroup();
-    await wrapper.get('[aria-label="Overflow items"]').trigger('click');
+    await wrapper!.get('[aria-label="Overflow items"]').trigger('click');
     await nextTick();
 
-    const bold = document.body.querySelector('[aria-label="Bold"]');
+    const bold = document.body.querySelector<HTMLElement>('[aria-label="Bold"]')!;
     const mouseDown = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
 
     expect(bold.dispatchEvent(mouseDown)).toBe(false);
@@ -273,12 +274,12 @@ describe('ButtonGroup overflow menu', () => {
   it('renders the menu outside the toolbar host so clipping containers cannot hide it', async () => {
     mountOverflowGroup();
 
-    await wrapper.get('[aria-label="Overflow items"]').trigger('click');
+    await wrapper!.get('[aria-label="Overflow items"]').trigger('click');
     await nextTick();
 
-    const menu = document.body.querySelector('.sd-toolbar-overflow-menu');
+    const menu = document.body.querySelector<HTMLElement>('.sd-toolbar-overflow-menu')!;
     expect(menu).not.toBeNull();
-    expect(wrapper.element.contains(menu)).toBe(false);
+    expect(wrapper!.element.contains(menu)).toBe(false);
     expect(menu.style.position).toBe('fixed');
   });
 
@@ -307,9 +308,9 @@ describe('ButtonGroup overflow menu', () => {
       attachTo: fullscreenRoot,
       global: {
         config: {
-          globalProperties: {
+          globalProperties: globalPropertiesWith({
             $toolbar: { emitCommand: vi.fn(), toolbarItems, overflowItems },
-          },
+          }),
         },
       },
     });
@@ -327,9 +328,9 @@ describe('ButtonGroup overflow menu', () => {
     document.body.append(fullscreenRoot);
     mountOverflowGroup(fullscreenRoot);
 
-    await wrapper.get('[aria-label="Overflow items"]').trigger('click');
+    await wrapper!.get('[aria-label="Overflow items"]').trigger('click');
     await nextTick();
-    const menu = document.body.querySelector('.sd-toolbar-overflow-menu');
+    const menu = document.body.querySelector<HTMLElement>('.sd-toolbar-overflow-menu')!;
     expect(menu).not.toBeNull();
     expect(fullscreenRoot.contains(menu)).toBe(false);
 
@@ -350,11 +351,11 @@ describe('ButtonGroup overflow menu', () => {
 
   it('keeps teleported controls interactive and closes the menu with Escape', async () => {
     const { emitCommand } = mountOverflowGroup();
-    const trigger = wrapper.get('[aria-label="Overflow items"]');
+    const trigger = wrapper!.get('[aria-label="Overflow items"]');
 
     await trigger.trigger('keydown', { key: 'Enter' });
     await nextTick();
-    const bold = document.body.querySelector('[aria-label="Bold"]');
+    const bold = document.body.querySelector<HTMLElement>('[aria-label="Bold"]')!;
     expect(bold).not.toBeNull();
     bold.click();
     await nextTick();
@@ -370,16 +371,16 @@ describe('ButtonGroup overflow menu', () => {
   it('keeps nested dropdown controls usable inside the overflow panel', async () => {
     const { emitCommand } = mountOverflowGroup();
 
-    await wrapper.get('[aria-label="Overflow items"]').trigger('click');
+    await wrapper!.get('[aria-label="Overflow items"]').trigger('click');
     await nextTick();
 
-    const zoom = document.body.querySelector('[aria-label="Zoom"]');
+    const zoom = document.body.querySelector<HTMLElement>('[aria-label="Zoom"]')!;
     zoom.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
     zoom.click();
     await nextTick();
 
     expect(document.body.querySelector('.sd-toolbar-overflow-menu')).not.toBeNull();
-    const zoom125 = document.body.querySelector('[data-item="btn-zoom-option"]');
+    const zoom125 = document.body.querySelector<HTMLElement>('[data-item="btn-zoom-option"]')!;
     expect(zoom125).not.toBeNull();
 
     zoom125.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
@@ -401,8 +402,8 @@ describe('ButtonGroup roving keyboard navigation', () => {
     ['bold', 'italic'].map((name) =>
       useToolbarItem({ type: 'button', name, command: name, defaultLabel: name, attributes: { ariaLabel: name } }),
     );
-  const containers = () => [...document.body.querySelectorAll('.sd-toolbar-item-ctn')];
-  const press = (target, key, init = {}) =>
+  const containers = () => [...document.body.querySelectorAll<HTMLElement>('.sd-toolbar-item-ctn')];
+  const press = (target: EventTarget, key: string, init: KeyboardEventInit = {}) =>
     target.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...init }));
 
   it('moves the roving tabindex between items with ArrowRight and ArrowLeft', () => {
@@ -436,7 +437,7 @@ describe('ButtonGroup roving keyboard navigation', () => {
         attributes: { ariaLabel: name },
       }),
     );
-    const groupProps = (toolbarItems) => ({ toolbarItems, overflowItems: [], position: 'left' });
+    const groupProps = (toolbarItems: ToolbarItem[]) => ({ toolbarItems, overflowItems: [], position: 'left' });
     wrapper = mount(
       defineComponent({
         render: () =>
@@ -444,7 +445,9 @@ describe('ButtonGroup roving keyboard navigation', () => {
       }),
       {
         attachTo: document.body,
-        global: { config: { globalProperties: { $toolbar: { toolbarItems: [], overflowItems: [] } } } },
+        global: {
+          config: { globalProperties: globalPropertiesWith({ $toolbar: { toolbarItems: [], overflowItems: [] } }) },
+        },
       },
     );
     const [bold, , underline, strike] = containers();

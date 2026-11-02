@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
 import { defineComponent, h, markRaw, nextTick } from 'vue';
 import { mount } from '@vue/test-utils';
 import SurfaceFloating from './SurfaceFloating.vue';
+import type { DirectSurfaceRequest } from '../../core/types/index.js';
+import { activeSurface, surfaceRequest } from '../../test-support/surface-request.js';
 
 const TestContent = defineComponent({
   setup() {
@@ -9,20 +11,19 @@ const TestContent = defineComponent({
   },
 });
 
-function createFloatingSurface(floating) {
-  return {
+function createFloatingSurface(floating: DirectSurfaceRequest['floating']) {
+  return activeSurface({
     id: 'float-1',
-    request: {
+    request: surfaceRequest({
       id: 'float-1',
       mode: 'floating',
       floating,
-    },
+    }),
     component: markRaw(TestContent),
     props: {},
-    render: null,
     resolve: vi.fn(),
     close: vi.fn(),
-  };
+  });
 }
 
 async function flushClamp() {
@@ -95,12 +96,15 @@ describe('SurfaceFloating', () => {
   });
 
   it('reclamps explicit positioning when observed host bounds change', async () => {
-    const observed = [];
-    let observerCallback = null;
+    const observed: Element[] = [];
+    let observerCallback: (() => void) | null = null;
     const disconnect = vi.fn();
     vi.stubGlobal(
       'ResizeObserver',
-      vi.fn(function ResizeObserver(callback) {
+      vi.fn(function ResizeObserver(
+        this: { observe: (element: Element) => void; disconnect: () => void },
+        callback: () => void,
+      ) {
         observerCallback = callback;
         this.observe = vi.fn((element) => observed.push(element));
         this.disconnect = disconnect;
@@ -159,7 +163,7 @@ describe('SurfaceFloating', () => {
       height: 80,
     });
 
-    observerCallback();
+    observerCallback!();
     await flushClamp();
 
     expect(wrapper.element.style.left).toBe('52px');

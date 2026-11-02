@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vite-plus/test';
-import { defineComponent, h, ref } from 'vue';
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vite-plus/test';
+import { defineComponent, h, ref, type Ref } from 'vue';
 import { mount } from '@vue/test-utils';
 import {
   DEFAULT_COMMENTS_MIN_GUTTER_PX,
@@ -7,26 +7,33 @@ import {
   DEFAULT_DOCUMENT_VISIBLE_MIN_WIDTH_PX,
 } from '../helpers/comment-small-screen.js';
 import { useCommentSmallScreen } from './use-comment-small-screen.js';
+import type { CommentsConfig } from '../core/types/index.js';
 
-const setClientWidth = (el, value) => {
+type ResizeObserverStub = { observe: Mock<(target: Element) => void>; disconnect: Mock<() => void>; _cb: () => void };
+
+type RectWidthStub = { getBoundingClientRect: () => { width: number } };
+
+type StubbableResizeObserverWindow = { ResizeObserver?: unknown };
+
+const setClientWidth = (el: HTMLElement, value: number) => {
   Object.defineProperty(el, 'clientWidth', {
     configurable: true,
     get: () => value,
   });
 };
 
-const setRectWidth = (el, value) => {
+const setRectWidth = (el: RectWidthStub, value: number) => {
   el.getBoundingClientRect = vi.fn(() => ({ width: value }));
 };
 
 describe('useCommentSmallScreen', () => {
-  let root;
-  let parent;
-  let layers;
-  let commentsModuleConfig;
+  let root: HTMLDivElement;
+  let parent: HTMLDivElement;
+  let layers: HTMLDivElement;
+  let commentsModuleConfig: Ref<CommentsConfig>;
 
   const mountComposable = () => {
-    let api;
+    let api: ReturnType<typeof useCommentSmallScreen> | undefined;
     const Harness = defineComponent({
       setup() {
         api = useCommentSmallScreen({ commentsModuleConfig, superdocRoot: ref(root), layers: ref(layers) });
@@ -34,14 +41,15 @@ describe('useCommentSmallScreen', () => {
       },
     });
     const wrapper = mount(Harness);
-    return { api, wrapper };
+    return { api: api!, wrapper };
   };
 
   const createMockResizeObserver = () => {
-    const instances = [];
+    const instances: ResizeObserverStub[] = [];
     const Original = window.ResizeObserver;
-    window.ResizeObserver = vi.fn(function ResizeObserverStub(cb) {
-      const instance = {
+    const stubbableWindow: StubbableResizeObserverWindow = window;
+    stubbableWindow.ResizeObserver = vi.fn(function ResizeObserverStub(cb: () => void) {
+      const instance: ResizeObserverStub = {
         observe: vi.fn(),
         disconnect: vi.fn(),
         _cb: cb,
@@ -72,7 +80,7 @@ describe('useCommentSmallScreen', () => {
     setClientWidth(root, 1000);
     setClientWidth(layers, 816);
 
-    commentsModuleConfig = ref({ layout: 'auto' });
+    commentsModuleConfig = ref<CommentsConfig>({ layout: 'auto' });
   });
 
   afterEach(() => {
@@ -258,8 +266,8 @@ describe('useCommentSmallScreen', () => {
   });
 
   it('returns null measurement target when root is missing', () => {
-    const detachedConfig = ref({ layout: 'auto' });
-    let api;
+    const detachedConfig = ref<CommentsConfig>({ layout: 'auto' });
+    let api: ReturnType<typeof useCommentSmallScreen> | undefined;
     const Harness = defineComponent({
       setup() {
         api = useCommentSmallScreen({
@@ -271,14 +279,15 @@ describe('useCommentSmallScreen', () => {
       },
     });
     const wrapper = mount(Harness);
-    api.recalculateCompactCommentsMode();
-    expect(api.superdocContainerWidth.value).toBe(0);
+    api!.recalculateCompactCommentsMode();
+    expect(api!.superdocContainerWidth.value).toBe(0);
     wrapper.unmount();
   });
 
   it('does not throw when ResizeObserver is unavailable', () => {
     const originalResizeObserver = window.ResizeObserver;
-    delete window.ResizeObserver;
+    const stubbableWindow: StubbableResizeObserverWindow = window;
+    delete stubbableWindow.ResizeObserver;
 
     const { api: state, wrapper } = mountComposable();
     expect(() => state.ensureCompactMeasurementObserver()).not.toThrow();
@@ -291,7 +300,8 @@ describe('useCommentSmallScreen', () => {
     const disconnect = vi.fn();
     const observe = vi.fn();
     const originalResizeObserver = window.ResizeObserver;
-    window.ResizeObserver = vi.fn(function ResizeObserverStub() {
+    const stubbableWindow: StubbableResizeObserverWindow = window;
+    stubbableWindow.ResizeObserver = vi.fn(function ResizeObserverStub() {
       return { observe, disconnect };
     });
 
@@ -330,7 +340,7 @@ describe('useCommentSmallScreen', () => {
     // Container is untouched — only `layers` settles to its real (narrower) width,
     // as it does once the loading overlay unmounts.
     setClientWidth(layers, 816);
-    documentWidthObserver._cb();
+    documentWidthObserver!._cb();
 
     expect(state.isCompactCommentsMode.value).toBe(false);
     wrapper.unmount();
@@ -357,7 +367,7 @@ describe('useCommentSmallScreen', () => {
     expect(documentWidthObserver).toBeTruthy();
 
     setClientWidth(documentEl, 816);
-    documentWidthObserver._cb();
+    documentWidthObserver!._cb();
 
     expect(state.isCompactCommentsMode.value).toBe(false);
     wrapper.unmount();

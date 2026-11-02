@@ -18,7 +18,7 @@ import { describe, expect, it, vi } from 'vite-plus/test';
 import { createReplaceContinuation } from './replace-continuation.js';
 
 /** A session handle whose snapshot identifies which document it came from. */
-function createSession(label) {
+function createSession(label: string) {
   return { label, getSnapshot: vi.fn(() => ({ from: label })) };
 }
 

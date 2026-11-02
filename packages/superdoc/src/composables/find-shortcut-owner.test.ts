@@ -49,8 +49,8 @@ describe('find-shortcut-owner', () => {
     // (body-focus) case on ownership, and (b) skip events another instance
     // already handled (defaultPrevented).
     claimFindShortcut(instanceB);
-    const opened = [];
-    const listenerFor = (owner, name) => (event) => {
+    const opened: string[] = [];
+    const listenerFor = (owner: object, name: string) => (event: KeyboardEvent) => {
       if (!shouldHandleFindShortcut(event, { focusInside: false, owner })) return;
       event.preventDefault();
       opened.push(name);
@@ -71,8 +71,8 @@ describe('find-shortcut-owner', () => {
   });
 
   it('with no claimed owner, defaultPrevented alone still limits the ambient shortcut to one instance', () => {
-    const opened = [];
-    const listenerFor = (owner, name) => (event) => {
+    const opened: string[] = [];
+    const listenerFor = (owner: object, name: string) => (event: KeyboardEvent) => {
       if (!shouldHandleFindShortcut(event, { focusInside: false, owner })) return;
       event.preventDefault();
       opened.push(name);

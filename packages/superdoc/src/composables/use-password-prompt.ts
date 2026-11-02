@@ -45,7 +45,7 @@ type PasswordPromptRender = NonNullable<PasswordPromptConfig['render']>;
 type PasswordPromptResolver = NonNullable<PasswordPromptConfig['resolver']>;
 
 export interface UsePasswordPromptOptions {
-  getSurfaceManager: () => SurfaceManager | null;
+  getSurfaceManager: () => Pick<SurfaceManager, 'open'> | null;
   getPasswordPromptConfig: () => boolean | PasswordPromptConfig | undefined;
   /**
    * Called when a queued prompt cannot be shown (resolver returned `none`, config error, or resolver threw).

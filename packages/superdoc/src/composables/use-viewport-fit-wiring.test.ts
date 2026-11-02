@@ -1,28 +1,40 @@
 import { describe, it, expect, vi, afterEach } from 'vite-plus/test';
-import { defineComponent, h, nextTick, ref } from 'vue';
-import { mount } from '@vue/test-utils';
+import { defineComponent, h, nextTick, ref, type Ref } from 'vue';
+import { mount, type VueWrapper } from '@vue/test-utils';
 import { DOCX } from '@superdoc/common';
 import { EventEmitter } from '../core/EventEmitter.js';
 import { useViewportFit } from './use-viewport-fit.js';
+import type { SuperDocFitWidthOptions, SuperDocViewportMetrics, SuperDocZoomMode } from '../core/types/index.js';
 
-const createSuperdoc = (fitWidth) => {
-  const superdoc = new EventEmitter();
+const createSuperdoc = (fitWidth: SuperDocFitWidthOptions | undefined) => {
+  const superdoc: EventEmitter & {
+    config?: { zoom: { fitWidth: SuperDocFitWidthOptions | undefined } };
+    activeEditor?: null;
+  } = new EventEmitter();
   superdoc.config = { zoom: { fitWidth } };
   superdoc.activeEditor = null;
   vi.spyOn(superdoc, 'emit');
   return superdoc;
 };
 
-const createDocument = (pageWidthInches) => {
+const createDocument = (pageWidthInches: Ref<number>) => {
   const editor = { getPageStyles: () => ({ pageSize: { width: pageWidthInches.value } }) };
   return { type: DOCX, getEditor: () => editor };
 };
 
-const emitted = (superdoc, name) => superdoc.emit.mock.calls.filter(([event]) => event === name).map(([, p]) => p);
+const emitted = (superdoc: ReturnType<typeof createSuperdoc>, name: string) =>
+  vi
+    .mocked(superdoc.emit)
+    .mock.calls.filter(([event]) => event === name)
+    .map(([, p]) => p);
 
-const mounted = [];
+const mounted: VueWrapper[] = [];
 
-const mountViewportFit = ({ fitWidth, ready = true, containerWidth = 0 } = {}) => {
+const mountViewportFit = ({
+  fitWidth,
+  ready = true,
+  containerWidth = 0,
+}: { fitWidth?: SuperDocFitWidthOptions; ready?: boolean; containerWidth?: number } = {}) => {
   const pageWidthInches = ref(8.5);
   const superdoc = createSuperdoc(fitWidth);
   const state = {
@@ -31,10 +43,10 @@ const mountViewportFit = ({ fitWidth, ready = true, containerWidth = 0 } = {}) =
     superdocContainerWidth: ref(containerWidth),
     isReady: ref(ready),
     activeZoom: ref(100),
-    zoomMode: ref('manual'),
-    viewportMetrics: ref(null),
+    zoomMode: ref<SuperDocZoomMode>('manual'),
+    viewportMetrics: ref<SuperDocViewportMetrics | null>(null),
     showCommentsSidebar: ref(false),
-    rightSidebarRef: ref(null),
+    rightSidebarRef: ref<HTMLElement | null>(null),
     superdocRoot: ref(document.createElement('div')),
     documents: ref([createDocument(pageWidthInches)]),
   };
@@ -67,7 +79,7 @@ const settle = async () => {
 
 describe('useViewportFit wiring', () => {
   afterEach(() => {
-    while (mounted.length) mounted.pop().unmount();
+    while (mounted.length) mounted.pop()!.unmount();
     vi.restoreAllMocks();
   });
 

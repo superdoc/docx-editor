@@ -1,6 +1,13 @@
 import { describe, it, expect } from 'vite-plus/test';
 import { isRef, isReactive, nextTick } from 'vue';
-import { useField, useFieldValueWatcher, useImageField, useSelectField, useCheckboxField } from './use-field.js';
+import {
+  useField,
+  useFieldValueWatcher,
+  useImageField,
+  useSelectField,
+  useCheckboxField,
+  type FieldOptionDefinition,
+} from './use-field.js';
 
 const makeField = (overrides = {}) => ({
   itemid: { value: 'field-1' },
@@ -44,19 +51,21 @@ describe('useField', () => {
   });
 
   it('applies SELECT handler additional options', () => {
-    const f = useField(makeField({ itemtype: 'SELECT', itemoptions: [{ label: 'A', value: 'a' }] }));
+    const f: Record<string, unknown> = useField(
+      makeField({ itemtype: 'SELECT', itemoptions: [{ label: 'A', value: 'a' }] }),
+    );
     // refs auto-unwrap when assigned to a reactive container, so f.options is the array
     expect(f.options).toEqual([{ label: 'A', value: 'a' }]);
   });
 
   it('applies IMAGEINPUT handler additional options', () => {
-    const f = useField(makeField({ itemtype: 'IMAGEINPUT', iteminputtype: 'file' }));
+    const f: Record<string, unknown> = useField(makeField({ itemtype: 'IMAGEINPUT', iteminputtype: 'file' }));
     expect(f.fontfamily).toBe('Helvetica');
     expect(f.iteminputtype).toBe('file');
   });
 
   it('transforms CHECKBOXINPUT options into normalized entries', () => {
-    const f = useField(
+    const f: Record<string, unknown> = useField(
       makeField({
         itemtype: 'CHECKBOXINPUT',
         itemoptions: [
@@ -74,16 +83,18 @@ describe('useField', () => {
   });
 });
 
+type WatchedFieldValue = { value: { value?: unknown; a?: unknown } };
+
 describe('useFieldValueWatcher', () => {
   it('wraps primitive values in a ref', () => {
-    const { value } = useFieldValueWatcher('hello');
+    const { value }: WatchedFieldValue = useFieldValueWatcher('hello');
     expect(isRef(value)).toBe(true);
     expect(value.value).toBe('hello');
   });
 
   it('wraps object values reactively and clones them', () => {
     const original = { a: 1, b: 2 };
-    const { value } = useFieldValueWatcher(original);
+    const { value }: WatchedFieldValue = useFieldValueWatcher(original);
     expect(isReactive(value)).toBe(true);
     expect(value).not.toBe(original);
     expect(value).toEqual(original);
@@ -91,14 +102,14 @@ describe('useFieldValueWatcher', () => {
 
   it('does not mutate the source object when the reactive copy changes', async () => {
     const original = { a: 1 };
-    const { value } = useFieldValueWatcher(original);
+    const { value }: WatchedFieldValue = useFieldValueWatcher(original);
     value.a = 99;
     await nextTick();
     expect(original.a).toBe(1);
   });
 
   it('handles null as a primitive value', () => {
-    const { value } = useFieldValueWatcher(null);
+    const { value }: WatchedFieldValue = useFieldValueWatcher(null);
     expect(isRef(value)).toBe(true);
     expect(value.value).toBeNull();
   });
@@ -112,7 +123,7 @@ describe('field-type sub-handlers', () => {
   });
 
   it('useSelectField exposes options as a ref', () => {
-    const opts = [{ label: 'A' }];
+    const opts: Array<FieldOptionDefinition & { label: string }> = [{ label: 'A' }];
     const res = useSelectField({ itemoptions: opts });
     expect(isRef(res.options)).toBe(true);
     expect(res.options.value).toEqual(opts);
@@ -130,7 +141,7 @@ describe('field-type sub-handlers', () => {
         },
       ],
     });
-    expect(res.options.value[0]).toEqual({
+    expect(res.options.value![0]).toEqual({
       label: 'One',
       value: '1',
       checked: false,

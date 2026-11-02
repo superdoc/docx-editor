@@ -1,6 +1,21 @@
 import { describe, it, expect, vi, beforeEach } from 'vite-plus/test';
 import { reactive, ref } from 'vue';
-import { usePasswordPrompt } from './use-password-prompt.js';
+import { usePasswordPrompt, type PasswordPromptDocument } from './use-password-prompt.js';
+import type {
+  DirectSurfaceRequest,
+  ExternalSurfaceRenderContext,
+  PasswordPromptConfig,
+  PasswordPromptHandle,
+  SurfaceHandle,
+  SurfaceOutcome,
+} from '../core/types/index.js';
+
+type SurfaceRenderContext = Omit<ExternalSurfaceRenderContext, 'request'>;
+
+type PasswordPromptSurfaceRequest = Omit<DirectSurfaceRequest, 'props' | 'render'> & {
+  props?: Record<string, unknown> & { passwordPrompt: PasswordPromptHandle };
+  render?: (ctx: SurfaceRenderContext) => { destroy?: () => void } | void;
+};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -10,7 +25,7 @@ import { usePasswordPrompt } from './use-password-prompt.js';
  * Creates a doc object wrapped in reactive() to mimic the Pinia store behaviour.
  * Vue auto-unwraps the nested ref, so `doc.editorMountNonce` is a number on the proxy.
  */
-const makeDoc = (id = 'doc-1') =>
+const makeDoc = (id = 'doc-1'): PasswordPromptDocument =>
   reactive({
     id,
     password: undefined,
@@ -21,21 +36,21 @@ const makeDoc = (id = 'doc-1') =>
  * Minimal SurfaceManager stub whose `open()` returns a controllable handle.
  */
 function createManagerStub() {
-  let settleHandle;
-  const handle = {
+  let settleHandle: ((outcome: SurfaceOutcome) => void) | undefined;
+  const handle: SurfaceHandle = {
     id: 'surface-1',
     mode: 'dialog',
     close: vi.fn(),
-    result: new Promise((resolve) => {
+    result: new Promise<SurfaceOutcome>((resolve) => {
       settleHandle = resolve;
     }),
   };
 
   return {
-    open: vi.fn(() => handle),
+    open: vi.fn<(request: PasswordPromptSurfaceRequest) => SurfaceHandle>(() => handle),
     handle,
     /** Settle the current handle manually */
-    settle: (outcome) => settleHandle(outcome),
+    settle: (outcome: SurfaceOutcome) => settleHandle!(outcome),
   };
 }
 
@@ -44,11 +59,9 @@ function createManagerStub() {
 // ---------------------------------------------------------------------------
 
 describe('usePasswordPrompt', () => {
-  let manager;
-  let passwordPromptConfig;
-
-  /** @type {ReturnType<typeof usePasswordPrompt>} */
-  let prompt;
+  let manager: ReturnType<typeof createManagerStub>;
+  let passwordPromptConfig: boolean | PasswordPromptConfig | undefined;
+  let prompt: ReturnType<typeof usePasswordPrompt>;
 
   beforeEach(() => {
     manager = createManagerStub();
@@ -96,7 +109,7 @@ describe('usePasswordPrompt', () => {
     expect(request.mode).toBe('dialog');
     expect(request.closeOnBackdrop).toBe(false);
     expect(request.component).toBeDefined();
-    expect(request.props.passwordPrompt).toBeDefined();
+    expect(request.props!.passwordPrompt).toBeDefined();
   });
 
   it('opens a surface dialog on DOCX_PASSWORD_INVALID', async () => {
@@ -127,7 +140,7 @@ describe('usePasswordPrompt', () => {
     await vi.dynamicImportSettled();
 
     // Grab the attemptPassword function passed via passwordPrompt handle
-    const attemptPassword = manager.open.mock.calls[0][0].props.passwordPrompt.attemptPassword;
+    const attemptPassword = manager.open.mock.calls[0][0].props!.passwordPrompt.attemptPassword;
     const resultPromise = attemptPassword('secret');
 
     expect(doc.password).toBe('secret');
@@ -147,7 +160,7 @@ describe('usePasswordPrompt', () => {
     prompt.handleEncryptionError(doc, 'DOCX_PASSWORD_REQUIRED');
     await vi.dynamicImportSettled();
 
-    const attemptPassword = manager.open.mock.calls[0][0].props.passwordPrompt.attemptPassword;
+    const attemptPassword = manager.open.mock.calls[0][0].props!.passwordPrompt.attemptPassword;
     const resultPromise = attemptPassword('wrong');
 
     // Simulate editor re-throwing with INVALID
@@ -174,8 +187,8 @@ describe('usePasswordPrompt', () => {
     expect(manager.open).toHaveBeenCalledTimes(1);
 
     // Create a new handle for the second dialog
-    let settleSecond;
-    const secondHandle = {
+    let settleSecond: ((outcome: SurfaceOutcome) => void) | undefined;
+    const secondHandle: SurfaceHandle = {
       id: 'surface-2',
       mode: 'dialog',
       close: vi.fn(),
@@ -203,7 +216,7 @@ describe('usePasswordPrompt', () => {
     prompt.handleEncryptionError(doc, 'DOCX_PASSWORD_REQUIRED');
     await vi.dynamicImportSettled();
 
-    const attemptPassword = manager.open.mock.calls[0][0].props.passwordPrompt.attemptPassword;
+    const attemptPassword = manager.open.mock.calls[0][0].props!.passwordPrompt.attemptPassword;
     const promise = attemptPassword('my-pass');
 
     expect(doc.password).toBe('my-pass');
@@ -237,7 +250,7 @@ describe('usePasswordPrompt', () => {
     prompt.handleEncryptionError(doc, 'DOCX_PASSWORD_REQUIRED');
     await vi.dynamicImportSettled();
 
-    const attemptPassword = manager.open.mock.calls[0][0].props.passwordPrompt.attemptPassword;
+    const attemptPassword = manager.open.mock.calls[0][0].props!.passwordPrompt.attemptPassword;
     const resultPromise = attemptPassword('test');
 
     prompt.destroy();
@@ -319,7 +332,7 @@ describe('usePasswordPrompt', () => {
     await vi.dynamicImportSettled();
 
     const request = manager.open.mock.calls[0][0];
-    const pwHandle = request.props.passwordPrompt;
+    const pwHandle = request.props!.passwordPrompt;
     expect(pwHandle.texts.title).toBe('Unlock');
     expect(pwHandle.texts.invalidTitle).toBe('Wrong password');
     expect(pwHandle.texts.submitLabel).toBe('Go');
@@ -331,7 +344,7 @@ describe('usePasswordPrompt', () => {
     prompt.handleEncryptionError(doc, 'DOCX_PASSWORD_REQUIRED');
     await vi.dynamicImportSettled();
 
-    const texts = manager.open.mock.calls[0][0].props.passwordPrompt.texts;
+    const texts = manager.open.mock.calls[0][0].props!.passwordPrompt.texts;
     expect(texts.title).toBe('Password Required');
     expect(texts.invalidTitle).toBe('Incorrect Password');
     expect(texts.description).toBe('This document is password protected. Enter the password to open it.');
@@ -361,7 +374,7 @@ describe('usePasswordPrompt', () => {
     prompt.handleEncryptionError(doc, 'DOCX_PASSWORD_REQUIRED');
     await vi.dynamicImportSettled();
 
-    const texts = manager.open.mock.calls[0][0].props.passwordPrompt.texts;
+    const texts = manager.open.mock.calls[0][0].props!.passwordPrompt.texts;
     expect(texts.description).toBe('Custom desc');
     expect(texts.busyLabel).toBe('Working...');
     expect(texts.genericErrorMessage).toBe('Oops');
@@ -376,7 +389,7 @@ describe('usePasswordPrompt', () => {
     prompt.handleEncryptionError(doc, 'DOCX_PASSWORD_REQUIRED');
     await vi.dynamicImportSettled();
 
-    const pwHandle = manager.open.mock.calls[0][0].props.passwordPrompt;
+    const pwHandle = manager.open.mock.calls[0][0].props!.passwordPrompt;
     expect(pwHandle.documentId).toBe('doc-1');
     expect(pwHandle.errorCode).toBe('DOCX_PASSWORD_REQUIRED');
     expect(typeof pwHandle.attemptPassword).toBe('function');
@@ -499,9 +512,9 @@ describe('usePasswordPrompt', () => {
 
     expect(manager.open).toHaveBeenCalledTimes(1);
     const request = manager.open.mock.calls[0][0];
-    expect(request.props.extra).toBe(true);
-    expect(request.props.passwordPrompt).toBeDefined();
-    expect(request.props.passwordPrompt.documentId).toBe('doc-1');
+    expect(request.props!.extra).toBe(true);
+    expect(request.props!.passwordPrompt).toBeDefined();
+    expect(request.props!.passwordPrompt.documentId).toBe('doc-1');
   });
 
   // ---- resolver: { type: 'external' } uses render function ---------------
@@ -528,14 +541,14 @@ describe('usePasswordPrompt', () => {
     expect(request.component).toBeUndefined();
 
     // Call the wrapper render and verify it enriches context
-    const mockCtx = {
+    const mockCtx: SurfaceRenderContext = {
       container: document.createElement('div'),
       resolve: vi.fn(),
       close: vi.fn(),
       surfaceId: 'surface-1',
       mode: 'dialog',
     };
-    request.render(mockCtx);
+    request.render!(mockCtx);
     expect(renderFn).toHaveBeenCalledWith(
       expect.objectContaining({
         container: mockCtx.container,
@@ -570,8 +583,8 @@ describe('usePasswordPrompt', () => {
 
     expect(manager.open).toHaveBeenCalledTimes(1);
     const request = manager.open.mock.calls[0][0];
-    expect(request.props.fromConfig).toBe(true);
-    expect(request.props.passwordPrompt).toBeDefined();
+    expect(request.props!.fromConfig).toBe(true);
+    expect(request.props!.passwordPrompt).toBeDefined();
   });
 
   // ---- resolver + component coexist: resolver { type: 'none' } suppresses -
@@ -621,11 +634,11 @@ describe('usePasswordPrompt', () => {
 
     const request = manager.open.mock.calls[0][0];
     // Resolver props are used, not config props
-    expect(request.props.fromResolver).toBe(true);
-    expect(request.props.shared).toBe('resolver');
-    expect(request.props.fromConfig).toBeUndefined();
+    expect(request.props!.fromResolver).toBe(true);
+    expect(request.props!.shared).toBe('resolver');
+    expect(request.props!.fromConfig).toBeUndefined();
     // passwordPrompt is auto-injected and wins
-    expect(request.props.passwordPrompt).toBeDefined();
+    expect(request.props!.passwordPrompt).toBeDefined();
   });
 
   // ---- config.component mounts directly -----------------------------------
@@ -650,8 +663,8 @@ describe('usePasswordPrompt', () => {
     expect(manager.open).toHaveBeenCalledTimes(1);
     const request = manager.open.mock.calls[0][0];
     expect(request.component).toBeDefined();
-    expect(request.props.myProp).toBe(42);
-    expect(request.props.passwordPrompt).toBeDefined();
+    expect(request.props!.myProp).toBe(42);
+    expect(request.props!.passwordPrompt).toBeDefined();
   });
 
   // ---- config.render uses render directly ---------------------------------
@@ -704,8 +717,8 @@ describe('usePasswordPrompt', () => {
 
     const request = manager.open.mock.calls[0][0];
     // passwordPrompt should be the real handle, not the string
-    expect(typeof request.props.passwordPrompt).toBe('object');
-    expect(request.props.passwordPrompt.documentId).toBe('doc-1');
+    expect(typeof request.props!.passwordPrompt).toBe('object');
+    expect(request.props!.passwordPrompt.documentId).toBe('doc-1');
   });
 
   // ---- onUnhandled: { type: 'none' } re-emits ----------------------------
@@ -810,7 +823,7 @@ describe('usePasswordPrompt', () => {
     prompt.handleEncryptionError(doc, 'DOCX_PASSWORD_REQUIRED');
     await vi.dynamicImportSettled();
 
-    const texts = manager.open.mock.calls[0][0].props.passwordPrompt.texts;
+    const texts = manager.open.mock.calls[0][0].props!.passwordPrompt.texts;
     expect(texts.description).toBe('');
     expect(texts.placeholder).toBe('');
     expect(texts.busyLabel).toBe('');

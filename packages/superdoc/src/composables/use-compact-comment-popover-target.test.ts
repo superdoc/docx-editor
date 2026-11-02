@@ -1,23 +1,34 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vite-plus/test';
 import { defineComponent, h, nextTick, ref } from 'vue';
-import { mount } from '@vue/test-utils';
+import { mount, type VueWrapper } from '@vue/test-utils';
 import { PDF } from '@superdoc/common';
 import { useCompactCommentPopover } from './use-compact-comment-popover.js';
 
-const rect = (left, top, width, height) => ({ left, top, width, height, right: left + width, bottom: top + height });
+type RectLike = Pick<DOMRect, 'left' | 'top' | 'width' | 'height' | 'right' | 'bottom'>;
 
-const pointerDown = ({ clientX, clientY }) => {
+type RectStub = { getBoundingClientRect: () => RectLike };
+
+const rect = (left: number, top: number, width: number, height: number): RectLike => ({
+  left,
+  top,
+  width,
+  height,
+  right: left + width,
+  bottom: top + height,
+});
+
+const pointerDown = ({ clientX, clientY }: { clientX: number; clientY: number }) => {
   const event = new MouseEvent('pointerdown', { bubbles: true, button: 0, clientX, clientY });
   Object.defineProperty(event, 'pointerType', { value: 'mouse' });
   return event;
 };
 
 describe('useCompactCommentPopover pointerdown target', () => {
-  let root;
-  let layers;
-  let popover;
-  let wrapper;
-  let originalElementsFromPoint;
+  let root: HTMLDivElement;
+  let layers: HTMLDivElement;
+  let popover: HTMLDivElement;
+  let wrapper: VueWrapper | null;
+  let originalElementsFromPoint: typeof document.elementsFromPoint;
 
   beforeEach(() => {
     document.body.innerHTML = '';
@@ -27,8 +38,10 @@ describe('useCompactCommentPopover pointerdown target', () => {
     popover.className = 'superdoc__compact-comment-popover';
     root.append(layers, popover);
     document.body.appendChild(root);
-    root.getBoundingClientRect = vi.fn(() => rect(0, 0, 1200, 900));
-    layers.getBoundingClientRect = vi.fn(() => rect(100, 80, 816, 700));
+    const rootRect: RectStub = root;
+    const layersRect: RectStub = layers;
+    rootRect.getBoundingClientRect = vi.fn(() => rect(0, 0, 1200, 900));
+    layersRect.getBoundingClientRect = vi.fn(() => rect(100, 80, 816, 700));
     originalElementsFromPoint = document.elementsFromPoint;
     document.elementsFromPoint = vi.fn(() => []);
   });
@@ -40,10 +53,10 @@ describe('useCompactCommentPopover pointerdown target', () => {
     document.body.innerHTML = '';
   });
 
-  const mountComposable = ({ documents = [] } = {}) => {
+  const mountComposable = ({ documents = [] }: { documents?: Array<{ type: string }> } = {}) => {
     const clearActiveComment = vi.fn();
     const clearPendingComment = vi.fn();
-    let api;
+    let api: ReturnType<typeof useCompactCommentPopover> | undefined;
     const Harness = defineComponent({
       setup() {
         api = useCompactCommentPopover({
@@ -64,7 +77,7 @@ describe('useCompactCommentPopover pointerdown target', () => {
       },
     });
     wrapper = mount(Harness);
-    return { api, clearActiveComment, clearPendingComment };
+    return { api: api!, clearActiveComment, clearPendingComment };
   };
 
   it('finds the anchor from the event target when no element is reported at the point', async () => {
@@ -72,7 +85,8 @@ describe('useCompactCommentPopover pointerdown target', () => {
     anchor.className = 'superdoc-comment-highlight';
     const inner = document.createElement('b');
     anchor.appendChild(inner);
-    anchor.getBoundingClientRect = vi.fn(() => rect(240, 300, 40, 20));
+    const anchorRect: RectStub = anchor;
+    anchorRect.getBoundingClientRect = vi.fn(() => rect(240, 300, 40, 20));
     layers.appendChild(anchor);
     const { api } = mountComposable();
 

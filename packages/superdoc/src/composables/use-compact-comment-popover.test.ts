@@ -1,10 +1,18 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vite-plus/test';
-import { defineComponent, h, nextTick, ref } from 'vue';
+import { defineComponent, h, nextTick, ref, type Ref } from 'vue';
 import { mount } from '@vue/test-utils';
 import { PDF } from '@superdoc/common';
 import { useCompactCommentPopover } from './use-compact-comment-popover.js';
 
-const rect = (left, top, width, height) => ({
+type CompactCommentPopoverOptions = Parameters<typeof useCompactCommentPopover>[0];
+
+type MountOverrides = Partial<Omit<CompactCommentPopoverOptions, 'activeCompactComment'>> & {
+  activeCompactComment?: Ref<CompactCommentPopoverOptions['activeCompactComment']['value']>;
+};
+
+type RectLike = Pick<DOMRect, 'left' | 'top' | 'width' | 'height' | 'right' | 'bottom'>;
+
+const rect = (left: number, top: number, width: number, height: number): RectLike => ({
   left,
   top,
   width,
@@ -13,20 +21,28 @@ const rect = (left, top, width, height) => ({
   bottom: top + height,
 });
 
-const setRect = (el, r) => {
+const setRect = (el: { getBoundingClientRect: () => RectLike }, r: RectLike) => {
   el.getBoundingClientRect = vi.fn(() => r);
 };
 
-const dispatchPointerDown = (target, { clientX, clientY, button = 0, pointerType = 'mouse' }) => {
+const dispatchPointerDown = (
+  target: EventTarget,
+  {
+    clientX,
+    clientY,
+    button = 0,
+    pointerType = 'mouse',
+  }: { clientX: number; clientY: number; button?: number; pointerType?: string },
+) => {
   const event = new MouseEvent('pointerdown', { bubbles: true, button, clientX, clientY });
   Object.defineProperty(event, 'pointerType', { value: pointerType });
   target.dispatchEvent(event);
 };
 
 describe('useCompactCommentPopover', () => {
-  let root;
-  let layers;
-  let popover;
+  let root: HTMLDivElement;
+  let layers: HTMLDivElement;
+  let popover: HTMLDivElement;
 
   beforeEach(() => {
     document.body.innerHTML = '';
@@ -52,7 +68,7 @@ describe('useCompactCommentPopover', () => {
     document.body.innerHTML = '';
   });
 
-  const mountComposable = (overrides = {}) => {
+  const mountComposable = (overrides: MountOverrides = {}) => {
     const activeComment = overrides.activeComment ?? ref(null);
     const pendingComment = overrides.pendingComment ?? ref(null);
     const activeCompactComment = overrides.activeCompactComment ?? ref(null);
@@ -65,7 +81,7 @@ describe('useCompactCommentPopover', () => {
     const resolveCommentPositionEntry =
       overrides.resolveCommentPositionEntry ?? vi.fn(() => ({ entry: { bounds: { top: 120, bottom: 140 } } }));
 
-    let api;
+    let api: ReturnType<typeof useCompactCommentPopover> | undefined;
     const Harness = defineComponent({
       setup() {
         api = useCompactCommentPopover({
@@ -89,7 +105,7 @@ describe('useCompactCommentPopover', () => {
     const wrapper = mount(Harness);
     return {
       wrapper,
-      api,
+      api: api!,
       refs: {
         activeComment,
         pendingComment,
@@ -159,7 +175,9 @@ describe('useCompactCommentPopover', () => {
   });
 
   it('skips highlight nodes without getBoundingClientRect and falls back to tracked-change node', () => {
-    const brokenHighlight = document.createElement('span');
+    const brokenHighlight: Omit<HTMLSpanElement, 'getBoundingClientRect'> & {
+      getBoundingClientRect?: () => DOMRect;
+    } = document.createElement('span');
     brokenHighlight.className = 'superdoc-comment-highlight';
     brokenHighlight.setAttribute('data-comment-ids', 'thread-2');
     // Simulate a malformed node branch: no callable rect API.

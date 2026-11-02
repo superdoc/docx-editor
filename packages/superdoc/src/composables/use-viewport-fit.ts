@@ -2,25 +2,40 @@ import { onBeforeUnmount, nextTick, watch, type Ref } from 'vue';
 import { DOCX, PDF } from '@superdoc/common';
 import { PDF_TO_CSS_UNITS } from '../core/pdf/helpers/constants.js';
 import { isFiniteNumber } from '../helpers/is-finite-number.js';
-import type { SuperDoc } from '../core/SuperDoc.js';
 import type {
-  Editor,
   RuntimeDocument,
   SuperDocFitWidthOptions,
   SuperDocViewportMetrics,
+  SuperDocZoomConfig,
   SuperDocZoomMode,
 } from '../core/types/index.js';
-import type { PageMetricsSnapshot } from '../public/ui/page-metrics.js';
+import type { PageMetricsPage, PageMetricsSnapshot } from '../public/ui/page-metrics.js';
 
 export type ResolvedFitWidthOptions = Required<SuperDocFitWidthOptions>;
 
-type EditorPageGeometry = Pick<Editor, 'pageMetrics'> & {
+type PageWidthSnapshot = Partial<Pick<PageMetricsSnapshot, 'widestPageWidthPx'>> & {
+  pages?: ReadonlyArray<{ base?: Partial<Pick<PageMetricsPage['base'], 'widthPx'>> } | null | undefined>;
+};
+
+type EditorPageGeometry = {
+  pageMetrics?: { getSnapshot?: () => PageWidthSnapshot | null | undefined } | null;
   getPages?: () => Array<{ size?: { w?: unknown } } | null | undefined> | null | undefined;
   getPageStyles?: () => { pageSize?: { width?: unknown } } | null | undefined;
 };
 
+type ViewportFitEventName = 'editorCreate' | 'pagination-update' | 'pdf:document-ready';
+
+interface ViewportFitSuperDoc {
+  config?: { zoom?: Pick<SuperDocZoomConfig, 'fitWidth'> | null } | null;
+  activeEditor?: EditorPageGeometry | null;
+  emit(event: 'zoomChange', payload: { zoom: number; mode: 'fit-width' }): unknown;
+  emit(event: 'viewport-change', payload: SuperDocViewportMetrics): unknown;
+  on?(event: ViewportFitEventName, listener: () => void): unknown;
+  off?(event: ViewportFitEventName, listener: () => void): unknown;
+}
+
 interface UseViewportFitOptions {
-  getSuperdoc: () => SuperDoc | null | undefined;
+  getSuperdoc: () => ViewportFitSuperDoc | null | undefined;
   superdocContainerWidth: Readonly<Ref<number>>;
   isReady: Readonly<Ref<boolean>>;
   activeZoom: Ref<number>;
@@ -46,10 +61,9 @@ export const FIT_WIDTH_DEFAULTS = Object.freeze({
 // (`config.zoom.mode` / `setZoomMode`) decides whether the policy applies;
 // these are only its bounds. Invalid field values fall back to defaults;
 // min/max are reordered if swapped.
-export const resolveFitWidthOptions = (
-  rawFitConfig: SuperDocFitWidthOptions | null | undefined,
-): ResolvedFitWidthOptions => {
-  const raw: SuperDocFitWidthOptions = rawFitConfig && typeof rawFitConfig === 'object' ? rawFitConfig : {};
+export const resolveFitWidthOptions = (rawFitConfig: unknown): ResolvedFitWidthOptions => {
+  const raw: { min?: unknown; max?: unknown; padding?: unknown } =
+    rawFitConfig && typeof rawFitConfig === 'object' ? rawFitConfig : {};
   const positiveOr = (value: unknown, fallback: number): number =>
     isFiniteNumber(value) && value > 0 ? value : fallback;
   const min = positiveOr(raw.min, FIT_WIDTH_DEFAULTS.min);
@@ -111,7 +125,7 @@ export const normalizePdfPageMeasurement = (
 // `pagination-update` would materialize every retained page after each
 // keystroke. The producer publishes `widestPageWidthPx` for exactly this
 // reason; the walk stays only as a fallback for snapshots that predate it.
-const resolveV2WidestPageWidth = (snapshot: PageMetricsSnapshot | null | undefined): number => {
+const resolveV2WidestPageWidth = (snapshot: PageWidthSnapshot | null | undefined): number => {
   if (!snapshot || typeof snapshot !== 'object') return 0;
   const published = snapshot.widestPageWidthPx;
   if (isFiniteNumber(published)) return published;
@@ -278,7 +292,7 @@ export function useViewportFit({
     return measured > 0 ? measured : 0;
   };
 
-  const applyFitWidth = (superdoc: SuperDoc, metrics: SuperDocViewportMetrics): void => {
+  const applyFitWidth = (superdoc: ViewportFitSuperDoc, metrics: SuperDocViewportMetrics): void => {
     const options = resolveFitWidthOptions(superdoc.config?.zoom?.fitWidth);
     const target = computeAppliedFitZoom(metrics.availableWidth, metrics.documentWidth, options);
     if (target === null) return;

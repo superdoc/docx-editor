@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
-import { mount } from '@vue/test-utils';
+import { mount, type VueWrapper } from '@vue/test-utils';
 import { nextTick, ref } from 'vue';
 import FontFamilyCombobox from './FontFamilyCombobox.vue';
+import type { ComboBoxCommand, ComboBoxTabOut } from './ToolbarComboBox.vue';
 
-let wrapper;
+let wrapper: VueWrapper | null;
 const originalScrollIntoView = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollIntoView');
 
 const makeItem = (overrides = {}) => ({
@@ -38,6 +39,8 @@ const makeItem = (overrides = {}) => ({
   ...overrides,
 });
 
+type FontFamilyCommand = Omit<ComboBoxCommand, 'item'> & { item: ReturnType<typeof makeItem> };
+
 const mountCombobox = (item = makeItem()) => {
   wrapper = mount(FontFamilyCombobox, {
     props: { item, uiFontFamily: 'Inter, sans-serif' },
@@ -55,14 +58,14 @@ const mockScrollIntoView = () => {
 };
 
 const openViaChevron = async () => {
-  await wrapper.get('[data-item="btn-fontFamily-toggle"]').trigger('mousedown');
+  await wrapper!.get('[data-item="btn-fontFamily-toggle"]').trigger('mousedown');
   await nextTick();
   await nextTick();
 };
 
-const dispatchKey = (el, key) => {
+const dispatchKey = (el: EventTarget | null, key: string) => {
   const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
-  el.dispatchEvent(event);
+  el!.dispatchEvent(event);
   return event;
 };
 
@@ -73,7 +76,8 @@ afterEach(() => {
   if (originalScrollIntoView) {
     Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', originalScrollIntoView);
   } else {
-    delete HTMLElement.prototype.scrollIntoView;
+    const prototypeWithOptionalScroll: { scrollIntoView?: unknown } = HTMLElement.prototype;
+    delete prototypeWithOptionalScroll.scrollIntoView;
   }
   vi.restoreAllMocks();
 });
@@ -82,7 +86,9 @@ describe('FontFamilyCombobox', () => {
   it('carries editor ownership into the teleported font listbox', async () => {
     mountCombobox();
     await openViaChevron();
-    expect(document.querySelector('.sd-font-combobox__listbox')?.dataset.superdocUiOwner).toBe('font-editor-owner');
+    expect(document.querySelector<HTMLElement>('.sd-font-combobox__listbox')?.dataset.superdocUiOwner).toBe(
+      'font-editor-owner',
+    );
   });
 
   it('shows the applied font and labels the control', () => {
@@ -150,9 +156,9 @@ describe('FontFamilyCombobox', () => {
 
     await input.trigger('keydown', { key: 'Enter' });
 
-    const event = wrapper.emitted('command')?.[0]?.[0];
-    expect(event.argument).toBe('Courier New');
-    expect(event.item.command).toBe('setFontFamily');
+    const event = wrapper!.emitted<[FontFamilyCommand]>('command')?.[0]?.[0];
+    expect(event!.argument).toBe('Courier New');
+    expect(event!.item.command).toBe('setFontFamily');
   });
 
   it('preserves a custom typed family that is not in the list on Enter', async () => {
@@ -162,7 +168,7 @@ describe('FontFamilyCombobox', () => {
     await input.setValue('Brand Sans');
     await input.trigger('keydown', { key: 'Enter' });
 
-    expect(wrapper.emitted('command')?.[0]?.[0]).toMatchObject({
+    expect(wrapper!.emitted('command')?.[0]?.[0]).toMatchObject({
       argument: 'Brand Sans',
       option: null,
     });
@@ -185,8 +191,8 @@ describe('FontFamilyCombobox', () => {
     dispatchKey(options[1], 'Enter');
     await nextTick();
 
-    expect(wrapper.emitted('command')?.[0]?.[0].argument).toBe('Courier New');
-    expect(wrapper.emitted('editor-handoff')).toHaveLength(1);
+    expect(wrapper!.emitted<[FontFamilyCommand]>('command')?.[0]?.[0].argument).toBe('Courier New');
+    expect(wrapper!.emitted('editor-handoff')).toHaveLength(1);
   });
 
   it('shows an option label but applies its font-family value', async () => {
@@ -211,7 +217,7 @@ describe('FontFamilyCombobox', () => {
     dispatchKey(option, 'Enter');
     await nextTick();
 
-    expect(wrapper.emitted('command')?.[0]?.[0]).toMatchObject({
+    expect(wrapper!.emitted('command')?.[0]?.[0]).toMatchObject({
       argument: 'Arial',
       option: { value: 'Arial', label: 'Corporate Sans' },
     });
@@ -235,8 +241,8 @@ describe('FontFamilyCombobox', () => {
     await nextTick();
 
     expect(event.defaultPrevented).toBe(true);
-    expect(wrapper.emitted('command')?.[0]?.[0].argument).toBe('Courier New');
-    expect(wrapper.emitted('tab-out')?.[0]?.[0]).toBe(event);
+    expect(wrapper!.emitted<[FontFamilyCommand]>('command')?.[0]?.[0].argument).toBe('Courier New');
+    expect(wrapper!.emitted('tab-out')?.[0]?.[0]).toBe(event);
   });
 
   it('applies the focused option and emits tab-out from the open list', async () => {
@@ -250,8 +256,8 @@ describe('FontFamilyCombobox', () => {
     await nextTick();
 
     expect(event.defaultPrevented).toBe(true);
-    expect(wrapper.emitted('command')?.[0]?.[0].argument).toBe('Arial');
-    const tabOut = wrapper.emitted('tab-out');
+    expect(wrapper!.emitted<[FontFamilyCommand]>('command')?.[0]?.[0].argument).toBe('Arial');
+    const tabOut = wrapper!.emitted<[ComboBoxTabOut]>('tab-out')!;
     expect(tabOut).toHaveLength(1);
     expect(tabOut[0][0].shiftKey).toBe(false);
     expect(tabOut[0][0].target).toBe(input.element);
@@ -264,7 +270,7 @@ describe('FontFamilyCombobox', () => {
     await input.setValue('cour');
     await input.trigger('keydown', { key: 'Enter' });
 
-    expect(wrapper.emitted('editor-handoff')).toHaveLength(1);
+    expect(wrapper!.emitted('editor-handoff')).toHaveLength(1);
   });
 
   it('restores the applied label on Escape without applying a command', async () => {
@@ -278,7 +284,7 @@ describe('FontFamilyCombobox', () => {
     await nextTick();
 
     expect(input.element.value).toBe('Arial');
-    expect(wrapper.emitted('command')).toBeUndefined();
+    expect(wrapper!.emitted('command')).toBeUndefined();
   });
 
   it('closes the list and returns focus to the input on Escape from the list', async () => {
@@ -294,7 +300,7 @@ describe('FontFamilyCombobox', () => {
 
     expect(document.body.querySelector('[role="listbox"]')).toBeNull();
     expect(document.activeElement).toBe(input.element);
-    expect(wrapper.emitted('command')).toBeUndefined();
+    expect(wrapper!.emitted('command')).toBeUndefined();
   });
 
   it('opens when the toolbar item expand flag is set by roving keyboard activation', async () => {

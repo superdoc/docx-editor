@@ -1,15 +1,15 @@
 import { afterEach, describe, expect, it } from 'vite-plus/test';
-import { mount } from '@vue/test-utils';
+import { mount, type VueWrapper } from '@vue/test-utils';
 import TableGrid from './TableGrid.vue';
 
-let wrapper;
+let wrapper: VueWrapper | null;
 
 afterEach(() => {
   wrapper?.unmount();
   wrapper = null;
 });
 
-const cell = (cols, rows) => wrapper.find(`[data-cols="${cols}"][data-rows="${rows}"]`);
+const cell = (cols: number, rows: number) => wrapper!.find(`[data-cols="${cols}"][data-rows="${rows}"]`);
 
 describe('TableGrid', () => {
   it('highlights every cell up to the hovered row and column', async () => {

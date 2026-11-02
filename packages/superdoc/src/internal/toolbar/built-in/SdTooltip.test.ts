@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
-import { mount } from '@vue/test-utils';
+import { mount, type VueWrapper } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import SdTooltip from './SdTooltip.vue';
 
-let wrapper;
+let wrapper: VueWrapper | null;
 
 const mountTooltip = () =>
   mount(SdTooltip, {
@@ -16,7 +16,7 @@ const mountTooltip = () =>
   });
 
 const showTooltip = async () => {
-  await wrapper.get('.sd-tooltip-trigger').trigger('mouseenter');
+  await wrapper!.get('.sd-tooltip-trigger').trigger('mouseenter');
   await nextTick();
   await nextTick();
 };

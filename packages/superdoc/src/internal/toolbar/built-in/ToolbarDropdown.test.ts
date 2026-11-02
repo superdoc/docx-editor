@@ -1,8 +1,9 @@
 import { afterEach, expect, it } from 'vite-plus/test';
-import { flushPromises, mount } from '@vue/test-utils';
+import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import ToolbarDropdown from './ToolbarDropdown.vue';
-let wrapper;
+import type { ToolbarItemOption } from './use-toolbar-item.js';
+let wrapper: VueWrapper | null;
 afterEach(() => {
   wrapper?.unmount();
   document.body.replaceChildren();
@@ -14,12 +15,12 @@ it('carries the toolbar owner into teleported palette content', async () => {
     global: { provide: { sdToolbarOwnerId: 'palette-editor-owner' } },
   });
   await nextTick();
-  const menu = document.querySelector('.toolbar-dropdown-menu');
+  const menu = document.querySelector<HTMLElement>('.toolbar-dropdown-menu');
   expect(menu?.dataset.superdocUiOwner).toBe('palette-editor-owner');
   expect(menu?.textContent).toContain('Red');
 });
 
-const focusedLabelOnOpen = async (options) => {
+const focusedLabelOnOpen = async (options: ToolbarItemOption[]) => {
   wrapper = mount(ToolbarDropdown, { props: { show: true, options }, attachTo: document.body });
   await flushPromises();
   return document.activeElement?.textContent;

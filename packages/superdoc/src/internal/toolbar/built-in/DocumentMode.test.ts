@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vite-plus/test';
-import { mount } from '@vue/test-utils';
+import { mount, type VueWrapper } from '@vue/test-utils';
 import DocumentMode from './DocumentMode.vue';
 
 const options = [
@@ -7,7 +7,7 @@ const options = [
   { label: 'Suggesting', value: 'suggesting', icon: '', description: 'Edits become suggestions' },
 ];
 
-let wrapper;
+let wrapper: VueWrapper | null;
 
 afterEach(() => {
   wrapper?.unmount();

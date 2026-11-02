@@ -1,10 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
-import { mount } from '@vue/test-utils';
+import { mount, type VueWrapper } from '@vue/test-utils';
 import { nextTick, ref } from 'vue';
 import FontSizeCombobox from './FontSizeCombobox.vue';
+import type { ComboBoxCommand } from './ToolbarComboBox.vue';
 import { TOOLBAR_FONT_SIZES } from './constants.js';
 
-let wrapper;
+let wrapper: VueWrapper | null;
 const originalScrollIntoView = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollIntoView');
 
 const makeItem = (overrides = {}) => ({
@@ -23,6 +24,8 @@ const makeItem = (overrides = {}) => ({
   ...overrides,
 });
 
+type FontSizeCommand = Omit<ComboBoxCommand, 'item'> & { item: ReturnType<typeof makeItem> };
+
 const mountCombobox = (item = makeItem()) => {
   wrapper = mount(FontSizeCombobox, {
     props: { item, uiFontFamily: 'Inter, sans-serif' },
@@ -39,12 +42,12 @@ const mockScrollIntoView = () => {
 };
 
 const openViaChevron = async () => {
-  await wrapper.get('[data-item="btn-fontSize-toggle"]').trigger('mousedown');
+  await wrapper!.get('[data-item="btn-fontSize-toggle"]').trigger('mousedown');
   await nextTick();
   await nextTick();
 };
 
-const optionByLabel = (labelText) =>
+const optionByLabel = (labelText: string) =>
   [...document.body.querySelectorAll('[role="option"]')].find((el) => el.textContent.trim() === labelText);
 
 afterEach(() => {
@@ -54,7 +57,8 @@ afterEach(() => {
   if (originalScrollIntoView) {
     Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', originalScrollIntoView);
   } else {
-    delete HTMLElement.prototype.scrollIntoView;
+    const prototypeWithOptionalScroll: { scrollIntoView?: unknown } = HTMLElement.prototype;
+    delete prototypeWithOptionalScroll.scrollIntoView;
   }
   vi.restoreAllMocks();
 });
@@ -110,10 +114,10 @@ describe('FontSizeCombobox', () => {
 
     await input.trigger('keydown', { key: 'Enter' });
 
-    const event = wrapper.emitted('command')?.[0]?.[0];
-    expect(event.argument).toBe('13');
-    expect(event.item.command).toBe('setFontSize');
-    expect(wrapper.emitted('editor-handoff')).toHaveLength(1);
+    const event = wrapper!.emitted<[FontSizeCommand]>('command')?.[0]?.[0];
+    expect(event!.argument).toBe('13');
+    expect(event!.item.command).toBe('setFontSize');
+    expect(wrapper!.emitted('editor-handoff')).toHaveLength(1);
   });
 
   it('applies a preset size when an option is selected', async () => {
@@ -123,12 +127,12 @@ describe('FontSizeCombobox', () => {
     await openViaChevron();
 
     const event = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
-    optionByLabel('24').dispatchEvent(event);
+    optionByLabel('24')!.dispatchEvent(event);
     await nextTick();
 
     expect(event.defaultPrevented).toBe(true);
-    expect(wrapper.emitted('command')?.[0]?.[0].argument).toBe('24');
-    expect(wrapper.emitted('editor-handoff')).toHaveLength(1);
+    expect(wrapper!.emitted<[FontSizeCommand]>('command')?.[0]?.[0].argument).toBe('24');
+    expect(wrapper!.emitted('editor-handoff')).toHaveLength(1);
   });
 
   it('shows a blank field for a mixed (multi-size) selection', () => {

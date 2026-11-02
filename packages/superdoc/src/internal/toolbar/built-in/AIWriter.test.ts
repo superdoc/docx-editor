@@ -1,10 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
-import { flushPromises, mount } from '@vue/test-utils';
+import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import AIWriter from './AIWriter.vue';
 
-let wrapper;
+type AIWriterDoc = InstanceType<typeof AIWriter>['$props']['doc'];
 
-const respondWith = (payload) =>
+let wrapper: VueWrapper | null;
+
+const respondWith = (payload: unknown) =>
   vi.fn(async () => ({
     ok: true,
     status: 200,
@@ -13,7 +15,7 @@ const respondWith = (payload) =>
     text: async () => JSON.stringify(payload),
   }));
 
-const submit = async (doc, handleClose = vi.fn()) => {
+const submit = async (doc: AIWriterDoc, handleClose = vi.fn()) => {
   wrapper = mount(AIWriter, { props: { doc, handleClose }, attachTo: document.body });
   await wrapper.find('textarea').setValue('write a greeting');
   await wrapper.find('form').trigger('submit');
@@ -53,7 +55,7 @@ describe('AIWriter', () => {
       const handleClose = await submit({ insert: vi.fn(() => receipt) });
 
       expect(handleClose).not.toHaveBeenCalled();
-      expect(wrapper.find('[role="alert"]').text()).toBe('Unable to insert generated text.');
+      expect(wrapper!.find('[role="alert"]').text()).toBe('Unable to insert generated text.');
     },
   );
 });

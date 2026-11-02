@@ -8,7 +8,7 @@ const OPTIONS = [
 ];
 
 function findOption(wrapper: ReturnType<typeof mount>, label: string) {
-  return wrapper.findAll('[role="menuitem"]').find((item) => item.text().includes(label));
+  return wrapper.findAll('[role="menuitem"]').find((item) => item.text().includes(label))!;
 }
 
 describe('TableActions', () => {

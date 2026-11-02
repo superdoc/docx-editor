@@ -30,6 +30,7 @@ function checkProbeTest(source: string) {
 
 interface TestTypeCheckConfig {
   extends: string;
+  compilerOptions: { lib: string[] };
   files: string[];
   include: string[];
   exclude: string[];
@@ -47,6 +48,11 @@ describe('tsconfig.test.json', () => {
     expect(scripts['check:test-types']).toBe('vue-tsc --noEmit -p tsconfig.test.json');
     expect(config.extends).toBe('./tsconfig.vue.json');
     expect(config.exclude).toEqual([]);
+  });
+
+  it('uses the Vue config lib plus DOM.Iterable, so the test lib cannot drift from the package lib', () => {
+    const vueConfig = JSON.parse(readFileSync(path.join(packageRoot, 'tsconfig.vue.json'), 'utf8'));
+    expect(config.compilerOptions.lib).toEqual([...vueConfig.compilerOptions.lib, 'DOM.Iterable']);
   });
 
   it('lists only test files that exist, so a renamed test cannot drop out', () => {

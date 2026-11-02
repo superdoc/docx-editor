@@ -23,7 +23,7 @@ describe('LinkedStyle', () => {
       },
     });
 
-    const option = wrapper.find('[data-item="btn-linkedStyles-option"]');
+    const option = wrapper.find<HTMLElement>('[data-item="btn-linkedStyles-option"]');
     expect(option.text()).toBe('Heading 1');
     expect(option.element.style.fontFamily).toContain('Aptos Display');
     expect(option.element.style.fontSize).toBe('16pt');

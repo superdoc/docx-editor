@@ -1,5 +1,8 @@
 {
   "extends": "./tsconfig.vue.json",
+  "compilerOptions": {
+    "lib": ["ES2020", "ES2022.Error", "DOM", "DOM.Iterable"]
+  },
   "files": [
     "src/vite-env.d.ts",
     "src/cdn-entry.fonts.test.ts",
@@ -59,9 +62,21 @@
     "src/helpers/v2-bulk-decision-event.test.ts",
     "src/helpers/v2-keyboard-edit-rejection.test.ts",
     "src/helpers/v2-typing-mutation-event.test.ts",
+    "src/internal/toolbar/built-in/AIWriter.test.ts",
+    "src/internal/toolbar/built-in/DocumentMode.test.ts",
+    "src/internal/toolbar/built-in/FontFamilyCombobox.test.ts",
+    "src/internal/toolbar/built-in/FontSizeCombobox.test.ts",
+    "src/internal/toolbar/built-in/IconGrid.test.ts",
+    "src/internal/toolbar/built-in/LinkedStyle.test.ts",
+    "src/internal/toolbar/built-in/SdTooltip.test.ts",
+    "src/internal/toolbar/built-in/TableActions.test.ts",
+    "src/internal/toolbar/built-in/TableGrid.test.ts",
     "src/internal/toolbar/built-in/ToolbarButton.test.ts",
+    "src/internal/toolbar/built-in/ToolbarDropdown.test.ts",
     "src/internal/toolbar/built-in/font-typeahead.test.ts",
     "src/internal/toolbar/built-in/helpers.test.ts",
+    "src/internal/toolbar/built-in/scroll-helpers.test.ts",
+    "src/internal/toolbar/built-in/toolbar-focus-helpers.test.ts",
     "src/internal/toolbar/compatibility-catalog.test.ts",
     "src/internal/toolbar/image-upload.test.ts",
     "src/internal/toolbar/toolbar-command-map-parity.test.ts",

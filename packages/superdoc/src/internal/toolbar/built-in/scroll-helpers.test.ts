@@ -2,7 +2,14 @@ import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
 
 import { scrollToElement } from './scroll-helpers.js';
 
-function createScrollFixture(scrollPaddingTop) {
+type RectTopStub = { getBoundingClientRect(): { top: number } };
+type ComputedStyleStub = {
+  getComputedStyle(element: Element): { overflowY: string; scrollPaddingTop: string | undefined };
+};
+
+const styleSource: ComputedStyleStub = window;
+
+function createScrollFixture(scrollPaddingTop: string | undefined) {
   const container = document.createElement('div');
   const target = document.createElement('div');
   container.appendChild(target);
@@ -15,11 +22,13 @@ function createScrollFixture(scrollPaddingTop) {
   });
   Object.defineProperty(target, 'offsetHeight', { configurable: true, value: 40 });
 
-  container.getBoundingClientRect = () => ({ top: 100 });
-  target.getBoundingClientRect = () => ({ top: 500 });
+  const containerRect: RectTopStub = container;
+  const targetRect: RectTopStub = target;
+  containerRect.getBoundingClientRect = () => ({ top: 100 });
+  targetRect.getBoundingClientRect = () => ({ top: 500 });
   container.scrollTo = vi.fn();
 
-  vi.spyOn(window, 'getComputedStyle').mockImplementation((element) => ({
+  vi.spyOn(styleSource, 'getComputedStyle').mockImplementation((element) => ({
     overflowY: element === container ? 'auto' : 'visible',
     scrollPaddingTop: element === container ? scrollPaddingTop : '',
   }));
@@ -27,10 +36,13 @@ function createScrollFixture(scrollPaddingTop) {
   return { container, target };
 }
 
-function createRootScrollFixture({ scrollPaddingTop = '', targetHeight } = {}) {
+function createRootScrollFixture({
+  scrollPaddingTop = '',
+  targetHeight,
+}: { scrollPaddingTop?: string; targetHeight?: number } = {}) {
   const target = document.createElement('div');
   document.body.appendChild(target);
-  const container = document.scrollingElement;
+  const container = document.scrollingElement!;
   Object.defineProperties(container, {
     clientHeight: { configurable: true, value: 300 },
     scrollHeight: { configurable: true, value: 1_000 },
@@ -39,10 +51,12 @@ function createRootScrollFixture({ scrollPaddingTop = '', targetHeight } = {}) {
   if (targetHeight != null) {
     Object.defineProperty(target, 'offsetHeight', { configurable: true, value: targetHeight });
   }
-  container.getBoundingClientRect = () => ({ top: -120 });
-  target.getBoundingClientRect = () => ({ top: 500 });
+  const containerRect: RectTopStub = container;
+  const targetRect: RectTopStub = target;
+  containerRect.getBoundingClientRect = () => ({ top: -120 });
+  targetRect.getBoundingClientRect = () => ({ top: 500 });
   container.scrollTo = vi.fn();
-  vi.spyOn(window, 'getComputedStyle').mockImplementation((element) => ({
+  vi.spyOn(styleSource, 'getComputedStyle').mockImplementation((element) => ({
     overflowY: 'visible',
     scrollPaddingTop: element === container ? scrollPaddingTop : '',
   }));

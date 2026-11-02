@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it } from 'vite-plus/test';
-import { mount } from '@vue/test-utils';
+import { mount, type VueWrapper } from '@vue/test-utils';
 import { ref } from 'vue';
 import IconGrid from './IconGrid.vue';
 
-const color = (value) => ({ label: value, icon: '', value, style: { backgroundColor: value } });
+const color = (value: string) => ({ label: value, icon: '', value, style: { backgroundColor: value } });
 const icons = [[color('#000000'), color('#FF0000')]];
 
-let wrapper;
+let wrapper: VueWrapper | null;
 
 afterEach(() => {
   wrapper?.unmount();

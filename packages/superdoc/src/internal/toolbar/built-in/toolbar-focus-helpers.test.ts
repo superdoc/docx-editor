@@ -13,8 +13,8 @@ describe('preventEditorFocusTransfer', () => {
 });
 
 describe('refocusEditorSurface', () => {
-  let popoverControl;
-  let editorEl;
+  let popoverControl: HTMLElement | null;
+  let editorEl: HTMLElement | null;
 
   afterEach(() => {
     popoverControl?.remove();
@@ -36,7 +36,7 @@ describe('refocusEditorSurface', () => {
     editorEl.setAttribute('tabindex', '0');
     document.body.appendChild(editorEl);
 
-    const superToolbar = { activeEditor: { focus: () => editorEl.focus() } };
+    const superToolbar = { activeEditor: { focus: () => editorEl!.focus() } };
 
     // Popover close removes the control, matching the real dropdown-close flow.
     popoverControl.remove();

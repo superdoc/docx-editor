@@ -9,13 +9,15 @@ import { describe, expect, it, vi } from 'vite-plus/test';
 import SuperDocSource from '../../SuperDoc.vue?raw';
 import { mergeCommentsConfig } from './merge-comments-config.js';
 import { normalizeUiConfig } from './normalize-ui-config.js';
+import type { SuperDoc } from '../SuperDoc.js';
+import type { Config, SurfaceResolver } from '../types/index.js';
 
 describe('uiConfig reaches the runtime', () => {
   describe('toolbar mount decision', () => {
     // Mirrors the `toolbarRequested` gate in SuperDoc#addToolbar. Kept as a
     // pure function so the mount rule can be checked without standing up a
     // document, a DOM, and the v2 engine.
-    const toolbarRequested = (config) => {
+    const toolbarRequested = (config: Partial<Config>) => {
       const ui = normalizeUiConfig(config);
       const legacy = config.modules?.toolbar;
       return (
@@ -23,7 +25,7 @@ describe('uiConfig reaches the runtime', () => {
         (Boolean(ui.toolbar.container) ||
           legacy === true ||
           (legacy != null && typeof legacy === 'object') ||
-          config.ui?.toolbar !== undefined)
+          (config.ui !== false && config.ui?.toolbar !== undefined))
       );
     };
 
@@ -77,12 +79,13 @@ describe('uiConfig reaches the runtime', () => {
       // the precedence as a local mirror, which is how the same rule passed
       // for content controls while production had stopped reading the
       // canonical option at all.
-      const resolverOf = (config) => normalizeUiConfig(config).linkPopover.options.popoverResolver;
+      const resolverOf = (config: Partial<Config>) => normalizeUiConfig(config).linkPopover.options.popoverResolver;
 
       it('leaves an unconfigured surface with no resolver and no veto', () => {
         // `undefined` reads as "no opinion" and renders the built-in popover,
         // which is the default this surface has always had.
-        const ui = normalizeUiConfig({ selector: '#e' }).linkPopover;
+        const config: Partial<Config> = { selector: '#e' };
+        const ui = normalizeUiConfig(config).linkPopover;
 
         expect(ui.options.popoverResolver).toBeUndefined();
         expect(ui.suppressed).toBe(false);
@@ -126,7 +129,7 @@ describe('uiConfig reaches the runtime', () => {
 
       it('withholds either spelling when the surface is off', () => {
         const resolver = vi.fn();
-        const config = { ui: false, modules: { links: { popoverResolver: resolver } } };
+        const config = { ui: false, modules: { links: { popoverResolver: resolver } } } satisfies Partial<Config>;
 
         // A forbidden surface hands back nothing to run; the shell answers
         // `suppressed` with its own closing resolver. The consumer's function
@@ -157,7 +160,8 @@ describe('uiConfig reaches the runtime', () => {
     });
 
     it('keeps comments on for the default config', () => {
-      expect(normalizeUiConfig({ selector: '#e' }).comments.enabled).toBe(true);
+      const config: Partial<Config> = { selector: '#e' };
+      expect(normalizeUiConfig(config).comments.enabled).toBe(true);
     });
 
     it('panel: false hides the built-in panel and highlights reach the painter separately', async () => {
@@ -184,6 +188,7 @@ describe('uiConfig reaches the runtime', () => {
       const superdoc = new SuperDoc({
         selector,
         telemetry: { enabled: false },
+        // @ts-expect-error the legacy true sentinel is outside the declared type and is coerced to a block
         modules: { comments: true },
         interaction: { comments: { readOnly: true } },
       });
@@ -199,7 +204,7 @@ describe('uiConfig reaches the runtime', () => {
     // every read returns the empty default — `readOnly` silently false, no
     // resolver. That fails open, so assert against a real instance rather than
     // the normalizers, which pass either way.
-    const mount = async (config) => {
+    const mount = async (config: Partial<Config>) => {
       const { SuperDoc } = await import('../SuperDoc.js');
       const selector = document.createElement('div');
       document.body.append(selector);
@@ -247,7 +252,7 @@ describe('uiConfig reaches the runtime', () => {
     });
 
     it('exposes the resolved surfaces config', async () => {
-      const resolver = () => ({ type: 'none' });
+      const resolver: SurfaceResolver = () => ({ type: 'none' });
       const superdoc = await mount({ surfaces: { resolver, dialog: { maxWidth: 480 } } });
 
       expect(superdoc.surfacesConfig.resolver).toBe(resolver);
@@ -264,8 +269,9 @@ describe('uiConfig reaches the runtime', () => {
     // `#init` seeds the live flag from the profile, so the OR starts from the
     // profile's answer rather than the raw consumer value. `live` is what a
     // later `setDisableContextMenu()` would have written.
-    const seed = (config) => !normalizeUiConfig(config).contextMenu.enabled;
-    const forwarded = (config, live = seed(config)) => !normalizeUiConfig(config).contextMenu.enabled || live === true;
+    const seed = (config: Partial<Config>) => !normalizeUiConfig(config).contextMenu.enabled;
+    const forwarded = (config: Partial<Config>, live = seed(config)) =>
+      !normalizeUiConfig(config).contextMenu.enabled || live === true;
 
     it('honors a post-mount disable under the default profile', () => {
       expect(forwarded({ selector: '#e' })).toBe(false);
@@ -359,11 +365,12 @@ describe('uiConfig reaches the runtime', () => {
     // live `doc.rulers` state that `toggleRuler()` writes, so vetoing on
     // `enabled` would make the toolbar button inert for every consumer who
     // never set `rulers`.
-    const vetoed = (config) => normalizeUiConfig(config).ruler.suppressed;
+    const vetoed = (config: Partial<Config>) => normalizeUiConfig(config).ruler.suppressed;
 
     it('does not veto the default profile, where the toggle starts off', () => {
       expect(vetoed({ selector: '#e' })).toBe(false);
-      expect(normalizeUiConfig({ selector: '#e' }).ruler.enabled).toBe(false);
+      const config: Partial<Config> = { selector: '#e' };
+      expect(normalizeUiConfig(config).ruler.enabled).toBe(false);
     });
 
     it('does not veto an explicit rulers: false, which the toggle can flip', () => {
@@ -383,21 +390,21 @@ describe('uiConfig reaches the runtime', () => {
   // the instance and composable cases prove the value actually arrives, which
   // is the part a mirrored helper cannot show.
   describe('canonical options reach the surface that renders them', () => {
-    const mountInstance = async (config) => {
+    const mountInstance = async (config: Partial<Config>) => {
       const { SuperDoc } = await import('../SuperDoc.js');
       const selector = document.createElement('div');
       document.body.append(selector);
       return new SuperDoc({ selector, telemetry: { enabled: false }, ...config });
     };
 
-    const cleanup = (superdoc) => {
+    const cleanup = (superdoc: SuperDoc) => {
       superdoc?.destroy?.();
       document.body.innerHTML = '';
     };
 
     describe('context menu items', () => {
-      const section = (id) => ({ id, items: [{ id: `${id}-item`, label: id }] });
-      const forwarded = (config) => normalizeUiConfig(config).contextMenu.options;
+      const section = (id: string) => ({ id, items: [{ id: `${id}-item`, label: id }] });
+      const forwarded = (config: Partial<Config>) => normalizeUiConfig(config).contextMenu.options;
 
       it('carries canonical items on a real instance', async () => {
         const superdoc = await mountInstance({
@@ -462,6 +469,7 @@ describe('uiConfig reaches the runtime', () => {
       });
 
       it('treats the boolean legacy forms as carrying no items', () => {
+        // @ts-expect-error the boolean legacy form is outside the declared type and carries no items
         expect(forwarded({ modules: { contextMenu: true } })).toEqual({});
       });
     });
@@ -472,14 +480,26 @@ describe('uiConfig reaches the runtime', () => {
       // button and failed the one that opens the panel, so asserting on
       // `wouldOpen()` is what distinguishes a rendered-but-inert button from a
       // working surface.
-      const drive = async (config) => {
+      const drive = async (config: Partial<Config>) => {
         const { useFindReplace } = await import('../../composables/use-find-replace.js');
         const superdoc = await mountInstance(config);
         const findReplace = useFindReplace({
-          getSurfaceManager: () => ({ open: () => ({ id: 's', close() {}, result: new Promise(() => {}) }) }),
+          getSurfaceManager: () => ({
+            open: () => ({ id: 's', mode: 'floating', close() {}, result: new Promise(() => {}) }),
+          }),
           // A live search session, so `wouldOpen` reflects only the config.
           getActiveEditor: () => ({ editorVersion: 2, commands: null }),
-          getSuperDocUI: () => ({ search: { find() {}, getSnapshot: () => ({ available: true }) } }),
+          getSuperDocUI: () => ({
+            search: {
+              find: () => ({}),
+              getSnapshot: () => ({ available: true }),
+              next: () => ({ ok: true }),
+              previous: () => ({ ok: true }),
+              clear() {},
+              replace: () => ({ ok: true }),
+              replaceAll: () => ({ ok: true }),
+            },
+          }),
           // The expression under test, copied from `SuperDoc.vue`.
           getFindReplaceConfig: () => (superdoc.uiConfig.search.enabled ? superdoc.uiConfig.search.options : false),
         });
@@ -503,7 +523,7 @@ describe('uiConfig reaches the runtime', () => {
           {},
           { ui: { search: false }, modules: { surfaces: { findReplace: true } } },
           { ui: false, modules: { surfaces: { findReplace: true } } },
-        ]) {
+        ] satisfies Partial<Config>[]) {
           const { superdoc, findReplace } = await drive(config);
           expect(findReplace.wouldOpen()).toBe(false);
           cleanup(superdoc);
@@ -511,7 +531,7 @@ describe('uiConfig reaches the runtime', () => {
       });
 
       it('carries options from either spelling, canonical winning', () => {
-        const resolved = (config) => {
+        const resolved = (config: Partial<Config>) => {
           const ui = normalizeUiConfig(config);
           return ui.search.enabled ? ui.search.options : false;
         };
@@ -532,8 +552,8 @@ describe('uiConfig reaches the runtime', () => {
       // `commentsModuleConfig` merges the profile's presentation options over
       // the live `modules.comments` block, so the assertion is on that merge:
       // presentation arrives, and the policy the runtime assigned survives it.
-      const merged = (superdoc) =>
-        mergeCommentsConfig(superdoc.config.modules.comments, superdoc.uiConfig.comments.options);
+      const merged = (superdoc: SuperDoc) =>
+        mergeCommentsConfig(superdoc.config.modules.comments || {}, superdoc.uiConfig.comments.options);
 
       it('carries the canonical layout and responsive settings to the UI', async () => {
         const superdoc = await mountInstance({
@@ -578,6 +598,7 @@ describe('uiConfig reaches the runtime', () => {
       });
 
       it('validates the canonical spelling the same way the legacy block is validated', async () => {
+        // @ts-expect-error 'bogus' is not a CommentsLayout and the normalizer drops it
         const superdoc = await mountInstance({ ui: { comments: { layout: 'bogus' } } });
         expect(merged(superdoc).layout).toBeUndefined();
         cleanup(superdoc);
@@ -593,7 +614,17 @@ describe('uiConfig reaches the runtime', () => {
         const permissionResolver = () => true;
         const superdoc = await mountInstance({
           interaction: { comments: { readOnly: false, allowResolve: true } },
-          ui: { comments: { layout: 'auto', readOnly: true, allowResolve: false, permissionResolver } },
+          ui: {
+            comments: {
+              layout: 'auto',
+              // @ts-expect-error readOnly is policy, not presentation, and the normalizer strips it
+              readOnly: true,
+              // @ts-expect-error allowResolve is policy, not presentation, and the normalizer strips it
+              allowResolve: false,
+              // @ts-expect-error permissionResolver is policy, not presentation, and the normalizer strips it
+              permissionResolver,
+            },
+          },
         });
 
         expect(superdoc.uiConfig.comments.options).toEqual({ layout: 'auto' });
@@ -631,7 +662,7 @@ describe('uiConfig reaches the runtime', () => {
       // else. A style like `'outline'` would assert that an unsupported value
       // survives normalization, which is not a promise worth pinning while
       // `ui.contentControls` is still `Record<string, unknown>` (#1094).
-      const chrome = (config) => normalizeUiConfig(config).contentControls.options.chrome;
+      const chrome = (config: Partial<Config>) => normalizeUiConfig(config).contentControls.options.chrome;
 
       it('draws the default chrome when nobody expressed an opinion', () => {
         // `undefined` is not "off" here: it means the layout engine keeps its

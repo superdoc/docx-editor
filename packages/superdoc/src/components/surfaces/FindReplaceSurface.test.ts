@@ -2,8 +2,10 @@ import { describe, it, expect, vi } from 'vite-plus/test';
 import { mount } from '@vue/test-utils';
 import { nextTick, ref, computed } from 'vue';
 import FindReplaceSurface from './FindReplaceSurface.vue';
+import { surfaceRequest } from '../../test-support/surface-request.js';
+import type { FindReplaceHandle, ResolvedFindReplaceTexts } from '../../core/types/index.js';
 
-const DEFAULT_TEXTS = {
+const DEFAULT_TEXTS: ResolvedFindReplaceTexts = {
   findPlaceholder: 'Find',
   findAriaLabel: 'Find text',
   replacePlaceholder: 'Replace',
@@ -23,6 +25,9 @@ const DEFAULT_TEXTS = {
   matchCaseAriaLabel: 'Match case',
   ignoreDiacriticsLabel: 'ä≡a',
   ignoreDiacriticsAriaLabel: 'Ignore diacritics',
+  regexLabel: '.*',
+  regexAriaLabel: 'Use regular expression',
+  invalidPatternLabel: 'Invalid pattern',
 };
 
 /**
@@ -31,7 +36,7 @@ const DEFAULT_TEXTS = {
  * editor view (which is what causes SD-3045 in production) by moving focus to a
  * detached element supplied via `stealFocusInto`.
  */
-function createHandle(overrides = {}) {
+function createHandle(overrides: { stealFocusInto?: HTMLElement; handle?: Partial<FindReplaceHandle> } = {}) {
   const findQuery = ref('Lorem');
   const replaceText = ref('');
   const caseSensitive = ref(false);
@@ -50,6 +55,13 @@ function createHandle(overrides = {}) {
     activeMatchIndex,
     matchLabel: computed(() => `${activeMatchIndex.value + 1} of ${matchCount.value}`),
     hasMatches: computed(() => matchCount.value > 0),
+    canReplace: computed(() => true),
+    replacePending: ref(false),
+    replaceCanMutate: ref(true),
+    ignoreDiacriticsSupported: ref(true),
+    regexSupported: ref(false),
+    regex: ref(false),
+    searchError: ref<string | null>(null),
     replaceEnabled: true,
     texts: { ...DEFAULT_TEXTS },
     goNext: vi.fn(() => overrides.stealFocusInto?.focus()),
@@ -59,16 +71,16 @@ function createHandle(overrides = {}) {
     registerFocusFn: vi.fn(),
     close: vi.fn(),
     ...overrides.handle,
-  };
+  } satisfies FindReplaceHandle;
 }
 
-function mountSurface(handle) {
+function mountSurface(handle: FindReplaceHandle) {
   return mount(FindReplaceSurface, {
     attachTo: document.body,
     props: {
       surfaceId: 'fr-1',
       mode: 'floating',
-      request: {},
+      request: surfaceRequest(),
       resolve: vi.fn(),
       close: vi.fn(),
       findReplace: handle,
@@ -111,7 +123,7 @@ describe('FindReplaceSurface — keyboard focus (SD-3045)', () => {
     try {
       const handle = createHandle({ stealFocusInto: stealTarget });
       const wrapper = mountSurface(handle);
-      const input = wrapper.find('.sd-find-replace__input').element;
+      const input = wrapper.find<HTMLInputElement>('.sd-find-replace__input').element;
       input.focus();
       expect(document.activeElement).toBe(input);
 
@@ -135,7 +147,7 @@ describe('FindReplaceSurface — keyboard focus (SD-3045)', () => {
     try {
       const handle = createHandle({ stealFocusInto: stealTarget });
       const wrapper = mountSurface(handle);
-      const input = wrapper.find('.sd-find-replace__input').element;
+      const input = wrapper.find<HTMLInputElement>('.sd-find-replace__input').element;
       input.focus();
 
       await wrapper.find('.sd-find-replace__input').trigger('keydown', { key: 'Enter', shiftKey: true });
@@ -153,7 +165,7 @@ describe('FindReplaceSurface — keyboard focus (SD-3045)', () => {
   it('prevents the default Enter behaviour so the editor never receives the keystroke', () => {
     const handle = createHandle();
     const wrapper = mountSurface(handle);
-    const input = wrapper.find('.sd-find-replace__input').element;
+    const input = wrapper.find<HTMLInputElement>('.sd-find-replace__input').element;
     input.focus();
 
     const event = new KeyboardEvent('keydown', { key: 'Enter', cancelable: true, bubbles: true });
@@ -178,7 +190,7 @@ describe('FindReplaceSurface — keyboard focus (SD-3045)', () => {
     try {
       const handle = createHandle({ stealFocusInto: stealTarget });
       const wrapper = mountSurface(handle);
-      const input = wrapper.find('.sd-find-replace__input').element;
+      const input = wrapper.find<HTMLInputElement>('.sd-find-replace__input').element;
 
       const focusSpy = vi.spyOn(input, 'focus');
       input.focus();
@@ -210,7 +222,7 @@ describe('FindReplaceSurface — keyboard focus (SD-3045)', () => {
     try {
       const handle = createHandle({ stealFocusInto: stealTarget });
       const wrapper = mountSurface(handle);
-      const input = wrapper.find('.sd-find-replace__input').element;
+      const input = wrapper.find<HTMLInputElement>('.sd-find-replace__input').element;
 
       const focusSpy = vi.spyOn(input, 'focus');
       input.focus();
@@ -241,7 +253,7 @@ describe('FindReplaceSurface — keyboard focus (SD-3045)', () => {
     try {
       const handle = createHandle({ stealFocusInto: stealTarget });
       const wrapper = mountSurface(handle);
-      const input = wrapper.find('.sd-find-replace__input').element;
+      const input = wrapper.find<HTMLInputElement>('.sd-find-replace__input').element;
       const focusSpy = vi.spyOn(input, 'focus');
 
       const buttons = wrapper.findAll('.sd-find-replace__btn--icon');
@@ -348,7 +360,7 @@ describe('FindReplaceSurface — keyboard focus (SD-3045)', () => {
     try {
       const handle = createHandle({ stealFocusInto: stealTarget });
       const wrapper = mountSurface(handle);
-      const input = wrapper.find('.sd-find-replace__input').element;
+      const input = wrapper.find<HTMLInputElement>('.sd-find-replace__input').element;
       const focusSpy = vi.spyOn(input, 'focus');
 
       const buttons = wrapper.findAll('.sd-find-replace__btn--icon');

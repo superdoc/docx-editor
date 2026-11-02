@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vite-plus/test';
 import { createSuperDocUI } from './create-super-doc-ui.js';
+import type { BookmarksHandle } from './types.js';
 
 const ADDRESS = { kind: 'entity', entityType: 'bookmark', name: 'Target' } as const;
 const INFO = {
@@ -37,12 +38,8 @@ function mount() {
     off: (name: string, cb: (payload?: unknown) => void) => listeners.get(name)?.delete(cb),
   };
   const ui = createSuperDocUI({ superdoc: superdoc as never });
-  // Keep this test-only contract executable on the unfixed public surface.
-  const navigate = (input: unknown, options?: unknown) => {
-    const handle = (ui as any).bookmarks;
-    expect(typeof handle?.navigateTo, 'public bookmark navigation must be callable').toBe('function');
-    return handle.navigateTo(input, options);
-  };
+  expect(typeof ui.bookmarks.navigateTo, 'public bookmark navigation must be callable').toBe('function');
+  const navigate: BookmarksHandle['navigateTo'] = (input, options) => ui.bookmarks.navigateTo(input, options);
   return {
     ui,
     navigate,
@@ -140,6 +137,7 @@ describe('public bookmark navigation', () => {
       { ...ADDRESS, kind: 'text' },
       { ...ADDRESS, story: {} },
     ]) {
+      // @ts-expect-error each input is a malformed or unsupported bookmark target
       expect(await h.navigate(input)).toEqual({ success: false, ok: false, reason: 'target-unresolved' });
     }
     expect(h.list).not.toHaveBeenCalled();

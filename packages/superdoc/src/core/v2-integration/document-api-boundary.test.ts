@@ -68,7 +68,7 @@ function* walkSourceFiles(dir: string): IterableIterator<string> {
       yield* walkSourceFiles(full);
       continue;
     }
-    if (!/\.(js|ts|vue|jsx|tsx)$/.test(full) || /\.d\.ts$/.test(full)) continue;
+    if (!/\.(js|ts|vue|jsx|tsx)$/.test(full) || full.endsWith('.d.ts')) continue;
     if (/\.(test|spec)\.[jt]sx?$/.test(full)) continue;
     yield full;
   }

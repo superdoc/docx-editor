@@ -53,7 +53,7 @@ function makeHost(overrides: Record<string, unknown> = {}) {
     ...base,
     config: {
       ...defaultConfig,
-      ...((overrides.config as Record<string, unknown> | undefined) ?? {}),
+      ...(overrides.config as Record<string, unknown> | undefined),
     },
   };
 
@@ -1987,7 +1987,7 @@ describe('BuiltInToolbar', () => {
     activeStyleId = null;
     const mixedVNode = option.render();
     const mixedLinkedStyleVNode = Array.isArray(mixedVNode.children) ? mixedVNode.children[0] : null;
-    expect((mixedLinkedStyleVNode?.props as { selectedOption?: string | null }).selectedOption).toBeNull();
+    expect((mixedLinkedStyleVNode?.props as { selectedOption?: string | null } | undefined)?.selectedOption).toBeNull();
     toolbar.destroy();
   });
 

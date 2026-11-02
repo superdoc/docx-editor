@@ -9,7 +9,6 @@ import { describe, expect, it, vi } from 'vite-plus/test';
 import SuperDocSource from '../../SuperDoc.vue?raw';
 import { mergeCommentsConfig } from './merge-comments-config.js';
 import { normalizeUiConfig } from './normalize-ui-config.js';
-import { mergeDefined } from './merge-defined.js';
 
 describe('uiConfig reaches the runtime', () => {
   describe('toolbar mount decision', () => {

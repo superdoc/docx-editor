@@ -51,7 +51,7 @@ const mergedContentClass = computed(() => [
 ]);
 const contentStyle = computed(() => ({
   ...props.contentStyle,
-  ...((attrs.style as CSSProperties | undefined) || {}),
+  ...(attrs.style as CSSProperties | undefined),
   position: 'fixed',
   top: position.value.top,
   left: position.value.left,

@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vite-plus/test';
 import { mount, flushPromises } from '@vue/test-utils';
-import { nextTick } from 'vue';
 import PdfViewerPage from './PdfViewerPage.vue';
 
 const makePdfjsPage = (overrides = {}) => {

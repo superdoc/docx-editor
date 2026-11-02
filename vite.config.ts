@@ -95,11 +95,31 @@ export default defineConfig({
         files: ['packages/document-api/src/contract/schemas.ts'],
         rules: { 'unicorn/no-thenable': 'off' },
       },
+      {
+        files: [
+          'packages/superdoc/src/helpers/object-guards.test.ts',
+          'packages/superdoc/src/helpers/interaction-trace.test.ts',
+        ],
+        rules: { 'unicorn/no-thenable': 'off' },
+      },
+      {
+        files: ['**/*.test.*'],
+        rules: {
+          'typescript/ban-ts-comment': [
+            'error',
+            {
+              'ts-expect-error': 'allow-with-description',
+              'ts-ignore': true,
+              'ts-nocheck': true,
+              minimumDescriptionLength: 10,
+            },
+          ],
+        },
+      },
     ],
     ignorePatterns: [
       // The old root lint script excluded Vue SFCs and Oxlint would lint them;
-      // bringing them into scope is a separate decision, not a side effect of
-      // replacing ESLint.
+      // they stay excluded everywhere except packages/superdoc/src (negated below).
       '**/*.vue',
       '**/dist/**',
       '**/dist-types/**',
@@ -112,7 +132,8 @@ export default defineConfig({
       'packages/preset-geometry/**',
       '**/src/**/*.d.ts',
       // The old root lint script also excluded these beyond the eslint config:
-      // any test/spec suffix and __tests__ directories.
+      // any test/spec suffix and __tests__ directories. Tests in
+      // packages/superdoc/src are linted again by the negation below.
       '**/*.test.*',
       '**/*.spec.*',
       '**/tests/**',
@@ -122,6 +143,14 @@ export default defineConfig({
       'examples/**',
       '**/examples/**',
       'e2e-tests/**',
+      '!packages/superdoc/src/**/*.vue',
+      '!packages/superdoc/src/**/*.test.*',
+      'packages/superdoc/src/SuperDoc.vue',
+      'packages/superdoc/src/components/CommentsLayer/**/*.vue',
+      'packages/superdoc/src/components/CommentsLayer/**/*.test.*',
+      'packages/superdoc/src/stores/comments-store.test.*',
+      'packages/superdoc/src/stores/helpers/**/*.test.*',
+      'packages/superdoc/src/public/ui.test.ts',
     ],
   },
   // Run from the pre-commit hook via `vp staged`. Expensive repo checks that

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vite-plus/test';
+import { describe, it, expect, vi } from 'vite-plus/test';
 import { WhiteboardPage } from './WhiteboardPage.js';
 
 const makeNode = (extras = {}) => {
@@ -536,8 +536,6 @@ describe('WhiteboardPage', () => {
   });
 
   describe('text node events and selection', () => {
-    const getStage = (renderer) => renderer.Stage.mock.results[0].value;
-
     it('clicking a text node selects it and creates a Transformer', () => {
       const renderer = makeRenderer();
       const page = new WhiteboardPage({
@@ -612,8 +610,6 @@ describe('WhiteboardPage', () => {
   });
 
   describe('image node events', () => {
-    const getStage = (renderer) => renderer.Stage.mock.results[0].value;
-
     it('image dragend updates normalized position', () => {
       const onChange = vi.fn();
       const renderer = makeRenderer();
@@ -628,7 +624,6 @@ describe('WhiteboardPage', () => {
       const item = { id: 'i1', xN: 0, yN: 0, src: '/x.png' };
       page.images.push(item);
       page.render();
-      const imageConstructors = renderer.Image.mock.results.length;
       expect(() => page.render()).not.toThrow();
     });
   });

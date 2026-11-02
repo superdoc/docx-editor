@@ -96,7 +96,7 @@ describe('SurfaceManager', () => {
   describe('open() — intent-based with resolver', () => {
     it('resolves via a custom resolver returning a component', () => {
       const m = createManager({
-        resolver: (req) => ({ type: 'custom', component: StubComponent, props: { x: 1 } }),
+        resolver: () => ({ type: 'custom', component: StubComponent, props: { x: 1 } }),
       });
       m.open({ kind: 'test', mode: 'dialog' });
       expect(m.activeDialog.value!.component).toBe(StubComponent);
@@ -142,17 +142,17 @@ describe('SurfaceManager', () => {
 
   describe('open() — validation errors', () => {
     it('throws if request is null', () => {
-      // @ts-expect-error
+      // @ts-expect-error request is null, not a surface request
       expect(() => manager.open(null)).toThrow(/non-null object/);
     });
 
     it('throws if mode is missing', () => {
-      // @ts-expect-error
+      // @ts-expect-error request has no mode
       expect(() => manager.open({ component: StubComponent })).toThrow(/mode must be/);
     });
 
     it('throws if mode is invalid', () => {
-      // @ts-expect-error
+      // @ts-expect-error mode 'popover' is not a surface mode
       expect(() => manager.open({ mode: 'popover', component: StubComponent })).toThrow(/mode must be/);
     });
 
@@ -172,7 +172,7 @@ describe('SurfaceManager', () => {
 
     it('throws if floating.placement is invalid', () => {
       expect(() =>
-        // @ts-expect-error
+        // @ts-expect-error floating.placement 'right-top' is not a placement
         manager.open({ mode: 'floating', component: StubComponent, floating: { placement: 'right-top' } }),
       ).toThrow(/floating\.placement must be one of/);
     });

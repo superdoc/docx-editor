@@ -319,12 +319,16 @@ describe('viewport.entityAt / trackChanges.getAt — point hit-testing', () => {
 
     // `typeof null === 'object'` routes null through the object overload; the
     // controller must fail closed to an array / null rather than reading `.x`.
-    expect(ui.viewport.entityAt(null as any)).toEqual([]);
-    expect(ui.trackChanges.getAt(null as any)).toBeNull();
+    // @ts-expect-error null is not a point object
+    expect(ui.viewport.entityAt(null)).toEqual([]);
+    // @ts-expect-error null is not a point object
+    expect(ui.trackChanges.getAt(null)).toBeNull();
     // Non-object primitives route to entityAt's NUMBER overload (address|null);
     // getAt must guard them so `hits.length` never throws.
-    expect(ui.trackChanges.getAt('nope' as any)).toBeNull();
-    expect(ui.trackChanges.getAt(42 as any)).toBeNull();
+    // @ts-expect-error the string 'nope' is not a point object
+    expect(ui.trackChanges.getAt('nope')).toBeNull();
+    // @ts-expect-error the number 42 is not a point object
+    expect(ui.trackChanges.getAt(42)).toBeNull();
 
     ui.destroy();
   });
@@ -438,7 +442,7 @@ describe('viewport.entityAt / trackChanges.getAt — point hit-testing', () => {
       const got = ui.trackChanges.getAt({ x: 10, y: 20 });
       expect(got?.id).toBe('tc-dup');
       // The footnote occurrence, not the first (body) row.
-      expect((got?.item as { address?: { story?: unknown } }).address?.story).toEqual(footnoteStory);
+      expect(got?.item.address?.story).toEqual(footnoteStory);
 
       // object-form entityAt and contextAt carry the resolved story locator.
       expect(ui.viewport.entityAt({ x: 10, y: 20 })).toEqual([
@@ -488,7 +492,7 @@ describe('viewport.entityAt / trackChanges.getAt — point hit-testing', () => {
       ]);
       const got = ui.trackChanges.getAt({ x: 10, y: 20 });
       expect(got?.id).toBe('tc-fn');
-      expect((got?.item as { address?: { story?: unknown } }).address?.story).toEqual(footnoteStory);
+      expect(got?.item.address?.story).toEqual(footnoteStory);
     });
 
     ui.destroy();
@@ -556,7 +560,8 @@ describe('viewport.entityAt / trackChanges.getAt — point hit-testing', () => {
     // Pin `elementFromPoint` to null so the fail-closed path is explicit and the
     // test cannot go flaky if the env starts resolving an element at the origin.
     withElementFromPoint(null, () => {
-      const ctx = ui.viewport.contextAt(null as any);
+      // @ts-expect-error null is not a point object
+      const ctx = ui.viewport.contextAt(null);
       expect(ctx.point).toEqual({ x: 0, y: 0 });
       expect(ctx.entities).toEqual([]);
     });
@@ -633,7 +638,7 @@ describe('viewport.entityAt / trackChanges.getAt — point hit-testing', () => {
       ]);
       const got = ui.trackChanges.getAt({ x: 10, y: 20 });
       expect(got?.id).toBe('tc-fn');
-      expect((got?.item as { address?: { story?: unknown } }).address?.story).toEqual(footnoteStory);
+      expect(got?.item.address?.story).toEqual(footnoteStory);
     });
 
     ui.destroy();
@@ -693,7 +698,7 @@ describe('viewport.entityAt / trackChanges.getAt — point hit-testing', () => {
       ]);
       const got = ui.trackChanges.getAt({ x: 10, y: 20 });
       expect(got?.id).toBe('tc-fn');
-      expect((got?.item as { address?: { story?: unknown } }).address?.story).toEqual(footnoteStory);
+      expect(got?.item.address?.story).toEqual(footnoteStory);
     });
 
     ui.destroy();
@@ -724,7 +729,7 @@ describe('viewport.entityAt / trackChanges.getAt — point hit-testing', () => {
       ]);
       const got = ui.trackChanges.getAt({ x: 10, y: 20 });
       expect(got?.id).toBe('tc-en');
-      expect((got?.item as { address?: { story?: unknown } }).address?.story).toEqual(endnoteStory);
+      expect(got?.item.address?.story).toEqual(endnoteStory);
     });
 
     ui.destroy();

@@ -456,7 +456,7 @@ it('SD-5951 preserves the exact unbranded method payload and receiver after repl
   const h = builtInHarness();
   h.refresh();
   const receivers: unknown[] = [];
-  const method = vi.fn(function (this: unknown, payload: Record<string, unknown>) {
+  const method = vi.fn(function (this: unknown, _payload: Record<string, unknown>) {
     receivers.push(this);
     return false;
   });

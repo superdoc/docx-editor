@@ -240,7 +240,7 @@ describe('WatermarkSurface', () => {
         result = 'data:image/png;base64,aW1hZ2U=';
         declare onload: () => void;
         constructor() {
-          reader = this;
+          reader = { onload: () => this.onload() };
         }
         readAsDataURL() {}
       },
@@ -291,7 +291,7 @@ describe('WatermarkSurface', () => {
         result = 'data:image/png;base64,aW1hZ2U=';
         declare onload: () => void;
         constructor() {
-          reader = this;
+          reader = { onload: () => this.onload() };
         }
         readAsDataURL() {}
       },
@@ -316,7 +316,7 @@ describe('WatermarkSurface', () => {
         result = 'data:image/png;base64,aW1hZ2U=';
         declare onload: () => void;
         constructor() {
-          reader = this;
+          reader = { onload: () => this.onload() };
         }
         readAsDataURL() {}
       },

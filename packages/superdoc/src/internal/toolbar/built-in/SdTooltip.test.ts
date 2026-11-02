@@ -5,9 +5,10 @@ import SdTooltip from './SdTooltip.vue';
 
 let wrapper: VueWrapper | null;
 
-const mountTooltip = () =>
+const mountTooltip = (attrs: Record<string, unknown> = {}) =>
   mount(SdTooltip, {
     props: { delay: 0 },
+    attrs,
     slots: {
       trigger: '<button type="button">Aa</button>',
       default: 'Font family',
@@ -75,5 +76,27 @@ describe('SdTooltip activation', () => {
     vi.advanceTimersByTime(150);
     await nextTick();
     expect(document.body.querySelector('.sd-tooltip-content')).not.toBeNull();
+  });
+});
+
+describe('SdTooltip content style', () => {
+  it('merges a forwarded style attr under the fixed positioning', async () => {
+    wrapper = mountTooltip({ style: { color: 'red', position: 'absolute' } });
+    await showTooltip();
+
+    const content = document.body.querySelector<HTMLElement>('.sd-tooltip-content')!;
+    expect(content.style.color).toBe('red');
+    expect(content.style.position).toBe('fixed');
+    expect(content.style.zIndex).toBe('2100');
+  });
+
+  it('keeps the fixed positioning when no style attr is forwarded', async () => {
+    wrapper = mountTooltip();
+    await showTooltip();
+
+    const content = document.body.querySelector<HTMLElement>('.sd-tooltip-content')!;
+    expect(content.style.position).toBe('fixed');
+    expect(content.style.zIndex).toBe('2100');
+    expect(content.getAttribute('style')).not.toContain('undefined');
   });
 });

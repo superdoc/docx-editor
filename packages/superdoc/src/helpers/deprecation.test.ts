@@ -80,23 +80,24 @@ describe('createDeprecatedEditorProxy', () => {
       const proxy = createDeprecatedEditorProxy(editor);
 
       for (const key of DEPRECATED_KEYS) {
-        proxy[key];
+        Reflect.get(proxy, key);
       }
 
       expect(console.warn).toHaveBeenCalledTimes(DEPRECATED_KEYS.length);
 
       for (const key of DEPRECATED_KEYS) {
-        expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('is deprecated and will be removed'));
+        expect(console.warn).toHaveBeenCalledWith(expect.stringContaining(`editor.${key}`));
       }
+      expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('is deprecated and will be removed'));
     });
 
     it('should not warn again on repeated access of the same property', () => {
       const editor = createMockEditor();
       const proxy = createDeprecatedEditorProxy(editor);
 
-      proxy.state;
+      Reflect.get(proxy, 'state');
       const callCount = console.warn.mock.calls.length;
-      proxy.state;
+      Reflect.get(proxy, 'state');
       expect(console.warn).toHaveBeenCalledTimes(callCount);
     });
   });
@@ -106,8 +107,8 @@ describe('createDeprecatedEditorProxy', () => {
       const editor = createMockEditor();
       const proxy = createDeprecatedEditorProxy(editor);
 
-      proxy.doc;
-      proxy.on;
+      Reflect.get(proxy, 'doc');
+      Reflect.get(proxy, 'on');
 
       expect(console.warn).not.toHaveBeenCalled();
     });

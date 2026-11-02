@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vite-plus/test';
 import { createPinia, setActivePinia } from 'pinia';
 import { useSuperdocStore } from './superdoc-store.js';
-import { DOCX, PDF } from '@superdoc/common';
+import { DOCX } from '@superdoc/common';
 
 class BlobMock {
   constructor(parts = [], options = {}) {
@@ -20,7 +20,7 @@ globalThis.File ??= class extends BlobMock {
 
 const baseConfig = (docs = [], overrides = {}) => ({
   documents: docs,
-  modules: { collaboration: false, ...(overrides.modules || {}) },
+  modules: { collaboration: false, ...overrides.modules },
   user: { name: 'Alice', email: 'a@b.com' },
   users: [],
   ...overrides,

@@ -174,7 +174,7 @@ describe('normalizeTrackChangesConfig', () => {
 
     it('ignores a non-object semanticColors value', () => {
       const config: TrackChangesConfigSource = {
-        // @ts-expect-error
+        // @ts-expect-error semanticColors is a string, not an object
         trackChanges: { enabled: true, semanticColors: 'nope' },
       };
       const result = normalizeTrackChangesConfig(config);
@@ -306,9 +306,9 @@ describe('normalizeTrackChangesConfig', () => {
   describe('defensive parsing', () => {
     it('ignores non-object legacy values', () => {
       const config: TrackChangesConfigSource = {
-        // @ts-expect-error
+        // @ts-expect-error trackChanges is a string, not an object
         trackChanges: 'not-an-object',
-        // @ts-expect-error
+        // @ts-expect-error layoutEngineOptions.trackedChanges is null, not an object
         layoutEngineOptions: { trackedChanges: null },
       };
       const result = normalizeTrackChangesConfig(config);
@@ -319,9 +319,9 @@ describe('normalizeTrackChangesConfig', () => {
 
     it('ignores array-typed modules/canonical/legacy objects', () => {
       const config: TrackChangesConfigSource = {
-        // @ts-expect-error
+        // @ts-expect-error modules is an array, not an object
         modules: [],
-        // @ts-expect-error
+        // @ts-expect-error trackChanges is an array, not an object
         trackChanges: [],
         layoutEngineOptions: { trackedChanges: [] },
       };
@@ -333,7 +333,7 @@ describe('normalizeTrackChangesConfig', () => {
 
     it('treats a null canonical object as missing', () => {
       const config: TrackChangesConfigSource = {
-        // @ts-expect-error
+        // @ts-expect-error modules.trackChanges is null, not an object
         modules: { trackChanges: null },
         trackChanges: { visible: true },
       };
@@ -344,7 +344,7 @@ describe('normalizeTrackChangesConfig', () => {
 
     it('coerces invalid mode values to the derived default', () => {
       const config: TrackChangesConfigSource = {
-        // @ts-expect-error
+        // @ts-expect-error mode 'bogus' is not a track-changes mode
         modules: { trackChanges: { mode: 'bogus' } },
       };
       const result = normalizeTrackChangesConfig(config);
@@ -356,9 +356,9 @@ describe('normalizeTrackChangesConfig', () => {
       const config: TrackChangesConfigSource = {
         modules: {
           trackChanges: {
-            // @ts-expect-error
+            // @ts-expect-error visible is the string 'yes', not a boolean
             visible: 'yes',
-            // @ts-expect-error
+            // @ts-expect-error enabled is the number 0, not a boolean
             enabled: 0,
           },
         },
@@ -397,7 +397,7 @@ describe('normalizeTrackChangesConfig', () => {
 
     it('coerces an invalid replacementMode to the grouped default', () => {
       const result = normalizeTrackChangesConfig({
-        // @ts-expect-error
+        // @ts-expect-error replacementMode 'whatever' is not a replacement mode
         trackChanges: { replacementMode: 'whatever' },
       });
       expect(result.replacements).toBe('paired');

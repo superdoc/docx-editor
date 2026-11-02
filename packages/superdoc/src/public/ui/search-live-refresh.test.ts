@@ -8,7 +8,7 @@ function createSearchHarness() {
   let onHostEvent: ((event: Record<string, unknown>) => void) | undefined;
   let resolveRefresh: ((value: unknown) => void) | undefined;
   const refresh = vi.fn(
-    (input: { query: string; caseSensitive: boolean; includeDeletedText: boolean; regex: boolean }) =>
+    () =>
       new Promise<unknown>((resolve) => {
         const generation = ++queryGeneration;
         resolveRefresh = (value) => {

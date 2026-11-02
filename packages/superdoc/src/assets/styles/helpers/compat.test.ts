@@ -30,7 +30,6 @@ describe('backward compatibility', () => {
   const declaredInVariables = extractDeclaredVars(variablesCss);
   const declaredInCompat = extractDeclaredVars(compatCss);
   const referencedByCompat = extractReferencedVars(compatCss);
-  const referencedByVariables = extractReferencedVars(variablesCss);
 
   describe('compat.css aliases', () => {
     it('every alias points to a variable defined in variables.css', () => {

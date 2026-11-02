@@ -187,14 +187,11 @@ describe('usePasswordPrompt', () => {
     expect(manager.open).toHaveBeenCalledTimes(1);
 
     // Create a new handle for the second dialog
-    let settleSecond: ((outcome: SurfaceOutcome) => void) | undefined;
     const secondHandle: SurfaceHandle = {
       id: 'surface-2',
       mode: 'dialog',
       close: vi.fn(),
-      result: new Promise((resolve) => {
-        settleSecond = resolve;
-      }),
+      result: new Promise<SurfaceOutcome>(() => {}),
     };
     manager.open.mockReturnValueOnce(secondHandle);
 

@@ -1814,10 +1814,6 @@ const IMAGE_SELECTION_STYLE = defineSurfaceStyle('data-superdoc-image-selection-
 const MATH_MENCLOSE_STYLE = defineSurfaceStyle('data-superdoc-math-menclose-styles', MATH_MENCLOSE_STYLES);
 const FOOTNOTE_STYLE = defineSurfaceStyle('data-superdoc-footnote-styles', FOOTNOTE_STYLES);
 
-export const ensurePrintStyles = (doc: Document | null | undefined) => {
-  ensureStyleElement(doc, PRINT_STYLE.markerAttribute, PRINT_STYLE.cssText, PRINT_STYLE.revision);
-};
-
 export const ensureDocumentSurfaceStyles = (doc: Document | null | undefined, styleNonce?: string) => {
   ensureStyleElement(
     doc,
@@ -1836,45 +1832,12 @@ export const ensureTrackChangeStyles = (doc: Document | null | undefined) => {
   ensureStyleElement(doc, TRACK_CHANGE_STYLE.markerAttribute, TRACK_CHANGE_STYLE.cssText, TRACK_CHANGE_STYLE.revision);
 };
 
-export const ensureFormattingMarksStyles = (doc: Document | null | undefined) => {
-  ensureStyleElement(
-    doc,
-    FORMATTING_MARKS_STYLE.markerAttribute,
-    FORMATTING_MARKS_STYLE.cssText,
-    FORMATTING_MARKS_STYLE.revision,
-  );
-};
-
 export const ensureSdtContainerStyles = (doc: Document | null | undefined) => {
   ensureStyleElement(
     doc,
     SDT_CONTAINER_STYLE.markerAttribute,
     SDT_CONTAINER_STYLE.cssText,
     SDT_CONTAINER_STYLE.revision,
-  );
-};
-
-export const ensureFieldAnnotationStyles = (doc: Document | null | undefined) => {
-  ensureStyleElement(
-    doc,
-    FIELD_ANNOTATION_STYLE.markerAttribute,
-    FIELD_ANNOTATION_STYLE.cssText,
-    FIELD_ANNOTATION_STYLE.revision,
-  );
-};
-
-/**
- * Injects image selection highlight styles into the document head.
- * Ensures styles are only injected once per document lifecycle.
- * @param {Document | null | undefined} doc - The document to inject styles into
- * @returns {void}
- */
-export const ensureImageSelectionStyles = (doc: Document | null | undefined) => {
-  ensureStyleElement(
-    doc,
-    IMAGE_SELECTION_STYLE.markerAttribute,
-    IMAGE_SELECTION_STYLE.cssText,
-    IMAGE_SELECTION_STYLE.revision,
   );
 };
 

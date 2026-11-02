@@ -128,6 +128,21 @@ describe('style injection', () => {
     expect(styles.length).toBeGreaterThan(0);
     expect(styles.every((style) => style.nonce === 'page-nonce')).toBe(true);
   });
+
+  it.each([
+    'data-superdoc-print-styles',
+    'data-superdoc-formatting-marks-styles',
+    'data-superdoc-field-annotation-styles',
+    'data-superdoc-image-selection-styles',
+  ])('installs the %s stylesheet through the preflight', (marker) => {
+    const doc = document.implementation.createHTMLDocument('preflight');
+
+    ensureSurfaceStylePreflight(doc);
+
+    const styles = doc.head.querySelectorAll<HTMLStyleElement>(`[${marker}="true"]`);
+    expect(styles).toHaveLength(1);
+    expect(styles[0]?.textContent?.trim()).not.toBe('');
+  });
 });
 
 describe('ensureSdtContainerStyles', () => {

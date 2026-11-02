@@ -865,9 +865,6 @@ importers:
 
   packages/layout-engine/layout-engine:
     dependencies:
-      '@superdoc/common':
-        specifier: workspace:*
-        version: link:../../../shared/common
       '@superdoc/contracts':
         specifier: workspace:*
         version: link:../contracts

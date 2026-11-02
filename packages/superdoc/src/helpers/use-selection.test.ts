@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vite-plus/test';
 import useSelection from './use-selection.js';
 import { DOCUMENT_EDITOR_SELECTION_SOURCE } from './selection-source.js';
+import { domRect } from '../test-support/dom-rect.js';
 
 describe('useSelection', () => {
   it('exposes ref-wrapped fields and initial values', () => {
@@ -29,7 +30,7 @@ describe('useSelection', () => {
 
     it('returns offset of origin when container is not found in DOM', () => {
       const s = useSelection({ documentId: 'missing-doc', page: 1 });
-      const parent = { getBoundingClientRect: () => ({ top: 50, left: 25 }) };
+      const parent = { getBoundingClientRect: () => domRect({ top: 50, left: 25 }) };
       // container not in DOM → uses { top: 0, left: 0 } baseline
       const result = s.getContainerLocation(parent);
       expect(result).toEqual({ top: -50, left: -25 });
@@ -38,10 +39,10 @@ describe('useSelection', () => {
     it('returns offset from parent when container is in DOM', () => {
       const container = document.createElement('div');
       container.id = 'doc-1-page-1';
-      container.getBoundingClientRect = () => ({ top: 100, left: 40 });
+      container.getBoundingClientRect = () => domRect({ top: 100, left: 40 });
       document.body.appendChild(container);
       const s = useSelection({ documentId: 'doc-1', page: 1 });
-      const parent = { getBoundingClientRect: () => ({ top: 30, left: 10 }) };
+      const parent = { getBoundingClientRect: () => domRect({ top: 30, left: 10 }) };
       expect(s.getContainerLocation(parent)).toEqual({ top: 70, left: 30 });
       container.remove();
     });

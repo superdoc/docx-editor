@@ -15,6 +15,7 @@
     "src/components/PdfViewer/PdfViewerDocument.test.ts",
     "src/components/Whiteboard/WhiteboardLayer.test.ts",
     "src/components/Whiteboard/WhiteboardPage.test.ts",
+    "src/components/surfaces/SurfaceHost.test.ts",
     "src/components/surfaces/WatermarkSurface.test.ts",
     "src/components/surfaces/watermark-surface-runtime.test.ts",
     "src/composables/find-shortcut-owner.test.ts",
@@ -75,10 +76,12 @@
     "src/core/viewing-options.test.ts",
     "src/core/web-layout-config.test.ts",
     "src/core/whiteboard/Whiteboard-extended.test.ts",
+    "src/helpers/comment-focus.test.ts",
     "src/helpers/comment-small-screen.test.ts",
     "src/helpers/interaction-trace.test.ts",
     "src/helpers/is-finite-number.test.ts",
     "src/helpers/object-guards.test.ts",
+    "src/helpers/use-selection.test.ts",
     "src/helpers/v2-author-required-rejection.test.ts",
     "src/helpers/v2-bulk-decision-event.test.ts",
     "src/helpers/v2-keyboard-edit-rejection.test.ts",
@@ -145,6 +148,7 @@
     "src/stores/helpers/tracked-change-decision.test.ts",
     "src/stores/helpers/tracked-change-identity.test.ts",
     "src/stores/helpers/tracked-change-row-values.test.ts",
+    "src/test-support/declaration-exclusion.test.ts",
     "src/test-type-check.test.ts"
   ],
   "include": [

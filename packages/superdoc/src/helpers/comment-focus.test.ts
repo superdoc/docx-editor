@@ -5,6 +5,7 @@ import {
   getVisibleThreadHighlightClientY,
   scrollThreadAnchorToFocusTarget,
 } from './comment-focus.js';
+import { domRect } from '../test-support/dom-rect.js';
 
 describe('getPreferredCommentFocusTargetClientY', () => {
   it('returns 38% of window inner height, rounded', () => {
@@ -68,7 +69,7 @@ describe('getVisibleThreadHighlightClientY', () => {
     const el = document.createElement('div');
     el.className = 'superdoc-comment-highlight';
     el.setAttribute('data-comment-ids', 'c-1,c-2');
-    el.getBoundingClientRect = () => ({ top: 100, bottom: 120 });
+    el.getBoundingClientRect = () => domRect({ top: 100, bottom: 120 });
     document.body.appendChild(el);
     expect(getVisibleThreadHighlightClientY(['c-2'])).toBe(100);
   });
@@ -77,7 +78,7 @@ describe('getVisibleThreadHighlightClientY', () => {
     const el = document.createElement('div');
     el.className = 'superdoc-comment-highlight';
     el.setAttribute('data-comment-imported-ids', 'orig=imp-1');
-    el.getBoundingClientRect = () => ({ top: 50, bottom: 60 });
+    el.getBoundingClientRect = () => domRect({ top: 50, bottom: 60 });
     document.body.appendChild(el);
     expect(getVisibleThreadHighlightClientY(['imp-1'])).toBe(50);
   });
@@ -86,18 +87,18 @@ describe('getVisibleThreadHighlightClientY', () => {
     const a = document.createElement('div');
     a.className = 'superdoc-comment-highlight';
     a.setAttribute('data-comment-ids', 'c-1');
-    a.getBoundingClientRect = () => ({ top: 200, bottom: 220 });
+    a.getBoundingClientRect = () => domRect({ top: 200, bottom: 220 });
     const b = document.createElement('div');
     b.className = 'superdoc-comment-highlight';
     b.setAttribute('data-comment-ids', 'c-1');
-    b.getBoundingClientRect = () => ({ top: 100, bottom: 120 });
+    b.getBoundingClientRect = () => domRect({ top: 100, bottom: 120 });
     document.body.append(a, b);
     expect(getVisibleThreadHighlightClientY(['c-1'])).toBe(100);
   });
 });
 
 describe('scrollThreadAnchorToFocusTarget', () => {
-  const makePresentation = (reachable, resolved) => ({
+  const makePresentation = (reachable: number, resolved: boolean) => ({
     getReachableThreadAnchorClientY: vi.fn(() => reachable),
     scrollThreadAnchorToClientY: vi.fn(() => resolved),
   });

@@ -3,15 +3,17 @@ import { mount } from '@vue/test-utils';
 import { shallowRef, defineComponent, h, nextTick } from 'vue';
 import SurfaceHost from './SurfaceHost.vue';
 import SurfaceDialog from './SurfaceDialog.vue';
+import type { ActiveSurface } from '../../core/surface-manager.js';
+import { domRect } from '../../test-support/dom-rect.js';
 
 /** Minimal SurfaceManager stub that exposes the same reactive refs */
 function createManagerStub() {
-  const activeDialog = shallowRef(null);
-  const activeFloating = shallowRef(null);
+  const activeDialog = shallowRef<SurfaceFixture | null>(null);
+  const activeFloating = shallowRef<SurfaceFixture | null>(null);
   return {
     activeDialog,
     activeFloating,
-    close: vi.fn((id) => {
+    close: vi.fn((id: string) => {
       if (activeDialog.value?.id === id) {
         activeDialog.value.settle({ status: 'closed' });
         activeDialog.value = null;
@@ -31,7 +33,7 @@ const TestContent = defineComponent({
   },
 });
 
-function createSurface(overrides = {}) {
+function createSurface(overrides: Partial<ActiveSurface> = {}) {
   let settled = false;
   return {
     id: 'test-1',
@@ -58,7 +60,10 @@ function createSurface(overrides = {}) {
   };
 }
 
-function mountHost(managerStub) {
+type SurfaceFixture = ReturnType<typeof createSurface>;
+type ManagerStub = ReturnType<typeof createManagerStub>;
+
+function mountHost(managerStub: ManagerStub) {
   return mount(SurfaceHost, {
     global: {
       provide: {
@@ -72,7 +77,7 @@ function mountHost(managerStub) {
 }
 
 describe('SurfaceHost', () => {
-  let manager;
+  let manager: ManagerStub;
 
   beforeEach(() => {
     manager = createManagerStub();
@@ -494,7 +499,7 @@ describe('SurfaceHost', () => {
   describe('viewport-aware geometry', () => {
     // Create a .superdoc > .superdoc__layers structure and pass the layers
     // element as the geometryTarget prop (mirrors what SuperDoc.vue does).
-    function mountHostInSuperdoc(managerStub) {
+    function mountHostInSuperdoc(managerStub: ManagerStub) {
       const superdocRoot = document.createElement('div');
       superdocRoot.className = 'superdoc';
       const layers = document.createElement('div');
@@ -527,7 +532,7 @@ describe('SurfaceHost', () => {
       const { wrapper } = mountHostInSuperdoc(manager);
       await flushGeometry();
 
-      const host = wrapper.find('.sd-surface-host');
+      const host = wrapper.find<HTMLElement>('.sd-surface-host');
       expect(host.exists()).toBe(true);
       // happy-dom returns zero rects, so style has position:fixed with 0px values
       expect(host.element.style.position).toBe('fixed');
@@ -555,7 +560,7 @@ describe('SurfaceHost', () => {
 
       await flushGeometry();
 
-      const teleportedHostBefore = document.body.querySelector('.sd-surface-host');
+      const teleportedHostBefore = document.body.querySelector<HTMLElement>('.sd-surface-host');
       expect(teleportedHostBefore).not.toBeNull();
       expect(teleportedHostBefore?.style.position).toBe('');
       expect(layers.style.overflow).toBe('');
@@ -563,7 +568,7 @@ describe('SurfaceHost', () => {
       await wrapper.setProps({ geometryTarget: layers });
       await flushGeometry();
 
-      const teleportedHostAfter = document.body.querySelector('.sd-surface-host');
+      const teleportedHostAfter = document.body.querySelector<HTMLElement>('.sd-surface-host');
       expect(teleportedHostAfter?.style.position).toBe('fixed');
       expect(layers.style.overflow).toBe('hidden');
       expect(wrapper.findComponent(SurfaceDialog).props('scrollLockTarget')).toBe(layers);
@@ -628,7 +633,7 @@ describe('SurfaceHost', () => {
       const { wrapper, superdocRoot } = mountHostInSuperdoc(manager);
       await flushGeometry();
 
-      const host = wrapper.find('.sd-surface-host');
+      const host = wrapper.find<HTMLElement>('.sd-surface-host');
       expect(host.element.style.position).toBe('fixed');
       expect(superdocRoot.querySelector('.superdoc__layers')).not.toBeNull();
 
@@ -662,22 +667,22 @@ describe('SurfaceHost', () => {
       // Mock getBoundingClientRect:
       // - scrollWrapper clips to 0..300 vertically, 0..800 horizontally
       // - layers extends from -100..600 (partially scrolled above wrapper)
-      vi.spyOn(scrollWrapper, 'getBoundingClientRect').mockReturnValue({
-        top: 0,
-        left: 0,
-        right: 800,
-        bottom: 300,
-        width: 800,
-        height: 300,
-      });
-      vi.spyOn(layers, 'getBoundingClientRect').mockReturnValue({
-        top: -100,
-        left: 0,
-        right: 800,
-        bottom: 600,
-        width: 800,
-        height: 700,
-      });
+      vi.spyOn(scrollWrapper, 'getBoundingClientRect').mockReturnValue(
+        domRect({
+          top: 0,
+          left: 0,
+          right: 800,
+          bottom: 300,
+        }),
+      );
+      vi.spyOn(layers, 'getBoundingClientRect').mockReturnValue(
+        domRect({
+          top: -100,
+          left: 0,
+          right: 800,
+          bottom: 600,
+        }),
+      );
 
       const origInnerWidth = window.innerWidth;
       const origInnerHeight = window.innerHeight;
@@ -694,7 +699,7 @@ describe('SurfaceHost', () => {
       });
       await flushGeometry();
 
-      const host = wrapper.find('.sd-surface-host');
+      const host = wrapper.find<HTMLElement>('.sd-surface-host');
       expect(host.element.style.position).toBe('fixed');
       // The host should be clipped by the scroll wrapper:
       // top = max(layers.top=-100, wrapper.top=0, viewport=0) = 0

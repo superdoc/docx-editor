@@ -118,7 +118,7 @@ describe('withInteractionSpan', () => {
 
   it('traces a thenable that has no catch method', async () => {
     const { ended } = installCollector();
-    const thenableOf = (settled: Promise<unknown>): PromiseLike<unknown> => ({
+    const thenableOf = <T>(settled: Promise<T>): PromiseLike<T> => ({
       then(onFulfilled, onRejected) {
         return thenableOf(settled.then(onFulfilled, onRejected));
       },

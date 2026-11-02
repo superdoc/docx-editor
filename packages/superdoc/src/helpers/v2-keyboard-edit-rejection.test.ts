@@ -8,7 +8,7 @@ import {
   V2_EDIT_REJECTED_MESSAGE,
 } from './v2-keyboard-edit-rejection.js';
 
-const shellRejection = (inputKind, editableCommandKind) => ({
+const shellRejection = (inputKind: string, editableCommandKind: string | undefined) => ({
   type: 'mutation:rejected',
   origin: 'document-surface',
   failureSource: 'shell',

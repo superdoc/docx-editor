@@ -1,16 +1,22 @@
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
-import { mount, flushPromises } from '@vue/test-utils';
+import { mount, flushPromises, type VueWrapper } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import WatermarkSurface from './WatermarkSurface.vue';
+import type {
+  WatermarkDialogModel,
+  WatermarkDialogSnapshot,
+  WatermarkDraft,
+  WatermarkPageVariant,
+} from '../../public/ui/watermark-dialog-state.js';
 
-const wrappers = [];
+const wrappers: VueWrapper[] = [];
 afterEach(() => {
   wrappers.splice(0).forEach((wrapper) => wrapper.unmount());
   vi.unstubAllGlobals();
 });
 
-function createSurface(overrides = {}) {
-  let state = {
+function createSurface(overrides: Partial<WatermarkDialogSnapshot> = {}) {
+  let state: WatermarkDialogSnapshot = {
     phase: 'editing',
     draft: {
       kind: 'text',
@@ -50,31 +56,33 @@ function createSurface(overrides = {}) {
     preview: null,
     ...overrides,
   };
-  const listeners = new Set();
-  function update(patch) {
+  const listeners = new Set<(snapshot: WatermarkDialogSnapshot) => void>();
+  function update(patch: Partial<WatermarkDialogSnapshot>) {
     state = { ...state, ...patch };
     listeners.forEach((listener) => listener(state));
   }
   const model = {
     getSnapshot: () => state,
-    subscribe: (listener) => {
+    subscribe: (listener: (snapshot: WatermarkDialogSnapshot) => void) => {
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
-    patchDraft: vi.fn((patch) => update({ draft: { ...state.draft, ...patch }, dirty: true, canApply: true })),
-    setScope: vi.fn((sectionId, variant) => update({ sectionId, variant })),
-    selectWatermarks: vi.fn((selectedIds) => update({ selectedIds })),
+    patchDraft: vi.fn((patch: Partial<WatermarkDraft>) =>
+      update({ draft: { ...state.draft, ...patch }, dirty: true, canApply: true }),
+    ),
+    setScope: vi.fn((sectionId: string | null, variant: WatermarkPageVariant) => update({ sectionId, variant })),
+    selectWatermarks: vi.fn((selectedIds: string[]) => update({ selectedIds })),
     apply: vi.fn(async () => {}),
     reload: vi.fn(async () => {}),
-  };
+  } satisfies WatermarkDialogModel;
   const close = vi.fn();
   const wrapper = mount(WatermarkSurface, { props: { model, close, surfaceId: 'watermark-test' } });
   wrappers.push(wrapper);
   return { wrapper, model, close, update, state: () => state, listeners };
 }
 
-const control = (wrapper, name) => wrapper.get(`[aria-label="${name}"]`);
-const button = (wrapper, text) => wrapper.findAll('button').find((item) => item.text() === text);
+const control = (wrapper: VueWrapper, name: string) => wrapper.get<HTMLInputElement>(`[aria-label="${name}"]`);
+const button = (wrapper: VueWrapper, text: string) => wrapper.findAll('button').find((item) => item.text() === text)!;
 
 describe('WatermarkSurface', () => {
   it('keeps all affected locations available behind a concise expandable summary', () => {
@@ -117,7 +125,7 @@ describe('WatermarkSurface', () => {
     const { wrapper, update, state } = createSurface();
     update({ draft: { ...state().draft, customPlacement: true, customOrientation: false } });
     return nextTick().then(() => {
-      expect(wrapper.get('input[value="diagonal"]').element.checked).toBe(true);
+      expect(wrapper.get<HTMLInputElement>('input[value="diagonal"]').element.checked).toBe(true);
     });
   });
 
@@ -125,8 +133,8 @@ describe('WatermarkSurface', () => {
     const { wrapper, update, state } = createSurface();
     update({ draft: { ...state().draft, kind: 'picture', customPlacement: true, customOrientation: true } });
     await nextTick();
-    expect(wrapper.get('input[value="horizontal"]').element.checked).toBe(false);
-    expect(wrapper.get('input[value="diagonal"]').element.checked).toBe(false);
+    expect(wrapper.get<HTMLInputElement>('input[value="horizontal"]').element.checked).toBe(false);
+    expect(wrapper.get<HTMLInputElement>('input[value="diagonal"]').element.checked).toBe(false);
   });
 
   it('preserves auto sizing while allowing an explicit font size', async () => {
@@ -199,7 +207,7 @@ describe('WatermarkSurface', () => {
   it('prepares a supported local file without applying and permits the same file again', async () => {
     const { wrapper, model, state } = createSurface();
     await wrapper.get('input[value="picture"]').setValue();
-    const input = wrapper.get('input[type="file"]');
+    const input = wrapper.get<HTMLInputElement>('input[type="file"]');
     Object.defineProperty(input.element, 'files', { value: [new File(['image'], 'logo.png', { type: 'image/png' })] });
     await input.trigger('change');
     await vi.waitFor(() => expect(state().draft.src).toBe('data:image/png;base64,aW1hZ2U='));
@@ -211,7 +219,7 @@ describe('WatermarkSurface', () => {
   it('preserves the prior picture after unsupported input or picker cancellation', async () => {
     const { wrapper, state } = createSurface();
     await wrapper.get('input[value="picture"]').setValue();
-    const input = wrapper.get('input[type="file"]');
+    const input = wrapper.get<HTMLInputElement>('input[type="file"]');
     Object.defineProperty(input.element, 'files', {
       configurable: true,
       value: [new File(['bad'], 'image.svg', { type: 'image/svg+xml' })],
@@ -225,11 +233,12 @@ describe('WatermarkSurface', () => {
   });
 
   it('discards file completion after closing and unsubscribes when unmounted', async () => {
-    let reader;
+    let reader: { onload(): void } | undefined;
     vi.stubGlobal(
       'FileReader',
       class {
         result = 'data:image/png;base64,aW1hZ2U=';
+        declare onload: () => void;
         constructor() {
           reader = this;
         }
@@ -238,12 +247,12 @@ describe('WatermarkSurface', () => {
     );
     const { wrapper, model, listeners } = createSurface();
     await wrapper.get('input[value="picture"]').setValue();
-    const input = wrapper.get('input[type="file"]');
+    const input = wrapper.get<HTMLInputElement>('input[type="file"]');
     Object.defineProperty(input.element, 'files', { value: [new File(['image'], 'logo.png', { type: 'image/png' })] });
     await input.trigger('change');
     await button(wrapper, 'Cancel').trigger('click');
     wrapper.unmount();
-    reader.onload();
+    reader!.onload();
     await flushPromises();
     await nextTick();
     expect(model.patchDraft.mock.calls).toEqual([[{ kind: 'picture' }]]);
@@ -253,8 +262,8 @@ describe('WatermarkSurface', () => {
   it('keeps inspection available in readonly mode while disabling draft changes', () => {
     const { wrapper } = createSurface({ readonlyReason: 'This document is read-only.' });
     expect(wrapper.text()).toContain('This document is read-only.');
-    expect(control(wrapper, 'Watermark text').element.closest('fieldset').disabled).toBe(true);
-    expect(control(wrapper, 'Apply to').element.closest('fieldset').disabled).toBe(false);
+    expect(control(wrapper, 'Watermark text').element.closest('fieldset')!.disabled).toBe(true);
+    expect(control(wrapper, 'Apply to').element.closest('fieldset')!.disabled).toBe(false);
     expect(button(wrapper, 'Cancel').attributes('disabled')).toBeUndefined();
   });
 
@@ -275,11 +284,12 @@ describe('WatermarkSurface', () => {
   });
 
   it('discards a pending picture read when the selected watermark changes', async () => {
-    let reader;
+    let reader: { onload(): void } | undefined;
     vi.stubGlobal(
       'FileReader',
       class {
         result = 'data:image/png;base64,aW1hZ2U=';
+        declare onload: () => void;
         constructor() {
           reader = this;
         }
@@ -288,22 +298,23 @@ describe('WatermarkSurface', () => {
     );
     const { wrapper, update, state } = createSurface();
     await wrapper.get('input[value="picture"]').setValue();
-    const input = wrapper.get('input[type="file"]');
+    const input = wrapper.get<HTMLInputElement>('input[type="file"]');
     Object.defineProperty(input.element, 'files', { value: [new File(['image'], 'logo.png', { type: 'image/png' })] });
     await input.trigger('change');
     update({ selectedIds: ['different-watermark'] });
     await nextTick();
-    reader.onload();
+    reader!.onload();
     await flushPromises();
     expect(state().draft.src).toBeUndefined();
   });
 
   it('keeps preparing the picture when an unrelated preview update arrives', async () => {
-    let reader;
+    let reader: { onload(): void } | undefined;
     vi.stubGlobal(
       'FileReader',
       class {
         result = 'data:image/png;base64,aW1hZ2U=';
+        declare onload: () => void;
         constructor() {
           reader = this;
         }
@@ -312,12 +323,12 @@ describe('WatermarkSurface', () => {
     );
     const { wrapper, update, state } = createSurface();
     await wrapper.get('input[value="picture"]').setValue();
-    const input = wrapper.get('input[type="file"]');
+    const input = wrapper.get<HTMLInputElement>('input[type="file"]');
     Object.defineProperty(input.element, 'files', { value: [new File(['image'], 'logo.png', { type: 'image/png' })] });
     await input.trigger('change');
     update({ phase: 'editing' });
     await nextTick();
-    reader.onload();
+    reader!.onload();
     await flushPromises();
     expect(state().draft.src).toBe('data:image/png;base64,aW1hZ2U=');
   });

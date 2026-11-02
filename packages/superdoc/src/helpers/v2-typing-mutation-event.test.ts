@@ -36,13 +36,12 @@ describe('isV2EditableTextMutationEvent', () => {
   });
 
   it('rejects committed command mutations without a forwarded kind (programmatic Document API mutations hydrate immediately)', () => {
-    expect(
-      isV2EditableTextMutationEvent({
-        type: 'mutation:committed',
-        origin: 'command',
-        receipt: { txId: 'tx-1' },
-      }),
-    ).toBe(false);
+    const committedWithoutKind = {
+      type: 'mutation:committed',
+      origin: 'command',
+      receipt: { txId: 'tx-1' },
+    };
+    expect(isV2EditableTextMutationEvent(committedWithoutKind)).toBe(false);
   });
 
   it('rejects non-typing command kinds', () => {

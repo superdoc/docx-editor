@@ -73,7 +73,7 @@ const DEFAULT_MEASUREMENT_UNIT = 'in';
 export const useSuperdocStore = defineStore('superdoc', () => {
   const currentConfig: Ref<InternalConfig | null> = ref(null);
   let exceptionHandler: StoreExceptionHandler | null = null;
-  const commentsStore = useCommentsStore();
+  const commentsStore: { removeCommentsForDocument(documentId: string | null | undefined): void } = useCommentsStore();
   const documents: Ref<StoreDocument[]> = ref([]);
   const documentBounds: Ref<unknown[]> = ref([]);
   const pages: Record<string, PageEntry[]> = reactive({});

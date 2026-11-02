@@ -12,6 +12,7 @@ import type { DocumentReplacementResult } from '../public/document-replacement.j
 import { v4 as uuidv4 } from 'uuid';
 import { nextTick, toRaw } from 'vue';
 import type { HocuspocusProviderWebsocket } from '@hocuspocus/provider';
+import type { Pinia } from 'pinia';
 import type { ContentControlType } from '@superdoc/document-api';
 import JSZip from 'jszip';
 
@@ -925,7 +926,7 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
   declare private app: ReturnType<typeof createSuperdocVueApp>['app'] | undefined;
 
   /** Pinia store root for the SuperDoc Vue app. Set in `#initVueApp`. */
-  pinia: ReturnType<typeof createSuperdocVueApp>['pinia'] | undefined;
+  pinia: Pinia | undefined;
 
   /** Count of editors that have signaled `editorCreate`. */
   readyEditors = 0;
@@ -1656,7 +1657,7 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
    * surface does not pull the Pinia comment model type graph.
    *
    */
-  getComment(commentId: string) {
+  getComment(commentId: string): Record<string, unknown> | null {
     if (typeof commentId !== 'string' || commentId.length === 0) return null;
     return this.commentsStore?.getComment?.(commentId) ?? null;
   }

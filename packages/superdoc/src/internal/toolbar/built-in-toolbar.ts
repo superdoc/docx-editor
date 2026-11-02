@@ -51,6 +51,7 @@ import {
   resolveBuiltInItemCommandId,
 } from './compatibility-catalog.js';
 import { TOOLBAR_ITEM_ALIASES } from './toolbar-item-aliases.js';
+import { isThenable } from '../../helpers/object-guards.js';
 import { createImageFilePicker, resolveImageSrc } from './image-upload.js';
 
 import Toolbar from './built-in/Toolbar.vue';
@@ -135,15 +136,6 @@ function toSelectedValue(value: unknown): ToolbarSelectedValue {
 
 function nonEmptyString(value: unknown): string | undefined {
   return typeof value === 'string' && value ? value : undefined;
-}
-
-function isThenable(value: unknown): value is PromiseLike<unknown> {
-  return (
-    (typeof value === 'object' || typeof value === 'function') &&
-    value !== null &&
-    'then' in value &&
-    typeof value.then === 'function'
-  );
 }
 
 function isToolbarCommandCallback(value: unknown): value is ToolbarCommandCallback {

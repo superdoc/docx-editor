@@ -2,7 +2,7 @@ import { markRawComponent } from '../helpers/mark-raw-component.js';
 import type { HyperlinkTarget, TextAddress } from '@superdoc/document-api';
 import LinkInput from '../internal/toolbar/built-in/LinkInput.vue';
 import { scrollToElement } from '../internal/toolbar/built-in/scroll-helpers.js';
-import { isPlainObject } from '../helpers/object-guards.js';
+import { isPlainObject, isThenable } from '../helpers/object-guards.js';
 import type { SurfaceManager } from '../core/surface-manager.js';
 import type {
   DirectSurfaceRequest,
@@ -211,14 +211,6 @@ interface UseLinkPopoverOptions {
 const FLOATING_SURFACE_ID = 'link-popover';
 const RECENT_OUTSIDE_CLOSE_MS = 500;
 const MAX_ANCHOR_NAVIGATION_STEPS = 4;
-
-const isThenable = (value: unknown): boolean =>
-  Boolean(
-    value &&
-    (typeof value === 'object' || typeof value === 'function') &&
-    'then' in value &&
-    typeof value.then === 'function',
-  );
 
 function isLinkPopoverDocumentApi(value: unknown): value is LinkPopoverDocumentApi {
   return isPlainObject(value) || typeof value === 'function';

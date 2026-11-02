@@ -1,3 +1,5 @@
+import { isThenable } from './object-guards.js';
+
 type InteractionSpan = { traceId: string; spanId: string };
 
 type InteractionMeta = Record<string, unknown> | undefined;
@@ -9,12 +11,6 @@ type EndSpan = (span: InteractionSpan, meta: InteractionMeta) => void;
 const isStartSpan = (value: unknown): value is StartSpan => typeof value === 'function';
 
 const isEndSpan = (value: unknown): value is EndSpan => typeof value === 'function';
-
-const isThenable = (value: unknown): value is PromiseLike<unknown> =>
-  (typeof value === 'object' || typeof value === 'function') &&
-  value !== null &&
-  'then' in value &&
-  typeof value.then === 'function';
 
 function safeTraceCollector(): object | null {
   try {

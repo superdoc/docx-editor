@@ -1,5 +1,6 @@
 import { ref, computed, watch, type Ref } from 'vue';
 import { markRawComponent } from '../helpers/mark-raw-component.js';
+import { isThenable } from '../helpers/object-guards.js';
 import { createReplaceContinuation } from './replace-continuation.js';
 import type { SurfaceManager } from '../core/surface-manager.js';
 import type {
@@ -46,15 +47,6 @@ type UseFindReplaceOptions = {
    */
   getSuperDocUI?: () => { search?: SearchController | null } | null | undefined;
 };
-
-function isThenable(value: unknown): boolean {
-  return (
-    (typeof value === 'object' || typeof value === 'function') &&
-    value !== null &&
-    'then' in value &&
-    typeof value.then === 'function'
-  );
-}
 
 const DEFAULT_TEXTS: ResolvedFindReplaceTexts = {
   findPlaceholder: 'Find',

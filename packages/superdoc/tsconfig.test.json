@@ -70,6 +70,7 @@
     "src/helpers/comment-small-screen.test.ts",
     "src/helpers/interaction-trace.test.ts",
     "src/helpers/is-finite-number.test.ts",
+    "src/helpers/object-guards.test.ts",
     "src/helpers/v2-author-required-rejection.test.ts",
     "src/helpers/v2-bulk-decision-event.test.ts",
     "src/helpers/v2-keyboard-edit-rejection.test.ts",

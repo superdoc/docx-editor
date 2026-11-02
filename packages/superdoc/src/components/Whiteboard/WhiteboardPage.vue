@@ -1,9 +1,13 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { PropType } from 'vue';
-import type { WhiteboardPage } from '../../core/whiteboard/WhiteboardPage';
 import { isFiniteNumber } from '../../helpers/is-finite-number';
-import type { WhiteboardDropTarget, WhiteboardPageOffset, WhiteboardPageSize } from './whiteboard-types';
+import type {
+  WhiteboardDropTarget,
+  WhiteboardPageOffset,
+  WhiteboardPageSize,
+  WhiteboardPageView,
+} from './whiteboard-types';
 
 type WhiteboardDropEvent = DragEvent & { dataTransfer: DataTransfer };
 
@@ -13,7 +17,7 @@ const props = defineProps({
     required: true,
   },
   page: {
-    type: Object as PropType<WhiteboardPage>,
+    type: Object as PropType<WhiteboardPageView>,
     required: true,
   },
   pageSize: {

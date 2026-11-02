@@ -1,9 +1,13 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import type { PropType } from 'vue';
-import type { WhiteboardPage as WhiteboardPageModel } from '../../core/whiteboard/WhiteboardPage';
 import WhiteboardPage from './WhiteboardPage.vue';
-import type { WhiteboardDropTarget, WhiteboardPageOffset, WhiteboardPageSize } from './whiteboard-types';
+import type {
+  WhiteboardDropTarget,
+  WhiteboardPageOffset,
+  WhiteboardPageSize,
+  WhiteboardPageView,
+} from './whiteboard-types';
 
 const props = defineProps({
   whiteboard: {
@@ -11,7 +15,7 @@ const props = defineProps({
     required: true,
   },
   pages: {
-    type: Array as PropType<WhiteboardPageModel[]>,
+    type: Array as PropType<WhiteboardPageView[]>,
     default: () => [],
   },
   pageSizes: {

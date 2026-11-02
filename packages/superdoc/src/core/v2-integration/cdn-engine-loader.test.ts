@@ -7,11 +7,14 @@ vi.mock('./v2-integration.js', () => ({ configureDefaultV2IntegrationLoader }));
 const { configureCdnEngineLoader, loadStylesheetOnce, resolveDocxEngineCdnBaseUrl } =
   await import('./cdn-engine-loader.js');
 const loadStateKey = Symbol.for('superdoc.docx-engine.cdn-load-state');
+const loaderGlobal: Record<symbol, Map<string, Promise<unknown>> | Record<string, unknown> | undefined> = globalThis;
+const linkDocument: { querySelectorAll(selectors: string): Iterable<HTMLLinkElement> } = document;
+const linkHead: { appendChild(node: HTMLLinkElement): HTMLLinkElement } = document.head;
 
 describe('DOCX Engine CDN loader', () => {
   beforeEach(() => {
     configureDefaultV2IntegrationLoader.mockClear();
-    delete globalThis[loadStateKey];
+    delete loaderGlobal[loadStateKey];
   });
 
   afterEach(() => {
@@ -36,16 +39,16 @@ describe('DOCX Engine CDN loader', () => {
   );
 
   it('replaces an invalid shared cache value with a Map', async () => {
-    vi.spyOn(document.head, 'appendChild').mockImplementation((node) => {
+    vi.spyOn(linkHead, 'appendChild').mockImplementation((node) => {
       queueMicrotask(() => node.dispatchEvent(new Event('error')));
       return node;
     });
-    globalThis[loadStateKey] = { polluted: true };
+    loaderGlobal[loadStateKey] = { polluted: true };
     configureCdnEngineLoader({ engineVersion: '0.1.0', buildBaseUrl: 'https://cdn.example.test/engine' });
     const loader = configureDefaultV2IntegrationLoader.mock.calls[0][0];
 
     const result = loader();
-    expect(globalThis[loadStateKey]).toBeInstanceOf(Map);
+    expect(loaderGlobal[loadStateKey]).toBeInstanceOf(Map);
     await expect(result).rejects.toThrow();
   });
 
@@ -55,9 +58,9 @@ describe('DOCX Engine CDN loader', () => {
     staleLink.rel = 'stylesheet';
     staleLink.href = url;
     const removeStaleLink = vi.spyOn(staleLink, 'remove');
-    vi.spyOn(document, 'querySelectorAll').mockReturnValue([staleLink]);
-    let replacement;
-    vi.spyOn(document.head, 'appendChild').mockImplementation((node) => {
+    vi.spyOn(linkDocument, 'querySelectorAll').mockReturnValue([staleLink]);
+    let replacement: HTMLLinkElement | undefined;
+    vi.spyOn(linkHead, 'appendChild').mockImplementation((node) => {
       replacement = node;
       return node;
     });
@@ -66,11 +69,11 @@ describe('DOCX Engine CDN loader', () => {
 
     expect(removeStaleLink).toHaveBeenCalledOnce();
     expect(replacement).not.toBe(staleLink);
-    expect(replacement.dataset.superdocDocxEngineStatus).toBe('loading');
-    replacement.dispatchEvent(new Event('load'));
+    expect(replacement!.dataset.superdocDocxEngineStatus).toBe('loading');
+    replacement!.dispatchEvent(new Event('load'));
 
     await expect(result).resolves.toBeUndefined();
-    expect(replacement.dataset.superdocDocxEngineStatus).toBe('loaded');
+    expect(replacement!.dataset.superdocDocxEngineStatus).toBe('loaded');
   });
 
   it('shares a managed stylesheet request that is still loading', async () => {
@@ -79,7 +82,7 @@ describe('DOCX Engine CDN loader', () => {
     link.rel = 'stylesheet';
     link.href = url;
     link.dataset.superdocDocxEngineStatus = 'loading';
-    vi.spyOn(document, 'querySelectorAll').mockReturnValue([link]);
+    vi.spyOn(linkDocument, 'querySelectorAll').mockReturnValue([link]);
 
     const first = loadStylesheetOnce(url);
     const second = loadStylesheetOnce(url);
@@ -91,9 +94,9 @@ describe('DOCX Engine CDN loader', () => {
 
   it('retries a managed stylesheet request after a transient failure', async () => {
     const url = 'https://cdn.example.test/engine/dist-cdn/style.css';
-    const links = [];
-    vi.spyOn(document, 'querySelectorAll').mockImplementation(() => links);
-    vi.spyOn(document.head, 'appendChild').mockImplementation((node) => {
+    const links: HTMLLinkElement[] = [];
+    vi.spyOn(linkDocument, 'querySelectorAll').mockImplementation(() => links);
+    vi.spyOn(linkHead, 'appendChild').mockImplementation((node) => {
       links.push(node);
       vi.spyOn(node, 'remove').mockImplementation(() => {
         links.splice(links.indexOf(node), 1);
@@ -115,7 +118,7 @@ describe('DOCX Engine CDN loader', () => {
   });
 
   it('clears a rejected engine load so a later initialization can retry', async () => {
-    vi.spyOn(document.head, 'appendChild').mockImplementation((node) => {
+    vi.spyOn(linkHead, 'appendChild').mockImplementation((node) => {
       queueMicrotask(() => node.dispatchEvent(new Event('error')));
       return node;
     });
@@ -124,7 +127,7 @@ describe('DOCX Engine CDN loader', () => {
 
     const first = loader();
     await expect(first).rejects.toThrow();
-    expect(globalThis[loadStateKey].size).toBe(0);
+    expect(loaderGlobal[loadStateKey]!.size).toBe(0);
 
     const second = loader();
     expect(second).not.toBe(first);
@@ -139,7 +142,7 @@ describe('DOCX Engine CDN loader', () => {
     link.dataset.superdocDocxEngineStatus = 'loading';
     let connected = true;
     vi.spyOn(link, 'isConnected', 'get').mockImplementation(() => connected);
-    vi.spyOn(document, 'querySelectorAll').mockReturnValue([link]);
+    vi.spyOn(linkDocument, 'querySelectorAll').mockReturnValue([link]);
 
     const result = loadStylesheetOnce(url);
     connected = false;

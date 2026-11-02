@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vite-plus/test';
 import { mount } from '@vue/test-utils';
 import WhiteboardLayer from './WhiteboardLayer.vue';
 
-const makePage = (pageIndex) => ({
+const makePage = (pageIndex: number) => ({
   pageIndex,
   size: { width: 100, height: 120 },
   mount: vi.fn(),

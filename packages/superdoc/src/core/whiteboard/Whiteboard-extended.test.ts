@@ -17,8 +17,8 @@ describe('Whiteboard extended', () => {
       wb.setPageSize(0, { width: 100, height: 100 });
       wb.setPageSize(1, { width: 100, height: 100 });
       wb.setTool('erase');
-      expect(wb.getPage(0).getTool()).toBe('erase');
-      expect(wb.getPage(1).getTool()).toBe('erase');
+      expect(wb.getPage(0)!.getTool()).toBe('erase');
+      expect(wb.getPage(1)!.getTool()).toBe('erase');
     });
 
     it('setEnabled updates state and emits', () => {
@@ -36,9 +36,9 @@ describe('Whiteboard extended', () => {
       const wb = new Whiteboard();
       wb.setPageSize(0, { width: 100, height: 100 });
       wb.setEnabled(true);
-      expect(wb.getPage(0).isEnabled()).toBe(true);
+      expect(wb.getPage(0)!.isEnabled()).toBe(true);
       wb.setEnabled(false);
-      expect(wb.getPage(0).isEnabled()).toBe(false);
+      expect(wb.getPage(0)!.isEnabled()).toBe(false);
     });
   });
 
@@ -127,6 +127,7 @@ describe('Whiteboard extended', () => {
 
     it('handles missing pages gracefully in setWhiteboardData', () => {
       const wb = new Whiteboard();
+      // @ts-expect-error json is required
       expect(() => wb.setWhiteboardData()).not.toThrow();
       expect(() => wb.setWhiteboardData({})).not.toThrow();
       expect(wb.getPages()).toHaveLength(0);

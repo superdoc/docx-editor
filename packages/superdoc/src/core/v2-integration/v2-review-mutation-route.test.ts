@@ -24,7 +24,7 @@ const PKG_SRC = join(__dirname, '..', '..');
 // files moves, the guard should fail loudly so coverage is updated instead of
 // silently disappearing.
 const REVIEW_MUTATION_SURFACES = [
-  'stores/comments-store.js',
+  'stores/comments-store.ts',
   'components/CommentsLayer/CommentDialog.vue',
   'components/CommentsLayer/commentsList/commentsList.vue',
   'SuperDoc.vue',

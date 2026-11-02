@@ -99,6 +99,7 @@ export default defineConfig({
         files: [
           'packages/superdoc/src/helpers/object-guards.test.ts',
           'packages/superdoc/src/helpers/interaction-trace.test.ts',
+          'packages/superdoc/src/stores/helpers/pending-selection-snapshot.test.ts',
         ],
         rules: { 'unicorn/no-thenable': 'off' },
       },
@@ -148,8 +149,6 @@ export default defineConfig({
       'packages/superdoc/src/SuperDoc.vue',
       'packages/superdoc/src/components/CommentsLayer/**/*.vue',
       'packages/superdoc/src/components/CommentsLayer/**/*.test.*',
-      'packages/superdoc/src/stores/comments-store.test.*',
-      'packages/superdoc/src/stores/helpers/**/*.test.*',
       'packages/superdoc/src/public/ui.test.ts',
     ],
   },

@@ -14,7 +14,7 @@ import { storeToRefs } from 'pinia';
 import { useSuperDocInstance } from '../../composables/use-superdoc-instance';
 import type { SuperDoc } from '../../core/SuperDoc.js';
 import type { Editor, User } from '../../core/types/index.js';
-import { useCommentsStore } from '../../stores/comments-store';
+import { useCommentsStore, type CommentsStoreEditor } from '../../stores/comments-store';
 import { useSuperdocStore } from '../../stores/superdoc-store';
 import { superdocIcons } from '../../icons.js';
 import {
@@ -51,7 +51,7 @@ type MutationOutcome = {
   success?: boolean;
   reason?: string | null;
   code?: string;
-  detail?: string;
+  detail?: unknown;
 };
 
 type CapabilityState = { canWrite?: boolean; canDecide?: boolean; reason?: string | null };
@@ -69,11 +69,13 @@ type V2TrackedChangesAdapter = {
   getCapabilityState?(): CapabilityState | null | undefined;
 };
 
-type V2Host = { subscribe?(listener: () => void): (() => void) | undefined };
+type V2Host = NonNullable<CommentsStoreEditor['host']> & {
+  subscribe?(listener: () => void): (() => void) | undefined;
+};
 
 type LegacyCommentCommands = {
   setCursorById(id: string | undefined, options?: { activeCommentId?: string }): boolean;
-  setActiveComment(options: { commentId: string | undefined }): unknown;
+  setActiveComment(options: { commentId: string | null | undefined }): unknown;
 };
 
 type DialogEditor = Editor & {
@@ -167,7 +169,7 @@ type DialogCommentsStore = {
 
 type DialogCommentsStoreRefs = {
   suppressInternalExternal: Ref<boolean>;
-  getConfig: Ref<{ readOnly: boolean; allowResolve: boolean }>;
+  getConfig: Ref<{ readOnly?: boolean; allowResolve?: boolean }>;
   activeComment: Ref<string | null | undefined>;
   activeFloatingCommentInstanceId: Ref<string | null>;
   floatingCommentsOffset: Ref<number>;
@@ -175,7 +177,7 @@ type DialogCommentsStoreRefs = {
   currentCommentText: Ref<string>;
   currentCommentMentions: Ref<CommentModel['mentions']>;
   editingCommentId: Ref<string | null | undefined>;
-  editorCommentPositions: Ref<Record<string, PositionEntry | undefined>>;
+  editorCommentPositions: Ref<Record<string, PositionEntry | null | undefined>>;
   isCommentHighlighted: Ref<boolean>;
 };
 

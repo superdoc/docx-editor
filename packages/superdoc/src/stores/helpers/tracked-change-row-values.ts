@@ -1,20 +1,12 @@
 import { toRaw } from 'vue';
 import type { TrackChangeCustomAttribute } from '@superdoc/document-api';
+import type { TrackedChangeRowImagePreview } from '../../components/CommentsLayer/comment-params.js';
 import { isFiniteNumber } from '../../helpers/is-finite-number.js';
 import { isPlainObject } from '../../helpers/object-guards.js';
 
 type IndexableObject = Readonly<Record<string, unknown>>;
 
 type TrackedChangeDetailLine = { excerpt: string; label: string };
-
-type TrackedChangeRowImagePreview = {
-  src: string;
-  contentType?: string;
-  role?: string;
-  width?: number;
-  height?: number;
-  alt: string;
-};
 
 const isObjectOrArray = (value: unknown): value is IndexableObject => isPlainObject(value) || Array.isArray(value);
 

@@ -30,13 +30,13 @@ export type CommentPositions = Record<string, CommentPositionEntry | undefined>;
 
 type PositionMatch = { key: string; entry: CommentPositionEntry } | { key: null; entry: null };
 
-type CommentIdentitySources = {
-  getComments: () => CommentIdentityRow[];
-  getReviewDirectory: () => CommentIdentityRow[];
+type CommentIdentitySources<Row extends CommentIdentityRow> = {
+  getComments: () => Row[];
+  getReviewDirectory: () => Row[];
   getPositions: () => CommentPositions | null | undefined;
 };
 
-type CommentReference = CommentIdentityRow | string | number | null | undefined;
+type CommentReference<Row extends CommentIdentityRow> = Row | string | number | null | undefined;
 
 const NO_POSITION_MATCH: PositionMatch = { key: null, entry: null };
 
@@ -86,7 +86,11 @@ export const trackedChangeThreadParentIdForComment = (comment: CommentIdentityRo
   return resolveTrackedChangeThreadParentId(comment);
 };
 
-export const createCommentIdentity = ({ getComments, getReviewDirectory, getPositions }: CommentIdentitySources) => {
+export const createCommentIdentity = <Row extends CommentIdentityRow>({
+  getComments,
+  getReviewDirectory,
+  getPositions,
+}: CommentIdentitySources<Row>) => {
   const currentPositions = (): CommentPositions => getPositions() || {};
 
   const positionEntriesByAlias = computed(() => {
@@ -112,7 +116,7 @@ export const createCommentIdentity = ({ getComments, getReviewDirectory, getPosi
     return positionEntriesByAlias.value.get(normalizedId) ?? NO_POSITION_MATCH;
   };
 
-  const getTrackedChangeCommentByPositionAlias = (id: unknown): CommentIdentityRow | null => {
+  const getTrackedChangeCommentByPositionAlias = (id: unknown): Row | null => {
     const { entry: targetEntry } = getPositionEntryByAlias(id);
     if (!targetEntry) return null;
 
@@ -131,8 +135,8 @@ export const createCommentIdentity = ({ getComments, getReviewDirectory, getPosi
   const commentIdentityIndex = computed(() => {
     const list = getComments();
     if (!isReactive(list)) return null;
-    const primary = new Map<string, CommentIdentityRow>();
-    const aliases = new Map<string, CommentIdentityRow>();
+    const primary = new Map<string, Row>();
+    const aliases = new Map<string, Row>();
     for (const comment of list) {
       if (!isReactive(comment)) return null;
       for (const key of ['commentId', 'importedId', 'trackedChangeAnchorKey', 'trackedChange']) {
@@ -152,14 +156,14 @@ export const createCommentIdentity = ({ getComments, getReviewDirectory, getPosi
     return { primary, aliases };
   });
 
-  const getComment = (id: unknown): CommentIdentityRow | null => {
+  const getComment = (id: unknown): Row | null => {
     if (id === undefined || id === null) return null;
-    const byPrimaryId = (c: CommentIdentityRow) => c.commentId == id;
-    const byAliasId = (c: CommentIdentityRow) =>
+    const byPrimaryId = (c: Row) => c.commentId == id;
+    const byAliasId = (c: Row) =>
       c.importedId == id ||
       c.trackedChangeAnchorKey == id ||
       (c?.trackedChange && buildTrackedChangeImportedPositionId(c.importedId) == id);
-    const findIn = (list: CommentIdentityRow[]) => list.find(byPrimaryId) ?? list.find(byAliasId);
+    const findIn = (list: Row[]) => list.find(byPrimaryId) ?? list.find(byAliasId);
     const lookupIndexed = (key: string) => {
       const index = commentIdentityIndex.value;
       return index ? (index.primary.get(key) ?? index.aliases.get(key)) : findIn(getComments());
@@ -168,12 +172,12 @@ export const createCommentIdentity = ({ getComments, getReviewDirectory, getPosi
     return comment ?? findIn(getReviewDirectory()) ?? getTrackedChangeCommentByPositionAlias(id);
   };
 
-  const getThreadParent = (comment: CommentIdentityRow | null | undefined): CommentIdentityRow | null | undefined => {
+  const getThreadParent = (comment: Row | null | undefined): Row | null | undefined => {
     if (!comment?.parentCommentId) return comment;
     return getComment(comment.parentCommentId);
   };
 
-  const getCommentPositionKey = (commentOrId: CommentIdentityRow | string | null | undefined): unknown => {
+  const getCommentPositionKey = (commentOrId: Row | string | null | undefined): unknown => {
     if (!commentOrId) return null;
 
     const positions = currentPositions();
@@ -192,7 +196,7 @@ export const createCommentIdentity = ({ getComments, getReviewDirectory, getPosi
     return trackedChangeAnchorKey ?? commentId ?? importedPositionId ?? importedId ?? null;
   };
 
-  const getCommentAliasIds = (commentOrId: CommentReference): string[] => {
+  const getCommentAliasIds = (commentOrId: CommentReference<Row>): string[] => {
     if (commentOrId === undefined || commentOrId === null) return [];
 
     const rawId = typeof commentOrId === 'object' ? null : commentOrId;
@@ -225,7 +229,7 @@ export const createCommentIdentity = ({ getComments, getReviewDirectory, getPosi
       });
   };
 
-  const resolveCommentPositionEntry = (commentOrId: CommentReference, preferredId?: unknown): PositionMatch => {
+  const resolveCommentPositionEntry = (commentOrId: CommentReference<Row>, preferredId?: unknown): PositionMatch => {
     const positions = currentPositions();
     const comment = typeof commentOrId === 'object' ? commentOrId : getComment(commentOrId);
     const seen = new Set<string>();

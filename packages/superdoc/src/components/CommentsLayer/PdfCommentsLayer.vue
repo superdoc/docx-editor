@@ -38,7 +38,7 @@ type PdfComment = {
   selection?: {
     source?: string | null;
     page?: number | null;
-    documentId?: string | null;
+    documentId?: unknown;
     selectionBounds?: PdfSelectionBounds | null;
   } | null;
 };

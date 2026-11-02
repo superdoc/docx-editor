@@ -28,9 +28,9 @@ export type V2ReviewCatalogSeedResult = { ok: boolean; reason?: string };
 
 export type V2VisibleReviewComments = { ok: boolean; items?: unknown[]; unresolvedIds?: string[]; reason?: string };
 
-export type V2CommentInputOptions = { fileId: string | null; fileType: string | null };
-
 export type V2ReviewAdapterDocumentId = string | number | null;
+
+export type V2CommentInputOptions = { fileId: V2ReviewAdapterDocumentId; fileType: string | null };
 
 export interface V2CommentsAdapter {
   documentId?: V2ReviewAdapterDocumentId;
@@ -72,7 +72,7 @@ export type V2TrackedChangeDecisionResult = TrackedChangeDecisionOutcome & {
 export type V2TrackedChangeCommentParams = {
   event?: string | null;
   changeId?: string | number | null;
-  documentId?: string | null;
+  documentId?: V2ReviewAdapterDocumentId;
   trackedChangeText?: string | null;
   trackedChangeType?: string | null;
   trackedChangeDisplayType?: string | null;

@@ -13,16 +13,22 @@ import type { Document as SuperDocDocument } from '../../core/types/index.js';
 import CommentDialog from './CommentDialog.vue';
 import { isFiniteNumber } from '../../helpers/is-finite-number.js';
 import type { CommentModel } from './use-comment';
+import type {
+  CommittedReviewPresentation,
+  DecisionContinuityRequest,
+  ReviewContextInput,
+  ReviewInstance,
+  ReviewPositionEntry,
+  ReviewViewport,
+  ViewportRange,
+} from '../../stores/helpers/review-presentation.js';
 import {
   resolveRemovedReviewCardContinuityTarget,
   resolveOffscreenFloatingCardTop,
   shouldMountFloatingCommentDialog,
 } from './floating-comment-positioning.js';
 
-type PositionEntry = {
-  pageIndex?: number | null;
-  bounds?: { top?: number; bottom?: number } | null;
-};
+type PositionEntry = ReviewPositionEntry;
 
 type FloatingInstance = {
   id: string;
@@ -34,38 +40,7 @@ type FloatingInstance = {
   mount?: boolean;
 };
 
-type ReviewCoordinate = {
-  documentEpoch: string;
-  mountId: string;
-  commitSequence: number;
-  reviewVersion: number;
-};
-
-type ReviewInstance = {
-  id: string;
-  rowId: string;
-  threadId: string;
-  pageIndex: number | null;
-  positionKey: string | null;
-  positionEntry: PositionEntry | null;
-  anchorTop: number;
-  anchorBottom: number;
-  top: number;
-  height: number;
-  isPrimary: boolean;
-  isOffscreenReviewCard: boolean;
-  mount: boolean;
-};
-
 type CommittedInstance = ReviewInstance & { comment: CommentModel; rowVersion: number };
-
-type DecisionContinuityRequest = ReviewCoordinate & {
-  removedInstanceId: string;
-  removedRowVersion: number;
-  targetInstanceId: string;
-  targetRowVersion: number;
-  top: number;
-};
 
 type WorkerDecisionContinuity = {
   documentId: string;
@@ -73,40 +48,9 @@ type WorkerDecisionContinuity = {
   request: DecisionContinuityRequest;
 };
 
-type ViewportRange = { top: number; bottom: number };
-
-type ReviewViewport = ViewportRange & {
-  width: number;
-  scale: number;
-  stageOffsetX: number;
-  stageOffsetY: number;
-};
-
-type ReviewContextInput = {
-  decisionContinuity: DecisionContinuityRequest | null;
-  activeThreadId: string | null;
-  activeInstanceId: string | null;
-  editingRowId: string | null;
-  retainedThreadIds: string[];
-  visibility: { comments: boolean; trackedChanges: boolean };
-  viewport: ReviewViewport;
-  pending: { anchorTop: number | null; height: number } | null;
-  measurements: { instanceId: string; rowVersion: number; height: number; fontRevision?: number }[];
-};
-
-type ReviewPresentation = {
-  instances: ReviewInstance[];
-  rowVersions: Record<string, number | undefined>;
-  coordinate?: ReviewCoordinate | null;
-  fontRevision?: number;
-  readPaintOrigin?: () => { left: number; top: number } | null;
-  readFontRevision?: () => number;
-  updateContext: (input: ReviewContextInput, readViewport?: () => ReviewViewport | null) => void;
-};
-
 type FloatingCommentsStore = {
   clearInstantSidebarAlignment: () => void;
-  committedReviewPresentations: Record<string, ReviewPresentation | undefined>;
+  committedReviewPresentations: Record<string, CommittedReviewPresentation | undefined>;
   commentsList: CommentModel[];
   getFloatingCommentInstances: FloatingInstance[];
   belongsToDocument: (
@@ -121,7 +65,7 @@ type FloatingCommentsStore = {
 type FloatingCommentsStoreRefs = {
   activeComment: Ref<string | null>;
   activeFloatingCommentInstanceId: Ref<string | null>;
-  editorCommentPositions: Ref<Record<string, PositionEntry | undefined>>;
+  editorCommentPositions: Ref<Record<string, PositionEntry | null | undefined>>;
   pendingComment: Ref<CommentModel | null>;
   editingCommentId: Ref<string | null>;
   instantSidebarAlignmentTargetY: Ref<number | null>;

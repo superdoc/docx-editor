@@ -26,7 +26,7 @@ type CommittedReviewPresentation = {
   groupOrder: { open: readonly CommentId[]; resolved: readonly CommentId[] };
 };
 
-type CommittedReviewPresentations = Readonly<Record<string, CommittedReviewPresentation>>;
+type CommittedReviewPresentations = Readonly<Record<string, CommittedReviewPresentation | undefined>>;
 
 const compareByCreatedTime = (a: GroupableComment, b: GroupableComment): number =>
   (a.createdTime ?? 0) - (b.createdTime ?? 0);
@@ -73,6 +73,7 @@ export const groupCommittedComments = <Comment extends GroupableComment>(
     isVisible,
   );
   for (const [documentId, presentation] of Object.entries(presentations)) {
+    if (!presentation) continue;
     grouped.parentComments.push(...visibleRowsInOrder(documentId, presentation.groupOrder.open));
     grouped.resolvedComments.push(...visibleRowsInOrder(documentId, presentation.groupOrder.resolved));
   }

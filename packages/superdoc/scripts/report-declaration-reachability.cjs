@@ -9,13 +9,12 @@
  * actually parse vs how many are shipped. The output is data for the
  * SD-2952 trim-emitted-types slice (step 4).
  *
- * This script is **instrumentation, not a gate**:
- *   - It DOES exit 1 on script bugs, missing dist, malformed package
- *     exports, or unreadable type entry files. "Informational" means
- *     "metric only," not "broken script ignored."
- *   - It does NOT exit 1 on a low ratio. There is no threshold yet;
- *     we are establishing the measurement before deciding what
- *     unreachable emit is harmless byproduct vs. avoidable noise.
+ * Exit status:
+ *   - 1 on script bugs, missing dist, malformed package exports, or
+ *     unreadable type entry files.
+ *   - 1 when a declaration under a PRIVATE_DECLARATION_DIRECTORIES entry
+ *     is reachable from a typed export.
+ *   - Never on a low ratio; the ratio is a measurement, not a threshold.
  *
  * Walker semantics:
  *   - Resolves relative `from '../foo.js'` and `import('../foo.js')`
@@ -173,6 +172,13 @@ while (queue.length > 0) {
 }
 
 const reachableInDist = [...visited].filter((f) => allDtsSet.has(f));
+
+const PRIVATE_DECLARATION_DIRECTORIES = ['superdoc/src/stores/'];
+const toDistPath = (file) => path.relative(distRoot, file).split(path.sep).join('/');
+const reachablePrivate = reachableInDist
+  .map(toDistPath)
+  .filter((file) => PRIVATE_DECLARATION_DIRECTORIES.some((directory) => file.startsWith(directory)))
+  .sort();
 const total = allDtsFiles.length;
 const reachable = reachableInDist.length;
 const pct = total === 0 ? 0 : ((reachable / total) * 100).toFixed(1);
@@ -200,5 +206,12 @@ for (const b of buckets) {
   console.log(`  ${b.padEnd(20)} ${String(r).padStart(5)} / ${String(t).padStart(5)} (${bp}%)`);
 }
 console.log();
-console.log('Note: instrumentation only. The ratio is not a CI gate (SD-2952 step 3).');
-console.log('      Use the bucket breakdown to inform SD-2952 step 4 (trim unreachable emit).');
+
+if (reachablePrivate.length > 0) {
+  console.error(
+    `[report-declaration-reachability] Private declarations are reachable from the published types (PRIVATE_DECLARATION_DIRECTORIES: ${PRIVATE_DECLARATION_DIRECTORIES.join(', ')}):`,
+  );
+  for (const file of reachablePrivate) console.error(`  ${file}`);
+  process.exit(1);
+}
+console.log(`No declaration under ${PRIVATE_DECLARATION_DIRECTORIES.join(', ')} is reachable from the published types.`);

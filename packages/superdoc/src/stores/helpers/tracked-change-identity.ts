@@ -3,7 +3,7 @@ import { isPlainObject } from '../../helpers/object-guards.js';
 
 type TrackedChangeAnchorParts = { storyKey: string; rawId: string };
 
-export const BODY_TRACKED_CHANGE_STORY: BodyStoryLocator = { kind: 'story', storyType: 'body' };
+export const BODY_TRACKED_CHANGE_STORY = { kind: 'story', storyType: 'body' } satisfies BodyStoryLocator;
 
 export const normalizeCommentId = (id: unknown): string | null => (id === undefined || id === null ? null : String(id));
 

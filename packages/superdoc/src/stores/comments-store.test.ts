@@ -3966,7 +3966,7 @@ describe('comments-store committed review-window apply', () => {
       computedRuns++;
       return store.committedReviewPresentations['doc-1'].instances;
     });
-    instances.value;
+    void instances.value;
     computedRuns = 0;
     const next = {
       ...presentation,
@@ -3983,7 +3983,7 @@ describe('comments-store committed review-window apply', () => {
       },
     });
     expect(apply({ preparedReview: { ...preparedReview, reuseCatalog: true, presentation: next } }).ok).toBe(true);
-    instances.value;
+    void instances.value;
     expect.soft(store.committedReviewPresentations['doc-1']).toBe(presentation);
     expect.soft(computedRuns).toBe(0);
     expect(clones).toBe(0);

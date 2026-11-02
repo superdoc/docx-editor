@@ -34,7 +34,7 @@
   "public/ui/watermark-controller.ts": {
     "host": 3
   },
-  "stores/comments-store.js": {
+  "stores/comments-store.ts": {
     "host": 1,
     "handles": 1,
     "reviewBridge": 3,

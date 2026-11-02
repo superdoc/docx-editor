@@ -1,4 +1,4 @@
-import type { TrackChangeCustomAttribute, TrackChangeImagePreview } from '@superdoc/document-api';
+import type { TrackChangeCustomAttribute } from '@superdoc/document-api';
 import type { StoryLocator } from '../../core/types/index.js';
 
 export type TrackedChangeDecision = 'accept' | 'reject';
@@ -11,8 +11,17 @@ export type CommentAuthor = { name?: string | null; email?: string | null };
 
 export type TrackedChangeDetailLine = { excerpt: string; label: string };
 
+export type TrackedChangeRowImagePreview = {
+  src: string;
+  contentType?: string;
+  role?: string;
+  width?: number;
+  height?: number;
+  alt: string;
+};
+
 export type CommentSelectionParams = {
-  documentId?: string | null;
+  documentId?: unknown;
   page?: number;
   selectionBounds?: Partial<SelectionBounds> | null;
   source?: string | null;
@@ -44,7 +53,7 @@ export type CommentInputParams = CommentIdentity & {
   importedAuthor?: CommentAuthor | null;
   docxCommentJSON?: unknown;
   commentText?: string;
-  selection?: CommentSelectionParams;
+  selection?: CommentSelectionParams | null;
   trackedChange?: boolean;
   trackedChangeType?: string | null;
   trackedChangeText?: string | null;
@@ -60,7 +69,7 @@ export type CommentInputParams = CommentIdentity & {
   deletedText?: string | null;
   trackedChangeLabel?: string | null;
   trackedChangeDetailLines?: TrackedChangeDetailLine[] | null;
-  trackedChangeImagePreview?: TrackChangeImagePreview | null;
+  trackedChangeImagePreview?: TrackedChangeRowImagePreview | null;
   customAttributes?: readonly TrackChangeCustomAttribute[] | null;
   resolvedTime?: number | null;
   resolvedById?: string | null;

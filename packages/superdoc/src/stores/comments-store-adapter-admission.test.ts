@@ -1,10 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { createPinia, setActivePinia } from 'pinia';
+import type { ReceiptSuccess } from '@superdoc/document-api';
 import { useCommentsStore } from './comments-store.js';
+import useComment from '../components/CommentsLayer/use-comment.js';
 import { makeV2CommentsAdapter, makeV2TrackedChangesAdapter } from '../test-support/v2-review-adapters.js';
 
-function makeSuperdoc(adapter: unknown) {
-  return { activeEditor: { editorVersion: 2, v2Comments: adapter }, emit: vi.fn() };
+type StoreHost = Parameters<ReturnType<typeof useCommentsStore>['setActiveComment']>[0];
+
+function makeSuperdoc(adapter: unknown): StoreHost {
+  return { activeEditor: { editorVersion: 2, v2Comments: adapter }, config: {}, emit: vi.fn() };
 }
 
 describe('comments-store v2 adapter admission', () => {
@@ -25,7 +29,11 @@ describe('comments-store v2 adapter admission', () => {
 
     const facadeComments = makeV2CommentsAdapter();
     const facadeTrackedChanges = makeV2TrackedChangesAdapter();
-    const superdoc = { activeEditor: { v2Comments: facadeComments, v2TrackedChanges: facadeTrackedChanges } };
+    const superdoc = {
+      activeEditor: { v2Comments: facadeComments, v2TrackedChanges: facadeTrackedChanges },
+      config: {},
+      emit: vi.fn(),
+    };
     expect(store.getV2CommentsAdapter(superdoc)).toBe(facadeComments);
     expect(store.getV2TrackedChangesAdapter(superdoc)).toBe(facadeTrackedChanges);
   });
@@ -60,8 +68,8 @@ describe('comments-store v2 adapter admission', () => {
     const { setActiveComment: _setActiveComment, ...commentsWithoutSetActive } = makeV2CommentsAdapter();
     const { accept: _accept, ...trackedChangesWithoutAccept } = makeV2TrackedChangesAdapter();
     const setActiveComment = vi.fn();
-    const decide = vi.fn(async () => ({ success: true }));
-    const superdoc = {
+    const decide = vi.fn(async (): Promise<ReceiptSuccess> => ({ success: true }));
+    const superdoc: StoreHost = {
       activeEditor: {
         editorVersion: 2,
         v2Comments: commentsWithoutSetActive,
@@ -69,6 +77,7 @@ describe('comments-store v2 adapter admission', () => {
         commands: { setActiveComment },
         doc: { trackChanges: { decide } },
       },
+      config: {},
       emit: vi.fn(),
     };
     store.setV2CommentsAdapter(commentsWithoutSetActive);
@@ -79,7 +88,7 @@ describe('comments-store v2 adapter admission', () => {
 
     const outcome = await store.decideTrackedChangeFromSidebar({
       superdoc,
-      comment: { trackedChange: true, commentId: 'tc-1' },
+      comment: useComment({ trackedChange: true, commentId: 'tc-1' }),
       decision: 'accept',
     });
     expect(outcome).not.toHaveProperty('reason', 'adapter-threw');
@@ -93,7 +102,11 @@ describe('comments-store v2 adapter admission', () => {
     store.setV2TrackedChangesAdapter(storedTracked);
     const { resolve: _resolve, ...facadeWithoutResolve } = makeV2CommentsAdapter();
     const { reject: _reject, ...facadeWithoutReject } = makeV2TrackedChangesAdapter();
-    const superdoc = { activeEditor: { v2Comments: facadeWithoutResolve, v2TrackedChanges: facadeWithoutReject } };
+    const superdoc = {
+      activeEditor: { v2Comments: facadeWithoutResolve, v2TrackedChanges: facadeWithoutReject },
+      config: {},
+      emit: vi.fn(),
+    };
     expect(store.getV2CommentsAdapter(superdoc)).toBe(stored);
     expect(store.getV2TrackedChangesAdapter(superdoc)).toBe(storedTracked);
   });

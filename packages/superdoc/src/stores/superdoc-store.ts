@@ -29,7 +29,7 @@ type PageEntry = {
   container?: Element | null;
 };
 
-type StoreDocument = RuntimeDocument &
+export type StoreDocument = RuntimeDocument &
   Required<Pick<RuntimeDocument, 'getEditor' | 'getDocumentRuntime'>> & {
     isReady: boolean;
     pageContainers: PageEntry[];
@@ -47,12 +47,12 @@ type StoreExceptionPayload = SuperDocExceptionStorePayload & {
 
 type StoreExceptionHandler = (payload: SuperDocExceptionStorePayload) => void;
 
-type ActiveSelection = {
+export type ActiveSelection = {
   documentId?: string | number | null;
   [key: string]: unknown;
 };
 
-type SelectionPosition = {
+export type SelectionPosition = {
   left: number;
   top: number;
   width?: number;

@@ -12,16 +12,16 @@ interface CompareApplyDebugSnapshot {
   readonly hostFacadeMatchesEditorDoc: boolean | null;
 }
 
-interface CompareApplyDocApi {
+export interface CompareApplyDocApi {
   readonly diff: {
     apply(
       input: { diff: unknown },
       options: { changeMode: 'tracked' | 'direct' },
     ): CompareApplyResult | Promise<CompareApplyResult>;
   };
-  getText?(input: Record<string, never>): string;
+  getText?(input: Record<string, never>): unknown;
   readonly doc?: {
-    getText?(input: Record<string, never>): string;
+    getText?(input: Record<string, never>): unknown;
   } | null;
   readonly documentMutationReadiness?: {
     whenPainted?(input?: { txId?: string }): Promise<unknown> | unknown;
@@ -33,7 +33,7 @@ interface CompareApplyDocApi {
       | {
           available: true;
           doc: {
-            getText?(input: Record<string, never>): string;
+            getText?(input: Record<string, never>): unknown;
           };
         }
       | {
@@ -231,7 +231,9 @@ export async function settleCompareApplyPaint(docApi: CompareApplyDocApi): Promi
   await whenPainted.call(readiness);
 }
 
-export function captureCompareApplyDebugSnapshot(docApi: CompareApplyDocApi): CompareApplyDebugSnapshot {
+export function captureCompareApplyDebugSnapshot(
+  docApi: Omit<CompareApplyDocApi, 'diff'> & { readonly diff?: unknown },
+): CompareApplyDebugSnapshot {
   let textLength: number | null = null;
   try {
     const directTextReader = docApi.getText ?? docApi.doc?.getText;

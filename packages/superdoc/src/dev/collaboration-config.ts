@@ -1,5 +1,5 @@
-type DevCollaborationRoomMode = 'auto' | 'create' | 'join';
-type DevResolvedCollaborationRoomMode = Exclude<DevCollaborationRoomMode, 'auto'>;
+export type DevCollaborationRoomMode = 'auto' | 'create' | 'join';
+export type DevResolvedCollaborationRoomMode = Exclude<DevCollaborationRoomMode, 'auto'>;
 
 const DEFAULT_DEV_COLLABORATION_SERVER_URL = 'ws://localhost:8081/v2/collaboration';
 const DEFAULT_DEV_LIVEBLOCKS_URL = 'http://localhost:1153';

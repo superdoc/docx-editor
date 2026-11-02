@@ -1,16 +1,32 @@
 <script setup lang="ts">
 import { ref } from 'vue';
+import type { HyperlinkDomain } from '@superdoc/document-api';
+import { devSession } from '../../dev-session';
+
+interface SearchResultView {
+  id?: string;
+  snippet?: string;
+  highlightRange?: { start?: number; end?: number };
+  address?: { kind?: string; nodeId?: string; nodeType?: string };
+}
+
+interface LinkView {
+  id: string;
+  label: string;
+  detail: string;
+  blockId: string | null;
+}
 
 const query = ref('');
-const results = ref([]);
+const results = ref<SearchResultView[]>([]);
 const hasSearched = ref(false);
-const links = ref([]);
+const links = ref<LinkView[]>([]);
 const hasScannedLinks = ref(false);
 
 const emit = defineEmits(['close']);
 
-const getEditor = () => window.editor ?? null;
-const getSuperdoc = () => window.superdoc ?? null;
+const getEditor = () => devSession.editor;
+const getSuperdoc = () => devSession.superdoc;
 const hasDocumentApi = () => Boolean(getEditor()?.doc);
 const getDocumentApiMessage = () =>
   getEditor()?.documentApiUnavailableReason || 'Document API unavailable in the current execution mode.';
@@ -19,7 +35,7 @@ const closeSidebar = () => {
   emit('close');
 };
 
-const runSearch = () => {
+const runSearch = async () => {
   const trimmedQuery = query.value.trim();
   if (!trimmedQuery) {
     results.value = [];
@@ -34,7 +50,7 @@ const runSearch = () => {
     return;
   }
 
-  const matchResult = queryApi.match({
+  const matchResult = await queryApi.match({
     select: { type: 'text', pattern: trimmedQuery },
     require: 'all',
     limit: 100,
@@ -44,26 +60,26 @@ const runSearch = () => {
   hasSearched.value = true;
 };
 
-const getSnippetPrefix = (match) => {
+const getSnippetPrefix = (match: SearchResultView) => {
   const snippet = typeof match?.snippet === 'string' ? match.snippet : '';
   const start = match?.highlightRange?.start ?? 0;
   return snippet.slice(0, start);
 };
 
-const getSnippetMatch = (match) => {
+const getSnippetMatch = (match: SearchResultView) => {
   const snippet = typeof match?.snippet === 'string' ? match.snippet : '';
   const start = match?.highlightRange?.start ?? 0;
   const end = match?.highlightRange?.end ?? 0;
   return snippet.slice(start, end) || snippet;
 };
 
-const getSnippetSuffix = (match) => {
+const getSnippetSuffix = (match: SearchResultView) => {
   const snippet = typeof match?.snippet === 'string' ? match.snippet : '';
   const end = match?.highlightRange?.end ?? 0;
   return snippet.slice(end);
 };
 
-const goToResult = async (match) => {
+const goToResult = async (match: SearchResultView) => {
   const address = match?.address;
   if (address?.kind !== 'block') return;
 
@@ -77,7 +93,7 @@ const goToResult = async (match) => {
   });
 };
 
-const getLinkLabel = (item, index) => {
+const getLinkLabel = (item: HyperlinkDomain, index: number) => {
   const href = item?.properties?.href;
   const anchor = item?.properties?.anchor;
   const text = item?.text?.trim();
@@ -88,14 +104,14 @@ const getLinkLabel = (item, index) => {
   return `Link ${index + 1}`;
 };
 
-const getLinkDetail = (item) => {
+const getLinkDetail = (item: HyperlinkDomain) => {
   const text = item?.text?.trim();
   const href = item?.properties?.href;
   if (text && text !== href) return text;
   return '';
 };
 
-const findLinks = () => {
+const findLinks = async () => {
   const hyperlinksApi = getEditor()?.doc?.hyperlinks;
   if (typeof hyperlinksApi?.list !== 'function') {
     links.value = [];
@@ -103,7 +119,7 @@ const findLinks = () => {
     return;
   }
 
-  const listResult = hyperlinksApi.list({ limit: 1000 });
+  const listResult = await hyperlinksApi.list({ limit: 1000 });
   const items = Array.isArray(listResult?.items) ? listResult.items : [];
 
   links.value = items.map((item, index) => ({
@@ -115,7 +131,7 @@ const findLinks = () => {
   hasScannedLinks.value = true;
 };
 
-const goToLink = async (link) => {
+const goToLink = async (link: LinkView) => {
   if (!link?.blockId) return;
 
   const navigateTo = getSuperdoc()?.navigateTo;

@@ -3,8 +3,22 @@ import '@superdoc/common/styles/common-styles.css';
 import '../dev-styles.css';
 import '../themes/neon-night.css';
 import { nextTick, onMounted, onBeforeUnmount, ref, shallowRef, computed, watch } from 'vue';
+import type { Component } from 'vue';
 
-import { SuperDoc } from '@superdoc/public/index.ts';
+import { SuperDoc } from '../../public/index.js';
+import type {
+  CommentsType,
+  Config,
+  PermissionResolverParams,
+  SuperDocAwarenessUpdatePayload,
+  SuperDocContentErrorPayload,
+  SuperDocEditorPayload,
+  SuperDocExceptionPayload,
+  ToolbarOptionalItemId,
+  TrackChangesReplacementMode,
+} from '../../public/index.js';
+import type { BrowserDocumentApi, Editor, SuperDocTrackedChangesBulkDecisionPayload } from '../../core/types/index.js';
+import type { DiffSnapshot } from '@superdoc/document-api';
 import { DOCX } from '@superdoc/common';
 import { getFileObject } from '@superdoc/common';
 import { superdocFonts } from '@superdoc/fonts';
@@ -16,6 +30,7 @@ import pdfjsWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import SidebarSearch from './sidebar/SidebarSearch.vue';
 import SidebarCollaboration from './sidebar/SidebarCollaboration.vue';
 import SidebarLayout from './sidebar/SidebarLayout.vue';
+import type { DevCollaborationEvent } from './sidebar/SidebarCollaboration.vue';
 import {
   createDevCollaborationAutoUrl,
   createDevDocumentConfig,
@@ -24,21 +39,70 @@ import {
   resolveDevCollaborationRoomMode,
   resolveDevCollaborationServerUrl,
 } from '../collaboration-config';
+import type { DevCollaborationRoomMode, DevResolvedCollaborationRoomMode } from '../collaboration-config';
 import {
   applyCompareWithWs09Fallback,
   captureCompareApplyDebugSnapshot,
   compareApplyFallbackMessage,
   settleCompareApplyPaint,
 } from '../compare-apply';
+import type { CompareApplyDocApi } from '../compare-apply';
+import { isPlainObject } from '../../helpers/object-guards.js';
+import { setDevEditor, setDevSuperdoc } from '../dev-session';
+
+interface DevEditor extends Editor {
+  documentApiUnavailableReason?: string | null;
+  host?: {
+    readMountedProjectionBlocks?(): Array<{ kind?: string }> | null;
+    getRenderReadinessSnapshot?(): { renderStage?: string | null } | null;
+    getDocumentFacade?(): { available: true; doc: BrowserDocumentApi } | { available: false };
+  };
+  documentMutationReadiness?: CompareApplyDocApi['documentMutationReadiness'];
+}
+
+interface DevDocumentFile extends File {
+  markdownContent?: string;
+  htmlContent?: string;
+}
+
+interface DevPermissionComment {
+  trackedChange?: unknown;
+  creatorEmail?: string;
+}
+
+type DevSidebarId = 'off' | 'search' | 'collaboration' | 'layout';
+
+interface DevSidebarOption {
+  id: DevSidebarId;
+  label: string;
+  component: Component | null;
+}
+
+type DevUserRole = NonNullable<Config['role']>;
+
+const TOOLBAR_OPTIONAL_ITEMS = {
+  'formatting-marks': true,
+  'table-of-contents': true,
+  watermark: true,
+  'page-number': true,
+} satisfies Record<ToolbarOptionalItemId, true>;
+
+const DEV_USER_ROLES = { editor: true, viewer: true, suggester: true } satisfies Record<DevUserRole, true>;
+
+const isToolbarOptionalItemId = (value: string): value is ToolbarOptionalItemId =>
+  Object.prototype.hasOwnProperty.call(TOOLBAR_OPTIONAL_ITEMS, value);
+
+const isDevUserRole = (value: string | null): value is DevUserRole =>
+  value !== null && Object.prototype.hasOwnProperty.call(DEV_USER_ROLES, value);
 
 // note:
 // Or set worker globally outside the component.
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorkerUrl;
 
 /* For local dev */
-const superdoc = shallowRef(null);
-const activeEditor = shallowRef(null);
-const bulkDecisionToast = ref(null);
+const superdoc = shallowRef<SuperDoc | null>(null);
+const activeEditor = shallowRef<DevEditor | null>(null);
+const bulkDecisionToast = ref<string | null>(null);
 let bulkDecisionToastTimeout = 0;
 
 const dismissBulkDecisionToast = () => {
@@ -47,10 +111,10 @@ const dismissBulkDecisionToast = () => {
   bulkDecisionToastTimeout = 0;
 };
 
-const pluralizeChanges = (count) => (count === 1 ? 'change' : 'changes');
+const pluralizeChanges = (count: number) => (count === 1 ? 'change' : 'changes');
 
 // Example of how one might handle the bulk tracked change event
-const formatBulkDecisionToast = (event) => {
+const formatBulkDecisionToast = (event: SuperDocTrackedChangesBulkDecisionPayload) => {
   const action = event.decision === 'accept' ? 'Accepted' : 'Rejected';
   const deniedVerb = event.permissionDeniedCount === 1 ? 'was' : 'were';
   const successfulChanges = pluralizeChanges(event.successfulCount);
@@ -60,7 +124,7 @@ const formatBulkDecisionToast = (event) => {
   return `${successfulSummary} ${deniedSummary}`;
 };
 
-const onTrackedChangesBulkDecision = (event) => {
+const onTrackedChangesBulkDecision = (event: SuperDocTrackedChangesBulkDecisionPayload) => {
   dismissBulkDecisionToast();
   if (event.permissionDeniedCount === 0) return;
 
@@ -68,9 +132,9 @@ const onTrackedChangesBulkDecision = (event) => {
   bulkDecisionToastTimeout = window.setTimeout(dismissBulkDecisionToast, 8000);
 };
 
-const currentFile = ref(null);
+const currentFile = ref<DevDocumentFile | null>(null);
 const sidebarInstanceKey = ref(0);
-const compareInput = ref(null);
+const compareInput = ref<HTMLInputElement | null>(null);
 
 const urlParams = new URLSearchParams(window.location.search);
 const isInternal = urlParams.has('internal');
@@ -86,12 +150,13 @@ const stableDevTabId = ensureStableDevTabId();
 const testUserId = urlParams.get('userId') || urlParams.get('id') || stableDevTabId;
 const testUserEmail = urlParams.get('email') || `${stableDevTabId}@dev.superdoc`;
 const testUserName = urlParams.get('name') || `SuperDoc ${Math.floor(1000 + Math.random() * 9000)}`;
-const userRole = urlParams.get('role') || 'editor';
+const roleParam = urlParams.get('role');
+const userRole: DevUserRole = isDevUserRole(roleParam) ? roleParam : 'editor';
 const useLayoutEngine = ref(urlParams.get('layout') !== '0');
 const showBookmarks = ref(urlParams.get('bookmarks') === '1');
 const useWebLayout = ref(urlParams.get('view') === 'web');
 const useWhiteboardModule = ['1', 'true', 'on'].includes((urlParams.get('whiteboard') || '').toLowerCase());
-const normalizeBooleanParam = (raw, fallback = true) => {
+const normalizeBooleanParam = (raw: string | null, fallback = true) => {
   const value = (raw || '').toLowerCase();
   if (['0', 'false', 'off', 'no'].includes(value)) return false;
   if (['1', 'true', 'on', 'yes'].includes(value)) return true;
@@ -100,7 +165,7 @@ const normalizeBooleanParam = (raw, fallback = true) => {
 // Painter plan P7: the windowed paint owner IS vertical-paginated flow (no
 // flag). `?v2Hud=1`: per-paint counter HUD + dark reuse tripwire.
 const paintHud = normalizeBooleanParam(urlParams.get('v2Hud'), false);
-const trackChangesReplacementMode = ref(
+const trackChangesReplacementMode = ref<TrackChangesReplacementMode>(
   urlParams.get('replacementMode') === 'separate' || urlParams.get('replacements') === 'independent'
     ? 'separate'
     : 'grouped',
@@ -115,17 +180,19 @@ const collabRoom = urlParams.get('room') || 'superdoc-dev-room';
 const collabUrl = resolveDevCollaborationServerUrl(urlParams.get('collabUrl'));
 const collabProvider = resolveDevCollaborationProvider(urlParams.get('collabProvider'));
 const liveblocksUrl = urlParams.get('liveblocksUrl')?.trim() || undefined;
-const collabRoomMode = ref(useCollaboration ? resolveDevCollaborationRoomMode(urlParams.get('collabRoomMode')) : null);
-const activeCollaborationRoomMode = ref(
-  useCollaboration && collabRoomMode.value === 'auto' ? 'join' : collabRoomMode.value,
+const collabRoomMode = ref<DevCollaborationRoomMode | null>(
+  useCollaboration ? resolveDevCollaborationRoomMode(urlParams.get('collabRoomMode')) : null,
+);
+const activeCollaborationRoomMode = ref<DevResolvedCollaborationRoomMode | null>(
+  collabRoomMode.value === 'auto' ? 'join' : collabRoomMode.value,
 );
 const selectedTheme = ref('default');
 
 // Collaboration state
-const collaborationEvents = ref([]);
+const collaborationEvents = ref<DevCollaborationEvent[]>([]);
 const collaborationProviderStatus = ref(useCollaboration ? 'connecting' : 'disabled');
 const COLLABORATION_EVENT_LOG_LIMIT = 250;
-const collaborationFallbackAttempts = new Set();
+const collaborationFallbackAttempts = new Set<string>();
 let lastAwarenessActorsKey = '';
 const superdocLogo = SuperdocLogo;
 const uploadedFileName = ref('');
@@ -158,7 +225,7 @@ const compareButtonTitle = computed(() =>
 
 const DEV_THEME_CLASSES = ['sd-theme-docs', 'sd-theme-word', 'sd-theme-blueprint', 'sd-theme-neon-night'];
 
-const applyDevTheme = (theme) => {
+const applyDevTheme = (theme: string) => {
   const html = document.documentElement;
   DEV_THEME_CLASSES.forEach((cls) => html.classList.remove(cls));
   if (theme !== 'default') html.classList.add(`sd-theme-${theme}`);
@@ -196,7 +263,8 @@ const user = {
   email: testUserEmail,
 };
 
-const commentPermissionResolver = ({ permission, comment, defaultDecision }) => {
+const commentPermissionResolver = ({ permission, comment: rawComment, defaultDecision }: PermissionResolverParams) => {
+  const comment: DevPermissionComment | null = rawComment;
   if (!comment) return defaultDecision;
 
   // Example: hide tracked-change buttons for matching author email domain
@@ -212,7 +280,7 @@ const commentPermissionResolver = ({ permission, comment, defaultDecision }) => 
   return defaultDecision;
 };
 
-const handleNewFile = async (file) => {
+const handleNewFile = async (file: File) => {
   uploadedFileName.value = file?.name || '';
 
   // Detect file type by extension
@@ -223,13 +291,14 @@ const handleNewFile = async (file) => {
   if (isMarkdown || isHtml) {
     // For text-based files, read the content and use a blank DOCX as base
     const content = await readFileAsText(file);
-    currentFile.value = await getFileObject(BlankDOCX, 'blank.docx', DOCX);
+    const blankFile: DevDocumentFile = await getFileObject(BlankDOCX, 'blank.docx', DOCX);
+    currentFile.value = blankFile;
 
     // Store the content to be passed to SuperDoc
     if (isMarkdown) {
-      currentFile.value.markdownContent = content;
+      blankFile.markdownContent = content;
     } else if (isHtml) {
-      currentFile.value.htmlContent = content;
+      blankFile.htmlContent = content;
     }
   } else {
     // For binary files (DOCX, PDF), keep the browser File as-is. Re-fetching a
@@ -243,7 +312,7 @@ const handleNewFile = async (file) => {
       console.warn('[collab] Text document uploads are not supported by the V2 replace-file dev harness.');
       return;
     }
-    if (superdoc.value && typeof superdoc.value.replaceFile === 'function') {
+    if (superdoc.value && currentFile.value && typeof superdoc.value.replaceFile === 'function') {
       try {
         await superdoc.value.replaceFile(currentFile.value);
         console.log('[collab] Replaced file via superdoc.replaceFile()');
@@ -274,27 +343,27 @@ const createHiddenCompareMount = () => {
   return element;
 };
 
-const captureDiffSnapshotFromFile = async (file) => {
+const captureDiffSnapshotFromFile = async (file: File) => {
   const mount = createHiddenCompareMount();
-  let tempSuperdoc = null;
+  let tempSuperdoc: SuperDoc | undefined;
 
   try {
-    const snapshot = await new Promise((resolve, reject) => {
+    const snapshot = await new Promise<DiffSnapshot>((resolve, reject) => {
       const MAX_WAIT_MS = 15000;
       let settled = false;
-      let capturedEditor = null;
+      let capturedEditor: Editor | null = null;
 
       const timeoutId = setTimeout(() => {
         doReject(new Error(`Compare document did not reach source-ready state within ${MAX_WAIT_MS / 1000}s.`));
       }, MAX_WAIT_MS);
 
-      const doResolve = (value) => {
+      const doResolve = (value: DiffSnapshot | PromiseLike<DiffSnapshot>) => {
         if (settled) return;
         settled = true;
         clearTimeout(timeoutId);
         resolve(value);
       };
-      const doReject = (error) => {
+      const doReject = (error: unknown) => {
         if (settled) return;
         settled = true;
         clearTimeout(timeoutId);
@@ -325,7 +394,7 @@ const captureDiffSnapshotFromFile = async (file) => {
             setWorker: false,
           },
         },
-        onEditorCreate: ({ editor }) => {
+        onEditorCreate: ({ editor }: SuperDocEditorPayload) => {
           capturedEditor = editor;
         },
         onSourceSignalsComplete: () => {
@@ -340,10 +409,9 @@ const captureDiffSnapshotFromFile = async (file) => {
             doReject(error);
           }
         },
-        onContentError: ({ error, documentId }) => {
-          doReject(
-            new Error(`Failed to load compare document ${documentId ?? ''}: ${error?.message ?? String(error)}`),
-          );
+        onContentError: ({ error, documentId }: SuperDocContentErrorPayload) => {
+          const message = isPlainObject(error) ? error.message : undefined;
+          doReject(new Error(`Failed to load compare document ${documentId ?? ''}: ${message ?? String(error)}`));
         },
       });
 
@@ -359,7 +427,7 @@ const captureDiffSnapshotFromFile = async (file) => {
   }
 };
 
-const resolvePreferredCompareApplyDocApi = (editor) => {
+const resolvePreferredCompareApplyDocApi = (editor: DevEditor | null) => {
   const hostFacade = editor?.host?.getDocumentFacade?.();
   if (hostFacade?.available === true) {
     return {
@@ -380,9 +448,10 @@ const handleCompareClick = () => {
   compareInput.value?.click();
 };
 
-const handleCompareFile = async (event) => {
+const handleCompareFile = async (event: Event) => {
   const input = event.target;
-  const file = input?.files?.[0] ?? null;
+  if (!(input instanceof HTMLInputElement)) return;
+  const file = input.files?.[0] ?? null;
   input.value = '';
   if (!file) return;
 
@@ -413,7 +482,7 @@ const handleCompareFile = async (event) => {
     await settleCompareApplyPaint(liveCompareDocApi);
 
     console.info('[SuperDoc Dev] Compare result', { applyResult, changeMode, fallbackFromTracked, fallbackReason });
-    console.info('[SuperDoc Dev] Compare debug snapshot', captureCompareApplyDebugSnapshot(activeEditor.value));
+    console.info('[SuperDoc Dev] Compare debug snapshot', captureCompareApplyDebugSnapshot(activeEditor.value ?? {}));
 
     const diagnosticsSuffix =
       Array.isArray(applyResult?.diagnostics) && applyResult.diagnostics.length > 0
@@ -440,10 +509,10 @@ const handleCompareFile = async (event) => {
  * @param {File} file - The file to read
  * @returns {Promise<string>} The file content as text
  */
-const readFileAsText = (file) => {
-  return new Promise((resolve, reject) => {
+const readFileAsText = (file: File) => {
+  return new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = (e) => resolve(e.target.result);
+    reader.onload = () => resolve(String(reader.result));
     reader.onerror = (e) => reject(e);
     reader.readAsText(file);
   });
@@ -451,7 +520,7 @@ const readFileAsText = (file) => {
 
 const createClientEventId = () => `client-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
-const appendCollaborationEvent = (event) => {
+const appendCollaborationEvent = (event: DevCollaborationEvent) => {
   collaborationEvents.value = [event, ...collaborationEvents.value].slice(0, COLLABORATION_EVENT_LOG_LIMIT);
 };
 
@@ -485,7 +554,11 @@ const onCollaborationReady = () => {
   }
 };
 
-const retryCollaborationOpen = (nextRoomMode, summary, { promoteToAuto = false } = {}) => {
+const retryCollaborationOpen = (
+  nextRoomMode: DevResolvedCollaborationRoomMode,
+  summary: string,
+  { promoteToAuto = false } = {},
+) => {
   const currentRoomMode = getCollaborationOpenRoomMode();
   const retryKey = `${collabRoom}:${currentRoomMode ?? 'none'}:${nextRoomMode}`;
   if (collaborationFallbackAttempts.has(retryKey)) return false;
@@ -506,9 +579,9 @@ const retryCollaborationOpen = (nextRoomMode, summary, { promoteToAuto = false }
   return true;
 };
 
-const handleCollaborationException = (error) => {
+const handleCollaborationException = (error: SuperDocExceptionPayload) => {
   if (!useCollaboration) return false;
-  const code = typeof error?.code === 'string' ? error.code : null;
+  const code = isPlainObject(error) && typeof error.code === 'string' ? error.code : null;
   const currentRoomMode = getCollaborationOpenRoomMode();
   if (code === 'collaboration-v2-room-missing' && currentRoomMode === 'join') {
     const isRecoverableJoinUrl = collabRoomMode.value === 'join';
@@ -528,10 +601,10 @@ const handleCollaborationException = (error) => {
   return false;
 };
 
-const onAwarenessUpdate = ({ states = [], added = [], removed = [] }) => {
+const onAwarenessUpdate = ({ states = [], added = [], removed = [] }: SuperDocAwarenessUpdatePayload) => {
   const actors = states
     .map((state) => state?.name || state?.email || (state?.clientId != null ? String(state.clientId) : null))
-    .filter(Boolean);
+    .filter((actor): actor is string => Boolean(actor));
   const actorsKey = JSON.stringify([...actors].sort());
   if (added.length === 0 && removed.length === 0 && actorsKey === lastAwarenessActorsKey) return;
   lastAwarenessActorsKey = actorsKey;
@@ -552,8 +625,8 @@ const init = async () => {
   activeEditor.value = null;
   baseEditorSignalsReady.value = false;
   dismissBulkDecisionToast();
-  window.superdoc = null;
-  window.editor = null;
+  setDevSuperdoc(null);
+  setDevEditor(null);
 
   const testId = 'document-123';
 
@@ -578,7 +651,7 @@ const init = async () => {
     v2Collaboration,
   });
 
-  const config = {
+  const config: Config & { pagination: boolean; annotations: boolean } = {
     superdocId: 'superdoc-dev',
     selector: '#superdoc',
     toolbar: 'toolbar',
@@ -602,7 +675,9 @@ const init = async () => {
       visible: true,
     },
     toolbarGroups: ['left', 'center', 'right'],
-    ...(toolbarIncludeItems.length ? { ui: { toolbar: { includeItems: toolbarIncludeItems } } } : {}),
+    ...(toolbarIncludeItems.length
+      ? { ui: { toolbar: { includeItems: toolbarIncludeItems.filter(isToolbarOptionalItemId) } } }
+      : {}),
     pagination: useLayoutEngine.value && !useWebLayout.value,
     viewOptions: { layout: useWebLayout.value ? 'web' : 'print' },
     // Web layout + layout engine now uses semantic flow mode.
@@ -856,14 +931,15 @@ const init = async () => {
     console.log('[viewport-change]', { availableWidth, documentWidth, fitZoom });
   });
 
-  window.superdoc = superdoc.value;
+  setDevSuperdoc(superdoc.value);
 };
 
-const onContentError = ({ error, documentId }) => {
+const onContentError = ({ error, documentId }: SuperDocContentErrorPayload) => {
   console.debug('Content error on', documentId, error);
 };
 
 const exportHTML = async () => {
+  if (!superdoc.value) return;
   const html = (await superdoc.value.activeEditor?.doc?.getHtml?.({})) ?? '';
 
   // Create a Blob from the HTML
@@ -884,12 +960,14 @@ const exportHTML = async () => {
   URL.revokeObjectURL(url);
 };
 
-const exportDocx = async (commentsType) => {
+const exportDocx = async (commentsType?: CommentsType) => {
   console.debug('Exporting docx', { commentsType });
+  if (!superdoc.value) return;
   await superdoc.value.export({ commentsType });
 };
 
 const exportDocxBlob = async () => {
+  if (!superdoc.value) return;
   const blob = await superdoc.value.export({ commentsType: 'external', triggerDownload: false });
   downloadBlob(blob, `${exportFileStem.value}-blob.docx`);
 };
@@ -909,7 +987,7 @@ const exportInteractionHistory = () => {
   }
 };
 
-const downloadBlob = (blob, fileName) => {
+const downloadBlob = (blob: Blob | undefined, fileName: string) => {
   if (!blob) return;
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
@@ -921,9 +999,9 @@ const downloadBlob = (blob, fileName) => {
   URL.revokeObjectURL(url);
 };
 
-const onEditorCreate = ({ editor }) => {
+const onEditorCreate = ({ editor }: SuperDocEditorPayload) => {
   activeEditor.value = editor;
-  window.editor = editor;
+  setDevEditor(editor);
 
   if (typeof editor?.on !== 'function') {
     console.log('[SuperDoc Dev] v2 editor facade ready', editor);
@@ -931,15 +1009,15 @@ const onEditorCreate = ({ editor }) => {
   }
 
   // SD-2494: Pointer event observability for debugging trackpad/right-click selection issues
-  editor.on('pointerDown', (params) => {
+  editor.on('pointerDown', (params: unknown) => {
     console.log('pointerDown', { params });
   });
 
-  editor.on('pointerUp', (params) => {
+  editor.on('pointerUp', (params: unknown) => {
     console.log('pointerUp', { params });
   });
 
-  editor.on('rightClick', (params) => {
+  editor.on('rightClick', (params: unknown) => {
     console.log('rightClick', { params });
   });
 };
@@ -967,8 +1045,8 @@ onBeforeUnmount(() => {
   superdoc.value = null;
   activeEditor.value = null;
   baseEditorSignalsReady.value = false;
-  window.superdoc = null;
-  window.editor = null;
+  setDevSuperdoc(null);
+  setDevEditor(null);
 });
 
 const toggleLayoutEngine = () => {
@@ -990,7 +1068,7 @@ const toggleViewLayout = () => {
   window.location.href = url.toString();
 };
 
-const setReplacementMode = (mode) => {
+const setReplacementMode = (mode: string) => {
   if (mode !== 'grouped' && mode !== 'separate') return;
   if (mode === trackChangesReplacementMode.value) return;
   const url = new URL(window.location.href);
@@ -1001,6 +1079,10 @@ const setReplacementMode = (mode) => {
     url.searchParams.set('replacementMode', mode);
   }
   window.location.href = url.toString();
+};
+
+const onReplacementModeChange = (event: Event) => {
+  if (event.target instanceof HTMLSelectElement) setReplacementMode(event.target.value);
 };
 
 const currentZoom = ref(100);
@@ -1024,7 +1106,12 @@ const closeExportMenu = () => {
   showExportMenu.value = false;
 };
 
-const sidebarOptions = [
+const collaborationSidebarOption: DevSidebarOption = {
+  id: 'collaboration',
+  label: 'Collaboration',
+  component: SidebarCollaboration,
+};
+const sidebarOptions: DevSidebarOption[] = [
   {
     id: 'off',
     label: 'Off',
@@ -1035,22 +1122,14 @@ const sidebarOptions = [
     label: 'Search',
     component: SidebarSearch,
   },
-  ...(useCollaboration
-    ? [
-        {
-          id: 'collaboration',
-          label: 'Collaboration',
-          component: SidebarCollaboration,
-        },
-      ]
-    : []),
+  ...(useCollaboration ? [collaborationSidebarOption] : []),
   {
     id: 'layout',
     label: 'Layout',
     component: SidebarLayout,
   },
 ];
-const activeSidebarId = ref('off');
+const activeSidebarId = ref<DevSidebarId>('off');
 const activeSidebar = computed(
   () => sidebarOptions.find((option) => option.id === activeSidebarId.value) ?? sidebarOptions[0],
 );
@@ -1078,7 +1157,7 @@ const showSidebarMenu = ref(false);
 const closeSidebarMenu = () => {
   showSidebarMenu.value = false;
 };
-const setActiveSidebar = (id) => {
+const setActiveSidebar = (id: DevSidebarId) => {
   activeSidebarId.value = id;
   closeSidebarMenu();
 };
@@ -1099,10 +1178,10 @@ if (scrollTestMode.value) {
 
   // Also intercept scrollTo calls
   const originalScrollTo = window.scrollTo.bind(window);
-  window.scrollTo = function (...args) {
+  window.scrollTo = function (...args: [ScrollToOptions?] | [number, number]) {
     console.log('[SCROLL-DEBUG] scrollTo called:', args);
     console.trace('[SCROLL-DEBUG] scrollTo stack:');
-    return originalScrollTo(...args);
+    return Reflect.apply(originalScrollTo, window, args);
   };
 }
 </script>
@@ -1175,7 +1254,7 @@ if (scrollTestMode.value) {
               <select
                 :value="trackChangesReplacementMode"
                 class="dev-app__theme-select"
-                @change="setReplacementMode($event.target.value)"
+                @change="onReplacementModeChange"
               >
                 <option value="grouped">Grouped</option>
                 <option value="separate">Separate</option>

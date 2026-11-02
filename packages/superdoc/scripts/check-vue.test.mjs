@@ -43,4 +43,22 @@ describe('check:vue', () => {
     const result = checkComponent('const planted: number = 1;');
     assert.equal(result.status, 0, result.stdout + result.stderr);
   });
+
+  it('checks the dev app components', () => {
+    const ts = require(require.resolve('typescript', { paths: [packageRoot] }));
+    const configPath = path.join(packageRoot, 'tsconfig.vue.json');
+    const { config } = ts.readConfigFile(configPath, ts.sys.readFile);
+    const parsed = ts.parseJsonConfigFileContent(config, ts.sys, packageRoot, undefined, configPath, undefined, [
+      { extension: '.vue', isMixedContent: true, scriptKind: ts.ScriptKind.Deferred },
+    ]);
+    const checked = new Set(parsed.fileNames.map((file) => path.relative(packageRoot, file)));
+    for (const file of [
+      'src/dev/components/SuperdocDev.vue',
+      'src/dev/components/sidebar/SidebarCollaboration.vue',
+      'src/dev/components/sidebar/SidebarLayout.vue',
+      'src/dev/components/sidebar/SidebarSearch.vue',
+    ]) {
+      assert.ok(checked.has(file), `${file} is not in tsconfig.vue.json's checked files`);
+    }
+  });
 });

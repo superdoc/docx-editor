@@ -1,22 +1,31 @@
 <script setup lang="ts">
-defineProps({
-  events: {
-    type: Array,
-    default: () => [],
+export interface DevCollaborationEvent {
+  id: string;
+  source: string;
+  at: string;
+  origin?: string;
+  summary?: string;
+  changeType?: string;
+  entryKey?: string;
+  changedKeys?: string[];
+  actors?: string[];
+  valueSummary?: string;
+}
+
+withDefaults(
+  defineProps<{
+    events?: DevCollaborationEvent[];
+    providerStatus?: string;
+    collabRoom?: string;
+    roomMode?: string;
+  }>(),
+  {
+    events: () => [],
+    providerStatus: 'disabled',
+    collabRoom: '',
+    roomMode: '',
   },
-  providerStatus: {
-    type: String,
-    default: 'disabled',
-  },
-  collabRoom: {
-    type: String,
-    default: '',
-  },
-  roomMode: {
-    type: String,
-    default: '',
-  },
-});
+);
 
 const emit = defineEmits(['close', 'clear-collaboration-events']);
 
@@ -28,7 +37,7 @@ const clearEvents = () => {
   emit('clear-collaboration-events');
 };
 
-const formatTimestamp = (value) => {
+const formatTimestamp = (value: string) => {
   if (!value) return '';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);
@@ -39,7 +48,7 @@ const formatTimestamp = (value) => {
   });
 };
 
-const joinList = (values) => {
+const joinList = (values: string[] | undefined) => {
   if (!Array.isArray(values) || values.length === 0) return '';
   return values.join(', ');
 };

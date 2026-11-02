@@ -8,5 +8,5 @@
     "lib": ["ES2020", "ES2022.Error", "DOM"]
   },
   "include": ["src/vite-env.d.ts", "src/**/*.vue"],
-  "exclude": ["src/dev/**", "**/*.test.vue", "**/*.spec.vue", "**/__tests__/**"]
+  "exclude": ["**/*.test.vue", "**/*.spec.vue", "**/__tests__/**"]
 }

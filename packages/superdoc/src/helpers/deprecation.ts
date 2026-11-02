@@ -9,8 +9,6 @@
  * boundary wraps the editor with a Proxy.
  */
 
-import type { Editor } from '../core/types/index.js';
-
 const MIGRATION_URL = 'https://docs.superdoc.dev/guides/migration/document-api';
 
 const _warned = new Set<string>();
@@ -42,9 +40,10 @@ const RAW_EDITOR = Symbol.for('superdoc:rawEditor');
 
 const _boundFns = new WeakMap<object, Map<string | symbol, unknown>>();
 
-type WrappedEditor = Editor & { readonly [RAW_EDITOR]?: Editor };
+type WrappedEditor<T extends object> = T & { readonly [RAW_EDITOR]?: T };
 
-const rawEditorOf = (editor: WrappedEditor | null | undefined): Editor | undefined => editor?.[RAW_EDITOR];
+const rawEditorOf = <T extends object>(editor: WrappedEditor<T> | null | undefined): T | undefined =>
+  editor?.[RAW_EDITOR];
 
 const deprecatedName = (prop: string | symbol): string | undefined =>
   typeof prop === 'string' ? DEPRECATED_PROPERTIES[prop] : undefined;
@@ -58,7 +57,7 @@ const deprecatedName = (prop: string | symbol): string | undefined =>
  *
  * @returns Proxied editor (or the original if null/already wrapped)
  */
-export function createDeprecatedEditorProxy<T extends Editor | null | undefined>(editor: T): T {
+export function createDeprecatedEditorProxy<T extends object | null | undefined>(editor: T): T {
   if (!editor || rawEditorOf(editor)) return editor;
 
   return new Proxy(editor, {
@@ -99,6 +98,6 @@ export function createDeprecatedEditorProxy<T extends Editor | null | undefined>
  * Unwrap a potentially proxied editor back to the raw Editor instance.
  * Safe to call on an already-raw editor — returns it unchanged.
  */
-export function unwrapEditor(editor: Editor | null | undefined): Editor | null | undefined {
+export function unwrapEditor<T extends object>(editor: T | null | undefined): T | null | undefined {
   return rawEditorOf(editor) ?? editor;
 }

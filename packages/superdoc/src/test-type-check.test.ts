@@ -29,7 +29,7 @@ function checkProbeTest(source: string) {
   }
 }
 
-const EXCLUDED_TEST_CEILING = 56;
+const EXCLUDED_TEST_CEILING = 54;
 
 interface TestTypeCheckConfig {
   extends: string;

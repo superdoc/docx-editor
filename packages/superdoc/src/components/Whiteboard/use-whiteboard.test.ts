@@ -1,39 +1,55 @@
-import { describe, it, expect, vi, beforeEach } from 'vite-plus/test';
-import { defineComponent, ref, h, nextTick } from 'vue';
+import { describe, it, expect, expectTypeOf, vi, beforeEach, type Mock } from 'vite-plus/test';
+import { defineComponent, ref, h, nextTick, type Ref } from 'vue';
 import { mount } from '@vue/test-utils';
-import { useWhiteboard } from './use-whiteboard.js';
+import type { SuperDocComponentProxy } from '../../composables/use-superdoc-instance.js';
+import type { Document, Modules } from '../../core/types/index.js';
+import type { Whiteboard, WhiteboardPageSize } from '../../core/whiteboard/Whiteboard';
+import type { WhiteboardPage } from '../../core/whiteboard/WhiteboardPage';
+import { useWhiteboard, type UseWhiteboardOptions } from './use-whiteboard.js';
 
 const PDF_TYPE = 'application/pdf';
 
+type PageInstance = {
+  pageIndex: number;
+  size: WhiteboardPageSize | null;
+  setSize: Mock<(s: WhiteboardPageSize) => void>;
+};
+
+type WhiteboardHandler = (payload: unknown) => void;
+
 const makeWhiteboardStub = () => {
-  const handlers = new Map();
-  const pageInstances = [];
+  const handlers = new Map<string, WhiteboardHandler>();
+  const pageInstances: PageInstance[] = [];
   return {
-    on: vi.fn((event, fn) => {
+    on: vi.fn((event: string, fn: WhiteboardHandler) => {
       handlers.set(event, fn);
     }),
     off: vi.fn(),
     setPageSize: vi.fn(),
-    getPage: vi.fn((i) => pageInstances.find((p) => p.pageIndex === i)),
+    getPage: vi.fn((i: number) => pageInstances.find((p) => p.pageIndex === i)),
     getPages: vi.fn(() => pageInstances),
     // test helpers
-    __emit(event, payload) {
+    __emit(event: string, payload: unknown) {
       handlers.get(event)?.(payload);
     },
     __pages: pageInstances,
   };
 };
 
-const makePageInstance = (index) => ({
+type WhiteboardStub = ReturnType<typeof makeWhiteboardStub>;
+
+type ComposableInputs = UseWhiteboardOptions<WhiteboardStub>;
+
+const makePageInstance = (index: number): PageInstance => ({
   pageIndex: index,
   size: null,
-  setSize: vi.fn(function (s) {
+  setSize: vi.fn(function (this: PageInstance, s: WhiteboardPageSize) {
     this.size = s;
   }),
 });
 
-const mountWithComposable = (inputs) => {
-  let exposed;
+const mountWithComposable = (inputs: ComposableInputs) => {
+  let exposed: ReturnType<typeof useWhiteboard<WhiteboardStub>> | undefined;
   const TestComp = defineComponent({
     setup() {
       exposed = useWhiteboard(inputs);
@@ -43,15 +59,30 @@ const mountWithComposable = (inputs) => {
   const proxy = inputs.proxy;
   // Wire proxy.$superdoc to the computed $superdoc emitter
   const wrapper = mount(TestComp);
-  return { wrapper, exposed: () => exposed, proxy };
+  return { wrapper, exposed: () => exposed!, proxy };
 };
 
+type SuperDocShellInputs = {
+  proxy: SuperDocComponentProxy;
+  layers: Ref<HTMLDivElement | null>;
+  documents: Ref<Document[]>;
+  modules: Modules;
+};
+
+const useWhiteboardFromSuperDoc = (inputs: SuperDocShellInputs) => useWhiteboard(inputs);
+
 describe('useWhiteboard', () => {
-  let whiteboard;
-  let emitSpy;
-  let proxy;
-  let layers;
-  let documents;
+  it('returns the real Whiteboard and WhiteboardPage types to the SuperDoc shell', () => {
+    type ShellResult = ReturnType<typeof useWhiteboardFromSuperDoc>;
+    expectTypeOf<ShellResult['whiteboard']>().toEqualTypeOf<Whiteboard | null | undefined>();
+    expectTypeOf<ShellResult['whiteboardPages']['value']>().toEqualTypeOf<WhiteboardPage[]>();
+  });
+
+  let whiteboard: WhiteboardStub;
+  let emitSpy: Mock<(name: string, ...args: unknown[]) => void>;
+  let proxy: ComposableInputs['proxy'];
+  let layers: ComposableInputs['layers'];
+  let documents: Ref<Array<{ id: string; type: string }>>;
 
   beforeEach(() => {
     whiteboard = makeWhiteboardStub();

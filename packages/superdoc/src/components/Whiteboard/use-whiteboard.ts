@@ -1,28 +1,55 @@
 import { computed, nextTick, onBeforeUnmount, reactive, ref, shallowRef, markRaw } from 'vue';
 import type { Ref } from 'vue';
 import { PDF } from '@superdoc/common';
-import type { SuperDoc } from '../../core/SuperDoc.js';
+import type { EventEmitter } from '../../core/EventEmitter';
 import type { Document, Modules } from '../../core/types/index.js';
-import type { WhiteboardData, WhiteboardPageSize } from '../../core/whiteboard/Whiteboard';
+import type {
+  Whiteboard,
+  WhiteboardData,
+  WhiteboardEventMap,
+  WhiteboardPageSize,
+} from '../../core/whiteboard/Whiteboard';
 import type { WhiteboardPage } from '../../core/whiteboard/WhiteboardPage';
 import type { PdfPageRenderedPayload } from '../PdfViewer/pdf-viewer-types';
 import type { WhiteboardPageOffset } from './whiteboard-types';
 
 type WhiteboardDocument = Pick<Document, 'id' | 'type'>;
 
-type WhiteboardPageReadyPayload = Pick<
-  PdfPageRenderedPayload,
-  'pageIndex' | 'width' | 'height' | 'originalWidth' | 'originalHeight'
->;
+type WhiteboardPageReadyPayload = Pick<PdfPageRenderedPayload, 'pageIndex' | 'width' | 'height'> &
+  Partial<Pick<PdfPageRenderedPayload, 'originalWidth' | 'originalHeight'>>;
 
-export type UseWhiteboardOptions = {
-  proxy: { $superdoc: Pick<SuperDoc, 'emit' | 'whiteboard'> };
-  layers: Ref<HTMLElement | null>;
+type Bounds = Pick<DOMRect, 'top' | 'left'>;
+
+type WhiteboardLayerElement = { getBoundingClientRect(): Bounds };
+
+type WhiteboardPageSource = Pick<WhiteboardPage, 'pageIndex' | 'size' | 'setSize'>;
+
+type WhiteboardSource = Pick<Whiteboard, 'on' | 'off' | 'setPageSize'> & {
+  getPage(...args: Parameters<Whiteboard['getPage']>): WhiteboardPageSource | undefined;
+  getPages(): WhiteboardPageSource[];
+};
+
+type WhiteboardSourcePage<Board extends WhiteboardSource> = ReturnType<Board['getPages']>[number];
+
+type WhiteboardHostEvents<Board extends WhiteboardSource> = {
+  'whiteboard:ready': [{ whiteboard: Board }];
+  'whiteboard:change': WhiteboardEventMap['change'];
+  'whiteboard:enabled': WhiteboardEventMap['enabled'];
+  'whiteboard:tool': WhiteboardEventMap['tool'];
+};
+
+export type UseWhiteboardOptions<Board extends WhiteboardSource> = {
+  proxy: {
+    $superdoc: Pick<EventEmitter<WhiteboardHostEvents<Board>>, 'emit'> & { whiteboard?: Board | null };
+  };
+  layers: Ref<WhiteboardLayerElement | null>;
   documents: Ref<WhiteboardDocument[]>;
   modules: Modules;
 };
 
-export const useWhiteboard = ({ proxy, layers, documents, modules }: UseWhiteboardOptions) => {
+type Options<Board extends WhiteboardSource> = UseWhiteboardOptions<Board>;
+
+export const useWhiteboard = <B extends WhiteboardSource>({ proxy, layers, documents, modules }: Options<B>) => {
   const whiteboardModuleConfig = computed(() => {
     const config = modules.whiteboard;
     if (config === false || config == null) return null;
@@ -33,7 +60,7 @@ export const useWhiteboard = ({ proxy, layers, documents, modules }: UseWhiteboa
   const whiteboard = superdoc.whiteboard;
 
   // NOTE: whiteboardPages holds class instances; keep them raw to avoid Vue proxying.
-  const whiteboardPages = shallowRef<WhiteboardPage[]>([]);
+  const whiteboardPages = shallowRef<WhiteboardSourcePage<B>[]>([]);
   const whiteboardPageSizes = reactive<Record<number, WhiteboardPageSize>>({});
   const whiteboardPageOffsets = reactive<Record<number, WhiteboardPageOffset>>({});
 
@@ -89,7 +116,7 @@ export const useWhiteboard = ({ proxy, layers, documents, modules }: UseWhiteboa
     superdoc.emit('whiteboard:change', data);
   };
 
-  const handleWhiteboardSetData = (pages: WhiteboardPage[]) => {
+  const handleWhiteboardSetData = (pages: WhiteboardSourcePage<B>[]) => {
     pages.forEach((page) => {
       const size = whiteboardPageSizes[page.pageIndex];
       if (size) page.setSize(size);
@@ -151,7 +178,7 @@ export const useWhiteboard = ({ proxy, layers, documents, modules }: UseWhiteboa
     }
   };
 
-  const updateWhiteboardPDFPageOffsets = ({ doc, layerBounds }: { doc: WhiteboardDocument; layerBounds: DOMRect }) => {
+  const updateWhiteboardPDFPageOffsets = ({ doc, layerBounds }: { doc: WhiteboardDocument; layerBounds: Bounds }) => {
     whiteboardPages.value.forEach((page) => {
       const pageId = `${doc.id}-page-${page.pageIndex + 1}`;
       const pageEl = document.querySelector(`[data-page-id="${pageId}"]`);

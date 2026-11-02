@@ -3,7 +3,13 @@ import { warnOnce, createDeprecatedEditorProxy, unwrapEditor } from './deprecati
 
 const RAW_EDITOR = Symbol.for('superdoc:rawEditor');
 
-function createMockEditor() {
+type MockEditor = ReturnType<typeof mockEditorFields> & { readonly [RAW_EDITOR]?: unknown };
+
+function createMockEditor(): MockEditor {
+  return mockEditorFields();
+}
+
+function mockEditorFields() {
   return {
     state: { doc: {} },
     view: { dom: {} },
@@ -96,7 +102,7 @@ describe('createDeprecatedEditorProxy', () => {
       const proxy = createDeprecatedEditorProxy(editor);
 
       Reflect.get(proxy, 'state');
-      const callCount = console.warn.mock.calls.length;
+      const callCount = vi.mocked(console.warn).mock.calls.length;
       Reflect.get(proxy, 'state');
       expect(console.warn).toHaveBeenCalledTimes(callCount);
     });

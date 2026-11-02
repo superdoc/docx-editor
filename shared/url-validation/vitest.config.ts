@@ -7,6 +7,6 @@ export default defineConfig({
     name: '@url-validation',
     environment: 'node',
     globals: true,
-    include: ['**/*.test.js'],
+    include: ['**/*.test.ts'],
   },
 });

@@ -8,6 +8,9 @@
       "path": "shared/font-system/tsconfig.json"
     },
     {
+      "path": "shared/url-validation/tsconfig.json"
+    },
+    {
       "path": "packages/layout-engine/contracts/tsconfig.json"
     },
     {

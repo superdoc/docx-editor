@@ -16,6 +16,7 @@
     { "path": "../../layout-resolved/tsconfig.json" },
     { "path": "../../measuring/dom/tsconfig.json" },
     { "path": "../../../../shared/common/tsconfig.json" },
-    { "path": "../../../../shared/font-system/tsconfig.json" }
+    { "path": "../../../../shared/font-system/tsconfig.json" },
+    { "path": "../../../../shared/url-validation/tsconfig.json" }
   ]
 }

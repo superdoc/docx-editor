@@ -1,3 +1,36 @@
+export type Protocol = 'http' | 'https' | 'mailto' | 'tel' | 'sms' | 'ftp' | 'sftp' | 'irc';
+
+export type SanitizerConfig = {
+  allowedProtocols?: Protocol[];
+  optionalProtocols?: Protocol[];
+  blockedProtocols?: Protocol[];
+  redirectBlocklist?: string[];
+  maxLength?: number;
+};
+
+export type SanitizedLink = {
+  href: string;
+  protocol: string | null;
+  isExternal: boolean;
+};
+
+export type EncodedTooltip = {
+  text: string;
+  wasTruncated: boolean;
+};
+
+export type DataUriMetadata = {
+  hasPayloadSeparator: boolean;
+  payload: string;
+  rawMimeType: string;
+  mimeType: string;
+  isBase64: boolean;
+};
+
+type AnchorLink = { href: string; protocol: null; isExternal: false };
+
+type Blocklist = { hosts: Set<string>; urls: Set<string> };
+
 /**
  * Default set of allowed URL protocols that are considered safe for general use.
  *
@@ -8,9 +41,6 @@
  * - sms: SMS/text message links (mobile device handlers)
  *
  * Additional protocols can be enabled via optionalProtocols configuration.
- *
- * @constant {string[]}
- * @private
  */
 const DEFAULT_ALLOWED_PROTOCOLS = ['http', 'https', 'mailto', 'tel', 'sms'];
 
@@ -24,9 +54,6 @@ const DEFAULT_ALLOWED_PROTOCOLS = ['http', 'https', 'mailto', 'tel', 'sms'];
  * - irc: Internet Relay Chat protocol (no script execution)
  *
  * Protocols NOT in this list will be silently ignored even if requested.
- *
- * @constant {string[]}
- * @private
  */
 const OPTIONAL_PROTOCOLS = ['ftp', 'sftp', 'irc'];
 
@@ -43,9 +70,6 @@ const OPTIONAL_PROTOCOLS = ['ftp', 'sftp', 'irc'];
  *
  * These protocols are ALWAYS blocked, even if explicitly requested in config.
  * This list takes precedence over allowedProtocols and optionalProtocols.
- *
- * @constant {string[]}
- * @private
  */
 const BLOCKED_PROTOCOLS = ['javascript', 'data', 'vbscript', 'file', 'ssh', 'ws', 'wss'];
 
@@ -57,10 +81,6 @@ const BLOCKED_PROTOCOLS = ['javascript', 'data', 'vbscript', 'file', 'ssh', 'ws'
  * - Aligns with common browser/server limits (IE: 2083, Chrome/Firefox: ~2MB but 2KB recommended)
  * - HTTP/1.1 spec (RFC 7230) recommends servers support at least 8000 octets, but many use 2048
  * - Prevents URL-based DoS attacks where malicious actors send extremely long URLs
- *
- * @constant {number}
- * @default 2048
- * @private
  */
 const DEFAULT_MAX_LENGTH = 2048;
 
@@ -73,7 +93,7 @@ export const MAX_IMAGE_DATA_URL_LENGTH = 10 * 1024 * 1024;
 /**
  * Canonical set of image data URL MIME types supported by rendering and export.
  */
-export const IMAGE_DATA_URL_MIME_TYPES = Object.freeze([
+export const IMAGE_DATA_URL_MIME_TYPES: readonly string[] = Object.freeze([
   'image/png',
   'image/jpeg',
   'image/jpg',
@@ -92,11 +112,8 @@ export const IMAGE_DATA_URL_MIME_TYPES = Object.freeze([
  *
  * The payload separator is tracked separately so callers can reject malformed
  * values like `data:image/svg+xml` instead of treating them as empty files.
- *
- * @param {string} src
- * @returns {{hasPayloadSeparator: boolean, payload: string, rawMimeType: string, mimeType: string, isBase64: boolean}|null}
  */
-export const getDataUriMetadata = (src = '') => {
+export const getDataUriMetadata = (src: string = ''): DataUriMetadata | null => {
   if (typeof src !== 'string' || !src.startsWith('data:')) return null;
 
   const commaIndex = src.indexOf(',');
@@ -117,11 +134,9 @@ export const getDataUriMetadata = (src = '') => {
 
 /**
  * Percent-decode a non-base64 data URI payload.
- *
- * @param {string} payload
- * @returns {string|null} Decoded text, or null when the payload has invalid percent escapes.
+ * Returns null when the payload has invalid percent escapes.
  */
-export const tryDecodeDataUriText = (payload = '') => {
+export const tryDecodeDataUriText = (payload: string = ''): string | null => {
   try {
     return decodeURIComponent(payload);
   } catch {
@@ -131,7 +146,7 @@ export const tryDecodeDataUriText = (payload = '') => {
 
 const BASE64_PAYLOAD_PATTERN = /^[A-Za-z0-9+/]+$/;
 
-const isValidBase64Payload = (payload = '') => {
+const isValidBase64Payload = (payload: string = ''): boolean => {
   const normalizedPayload = payload.replace(/\s/g, '');
   if (!normalizedPayload || normalizedPayload.length % 4 === 1) return false;
 
@@ -153,11 +168,8 @@ const isValidBase64Payload = (payload = '') => {
  * separator, and stay within MAX_IMAGE_DATA_URL_LENGTH. Base64 payloads are
  * accepted for all supported image MIME types. Non-base64 payloads are accepted
  * only for SVG, where the percent-encoded text must decode successfully.
- *
- * @param {unknown} src
- * @returns {boolean}
  */
-export const isValidImageDataUrl = (src) => {
+export const isValidImageDataUrl = (src: unknown): boolean => {
   if (typeof src !== 'string' || !src.startsWith('data:') || src.length > MAX_IMAGE_DATA_URL_LENGTH) {
     return false;
   }
@@ -186,11 +198,8 @@ export const isValidImageDataUrl = (src) => {
  *   (1-2 sentences) to prevent cognitive overload
  * - 500 characters approximates 75-100 words, suitable for concise
  *   context while preventing screen coverage issues
- *
- * @constant {number}
- * @default 500
  */
-export const DEFAULT_TOOLTIP_MAX_LENGTH = 500;
+export const DEFAULT_TOOLTIP_MAX_LENGTH: number = 500;
 // SECURITY: Anchor names must only contain safe characters to prevent HTML attribute injection
 // Removed colon (:) to align with DOM painter's SAFE_ANCHOR_PATTERN and prevent ambiguity
 const ANCHOR_NAME_PATTERN = /^[A-Za-z0-9._=-]+$/;
@@ -198,22 +207,15 @@ const ANCHOR_NAME_PATTERN = /^[A-Za-z0-9._=-]+$/;
 /**
  * Control characters and whitespace tricks that can smuggle payloads
  * past naive string checks (e.g. tab, newline, null byte, zero-width chars).
- *
- * @constant {RegExp}
- * @private
  */
 const CONTROL_CHAR_PATTERN = /[\x00-\x1f\x7f\u200b-\u200f\u2028\u2029\ufeff]/;
 
 /**
  * Normalize protocol values into a lowercase Set for case-insensitive matching.
  * Filters out non-string values and empty/whitespace-only strings.
- *
- * @param {string[]=} values - Array of protocol strings to normalize (e.g., ['HTTP', 'FTP', 'mailto'])
- * @returns {Set<string>} Set of lowercase, trimmed protocol strings (e.g., Set{'http', 'ftp', 'mailto'})
- * @private
  */
-function toProtocolSet(values) {
-  const result = new Set();
+function toProtocolSet(values?: readonly string[]): Set<string> {
+  const result = new Set<string>();
   if (!values) return result;
   values.forEach((value) => {
     if (typeof value === 'string' && value.trim()) {
@@ -237,17 +239,6 @@ function toProtocolSet(values) {
  * - Protocol matching is case-insensitive to prevent bypass via uppercase schemes
  * - Invalid/malformed protocol values are silently filtered out
  *
- * @param {object} [config={}] - Configuration object for protocol selection
- * @param {string[]=} config.allowedProtocols - Override default protocols (REPLACES, not extends).
- *   WARNING: If provided, you must include all protocols you want (e.g., ['http', 'https', 'mailto']).
- *   Use this when you need strict control over exactly which protocols are allowed.
- * @param {string[]=} config.optionalProtocols - Additional protocols to enable beyond defaults.
- *   Only protocols in OPTIONAL_PROTOCOLS whitelist will be added (ftp, sftp, irc).
- *   Dangerous or unknown protocols are silently ignored for security.
- * @returns {Set<string>} Set of lowercase protocol strings that are allowed.
- *   This set is used for O(1) protocol validation in sanitizeHref.
- * @private
- *
  * @example
  * // Use defaults
  * buildAllowedProtocols()
@@ -269,7 +260,7 @@ function toProtocolSet(values) {
  * // Returns: Set{'http', 'https', 'mailto', 'tel', 'sms', 'ftp'}
  * // Note: 'javascript' and 'data' are silently filtered out
  */
-function buildAllowedProtocols(config = {}) {
+function buildAllowedProtocols(config: SanitizerConfig = {}): Set<string> {
   const allowed = config.allowedProtocols?.length
     ? toProtocolSet(config.allowedProtocols)
     : new Set(DEFAULT_ALLOWED_PROTOCOLS);
@@ -277,12 +268,9 @@ function buildAllowedProtocols(config = {}) {
   const optional = toProtocolSet(config.optionalProtocols);
   if (optional.size > 0) {
     optional.forEach((protocol) => {
-      // CRITICAL FIX: Only add protocols that are in the OPTIONAL_PROTOCOLS whitelist
-      // Previous code added ALL protocols regardless of the condition check
       if (OPTIONAL_PROTOCOLS.includes(protocol)) {
         allowed.add(protocol);
       }
-      // Protocols not in OPTIONAL_PROTOCOLS are silently ignored for security
     });
   }
 
@@ -308,14 +296,6 @@ function buildAllowedProtocols(config = {}) {
  * - Hostname-only blocks are faster (simple Set.has() check)
  * - URL prefix blocks require iteration but are typically small lists
  *
- * @param {string[]=} values - Array of blocklist entries from configuration.
- *   Can include hostnames ('evil.com') or full URL prefixes ('https://malicious.org/bad').
- *   Invalid/malformed entries are silently ignored.
- * @returns {{hosts: Set<string>, urls: Set<string>}} Object containing:
- *   - hosts: Set of blocked hostnames (entries without '://' delimiter)
- *   - urls: Set of blocked URL prefixes (entries containing '://' delimiter)
- * @private
- *
  * @example
  * // Basic hostname blocking
  * normalizeBlocklist(['evil.com', 'tracker.net'])
@@ -339,9 +319,9 @@ function buildAllowedProtocols(config = {}) {
  * normalizeBlocklist(['valid.com', null, '', '  ', 123, undefined])
  * // Returns: { hosts: Set{'valid.com'}, urls: Set{} }
  */
-function normalizeBlocklist(values) {
-  const hosts = new Set();
-  const urls = new Set();
+function normalizeBlocklist(values?: readonly unknown[]): Blocklist {
+  const hosts = new Set<string>();
+  const urls = new Set<string>();
   if (!values) {
     return { hosts, urls };
   }
@@ -370,11 +350,6 @@ function normalizeBlocklist(values) {
  * - Colons explicitly rejected to prevent ambiguity with protocols (e.g., '#http:evil')
  * - Prevents special characters that could break HTML attributes
  *
- * @param {string} trimmed - Trimmed URL string that starts with '#'
- * @returns {{href: string, protocol: null, isExternal: false} | null}
- *   Returns anchor object on success, null if anchor name is invalid
- * @private
- *
  * @example
  * parseAnchorLink('#section-1')
  * // Returns: { href: '#section-1', protocol: null, isExternal: false }
@@ -384,7 +359,7 @@ function normalizeBlocklist(values) {
  * parseAnchorLink('#bad name')   // Returns: null (contains space)
  * parseAnchorLink('#http:evil')  // Returns: null (contains colon)
  */
-function parseAnchorLink(trimmed) {
+function parseAnchorLink(trimmed: string): AnchorLink | null {
   if (!trimmed.startsWith('#')) return null;
 
   const anchor = trimmed.slice(1);
@@ -406,12 +381,6 @@ function parseAnchorLink(trimmed) {
  * - Protocol matching is case-insensitive to prevent bypass attempts
  * - Returns false for any protocol not explicitly allowed
  *
- * @param {string} scheme - Protocol scheme to validate (lowercase, e.g., 'https')
- * @param {Set<string>} allowedProtocols - Set of allowed protocol strings
- * @param {string[]} blockedProtocols - Array of blocked protocol strings (lowercase)
- * @returns {boolean} true if protocol is allowed, false otherwise
- * @private
- *
  * @example
  * const allowed = new Set(['http', 'https', 'mailto']);
  * const blocked = ['javascript', 'data'];
@@ -419,7 +388,11 @@ function parseAnchorLink(trimmed) {
  * isProtocolAllowed('javascript', allowed, blocked) // Returns: false
  * isProtocolAllowed('custom', allowed, blocked)    // Returns: false
  */
-function isProtocolAllowed(scheme, allowedProtocols, blockedProtocols) {
+function isProtocolAllowed(
+  scheme: string,
+  allowedProtocols: Set<string>,
+  blockedProtocols: readonly string[],
+): boolean {
   if (blockedProtocols.includes(scheme)) {
     return false;
   }
@@ -438,12 +411,6 @@ function isProtocolAllowed(scheme, allowedProtocols, blockedProtocols) {
  * - URL prefix matching: String prefix match against full URL (slower, O(n))
  * - All matching is case-insensitive
  *
- * @param {string} normalizedHref - The normalized URL string to check
- * @param {URL} parsed - Parsed URL object from URL constructor
- * @param {{hosts: Set<string>, urls: Set<string>}} blocklist - Normalized blocklist
- * @returns {boolean} true if URL is blocked, false if allowed
- * @private
- *
  * @example
  * const blocklist = {
  *   hosts: new Set(['evil.com', 'tracker.net']),
@@ -458,16 +425,14 @@ function isProtocolAllowed(scheme, allowedProtocols, blockedProtocols) {
  * isBlockedByRedirectList('https://ads.example.com/track/123', url2, blocklist)
  * // Returns: true (URL prefix match)
  */
-function isBlockedByRedirectList(normalizedHref, parsed, blocklist) {
+function isBlockedByRedirectList(normalizedHref: string, parsed: URL, blocklist: Blocklist): boolean {
   const { hosts, urls } = blocklist;
 
-  // Check hostname blocklist (fast path)
   const hostname = parsed.hostname ? parsed.hostname.toLowerCase() : '';
   if (hosts.size > 0 && hostname && hosts.has(hostname)) {
     return true;
   }
 
-  // Check URL prefix blocklist (slower path)
   if (urls.size > 0) {
     const hrefLower = normalizedHref.toLowerCase();
     for (const blockedUrl of urls) {
@@ -487,14 +452,8 @@ function isBlockedByRedirectList(normalizedHref, parsed, blocklist) {
  * 1. Reject control characters / whitespace-trick inputs.
  * 2. Resolve via `new URL(raw, origin)` — normalises `..`, `//`, encoded sequences.
  * 3. Enforce same-origin — the resolved URL must share the base origin.
- *
- * @param {string} pathString - The trimmed relative/absolute path to validate.
- * @param {{hosts: Set<string>, urls: Set<string>}} blocklist - Normalized redirect blocklist.
- * @returns {{href: string, protocol: null, isExternal: false} | null}
- * @private
  */
-function sanitizeRelativePath(pathString, blocklist) {
-  // 1. Reject control chars (null byte injection, newline smuggling, etc.)
+function sanitizeRelativePath(pathString: string, blocklist: Blocklist): AnchorLink | null {
   if (CONTROL_CHAR_PATTERN.test(pathString)) {
     return null;
   }
@@ -506,20 +465,17 @@ function sanitizeRelativePath(pathString, blocklist) {
     return null;
   }
 
-  // 2. Resolve against the current page (normalises .., //, encoded sequences)
-  let resolved;
+  let resolved: URL;
   try {
     resolved = new URL(pathString, base);
   } catch {
     return null;
   }
 
-  // 3. Same-origin gate — prevents open-redirect style attacks
   if (resolved.origin !== new URL(base).origin) {
     return null;
   }
 
-  // 4. Apply redirect blocklist to resolved same-origin URL
   if (isBlockedByRedirectList(resolved.href, resolved, blocklist)) {
     return null;
   }
@@ -549,23 +505,6 @@ function sanitizeRelativePath(pathString, blocklist) {
  * - Protocol matching is case-insensitive (HTTP === http)
  * - Hostname blocking is case-insensitive (Evil.COM === evil.com)
  * - Homograph attacks are logged but NOT blocked (legitimate international domains exist)
- *
- * @param {string | null | undefined} raw - Raw URL string to sanitize.
- *   Can be user input or data from external sources.
- * @param {object} [config={}] - Configuration options for URL validation
- * @param {string[]=} config.allowedProtocols - Override default allowed protocols (REPLACES defaults).
- *   Use Protocol[] type for safety. Default: ['http', 'https', 'mailto', 'tel', 'sms']
- * @param {string[]=} config.optionalProtocols - Additional protocols to enable (ftp, sftp, irc only).
- *   Dangerous protocols are silently ignored for security.
- * @param {string[]=} config.blockedProtocols - Additional protocols to block beyond defaults.
- * @param {string[]=} config.redirectBlocklist - Hostnames or URL prefixes to block.
- *   Examples: ['evil.com', 'https://ads.example.com/track']
- * @param {number=} config.maxLength - Maximum URL length in characters. Default: 2048
- * @returns {{href: string, protocol: string | null, isExternal: boolean} | null}
- *   Returns sanitized link object on success, null if validation fails:
- *   - href: The validated URL string (safe for use in href="...")
- *   - protocol: Extracted protocol/scheme ('https', 'mailto', etc.) or null for anchors
- *   - isExternal: true for http/https links (useful for target="_blank" logic)
  *
  * @example
  * // Valid HTTPS URL
@@ -602,30 +541,25 @@ function sanitizeRelativePath(pathString, blocklist) {
  * sanitizeHref('ftp://files.example.com/resource', { optionalProtocols: ['ftp'] })
  * // Returns: { href: 'ftp://files.example.com/resource', protocol: 'ftp', isExternal: false }
  */
-export function sanitizeHref(raw, config = {}) {
-  // Basic input validation
+export function sanitizeHref(raw: string | null | undefined, config: SanitizerConfig = {}): SanitizedLink | null {
   if (typeof raw !== 'string') return null;
   const trimmed = raw.trim();
   if (!trimmed) return null;
 
-  // Length validation
   const maxLength = typeof config.maxLength === 'number' ? config.maxLength : DEFAULT_MAX_LENGTH;
   if (trimmed.length > maxLength) {
     return null;
   }
 
-  // Handle anchor links early (bypass most validation)
   const anchorResult = parseAnchorLink(trimmed);
   if (anchorResult !== null) {
     return anchorResult;
   }
 
-  // Protocol-relative URLs and bare hostnames are not allowed
   if (trimmed.startsWith('//') || /^www\./i.test(trimmed)) {
     return null;
   }
 
-  // Normalize redirect blocklist once and enforce across all URL forms
   const blocklist = normalizeBlocklist(config.redirectBlocklist);
 
   // Relative paths (/, ./, ../, bare paths) have no protocol to validate
@@ -634,14 +568,12 @@ export function sanitizeHref(raw, config = {}) {
     return sanitizeRelativePath(trimmed, blocklist);
   }
 
-  // Extract and validate protocol
   const schemeMatch = trimmed.match(/^([a-z0-9+.-]+):/i);
   if (!schemeMatch) {
     return null;
   }
   const scheme = schemeMatch[1].toLowerCase();
 
-  // Check protocol allowlist/blocklist
   const allowedProtocols = buildAllowedProtocols(config);
   const blockedProtocols = BLOCKED_PROTOCOLS.concat(config.blockedProtocols ?? []).map((p) => p.toLowerCase());
 
@@ -665,7 +597,6 @@ export function sanitizeHref(raw, config = {}) {
   }
   const rawHostname = trimmed.slice(hostStartIndex, hostEndIndex).toLowerCase();
   if (rawHostname && /[^\x00-\x7F]/.test(rawHostname)) {
-    // Hostname contains non-ASCII characters (possible homograph attack)
     if (process.env.NODE_ENV === 'development' || process.env.DEBUG_HYPERLINKS === 'true') {
       console.warn(`[URL Validation] Potential homograph attack detected in hostname: ${rawHostname.slice(0, 50)}`);
     }
@@ -686,8 +617,7 @@ export function sanitizeHref(raw, config = {}) {
     }
   }
 
-  // Parse URL
-  let parsed;
+  let parsed: URL;
   try {
     parsed = new URL(trimmed);
   } catch {
@@ -696,12 +626,10 @@ export function sanitizeHref(raw, config = {}) {
 
   const normalizedHref = trimmed;
 
-  // Check redirect blocklist
   if (isBlockedByRedirectList(normalizedHref, parsed, blocklist)) {
     return null;
   }
 
-  // Return sanitized result
   const isExternal = scheme === 'http' || scheme === 'https';
   return { href: normalizedHref, protocol: scheme, isExternal };
 }
@@ -735,15 +663,8 @@ export function sanitizeHref(raw, config = {}) {
  * - Default 500 char limit prevents screen reader fatigue and UI obscuration
  * - wasTruncated flag enables UI indicators for truncated content
  *
- * @param {string | null | undefined} raw - Raw tooltip text to process.
- *   Can contain special characters like quotes, ampersands, angle brackets.
- * @param {number} [maxLength=DEFAULT_TOOLTIP_MAX_LENGTH] - Maximum length before truncation.
- *   Default: 500 characters. Use 0 or negative to disable truncation.
- * @returns {{text: string, wasTruncated: boolean} | null}
- *   Returns null for invalid input (non-string, empty after trimming).
- *   On success returns:
- *   - text: Trimmed and truncated text (NOT HTML-encoded)
- *   - wasTruncated: Whether text was cut to fit maxLength (useful for "..." indicators)
+ * Returns null for non-string or empty-after-trim input. A maxLength of 0 or
+ * less disables truncation.
  *
  * @example
  * // Basic usage
@@ -770,7 +691,10 @@ export function sanitizeHref(raw, config = {}) {
  * encodeTooltip('   ')     // Returns: null
  * encodeTooltip(123)       // Returns: null
  */
-export function encodeTooltip(raw, maxLength = DEFAULT_TOOLTIP_MAX_LENGTH) {
+export function encodeTooltip(
+  raw: string | null | undefined,
+  maxLength: number = DEFAULT_TOOLTIP_MAX_LENGTH,
+): EncodedTooltip | null {
   if (typeof raw !== 'string') return null;
   const trimmed = raw.trim();
   if (!trimmed) return null;
@@ -800,21 +724,14 @@ export function encodeTooltip(raw, maxLength = DEFAULT_TOOLTIP_MAX_LENGTH) {
  * - Anchors: `#section`
  * - Protocol-relative: `//cdn.example.com`
  * - Absolute URLs with scheme: `https://…`, `data:…`, `blob:…`
- *
- * @param {string} url - URL string to test
- * @returns {boolean} true if the URL is relative
  */
-export function isRelativeUrl(url) {
+export function isRelativeUrl(url: unknown): boolean {
   if (typeof url !== 'string') return false;
   const trimmed = url.trim();
   if (!trimmed) return false;
-  // Anchors are not relative paths
   if (trimmed.startsWith('#')) return false;
-  // Protocol-relative URLs
   if (trimmed.startsWith('//')) return false;
-  // Has a scheme (http:, data:, blob:, etc.) → absolute
   if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) return false;
-  // Everything else is relative (/, ./, ../, or bare path)
   return true;
 }
 
@@ -825,5 +742,4 @@ export const UrlValidationConstants = {
   DEFAULT_MAX_LENGTH,
 };
 
-// Export for testing
 export { buildAllowedProtocols };

@@ -253,7 +253,7 @@
     },
     {
       "name": "onCommentsUpdate",
-      "type": "(params: {\n  type: string;\n  comment?: Comment;\n  changes?: { key: string; commentId: string; fileId?: string | null; }[];\n  pendingSelection?: null | SelectionInfo;\n}) => void",
+      "type": "(params: {\n  type: string;\n  comment?: null | Comment;\n  changes?: ({ key: string; commentId: string; fileId?: string | null; value?: undefined; previousValue?: undefined; } | { key: \"text\"; value: string; commentId?: undefined; fileId?: undefined; previousValue?: undefined; } | { key: \"isInternal\"; value: boolean; previousValue: boolean; commentId?: undefined; fileId?: undefined; } | { key: \"resolvedTime\"; value: null; commentId?: undefined; fileId?: undefined; previousValue?: undefined; })[];\n  rejected?: true;\n  reason?: string;\n  committed?: true;\n  code?: string;\n  detail?: unknown;\n  pendingSelection?: null | SelectionInfo;\n}) => void",
       "typeName": "(params: SuperDocCommentsUpdatePayload) => void",
       "required": false,
       "description": "Callback when comments are updated.",

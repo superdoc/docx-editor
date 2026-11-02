@@ -3212,14 +3212,31 @@ export interface SuperDocAwarenessUpdatePayload {
  * `Config.onCommentsUpdate`. Field set differs from older inline
  * declarations: the runtime emits `comment?` and `changes?` (never a
  * `data` field).
+ *
+ * A refused comment mutation emits `rejected: true` with a stable `reason`
+ * (e.g. `'adapter-threw'`, `'receipt-failure'`) and leaves the comment list
+ * unchanged so the user can retry. It may add the document receipt failure
+ * `code` (e.g. `'TARGET_NOT_FOUND'`), a `detail` (an error message or a
+ * structured description of the mismatch), and `committed: true` when the
+ * change reached the document but could not be confirmed in the comment list.
  */
 export interface SuperDocCommentsUpdatePayload {
-  /** Update kind (e.g. `'created'`, `'updated'`, `'deleted'`); set by the comments store. */
+  /** Update kind (e.g. `'add'`, `'update'`, `'deleted'`, `'resolved'`, `'pending'`); set by the comments store. */
   type: string;
-  /** The comment object the update refers to, when applicable. */
-  comment?: Comment;
-  /** Per-field change set when the update is a mutation. */
-  changes?: Array<{ key: string; commentId: string; fileId?: string | null }>;
+  /** The comment object the update refers to, when applicable; `null` when a created comment could not be read back. */
+  comment?: Comment | null;
+  /** Per-field change set: `'deleted'` names the comment; `text`, `isInternal`, `resolvedTime` carry `value` (check its type, not just `key`). */
+  changes?: Array<
+    | { key: string; commentId: string; fileId?: string | null; value?: undefined; previousValue?: undefined }
+    | { key: 'text'; value: string; commentId?: undefined; fileId?: undefined; previousValue?: undefined }
+    | { key: 'isInternal'; value: boolean; previousValue: boolean; commentId?: undefined; fileId?: undefined }
+    | { key: 'resolvedTime'; value: null; commentId?: undefined; fileId?: undefined; previousValue?: undefined }
+  >;
+  rejected?: true;
+  reason?: string;
+  committed?: true;
+  code?: string;
+  detail?: unknown;
   /**
    * The Document API selection snapshot captured at the moment a
    * `'pending'` comment was started, before the pending mark is

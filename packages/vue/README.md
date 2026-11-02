@@ -1,15 +1,19 @@
 # @superdoc/vue
 
-Vue 3 wrapper for the [SuperDoc](https://superdoc.dev) browser editor.
+Vue 3 wrapper for the [`superdoc`](https://www.npmjs.com/package/superdoc)
+browser DOCX editor. `SuperDocEditor` creates the editor, rebuilds it when key
+props change, and destroys it on unmount. Use props and events for common tasks
+or a template ref for the core `SuperDoc` instance.
 
-Install the wrapper with Vue 3 and SuperDoc 2:
+[Live demo](https://www.superdoc.dev) · [Documentation](https://docs.superdoc.dev) · [GitHub](https://github.com/superdoc/docx-editor)
+
+## Install
 
 ```sh
 npm install @superdoc/vue superdoc@2 vue@^3.5.11
 ```
 
-`SuperDocEditor` creates the editor, rebuilds it when needed, and destroys it on unmount. Use props and events
-for common tasks or a template ref for the core `SuperDoc` instance.
+`superdoc` is a peer dependency.
 
 ## Quick start
 
@@ -125,7 +129,41 @@ See the [custom UI guide](https://docs.superdoc.dev/editor/custom-ui/overview) f
 The component renders its containers on the server and loads SuperDoc after mounting in the browser. Nuxt
 hydration and navigation teardown have not been tested yet, so some apps may still need `ssr: false`.
 
+## Common mistakes
+
+| Wrong | Right |
+| --- | --- |
+| Importing `SuperDocEditor` without `@superdoc/vue/style.css` | Import both |
+| Writing `modules` or `ui` as object literals in the template | Define them once in `<script setup>` |
+| Storing the instance in `ref()` or `reactive()` | Use `getInstance()` or a `shallowRef` |
+| Calling instance methods before `@ready` | Wait for `@ready`, or check `getInstance()` for `null` |
+| Expecting `save()` to return the DOCX | Use `export({ triggerDownload: false })` |
+| Listening to `@transaction` for changes | Use `@editor-update` |
+| `document-mode="edit"`, `"view"`, or `"suggest"` | `"editing"`, `"viewing"`, or `"suggesting"` |
+
 ## Requirements
 
 - Vue `^3.5.11`
 - `superdoc` `>=2.0.0-0 <3`
+
+## Related packages
+
+- [`superdoc`](https://www.npmjs.com/package/superdoc): the editor this package wraps. Its README covers the Document API, recipes, and V1 migration mistakes.
+- [`@superdoc/react`](https://www.npmjs.com/package/@superdoc/react): the same editor for React.
+- [`@superdoc/fonts`](https://www.npmjs.com/package/@superdoc/fonts): optional metric-compatible font substitutes.
+- [`@superdoc/sdk`](https://www.npmjs.com/package/@superdoc/sdk): Node.js SDK for headless editing and agent toolkits.
+
+## Documentation
+
+- [Editor quick start](https://docs.superdoc.dev/editor/quickstart)
+- [Configuration](https://docs.superdoc.dev/editor/configuration)
+- [Document modes](https://docs.superdoc.dev/editor/document-modes)
+- [Lifecycle and events](https://docs.superdoc.dev/editor/lifecycle-and-events)
+- [Custom UI](https://docs.superdoc.dev/editor/custom-ui/overview)
+- [Package compatibility](https://docs.superdoc.dev/resources/package-compatibility): peer dependency policy and version inspection.
+- [`llms.txt`](https://docs.superdoc.dev/llms.txt): machine-readable index of the documentation for coding agents.
+
+## License
+
+AGPL-3.0. [Commercial licenses](https://www.superdoc.dev/#pricing) are
+available for proprietary deployments.

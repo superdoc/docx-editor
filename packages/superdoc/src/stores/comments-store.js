@@ -257,6 +257,13 @@ export const useCommentsStore = defineStore('comments', () => {
   const getCommentEventPayload = (comment) =>
     typeof comment?.getValues === 'function' ? comment.getValues() : { ...comment };
 
+  const getDeletedCommentChanges = (sources, fileId) => {
+    const commentId = [...sources.map((source) => source?.commentId), ...sources.map((source) => source?.importedId)]
+      .map(normalizeCommentId)
+      .find(Boolean);
+    return commentId ? [{ key: 'deleted', commentId, fileId }] : [];
+  };
+
   /**
    * Check if a comment originated from the document editor (or has no explicit source).
    * Comments without a source are assumed to be editor-backed for backward compatibility.
@@ -1261,10 +1268,11 @@ export const useCommentsStore = defineStore('comments', () => {
             pruneStale: outcome.complete !== false,
           });
         }
+        const payload = comment.getValues();
         superdoc.emit('comments-update', {
           type: COMMENT_EVENTS.DELETED,
-          comment: comment.getValues(),
-          changes: [{ key: 'deleted', commentId, fileId }],
+          comment: payload,
+          changes: getDeletedCommentChanges([{ commentId, importedId }, payload], fileId),
         });
         return { ok: true };
       });
@@ -1286,10 +1294,11 @@ export const useCommentsStore = defineStore('comments', () => {
       clearActiveCommentSelection();
     }
 
+    const payload = comment.getValues();
     const event = {
       type: COMMENT_EVENTS.DELETED,
-      comment: comment.getValues(),
-      changes: [{ key: 'deleted', commentId, fileId }],
+      comment: payload,
+      changes: getDeletedCommentChanges([{ commentId, importedId }, payload], fileId),
     };
 
     superdoc.emit('comments-update', event);
@@ -1362,7 +1371,7 @@ export const useCommentsStore = defineStore('comments', () => {
       const event = {
         type: COMMENT_EVENTS.DELETED,
         comment: payload,
-        changes: [{ key: 'deleted', commentId: payload?.commentId, fileId: payload?.fileId }],
+        changes: getDeletedCommentChanges([payload, comment], payload?.fileId),
       };
       superdoc?.emit?.('comments-update', event);
     });
@@ -2846,7 +2855,7 @@ export const useCommentsStore = defineStore('comments', () => {
           const event = {
             type: COMMENT_EVENTS.DELETED,
             comment: payload,
-            changes: [{ key: 'deleted', commentId: payload.commentId, fileId: payload.fileId }],
+            changes: getDeletedCommentChanges([payload, comment], payload.fileId),
           };
           if (broadcastChanges) {
             syncCommentsToClients(superdoc, event);

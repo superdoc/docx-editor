@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { createPinia, setActivePinia } from 'pinia';
 import { computed, isProxy, markRaw, reactive } from 'vue';
+import * as Y from 'yjs';
 import { useCommentsStore } from './comments-store.js';
 import { useSuperdocStore } from './superdoc-store.js';
 import { makeV2CommentsAdapter, makeV2TrackedChangesAdapter } from '../test-support/v2-review-adapters.js';
@@ -5550,5 +5551,99 @@ describe('pending receipt creation invalidation', () => {
     store.dropCommentsFromMutationImpact({ superdoc, documentId: 'doc-1', removedIds: new Set(['pending-created']) });
     expect(store.commentsList).toEqual([]);
     expect(superdoc.emit).toHaveBeenCalledWith('comments-update', expect.objectContaining({ type: 'deleted' }));
+  });
+});
+
+describe('comments-store deleted comment change entries', () => {
+  const IDENTITY_STATES = [
+    { name: 'live and snapshot ids', live: 'c1', snapshot: 'c1', expected: 'c1' },
+    { name: 'a lost live id', live: undefined, snapshot: 'c1', expected: 'c1' },
+    { name: 'a lost snapshot id', live: 'c1', snapshot: undefined, expected: 'c1' },
+    { name: 'only an imported id', live: undefined, snapshot: undefined, importedId: 'w0', expected: 'w0' },
+    { name: 'no id', live: undefined, snapshot: undefined, expected: null },
+    { name: 'a numeric id', live: 7, snapshot: 7, expected: '7' },
+    { name: 'empty ids and an imported id', live: '', snapshot: '', importedId: 'w0', expected: 'w0' },
+  ];
+
+  let store;
+
+  const makeRow = ({ live, snapshot, importedId }, overrides = {}) => {
+    const row = useComment({ commentId: 'c1', importedId, fileId: 'doc-1', commentText: 'Body', ...overrides });
+    row.commentId = live;
+    row.updateIdentityValues({ commentId: snapshot });
+    return row;
+  };
+
+  const expectedChanges = (expected) => (expected ? [{ key: 'deleted', commentId: expected, fileId: 'doc-1' }] : []);
+
+  const makeCollaborativeSuperdoc = (yRows) => {
+    const ydoc = new Y.Doc();
+    ydoc.getArray('comments').push(yRows.map((row) => new Y.Map(Object.entries(row))));
+    return { emit: vi.fn(), isCollaborative: true, ydoc, config: { modules: { comments: {} }, user: { name: 'Ana' } } };
+  };
+
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    useSuperdocStore().documents = [
+      { id: 'doc-1', type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' },
+    ];
+    store = useCommentsStore();
+  });
+
+  it.each(IDENTITY_STATES)('names the comment from $name on a local delete and still syncs it', async (state) => {
+    const row = makeRow(state);
+    store.commentsList = [row];
+    const superdoc = makeCollaborativeSuperdoc([{ ...row.getValues() }]);
+
+    expect(await store.deleteComment({ commentId: state.live, superdoc })).toEqual({ ok: true });
+
+    expect(superdoc.emit.mock.calls).toEqual([
+      ['comments-update', { type: 'deleted', comment: row.getValues(), changes: expectedChanges(state.expected) }],
+    ]);
+    expect(superdoc.ydoc.getArray('comments').toJSON()).toEqual([]);
+  });
+
+  it.each(IDENTITY_STATES)('names the comment from $name on a v2 delete', async (state) => {
+    const adapter = makeV2CommentsAdapter({
+      documentId: 'doc-1',
+      delete: vi.fn(async () => ({ ok: true, items: [], complete: false, removedCommentIds: [] })),
+    });
+    const superdoc = makeSuperdoc(adapter);
+    const row = makeRow(state);
+    store.commentsList = [row];
+    store.setV2CommentsAdapter(adapter);
+
+    expect(await store.deleteComment({ commentId: state.live, superdoc })).toEqual({ ok: true });
+
+    expect(superdoc.emit.mock.calls).toEqual([
+      ['comments-update', { type: 'deleted', comment: row.getValues(), changes: expectedChanges(state.expected) }],
+    ]);
+  });
+
+  it.each(IDENTITY_STATES)('names the comment from $name when a mutation drops it by its anchor key', (state) => {
+    const row = makeRow(state, { trackedChangeAnchorKey: 'anchor-1' });
+    store.commentsList = [row];
+    const superdoc = { emit: vi.fn() };
+
+    store.dropCommentsFromMutationImpact({ superdoc, documentId: 'doc-1', removedIds: new Set(['anchor-1']) });
+
+    expect(store.commentsList).toEqual([]);
+    expect(superdoc.emit.mock.calls).toEqual([
+      ['comments-update', { type: 'deleted', comment: row.getValues(), changes: expectedChanges(state.expected) }],
+    ]);
+  });
+
+  it('never broadcasts a deletion when a v2 refresh prunes a stale tracked-change row', () => {
+    const adapter = makeTrackedChangesAdapter({ ok: true, items: [] });
+    const row = makeTrackedChangeRow({ commentId: 'tc-stale' });
+    store.commentsList = [row];
+    store.setV2TrackedChangesAdapter(adapter);
+    const superdoc = makeCollaborativeSuperdoc([{ commentId: 'tc-stale' }]);
+
+    store.reconcileTrackedChangesFromV2({ superdoc, adapter, documentId: 'doc-1', items: [], pruneStale: true });
+
+    expect(store.commentsList).toEqual([]);
+    expect(superdoc.emit).not.toHaveBeenCalled();
+    expect(superdoc.ydoc.getArray('comments').toJSON()).toEqual([{ commentId: 'tc-stale' }]);
   });
 });

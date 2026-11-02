@@ -6,6 +6,8 @@ import { syncCommentsToClients } from '../core/collaboration/helpers.js';
 import useComment, { COMMENT_RECONCILIATION_TOKEN } from '@superdoc/components/CommentsLayer/use-comment';
 import { DOCUMENT_EDITOR_SELECTION_SOURCE } from '../helpers/selection-source.js';
 import { buildFloatingCommentInstances } from './helpers/floating-comment-instances.js';
+import { createCommentDocumentScope, getCommentDocumentId } from './helpers/comment-document-scope.js';
+import { getPendingSelectionSnapshot } from './helpers/pending-selection-snapshot.js';
 import { groupCommittedComments, groupComments, hasOpenTrackedChange } from './helpers/comment-grouping.js';
 import {
   isSyntheticTrackedChangeCommentLaneItem,
@@ -783,32 +785,6 @@ export const useCommentsStore = defineStore('comments', () => {
       }
       delete debounceTimers[commentId];
     }, delay);
-  };
-
-  const getPendingSelectionSnapshot = (superdoc, activeSelection) => {
-    if (activeSelection?.source !== DOCUMENT_EDITOR_SELECTION_SOURCE) return null;
-
-    const selectionDocumentId = activeSelection?.documentId ?? null;
-    const editorDocumentId = superdoc?.activeEditor?.options?.documentId ?? null;
-    if (!selectionDocumentId || !editorDocumentId || selectionDocumentId !== editorDocumentId) {
-      return null;
-    }
-
-    let currentSelection;
-    try {
-      currentSelection = superdoc?.activeEditor?.doc?.selection?.current;
-    } catch {
-      return null;
-    }
-
-    if (typeof currentSelection !== 'function') return null;
-
-    try {
-      const snapshot = currentSelection();
-      return typeof snapshot?.then === 'function' ? Promise.resolve(snapshot).catch(() => null) : snapshot;
-    } catch {
-      return null;
-    }
   };
 
   const showAddComment = (superdoc, targetClientY = null) => {
@@ -2698,48 +2674,9 @@ export const useCommentsStore = defineStore('comments', () => {
     }
   }
 
-  const getCommentDocumentId = (comment) => {
-    if (!comment) return null;
-    if (comment.fileId != null) return String(comment.fileId);
-    if (comment.documentId != null) return String(comment.documentId);
-    if (comment.selection?.documentId != null) return String(comment.selection.documentId);
-    return null;
-  };
-
-  const getOpenDocuments = () => {
-    const docs = Array.isArray(superdocStore.documents) ? superdocStore.documents : superdocStore.documents?.value;
-    return Array.isArray(docs) ? docs : [];
-  };
-
-  const getSingleOpenDocumentId = () => {
-    const docs = getOpenDocuments();
-    if (docs.length !== 1) return null;
-    return docs[0]?.id != null ? String(docs[0].id) : null;
-  };
-
-  const belongsToDocument = (comment, activeDocumentId, options = {}) => {
-    const { allowSingleDocumentMismatch = false } = options;
-    if (!activeDocumentId) return false;
-
-    const commentDocumentId = getCommentDocumentId(comment);
-    if (commentDocumentId) {
-      if (commentDocumentId === activeDocumentId) return true;
-
-      const singleOpenDocumentId = getSingleOpenDocumentId();
-      return allowSingleDocumentMismatch && singleOpenDocumentId === activeDocumentId;
-    }
-
-    // Legacy fallback: in single-document sessions, comments may not carry explicit
-    // document metadata yet. Treat them as belonging to the only open document.
-    return getSingleOpenDocumentId() === activeDocumentId;
-  };
-
-  const belongsToTrackedChangeSyncDocument = (comment, activeDocumentId) => {
-    // Collaboration replay can surface the same logical tracked-change thread with
-    // a peer's equivalent single-document id. During tracked-change reconciliation
-    // there is only one valid target document, so treat that mismatch as in-scope.
-    return belongsToDocument(comment, activeDocumentId, { allowSingleDocumentMismatch: true });
-  };
+  const { belongsToDocument, belongsToTrackedChangeSyncDocument } = createCommentDocumentScope(
+    () => superdocStore.documents,
+  );
 
   const remapTrackedChangeReferences = (droppedCommentIds, activeDocumentId) => {
     const remapSelection = (selection) => {

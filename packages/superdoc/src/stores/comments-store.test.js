@@ -4600,6 +4600,50 @@ describe('comments-store committed review-window apply', () => {
   });
 });
 
+describe('comments-store document scope', () => {
+  let store;
+  let superdocStore;
+
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    superdocStore = useSuperdocStore();
+    superdocStore.documents = [{ id: 'doc-1' }];
+    store = useCommentsStore();
+  });
+
+  it('reads the live open documents after the store is created', () => {
+    expect(store.belongsToDocument({}, 'doc-1')).toBe(true);
+    superdocStore.documents.push({ id: 'doc-2' });
+    expect(store.belongsToDocument({}, 'doc-1')).toBe(false);
+    expect(store.belongsToDocument({ fileId: 'doc-2' }, 'doc-2')).toBe(true);
+    expect(store.belongsToDocument({ fileId: 'peer-doc' }, 'doc-1', { allowSingleDocumentMismatch: true })).toBe(false);
+    superdocStore.documents = [{ id: 'doc-1' }];
+    expect(store.belongsToDocument({ fileId: 'peer-doc' }, 'doc-1', { allowSingleDocumentMismatch: true })).toBe(true);
+  });
+
+  it('recomputes a scoped computed on document changes only', () => {
+    const fallback = vi.fn(() => store.belongsToDocument({}, 'doc-1'));
+    const explicit = vi.fn(() => store.belongsToDocument({ fileId: 'doc-1' }, 'doc-1'));
+    const fallbackScope = computed(fallback);
+    const explicitScope = computed(explicit);
+    const read = () => [
+      fallbackScope.value,
+      explicitScope.value,
+      fallback.mock.calls.length,
+      explicit.mock.calls.length,
+    ];
+
+    expect(read()).toEqual([true, true, 1, 1]);
+    store.isCommentsListVisible = !store.isCommentsListVisible;
+    superdocStore.activeZoom = 150;
+    expect(read()).toEqual([true, true, 1, 1]);
+    superdocStore.documents.push({ id: 'doc-2' });
+    expect(read()).toEqual([false, true, 2, 1]);
+    superdocStore.documents = [{ id: 'doc-1' }];
+    expect(read()).toEqual([true, true, 3, 1]);
+  });
+});
+
 describe('comments-store pending selection event snapshots', () => {
   let store;
   let superdocStore;

@@ -188,6 +188,7 @@ export default defineConfig(({ mode, command }) => {
       ],
       exclude: [
         'src/dev/**',
+        'src/test-support/**',
         'src/components/SuperToolbar/**',
       ],
       outDir: npmOutDir,

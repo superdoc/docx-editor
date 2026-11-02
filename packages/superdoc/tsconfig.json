@@ -37,6 +37,7 @@
     "**/*.spec.tsx",
     "**/__tests__/**",
     "src/dev/**",
+    "src/test-support/**",
     "src/main.ts",
     "../document-api/src/**/*.test.*",
     "../document-api/src/**/*.spec.*",

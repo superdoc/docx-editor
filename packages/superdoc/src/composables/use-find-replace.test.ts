@@ -1,6 +1,41 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vite-plus/test';
-import { ref, shallowRef, nextTick } from 'vue';
-import { useFindReplace } from './use-find-replace.js';
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vite-plus/test';
+import { ref, shallowRef, nextTick, type Ref } from 'vue';
+import { useFindReplace, type FindReplaceSearch } from './use-find-replace.js';
+import type {
+  DirectSurfaceRequest,
+  Editor,
+  ExternalSurfaceRenderContext,
+  FindReplaceConfig,
+  FindReplaceHandle,
+  FindReplaceRenderContext,
+  SurfaceHandle,
+  SurfaceOutcome,
+} from '../core/types/index.js';
+import type { SearchController, SearchQueryOptions, SearchSnapshot, WorkflowActionResult } from '../public/ui/types.js';
+
+type SurfaceRenderContext = Omit<ExternalSurfaceRenderContext, 'request'>;
+
+type FindReplaceSurfaceRequest = Omit<DirectSurfaceRequest, 'props' | 'render'> & {
+  props?: Record<string, unknown> & { findReplace: FindReplaceHandle };
+  render?: (ctx: SurfaceRenderContext) => { destroy?: () => void } | void;
+};
+
+type ManagerStubHandle = SurfaceHandle & { _settle?: (outcome: SurfaceOutcome) => void };
+
+type SearchQuery = NonNullable<FindReplaceSearch['search']>;
+
+type SearchStub = {
+  getSnapshot: Mock<() => Partial<SearchSnapshot>>;
+  next: Mock<SearchController['next']>;
+  previous: Mock<SearchController['previous']>;
+  clear: Mock<SearchController['clear']>;
+  replace: Mock<SearchController['replace']>;
+  replaceAll: Mock<SearchController['replaceAll']>;
+} & ({ find: Mock<SearchQuery>; search?: Mock<SearchQuery> } | { find?: undefined; search: Mock<SearchQuery> });
+
+type ExternalFindReplaceContext = Omit<FindReplaceRenderContext, 'findReplace'> & {
+  findReplace: Partial<Record<keyof FindReplaceHandle, unknown>>;
+};
 
 /** Monotonically increasing surface IDs for multi-open tests. */
 let surfaceIdSeq = 0;
@@ -10,20 +45,20 @@ let surfaceIdSeq = 0;
  * Each call to open() creates a fresh handle with a unique id.
  */
 function createManagerStub() {
-  const handles = [];
+  const handles: ManagerStubHandle[] = [];
 
   const stub = {
-    open: vi.fn(() => {
-      let settleHandle;
-      const handle = {
+    open: vi.fn<(request: FindReplaceSurfaceRequest) => ManagerStubHandle>(() => {
+      let settleHandle: ((outcome: SurfaceOutcome) => void) | undefined;
+      const handle: ManagerStubHandle = {
         id: `surface-${++surfaceIdSeq}`,
         mode: 'floating',
         close: vi.fn(),
-        result: new Promise((resolve) => {
+        result: new Promise<SurfaceOutcome>((resolve) => {
           settleHandle = resolve;
         }),
       };
-      handle._settle = (outcome) => settleHandle(outcome);
+      handle._settle = (outcome) => settleHandle!(outcome);
       handles.push(handle);
       return handle;
     }),
@@ -37,12 +72,16 @@ function createManagerStub() {
 }
 
 /** An active editor facade — search runs through `ui.search`, not the editor. */
-function createEditorStub() {
+function createEditorStub(): Editor {
   return { editorVersion: 2 };
 }
 
 /** Stateful `ui.search` stub mirroring the host search session contract. */
-function createSearchStub({ canReplace = true, canReplaceAll = canReplace, available = true } = {}) {
+function createSearchStub({
+  canReplace = true,
+  canReplaceAll = canReplace,
+  available = true,
+}: { canReplace?: boolean; canReplaceAll?: boolean; available?: boolean } = {}): SearchStub {
   const state = {
     query: '',
     total: 0,
@@ -54,7 +93,7 @@ function createSearchStub({ canReplace = true, canReplaceAll = canReplace, avail
   };
   return {
     getSnapshot: vi.fn(() => ({ ...state })),
-    find: vi.fn((query, options = {}) => {
+    find: vi.fn((query: string, options: SearchQueryOptions = {}) => {
       state.query = query;
       state.total = query ? 2 : 0;
       state.activeIndex = query ? 0 : -1;
@@ -91,12 +130,12 @@ function createSearchStub({ canReplace = true, canReplaceAll = canReplace, avail
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
 describe('useFindReplace', () => {
-  let manager;
-  let editor;
-  let search;
-  let activeEditorRef;
-  let findReplace;
-  let configValue;
+  let manager: ReturnType<typeof createManagerStub>;
+  let editor: Editor;
+  let search: SearchStub;
+  let activeEditorRef: Ref<Editor | null | undefined>;
+  let findReplace: ReturnType<typeof useFindReplace>;
+  let configValue: boolean | FindReplaceConfig | undefined;
 
   beforeEach(() => {
     surfaceIdSeq = 0;
@@ -127,7 +166,7 @@ describe('useFindReplace', () => {
       expect(manager.open).toHaveBeenCalledTimes(1);
       const call = manager.open.mock.calls[0][0];
       expect(call.mode).toBe('floating');
-      expect(call.floating.placement).toBe('top-right');
+      expect(call.floating!.placement).toBe('top-right');
       // closeOnEscape lives at the request top level — surface-manager
       // only reads `request.closeOnEscape`, not `request.floating.closeOnEscape`.
       // Asserting the nested location (as this test did before SD-2870) was
@@ -189,10 +228,10 @@ describe('useFindReplace', () => {
       await vi.dynamicImportSettled();
 
       const call = manager.open.mock.calls[0][0];
-      expect(call.props.findReplace).toBeDefined();
-      expect(typeof call.props.findReplace.goNext).toBe('function');
-      expect(typeof call.props.findReplace.goPrev).toBe('function');
-      expect(typeof call.props.findReplace.registerFocusFn).toBe('function');
+      expect(call.props!.findReplace).toBeDefined();
+      expect(typeof call.props!.findReplace.goNext).toBe('function');
+      expect(typeof call.props!.findReplace.goPrev).toBe('function');
+      expect(typeof call.props!.findReplace.registerFocusFn).toBe('function');
     });
 
     it('does not open when config is false', async () => {
@@ -237,7 +276,7 @@ describe('useFindReplace', () => {
       const call = manager.open.mock.calls[0][0];
       // markRaw wraps the component, so check identity through the raw value
       expect(call.component).toBeDefined();
-      expect(call.props.findReplace).toBeDefined();
+      expect(call.props!.findReplace).toBeDefined();
     });
 
     it('passes external render function to surface manager', async () => {
@@ -356,7 +395,7 @@ describe('useFindReplace', () => {
     it('syncs match state from the host search snapshot', async () => {
       await findReplace.open();
       await vi.dynamicImportSettled();
-      const handle = manager.open.mock.calls.at(-1)[0].props.findReplace;
+      const handle = manager.open.mock.calls.at(-1)![0].props!.findReplace;
 
       // A mutation outside the panel changes the host session.
       search.getSnapshot.mockReturnValue({ total: 2, activeIndex: 1, canReplace: true, available: true });
@@ -376,7 +415,7 @@ describe('useFindReplace', () => {
       await findReplace.open();
       await vi.dynamicImportSettled();
 
-      manager.lastHandle._settle({ status: 'replaced', replacedBy: 'some-other-surface' });
+      manager.lastHandle!._settle!({ status: 'replaced', replacedBy: 'some-other-surface' });
       await tick();
 
       expect(search.clear).toHaveBeenCalled();
@@ -390,7 +429,7 @@ describe('useFindReplace', () => {
       const firstHandle = manager.lastHandle;
 
       // Settle the first handle (simulating replacement by another surface)
-      firstHandle._settle({ status: 'replaced', replacedBy: 'surface-2' });
+      firstHandle!._settle!({ status: 'replaced', replacedBy: 'surface-2' });
       await tick();
 
       // Now open again (simulating the user re-pressing Cmd+F)
@@ -511,7 +550,7 @@ describe('useFindReplace', () => {
       await findReplace.open();
       await vi.dynamicImportSettled();
 
-      const handle = manager.open.mock.calls[0][0].props.findReplace;
+      const handle = manager.open.mock.calls[0][0].props!.findReplace;
       expect(handle.texts.findPlaceholder).toBe('Search...');
       expect(handle.texts.noResultsLabel).toBe('Nothing found');
       // Non-overridden fields get defaults
@@ -523,7 +562,7 @@ describe('useFindReplace', () => {
       await findReplace.open();
       await vi.dynamicImportSettled();
 
-      const handle = manager.open.mock.calls[0][0].props.findReplace;
+      const handle = manager.open.mock.calls[0][0].props!.findReplace;
       expect(handle.replaceEnabled).toBe(true);
     });
 
@@ -532,30 +571,30 @@ describe('useFindReplace', () => {
       await findReplace.open();
       await vi.dynamicImportSettled();
 
-      const handle = manager.open.mock.calls[0][0].props.findReplace;
+      const handle = manager.open.mock.calls[0][0].props!.findReplace;
       expect(handle.replaceEnabled).toBe(false);
     });
   });
 
   describe('handle actions', () => {
-    let handle;
+    let handle: FindReplaceHandle;
 
     beforeEach(async () => {
       await findReplace.open();
       await vi.dynamicImportSettled();
-      handle = manager.open.mock.calls[0][0].props.findReplace;
+      handle = manager.open.mock.calls[0][0].props!.findReplace;
     });
 
     it('replaceCurrent is a no-op when replaceEnabled is false', async () => {
       // Close and reopen with replaceEnabled: false
-      manager.lastHandle._settle({ status: 'closed' });
+      manager.lastHandle!._settle!({ status: 'closed' });
       await tick();
 
       configValue = { replaceEnabled: false };
       await findReplace.open();
       await vi.dynamicImportSettled();
 
-      const newHandle = manager.open.mock.calls[1][0].props.findReplace;
+      const newHandle = manager.open.mock.calls[1][0].props!.findReplace;
       newHandle.findQuery.value = 'needle';
       await new Promise((resolve) => setTimeout(resolve, 180));
       expect(newHandle.hasMatches.value).toBe(true);
@@ -567,14 +606,14 @@ describe('useFindReplace', () => {
 
     it('replaceAll is a no-op when replaceEnabled is false', async () => {
       // Close and reopen with replaceEnabled: false
-      manager.lastHandle._settle({ status: 'closed' });
+      manager.lastHandle!._settle!({ status: 'closed' });
       await tick();
 
       configValue = { replaceEnabled: false };
       await findReplace.open();
       await vi.dynamicImportSettled();
 
-      const newHandle = manager.open.mock.calls[1][0].props.findReplace;
+      const newHandle = manager.open.mock.calls[1][0].props!.findReplace;
       newHandle.findQuery.value = 'needle';
       await new Promise((resolve) => setTimeout(resolve, 180));
       expect(newHandle.hasMatches.value).toBe(true);
@@ -596,12 +635,12 @@ describe('useFindReplace', () => {
   });
 
   describe('handle reactive state', () => {
-    let handle;
+    let handle: FindReplaceHandle;
 
     beforeEach(async () => {
       await findReplace.open();
       await vi.dynamicImportSettled();
-      handle = manager.open.mock.calls[0][0].props.findReplace;
+      handle = manager.open.mock.calls[0][0].props!.findReplace;
     });
 
     it('matchLabel is empty when no query', () => {
@@ -616,14 +655,14 @@ describe('useFindReplace', () => {
     });
 
     it('matchLabel uses custom noResultsLabel', async () => {
-      manager.lastHandle._settle({ status: 'closed' });
+      manager.lastHandle!._settle!({ status: 'closed' });
       await tick();
 
       configValue = { noResultsLabel: 'Nothing found' };
       await findReplace.open();
       await vi.dynamicImportSettled();
 
-      const newHandle = manager.open.mock.calls[1][0].props.findReplace;
+      const newHandle = manager.open.mock.calls[1][0].props!.findReplace;
       newHandle.findQuery.value = 'test';
       await nextTick();
       expect(newHandle.matchLabel.value).toBe('Nothing found');
@@ -639,20 +678,24 @@ describe('useFindReplace', () => {
       handle.findQuery.value = 'old query';
       handle.matchCount.value = 5;
 
-      manager.lastHandle._settle({ status: 'closed' });
+      manager.lastHandle!._settle!({ status: 'closed' });
       await tick();
 
       await findReplace.open();
       await vi.dynamicImportSettled();
 
-      const newHandle = manager.open.mock.calls[1][0].props.findReplace;
+      const newHandle = manager.open.mock.calls[1][0].props!.findReplace;
       expect(newHandle.findQuery.value).toBe('');
       expect(newHandle.matchCount.value).toBe(0);
     });
   });
 
   describe('ui.search session', () => {
-    function makeSession({ canReplace = true, canReplaceAll = canReplace, available = true } = {}) {
+    function makeSession({
+      canReplace = true,
+      canReplaceAll = canReplace,
+      available = true,
+    }: { canReplace?: boolean; canReplaceAll?: boolean; available?: boolean } = {}) {
       const activeEditor = createEditorStub();
       const search = createSearchStub({ canReplace, canReplaceAll, available });
       const fr = useFindReplace({
@@ -697,7 +740,7 @@ describe('useFindReplace', () => {
       expect(fr.wouldOpen()).toBe(true);
       await fr.open();
       await vi.dynamicImportSettled();
-      const handle = manager.open.mock.calls.at(-1)[0].props.findReplace;
+      const handle = manager.open.mock.calls.at(-1)![0].props!.findReplace;
       handle.findQuery.value = 'needle';
       await new Promise((resolve) => setTimeout(resolve, 180));
 
@@ -713,7 +756,7 @@ describe('useFindReplace', () => {
       const { fr, search } = makeSession();
       await fr.open();
       await vi.dynamicImportSettled();
-      const handle = manager.open.mock.calls.at(-1)[0].props.findReplace;
+      const handle = manager.open.mock.calls.at(-1)![0].props!.findReplace;
 
       handle.findQuery.value = 'needle';
       await new Promise((resolve) => setTimeout(resolve, 180));
@@ -759,7 +802,7 @@ describe('useFindReplace', () => {
 
       await fr.open();
       await vi.dynamicImportSettled();
-      const handle = manager.open.mock.calls.at(-1)[0].props.findReplace;
+      const handle = manager.open.mock.calls.at(-1)![0].props!.findReplace;
 
       // A host search session exposes the regex toggle.
       expect(handle.regexSupported.value).toBe(true);
@@ -801,7 +844,7 @@ describe('useFindReplace', () => {
 
       await fr.open();
       await vi.dynamicImportSettled();
-      const handle = manager.open.mock.calls.at(-1)[0].props.findReplace;
+      const handle = manager.open.mock.calls.at(-1)![0].props!.findReplace;
 
       handle.findQuery.value = 'needle';
       await new Promise((resolve) => setTimeout(resolve, 180));
@@ -818,7 +861,7 @@ describe('useFindReplace', () => {
       const { fr, search } = makeSession();
       await fr.open();
       await vi.dynamicImportSettled();
-      const handle = manager.open.mock.calls.at(-1)[0].props.findReplace;
+      const handle = manager.open.mock.calls.at(-1)![0].props!.findReplace;
 
       handle.findQuery.value = 'needle';
       await new Promise((resolve) => setTimeout(resolve, 180));
@@ -837,7 +880,7 @@ describe('useFindReplace', () => {
 
     it('holds replacePending across an async (worker) replace and blocks re-entry', async () => {
       const { fr, search } = makeSession();
-      let resolveReplace;
+      let resolveReplace: ((value: WorkflowActionResult) => void) | undefined;
       search.replace.mockImplementation(
         () =>
           new Promise((resolve) => {
@@ -846,7 +889,7 @@ describe('useFindReplace', () => {
       );
       await fr.open();
       await vi.dynamicImportSettled();
-      const handle = manager.open.mock.calls.at(-1)[0].props.findReplace;
+      const handle = manager.open.mock.calls.at(-1)![0].props!.findReplace;
 
       handle.findQuery.value = 'needle';
       await new Promise((resolve) => setTimeout(resolve, 180));
@@ -860,7 +903,7 @@ describe('useFindReplace', () => {
       handle.replaceCurrent();
       expect(search.replace).toHaveBeenCalledTimes(1);
 
-      resolveReplace({ ok: true });
+      resolveReplace!({ ok: true });
       await tick();
       await tick();
       expect(handle.replacePending.value).toBe(false);
@@ -871,13 +914,13 @@ describe('useFindReplace', () => {
       const { fr, search } = makeSession({ canReplace: true, canReplaceAll: false });
       await fr.open();
       await vi.dynamicImportSettled();
-      const handle = manager.open.mock.calls.at(-1)[0].props.findReplace;
+      const handle = manager.open.mock.calls.at(-1)![0].props!.findReplace;
 
       handle.findQuery.value = 'needle';
       await new Promise((resolve) => setTimeout(resolve, 180));
 
       expect(handle.canReplace.value).toBe(true);
-      expect(handle.canReplaceAll.value).toBe(false);
+      expect(handle.canReplaceAll!.value).toBe(false);
 
       handle.replaceText.value = 'pin';
       handle.replaceAll();
@@ -891,7 +934,7 @@ describe('useFindReplace', () => {
       const { fr, search } = makeSession({ canReplace: false });
       await fr.open();
       await vi.dynamicImportSettled();
-      const handle = manager.open.mock.calls.at(-1)[0].props.findReplace;
+      const handle = manager.open.mock.calls.at(-1)![0].props!.findReplace;
 
       handle.findQuery.value = 'needle';
       await new Promise((resolve) => setTimeout(resolve, 180));
@@ -914,7 +957,7 @@ describe('useFindReplace', () => {
       await fr.open();
       await vi.dynamicImportSettled();
 
-      manager.lastHandle._settle({ status: 'closed', reason: 'escape' });
+      manager.lastHandle!._settle!({ status: 'closed', reason: 'escape' });
       await tick();
 
       expect(search.clear).toHaveBeenCalled();
@@ -924,9 +967,9 @@ describe('useFindReplace', () => {
 
   describe('external render wrapping', () => {
     it('external render receives wrapped handle with plain getters/setters', async () => {
-      let capturedCtx;
+      let capturedCtx: ExternalFindReplaceContext | undefined;
       configValue = {
-        render: (ctx) => {
+        render: (ctx: ExternalFindReplaceContext) => {
           capturedCtx = ctx;
         },
       };
@@ -935,7 +978,7 @@ describe('useFindReplace', () => {
 
       // The surface manager receives a render function; invoke it
       const renderFn = manager.open.mock.calls[0][0].render;
-      const mockSurfaceCtx = {
+      const mockSurfaceCtx: SurfaceRenderContext & { request: object } = {
         container: document.createElement('div'),
         surfaceId: 'test',
         mode: 'floating',
@@ -943,17 +986,17 @@ describe('useFindReplace', () => {
         resolve: vi.fn(),
         close: vi.fn(),
       };
-      renderFn(mockSurfaceCtx);
+      renderFn!(mockSurfaceCtx);
 
       // The external context should have unwrapped getters
       expect(capturedCtx).toBeDefined();
-      expect(capturedCtx.findReplace).toBeDefined();
-      expect(typeof capturedCtx.findReplace.findQuery).toBe('string');
-      expect(typeof capturedCtx.findReplace.goNext).toBe('function');
+      expect(capturedCtx!.findReplace).toBeDefined();
+      expect(typeof capturedCtx!.findReplace.findQuery).toBe('string');
+      expect(typeof capturedCtx!.findReplace.goNext).toBe('function');
 
       // Setting via the wrapper should update the underlying ref
-      capturedCtx.findReplace.findQuery = 'hello';
-      expect(capturedCtx.findReplace.findQuery).toBe('hello');
+      capturedCtx!.findReplace.findQuery = 'hello';
+      expect(capturedCtx!.findReplace.findQuery).toBe('hello');
     });
   });
 });

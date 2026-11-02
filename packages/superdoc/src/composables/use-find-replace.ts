@@ -12,7 +12,16 @@ import type {
   SearchFloatingConfig,
   SurfaceHandle,
 } from '../core/types/index.js';
-import type { SearchController, SearchSlice } from '../public/ui/types.js';
+import type { SearchController, SearchSlice, SearchSnapshot } from '../public/ui/types.js';
+
+type FindReplaceSearchQuery = (...args: Parameters<SearchController['find']>) => Partial<SearchSnapshot>;
+
+export type FindReplaceSearch = Pick<SearchController, 'next' | 'previous' | 'clear' | 'replace' | 'replaceAll'> & {
+  getSnapshot: () => Partial<SearchSnapshot>;
+} & (
+    | { find: FindReplaceSearchQuery; search?: FindReplaceSearchQuery }
+    | { find?: undefined; search: FindReplaceSearchQuery }
+  );
 
 type FindReplaceRenderer = NonNullable<FindReplaceConfig['render']>;
 
@@ -37,7 +46,7 @@ type FindReplaceRendering = {
 };
 
 type UseFindReplaceOptions = {
-  getSurfaceManager: () => SurfaceManager | null;
+  getSurfaceManager: () => Pick<SurfaceManager, 'open'> | null;
   getActiveEditor: () => Editor | null;
   activeEditorRef?: Ref<Editor | null | undefined>;
   getFindReplaceConfig?: () => boolean | FindReplaceConfig | undefined;
@@ -45,7 +54,7 @@ type UseFindReplaceOptions = {
    * Getter for the SuperDoc-owned UI controller (`superdoc.ui`). Its `.search`
    * slice is the single find/replace session authority.
    */
-  getSuperDocUI?: () => { search?: SearchController | null } | null | undefined;
+  getSuperDocUI?: () => { search?: FindReplaceSearch | null } | null | undefined;
 };
 
 const DEFAULT_TEXTS: ResolvedFindReplaceTexts = {
@@ -95,7 +104,7 @@ export function useFindReplace({
    * The `ui.search` handle for the current session, or null when the host
    * exposes none. Set at open() time.
    */
-  let currentSearch: SearchController | null = null;
+  let currentSearch: FindReplaceSearch | null = null;
   let destroyed = false;
   let opening = false; // sync guard against double-open across the await gap
 
@@ -161,7 +170,7 @@ export function useFindReplace({
   /**
    * Resolve the `ui.search` handle when available. Never throws.
    */
-  function resolveSearch(): SearchController | null {
+  function resolveSearch(): FindReplaceSearch | null {
     try {
       const ui = typeof getSuperDocUI === 'function' ? getSuperDocUI() : null;
       const search = ui?.search;

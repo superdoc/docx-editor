@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vite-plus/test';
 import { defineComponent, h, reactive } from 'vue';
 import { mount } from '@vue/test-utils';
+import { globalPropertiesWith } from '../test-support/global-properties.js';
 import { useUiFontFamily } from './useUiFontFamily.js';
 
 class FakeSuperDoc {
@@ -20,7 +21,7 @@ function mountFontFamily(globalProperties: Record<string, unknown>): string | nu
       return () => h('div');
     },
   });
-  mount(Probe, { global: { config: { globalProperties } } });
+  mount(Probe, { global: { config: { globalProperties: globalPropertiesWith(globalProperties) } } });
   return fontFamily;
 }
 

@@ -112,8 +112,26 @@ type BuiltInToolbarConfig = {
   uiDisplayFallbackFont?: string;
 };
 
+type ToolbarSuperDoc = Partial<
+  Pick<
+    SuperDoc,
+    | 'activeEditor'
+    | 'config'
+    | 'ui'
+    | 'uiConfig'
+    | 'fonts'
+    | 'on'
+    | 'off'
+    | 'emit'
+    | 'focus'
+    | 'toggleRuler'
+    | 'toggleFormattingMarks'
+    | 'setShowFormattingMarks'
+  >
+>;
+
 type BuiltInToolbarOptions = {
-  superdoc?: SuperDoc | null;
+  superdoc?: ToolbarSuperDoc | null;
   editor?: Editor | null;
   selector?: string | HTMLElement | null;
   element?: string | HTMLElement | null;
@@ -299,7 +317,7 @@ export class BuiltInToolbar extends EventEmitter {
   #painterListenersDetach: (() => void) | null = null;
   isDev = false;
   role = 'editor';
-  superdoc: SuperDoc | null | undefined = undefined;
+  superdoc: ToolbarSuperDoc | null | undefined = undefined;
   toolbarContainer: HTMLElement | null = null;
   toolbar: ComponentPublicInstance | null = null;
   _detachFontsChanged: (() => void) | null = null;
@@ -307,7 +325,7 @@ export class BuiltInToolbar extends EventEmitter {
   declare app?: App | null;
   declare activeEditor: Editor | null;
   declare ui: BorrowedSuperDocUI | null;
-  declare snapshot: ToolbarSnapshotSlice | null;
+  declare snapshot: Partial<Pick<ToolbarSnapshotSlice, 'commands' | 'copyFormatActive'>> | null;
   declare _unsubscribeController: (() => void) | null;
   declare _detachFormatPainterModeChange: (() => void) | null;
   declare _customCommandRegs: Map<string, CustomCommandRegistrationResult<CustomButtonPayload>>;

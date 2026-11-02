@@ -1,10 +1,17 @@
-import { mount } from '@vue/test-utils';
+import { mount, type VueWrapper } from '@vue/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
+import type { HeaderFooterPageNumbersInfo } from '@superdoc/document-api';
 import PageNumberMenu from './PageNumberMenu.vue';
 
-const ENABLED = { enabled: true, disabled: false };
-const DISABLED = { enabled: false, disabled: true, reason: 'context-unavailable' };
-const NUMBERED_FOOTER = {
+type PageNumberMenuProps = InstanceType<typeof PageNumberMenu>['$props'];
+
+const ENABLED: PageNumberMenuProps['pageNumbersState'] = { enabled: true, disabled: false };
+const DISABLED: PageNumberMenuProps['atCursorState'] = {
+  enabled: false,
+  disabled: true,
+  reason: 'context-unavailable',
+};
+const NUMBERED_FOOTER: HeaderFooterPageNumbersInfo = {
   section: { kind: 'section', sectionId: 'section-0' },
   placements: [{ kind: 'footer', alignment: 'right', parts: [{ kind: 'headerFooterPart', refId: 'rId7' }] }],
   showOnFirstPage: true,
@@ -13,10 +20,10 @@ const NUMBERED_FOOTER = {
   start: null,
 };
 
-function mountMenu(props = {}) {
-  const applyPageNumbers = vi.fn(async () => ({ success: true }));
-  const removePageNumbers = vi.fn(async () => ({ success: true }));
-  const insertAtCursor = vi.fn(async () => ({ success: true }));
+function mountMenu(props: Partial<PageNumberMenuProps> = {}) {
+  const applyPageNumbers = vi.fn<PageNumberMenuProps['applyPageNumbers']>(async () => ({ success: true }));
+  const removePageNumbers = vi.fn<PageNumberMenuProps['removePageNumbers']>(async () => ({ success: true }));
+  const insertAtCursor = vi.fn<PageNumberMenuProps['insertAtCursor']>(async () => ({ success: true }));
   const close = vi.fn();
   const wrapper = mount(PageNumberMenu, {
     attachTo: document.body,
@@ -34,7 +41,7 @@ function mountMenu(props = {}) {
   return { wrapper, applyPageNumbers, removePageNumbers, insertAtCursor, close };
 }
 
-const selectedTile = (wrapper) => wrapper.get('[role="radio"][aria-checked="true"]');
+const selectedTile = (wrapper: VueWrapper) => wrapper.get('[role="radio"][aria-checked="true"]');
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 describe('PageNumberMenu', () => {
@@ -49,10 +56,10 @@ describe('PageNumberMenu', () => {
     const tile = selectedTile(wrapper);
     expect(tile.attributes('aria-label')).toBe('Bottom of page, right');
     expect(document.activeElement).toBe(tile.element);
-    expect(wrapper.get('[data-sd-page-number-first-page]').element.checked).toBe(true);
-    expect(wrapper.get('[data-sd-page-number-format]').element.value).toBe('decimal');
-    expect(wrapper.get('[data-sd-page-number-restart]').element.checked).toBe(false);
-    expect(wrapper.get('[data-sd-page-number-start]').element.disabled).toBe(true);
+    expect(wrapper.get<HTMLInputElement>('[data-sd-page-number-first-page]').element.checked).toBe(true);
+    expect(wrapper.get<HTMLSelectElement>('[data-sd-page-number-format]').element.value).toBe('decimal');
+    expect(wrapper.get<HTMLInputElement>('[data-sd-page-number-restart]').element.checked).toBe(false);
+    expect(wrapper.get<HTMLInputElement>('[data-sd-page-number-start]').element.disabled).toBe(true);
     expect(wrapper.get('[data-sd-page-number-add]').text()).toBe('Add page numbers');
     expect(wrapper.find('[data-sd-page-number-remove]').exists()).toBe(false);
     expect(wrapper.findAll('[role="radio"]').filter((radio) => radio.attributes('tabindex') === '0')).toHaveLength(1);
@@ -63,7 +70,7 @@ describe('PageNumberMenu', () => {
     await flush();
 
     expect(selectedTile(wrapper).attributes('aria-label')).toBe('Top of page, left');
-    expect(wrapper.get('[data-sd-page-number-first-page]').element.checked).toBe(false);
+    expect(wrapper.get<HTMLInputElement>('[data-sd-page-number-first-page]').element.checked).toBe(false);
   });
 
   it('shows the section numbers it finds and offers to apply or remove them', async () => {
@@ -81,16 +88,16 @@ describe('PageNumberMenu', () => {
     await flush();
 
     expect(selectedTile(wrapper).attributes('aria-label')).toBe('Top of page, center');
-    expect(wrapper.get('[data-sd-page-number-first-page]').element.checked).toBe(false);
-    expect(wrapper.get('[data-sd-page-number-format]').element.value).toBe('lowerRoman');
-    expect(wrapper.get('[data-sd-page-number-restart]').element.checked).toBe(true);
-    expect(wrapper.get('[data-sd-page-number-start]').element.value).toBe('5');
+    expect(wrapper.get<HTMLInputElement>('[data-sd-page-number-first-page]').element.checked).toBe(false);
+    expect(wrapper.get<HTMLSelectElement>('[data-sd-page-number-format]').element.value).toBe('lowerRoman');
+    expect(wrapper.get<HTMLInputElement>('[data-sd-page-number-restart]').element.checked).toBe(true);
+    expect(wrapper.get<HTMLInputElement>('[data-sd-page-number-start]').element.value).toBe('5');
     expect(wrapper.get('[data-sd-page-number-add]').text()).toBe('Apply');
     expect(wrapper.find('[data-sd-page-number-remove]').exists()).toBe(true);
   });
 
   it('keeps a choice the user made before the section numbers loaded', async () => {
-    let resolveLoad;
+    let resolveLoad!: (info: HeaderFooterPageNumbersInfo | null) => void;
     const { wrapper } = mountMenu({ loadCurrent: () => new Promise((resolve) => (resolveLoad = resolve)) });
     await flush();
 
@@ -104,7 +111,7 @@ describe('PageNumberMenu', () => {
   });
 
   it('waits for the section numbers before applying a commit made while they load', async () => {
-    let resolveLoad;
+    let resolveLoad!: (info: HeaderFooterPageNumbersInfo | null) => void;
     const { wrapper, applyPageNumbers } = mountMenu({
       loadCurrent: () => new Promise((resolve) => (resolveLoad = resolve)),
     });
@@ -289,10 +296,10 @@ describe('PageNumberMenu', () => {
     await flush();
     await flush();
 
-    expect(wrapper.get('[data-sd-page-number-add]').element.disabled).toBe(true);
-    expect(wrapper.get('[data-sd-page-number-remove]').element.disabled).toBe(true);
-    expect(wrapper.get('[data-sd-page-number-first-page]').element.disabled).toBe(true);
-    expect(wrapper.get('[data-sd-page-number-format]').element.disabled).toBe(true);
+    expect(wrapper.get<HTMLButtonElement>('[data-sd-page-number-add]').element.disabled).toBe(true);
+    expect(wrapper.get<HTMLButtonElement>('[data-sd-page-number-remove]').element.disabled).toBe(true);
+    expect(wrapper.get<HTMLInputElement>('[data-sd-page-number-first-page]').element.disabled).toBe(true);
+    expect(wrapper.get<HTMLSelectElement>('[data-sd-page-number-format]').element.disabled).toBe(true);
     expect(wrapper.get('[role="status"]').text()).toContain('Switch to Editing');
     await wrapper.get('[data-sd-page-number-add]').trigger('click');
     expect(applyPageNumbers).not.toHaveBeenCalled();
@@ -305,7 +312,7 @@ describe('PageNumberMenu', () => {
   });
 
   it('starts the cursor insert before handing focus back to the editor', async () => {
-    const order = [];
+    const order: string[] = [];
     const { wrapper } = mountMenu({
       atCursorState: ENABLED,
       insertAtCursor: () => {
@@ -327,14 +334,14 @@ describe('PageNumberMenu', () => {
     );
 
     const withRange = mountMenu({ inHeaderFooter: true });
-    expect(withRange.wrapper.get('[data-sd-page-number-at-cursor]').element.disabled).toBe(true);
+    expect(withRange.wrapper.get<HTMLButtonElement>('[data-sd-page-number-at-cursor]').element.disabled).toBe(true);
     expect(withRange.wrapper.get('[data-sd-page-number-at-cursor]').text()).toContain(
       'Place the cursor without selecting text',
     );
   });
 
   it('ignores a second commit while the first is pending', async () => {
-    let finish;
+    let finish!: (result: { success: true }) => void;
     const { wrapper, applyPageNumbers } = mountMenu();
     applyPageNumbers.mockImplementationOnce(() => new Promise((resolve) => (finish = resolve)));
     await flush();

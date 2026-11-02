@@ -75,8 +75,10 @@ function compareToolbarFontOptions(a: ToolbarFontOption, b: ToolbarFontOption): 
     .localeCompare(String(b.label ?? '').trim(), 'en', { sensitivity: 'base' });
 }
 
+type ToolbarDocumentFontOption = Pick<DocumentFontOption, 'logicalFamily' | 'previewFamily'>;
+
 export function composeToolbarFontOptions(
-  documentOptions: readonly DocumentFontOption[] | null | undefined,
+  documentOptions: readonly ToolbarDocumentFontOption[] | null | undefined,
   configFonts?: readonly ToolbarFontOption[],
 ): readonly ToolbarFontOption[] | undefined {
   if (configFonts) return configFonts;

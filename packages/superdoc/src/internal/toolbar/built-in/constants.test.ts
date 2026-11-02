@@ -28,8 +28,8 @@ describe('mapFontFamilyOptionsToToolbar', () => {
   });
 
   it('falls back to the label for the preview family when previewFamily is empty', () => {
-    const [option] = mapFontFamilyOptionsToToolbar([{ label: 'Aptos', value: 'Aptos', previewFamily: '' }]);
-    expect(option.props.style.fontFamily).toBe('Aptos');
+    const [option] = mapFontFamilyOptionsToToolbar([{ label: 'Aptos', value: 'Aptos', previewFamily: '' }])!;
+    expect(option.props!.style!.fontFamily).toBe('Aptos');
   });
 });
 
@@ -63,7 +63,7 @@ describe('toolbar font row shape', () => {
     ],
   ])('%s emits the canonical toolbar font-row key set', (_name, rows) => {
     expect(rows?.length).toBeGreaterThan(0);
-    for (const row of rows) {
+    for (const row of rows!) {
       expect(Object.keys(row).sort()).toEqual(CANONICAL_ROW_KEYS);
     }
   });

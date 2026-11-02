@@ -11,6 +11,14 @@ import { useHighContrastMode } from '../../../composables/use-high-contrast-mode
 import { isPlainObject } from '../../../helpers/object-guards.js';
 import type { CommandExecutionResult, CommandState } from '../../../public/ui/types.js';
 
+type CommandReceipt = Exclude<CommandExecutionResult, boolean>;
+type FailedCommandReceipt = Extract<CommandReceipt, { success: false }>;
+type PageNumberCommandResult =
+  | boolean
+  | Pick<Extract<CommandReceipt, { success: true }>, 'success'>
+  | (Pick<FailedCommandReceipt, 'success'> & { failure: Pick<FailedCommandReceipt['failure'], 'code' | 'details'> });
+type PageNumberCommandState = Pick<CommandState, 'enabled'> & Partial<CommandState>;
+
 type PagePosition = 'top' | 'bottom';
 
 interface PageNumberChoice {
@@ -35,15 +43,15 @@ type PageNumberMenuOutcome =
 type PageNumberAction = 'apply' | 'remove';
 
 interface PreparedCommit {
-  execute: () => Promise<CommandExecutionResult>;
+  execute: () => Promise<PageNumberCommandResult>;
   outcome: PageNumberMenuOutcome;
 }
 
 const props = defineProps({
   /** Command state of `page-numbers-apply`, read when the popover opens. */
-  pageNumbersState: { type: Object as PropType<CommandState | null>, default: null },
+  pageNumbersState: { type: Object as PropType<PageNumberCommandState | null>, default: null },
   /** Command state of `page-number-insert` (insert at the header/footer cursor). */
-  atCursorState: { type: Object as PropType<CommandState | null>, default: null },
+  atCursorState: { type: Object as PropType<PageNumberCommandState | null>, default: null },
   /** Header/footer structure cannot be suggested, so numbering needs Editing. */
   suggesting: { type: Boolean, default: false },
   /** The selection is in a header or footer, so a disabled cursor insert needs a collapsed caret. */
@@ -55,17 +63,17 @@ const props = defineProps({
   },
   /** Runs `page-numbers-apply` with `{ position, alignment?, showOnFirstPage?, format?, start? }`. */
   applyPageNumbers: {
-    type: Function as PropType<(choice: PageNumberChoice) => Promise<CommandExecutionResult>>,
+    type: Function as PropType<(choice: PageNumberChoice) => Promise<PageNumberCommandResult>>,
     required: true,
   },
   /** Runs `page-numbers-remove`. */
-  removePageNumbers: { type: Function as PropType<() => Promise<CommandExecutionResult>>, required: true },
+  removePageNumbers: { type: Function as PropType<() => Promise<PageNumberCommandResult>>, required: true },
   /** Runs `page-number-insert` at the header/footer cursor. */
-  insertAtCursor: { type: Function as PropType<() => Promise<CommandExecutionResult>>, required: true },
+  insertAtCursor: { type: Function as PropType<() => Promise<PageNumberCommandResult>>, required: true },
   /** Closes the popover after a successful action. */
   close: { type: Function as PropType<(outcome: PageNumberMenuOutcome) => void>, required: true },
   /** Last choice made in this session, used when the section has no numbers yet. */
-  initialChoice: { type: Object as PropType<RememberedChoice | null>, default: null },
+  initialChoice: { type: Object as PropType<Partial<RememberedChoice> | null>, default: null },
 });
 
 const POSITIONS: { value: PagePosition; label: string; kind: HeaderFooterKind }[] = [
@@ -242,12 +250,12 @@ function normalizedStart() {
   return Number.isFinite(value) && value >= 0 ? value : 1;
 }
 
-function failureDetails(result: CommandExecutionResult | null): Record<string, unknown> | null {
+function failureDetails(result: PageNumberCommandResult | null): Record<string, unknown> | null {
   if (typeof result !== 'object' || result === null || result.success) return null;
   return isPlainObject(result.failure?.details) ? result.failure.details : null;
 }
 
-function failureMessage(result: CommandExecutionResult | null, action: PageNumberAction) {
+function failureMessage(result: PageNumberCommandResult | null, action: PageNumberAction) {
   const details = failureDetails(result);
   if (details?.reason === 'page-number-has-content') {
     return `A page number shares its line with other text. Edit the ${details.kind === 'header' ? 'header' : 'footer'} directly to change it.`;
@@ -309,7 +317,7 @@ function insertAtCursor() {
   // Start the insert before focus returns to the editor. The field then enters
   // the editor's command queue first, so keys typed right away land after it,
   // as they do with the keyboard shortcut.
-  let pending: Promise<CommandExecutionResult> | undefined;
+  let pending: Promise<PageNumberCommandResult> | undefined;
   try {
     pending = props.insertAtCursor();
   } catch {

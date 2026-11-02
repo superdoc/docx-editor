@@ -1,5 +1,6 @@
 'use strict';
 
+const fs = require('node:fs');
 const path = require('node:path');
 
 const packageRoot = path.resolve(__dirname, '..');
@@ -21,4 +22,20 @@ function resolvePackageOutputPath(target) {
   return path.resolve(packageRoot, target);
 }
 
-module.exports = { cdnDistRoot, npmDistRoot, packageRoot, resolvePackageOutputPath };
+const sharedCommonDistRoot = path.join(npmDistRoot, 'shared/common');
+
+function isRelocatedSharedCommonSpecifier(specifier, declarationFile) {
+  if (!specifier.startsWith('.') || !specifier.endsWith('.js')) return false;
+  const target = path.resolve(path.dirname(declarationFile), specifier).replace(/\.js$/, '.d.ts');
+  const rel = path.relative(sharedCommonDistRoot, target);
+  return rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel) && fs.existsSync(target);
+}
+
+module.exports = {
+  cdnDistRoot,
+  isRelocatedSharedCommonSpecifier,
+  npmDistRoot,
+  packageRoot,
+  resolvePackageOutputPath,
+  sharedCommonDistRoot,
+};

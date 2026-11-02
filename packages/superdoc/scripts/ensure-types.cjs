@@ -12,21 +12,18 @@ const typeSurface = require('./type-surface.config.cjs');
 
 // Verify that vite-plugin-dts generated the expected type entry points.
 // Path aliases are resolved by vite-plugin-dts via tsconfig.json paths.
-const { npmDistRoot: distRoot } = require('./build-output-paths.cjs');
+const { npmDistRoot: distRoot, isRelocatedSharedCommonSpecifier, sharedCommonDistRoot } = require('./build-output-paths.cjs');
 const repoRoot = path.resolve(__dirname, '..', '..', '..');
 
-// SD-2893: emit declarations for the shared/common subpaths reachable from the
-// public surface. Adding shared/ to vite-plugin-dts's `include` would shift the
+// SD-2893: adding shared/ to vite-plugin-dts's `include` would shift the
 // common-ancestor of all source files to the repo root and reorganise the
-// entire dist tree, so we run tsc directly for just the files we relocate.
-// Source list: type-surface.config.cjs `sharedCommonDtsTargets`. Each entry
-// pairs with a `relocations` rule whose distEntry points at
-// `shared/common/<filename>.d.ts`.
-const SHARED_COMMON_DTS_TARGETS = typeSurface.sharedCommonDtsTargets;
-{
-  const sharedCommonDistDir = path.join(distRoot, 'shared/common');
-  fs.mkdirSync(sharedCommonDistDir, { recursive: true });
-  const sources = SHARED_COMMON_DTS_TARGETS.map((f) => path.join(repoRoot, 'shared/common', f));
+// entire dist tree, so we run tsc directly for the shared/common modules the
+// emitted declarations name.
+const sharedCommonSourceRoot = path.join(repoRoot, 'shared/common');
+const declarationSourceMirrorRoot = path.resolve(__dirname, '..', '..');
+
+function emitSharedCommonDeclarations(sources) {
+  fs.mkdirSync(sharedCommonDistRoot, { recursive: true });
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'superdoc-ensure-types-'));
   const tempTsconfig = path.join(tempDir, 'tsconfig.shared-common.json');
   // Keep this packaging-only emit independent of whichever @types packages pnpm hoists.
@@ -42,8 +39,8 @@ const SHARED_COMMON_DTS_TARGETS = typeSurface.sharedCommonDtsTargets;
           module: 'ESNext',
           moduleResolution: 'bundler',
           types: [],
-          outDir: sharedCommonDistDir,
-          rootDir: path.join(repoRoot, 'shared/common'),
+          outDir: sharedCommonDistRoot,
+          rootDir: sharedCommonSourceRoot,
         },
         files: sources,
       },
@@ -66,7 +63,7 @@ const SHARED_COMMON_DTS_TARGETS = typeSurface.sharedCommonDtsTargets;
     console.error('[ensure-types] tsc failed emitting shared/common declarations');
     process.exit(1);
   }
-  console.log(`[ensure-types] ✓ Emitted ${SHARED_COMMON_DTS_TARGETS.length} shared/common declarations`);
+  console.log(`[ensure-types] ✓ Emitted ${sources.length} shared/common declarations`);
 }
 
 // Emit @superdoc/font-system public declarations into the published dist tree. Its font
@@ -241,12 +238,12 @@ if (!hasSuperDocExport) {
 
 // @superdoc/common is a private workspace package, so consumers can't resolve
 // bare or deep `@superdoc/common` imports from emitted declarations. The root
-// entry and the path-as-contract public facade both expose a small set of
-// runtime values from common (DOCX/PDF/HTML constants, getFileObject,
-// compareVersions, BlankDOCX). Strip those imports and inline declarations for
-// the exported names. Type-only imports of @superdoc/common from other dist
-// files are handled separately by the RELOCATION_RULES rewriter below, which
-// maps bare @superdoc/common to dist/shared/common/comments-types.d.ts.
+// entry exposes a small set of runtime values from common (DOCX/PDF/HTML
+// constants, getFileObject, compareVersions, BlankDOCX). Strip those imports
+// and inline declarations for the exported names. Every other declaration
+// that names common is rewritten per symbol by relocateSharedCommonImports.
+const INLINED_COMMON_RUNTIME_NAMES = new Set(['DOCX', 'PDF', 'HTML', 'getFileObject', 'compareVersions', 'BlankDOCX']);
+
 function inlineCommonRuntimeDeclarations(filePath) {
   let fileContent = fs.readFileSync(filePath, 'utf8');
   const commonRuntimeImportPatterns = [
@@ -264,7 +261,15 @@ function inlineCommonRuntimeDeclarations(filePath) {
   if (!hasCommonRuntimeImport) return false;
 
   for (const pattern of commonRuntimeImportPatterns) {
-    fileContent = fileContent.replace(pattern, '');
+    fileContent = fileContent.replace(pattern, (statement) => {
+      const [, quote, specifier] = statement.match(/from\s*(['"])([^'"]+)\1/);
+      const remaining = statement
+        .slice(statement.indexOf('{') + 1, statement.indexOf('}'))
+        .split(',')
+        .map((entry) => entry.trim())
+        .filter((entry) => entry && !INLINED_COMMON_RUNTIME_NAMES.has(entry.replace(/^type\s+/, '').split(/\s+as\s+/)[0]));
+      return remaining.length ? `import { ${remaining.join(', ')} } from ${quote}${specifier}${quote};\n` : '';
+    });
   }
 
   const hasExportedBlankDocxDeclaration = /\bexport\s+declare\s+const\s+BlankDOCX\b/.test(fileContent);
@@ -287,6 +292,182 @@ const inlinedCommonTargets = commonInlineTargets.filter((target) => fs.existsSyn
 if (inlinedCommonTargets.length) {
   console.log(`[ensure-types] ✓ Inlined @superdoc/common runtime declarations in ${inlinedCommonTargets.length} entry point(s)`);
 }
+
+function failSharedCommon(filePath, message) {
+  console.error(`[ensure-types] ${path.relative(distRoot, filePath)}: ${message}`);
+  process.exit(1);
+}
+
+function isInside(root, target) {
+  const rel = path.relative(root, target);
+  return rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel);
+}
+
+function mentionsSharedCommon(specifier) {
+  return specifier.includes('shared/common') || specifier === '@superdoc/common' || specifier.startsWith('@superdoc/common/');
+}
+
+function declarationSourceMirror(filePath) {
+  const rel = path.relative(distRoot, filePath);
+  return path.join(rel.startsWith(`shared${path.sep}`) ? repoRoot : declarationSourceMirrorRoot, rel);
+}
+
+function relocateSharedCommonImports(dtsFiles) {
+  const ts = require('typescript');
+  const compilerOptions = {
+    target: ts.ScriptTarget.ES2022,
+    module: ts.ModuleKind.ESNext,
+    moduleResolution: ts.ModuleResolutionKind.Bundler,
+    allowImportingTsExtensions: true,
+    skipLibCheck: true,
+    noEmit: true,
+    types: [],
+  };
+  const references = [];
+  const leftmostIdentifier = (name) => (ts.isIdentifier(name) ? name : leftmostIdentifier(name.left));
+
+  for (const filePath of dtsFiles) {
+    if (isInside(sharedCommonDistRoot, filePath)) continue;
+    const text = fs.readFileSync(filePath, 'utf8');
+    if (!text.includes('shared/common') && !text.includes('@superdoc/common')) continue;
+    const sourceFile = ts.createSourceFile(filePath, text, ts.ScriptTarget.Latest, true);
+
+    const resolveSpecifier = (literal) => {
+      const specifier = literal.text;
+      if (!mentionsSharedCommon(specifier) || isRelocatedSharedCommonSpecifier(specifier, filePath)) return null;
+      const { resolvedModule } = ts.resolveModuleName(specifier, declarationSourceMirror(filePath), compilerOptions, ts.sys);
+      const resolved = resolvedModule && fs.realpathSync(resolvedModule.resolvedFileName);
+      if (!resolved || !isInside(sharedCommonSourceRoot, resolved) || resolved.endsWith('.d.ts')) {
+        failSharedCommon(filePath, `cannot resolve '${specifier}' to a shared/common source module`);
+      }
+      return resolved;
+    };
+
+    const visit = (node) => {
+      if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
+        const sourceModule = resolveSpecifier(node.moduleSpecifier);
+        if (sourceModule) {
+          const bindings = ts.isImportDeclaration(node) ? node.importClause?.namedBindings : node.exportClause;
+          const elements = bindings && (ts.isNamedImports(bindings) || ts.isNamedExports(bindings)) ? bindings.elements : null;
+          if (!elements || (ts.isImportDeclaration(node) && node.importClause.name)) {
+            failSharedCommon(filePath, `'${node.getText()}' must name each symbol it takes from '${node.moduleSpecifier.text}'`);
+          }
+          references.push({ kind: 'statement', filePath, node, sourceModule, elements: [...elements] });
+        }
+      } else if (ts.isImportTypeNode(node) && ts.isLiteralTypeNode(node.argument) && ts.isStringLiteral(node.argument.literal)) {
+        const sourceModule = resolveSpecifier(node.argument.literal);
+        if (sourceModule) {
+          if (!node.qualifier) {
+            failSharedCommon(filePath, `'${node.getText()}' must name the symbol it takes from '${node.argument.literal.text}'`);
+          }
+          references.push({ kind: 'importType', filePath, node, sourceModule, head: leftmostIdentifier(node.qualifier) });
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(sourceFile);
+  }
+
+  const alwaysEmitted = typeSurface.sharedCommonDtsTargets.map((file) => path.join(sharedCommonSourceRoot, file));
+  if (!references.length) {
+    emitSharedCommonDeclarations(alwaysEmitted);
+    return 0;
+  }
+
+  const program = ts.createProgram([...new Set(references.map((reference) => reference.sourceModule))], compilerOptions);
+  const checker = program.getTypeChecker();
+  const exportsOf = (fileName) => {
+    const moduleSymbol = checker.getSymbolAtLocation(program.getSourceFile(fileName));
+    return moduleSymbol ? checker.getExportsOfModule(moduleSymbol) : [];
+  };
+  const resolveAlias = (symbol) => (symbol.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(symbol) : symbol);
+
+  const locate = (filePath, sourceModule, name) => {
+    const exported = exportsOf(sourceModule).find((symbol) => symbol.name === name);
+    if (!exported) {
+      failSharedCommon(filePath, `'${name}' is not exported by ${path.relative(repoRoot, sourceModule)}`);
+    }
+    const target = resolveAlias(exported);
+    const declaringFiles = [...new Set((target.declarations ?? []).map((declaration) => declaration.getSourceFile().fileName))];
+    const declaringFile = declaringFiles.length === 1 ? fs.realpathSync(declaringFiles[0]) : null;
+    if (!declaringFile || !isInside(sharedCommonSourceRoot, declaringFile) || !/(?<!\.d)\.ts$/.test(declaringFile)) {
+      failSharedCommon(filePath, `'${name}' from ${path.relative(repoRoot, sourceModule)} has no shared/common TypeScript declaration to publish`);
+    }
+    const ownExport = exportsOf(declaringFile).find((symbol) => resolveAlias(symbol) === target);
+    if (!ownExport) {
+      failSharedCommon(filePath, `'${name}' is declared in ${path.relative(repoRoot, declaringFile)} but not exported there`);
+    }
+    return { declaringFile, exportName: ownExport.name };
+  };
+
+  const edits = new Map();
+  const declaringFiles = new Set();
+  const addEdit = (filePath, start, end, replacement) => {
+    if (!edits.has(filePath)) edits.set(filePath, []);
+    edits.get(filePath).push({ start, end, replacement });
+  };
+  const specifierFor = (filePath, declaringFile) => {
+    const target = path.join(sharedCommonDistRoot, path.relative(sharedCommonSourceRoot, declaringFile)).replace(/\.ts$/, '.js');
+    const rel = path.relative(path.dirname(filePath), target).split(path.sep).join('/');
+    return rel.startsWith('.') ? rel : `./${rel}`;
+  };
+
+  for (const reference of references) {
+    const { filePath, node, sourceModule } = reference;
+    if (reference.kind === 'importType') {
+      const { declaringFile, exportName } = locate(filePath, sourceModule, reference.head.text);
+      declaringFiles.add(declaringFile);
+      const literal = node.argument.literal;
+      const quote = literal.getText()[0];
+      addEdit(filePath, literal.getStart(), literal.getEnd(), `${quote}${specifierFor(filePath, declaringFile)}${quote}`);
+      if (exportName !== reference.head.text) addEdit(filePath, reference.head.getStart(), reference.head.getEnd(), exportName);
+      continue;
+    }
+
+    const groups = new Map();
+    for (const element of reference.elements) {
+      const importedName = (element.propertyName ?? element.name).text;
+      const { declaringFile, exportName } = locate(filePath, sourceModule, importedName);
+      declaringFiles.add(declaringFile);
+      const elementText = exportName === importedName
+        ? element.getText()
+        : `${element.isTypeOnly ? 'type ' : ''}${exportName} as ${element.name.text}`;
+      if (!groups.has(declaringFile)) groups.set(declaringFile, []);
+      groups.get(declaringFile).push(elementText);
+    }
+    const statement = node.getText();
+    const literal = node.moduleSpecifier;
+    const quote = literal.getText()[0];
+    const bindings = ts.isImportDeclaration(node) ? node.importClause.namedBindings : node.exportClause;
+    const before = statement.slice(0, bindings.getStart() - node.getStart());
+    const between = statement.slice(bindings.getEnd() - node.getStart(), literal.getStart() - node.getStart());
+    const after = statement.slice(literal.getEnd() - node.getStart());
+    const originalBindings = bindings.getText();
+    const replacement = [...groups]
+      .map(([declaringFile, elementTexts]) => {
+        const rewrittenBindings = groups.size === 1 && elementTexts.every((elementText, index) => elementText === reference.elements[index].getText())
+          ? originalBindings
+          : `{ ${elementTexts.join(', ')} }`;
+        return `${before}${rewrittenBindings}${between}${quote}${specifierFor(filePath, declaringFile)}${quote}${after}`;
+      })
+      .join('\n');
+    addEdit(filePath, node.getStart(), node.getEnd(), replacement);
+  }
+
+  emitSharedCommonDeclarations([...new Set([...alwaysEmitted, ...[...declaringFiles].sort()])]);
+
+  for (const [filePath, fileEdits] of edits) {
+    let fileContent = fs.readFileSync(filePath, 'utf8');
+    for (const { start, end, replacement } of fileEdits.sort((a, b) => b.start - a.start)) {
+      fileContent = `${fileContent.slice(0, start)}${replacement}${fileContent.slice(end)}`;
+    }
+    fs.writeFileSync(filePath, fileContent);
+  }
+  return edits.size;
+}
+
+const relocatedSharedCommonFiles = relocateSharedCommonImports(findDtsFiles(distRoot));
+console.log(`[ensure-types] ✓ Relocated shared/common imports per symbol in ${relocatedSharedCommonFiles} .d.ts files`);
 
 // ---------------------------------------------------------------------------
 // Fix pnpm node_modules paths in ALL .d.ts files (SD-2227)

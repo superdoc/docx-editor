@@ -53,7 +53,9 @@ function testTypeCheckProgramFiles(): string[] {
 
 describe('tsconfig.test.json', () => {
   const config = readTestTypeCheckConfig();
-  const testFiles = globSync('src/**/*.test.ts', { cwd: packageRoot }).map((file) => file.split(path.sep).join('/'));
+  const testFiles = globSync(['src/**/*.test.ts', 'scripts/**/*.test.ts'], { cwd: packageRoot }).map((file) =>
+    file.split(path.sep).join('/'),
+  );
 
   it('checks tests with vue-tsc against the package Vue config', () => {
     const { scripts } = JSON.parse(readFileSync(path.join(packageRoot, 'package.json'), 'utf8'));
@@ -68,7 +70,7 @@ describe('tsconfig.test.json', () => {
 
   it('includes every test by glob, so a new test is checked unless it is excluded by name', () => {
     expect(config.files).toEqual(['src/vite-env.d.ts']);
-    expect(config.include).toEqual(['src/**/*.test.ts']);
+    expect(config.include).toEqual(['src/**/*.test.ts', 'scripts/**/*.test.ts']);
   });
 
   it('excludes only existing test files, each once and in order, so a renamed test cannot stay excluded', () => {

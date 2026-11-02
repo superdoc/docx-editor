@@ -20,9 +20,8 @@
  *     vite-plugin-dts and tsconfig.json need to include for the
  *     declarations to be emitted into superdoc/dist.
  *   - `sharedCommonDtsTargets`: filenames in `shared/common/` that the
- *     postbuild step compiles via tsc. Used for relocations whose source
- *     lives outside `packages/` and would otherwise shift the
- *     vite-plugin-dts common-ancestor.
+ *     postbuild step always compiles via tsc. Imports of shared/common are
+ *     rewritten per symbol by ensure-types, not by `relocations`.
  *   - `relocationGuardPackages`: packages that must never appear as a
  *     `declare module` block in `_internal-shims.d.ts` (audit Rule 3).
  *     SD-2942 removed the shim mechanism; this list is kept as defense
@@ -83,7 +82,7 @@ const baseTsconfigIncludes = ['src', '../document-api/src'];
  * - `pkg`: the bare specifier consumers' d.ts files reference.
  * - `distEntry`: the file path (relative to dist root) that the rewriter
  *   redirects bare specifiers to. Must be emitted by either vite-plugin-dts
- *   (full-glob include) or the postbuild tsc step (sharedCommonDtsTargets).
+ *   (full-glob include) or a postbuild tsc step in ensure-types.
  * - `matchSubpaths`: when true, the rewriter also rewrites
  *   `pkg/<subpath>` → `distEntry` with `/index.js` swapped for `/<subpath>`.
  *   When false, only the exact `pkg` specifier is rewritten; subpaths
@@ -157,34 +156,6 @@ const relocations = [
     viteIncludes: ['../word-layout/src/**/*'],
     tsconfigIncludes: ['../word-layout/src'],
   },
-  // common/list-marker-utils and common (bare): emitted via tsc-postbuild
-  // (see sharedCommonDtsTargets) because the source lives in shared/, which
-  // would shift the vite-plugin-dts common-ancestor if added to vite include.
-  // Empty viteIncludes/tsconfigIncludes are deliberate: ensure-types.cjs's
-  // tsc-postbuild step handles emit; no vite/tsconfig participation needed.
-  {
-    pkg: '@superdoc/common/list-marker-utils',
-    distEntry: 'shared/common/list-marker-utils.d.ts',
-    matchSubpaths: false,
-    viteIncludes: [], // emitted via sharedCommonDtsTargets tsc-postbuild
-    tsconfigIncludes: [],
-  },
-  {
-    pkg: '@superdoc/common',
-    distEntry: 'shared/common/comments-types.d.ts',
-    matchSubpaths: false,
-    viteIncludes: [], // emitted via sharedCommonDtsTargets tsc-postbuild
-    tsconfigIncludes: [],
-  },
-  // Emit the leaf list-numbering module via tsc-postbuild like
-  // list-marker-utils.
-  {
-    pkg: '@superdoc/common/list-numbering',
-    distEntry: 'shared/common/list-numbering/index.d.ts',
-    matchSubpaths: false,
-    viteIncludes: [], // emitted via sharedCommonDtsTargets tsc-postbuild
-    tsconfigIncludes: [],
-  },
   // The font report types (FontResolutionRecord, FontLoadStatus, FontLoadSummary, ...)
   // surface on `superdoc.fonts` / `fonts-changed`. font-system lives in shared/ like
   // @superdoc/common, so it is emitted standalone via tsc-postbuild (ensure-types.cjs)
@@ -199,9 +170,10 @@ const relocations = [
 ];
 
 /**
- * Filenames in `shared/common/` that the postbuild tsc step compiles into
- * `dist/shared/common/`. Each filename pairs with a `relocations` entry
- * whose `distEntry` lives at `shared/common/<filename without .ts>.d.ts`.
+ * Filenames in `shared/common/` that the postbuild tsc step always compiles
+ * into `dist/shared/common/`. ensure-types also emits every other
+ * shared/common module that declares a name an emitted declaration imports,
+ * and rewrites that import to the declaring file.
  */
 const sharedCommonDtsTargets = [
   'list-marker-utils.ts',

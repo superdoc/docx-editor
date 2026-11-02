@@ -22,6 +22,11 @@
  *    defense if a future change re-introduces the file or runs against
  *    a stale tarball.
  *
+ *  Rule 4 (FAIL in strict mode): a `shared/common` specifier that does not
+ *    end in `.js` and resolve to a declaration under `dist/shared/common/`.
+ *    ensure-types rewrites each imported name to the file that declares it;
+ *    anything left over is unresolvable for packed consumers.
+ *
  *  Informational: the set of modules still declared in `_internal-shims.d.ts`
  *    when the file exists. After SD-2942 the file is not emitted, so this
  *    section is normally absent.
@@ -40,7 +45,7 @@ const path = require('node:path');
 // from the same config so the two scripts cannot drift.
 const typeSurface = require('./type-surface.config.cjs');
 
-const { npmDistRoot: distRoot } = require('./build-output-paths.cjs');
+const { npmDistRoot: distRoot, isRelocatedSharedCommonSpecifier } = require('./build-output-paths.cjs');
 
 // SD-2859: strict is the default. The audit fails the build on any
 // FAIL-level finding so a regression in the published declaration
@@ -99,9 +104,11 @@ function collectDtsFiles(dir) {
 const PRIVATE_SPECIFIER_RE = /['"](@superdoc\/[^'"]+)['"]/g;
 const PNPM_PATH_RE = /['"]([^'"]*node_modules\/\.pnpm\/[^'"]+)['"]/g;
 const SHIM_DECLARED_MODULE_RE = /declare module ['"]([^'"]+)['"]/g;
+const SHARED_COMMON_SPECIFIER_RE = /(?:from\s*|import\(\s*)['"]([^'"]*shared\/common[^'"]*)['"]/g;
 
 const privateSpecifierFindings = new Map(); // file -> Set<specifier>
 const pnpmPathFindings = new Map(); // file -> Set<path>
+const sharedCommonFindings = new Map();
 const shimmedModules = new Set(); // module specifiers declared in the shim file
 
 const internalShimsPath = path.join(distRoot, '_internal-shims.d.ts');
@@ -130,6 +137,15 @@ for (const file of dtsFiles) {
       privateSpecifierFindings.set(rel, new Set());
     }
     privateSpecifierFindings.get(rel).add(specifier);
+  }
+
+  for (const match of content.matchAll(SHARED_COMMON_SPECIFIER_RE)) {
+    const specifier = match[1];
+    if (isRelocatedSharedCommonSpecifier(specifier, file)) continue;
+    if (!sharedCommonFindings.has(rel)) {
+      sharedCommonFindings.set(rel, new Set());
+    }
+    sharedCommonFindings.get(rel).add(specifier);
   }
 
   for (const match of content.matchAll(PNPM_PATH_RE)) {
@@ -191,6 +207,16 @@ if (relocatedInShim.length > 0) {
   console.log('      These packages have dedicated relocation rules in ensure-types.cjs and must not fall back to ambient any shims.');
 } else {
   console.log(`OK    Relocated packages do not appear in shim file (${RELOCATION_GUARD_PACKAGES.length} guarded)`);
+}
+
+if (sharedCommonFindings.size > 0) {
+  violations.push('unrelocated-shared-common');
+  console.log(`FAIL  Unrelocated shared/common specifiers: ${sharedCommonFindings.size} files`);
+  for (const [file, specifiers] of [...sharedCommonFindings].sort()) {
+    console.log(`      ${file}: ${[...specifiers].sort().join(', ')}`);
+  }
+} else {
+  console.log('OK    shared/common specifiers: all resolve to dist/shared/common declarations');
 }
 
 // Informational: remaining shimmed modules

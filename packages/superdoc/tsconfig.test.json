@@ -4,7 +4,7 @@
     "lib": ["ES2020", "ES2022.Error", "DOM", "DOM.Iterable"]
   },
   "files": ["src/vite-env.d.ts"],
-  "include": ["src/**/*.test.ts"],
+  "include": ["src/**/*.test.ts", "scripts/**/*.test.ts"],
   "exclude": [
     "src/cdn-entry.test.ts",
     "src/components/CommentsLayer/CommentDialog.test.ts",

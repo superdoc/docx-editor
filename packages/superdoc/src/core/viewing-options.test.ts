@@ -21,7 +21,7 @@ interface SuperDocTestHarness {
     }) => void;
   };
   registerEditorRuntime(runtime: EditorRuntime): void;
-  superdocStore?: { documents: RuntimeDocument[] };
+  superdocStore?: { documents: Partial<RuntimeDocument>[] };
 }
 
 const instances: SuperDocInstance[] = [];
@@ -41,7 +41,7 @@ function makeRuntime(documentId: string, id = `${documentId}-runtime`) {
   return { runtime, setTrackedChangesRenderOptions };
 }
 
-function makeReady(instance: SuperDocInstance, documents: RuntimeDocument[]) {
+function makeReady(instance: SuperDocInstance, documents: Partial<RuntimeDocument>[]) {
   const harness = instance as unknown as SuperDocTestHarness;
   const setViewingVisibility = vi.fn();
   const clearEditorCommentPositions = vi.fn();
@@ -60,7 +60,7 @@ describe('viewing options', () => {
   it('delivers the latest pre-ready formatting preference when a runtime registers', () => {
     const instance = mount();
     instance.setShowFormattingMarks(true);
-    const { harness } = makeReady(instance, [{ id: 'doc-a' }] as RuntimeDocument[]);
+    const { harness } = makeReady(instance, [{ id: 'doc-a' }]);
     const runtime = createFakeV2Runtime({ id: 'doc-a-runtime', documentId: 'doc-a' });
     const apply = vi.spyOn(runtime, 'setShowFormattingMarks');
     harness.registerEditorRuntime(runtime);
@@ -83,11 +83,10 @@ describe('viewing options', () => {
 
   it('routes formatting-mark changes to every registered runtime of the document', () => {
     const instance = mount();
-    const { harness } = makeReady(instance, [{ id: 'doc-a' }] as RuntimeDocument[]);
+    const { harness } = makeReady(instance, [{ id: 'doc-a' }]);
     const runtime = createFakeV2Runtime({ id: 'doc-a-runtime', documentId: 'doc-a' });
-    const setShowFormattingMarks = vi.fn();
-    (runtime as unknown as { setShowFormattingMarks(show: boolean): void }).setShowFormattingMarks =
-      setShowFormattingMarks;
+    const setShowFormattingMarks = vi.fn<EditorRuntime['setShowFormattingMarks']>();
+    runtime.setShowFormattingMarks = setShowFormattingMarks;
     harness.registerEditorRuntime(runtime);
     instance.setShowFormattingMarks(true);
     instance.setShowFormattingMarks(false);
@@ -153,7 +152,7 @@ describe('viewing options', () => {
       expectedMode: 'off',
     },
   ])('preserves the deprecated $name in a mounted viewer', ({ config, expectedMode }) => {
-    const documentEntry = { id: 'doc-1' } as RuntimeDocument;
+    const documentEntry = { id: 'doc-1' };
     const instance = mount({ documentMode: 'viewing', ...config });
     const { harness } = makeReady(instance, [documentEntry]);
     const { runtime, setTrackedChangesRenderOptions } = makeRuntime('doc-1');
@@ -176,7 +175,7 @@ describe('viewing options', () => {
 
   it('applies canonical viewing options after a live mode switch', () => {
     const restoreComments = vi.fn();
-    const documentEntry = { id: 'doc-1', restoreComments } as RuntimeDocument;
+    const documentEntry = { id: 'doc-1', restoreComments };
     const instance = mount({
       documentMode: 'editing',
       viewing: { comments: true, trackedChanges: 'final' },
@@ -192,7 +191,7 @@ describe('viewing options', () => {
   });
 
   it('uses the default viewing projection after a live mode switch', () => {
-    const documentEntry = { id: 'doc-1' } as RuntimeDocument;
+    const documentEntry = { id: 'doc-1' };
     const instance = mount({ documentMode: 'editing' });
     const { harness } = makeReady(instance, [documentEntry]);
     const { runtime, setTrackedChangesRenderOptions } = makeRuntime('doc-1');
@@ -207,7 +206,7 @@ describe('viewing options', () => {
 
   it('updates one viewing option without resetting the other', () => {
     const restoreComments = vi.fn();
-    const documentEntry = { id: 'doc-1', restoreComments } as RuntimeDocument;
+    const documentEntry = { id: 'doc-1', restoreComments };
     const instance = mount({
       documentMode: 'viewing',
       viewing: { comments: false, trackedChanges: 'final' },
@@ -246,7 +245,7 @@ describe('viewing options', () => {
   });
 
   it('preserves the track-changes behavior setting during live projection updates', () => {
-    const documentEntry = { id: 'doc-1' } as RuntimeDocument;
+    const documentEntry = { id: 'doc-1' };
     const instance = mount({
       documentMode: 'viewing',
       modules: { trackChanges: { enabled: false } },
@@ -262,7 +261,7 @@ describe('viewing options', () => {
   });
 
   it('preserves a compatibility-setter disable during live projection updates', () => {
-    const documentEntry = { id: 'doc-1' } as RuntimeDocument;
+    const documentEntry = { id: 'doc-1' };
     const instance = mount({
       documentMode: 'viewing',
       viewing: { trackedChanges: 'original' },
@@ -281,7 +280,7 @@ describe('viewing options', () => {
   });
 
   it('keeps live viewing options active after a viewer requests editing', () => {
-    const documentEntry = { id: 'doc-1' } as RuntimeDocument;
+    const documentEntry = { id: 'doc-1' };
     const instance = mount({
       role: 'viewer',
       documentMode: 'viewing',
@@ -309,7 +308,7 @@ describe('viewing options', () => {
     const restoreComments = vi.fn(() => {
       conversations = conversationsBackup;
     });
-    const documentEntry = { id: 'doc-1', removeComments, restoreComments } as RuntimeDocument;
+    const documentEntry = { id: 'doc-1', removeComments, restoreComments };
     const instance = mount({
       documentMode: 'viewing',
       viewing: { comments: false, trackedChanges: 'original' },
@@ -332,7 +331,7 @@ describe('viewing options', () => {
     const documents = [
       { id: 'doc-a', getDocumentRuntime: () => ({ setTrackedChangesOverrides: fallback }) },
       { id: 'doc-b', getDocumentRuntime: () => ({ setTrackedChangesOverrides: fallback }) },
-    ] as RuntimeDocument[];
+    ];
     const instance = mount();
     const { harness } = makeReady(instance, documents);
     const first = makeRuntime('doc-a', 'runtime-a-1');

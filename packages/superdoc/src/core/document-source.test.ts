@@ -157,7 +157,7 @@ describe('Config.document sources', () => {
   it.each(['ArrayBuffer', 'Uint8Array'] as const)('opens a cross-realm %s as a DOCX source', (kind) => {
     const iframe = window.document.createElement('iframe');
     window.document.body.append(iframe);
-    const foreignWindow = iframe.contentWindow!;
+    const foreignWindow = iframe.contentWindow!.window;
     const data =
       kind === 'ArrayBuffer'
         ? new foreignWindow.Uint8Array([1, 2, 3, 4]).buffer

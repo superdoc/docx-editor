@@ -1,24 +1,36 @@
-import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
+import { afterEach, describe, expect, it, vi, type Mock } from 'vite-plus/test';
 import type { ContentControlsSlice, SelectionSlice } from '../public/ui/types.js';
 
-const bridge = vi.hoisted(() => ({
-  observer: null as ((snapshot: ContentControlsSlice) => void) | null,
-  initialSnapshot: null as ContentControlsSlice | null,
-  observeCount: 0,
-  unsubscribe: vi.fn(),
-  selectionObserver: null as ((snapshot: SelectionSlice) => void) | null,
-  selectionSnapshot: {
-    status: 'ready',
-    empty: true,
-    target: null,
-    selectionTarget: null,
-    activeMarks: [],
-    activeCommentIds: [],
-    activeChangeIds: [],
-    text: '',
-  } as SelectionSlice,
-  selectionUnsubscribe: vi.fn(),
-}));
+interface Bridge {
+  observer: ((snapshot: ContentControlsSlice) => void) | null;
+  initialSnapshot: ContentControlsSlice | null;
+  observeCount: number;
+  unsubscribe: Mock<() => void>;
+  selectionObserver: ((snapshot: SelectionSlice) => void) | null;
+  selectionSnapshot: SelectionSlice;
+  selectionUnsubscribe: Mock<() => void>;
+}
+
+const bridge = vi.hoisted(
+  (): Bridge => ({
+    observer: null,
+    initialSnapshot: null,
+    observeCount: 0,
+    unsubscribe: vi.fn(),
+    selectionObserver: null,
+    selectionSnapshot: {
+      status: 'ready',
+      empty: true,
+      target: null,
+      selectionTarget: null,
+      activeMarks: [],
+      activeCommentIds: [],
+      activeChangeIds: [],
+      quotedText: '',
+    },
+    selectionUnsubscribe: vi.fn(),
+  }),
+);
 
 vi.mock('./v2-integration/v2-integration.js', () => ({
   loadDefaultV2IntegrationOrFallback: () => new Promise(() => {}),
@@ -119,7 +131,7 @@ afterEach(() => {
     activeMarks: [],
     activeCommentIds: [],
     activeChangeIds: [],
-    text: '',
+    quotedText: '',
   };
   bridge.selectionUnsubscribe.mockReset();
   document.body.innerHTML = '';

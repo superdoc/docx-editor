@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vite-plus/test';
 
-import { awarenessStatesToArray } from '@superdoc/common/collaboration/awareness';
+import { awarenessStatesToArray, type AwarenessContext } from '@superdoc/common/collaboration/awareness';
 
-const makeContext = () => ({
+const makeContext = (): AwarenessContext => ({
   userColorMap: new Map(),
   colorIndex: 0,
   config: {

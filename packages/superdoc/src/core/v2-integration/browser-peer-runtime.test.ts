@@ -7,12 +7,14 @@ import {
   SUPERDOC_V2_BROWSER_RUNTIME_GLOBAL_KEY,
 } from './browser-peer-runtime.js';
 
+const runtimeGlobal: Record<string, unknown> = globalThis;
+
 describe('browser peer runtime', () => {
   it('installs the host Vue runtime on a well-known global', () => {
     const runtime = installSuperDocV2BrowserRuntime();
     expect(runtime.vue).toBe(Vue);
     expect(readSuperDocV2BrowserRuntime()).toBe(runtime);
-    expect(globalThis[SUPERDOC_V2_BROWSER_RUNTIME_GLOBAL_KEY]).toBe(runtime);
+    expect(runtimeGlobal[SUPERDOC_V2_BROWSER_RUNTIME_GLOBAL_KEY]).toBe(runtime);
   });
 
   it('merges explicit fields without dropping the shared Vue runtime', () => {

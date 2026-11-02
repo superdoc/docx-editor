@@ -1,38 +1,25 @@
 import { ref, reactive } from 'vue';
 import { v4 as uuidv4 } from 'uuid';
-import type { TrackChangeCustomAttribute, TrackChangeImagePreview } from '@superdoc/document-api';
 
 import { syncCommentsToClients } from '../../core/collaboration/helpers.js';
-import {
-  comments_module_events,
-  type CommentEvent,
-  type Comment as CommonComment,
-  type CommentThreadingStyle,
-} from '@superdoc/common';
+import { comments_module_events, type CommentEvent, type Comment as CommonComment } from '@superdoc/common';
 import useSelection from '../../helpers/use-selection.js';
 import { DOCUMENT_EDITOR_SELECTION_SOURCE } from '../../helpers/selection-source.js';
-import type { Modules, StoryLocator } from '../../core/types/index.js';
+import type { Modules } from '../../core/types/index.js';
+import type {
+  CommentIdentity,
+  CommentInputParams,
+  CommentMention,
+  SelectionBounds,
+  TrackedChangeDecision,
+} from './comment-params.js';
+
+export type UseCommentParams = CommentInputParams &
+  Pick<CommonComment, 'origin' | 'threadingMethod' | 'threadingStyleOverride' | 'originalXmlStructure'>;
 
 export const COMMENT_RECONCILIATION_TOKEN = Symbol('comment-reconciliation');
 
 type ReadOnlyMutationOutcome = { ok: false; reason: 'read-only-document' };
-
-type TrackedChangeDecision = 'accept' | 'reject';
-
-type SelectionBounds = { top: number; left: number; right: number; bottom: number };
-
-type CommentMention = { name?: string | null; email?: string | null };
-
-type CommentAuthor = { name?: string | null; email?: string | null };
-
-type TrackedChangeDetailLine = { excerpt: string; label: string };
-
-type CommentSelectionParams = {
-  documentId?: string | null;
-  page?: number;
-  selectionBounds?: Partial<SelectionBounds> | null;
-  source?: string | null;
-};
 
 type SelectionState = ReturnType<typeof useSelection>;
 
@@ -50,61 +37,6 @@ type CommentsHost = {
   emit: (event: 'comments-update', payload: CommentsUpdateEvent) => unknown;
   commentsStore?: { getConfig?: { readOnly?: boolean } };
   config?: { modules?: Modules };
-};
-
-type CommentIdentity = {
-  commentId?: string;
-  importedId?: string | null;
-  parentCommentId?: string | null;
-  trackedChangeParentId?: string | null;
-  trackedChangeThreadParentId?: string | null;
-  threadingParentCommentId?: string | null;
-};
-
-export type UseCommentParams = CommentIdentity & {
-  uid?: string;
-  trackedChangeSide?: string | null;
-  fileId?: string | null;
-  fileType?: string | null;
-  createdAtVersionNumber?: number | null;
-  isInternal?: boolean;
-  mentions?: CommentMention[];
-  isFocused?: boolean;
-  creatorId?: string | null;
-  creatorEmail?: string | null;
-  creatorName?: string | null;
-  creatorImage?: string | null;
-  createdTime?: number;
-  importedAuthor?: CommentAuthor | null;
-  docxCommentJSON?: unknown;
-  origin?: CommonComment['origin'];
-  threadingMethod?: CommonComment['threadingMethod'];
-  threadingStyleOverride?: CommentThreadingStyle;
-  originalXmlStructure?: CommonComment['originalXmlStructure'];
-  commentText?: string;
-  selection?: CommentSelectionParams;
-  trackedChange?: boolean;
-  trackedChangeType?: string | null;
-  trackedChangeText?: string | null;
-  trackedChangeDisplayType?: string | null;
-  semanticColorKey?: string | null;
-  semanticColor?: string | null;
-  trackedChangeStory?: StoryLocator | null;
-  trackedChangeStoryKind?: string | null;
-  trackedChangeStoryLabel?: string;
-  trackedChangeAnchorKey?: string | null;
-  trackedChangeCanonicalId?: string | null;
-  trackedChangePositionAliases?: string[];
-  deletedText?: string | null;
-  trackedChangeLabel?: string | null;
-  trackedChangeDetailLines?: TrackedChangeDetailLine[] | null;
-  trackedChangeImagePreview?: TrackChangeImagePreview | null;
-  customAttributes?: readonly TrackChangeCustomAttribute[] | null;
-  resolvedTime?: number | null;
-  resolvedById?: string | null;
-  resolvedByEmail?: string | null;
-  resolvedByName?: string | null;
-  trackedChangeDecision?: TrackedChangeDecision | null;
 };
 
 type ResolveCommentParams = {

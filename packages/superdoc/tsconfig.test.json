@@ -139,6 +139,7 @@
     "src/public/ui/vue-provider-ownership.test.ts",
     "src/public/ui/vue.test.ts",
     "src/public/ui/whole-table-selection.test.ts",
+    "src/stores/comments-store-adapter-admission.test.ts",
     "src/stores/helpers/comment-document-scope.test.ts",
     "src/stores/helpers/comment-draft-text.test.ts",
     "src/stores/helpers/comment-grouping.test.ts",
@@ -148,7 +149,9 @@
     "src/stores/helpers/tracked-change-decision.test.ts",
     "src/stores/helpers/tracked-change-identity.test.ts",
     "src/stores/helpers/tracked-change-row-values.test.ts",
+    "src/stores/helpers/v2-review-adapters.test.ts",
     "src/test-support/declaration-exclusion.test.ts",
+    "src/test-support/v2-review-adapters.test.ts",
     "src/test-type-check.test.ts"
   ],
   "include": [

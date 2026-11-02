@@ -3,6 +3,7 @@ import { createPinia, setActivePinia } from 'pinia';
 import { computed, isProxy, markRaw, reactive } from 'vue';
 import { useCommentsStore } from './comments-store.js';
 import { useSuperdocStore } from './superdoc-store.js';
+import { makeV2CommentsAdapter, makeV2TrackedChangesAdapter } from '../test-support/v2-review-adapters.js';
 import useComment from '../components/CommentsLayer/use-comment.js';
 
 const ONE_BY_ONE_PNG =
@@ -41,12 +42,12 @@ function makeOpenRow(overrides = {}) {
 }
 
 function makeAdapter(items, outcomeExtras = {}) {
-  return {
+  return makeV2CommentsAdapter({
     documentId: 'doc-1',
     resolve: vi.fn(async () => ({ ok: true, items, ...outcomeExtras })),
     reopen: vi.fn(async () => ({ ok: true, items, ...outcomeExtras })),
     mapV2CommentToUseCommentInput: vi.fn((item) => item),
-  };
+  });
 }
 
 function makeSuperdoc(adapter) {
@@ -60,7 +61,7 @@ function makeSuperdoc(adapter) {
 }
 
 function makeTrackedChangesAdapter(result) {
-  return {
+  return makeV2TrackedChangesAdapter({
     documentId: 'doc-1',
     listTrackedChanges: vi.fn(async () => result),
     mapV2TrackedChangeToCommentParams: vi.fn((item) => ({
@@ -68,7 +69,7 @@ function makeTrackedChangesAdapter(result) {
       changeId: item?.id,
       reason: 'test-omitted-row',
     })),
-  };
+  });
 }
 
 function makeTrackedChangeRow(overrides = {}) {
@@ -88,10 +89,10 @@ function makeTrackedChangeRow(overrides = {}) {
 
 function compactTrackedChangeRows(store, rows) {
   store.commentsList = rows;
-  const adapter = {
+  const adapter = makeV2TrackedChangesAdapter({
     documentId: 'doc-1',
     mapV2TrackedChangeToCommentParams: vi.fn(),
-  };
+  });
   store.setV2TrackedChangesAdapter(adapter);
   store.reconcileTrackedChangesFromV2({
     superdoc: { config: { isInternal: true }, emit: vi.fn() },
@@ -386,7 +387,7 @@ describe('comments-store read-only mutation policy (SD-3164)', () => {
     ];
     store = useCommentsStore();
     store.init({ readOnly: true });
-    commentsAdapter = {
+    commentsAdapter = makeV2CommentsAdapter({
       documentId: 'doc-1',
       reply: vi.fn(),
       edit: vi.fn(),
@@ -394,11 +395,11 @@ describe('comments-store read-only mutation policy (SD-3164)', () => {
       resolve: vi.fn(),
       reopen: vi.fn(),
       commitPendingComment: vi.fn(),
-    };
-    trackedChangesAdapter = {
+    });
+    trackedChangesAdapter = makeV2TrackedChangesAdapter({
       accept: vi.fn(),
       reject: vi.fn(),
-    };
+    });
     superdoc = {
       activeEditor: {
         editorVersion: 2,
@@ -649,7 +650,7 @@ describe('comments-store v2 tracked-change comments', () => {
       trackedChangeThreadParentId: trackedChangeId,
       trackedChangeSide: 'deleted',
     };
-    const adapter = {
+    const adapter = makeV2CommentsAdapter({
       documentId: 'doc-1',
       reply: vi.fn(async () => ({
         ok: false,
@@ -672,7 +673,7 @@ describe('comments-store v2 tracked-change comments', () => {
         trackedChangeThreadParentId: item.trackedChangeThreadParentId,
         trackedChangeSide: item.trackedChangeSide,
       })),
-    };
+    });
     const superdoc = makeSuperdoc(adapter);
     store.setV2CommentsAdapter(adapter);
     store.commentsList = [
@@ -736,7 +737,7 @@ describe('comments-store v2 tracked-change comments', () => {
       trackedChangeThreadParentId: trackedChangeId,
       trackedChangeSide: 'deleted',
     };
-    const adapter = {
+    const adapter = makeV2CommentsAdapter({
       documentId: 'doc-1',
       reply: vi.fn(async () => ({
         ok: true,
@@ -754,7 +755,7 @@ describe('comments-store v2 tracked-change comments', () => {
         trackedChangeThreadParentId: item.trackedChangeThreadParentId,
         trackedChangeSide: item.trackedChangeSide,
       })),
-    };
+    });
     const superdoc = makeSuperdoc(adapter);
     store.setV2CommentsAdapter(adapter);
 
@@ -772,7 +773,7 @@ describe('comments-store v2 tracked-change comments', () => {
 
   it('does not create another root when canonical tracked-change reply is ambiguous', async () => {
     const trackedChangeId = 'tc|main%3A%2Fword%2Fdocument.xml|del|coalesced|2|4';
-    const adapter = {
+    const adapter = makeV2CommentsAdapter({
       documentId: 'doc-1',
       reply: vi.fn(async () => ({
         ok: false,
@@ -780,7 +781,7 @@ describe('comments-store v2 tracked-change comments', () => {
         code: 'AMBIGUOUS_MATCH',
       })),
       commitPendingComment: vi.fn(),
-    };
+    });
     const superdoc = makeSuperdoc(adapter);
     store.setV2CommentsAdapter(adapter);
 
@@ -809,12 +810,12 @@ describe('comments-store allowResolve policy', () => {
     ];
     store = useCommentsStore();
     store.init({ allowResolve: false });
-    commentsAdapter = {
+    commentsAdapter = makeV2CommentsAdapter({
       documentId: 'doc-1',
       resolve: vi.fn(),
       reopen: vi.fn(),
       list: vi.fn(async () => []),
-    };
+    });
     superdoc = {
       activeEditor: { options: { ydoc: null }, v2Comments: commentsAdapter },
       emit: vi.fn(),
@@ -1357,7 +1358,7 @@ describe('comments-store v2 tracked-change hydration', () => {
       { id: 'tc-replacement', text: 'scor', deletedText: 'old' },
       { id: 'tc-tail', text: 'ed', deletedText: null },
     ];
-    const adapter = {
+    const adapter = makeV2TrackedChangesAdapter({
       documentId: 'doc-1',
       mapV2TrackedChangeToCommentParams: (item) => ({
         event: 'add',
@@ -1372,7 +1373,7 @@ describe('comments-store v2 tracked-change hydration', () => {
         ...(identity === 'imported id' ? { importedId: '20' } : {}),
         trackedChangePositionAliases: identity === 'position alias' ? ['20'] : [],
       }),
-    };
+    });
     store.setV2TrackedChangesAdapter(adapter);
     const reconcile = () =>
       store.reconcileTrackedChangesFromV2({
@@ -1406,7 +1407,7 @@ describe('comments-store v2 tracked-change hydration', () => {
 
   it('normalizes and refreshes tracked-change position aliases on a canonical row', async () => {
     let aliases = ['00000029', '00000029', null];
-    const adapter = {
+    const adapter = makeV2TrackedChangesAdapter({
       documentId: 'doc-1',
       listTrackedChanges: vi.fn(async () => ({ ok: true, complete: true, items: [{ id: 'tc-canonical-delete' }] })),
       mapV2TrackedChangeToCommentParams: vi.fn((item) => ({
@@ -1420,7 +1421,7 @@ describe('comments-store v2 tracked-change hydration', () => {
         trackedChangeAnchorKey: `tc::body::${item.id}`,
         trackedChangePositionAliases: aliases,
       })),
-    };
+    });
     const superdoc = {
       config: { isInternal: true },
       emit: vi.fn(),
@@ -1463,7 +1464,7 @@ describe('comments-store v2 tracked-change hydration', () => {
       trackedChangeDisplayType: 'both',
     };
     store.commentsList = [makeTrackedChangeRow(identity), makeTrackedChangeRow(identity)];
-    const adapter = {
+    const adapter = makeV2TrackedChangesAdapter({
       documentId: 'doc-1',
       mapV2TrackedChangeToCommentParams: vi.fn(() => ({
         event: 'add',
@@ -1478,7 +1479,7 @@ describe('comments-store v2 tracked-change hydration', () => {
         trackedChangeType: 'both',
         trackedChangeDisplayType: 'both',
       })),
-    };
+    });
     store.setV2TrackedChangesAdapter(adapter);
 
     store.reconcileTrackedChangesFromV2({
@@ -1508,7 +1509,7 @@ describe('comments-store v2 tracked-change hydration', () => {
         trackedChangePositionAliases: ['1', '2', '00000004'],
       }),
     ];
-    const adapter = {
+    const adapter = makeV2TrackedChangesAdapter({
       documentId: 'doc-1',
       mapV2TrackedChangeToCommentParams: vi.fn(() => ({
         event: 'add',
@@ -1522,7 +1523,7 @@ describe('comments-store v2 tracked-change hydration', () => {
         trackedChangeType: 'both',
         trackedChangeDisplayType: 'both',
       })),
-    };
+    });
     store.setV2TrackedChangesAdapter(adapter);
 
     store.reconcileTrackedChangesFromV2({
@@ -1554,7 +1555,7 @@ describe('comments-store v2 tracked-change hydration', () => {
       trackedChangeDisplayType: 'both',
     };
     store.commentsList = [makeTrackedChangeRow(identity), makeTrackedChangeRow(identity)];
-    const adapter = {
+    const adapter = makeV2TrackedChangesAdapter({
       documentId: 'doc-1',
       mapV2TrackedChangeToCommentParams: vi.fn(() => ({
         event: 'add',
@@ -1569,7 +1570,7 @@ describe('comments-store v2 tracked-change hydration', () => {
         trackedChangeType: 'both',
         trackedChangeDisplayType: 'both',
       })),
-    };
+    });
     store.setV2TrackedChangesAdapter(adapter);
 
     store.reconcileTrackedChangesFromV2({
@@ -1605,7 +1606,7 @@ describe('comments-store v2 tracked-change hydration', () => {
     ];
     store.activeComment = '2';
     store.activeFloatingCommentInstanceId = '2';
-    const adapter = {
+    const adapter = makeV2TrackedChangesAdapter({
       documentId: 'doc-1',
       mapV2TrackedChangeToCommentParams: vi.fn(() => ({
         event: 'add',
@@ -1620,7 +1621,7 @@ describe('comments-store v2 tracked-change hydration', () => {
         trackedChangeType: 'both',
         trackedChangeDisplayType: 'both',
       })),
-    };
+    });
     store.setV2TrackedChangesAdapter(adapter);
 
     store.reconcileTrackedChangesFromV2({
@@ -1653,7 +1654,7 @@ describe('comments-store v2 tracked-change hydration', () => {
     ];
     store.activeComment = 'tc-second';
     store.activeFloatingCommentInstanceId = 'tc-second';
-    const adapter = {
+    const adapter = makeV2TrackedChangesAdapter({
       documentId: 'doc-1',
       mapV2TrackedChangeToCommentParams: vi.fn(() => ({
         event: 'add',
@@ -1664,7 +1665,7 @@ describe('comments-store v2 tracked-change hydration', () => {
         trackedChangeType: 'both',
         trackedChangeDisplayType: 'both',
       })),
-    };
+    });
     store.setV2TrackedChangesAdapter(adapter);
 
     store.reconcileTrackedChangesFromV2({
@@ -1824,7 +1825,7 @@ describe('comments-store v2 tracked-change hydration', () => {
         makeTrackedChangeRow({ commentId: 'tc-first', ...sharedIdentity }),
         makeTrackedChangeRow({ commentId: 'tc-second', ...sharedIdentity }),
       ];
-      const adapter = {
+      const adapter = makeV2TrackedChangesAdapter({
         documentId: 'doc-1',
         mapV2TrackedChangeToCommentParams: vi.fn(() => ({
           event: 'add',
@@ -1835,7 +1836,7 @@ describe('comments-store v2 tracked-change hydration', () => {
           trackedChangeDisplayType: 'both',
           ...sharedIdentity,
         })),
-      };
+      });
       store.setV2TrackedChangesAdapter(adapter);
 
       store.reconcileTrackedChangesFromV2({
@@ -1859,7 +1860,7 @@ describe('comments-store v2 tracked-change hydration', () => {
         makeTrackedChangeRow({ commentId: 'tc-first', importedId: 'shared-imported' }),
         makeTrackedChangeRow({ commentId: 'tc-second', importedId: 'shared-imported' }),
       ];
-      const hydrateAdapter = {
+      const hydrateAdapter = makeV2TrackedChangesAdapter({
         documentId: 'doc-1',
         mapV2TrackedChangeToCommentParams: vi.fn(() => ({
           event: 'add',
@@ -1870,7 +1871,7 @@ describe('comments-store v2 tracked-change hydration', () => {
           trackedChangeType: 'both',
           trackedChangeDisplayType: 'both',
         })),
-      };
+      });
       store.setV2TrackedChangesAdapter(hydrateAdapter);
       store.reconcileTrackedChangesFromV2({
         superdoc: { config: { isInternal: true }, emit: vi.fn() },
@@ -1884,12 +1885,12 @@ describe('comments-store v2 tracked-change hydration', () => {
       expect(store.commentsList.map((comment) => comment.commentId)).toEqual(['ordinary-comment', 'tc-first']);
       expect(survivor?.trackedChangePositionAliases).toEqual(expect.arrayContaining(['tc-second']));
 
-      const commentsAdapter = {
+      const commentsAdapter = makeV2CommentsAdapter({
         documentId: 'doc-1',
         refresh: vi.fn(async () => ({ ok: true, items: [] })),
         mapV2CommentToUseCommentInput: vi.fn((item) => item),
-      };
-      const trackedChangesAdapter = {
+      });
+      const trackedChangesAdapter = makeV2TrackedChangesAdapter({
         documentId: 'doc-1',
         accept: vi.fn(async () => ({
           ok: true,
@@ -1906,7 +1907,7 @@ describe('comments-store v2 tracked-change hydration', () => {
         listTrackedChanges: vi.fn(async () => ({ ok: true, complete: true, items: [] })),
         mapV2TrackedChangeToCommentParams: vi.fn(() => null),
         clearActiveTrackedChangeTargetIfMatches: vi.fn(),
-      };
+      });
       const superdoc = {
         activeEditor: {
           editorVersion: 2,
@@ -1944,7 +1945,7 @@ describe('comments-store v2 tracked-change hydration', () => {
         story: { kind: 'story', storyType: 'headerFooterPart', refId: 'rId-header' },
       },
     ];
-    const adapter = {
+    const adapter = makeV2TrackedChangesAdapter({
       documentId: 'doc-1',
       listTrackedChanges: vi.fn(async () => ({ ok: true, complete: true, items })),
       mapV2TrackedChangeToCommentParams: vi.fn((item) => ({
@@ -1958,7 +1959,7 @@ describe('comments-store v2 tracked-change hydration', () => {
         trackedChangeStory: item.story,
         trackedChangePositionAliases: ['00000029'],
       })),
-    };
+    });
     const superdoc = {
       config: { isInternal: true },
       emit: vi.fn(),
@@ -1985,7 +1986,7 @@ describe('comments-store v2 tracked-change hydration', () => {
       canonicalId: `canonical-${index}`,
       anchorKey: `tc::body::tc-${index}`,
     }));
-    const adapter = {
+    const adapter = makeV2TrackedChangesAdapter({
       documentId: 'doc-1',
       listTrackedChanges: vi.fn(async () => ({
         ok: true,
@@ -2004,7 +2005,7 @@ describe('comments-store v2 tracked-change hydration', () => {
         trackedChangeCanonicalId: item.canonicalId,
         trackedChangeAnchorKey: item.anchorKey,
       })),
-    };
+    });
     const ordinaryComment = useComment(makeOpenRow({ commentId: 'ordinary-comment' }));
     store.commentsList = [
       ...items.map((item) =>
@@ -2047,10 +2048,10 @@ describe('comments-store v2 tracked-change hydration', () => {
   });
 
   it('does not acknowledge all-resolved reconciliation without a document scope', async () => {
-    const adapter = {
+    const adapter = makeV2TrackedChangesAdapter({
       documentId: null,
       mapV2TrackedChangeToCommentParams: vi.fn(),
-    };
+    });
     store.setV2TrackedChangesAdapter(adapter);
     store.commentsList = [makeTrackedChangeRow()];
 
@@ -2064,7 +2065,7 @@ describe('comments-store v2 tracked-change hydration', () => {
   });
 
   it('leaves receipt upserts to the next committed review window without reading', async () => {
-    const adapter = {
+    const adapter = makeV2TrackedChangesAdapter({
       documentId: 'doc-1',
       listTrackedChanges: vi.fn(),
       getTrackedChange: vi.fn(async () => ({ ok: true, items: [{ id: 'tc-1', excerpt: 'new text' }] })),
@@ -2077,7 +2078,7 @@ describe('comments-store v2 tracked-change hydration', () => {
         trackedChangeDisplayType: 'insert',
         trackedChangeAnchorKey: `tc::body::${item.id}`,
       })),
-    };
+    });
     const superdoc = {
       config: { isInternal: true },
       emit: vi.fn(),
@@ -2100,11 +2101,11 @@ describe('comments-store v2 tracked-change hydration', () => {
   });
 
   it('keeps a receipt identity unresolved when its narrow read succeeds before the row is observable', async () => {
-    const adapter = {
+    const adapter = makeV2TrackedChangesAdapter({
       documentId: 'doc-1',
       getTrackedChange: vi.fn(async () => ({ ok: true, items: [] })),
       mapV2TrackedChangeToCommentParams: vi.fn(),
-    };
+    });
     const superdoc = {
       activeEditor: { documentId: 'doc-1', v2TrackedChanges: adapter },
       emit: vi.fn(),
@@ -2127,11 +2128,11 @@ describe('comments-store v2 tracked-change hydration', () => {
   });
 
   it('does not merge a row returned for a different receipt identity', async () => {
-    const adapter = {
+    const adapter = makeV2TrackedChangesAdapter({
       documentId: 'doc-1',
       getTrackedChange: vi.fn(async () => ({ ok: true, items: [{ id: 'tc-other', excerpt: 'wrong row' }] })),
       mapV2TrackedChangeToCommentParams: vi.fn(),
-    };
+    });
     const superdoc = {
       activeEditor: { documentId: 'doc-1', v2TrackedChanges: adapter },
       emit: vi.fn(),
@@ -2151,7 +2152,7 @@ describe('comments-store v2 tracked-change hydration', () => {
   });
 
   it('does not project a new formatting row before the committed window arrives', async () => {
-    const adapter = {
+    const adapter = makeV2TrackedChangesAdapter({
       documentId: 'doc-1',
       listTrackedChanges: vi.fn(),
       getTrackedChange: vi.fn(async () => ({
@@ -2175,7 +2176,7 @@ describe('comments-store v2 tracked-change hydration', () => {
         trackedChangeLabel: 'Format: Font (Default) Arial',
         trackedChangeAnchorKey: `tc::body::${item.id}`,
       })),
-    };
+    });
     const superdoc = {
       config: { isInternal: true },
       emit: vi.fn(),
@@ -2197,7 +2198,7 @@ describe('comments-store v2 tracked-change hydration', () => {
   });
 
   it('does not enumerate grouped delete aliases from a receipt', async () => {
-    const adapter = {
+    const adapter = makeV2TrackedChangesAdapter({
       documentId: 'doc-1',
       listTrackedChanges: vi.fn(),
       getTrackedChange: vi.fn(async () => ({
@@ -2222,7 +2223,7 @@ describe('comments-store v2 tracked-change hydration', () => {
         trackedChangeAnchorKey: `tc::body::${item.id}`,
         trackedChangePositionAliases: ['tc-delete-child-a', 'tc-delete-child-b'],
       })),
-    };
+    });
     const superdoc = {
       config: { isInternal: true },
       emit: vi.fn(),
@@ -2276,7 +2277,7 @@ describe('comments-store v2 tracked-change hydration', () => {
           },
         ],
       });
-    const adapter = {
+    const adapter = makeV2TrackedChangesAdapter({
       documentId: 'doc-1',
       listTrackedChanges: vi.fn(),
       getTrackedChange,
@@ -2292,7 +2293,7 @@ describe('comments-store v2 tracked-change hydration', () => {
         trackedChangeAnchorKey: `tc::body::${item.id}`,
         trackedChangePositionAliases: item.trackedChangePositionAliases,
       })),
-    };
+    });
     const superdoc = {
       config: { isInternal: true },
       emit: vi.fn(),
@@ -2686,7 +2687,7 @@ describe('comments-store v2 tracked-change hydration', () => {
   });
 
   it('applies mixed receipt removals and leaves replacement rows to the next window', async () => {
-    const adapter = {
+    const adapter = makeV2TrackedChangesAdapter({
       documentId: 'doc-1',
       listTrackedChanges: vi.fn(),
       getTrackedChange: vi.fn(async () => ({
@@ -2710,7 +2711,7 @@ describe('comments-store v2 tracked-change hydration', () => {
         trackedChangeLabel: 'Formatted: Paragraph',
         trackedChangeAnchorKey: `tc::body::${item.id}`,
       })),
-    };
+    });
     const superdoc = {
       config: { isInternal: true },
       activeEditor: { documentId: 'doc-1', v2TrackedChanges: adapter },
@@ -2744,7 +2745,7 @@ describe('comments-store v2 tracked-change hydration', () => {
   });
 
   it('preserves semantic move color metadata on hydrated tracked-change rows', async () => {
-    const adapter = {
+    const adapter = makeV2TrackedChangesAdapter({
       documentId: 'doc-1',
       listTrackedChanges: vi.fn(async () => ({
         ok: true,
@@ -2762,7 +2763,7 @@ describe('comments-store v2 tracked-change hydration', () => {
         semanticColorKey: 'move-to',
         semanticColor: '#00853d',
       })),
-    };
+    });
     const superdoc = {
       config: { isInternal: true },
       emit: vi.fn(),
@@ -2789,7 +2790,7 @@ describe('comments-store v2 tracked-change hydration', () => {
   it('keeps paired move-side rows distinct when they share one canonical geometry anchor', async () => {
     const canonicalId = 'tc|move|1%7C101';
     const canonicalAnchorKey = `tc::body::${canonicalId}`;
-    const adapter = {
+    const adapter = makeV2TrackedChangesAdapter({
       documentId: 'doc-1',
       listTrackedChanges: vi.fn(async () => ({
         ok: true,
@@ -2813,7 +2814,7 @@ describe('comments-store v2 tracked-change hydration', () => {
         importedId: '1',
         semanticColorKey: item.subtype,
       })),
-    };
+    });
     const superdoc = {
       config: { isInternal: true },
       emit: vi.fn(),
@@ -2938,7 +2939,7 @@ describe('comments-store v2 tracked-change hydration', () => {
       },
     ];
     let includeCustomAttributes = true;
-    const adapter = {
+    const adapter = makeV2TrackedChangesAdapter({
       documentId: 'doc-1',
       listTrackedChanges: vi.fn(async () => ({
         ok: true,
@@ -2967,7 +2968,7 @@ describe('comments-store v2 tracked-change hydration', () => {
           ? { customAttributes: customAttributes.map((attribute) => ({ ...attribute })) }
           : {}),
       })),
-    };
+    });
     const superdoc = {
       config: { isInternal: true },
       emit: vi.fn(),
@@ -3025,7 +3026,7 @@ describe('comments-store v2 tracked-change hydration', () => {
   });
 
   it('leaves label-less hydrated rows without signed vocabulary fields', async () => {
-    const adapter = {
+    const adapter = makeV2TrackedChangesAdapter({
       documentId: 'doc-1',
       listTrackedChanges: vi.fn(async () => ({
         ok: true,
@@ -3041,7 +3042,7 @@ describe('comments-store v2 tracked-change hydration', () => {
         trackedChangeDisplayType: 'format',
         trackedChangeAnchorKey: `tc::body::${item?.id}`,
       })),
-    };
+    });
     const superdoc = {
       config: { isInternal: true },
       emit: vi.fn(),
@@ -3142,7 +3143,7 @@ describe('comments-store v2 tracked-change hydration', () => {
       releaseCanonicalPaint = resolve;
     });
     const whenPainted = vi.fn(() => canonicalPaint);
-    const commentsAdapter = {
+    const commentsAdapter = makeV2CommentsAdapter({
       documentId: 'doc-1',
       refresh: vi.fn(async () => ({
         ok: true,
@@ -3161,8 +3162,8 @@ describe('comments-store v2 tracked-change hydration', () => {
         commentText: item.text,
         resolvedTime: null,
       })),
-    };
-    const trackedChangesAdapter = {
+    });
+    const trackedChangesAdapter = makeV2TrackedChangesAdapter({
       documentId: 'doc-1',
       accept: vi.fn(async () => ({
         ok: true,
@@ -3179,7 +3180,7 @@ describe('comments-store v2 tracked-change hydration', () => {
       })),
       mapV2TrackedChangeToCommentParams: vi.fn(() => null),
       clearActiveTrackedChangeTargetIfMatches: vi.fn(),
-    };
+    });
     const superdoc = {
       activeEditor: {
         editorVersion: 2,
@@ -3245,12 +3246,12 @@ describe('comments-store v2 tracked-change hydration', () => {
 
   it('does not launch a full background reconcile while reliable receipt-local decisions continue', async () => {
     vi.useFakeTimers();
-    const commentsAdapter = {
+    const commentsAdapter = makeV2CommentsAdapter({
       documentId: 'doc-1',
       refresh: vi.fn(async () => ({ ok: true, items: [] })),
       mapV2CommentToUseCommentInput: vi.fn((item) => item),
-    };
-    const trackedChangesAdapter = {
+    });
+    const trackedChangesAdapter = makeV2TrackedChangesAdapter({
       documentId: 'doc-1',
       accept: vi.fn(async (comment) => ({
         ok: true,
@@ -3267,7 +3268,7 @@ describe('comments-store v2 tracked-change hydration', () => {
       })),
       mapV2TrackedChangeToCommentParams: vi.fn(() => null),
       clearActiveTrackedChangeTargetIfMatches: vi.fn(),
-    };
+    });
     const superdoc = {
       activeEditor: {
         editorVersion: 2,
@@ -3312,12 +3313,12 @@ describe('comments-store v2 tracked-change hydration', () => {
 
   it('does not clear an unrelated active comment when pruning a decided tracked-change row', async () => {
     vi.useFakeTimers();
-    const commentsAdapter = {
+    const commentsAdapter = makeV2CommentsAdapter({
       documentId: 'doc-1',
       refresh: vi.fn(async () => ({ ok: true, items: [] })),
       mapV2CommentToUseCommentInput: vi.fn((item) => item),
-    };
-    const trackedChangesAdapter = {
+    });
+    const trackedChangesAdapter = makeV2TrackedChangesAdapter({
       documentId: 'doc-1',
       accept: vi.fn(async () => ({ ok: true, receipt: { success: true }, decidedId: 'tc-1', documentId: 'doc-1' })),
       reject: vi.fn(),
@@ -3329,7 +3330,7 @@ describe('comments-store v2 tracked-change hydration', () => {
       })),
       mapV2TrackedChangeToCommentParams: vi.fn(() => null),
       clearActiveTrackedChangeTargetIfMatches: vi.fn(),
-    };
+    });
     const superdoc = {
       activeEditor: {
         editorVersion: 2,
@@ -3369,12 +3370,12 @@ describe('comments-store v2 tracked-change hydration', () => {
 
   it('uses the clicked row identity when a committed decision omits receipt ids', async () => {
     vi.useFakeTimers();
-    const commentsAdapter = {
+    const commentsAdapter = makeV2CommentsAdapter({
       documentId: 'doc-1',
       refresh: vi.fn(async () => ({ ok: true, items: [] })),
       mapV2CommentToUseCommentInput: vi.fn((item) => item),
-    };
-    const trackedChangesAdapter = {
+    });
+    const trackedChangesAdapter = makeV2TrackedChangesAdapter({
       documentId: 'doc-1',
       accept: vi.fn(async () => ({ ok: true, receipt: { success: true } })),
       reject: vi.fn(),
@@ -3386,7 +3387,7 @@ describe('comments-store v2 tracked-change hydration', () => {
       })),
       mapV2TrackedChangeToCommentParams: vi.fn(() => null),
       clearActiveTrackedChangeTargetIfMatches: vi.fn(),
-    };
+    });
     const superdoc = {
       activeEditor: {
         editorVersion: 2,
@@ -3602,7 +3603,7 @@ describe('comments-store committed review-window apply', () => {
       { id: 'doc-2', type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' },
     ];
     store = useCommentsStore();
-    commentsAdapter = {
+    commentsAdapter = makeV2CommentsAdapter({
       documentId: 'doc-1',
       mapV2CommentToUseCommentInput: vi.fn((item) => ({
         commentId: item.commentId,
@@ -3613,8 +3614,8 @@ describe('comments-store committed review-window apply', () => {
         commentText: item.text ?? '',
         resolvedTime: null,
       })),
-    };
-    trackedChangesAdapter = {
+    });
+    trackedChangesAdapter = makeV2TrackedChangesAdapter({
       documentId: 'doc-1',
       mapV2TrackedChangeToCommentParams: vi.fn((item) => ({
         event: 'add',
@@ -3625,7 +3626,7 @@ describe('comments-store committed review-window apply', () => {
         trackedChangeDisplayType: 'insert',
         trackedChangeAnchorKey: `tc::body::${item.id}`,
       })),
-    };
+    });
     superdoc = {
       activeEditor: { editorVersion: 2, documentId: 'doc-1' },
       config: { isInternal: true },
@@ -4660,7 +4661,7 @@ describe('comments-store pending selection event snapshots', () => {
   });
 
   function captureAdapter(read = async () => snapshot) {
-    return {
+    return makeV2CommentsAdapter({
       documentId: 'doc-1',
       getCapabilityState: () => ({ canWrite: true }),
       captureCurrentSelection: vi.fn(async ({ beforeReady } = {}) => {
@@ -4668,7 +4669,7 @@ describe('comments-store pending selection event snapshots', () => {
         await beforeReady?.(info);
         return { ok: true, target: info.target };
       }),
-    };
+    });
   }
 
   function editor(current, adapter = null) {
@@ -4738,14 +4739,14 @@ describe('comments-store pending selection event snapshots', () => {
     const current = vi.fn(async () => {
       throw new Error('redundant read');
     });
-    const adapter = {
+    const adapter = makeV2CommentsAdapter({
       documentId: 'doc-1',
       getCapabilityState: () => ({ canWrite: true }),
       captureCurrentSelection: vi.fn(async () => {
         if (kind === 'rejection') throw new Error('native admission rejected');
         return { ok: false, reason: 'document-api-threw', detail: 'native admission rejected' };
       }),
-    };
+    });
     const superdoc = editor(current, adapter);
     expect(await store.showAddComment(superdoc)).toMatchObject({ ok: false });
     expect(current).not.toHaveBeenCalled();
@@ -4875,7 +4876,7 @@ describe('comments-store v2 pending document comments', () => {
       const previous = { commentId: 'previous', fileId: 'doc-1', commentText: 'Previous root' };
       const other = { commentId: 'other', fileId: 'doc-1', commentText: 'Another root' };
       const root = { commentId: 'created', fileId: 'doc-1', commentText: 'Submitted root' };
-      const adapter = {
+      const adapter = makeV2CommentsAdapter({
         documentId: 'doc-1',
         getCapabilityState: () => ({ canWrite: true }),
         captureCurrentSelection: async () => ({
@@ -4885,7 +4886,7 @@ describe('comments-store v2 pending document comments', () => {
         setActiveComment: vi.fn(async () => ({ ok: true })),
         commitPendingComment: () => creation.promise,
         mapV2CommentToUseCommentInput: (item) => item,
-      };
+      });
       const superdoc = makeSuperdoc(adapter);
       superdoc.config = { isInternal: true };
       store.setV2CommentsAdapter(adapter);
@@ -4916,7 +4917,7 @@ describe('comments-store v2 pending document comments', () => {
     async ({ instance, expectedInstance }) => {
       const creation = deferred();
       const root = { commentId: '0', fileId: 'doc-1', commentText: 'First root' };
-      const adapter = {
+      const adapter = makeV2CommentsAdapter({
         documentId: 'doc-1',
         getCapabilityState: () => ({ canWrite: true }),
         captureCurrentSelection: async () => ({
@@ -4926,7 +4927,7 @@ describe('comments-store v2 pending document comments', () => {
         setActiveComment: vi.fn(async () => ({ ok: true })),
         commitPendingComment: () => creation.promise,
         mapV2CommentToUseCommentInput: (item) => item,
-      };
+      });
       const superdoc = makeSuperdoc(adapter);
       superdoc.config = { isInternal: true };
       store.setV2CommentsAdapter(adapter);
@@ -4960,7 +4961,7 @@ describe('comments-store v2 pending document comments', () => {
       const firstItem = { commentId: 'first', fileId: 'doc-1', commentText: 'First root' };
       const secondItem = { commentId: 'second', fileId: 'doc-1', commentText: 'New draft' };
       const mentions = [{ id: 'reviewer-2', email: 'second@example.test' }];
-      const adapter = {
+      const adapter = makeV2CommentsAdapter({
         documentId: 'doc-1',
         getCapabilityState: () => ({ canWrite: true }),
         captureCurrentSelection: async () => ({ ok: true, target }),
@@ -4974,7 +4975,7 @@ describe('comments-store v2 pending document comments', () => {
             items: [existingItem, firstItem, secondItem],
           }),
         mapV2CommentToUseCommentInput: (item) => item,
-      };
+      });
       const superdoc = makeSuperdoc(adapter);
       superdoc.config = { isInternal: true };
       store.setV2CommentsAdapter(adapter);
@@ -5032,14 +5033,14 @@ describe('comments-store v2 pending document comments', () => {
       const clear = vi.fn(() => {
         currentTarget = null;
       });
-      const adapter = {
+      const adapter = makeV2CommentsAdapter({
         documentId: 'doc-1',
         getCapabilityState: () => ({ canWrite: true, reason: null }),
         captureCurrentSelection: async () => ({ ok: true, target }),
         setActiveComment: vi.fn(async () => ({ ok: true })),
         commitPendingComment: vi.fn(() => creation.promise),
         mapV2CommentToUseCommentInput: (item) => item,
-      };
+      });
       const superdoc = makeSuperdoc(adapter);
       superdoc.config = { isInternal: true, documentMode };
       superdoc.activeEditor.host = { getHandles: () => ({ selection: { clear } }) };
@@ -5070,7 +5071,7 @@ describe('comments-store v2 pending document comments', () => {
       const creation = deferred();
       const capture = deferred();
       const target = { kind: 'text', segments: [{ blockId: 'paragraph', start: 6, end: 12 }] };
-      const adapter = {
+      const adapter = makeV2CommentsAdapter({
         documentId: 'doc-1',
         getCapabilityState: () => ({ canWrite: true }),
         captureCurrentSelection: vi
@@ -5080,7 +5081,7 @@ describe('comments-store v2 pending document comments', () => {
         setActiveComment: vi.fn(async () => ({ ok: true })),
         commitPendingComment: vi.fn(() => creation.promise),
         mapV2CommentToUseCommentInput: (item) => item,
-      };
+      });
       const superdoc = makeSuperdoc(adapter);
       const clear = vi.fn();
       superdoc.config = { isInternal: true, documentMode };
@@ -5116,7 +5117,7 @@ describe('comments-store v2 pending document comments', () => {
       const creation = deferred();
       const capture = deferred();
       const target = { kind: 'text', segments: [{ blockId: 'paragraph', start: 6, end: 12 }] };
-      const adapter = {
+      const adapter = makeV2CommentsAdapter({
         documentId: 'doc-1',
         getCapabilityState: () => ({ canWrite: true }),
         captureCurrentSelection: vi
@@ -5126,7 +5127,7 @@ describe('comments-store v2 pending document comments', () => {
         setActiveComment: vi.fn(async () => ({ ok: true })),
         commitPendingComment: vi.fn(() => creation.promise),
         mapV2CommentToUseCommentInput: (item) => item,
-      };
+      });
       const superdoc = makeSuperdoc(adapter);
       superdoc.config = { isInternal: true };
       store.setV2CommentsAdapter(adapter);
@@ -5166,13 +5167,13 @@ describe('comments-store v2 pending document comments', () => {
     ['nested block wrappers', '<div><p>first</p><p>last</p></div>', 'first\nlast'],
     ['plain text breaks', '\nfirst\n\n\nlast\n', '\nfirst\n\n\nlast\n'],
   ])('preserves %s through create, reply and edit', async (_name, html, text) => {
-    const adapter = {
+    const adapter = makeV2CommentsAdapter({
       documentId: 'doc-1',
       commitPendingComment: vi.fn(async () => ({ ok: true, items: [] })),
       reply: vi.fn(async () => ({ ok: true, items: [] })),
       edit: vi.fn(async () => ({ ok: true, items: [] })),
       mapV2CommentToUseCommentInput: vi.fn((item) => item),
-    };
+    });
     const superdoc = makeSuperdoc(adapter);
     store.setV2CommentsAdapter(adapter);
     await store.addComment({ superdoc, comment: useComment({ fileId: 'doc-1', commentText: html }) });
@@ -5184,7 +5185,7 @@ describe('comments-store v2 pending document comments', () => {
   });
 
   it('rejects whitespace-only reply and edit drafts without submitting', async () => {
-    const adapter = { documentId: 'doc-1', reply: vi.fn(), edit: vi.fn() };
+    const adapter = makeV2CommentsAdapter({ documentId: 'doc-1', reply: vi.fn(), edit: vi.fn() });
     const superdoc = makeSuperdoc(adapter);
     store.setV2CommentsAdapter(adapter);
     expect(await store.replyCommentV2({ superdoc, parentCommentId: 'c1', text: '<p><br> </p>' })).toEqual({
@@ -5201,7 +5202,7 @@ describe('comments-store v2 pending document comments', () => {
 
   it('preserves a newer pending draft when an earlier comment submission completes', async () => {
     let complete;
-    const adapter = {
+    const adapter = makeV2CommentsAdapter({
       documentId: 'doc-1',
       getCapabilityState: vi.fn(() => ({ canWrite: true })),
       captureCurrentSelection: vi.fn(async () => ({ ok: true, target: null })),
@@ -5213,7 +5214,7 @@ describe('comments-store v2 pending document comments', () => {
           }),
       ),
       mapV2CommentToUseCommentInput: vi.fn((item) => item),
-    };
+    });
     const superdoc = makeSuperdoc(adapter);
     superdoc.config = { isInternal: true };
     store.setV2CommentsAdapter(adapter);
@@ -5243,7 +5244,7 @@ describe('comments-store v2 pending document comments', () => {
       segments: [{ story: { kind: 'story', storyType: 'body' }, blockId: 'captured', start: 0, end: 4 }],
     };
     const submittedTargets = [];
-    const adapter = {
+    const adapter = makeV2CommentsAdapter({
       documentId: 'doc-1',
       getCapabilityState: vi.fn(() => ({ canWrite: true, reason: null })),
       captureCurrentSelection: vi.fn(async () => ({ ok: true, target })),
@@ -5262,7 +5263,7 @@ describe('comments-store v2 pending document comments', () => {
         };
       }),
       mapV2CommentToUseCommentInput: vi.fn((item) => item),
-    };
+    });
     const superdoc = makeSuperdoc(adapter);
     superdoc.config = { isInternal: true };
     store.setV2CommentsAdapter(adapter);
@@ -5303,12 +5304,12 @@ describe('comments-store v2 pending document comments', () => {
       store.reconcileCommentsFromV2({ superdoc, adapter, documentId: 'doc-1', items: [root, owned] });
       return { ok: true, complete: false, createdCommentId: 'c2', items: [root, owned, neighbour] };
     };
-    const adapter = {
+    const adapter = makeV2CommentsAdapter({
       documentId: 'doc-1',
       reply: vi.fn(settle),
       commitPendingComment: vi.fn(settle),
       mapV2CommentToUseCommentInput: vi.fn((item) => item),
-    };
+    });
     const superdoc = makeSuperdoc(adapter);
     store.setV2CommentsAdapter(adapter);
     store.commentsList = [
@@ -5338,11 +5339,11 @@ describe('comments-store v2 pending document comments', () => {
       { commentId: 'c1', fileId: 'doc-1', commentText: 'Root', mentions: [] },
       { commentId: 'c2', parentCommentId: 'c1', fileId: 'doc-1', commentText: '@Internal Reviewer', mentions },
     ];
-    const adapter = {
+    const adapter = makeV2CommentsAdapter({
       documentId: 'doc-1',
       reply: vi.fn(async () => ({ ok: true, items })),
       mapV2CommentToUseCommentInput: vi.fn((item) => item),
-    };
+    });
     const superdoc = makeSuperdoc(adapter);
     store.setV2CommentsAdapter(adapter);
     store.commentsList = [useComment(items[0])];
@@ -5377,7 +5378,7 @@ describe('comments-store v2 pending document comments', () => {
       status: 'open',
       metadata: { mentions },
     };
-    const adapter = {
+    const adapter = makeV2CommentsAdapter({
       documentId: 'doc-1',
       mapV2CommentToUseCommentInput: vi.fn((item) => ({
         commentId: item.id,
@@ -5385,7 +5386,7 @@ describe('comments-store v2 pending document comments', () => {
         commentText: item.text,
         mentions: item.metadata?.mentions ?? [],
       })),
-    };
+    });
     const superdoc = makeSuperdoc(adapter);
     superdoc.activeEditor.doc = {
       comments: { get: vi.fn(async () => detail) },
@@ -5518,7 +5519,10 @@ describe('pending receipt creation invalidation', () => {
 
   it('removes pending-created rows immediately while preserving unrelated deletion events', () => {
     const store = useCommentsStore();
-    const adapter = { documentId: 'doc-1', isPendingCommentCreation: (id) => id === 'pending-created' };
+    const adapter = makeV2CommentsAdapter({
+      documentId: 'doc-1',
+      isPendingCommentCreation: (id) => id === 'pending-created',
+    });
     const superdoc = makeSuperdoc(adapter);
     store.setV2CommentsAdapter(adapter);
     store.commentsList = ['pending-created', 'existing'].map((commentId) =>
@@ -5537,9 +5541,9 @@ describe('pending receipt creation invalidation', () => {
 
   it('never uses retired creation ownership to suppress a new adapter deletion', () => {
     const store = useCommentsStore();
-    const retired = { documentId: 'doc-1', isPendingCommentCreation: () => true };
+    const retired = makeV2CommentsAdapter({ documentId: 'doc-1', isPendingCommentCreation: () => true });
     store.setV2CommentsAdapter(retired);
-    const current = { documentId: 'doc-1', isPendingCommentCreation: () => false };
+    const current = makeV2CommentsAdapter({ documentId: 'doc-1', isPendingCommentCreation: () => false });
     store.setV2CommentsAdapter(current);
     const superdoc = makeSuperdoc(current);
     store.commentsList = [useComment({ commentId: 'pending-created', fileId: 'doc-1', commentText: 'current' })];

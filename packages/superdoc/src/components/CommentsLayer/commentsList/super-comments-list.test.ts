@@ -3,6 +3,7 @@ import { defineComponent, h } from 'vue';
 import { createPinia, setActivePinia } from 'pinia';
 import { useCommentsStore } from '../../../stores/comments-store.js';
 import { useSuperdocStore } from '../../../stores/superdoc-store.js';
+import { makeV2CommentsAdapter, makeV2TrackedChangesAdapter } from '../../../test-support/v2-review-adapters.js';
 
 vi.mock('./commentsList.vue', () => ({
   default: defineComponent({
@@ -157,12 +158,12 @@ describe('SuperComments', () => {
       commentsStore,
       activeEditor: {
         documentId: 'doc-1',
-        v2Comments: {
+        v2Comments: makeV2CommentsAdapter({
           mapV2CommentToUseCommentInput: (item) => ({ commentId: item.id, fileId: 'doc-1', commentText: 'Body' }),
-        },
-        v2TrackedChanges: {
+        }),
+        v2TrackedChanges: makeV2TrackedChangesAdapter({
           mapV2TrackedChangeToCommentParams: (item) => ({ changeId: item.id, documentId: 'doc-1' }),
-        },
+        }),
       },
       ui: {
         comments: readyHandle([{ id: 'directory-comment' }]),

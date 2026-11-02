@@ -8,6 +8,7 @@ import CommentsList from './commentsList/commentsList.vue';
 import useComment from './use-comment.js';
 import { useCommentsStore } from '../../stores/comments-store.js';
 import { useSuperdocStore } from '../../stores/superdoc-store.js';
+import { makeV2CommentsAdapter, makeV2TrackedChangesAdapter } from '../../test-support/v2-review-adapters.js';
 
 const DOCX_TYPE = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const COMMENT_DIALOG_SOURCE = CommentDialogSource;
@@ -77,14 +78,14 @@ describe('CommentDialog', () => {
         finishCapture = resolve;
       });
       const target = { kind: 'text', segments: [{ blockId: 'paragraph', start: 6, end: 12 }] };
-      const adapter = {
+      const adapter = makeV2CommentsAdapter({
         documentId: 'doc-1',
         getCapabilityState: () => ({ canWrite: true }),
         captureCurrentSelection: vi
           .fn()
           .mockResolvedValueOnce({ ok: true, target })
           .mockImplementationOnce(() => capture),
-      };
+      });
       Object.assign(superdocStub.activeEditor, {
         editorVersion: 2,
         v2Comments: adapter,
@@ -1800,17 +1801,17 @@ describe('CommentDialog', () => {
       const completion = new Promise((resolve) => {
         settle = resolve;
       });
-      const adapter = {
+      const adapter = makeV2CommentsAdapter({
         documentId: 'doc-1',
         getCapabilityState: () => ({ canWrite: true }),
         reply: vi.fn(() => completion),
         mapV2CommentToUseCommentInput: (item) => item,
-      };
+      });
       superdocStub.activeEditor.editorVersion = 2;
       superdocStub.activeEditor.v2Comments = adapter;
-      superdocStub.activeEditor.v2TrackedChanges = {
+      superdocStub.activeEditor.v2TrackedChanges = makeV2TrackedChangesAdapter({
         mapV2TrackedChangeToCommentParams: (item) => item,
-      };
+      });
       commentsStore.setV2CommentsAdapter(adapter);
       commentsStore.commentsList = [useComment(root)];
       commentsStore.activeComment = root.commentId;

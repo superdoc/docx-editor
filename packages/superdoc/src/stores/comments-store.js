@@ -54,6 +54,7 @@ import {
   groupBodyTrackedChangeCommentsByIdentity,
   mergeDuplicateBodyTrackedChangeComments,
 } from './helpers/tracked-change-compaction.js';
+import { isV2CommentsAdapter, isV2TrackedChangesAdapter } from './helpers/v2-review-adapters.js';
 
 export const useCommentsStore = defineStore('comments', () => {
   const superdocStore = useSuperdocStore();
@@ -176,12 +177,13 @@ export const useCommentsStore = defineStore('comments', () => {
   // store; we never read reactive properties off it.
   const v2CommentsAdapter = shallowRef(null);
   const setV2CommentsAdapter = (adapter) => {
-    if (v2CommentsAdapter.value !== (adapter ?? null)) pendingCommentRequest += 1;
-    v2CommentsAdapter.value = adapter ?? null;
+    const next = isV2CommentsAdapter(adapter) ? adapter : null;
+    if (v2CommentsAdapter.value !== next) pendingCommentRequest += 1;
+    v2CommentsAdapter.value = next;
   };
   const getV2CommentsAdapter = (superdoc) => {
-    const fromFacade = superdoc?.activeEditor?.v2Comments ?? null;
-    if (fromFacade) return fromFacade;
+    const fromFacade = superdoc?.activeEditor?.v2Comments;
+    if (isV2CommentsAdapter(fromFacade)) return fromFacade;
     return v2CommentsAdapter.value;
   };
   const isV2EditorActive = (superdoc) =>
@@ -196,11 +198,11 @@ export const useCommentsStore = defineStore('comments', () => {
   // `v2CommentsAdapter` above.
   const v2TrackedChangesAdapter = shallowRef(null);
   const setV2TrackedChangesAdapter = (adapter) => {
-    v2TrackedChangesAdapter.value = adapter ?? null;
+    v2TrackedChangesAdapter.value = isV2TrackedChangesAdapter(adapter) ? adapter : null;
   };
   const getV2TrackedChangesAdapter = (superdoc) => {
-    const fromFacade = superdoc?.activeEditor?.v2TrackedChanges ?? null;
-    if (fromFacade) return fromFacade;
+    const fromFacade = superdoc?.activeEditor?.v2TrackedChanges;
+    if (isV2TrackedChangesAdapter(fromFacade)) return fromFacade;
     return v2TrackedChangesAdapter.value;
   };
   /**

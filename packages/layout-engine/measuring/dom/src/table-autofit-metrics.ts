@@ -237,7 +237,7 @@ type TokenFragment = {
  */
 class LruCache<T> {
   private readonly cache = new Map<string, LruEntry<T>>();
-  private maxSize: number;
+  private readonly maxSize: number;
 
   constructor(maxSize: number) {
     this.maxSize = maxSize;

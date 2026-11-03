@@ -4307,6 +4307,7 @@ const whiteboardInteractive = computed(() => whiteboardEnabled.value);
 <style scoped>
 .superdoc {
   display: flex;
+  justify-content: safe center;
   position: relative;
 }
 

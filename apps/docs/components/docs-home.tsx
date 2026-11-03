@@ -10,7 +10,7 @@ export function DocsHome() {
     <main className={styles.home}>
       <header className={styles.hero}>
         <h1>
-          <span className={styles.heroWordmark}>SuperDoc</span> <span>Documentation</span>
+          <span>Documentation</span>
         </h1>
         <p>
           <Link className={`${styles.heroLink} ${styles.heroLinkEditor}`} href='/editor/quickstart'>

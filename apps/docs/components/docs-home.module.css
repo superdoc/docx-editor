@@ -33,16 +33,12 @@
   line-height: 1.1;
 }
 
-.heroWordmark {
-  color: var(--sd-wordmark-blue);
-}
-
-.hero h1 > span:not(.heroWordmark) {
+.hero h1 > span {
   color: var(--sd-blue);
 }
 
 @supports (background-clip: text) or (-webkit-background-clip: text) {
-  .hero h1 > span:not(.heroWordmark) {
+  .hero h1 > span {
     display: inline-block;
     /* Matches the website's .gradient-text, including the descender padding
        that keeps descenders from being clipped. */

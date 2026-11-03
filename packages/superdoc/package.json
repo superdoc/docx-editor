@@ -1,7 +1,7 @@
 {
   "name": "superdoc",
   "type": "module",
-  "version": "2.29.0-next.3",
+  "version": "2.29.0",
   "description": "Browser DOCX editor for reviewing, filling, and editing Word documents.",
   "keywords": [
     "docx editor",
@@ -137,7 +137,7 @@
     "test": "vp test"
   },
   "dependencies": {
-    "@superdoc/docx-engine": "0.28.0-next.3",
+    "@superdoc/docx-engine": "0.28.0",
     "@types/ws": "catalog:",
     "eventemitter3": "catalog:",
     "konva": "catalog:",

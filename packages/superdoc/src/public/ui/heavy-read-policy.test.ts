@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
 
 import type { StylesGetCatalogInput } from '@superdoc/document-api';
-import { createSuperDocUI, HEAVY_DOC_READ_POLICY, isHeavyDocReadKey } from './create-super-doc-ui.js';
+import { createSuperDocUI } from './create-super-doc-ui.js';
+import { HEAVY_DOC_READ_POLICY, isHeavyDocReadKey } from './heavy-read-policy.js';
 
 /**
  * Table-driven heavy-read policy tests (during-load typing fix, W2).

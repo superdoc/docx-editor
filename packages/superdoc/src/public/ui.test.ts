@@ -10835,7 +10835,7 @@ describe('public ui — Plan B command catalog (row 747)', () => {
   );
 
   it('routes clear-formatting as one tracked selection mutation in suggesting mode', async () => {
-    const apply = vi.fn(() => ({ success: true }));
+    const apply = vi.fn((_input: { inline: Record<string, null> }, _options: unknown) => ({ success: true }));
     const superdoc = makeCatalogSuperdoc({
       mode: 'suggesting',
       doc: {
@@ -10852,6 +10852,10 @@ describe('public ui — Plan B command catalog (row 747)', () => {
       changeMode: 'tracked',
       offsetSpace: 'kernel',
     });
+    const inline = apply.mock.calls[0]?.[0].inline;
+    expect(inline).toMatchObject({ bold: null });
+    expect(inline).not.toHaveProperty('smallCaps');
+    expect(inline).not.toHaveProperty('dstrike');
   });
 
   it('runs block reset and setMarkRunProps at caret in direct mode (Option E)', async () => {

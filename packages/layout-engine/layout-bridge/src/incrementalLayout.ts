@@ -45,7 +45,6 @@ import type {
   DrawingBlock,
   ListBlock,
   TableBlock,
-  TextRun,
 } from '@superdoc/contracts';
 import {
   DEFAULT_FONT_MEASURE_CONTEXT,
@@ -1457,15 +1456,15 @@ function liveCrossReferenceResultSignature(block: FlowBlock | undefined): string
   const visit = (candidate: FlowBlock): void => {
     if (candidate.kind === 'paragraph') {
       for (const run of (candidate as ParagraphBlock).runs) {
-        const textRun = run as TextRun;
-        const metadata = textRun.crossReferenceMetadata;
+        if (!('crossReferenceMetadata' in run)) continue;
+        const metadata = run.crossReferenceMetadata;
         if (!metadata) continue;
         entries.push([
           metadata.kind,
           metadata.instruction,
           metadata.target,
           metadata.preferFollowing === true,
-          textRun.text,
+          run.text,
         ]);
       }
       return;

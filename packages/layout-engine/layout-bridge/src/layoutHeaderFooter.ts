@@ -280,7 +280,7 @@ function forEachPageNumberRun(blocks: FlowBlock[], visit: (run: TextRun) => void
       const paraBlock = block as ParagraphBlock;
       for (const run of paraBlock.runs) {
         if ('token' in run && run.token === 'pageNumber') {
-          visit(run as TextRun);
+          visit(run);
         }
       }
     } else if (block.kind === 'list') {
@@ -288,7 +288,7 @@ function forEachPageNumberRun(blocks: FlowBlock[], visit: (run: TextRun) => void
       for (const item of list.items ?? []) {
         for (const run of item.paragraph.runs) {
           if ('token' in run && run.token === 'pageNumber') {
-            visit(run as TextRun);
+            visit(run);
           }
         }
       }

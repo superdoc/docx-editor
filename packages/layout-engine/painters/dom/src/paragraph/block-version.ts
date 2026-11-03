@@ -1,4 +1,4 @@
-import type { ImageRun, ParagraphAttrs, ParagraphBlock, TextRun, TrackedChangeMeta } from '@superdoc/contracts';
+import type { ImageRun, ParagraphAttrs, ParagraphBlock, Run, TextRun, TrackedChangeMeta } from '@superdoc/contracts';
 import {
   getParagraphInlineDirection,
   inlineBoxStyleSignature,
@@ -59,14 +59,14 @@ const hasListMarkerProperties = (
   return true;
 };
 
-const getTrackedChangeLayers = (run: TextRun): TrackedChangeMeta[] => {
-  if (Array.isArray(run.trackedChanges) && run.trackedChanges.length > 0) {
+const getTrackedChangeLayers = (run: Run): TrackedChangeMeta[] => {
+  if ('trackedChanges' in run && Array.isArray(run.trackedChanges) && run.trackedChanges.length > 0) {
     return run.trackedChanges;
   }
-  return run.trackedChange ? [run.trackedChange] : [];
+  return 'trackedChange' in run && run.trackedChange ? [run.trackedChange] : [];
 };
 
-const trackedChangeVersion = (run: TextRun): string => trackedChangeLayersSignature(getTrackedChangeLayers(run));
+const trackedChangeVersion = (run: Run): string => trackedChangeLayersSignature(getTrackedChangeLayers(run));
 
 const inlineBoxesVersion = (block: ParagraphBlock): string =>
   (block.inlineBoxes ?? [])
@@ -273,7 +273,7 @@ export const hashParagraphBlockForTableVersion = (
     hash = hashString(hash, getRunBooleanProp(run, 'strike') ? '1' : '');
     hash = hashString(hash, getRunStringProp(run, 'vertAlign'));
     hash = hashNumber(hash, getRunNumberProp(run, 'baselineShift'));
-    hash = hashString(hash, trackedChangeVersion(run as TextRun));
+    hash = hashString(hash, trackedChangeVersion(run));
   }
 
   return hash;

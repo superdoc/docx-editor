@@ -1,4 +1,4 @@
-import type { Run, TextRun } from '@superdoc/contracts';
+import type { Run } from '@superdoc/contracts';
 
 const CJK_JUSTIFICATION_SCRIPT =
   /^(?:\p{Script_Extensions=Han}|\p{Script_Extensions=Hiragana}|\p{Script_Extensions=Katakana}|\p{Script_Extensions=Hangul})$/u;
@@ -51,7 +51,7 @@ export const collectCjkJustificationBoundaries = (runs: readonly Run[]): number[
 
   for (const run of runs) {
     if ((run.kind !== 'text' && run.kind !== undefined) || !('text' in run)) return undefined;
-    const textRun = run as TextRun;
+    const textRun = run;
     if (
       textRun.vanish ||
       textRun.visualPlaceholder != null ||

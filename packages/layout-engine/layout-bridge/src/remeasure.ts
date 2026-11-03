@@ -184,7 +184,7 @@ function visibleTextFontSize(run: Run | undefined): number | undefined {
 function visibleLineHeightFontSize(run: Run | undefined): number | undefined {
   if (!run || isVanishedRun(run)) return undefined;
   if (!isTextRun(run) && run.kind !== 'tab') return undefined;
-  const fontSize = (run as TextRun | TabRun).fontSize;
+  const fontSize = run.fontSize;
   return typeof fontSize === 'number' ? fontSize : undefined;
 }
 
@@ -1513,7 +1513,7 @@ function lineHeightForRuns(
     const run = runs[i];
     const size = visibleLineHeightFontSize(run) ?? 0;
     if (size <= 0) continue;
-    const metricRun = run as TextRun | TabRun | undefined;
+    const metricRun = run && (isTextRun(run) || run.kind === 'tab') ? run : undefined;
     const family = typeof metricRun?.fontFamily === 'string' ? metricRun.fontFamily : undefined;
     const face: FaceKey | undefined = metricRun
       ? { weight: metricRun.bold ? '700' : '400', style: metricRun.italic ? 'italic' : 'normal' }

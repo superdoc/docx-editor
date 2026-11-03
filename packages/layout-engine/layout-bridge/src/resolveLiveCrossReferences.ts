@@ -500,5 +500,5 @@ function normalizeStyleName(value: string): string {
 }
 
 function asTextRun(run: Run): TextRun | null {
-  return run.kind == null || run.kind === 'text' ? (run as TextRun) : null;
+  return run.kind == null || run.kind === 'text' ? run : null;
 }

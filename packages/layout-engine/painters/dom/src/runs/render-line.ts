@@ -79,10 +79,10 @@ const hasTabBoundaryGeometry = (segment: LineSegment): boolean =>
   segment.x !== undefined || segment.precedingTabEndX !== undefined;
 
 const isVanishedTextRun = (run: Run | undefined): run is TextRun =>
-  Boolean(run && (run.kind === 'text' || run.kind === undefined) && (run as TextRun).vanish === true);
+  Boolean(run && (run.kind === 'text' || run.kind === undefined) && run.vanish === true);
 
 const isParagraphMarkDeletionAnchorRun = (run: Run | undefined): run is TextRun =>
-  isVanishedTextRun(run) && (run as TextRun).dataAttrs?.['data-paragraph-mark-deletion-anchor'] === 'true';
+  isVanishedTextRun(run) && run.dataAttrs?.['data-paragraph-mark-deletion-anchor'] === 'true';
 
 const isTransparentVanishedSegment = (run: Run | undefined, segment: LineSegment): boolean =>
   isVanishedTextRun(run) && segment.width === 0 && !hasTabBoundaryGeometry(segment);
@@ -105,7 +105,7 @@ const alignNormalTextBesideLineExpandingImage = (
   if (!lineContainsLineExpandingImage) return;
   if ((run.kind !== 'text' && run.kind !== undefined) || !('text' in run)) return;
 
-  const textRun = run as TextRun;
+  const textRun = run;
   if (textRun.vanish && element.textContent === '') return;
   if (
     normalizeBaselineShift(textRun.baselineShift) != null ||
@@ -135,6 +135,7 @@ const wrapShiftedTextWithBaseBaseline = (
   applyRunTypographyStyles(
     wrapper,
     {
+      kind: 'text',
       text: '',
       fontFamily: run.fontFamily,
       fontSize: resolveBaseFontSizeForVerticalText(run.fontSize, run),
@@ -199,7 +200,7 @@ const baselineImageTopFromLine = (line: Line, imageHeight: number): number => {
 };
 
 const cloneTextRun = (run: TextRun): TextRun => ({
-  ...(run as TextRun),
+  ...run,
   comments: run.comments ? [...run.comments] : undefined,
   dataAttrs: run.dataAttrs ? { ...run.dataAttrs } : undefined,
   underline: run.underline ? { ...run.underline } : undefined,
@@ -295,7 +296,7 @@ const preserveUnmeasuredAlignmentSpaces = (
 const normalizeJustifiedRuns = (runsForLine: Run[]): Run[] => {
   const normalized: Run[] = runsForLine.map((run) => {
     if ((run.kind !== 'text' && run.kind !== undefined) || !('text' in run)) return run;
-    return cloneTextRun(run as TextRun);
+    return cloneTextRun(run);
   });
 
   const merged: Run[] = [];
@@ -306,7 +307,7 @@ const normalizeJustifiedRuns = (runsForLine: Run[]): Run[] => {
       continue;
     }
 
-    const textRun = run as TextRun;
+    const textRun = run;
     if (!isWhitespaceOnly(textRun.text ?? '')) {
       merged.push(textRun);
       continue;
@@ -314,7 +315,7 @@ const normalizeJustifiedRuns = (runsForLine: Run[]): Run[] => {
 
     const prev = merged[merged.length - 1];
     if (prev && (prev.kind === 'text' || prev.kind === undefined) && 'text' in prev) {
-      const prevTextRun = prev as TextRun;
+      const prevTextRun = prev;
       if (textRunMergeSignature(prevTextRun) === textRunMergeSignature(textRun)) {
         const extra = textRun.text ?? '';
         prevTextRun.text = (prevTextRun.text ?? '') + extra;
@@ -329,7 +330,7 @@ const normalizeJustifiedRuns = (runsForLine: Run[]): Run[] => {
 
     const next = normalized[i + 1];
     if (next && (next.kind === 'text' || next.kind === undefined) && 'text' in next) {
-      const nextTextRun = next as TextRun;
+      const nextTextRun = next;
       if (textRunMergeSignature(nextTextRun) === textRunMergeSignature(textRun)) {
         const extra = textRun.text ?? '';
         nextTextRun.text = extra + (nextTextRun.text ?? '');
@@ -370,9 +371,9 @@ const normalizeJustifiedRuns = (runsForLine: Run[]): Run[] => {
         merged.splice(i, 1);
         continue;
       }
-      (run as TextRun).text = nextText;
-      if ((run as TextRun).pmEnd != null) {
-        (run as TextRun).pmEnd = (run as TextRun).pmEnd! - trimCount;
+      run.text = nextText;
+      if (run.pmEnd != null) {
+        run.pmEnd = run.pmEnd - trimCount;
       }
       break;
     }
@@ -1105,7 +1106,7 @@ function* renderExplicitlyPositionedRuns({
       elem.style.left = `${elemLeftPx - geoSdtWrapperLeft}px`;
       if (!elem.style.bottom) elem.style.top = '0px';
       geoSdtMaxRight = Math.max(geoSdtMaxRight, elemLeftPx + elemWidthPx);
-      runContext.expandSdtWrapperPmRange(geoSdtWrapper, (runForSdt as TextRun).pmStart, (runForSdt as TextRun).pmEnd);
+      runContext.expandSdtWrapperPmRange(geoSdtWrapper, runForSdt.pmStart, runForSdt.pmEnd);
       geoSdtWrapper.appendChild(elem);
     } else {
       el.appendChild(elem);
@@ -1312,7 +1313,7 @@ function* renderExplicitlyPositionedRuns({
       const segmentOffset = (visibleRunStarts[segment.runIndex] ?? 0) + segment.fromChar - lineVisibleStart;
       const segmentRun = markInlineBoxRun(
         {
-          ...(baseRun as TextRun),
+          ...baseRun,
           text: segmentText,
           pmStart: pmSliceStart,
           pmEnd: pmSliceEnd,

@@ -21,7 +21,7 @@
  */
 
 import { authorFromTrackedChangeMeta } from './author-colors.js';
-import type { FlowBlock, TextRun, TrackChangeAuthor, TrackedChangeMeta } from './index.js';
+import type { FlowBlock, Run, TrackChangeAuthor, TrackedChangeMeta } from './index.js';
 
 /**
  * Tracked-change visual categories. This is the full paint/metadata
@@ -401,13 +401,13 @@ const applySemanticColorToLayer = (
   delete meta.semanticColor;
 };
 
-const stampRunSemanticColors = (run: TextRun, resolve: TrackChangeSemanticColorResolver | undefined): void => {
-  if (Array.isArray(run.trackedChanges)) {
+const stampRunSemanticColors = (run: Run, resolve: TrackChangeSemanticColorResolver | undefined): void => {
+  if ('trackedChanges' in run && Array.isArray(run.trackedChanges)) {
     for (const layer of run.trackedChanges) {
       applySemanticColorToLayer(layer, resolve);
     }
   }
-  if (run.trackedChange) {
+  if ('trackedChange' in run && run.trackedChange) {
     applySemanticColorToLayer(run.trackedChange, resolve);
   }
 };
@@ -420,7 +420,7 @@ const stampBlockSemanticColors = (
   switch (block.kind) {
     case 'paragraph': {
       for (const run of block.runs) {
-        stampRunSemanticColors(run as TextRun, resolve);
+        stampRunSemanticColors(run, resolve);
       }
       break;
     }

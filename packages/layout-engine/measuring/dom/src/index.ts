@@ -70,6 +70,7 @@ import {
   type TextboxContentBlock,
   type ShapeTextLayout,
   type DropCapDescriptor,
+  type DropCapRun,
   type CellBorders,
   type BorderSpec,
   type TableBorders,
@@ -1625,7 +1626,7 @@ function isLineBreakRun(run: Run): run is LineBreakRun {
  */
 const isEmptyTextRun = (run: Run): run is TextRun => {
   if (run.kind && run.kind !== 'text') return false;
-  return typeof (run as TextRun).text === 'string' && (run as TextRun).text.length === 0;
+  return typeof run.text === 'string' && run.text.length === 0;
 };
 
 // The predicate type must be narrower than TextRun (the marker attribute is required here but
@@ -1634,7 +1635,7 @@ const isEmptyTextRun = (run: Run): run is TextRun => {
 // contracts/run-helpers.
 const isBookmarkMarkerRun = (run: Run): run is TextRun & { dataAttrs: Record<string, string> } => {
   if (run.kind && run.kind !== 'text') return false;
-  return typeof (run as TextRun).dataAttrs?.['data-bookmark-marker'] === 'string';
+  return typeof run.dataAttrs?.['data-bookmark-marker'] === 'string';
 };
 
 const checkboxPlaceholderText = (run: TextRun): string | null => {
@@ -1659,7 +1660,7 @@ const normalizeRunsForMeasurement = (runs: Run[], fallbackFontSize: number, fall
     if (isTabRun(run) && !Object.isExtensible(run)) return { ...run };
     if (run.kind && run.kind !== 'text') return run;
     if (!('text' in run)) return run;
-    const textRun = run as TextRun;
+    const textRun = run;
     const fontSize = normalizeFontSize(textRun.fontSize, fallbackFontSize);
     const fontFamily = normalizeFontFamily(textRun.fontFamily, fallbackFontFamily);
     if (fontSize === textRun.fontSize && fontFamily === textRun.fontFamily) return run;
@@ -1743,7 +1744,7 @@ function measureTabAlignmentGroup(
 
     // Measure text runs
     if (run.kind === 'text' || run.kind === undefined) {
-      const textRun = run as TextRun;
+      const textRun = run;
       if (textRun.vanish === true) {
         continue;
       }
@@ -2126,10 +2127,10 @@ async function measureParagraphBlock(
 
   // Compute fallback font size from the first text run BEFORE marker measurement.
   // This ensures the marker uses the paragraph's actual font context when its own fontSize is missing.
-  const firstTextRunWithSize = block.runs.find((run) => {
+  const firstTextRunWithSize = block.runs.find((run): run is TextRun => {
     if (!isTextRun(run) || isBookmarkMarkerRun(run) || isVanishedRun(run)) return false;
-    return typeof (run as TextRun).fontSize === 'number';
-  }) as TextRun | undefined;
+    return typeof run.fontSize === 'number';
+  });
   // Prefer a text run's size, but fall back to any run (e.g. a tab) carrying a font
   // size when the paragraph has no sized text run. Otherwise a tab-only line is
   // measured at the 12px default and renders shorter than a text or empty line in the
@@ -2143,11 +2144,10 @@ async function measureParagraphBlock(
         (run as { fontSize: number }).fontSize > 0,
     );
   const fallbackFontSize = normalizeFontSize(firstRunWithSize?.fontSize, DEFAULT_PARAGRAPH_FONT_SIZE);
-  const firstTextRunWithFont = block.runs.find((run) => {
+  const firstTextRunWithFont = block.runs.find((run): run is TextRun => {
     if (!isTextRun(run) || isBookmarkMarkerRun(run) || isVanishedRun(run)) return false;
-    const textRun = run as TextRun;
-    return typeof textRun.fontFamily === 'string' && textRun.fontFamily.trim().length > 0;
-  }) as TextRun | undefined;
+    return typeof run.fontFamily === 'string' && run.fontFamily.trim().length > 0;
+  });
   const firstRunWithFont =
     firstTextRunWithFont ??
     block.runs.find(
@@ -2199,11 +2199,13 @@ async function measureParagraphBlock(
     };
   };
 
+  const [soleEmptyContentRun] = emptyContentRuns;
   const simpleEmptyParagraphRun =
     emptyContentRuns.length === 1 &&
-    isEmptyTextRun(emptyContentRuns[0] as Run) &&
-    !isEmptySdtPlaceholderRun(emptyContentRuns[0] as Run)
-      ? (emptyContentRuns[0] as TextRun)
+    soleEmptyContentRun &&
+    isEmptyTextRun(soleEmptyContentRun) &&
+    !isEmptySdtPlaceholderRun(soleEmptyContentRun)
+      ? soleEmptyContentRun
       : null;
   const canUseSimpleEmptyPath =
     inlineLineBudgets === undefined &&
@@ -2304,11 +2306,9 @@ async function measureParagraphBlock(
     }
     const cached = widths.get(displayText);
     if (cached !== undefined) return cached;
-    const letterSpacing = run.kind === 'text' || run.kind === undefined ? (run as TextRun).letterSpacing || 0 : 0;
+    const letterSpacing = run.kind === 'text' || run.kind === undefined ? run.letterSpacing || 0 : 0;
     const wordGlyphAdvanceScale =
-      run.kind === 'text' || run.kind === undefined
-        ? resolveWordGlyphAdvanceScale((run as TextRun).fontFamily, displayText)
-        : 1;
+      run.kind === 'text' || run.kind === undefined ? resolveWordGlyphAdvanceScale(run.fontFamily, displayText) : 1;
     const width = roundValue(
       measuredTextWidth(displayText, font, letterSpacing, ctx) * wordGlyphAdvanceScale * getRunHorizontalScale(run),
     );
@@ -2321,6 +2321,7 @@ async function measureParagraphBlock(
     ? (() => {
         const markerText = wordLayout.marker.markerText ?? '';
         const markerRun: TextRun = {
+          kind: 'text',
           text: markerText,
           fontFamily: resolveMarkerFontFamily(wordLayout.marker.run.fontFamily),
           fontSize: wordLayout.marker.run.fontSize ?? fallbackFontSize,
@@ -2518,9 +2519,10 @@ async function measureParagraphBlock(
 
   const emptyParagraphRun =
     emptyContentRuns.length === 1 &&
-    isEmptyTextRun(emptyContentRuns[0] as Run) &&
-    !isEmptySdtPlaceholderRun(emptyContentRuns[0] as Run)
-      ? (emptyContentRuns[0] as TextRun)
+    soleEmptyContentRun &&
+    isEmptyTextRun(soleEmptyContentRun) &&
+    !isEmptySdtPlaceholderRun(soleEmptyContentRun)
+      ? soleEmptyContentRun
       : null;
   if (emptyParagraphRun) {
     const fontSize = emptyParagraphRun.fontSize ?? DEFAULT_PARAGRAPH_FONT_SIZE;
@@ -2905,7 +2907,7 @@ async function measureParagraphBlock(
         expandedRunCharOffsetMap.push(originalRunCharOffset);
         continue;
       }
-      const textRun = run as TextRun;
+      const textRun = run;
       let buffer = '';
       let cursor = textRun.pmStart ?? 0;
       const text = textRun.text;
@@ -3843,7 +3845,7 @@ async function measureParagraphBlock(
       pendingRunSpacing = 0;
       continue;
     }
-    const textRun = run as TextRun;
+    const textRun: TextRun = run;
 
     if (isEmptySdtPlaceholderRun(textRun)) {
       const placeholderFont = resolveParagraphFontString(textRun).font;
@@ -4023,7 +4025,7 @@ async function measureParagraphBlock(
             spaceCount: spacesLength,
           };
         } else {
-          const boundarySpacing = resolveBoundarySpacing(currentLine.width, isRunStart, run as TextRun);
+          const boundarySpacing = resolveBoundarySpacing(currentLine.width, isRunStart, run);
           const spaceOverflows =
             currentLine.width + boundarySpacing + spacesWidth > currentLine.maxWidth - WIDTH_FUDGE_PX &&
             currentLine.width > 0;
@@ -4168,7 +4170,7 @@ async function measureParagraphBlock(
           } else {
             // Add space to existing line
             // Safe cast: only TextRuns produce word segments from split(), other run types are handled earlier
-            const boundarySpacing = resolveBoundarySpacing(currentLine.width, isRunStart, run as TextRun);
+            const boundarySpacing = resolveBoundarySpacing(currentLine.width, isRunStart, run);
             const spaceOverflows =
               currentLine.width + boundarySpacing + singleSpaceWidth > currentLine.maxWidth - WIDTH_FUDGE_PX &&
               currentLine.width > 0;
@@ -4257,7 +4259,7 @@ async function measureParagraphBlock(
         // exactly the boundary spacing / TOC posture the fit check below uses.
         const isRunStart = charPosInRun === 0 && segmentIndex === 0 && wordIndex === 0;
         // Safe cast: only TextRuns produce word segments from split(), other run types are handled earlier
-        const boundarySpacing = currentLine ? resolveBoundarySpacing(currentLine.width, isRunStart, run as TextRun) : 0;
+        const boundarySpacing = currentLine ? resolveBoundarySpacing(currentLine.width, isRunStart, run) : 0;
         // Compute the ordinary wrap decision before long-token admission. A
         // hanging first line can be wider than the continuation line that will
         // actually receive a wrapped token.
@@ -4296,7 +4298,7 @@ async function measureParagraphBlock(
                     wordOnlyWidth,
                     candidateSpaces,
                     baseSpaceWidth,
-                    (run as TextRun).fontFamily,
+                    run.fontFamily,
                     (isWordLayoutList && wordLayout?.indentLeftPx === 0 && (wordLayout.tabsPx?.length ?? 0) > 0) ||
                       paragraphEndsWithTerminalTabBreak,
                   )
@@ -4449,7 +4451,7 @@ async function measureParagraphBlock(
 
               if (isLastChunk) {
                 // If this is also the last chunk, keep currentLine open for more content
-                const ls = getScaledLetterSpacing(run as TextRun);
+                const ls = getScaledLetterSpacing(run);
                 if (
                   shouldIncludeDelimiterSpace &&
                   currentLine.width + spaceWidth <= currentLine.maxWidth - WIDTH_FUDGE_PX
@@ -4487,7 +4489,7 @@ async function measureParagraphBlock(
                 spaceCount: countNbspOccurrences(chunk.text),
               };
               // If trailing space fits, include it
-              const ls = getScaledLetterSpacing(run as TextRun);
+              const ls = getScaledLetterSpacing(run);
               if (
                 shouldIncludeDelimiterSpace &&
                 currentLine.width + spaceWidth <= currentLine.maxWidth - WIDTH_FUDGE_PX
@@ -4547,7 +4549,7 @@ async function measureParagraphBlock(
           };
           // If a trailing space exists and fits safely, include it on this line
           // Safe cast: only TextRuns produce word segments from split(), other run types are handled earlier
-          const ls = getScaledLetterSpacing(run as TextRun);
+          const ls = getScaledLetterSpacing(run);
           if (shouldIncludeDelimiterSpace && currentLine.width + spaceWidth <= currentLine.maxWidth - WIDTH_FUDGE_PX) {
             currentLine.toChar = wordEndWithSpace;
             currentLine.width = roundValue(currentLine.width + spaceWidth + ls);
@@ -4642,7 +4644,7 @@ async function measureParagraphBlock(
           currentLine = activeLine;
           if (shouldIncludeDelimiterSpace && currentLine.width + spaceWidth <= currentLine.maxWidth - WIDTH_FUDGE_PX) {
             currentLine.toChar = wordEndWithSpace;
-            currentLine.width = roundValue(currentLine.width + spaceWidth + getScaledLetterSpacing(run as TextRun));
+            currentLine.width = roundValue(currentLine.width + spaceWidth + getScaledLetterSpacing(run));
             currentLine.spaceCount += 1;
             const lastSegment = currentLine.segments?.[currentLine.segments.length - 1];
             if (lastSegment) {
@@ -4678,7 +4680,7 @@ async function measureParagraphBlock(
                 prefixWidth,
                 currentLine.spaceCount,
                 baseSpaceWidth,
-                (run as TextRun).fontFamily,
+                run.fontFamily,
                 (isWordLayoutList && wordLayout?.indentLeftPx === 0 && (wordLayout.tabsPx?.length ?? 0) > 0) ||
                   paragraphEndsWithTerminalTabBreak,
               );
@@ -4757,7 +4759,7 @@ async function measureParagraphBlock(
           // If trailing space would fit on the new line, consume it here; otherwise skip it
           if (shouldIncludeDelimiterSpace && currentLine.width + spaceWidth <= currentLine.maxWidth - WIDTH_FUDGE_PX) {
             currentLine.toChar = wordEndWithSpace;
-            currentLine.width = roundValue(currentLine.width + spaceWidth + getScaledLetterSpacing(run as TextRun));
+            currentLine.width = roundValue(currentLine.width + spaceWidth + getScaledLetterSpacing(run));
             charPosInRun = wordEndWithSpace;
             currentLine.spaceCount += 1;
             // Fix: Also update the segment to include the trailing space character.
@@ -4834,7 +4836,7 @@ async function measureParagraphBlock(
               : currentLine.width +
                 boundarySpacing +
                 wordCommitWidth +
-                (shouldIncludeDelimiterSpace ? getScaledLetterSpacing(run as TextRun) : 0);
+                (shouldIncludeDelimiterSpace ? getScaledLetterSpacing(run) : 0);
           // Preserve natural width when compression is applied for justify calculations
           if (compressedWidth != null) {
             currentLine.naturalWidth = roundValue(totalWidthWithWord);
@@ -4938,13 +4940,12 @@ async function measureParagraphBlock(
       }
     }
 
-    pendingRunSpacing = getScaledLetterSpacing(run as TextRun);
+    pendingRunSpacing = getScaledLetterSpacing(run);
   }
 
   if (!currentLine && lines.length === 0) {
     const uiDisplayFallbackFontSize =
-      (normalizedRuns[0]?.kind === 'text' ? (normalizedRuns[0] as TextRun).fontSize : undefined) ??
-      DEFAULT_PARAGRAPH_FONT_SIZE;
+      (normalizedRuns[0]?.kind === 'text' ? normalizedRuns[0].fontSize : undefined) ?? DEFAULT_PARAGRAPH_FONT_SIZE;
     const metrics = calculateTypographyMetrics(uiDisplayFallbackFontSize, spacing, undefined, fontContext);
     const fallbackLine: Line = {
       fromRun: 0,
@@ -6159,6 +6160,7 @@ async function measureListBlock(
       // Fall back to paragraph's primary run fontSize if marker fontSize is missing
       const paragraphFallbackFontSize = getPrimaryRun(item.paragraph).fontSize ?? DEFAULT_PARAGRAPH_FONT_SIZE;
       const markerFontRun: TextRun = {
+        kind: 'text',
         text: marker.markerText,
         fontFamily: resolveMarkerFontFamily(marker.run.fontFamily),
         fontSize: marker.run.fontSize ?? paragraphFallbackFontSize,
@@ -6209,6 +6211,7 @@ async function measureListBlock(
 const getPrimaryRun = (paragraph: ParagraphBlock): TextRun => {
   return (
     paragraph.runs.find((run): run is TextRun => run.kind === 'text' && Boolean(run.fontFamily && run.fontSize)) || {
+      kind: 'text',
       text: '',
       fontFamily: 'Arial',
       fontSize: 16,
@@ -6240,7 +6243,7 @@ const capitalizeText = (text: string, fullText?: string, startOffset?: number): 
   return result;
 };
 
-const applyTextTransform = (text: string, run: Run, startOffset?: number): string => {
+const applyTextTransform = (text: string, run: Run | DropCapRun, startOffset?: number): string => {
   // Only TextRun and TabRun have textTransform (via RunMarks)
   const transform = 'textTransform' in run ? run.textTransform : undefined;
   if (!text || !transform || transform === 'none') return text;
@@ -6261,7 +6264,7 @@ const measureRunWidth = (
   startOffset?: number,
 ): number => {
   // TextRun.kind is optional and defaults to 'text', so check for undefined or 'text'
-  const letterSpacing = run.kind === 'text' || run.kind === undefined ? (run as TextRun).letterSpacing || 0 : 0;
+  const letterSpacing = run.kind === 'text' || run.kind === undefined ? run.letterSpacing || 0 : 0;
   const displayText = applyTextTransform(text, run, startOffset);
   const width = measuredTextWidth(displayText, font, letterSpacing, ctx);
   return roundValue(width * getRunHorizontalScale(run));

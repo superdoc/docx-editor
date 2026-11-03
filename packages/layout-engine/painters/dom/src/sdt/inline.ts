@@ -1,10 +1,10 @@
-import type { Run, SdtMetadata, TextRun } from '@superdoc/contracts';
+import type { Run, SdtMetadata } from '@superdoc/contracts';
 import { DOM_CLASS_NAMES } from '../constants.js';
 import { BROWSER_DEFAULT_FONT_SIZE } from '../styles.js';
 import type { RunRenderContext } from '../runs/types.js';
 
 export const resolveRunSdtId = (run: Run): { sdtId: string; sdt: SdtMetadata } | null => {
-  const sdt = (run as TextRun).sdt;
+  const sdt = 'sdt' in run ? run.sdt : undefined;
   if (sdt?.type === 'structuredContent' && sdt?.scope === 'inline' && sdt?.id) {
     return { sdtId: String(sdt.id), sdt };
   }

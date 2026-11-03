@@ -17,7 +17,7 @@
  * keeps that boundary intact.
  */
 
-import type { FlowBlock, TextRun, TrackChangeAuthor, TrackedChangeMeta } from './index.js';
+import type { FlowBlock, Run, TrackChangeAuthor, TrackedChangeMeta } from './index.js';
 
 /**
  * A composed resolver mapping a tracked-change author identity to a color.
@@ -154,13 +154,13 @@ const applyColorToLayer = (meta: TrackedChangeMeta, resolve: TrackChangeAuthorCo
   delete meta.color;
 };
 
-const stampRunTrackedChangeColors = (run: TextRun, resolve: TrackChangeAuthorColorResolver | undefined): void => {
-  if (Array.isArray(run.trackedChanges)) {
+const stampRunTrackedChangeColors = (run: Run, resolve: TrackChangeAuthorColorResolver | undefined): void => {
+  if ('trackedChanges' in run && Array.isArray(run.trackedChanges)) {
     for (const layer of run.trackedChanges) {
       applyColorToLayer(layer, resolve);
     }
   }
-  if (run.trackedChange) {
+  if ('trackedChange' in run && run.trackedChange) {
     applyColorToLayer(run.trackedChange, resolve);
   }
 };
@@ -173,7 +173,7 @@ const stampBlockTrackedChangeColors = (
   switch (block.kind) {
     case 'paragraph': {
       for (const run of block.runs) {
-        stampRunTrackedChangeColors(run as TextRun, resolve);
+        stampRunTrackedChangeColors(run, resolve);
       }
       break;
     }

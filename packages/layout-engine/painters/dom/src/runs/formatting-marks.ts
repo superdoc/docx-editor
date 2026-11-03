@@ -89,7 +89,7 @@ const findLastTextRun = (runs: Run[], fromIndex = runs.length - 1): { run: TextR
   for (let index = Math.min(fromIndex, runs.length - 1); index >= 0; index -= 1) {
     const run = runs[index];
     if (run && (run.kind === 'text' || run.kind === undefined) && 'text' in run) {
-      return { run: run as TextRun, index };
+      return { run, index };
     }
   }
   return null;
@@ -106,7 +106,7 @@ const findDeletedParagraphMarkAnchorRun = (runs: Run[]): TextRun | null => {
       run.dataAttrs?.['data-paragraph-mark-deletion-anchor'] === 'true' &&
       run.trackedChange
     ) {
-      return run as TextRun;
+      return run;
     }
   }
   return null;

@@ -621,7 +621,7 @@ export type CrossReferenceMetadata = {
 };
 
 export type TextRun = RunMarks & {
-  kind?: 'text';
+  kind: 'text';
   text: string;
   fontFamily: string;
   fontSize: number;
@@ -2790,10 +2790,7 @@ const isExplicitEmptyTextParagraphBlock = (block: FlowBlock | undefined): boolea
   if (block.attrs?.numberingProperties || block.attrs?.wordLayout?.marker) return false;
   const runs = block.runs ?? [];
   return (
-    runs.length > 0 &&
-    runs.every(
-      (run) => (run.kind === undefined || run.kind === 'text') && ((run as { text?: string }).text ?? '') === '',
-    )
+    runs.length > 0 && runs.every((run) => (run.kind === undefined || run.kind === 'text') && (run.text ?? '') === '')
   );
 };
 
@@ -2954,9 +2951,7 @@ const isEmptyParagraphSkippedAtBoundary = (block: ParagraphBlock): boolean => {
   const runs = block.runs ?? [];
   return (
     runs.length === 0 ||
-    (runs.length === 1 &&
-      (!runs[0]?.kind || runs[0].kind === 'text') &&
-      (!(runs[0] as { text?: string }).text || (runs[0] as { text?: string }).text === ''))
+    (runs.length === 1 && (!runs[0]?.kind || runs[0].kind === 'text') && (!runs[0].text || runs[0].text === ''))
   );
 };
 

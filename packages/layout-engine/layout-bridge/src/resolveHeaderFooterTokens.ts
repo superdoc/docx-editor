@@ -21,7 +21,6 @@ import {
   type PageNumberFormat,
   type ParagraphBlock,
   type TableBlock,
-  type TextRun,
 } from '@superdoc/contracts';
 
 /**
@@ -165,18 +164,18 @@ export function resolveHeaderFooterTokens(
   forEachParagraphBlock(blocks, (paraBlock) => {
     const resolvedStyleReferences = new Set<object>();
     for (const run of paraBlock.runs) {
-      const styleReference =
-        'crossReferenceMetadata' in run && run.crossReferenceMetadata?.kind === 'styleRef'
-          ? run.crossReferenceMetadata
-          : null;
-      if (styleReference && options?.resolveStyleReference) {
-        const textRun = run as TextRun;
+      if (
+        'crossReferenceMetadata' in run &&
+        run.crossReferenceMetadata?.kind === 'styleRef' &&
+        options?.resolveStyleReference
+      ) {
+        const styleReference = run.crossReferenceMetadata;
         if (resolvedStyleReferences.has(styleReference)) {
-          textRun.text = '';
+          run.text = '';
           continue;
         }
         resolvedStyleReferences.add(styleReference);
-        textRun.text =
+        run.text =
           options.resolveStyleReference({
             pageNumber,
             styleName: styleReference.target,

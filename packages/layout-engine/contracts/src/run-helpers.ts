@@ -68,7 +68,7 @@ export function isEmptySdtPlaceholderRun(
   return (
     (run.kind === 'text' || run.kind === undefined) &&
     'text' in run &&
-    ((run as TextRun).visualPlaceholder === 'emptyInlineSdt' || (run as TextRun).visualPlaceholder === 'emptyBlockSdt')
+    (run.visualPlaceholder === 'emptyInlineSdt' || run.visualPlaceholder === 'emptyBlockSdt')
   );
 }
 

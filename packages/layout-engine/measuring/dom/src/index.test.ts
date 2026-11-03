@@ -240,6 +240,37 @@ describe('measureBlock', () => {
     expect(typeof document.createElement).toBe('function');
   });
 
+  describe('drop caps', () => {
+    it('measures a drop cap with its text transform applied', async () => {
+      const prototype = Object.getPrototypeOf(document.createElement('canvas').getContext('2d'));
+      const measured: string[] = [];
+      const measureText = vi.spyOn(prototype, 'measureText').mockImplementation((value: string) => {
+        measured.push(value);
+        return { width: value.length * 10, actualBoundingBoxAscent: 12, actualBoundingBoxDescent: 4 };
+      });
+      try {
+        const dropCapRun: TextRun = {
+          kind: 'text',
+          text: 'a',
+          fontFamily: 'Arial',
+          fontSize: 48,
+          textTransform: 'uppercase',
+        };
+        const block: FlowBlock = {
+          kind: 'paragraph',
+          id: 'drop-cap-transform',
+          runs: [{ kind: 'text', text: 'rest of the paragraph', fontFamily: 'Arial', fontSize: 16 }],
+          attrs: { dropCapDescriptor: { mode: 'drop', lines: 3, run: dropCapRun } },
+        };
+        await measureBlock(block, 400);
+        expect(measured).toContain('A');
+        expect(measured).not.toContain('a');
+      } finally {
+        measureText.mockRestore();
+      }
+    });
+  });
+
   describe('basic measurement', () => {
     it('offers a measurement failure only to the exact block owner', async () => {
       const sourceError = new Error('measurement-source-failure');

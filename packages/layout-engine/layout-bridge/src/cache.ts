@@ -16,7 +16,6 @@ import {
   type TableAttrs,
   type TableCellAttrs,
   type Run,
-  type TextRun,
 } from '@superdoc/contracts';
 import type { FontMeasureCapabilities } from '@superdoc/font-system';
 import type { MinimalWordLayout } from '@superdoc/common/list-marker-utils';
@@ -459,8 +458,8 @@ const writeTableHash = (tableBlock: TableBlock, write: HashWriter, capabilities?
           // Text is used verbatim without normalization - whitespace affects measurements
           // (Fix for PR #1551: previously /\s+/g normalization caused cache collisions)
           const text =
-            isNumberedNoteMarkerRun(run) && 'text' in run
-              ? noteMarkerMeasureKey(run as TextRun, capabilities)
+            isNumberedNoteMarkerRun(run) && run.kind === 'text' && 'text' in run
+              ? noteMarkerMeasureKey(run, capabilities)
               : 'text' in run && typeof run.text === 'string'
                 ? run.text
                 : '';
@@ -670,8 +669,8 @@ const hashRuns = (block: FlowBlock, capabilities?: FontMeasureCapabilities): str
       const text =
         'src' in run || run.kind === 'lineBreak' || run.kind === 'break'
           ? ''
-          : isNumberedNoteMarkerRun(run)
-            ? noteMarkerMeasureKey(run as TextRun, capabilities)
+          : isNumberedNoteMarkerRun(run) && run.kind === 'text'
+            ? noteMarkerMeasureKey(run, capabilities)
             : (run.text ?? '');
       const marks = hashRunVisualMarks(run);
 

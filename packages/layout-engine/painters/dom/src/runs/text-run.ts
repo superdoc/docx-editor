@@ -1,4 +1,4 @@
-import type { FlowRunLink, Run, TextRun } from '@superdoc/contracts';
+import type { Run, TextRun } from '@superdoc/contracts';
 import {
   DELETED_PAGE_BREAK_LABEL,
   isPageBreakDeletionAnchorRun,
@@ -241,7 +241,7 @@ export const extractLinkData = (run: Run) => {
   if (run.kind === 'tab' || run.kind === 'image' || run.kind === 'lineBreak' || run.kind === 'math') {
     return null;
   }
-  const link = (run as TextRun).link as FlowRunLink | undefined;
+  const link = 'link' in run ? run.link : undefined;
   if (!link) {
     return null;
   }

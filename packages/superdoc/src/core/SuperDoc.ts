@@ -1060,19 +1060,6 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
     onListDefinitionsChange: () => null,
     onPaginationUpdate: () => null,
     onTransaction: () => null,
-    // The following optional consumer-supplied fields are intentionally
-    // NOT initialized here: `superdocId`, `format`, `toolbar` (selector),
-    // `permissionResolver`, `onFontsResolved`, `handleImageUpload`,
-    // `onTrackedChangeBubbleAccept`, `onTrackedChangeBubbleReject`.
-    // For the first six, the public `Config` typedef declares them
-    // optional; omitting them from the initializer keeps
-    // `superdoc.config.<field>` as `undefined` post-init when the consumer
-    // does not pass them, matching the typedef. The two
-    // `onTrackedChangeBubble*` callbacks are not yet on the public `Config`
-    // typedef (a typedef gap that predates this change); consumers pass
-    // them and they are read with `typeof handler === 'function'` guards.
-    // Bubble handler signature: `(comment, editor) => void`.
-    // Image upload handler signature: `async (file) => url`.
 
     // Disable context menus (slash and right-click) globally
     disableContextMenu: false,

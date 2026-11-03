@@ -91,19 +91,12 @@ type V2TrackedChangeCommentTarget = {
   side?: TrackedChangeSideGroup;
 };
 
-type TrackedChangeBubbleHandler = (comment: CommentModel, editor: Editor | null) => void;
-
-type DialogSuperDocConfig = SuperDoc['config'] & {
-  onTrackedChangeBubbleAccept?: TrackedChangeBubbleHandler;
-  onTrackedChangeBubbleReject?: TrackedChangeBubbleHandler;
-};
-
 type CommentsHost = Parameters<CommentModel['setIsInternal']>[0]['superdoc'];
 
 type DialogSuperDoc = Pick<SuperDoc, 'interactionConfig' | 'on' | 'off' | 'focus'> & {
   emit: CommentsHost['emit'];
   activeEditor: DialogEditor | null;
-  config: DialogSuperDocConfig;
+  config: SuperDoc['config'];
   users: Array<User & { access?: string | { role?: string } | null }>;
 };
 

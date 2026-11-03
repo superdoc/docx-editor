@@ -4563,6 +4563,16 @@ export interface Config {
   /** Callback when comments are updated. */
   onCommentsUpdate?: (params: SuperDocCommentsUpdatePayload) => void;
   /**
+   * Called when someone accepts a tracked change from its bubble in the comments sidebar.
+   * Receives the tracked-change comment and the active editor. In SuperDoc 2 it runs after the accept is applied.
+   */
+  onTrackedChangeBubbleAccept?: (comment: Comment, editor: Editor | null) => void;
+  /**
+   * Called when someone rejects a tracked change from its bubble in the comments sidebar.
+   * Receives the tracked-change comment and the active editor. In SuperDoc 2 it runs after the reject is applied.
+   */
+  onTrackedChangeBubbleReject?: (comment: Comment, editor: Editor | null) => void;
+  /**
    * Callback when the selection enters, leaves, or moves between content controls.
    * @deprecated replaceWith=`superdoc.ui.contentControls.observe` compat-indefinitely=v2 event compatibility
    */

@@ -260,6 +260,22 @@
       "group": "other"
     },
     {
+      "name": "onTrackedChangeBubbleAccept",
+      "type": "(comment: {\n  id?: string;\n  commentId?: string;\n  text?: string;\n  resolved?: boolean;\n}, editor: Editor | null) => void",
+      "typeName": "(comment: Comment, editor: Editor | null) => void",
+      "required": false,
+      "description": "Called when someone accepts a tracked change from its bubble in the comments sidebar. Receives the tracked-change comment and the active editor. In SuperDoc 2 it runs after the accept is applied.",
+      "group": "other"
+    },
+    {
+      "name": "onTrackedChangeBubbleReject",
+      "type": "(comment: {\n  id?: string;\n  commentId?: string;\n  text?: string;\n  resolved?: boolean;\n}, editor: Editor | null) => void",
+      "typeName": "(comment: Comment, editor: Editor | null) => void",
+      "required": false,
+      "description": "Called when someone rejects a tracked change from its bubble in the comments sidebar. Receives the tracked-change comment and the active editor. In SuperDoc 2 it runs after the reject is applied.",
+      "group": "other"
+    },
+    {
       "name": "onAwarenessUpdate",
       "type": "(params: {\n  states: AwarenessState[];\n  added: number[];\n  removed: number[];\n  superdoc: SuperDocClass;\n}) => void",
       "typeName": "(params: SuperDocAwarenessUpdatePayload) => void",

@@ -83,10 +83,6 @@ export type InsertInput = TextInsertInput | RichContentInsertInput | SDInsertInp
 
 export type PlainTextInsertInput = TextInsertInput & { type?: 'text' };
 
-export function isRichContentInsertInput(input: InsertInput): input is RichContentInsertInput {
-  return 'value' in input && (input.type === 'html' || input.type === 'markdown');
-}
-
 // ---------------------------------------------------------------------------
 // Allowlists for strict field validation
 // ---------------------------------------------------------------------------

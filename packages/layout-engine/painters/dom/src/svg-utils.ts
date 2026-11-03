@@ -3,7 +3,7 @@
  * Shared with the layout-engine rendering pipeline.
  */
 
-import type { GradientFill, GradientStop, SolidFillWithAlpha, ShapeTextContent, TextPart } from '@superdoc/contracts';
+import type { GradientFill, GradientStop, SolidFillWithAlpha } from '@superdoc/contracts';
 
 /**
  * Validates and sanitizes a hex color string to prevent XSS attacks.
@@ -143,94 +143,6 @@ export function createGradient(
 }
 
 /**
- * Creates an SVG foreignObject with formatted text content
- */
-export function createTextElement(
-  textContent: ShapeTextContent,
-  textAlign: string,
-  width: number,
-  height: number,
-): SVGForeignObjectElement {
-  // Use foreignObject with HTML for proper text wrapping
-  const foreignObject = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
-  foreignObject.setAttribute('x', '0');
-  foreignObject.setAttribute('y', '0');
-  foreignObject.setAttribute('width', width.toString());
-  foreignObject.setAttribute('height', height.toString());
-
-  // Create HTML div for text content
-  const div = document.createElement('div');
-  div.style.width = '100%';
-  div.style.height = '100%';
-  div.style.display = 'flex';
-  div.style.flexDirection = 'column';
-  div.style.justifyContent = 'center'; // Vertically center the text block
-  div.style.padding = '10px';
-  div.style.boxSizing = 'border-box';
-  div.style.wordWrap = 'break-word';
-  div.style.overflowWrap = 'break-word';
-
-  // Set text alignment (horizontal alignment for each paragraph)
-  if (textAlign === 'center') {
-    div.style.textAlign = 'center';
-  } else if (textAlign === 'right' || textAlign === 'r') {
-    div.style.textAlign = 'right';
-  } else {
-    div.style.textAlign = 'left';
-  }
-
-  // Create paragraphs by splitting on line breaks
-  let currentParagraph = document.createElement('div');
-
-  // Add text content with formatting
-  textContent.parts.forEach((part: TextPart) => {
-    if (part.isLineBreak) {
-      // Finish current paragraph and start a new one
-      div.appendChild(currentParagraph);
-      currentParagraph = document.createElement('div');
-      // Empty paragraphs create extra spacing (blank line)
-      if (part.isEmptyParagraph) {
-        currentParagraph.style.minHeight = '1em';
-      }
-    } else {
-      const span = document.createElement('span');
-      span.textContent = part.text;
-
-      // Apply formatting
-      if (part.formatting) {
-        if (part.formatting.bold) {
-          span.style.fontWeight = 'bold';
-        }
-        if (part.formatting.italic) {
-          span.style.fontStyle = 'italic';
-        }
-        if (part.formatting.fontFamily) {
-          span.style.fontFamily = part.formatting.fontFamily;
-        }
-        if (part.formatting.color) {
-          // Validate and normalize color format (handles both with and without # prefix)
-          const validatedColor = validateHexColor(part.formatting.color);
-          if (validatedColor) {
-            span.style.color = validatedColor;
-          }
-        }
-        if (part.formatting.fontSize) {
-          span.style.fontSize = `${part.formatting.fontSize}px`;
-        }
-      }
-
-      currentParagraph.appendChild(span);
-    }
-  });
-
-  // Add the final paragraph
-  div.appendChild(currentParagraph);
-  foreignObject.appendChild(div);
-
-  return foreignObject;
-}
-
-/**
  * Applies a gradient to all filled elements in an SVG.
  *
  * Creates a gradient definition using the provided gradient data and applies it
@@ -328,23 +240,6 @@ export function applyAlphaToSVG(svg: SVGElement, alphaData: SolidFillWithAlpha):
     // Gracefully handle DOM manipulation errors
     console.error('Failed to apply alpha to SVG:', error);
   }
-}
-
-/**
- * Generates CSS transform strings from shape attributes
- */
-export function generateTransforms(attrs: { rotation?: number; flipH?: boolean; flipV?: boolean }): string[] {
-  const transforms: string[] = [];
-  if (attrs.rotation != null) {
-    transforms.push(`rotate(${attrs.rotation}deg)`);
-  }
-  if (attrs.flipH) {
-    transforms.push(`scaleX(-1)`);
-  }
-  if (attrs.flipV) {
-    transforms.push(`scaleY(-1)`);
-  }
-  return transforms;
 }
 
 /**

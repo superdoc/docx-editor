@@ -260,12 +260,6 @@ class LruCache<T> {
     this.cache.clear();
   }
 
-  resize(nextSize: number): void {
-    if (!Number.isFinite(nextSize) || nextSize <= 0) return;
-    this.maxSize = nextSize;
-    this.evictIfNeeded();
-  }
-
   private evictIfNeeded(): void {
     while (this.cache.size > this.maxSize) {
       const oldestKey = this.cache.keys().next().value;
@@ -288,18 +282,6 @@ let canvasContext: CanvasRenderingContext2D | null = null;
 export function clearTableAutoFitMeasurementCaches(): void {
   tableCellMetricsCache.clear();
   autoFitTableResultCache.clear();
-}
-
-/**
- * Adjusts the bounded cache sizes used by the AutoFit content-metrics layer.
- */
-export function setTableAutoFitMeasurementCacheSizes(options: { cellMetrics?: number; tableResults?: number }): void {
-  if (typeof options.cellMetrics === 'number') {
-    tableCellMetricsCache.resize(options.cellMetrics);
-  }
-  if (typeof options.tableResults === 'number') {
-    autoFitTableResultCache.resize(options.tableResults);
-  }
 }
 
 /**

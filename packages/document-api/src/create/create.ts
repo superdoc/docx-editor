@@ -250,17 +250,6 @@ export function executeCreateParagraph(
   return adapter.paragraph(normalized, normalizeMutationOptions(options));
 }
 
-export function normalizeCreateHeadingInput(input: CreateHeadingInput): CreateHeadingInput {
-  return {
-    in: input.in,
-    level: input.level,
-    at: normalizeCreateLocation<HeadingCreateLocation>(input.at, () => {}),
-    text: input.text ?? '',
-    ...(input.in ? { in: input.in } : {}),
-    ...(input.styleId ? { styleId: input.styleId } : {}),
-  };
-}
-
 export function executeCreateHeading(
   adapter: CreateAdapter,
   input: CreateHeadingInput,
@@ -289,14 +278,6 @@ export function executeCreateHeading(
     ...(input.styleId ? { styleId: input.styleId } : {}),
   };
   return adapter.heading(normalized, normalizeMutationOptions(options));
-}
-
-export function normalizeCreateTableInput(input: CreateTableInput): CreateTableInput {
-  return {
-    rows: input.rows,
-    columns: input.columns,
-    at: normalizeCreateLocation<TableCreateLocation>(input.at, () => {}),
-  };
 }
 
 export function executeCreateTable(
@@ -328,16 +309,6 @@ export function executeCreateTable(
   return adapter.table(normalized, normalizeMutationOptions(options));
 }
 
-export function normalizeCreateSectionBreakInput(input: CreateSectionBreakInput): CreateSectionBreakInput {
-  return {
-    at: normalizeCreateLocation<SectionBreakCreateLocation>(input.at, () => {}),
-    representation: input.representation ?? 'asNewParagraph',
-    breakType: input.breakType,
-    pageMargins: input.pageMargins,
-    headerFooterMargins: input.headerFooterMargins,
-  };
-}
-
 export function executeCreateSectionBreak(
   adapter: CreateAdapter,
   input: CreateSectionBreakInput,
@@ -355,14 +326,6 @@ export function executeCreateSectionBreak(
   };
   validateCreateSectionBreakInput(normalized);
   return adapter.sectionBreak(normalized, normalizeMutationOptions(options));
-}
-
-export function normalizeCreateTableOfContentsInput(input: CreateTableOfContentsInput): CreateTableOfContentsInput {
-  return {
-    at: normalizeCreateLocation<TocCreateLocation>(input.at, () => {}),
-    instruction: input.instruction,
-    config: input.config,
-  };
 }
 
 function validateCreateTableOfContentsInput(input: CreateTableOfContentsInput): void {

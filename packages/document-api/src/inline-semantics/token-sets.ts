@@ -123,6 +123,3 @@ export const ST_HIGHLIGHT_VALUES = [
   'lightGray',
   'none',
 ] as const;
-
-/** Runtime set for O(1) ST_HighlightColor validation. */
-export const ST_HIGHLIGHT_VALUE_SET: ReadonlySet<string> = new Set(ST_HIGHLIGHT_VALUES);

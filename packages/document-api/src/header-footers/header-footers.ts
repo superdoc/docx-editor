@@ -168,17 +168,6 @@ function assertSectionAddress(value: unknown, fieldName: string): asserts value 
   }
 }
 
-export function validateHeaderFooterKind(operationName: string, kind: unknown): asserts kind is HeaderFooterKind {
-  assertOneOf(kind, `${operationName}.kind`, HEADER_FOOTER_KINDS);
-}
-
-export function validateHeaderFooterVariant(
-  operationName: string,
-  variant: unknown,
-): asserts variant is HeaderFooterVariant {
-  assertOneOf(variant, `${operationName}.variant`, HEADER_FOOTER_VARIANTS);
-}
-
 export function assertHeaderFooterSlotTarget(
   input: unknown,
   operationName: string,

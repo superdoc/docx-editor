@@ -7,7 +7,6 @@
  */
 
 export const TWIPS_PER_INCH = 1440;
-export const POINTS_PER_INCH = 72;
 export const PIXELS_PER_INCH = 96;
 
 export const TWIPS_PER_POINT = 20;

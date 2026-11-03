@@ -2,6 +2,7 @@
 # Git runs hooks from the repository top level, which in an Orbit checkout is
 # the Orbit root, not this package. The dispatcher's node_modules/.bin PATH
 # entry is relative, so it stops resolving after cd; re-add it absolutely.
-cd "$(dirname "$0")/.."
+. "$(dirname "$0")/guard.sh"
+cd "$hooks_package"
 export PATH="$PWD/node_modules/.bin:$PATH"
 vp staged

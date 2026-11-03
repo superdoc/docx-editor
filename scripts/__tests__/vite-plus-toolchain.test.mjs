@@ -19,8 +19,9 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -2397,5 +2398,223 @@ test('the committed hook scripts parse and stay executable', () => {
     execFileSync('sh', ['-n', hookPath]);
     const mode = statSync(hookPath).mode;
     assert.ok(mode & 0o111, `.vite-hooks/${hook.name} lost its executable bit`);
+  }
+});
+
+const DISPATCHER = '#!/usr/bin/env sh\nn=$(basename "$0")\ns=$(dirname "$(dirname "$0")")/$n\n[ ! -f "$s" ] && exit 0\nsh -e "$s" "$@"\n';
+
+function hookSandbox() {
+  const scratch = realpathSync(mkdtempSync(join(tmpdir(), 'vite hooks ')));
+  const git = (cwd, ...args) => execFileSync('git', args, { cwd, stdio: 'pipe', encoding: 'utf8' });
+  const install = (packageDir) => {
+    const hooks = join(packageDir, '.vite-hooks');
+    mkdirSync(join(hooks, '_'), { recursive: true });
+    for (const name of ['pre-commit', 'commit-msg', 'guard.sh']) {
+      copyFileSync(join(PUBLIC_ROOT, '.vite-hooks', name), join(hooks, name));
+    }
+    for (const name of ['pre-commit', 'commit-msg']) {
+      writeFileSync(join(hooks, '_', name), DISPATCHER, { mode: 0o755 });
+    }
+    const bin = join(packageDir, 'node_modules', '.bin');
+    mkdirSync(bin, { recursive: true });
+    for (const tool of ['vp', 'commitlint']) {
+      writeFileSync(join(bin, tool), `#!/bin/sh\npwd > '${join(scratch, `${tool}-ran-in`)}'\n`, { mode: 0o755 });
+    }
+    return join(hooks, '_');
+  };
+  const repo = (path) => {
+    git(scratch, 'init', '-q', '-b', 'main', path);
+    git(path, 'config', 'user.email', 'hooks@test.invalid');
+    git(path, 'config', 'user.name', 'hooks test');
+    git(path, 'commit', '-q', '--allow-empty', '-m', 'root');
+    return path;
+  };
+  const commit = (cwd, hooksPath, file) => {
+    writeFileSync(join(cwd, file), 'x\n');
+    git(cwd, 'add', file);
+    return git(cwd, '-c', `core.hooksPath=${hooksPath}`, 'commit', '-q', '-m', `feat: add ${file}`);
+  };
+  const ranIn = (tool) => {
+    const marker = join(scratch, `${tool}-ran-in`);
+    if (!existsSync(marker)) return null;
+    const where = readFileSync(marker, 'utf8').trim();
+    rmSync(marker);
+    return where;
+  };
+  return { scratch, git, install, repo, commit, ranIn, dispose: () => rmSync(scratch, { recursive: true, force: true }) };
+}
+
+test('the hooks refuse to run another checkout\'s tools from a sibling worktree', () => {
+  const box = hookSandbox();
+  try {
+    const owner = box.repo(join(box.scratch, 'owner'));
+    const hooksPath = box.install(join(owner, 'pkg'));
+    const sibling = join(box.scratch, 'sibling');
+    box.git(owner, 'worktree', 'add', '-q', '--detach', sibling, 'HEAD');
+
+    assert.throws(() => box.commit(sibling, hooksPath, 'a.txt'), /not this checkout/);
+    assert.equal(box.ranIn('vp'), null, 'vp staged ran in the owning checkout');
+    assert.equal(box.ranIn('commitlint'), null, 'commitlint ran in the owning checkout');
+
+    box.commit(owner, hooksPath, 'b.txt');
+    assert.equal(box.ranIn('vp'), join(owner, 'pkg'));
+  } finally {
+    box.dispose();
+  }
+});
+
+test('the hooks refuse a foreign checkout nested inside the committing one', () => {
+  const box = hookSandbox();
+  try {
+    const outer = box.repo(join(box.scratch, 'outer'));
+    const nested = box.repo(join(outer, 'nested'));
+    const hooksPath = box.install(join(nested, 'pkg'));
+
+    assert.throws(() => box.commit(outer, hooksPath, 'a.txt'), /not this checkout/);
+    assert.equal(box.ranIn('vp'), null, 'vp staged ran in the nested checkout');
+  } finally {
+    box.dispose();
+  }
+});
+
+test('the hooks run when they sit at the repository root, as in the exported repository', () => {
+  const box = hookSandbox();
+  try {
+    const exported = box.repo(join(box.scratch, 'exported'));
+    const hooksPath = box.install(exported);
+
+    box.commit(exported, hooksPath, 'a.txt');
+    assert.equal(box.ranIn('vp'), exported);
+    assert.equal(box.ranIn('commitlint'), exported);
+  } finally {
+    box.dispose();
+  }
+});
+
+test('a refused commit prints a command that fixes this checkout without touching shared config', () => {
+  for (const scope of ['local', 'worktree', 'global']) {
+    const box = hookSandbox();
+    const home = join(box.scratch, 'home');
+    mkdirSync(home);
+    const env = { ...process.env, HOME: home, XDG_CONFIG_HOME: join(home, '.config'), GIT_CONFIG_NOSYSTEM: '1' };
+    const git = (cwd, ...args) => execFileSync('git', args, { cwd, env, stdio: 'pipe', encoding: 'utf8' });
+    try {
+      const owner = box.repo(join(box.scratch, 'owner'));
+      const hooksPath = box.install(owner);
+      const sibling = join(box.scratch, 'sibling');
+      git(owner, 'worktree', 'add', '-q', '--detach', sibling, 'HEAD');
+      if (scope === 'worktree') {
+        git(owner, 'config', 'extensions.worktreeConfig', 'true');
+        git(sibling, 'config', '--worktree', 'core.hooksPath', hooksPath);
+      } else if (scope === 'global') {
+        git(owner, 'config', '--global', 'core.hooksPath', hooksPath);
+      } else {
+        git(owner, 'config', 'core.hooksPath', hooksPath);
+      }
+      box.install(sibling);
+      writeFileSync(join(sibling, 'a.txt'), 'x\n');
+      git(sibling, 'add', 'a.txt');
+
+      let printed = '';
+      assert.throws(
+        () => git(sibling, 'commit', '-q', '-m', 'feat: add a.txt'),
+        (error) => {
+          printed = /Fix it with: (git config .*)\n/.exec(String(error.stderr))?.[1] ?? '';
+          return printed !== '';
+        },
+        `${scope}: no fix-it command printed`,
+      );
+      assert.doesNotMatch(printed, /--global|--system/, `${scope}: the fix rewrites shared config`);
+      execFileSync('sh', ['-c', printed], { cwd: sibling, env, stdio: 'pipe' });
+      git(sibling, 'commit', '-q', '-m', 'feat: add a.txt');
+      assert.equal(box.ranIn('vp'), sibling, `${scope}: the printed command did not restore the hooks`);
+      if (scope === 'global') {
+        assert.equal(git(owner, 'config', '--global', '--get', 'core.hooksPath').trim(), hooksPath, 'global hooks path changed');
+      }
+    } finally {
+      box.dispose();
+    }
+  }
+});
+
+test('a refused commit is told the hooks path for its own layout', () => {
+  const box = hookSandbox();
+  try {
+    const exported = box.repo(join(box.scratch, 'exported'));
+    const exportedHooks = box.install(exported);
+    const orbit = box.repo(join(box.scratch, 'orbit'));
+    box.install(join(orbit, 'superdoc', 'public'));
+
+    assert.throws(
+      () => box.commit(orbit, exportedHooks, 'a.txt'),
+      (error) => / superdoc\/public\/\.vite-hooks\/_\n/.test(String(error.stderr)),
+    );
+    assert.throws(
+      () => box.commit(exported, join(orbit, 'superdoc', 'public', '.vite-hooks', '_'), 'b.txt'),
+      (error) => / \.vite-hooks\/_\n/.test(String(error.stderr)),
+    );
+  } finally {
+    box.dispose();
+  }
+});
+
+test('the hooks run their tools in the checkout they validated, even through a symlinked hooks directory', () => {
+  const box = hookSandbox();
+  try {
+    const owner = box.repo(join(box.scratch, 'owner'));
+    box.install(join(owner, 'pkg'));
+    const foreign = box.repo(join(box.scratch, 'foreign'));
+    mkdirSync(join(foreign, 'pkg', 'node_modules', '.bin'), { recursive: true });
+    for (const tool of ['vp', 'commitlint']) {
+      writeFileSync(join(foreign, 'pkg', 'node_modules', '.bin', tool), `#!/bin/sh\npwd > '${join(box.scratch, `${tool}-ran-in`)}'\n`, { mode: 0o755 });
+    }
+    symlinkSync(join(owner, 'pkg', '.vite-hooks'), join(foreign, 'pkg', '.vite-hooks'));
+
+    box.commit(owner, join(foreign, 'pkg', '.vite-hooks', '_'), join('pkg', 'a.txt'));
+    assert.equal(box.ranIn('vp'), join(owner, 'pkg'));
+    assert.equal(box.ranIn('commitlint'), join(owner, 'pkg'));
+  } finally {
+    box.dispose();
+  }
+});
+
+test('commit-msg refuses another checkout on its own, without relying on pre-commit', () => {
+  const box = hookSandbox();
+  try {
+    const owner = box.repo(join(box.scratch, 'owner'));
+    const hooksPath = box.install(join(owner, 'pkg'));
+    const sibling = join(box.scratch, 'sibling');
+    box.git(owner, 'worktree', 'add', '-q', '--detach', sibling, 'HEAD');
+    writeFileSync(join(sibling, 'staged.txt'), 'x\n');
+    box.git(sibling, 'add', 'staged.txt');
+    writeFileSync(join(sibling, 'MSG'), 'feat: message\n');
+
+    assert.throws(
+      () => box.git(sibling, '-c', `core.hooksPath=${hooksPath}`, 'hook', 'run', 'commit-msg', '--', 'MSG'),
+      (error) => /not this checkout/.test(String(error.stderr)),
+    );
+    assert.equal(box.ranIn('commitlint'), null, 'commitlint ran in the owning checkout');
+  } finally {
+    box.dispose();
+  }
+});
+
+test('the hooks fail rather than run tools when their own folder is outside any repository', () => {
+  const box = hookSandbox();
+  try {
+    const committing = box.repo(join(box.scratch, 'committing'));
+    const stray = join(box.scratch, 'stray', 'pkg');
+    box.install(stray);
+    writeFileSync(join(committing, 'a.txt'), 'x\n');
+    box.git(committing, 'add', 'a.txt');
+
+    for (const hook of ['pre-commit', 'commit-msg']) {
+      const run = spawnSync('sh', [join(stray, '.vite-hooks', hook), '.git/COMMIT_EDITMSG'], { cwd: committing, encoding: 'utf8' });
+      assert.notEqual(run.status, 0, `${hook} passed with hooks outside any repository`);
+    }
+    assert.equal(box.ranIn('vp'), null, 'vp staged ran with hooks outside any repository');
+    assert.equal(box.ranIn('commitlint'), null, 'commitlint ran with hooks outside any repository');
+  } finally {
+    box.dispose();
   }
 });

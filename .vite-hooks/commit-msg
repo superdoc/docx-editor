@@ -5,7 +5,8 @@
 # an Orbit checkout (superdoc/public) and in the exported repository (the root).
 msg="$1"
 case "$msg" in /*) ;; *) msg="$PWD/$msg" ;; esac
-cd "$(dirname "$0")/.."
+. "$(dirname "$0")/guard.sh"
+cd "$hooks_package"
 export PATH="$PWD/node_modules/.bin:$PATH"
 # Only commits touching this tree must follow its conventional-commit policy;
 # in Orbit, commits elsewhere in the monorepo are out of scope. No diff-filter:

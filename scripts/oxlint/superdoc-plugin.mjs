@@ -2,6 +2,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const toPosix = (file) => file.replaceAll('\\', '/');
 
 // Each package defines its object guard once. `scope` is a path from ROOT;
 // the first match wins, and the last entry covers the rest.
@@ -77,12 +78,23 @@ function isObjectGuard(fn) {
 }
 
 const noLocalObjectGuard = {
-  meta: { type: 'suggestion' },
+  meta: {
+    type: 'suggestion',
+    schema: [
+      {
+        type: 'object',
+        properties: { home: { type: 'string' }, name: { type: 'string' } },
+        required: ['home', 'name'],
+        additionalProperties: false,
+      },
+    ],
+  },
   create(context) {
-    const filename = path.relative(ROOT, context.filename).replaceAll('\\', '/');
-    const guard = OBJECT_GUARD_HOMES.find(({ scope }) => filename.startsWith(scope));
-    if (filename === guard.home) return {};
-    const source = guard.from ?? guard.home;
+    const [configured] = context.options;
+    const guard = configured ?? OBJECT_GUARD_HOMES.find(({ scope }) => toPosix(path.relative(ROOT, context.filename)).startsWith(scope));
+    const home = guard.home && path.resolve(configured ? context.cwd : ROOT, guard.home);
+    if (context.filename === home) return {};
+    const source = guard.from ?? toPosix(path.relative(context.cwd, home));
     const check = (fn) => {
       if (isObjectGuard(fn)) {
         context.report({ node: fn, message: `Import ${guard.name} from '${source}' instead of defining another object guard.` });

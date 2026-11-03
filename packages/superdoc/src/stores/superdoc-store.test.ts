@@ -1,53 +1,30 @@
-import { describe, it, expect, beforeEach, vi } from 'vite-plus/test';
+import { describe, it, expect, beforeEach, afterEach, vi, type MockInstance } from 'vite-plus/test';
 import { createPinia, setActivePinia } from 'pinia';
 import { useSuperdocStore } from './superdoc-store.js';
 import { DOCX, PDF, HTML, getFileObject } from '@superdoc/common';
 import { normalizeDocumentEntry } from '../core/helpers/file.js';
+import { DocumentLoadError } from '../core/helpers/document-load.js';
+import type { Document, InternalConfig, RuntimeDocument, SuperDocExceptionPayload } from '../core/types/index.js';
 
 vi.mock('@superdoc/common', async (importOriginal) => {
-  const actual = await importOriginal();
+  const actual = await importOriginal<typeof import('@superdoc/common')>();
   return {
     ...actual,
     getFileObject: vi.fn(),
   };
 });
 
-class BlobMock {
-  constructor(blobParts = [], options = {}) {
-    this.parts = blobParts;
-    this.type = options.type || '';
-    this.size = 0;
-
-    for (const part of blobParts) {
-      if (typeof part === 'string') {
-        this.size += new TextEncoder().encode(part).length;
-      } else if (part instanceof ArrayBuffer) {
-        this.size += part.byteLength;
-      } else if (ArrayBuffer.isView(part)) {
-        this.size += part.byteLength;
-      } else if (part?.size) {
-        this.size += part.size;
-      }
-    }
-  }
-}
-
-globalThis.Blob = BlobMock;
-
-globalThis.File = class FileMock extends BlobMock {
-  constructor(fileBits, fileName, options = {}) {
-    super(fileBits, options);
-    this.name = fileName;
-    this.lastModified = options.lastModified ?? Date.now();
-  }
-};
-
-const createTestConfig = (documents = [], overrides = {}) => {
+const createTestConfig = (
+  documents: RuntimeDocument[] = [],
+  overrides: Partial<InternalConfig> = {},
+): InternalConfig => {
   const { modules = {}, user = {}, users = [], ...rest } = overrides;
 
   return {
+    selector: '#superdoc',
+    layoutEngineOptions: {},
     documents,
-    modules: { collaboration: false, ...modules },
+    modules: { ...modules },
     user,
     users,
     ...rest,
@@ -55,16 +32,16 @@ const createTestConfig = (documents = [], overrides = {}) => {
 };
 
 describe('standalone HTML document viewing', () => {
-  let store;
+  let store: ReturnType<typeof useSuperdocStore>;
 
   beforeEach(() => {
     setActivePinia(createPinia());
     store = useSuperdocStore();
-    getFileObject.mockReset();
+    vi.mocked(getFileObject).mockReset();
     vi.spyOn(console, 'warn').mockImplementation(() => {});
   });
 
-  const htmlFile = (name = 'document.html', type = HTML) => new File(['<p>Document</p>'], name, { type });
+  const htmlFile = (name = 'document.html', type: string = HTML) => new File(['<p>Document</p>'], name, { type });
 
   it.each([
     ['File', () => htmlFile()],
@@ -132,7 +109,7 @@ describe('standalone HTML document viewing', () => {
 });
 
 describe('SuperDoc Store - Blob Support', () => {
-  let store;
+  let store: ReturnType<typeof useSuperdocStore>;
 
   beforeEach(() => {
     setActivePinia(createPinia());
@@ -140,7 +117,7 @@ describe('SuperDoc Store - Blob Support', () => {
   });
 
   it('uses top-level scalar context only for a single initial document', async () => {
-    const document = (id, fieldContext) => ({
+    const document = (id: string, fieldContext?: Document['fieldContext']) => ({
       id,
       type: DOCX,
       data: new File(['content'], `${id}.docx`, { type: DOCX }),
@@ -153,7 +130,7 @@ describe('SuperDoc Store - Blob Support', () => {
   });
 
   it('keeps explicit scalar contexts separate and leaves a missing multi-document context unavailable', async () => {
-    const document = (id, fieldContext) => ({
+    const document = (id: string, fieldContext?: Document['fieldContext']) => ({
       id,
       type: DOCX,
       data: new File(['content'], `${id}.docx`, { type: DOCX }),
@@ -199,6 +176,7 @@ describe('SuperDoc Store - Blob Support', () => {
       expect(store.documents.length).toBe(1);
       const document = store.documents[0];
       expect(document.data).toBeInstanceOf(File);
+      if (!(document.data instanceof File)) throw new Error('expected a File');
       expect(document.data.name).toBe('test.docx');
     });
 
@@ -212,6 +190,7 @@ describe('SuperDoc Store - Blob Support', () => {
       expect(store.documents.length).toBe(1);
       const document = store.documents[0];
       expect(document.data).toBeInstanceOf(File);
+      if (!(document.data instanceof File)) throw new Error('expected a File');
       expect(document.data.name).toBe('document.docx');
     });
 
@@ -230,6 +209,7 @@ describe('SuperDoc Store - Blob Support', () => {
         await store.init(config);
 
         const document = store.documents[0];
+        if (!(document.data instanceof File)) throw new Error('expected a File');
         expect(document.data.name).toBe(testCase.expectedName);
 
         store.reset();
@@ -245,7 +225,7 @@ describe('SuperDoc Store - Blob Support', () => {
       await store.init(config);
 
       const document = store.documents[0];
-      expect(document.data.type).toBe(blobType);
+      expect(document.data!.type).toBe(blobType);
     });
 
     it('should use document type if blob type is not available', async () => {
@@ -256,7 +236,7 @@ describe('SuperDoc Store - Blob Support', () => {
       await store.init(config);
 
       const document = store.documents[0];
-      expect(document.data.type).toBe(DOCX);
+      expect(document.data!.type).toBe(DOCX);
     });
 
     it('should handle mixed File and Blob objects', async () => {
@@ -273,9 +253,11 @@ describe('SuperDoc Store - Blob Support', () => {
       expect(store.documents.length).toBe(2);
 
       expect(store.documents[0].data).toBeInstanceOf(File);
+      if (!(store.documents[0].data instanceof File)) throw new Error('expected a File');
       expect(store.documents[0].data.name).toBe('file.docx');
 
       expect(store.documents[1].data).toBeInstanceOf(File);
+      if (!(store.documents[1].data instanceof File)) throw new Error('expected a File');
       expect(store.documents[1].data.name).toBe('blob.docx');
     });
 
@@ -294,7 +276,7 @@ describe('SuperDoc Store - Blob Support', () => {
   });
 
   describe('error handling', () => {
-    let consoleWarnSpy;
+    let consoleWarnSpy: MockInstance<typeof console.warn>;
 
     beforeEach(() => {
       consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -305,6 +287,7 @@ describe('SuperDoc Store - Blob Support', () => {
     });
 
     it('should handle invalid document configuration gracefully', async () => {
+      // @ts-expect-error a document with no data or url is rejected at document-init
       const config = createTestConfig([{/* no data, url, or other valid config */}]);
 
       await store.init(config);
@@ -316,6 +299,7 @@ describe('SuperDoc Store - Blob Support', () => {
       const handler = vi.fn();
       store.setExceptionHandler(handler);
 
+      // @ts-expect-error a document with no data or url is reported to the exception handler
       const config = createTestConfig([{/* invalid entry */}]);
 
       await store.init(config);
@@ -328,14 +312,14 @@ describe('SuperDoc Store - Blob Support', () => {
 });
 
 describe('SuperDoc Store - zoom.initial seeding', () => {
-  let store;
+  let store: ReturnType<typeof useSuperdocStore>;
 
   beforeEach(() => {
     setActivePinia(createPinia());
     store = useSuperdocStore();
   });
 
-  const configWithZoom = (zoom) =>
+  const configWithZoom = (zoom?: InternalConfig['zoom']) =>
     createTestConfig([{ data: new File(['x'], 'test.docx', { type: DOCX }), name: 'test.docx', type: DOCX }], {
       zoom,
     });
@@ -362,6 +346,7 @@ describe('SuperDoc Store - zoom.initial seeding', () => {
     await store.init(configWithZoom({ initial: Number.NaN }));
     expect(store.activeZoom).toBe(100);
 
+    // @ts-expect-error a string zoom.initial is ignored with a warning
     await store.init(configWithZoom({ initial: '75' }));
     expect(store.activeZoom).toBe(100);
 
@@ -371,14 +356,14 @@ describe('SuperDoc Store - zoom.initial seeding', () => {
 });
 
 describe('SuperDoc Store - zoom.mode seeding', () => {
-  let store;
+  let store: ReturnType<typeof useSuperdocStore>;
 
   beforeEach(() => {
     setActivePinia(createPinia());
     store = useSuperdocStore();
   });
 
-  const configWithZoom = (zoom) =>
+  const configWithZoom = (zoom?: InternalConfig['zoom']) =>
     createTestConfig([{ data: new File(['x'], 'test.docx', { type: DOCX }), name: 'test.docx', type: DOCX }], {
       zoom,
     });
@@ -396,6 +381,7 @@ describe('SuperDoc Store - zoom.mode seeding', () => {
   it('ignores invalid zoom.mode values with a warning', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
+    // @ts-expect-error 'fit-page' is not a zoom mode and is ignored with a warning
     await store.init(configWithZoom({ mode: 'fit-page' }));
     expect(store.zoomMode).toBe('manual');
     expect(warn).toHaveBeenCalledTimes(1);
@@ -409,14 +395,14 @@ describe('SuperDoc Store - zoom.mode seeding', () => {
 });
 
 describe('SuperDoc Store - measurementUnit seeding', () => {
-  let store;
+  let store: ReturnType<typeof useSuperdocStore>;
 
   beforeEach(() => {
     setActivePinia(createPinia());
     store = useSuperdocStore();
   });
 
-  const configWithUnit = (measurementUnit) =>
+  const configWithUnit = (measurementUnit?: InternalConfig['measurementUnit']) =>
     createTestConfig([{ data: new File(['x'], 'test.docx', { type: DOCX }), name: 'test.docx', type: DOCX }], {
       measurementUnit,
     });
@@ -434,6 +420,7 @@ describe('SuperDoc Store - measurementUnit seeding', () => {
   it('ignores invalid measurementUnit values with a warning', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
+    // @ts-expect-error 'meters' is not a measurement unit and is ignored with a warning
     await store.init(configWithUnit('meters'));
     expect(store.measurementUnit).toBe('in');
     expect(warn).toHaveBeenCalledTimes(1);
@@ -458,33 +445,34 @@ describe('SuperDoc Store - measurementUnit seeding', () => {
 describe('opt-in initial load lifetime', () => {
   beforeEach(() => {
     setActivePinia(createPinia());
-    getFileObject.mockReset();
+    vi.mocked(getFileObject).mockReset();
     vi.spyOn(console, 'warn').mockImplementation(() => {});
   });
   it('bounds a stalled download and cannot publish its late response', async () => {
-    let release;
-    getFileObject.mockImplementation(
+    let release: ((file: File) => void) | undefined;
+    vi.mocked(getFileObject).mockImplementation(
       () =>
         new Promise((resolve) => {
           release = resolve;
         }),
     );
     const store = useSuperdocStore();
-    const failures = [];
+    const failures: SuperDocExceptionPayload[] = [];
     await store.init(
       createTestConfig([{ id: 'late', type: DOCX, url: '/late.docx', load: { timeoutMs: 5 } }], {
         onException: (failure) => failures.push(failure),
       }),
     );
     expect(failures).toHaveLength(1);
+    if (!(failures[0].error instanceof DocumentLoadError)) throw failures[0].error;
     expect(failures[0].error.code).toBe('DOCUMENT_LOAD_TIMEOUT');
-    release(new File(['late'], 'late.docx', { type: DOCX }));
+    release!(new File(['late'], 'late.docx', { type: DOCX }));
     await Promise.resolve();
     expect(store.documents).toHaveLength(0);
   });
   it('retires a stalled import without activating the timed-out document', async () => {
     const store = useSuperdocStore();
-    const failures = [];
+    const failures: SuperDocExceptionPayload[] = [];
     await store.init(
       createTestConfig(
         [{ id: 'import', type: DOCX, data: new File(['doc'], 'doc.docx', { type: DOCX }), load: { timeoutMs: 5 } }],
@@ -494,8 +482,9 @@ describe('opt-in initial load lifetime', () => {
     const scope = store.documents[0].loadScope;
     await new Promise((resolve) => setTimeout(resolve, 15));
     expect(store.documents).toHaveLength(0);
-    expect(scope.finish()).toBe(false);
+    expect(scope!.finish()).toBe(false);
     expect(failures).toHaveLength(1);
+    if (!('code' in failures[0])) throw new Error('expected a coded failure');
     expect(failures[0].code).toBe('DOCUMENT_LOAD_TIMEOUT');
   });
 });

@@ -56,7 +56,6 @@
     "src/public/ui/watermark-draft.test.ts",
     "src/stores/comments-store.test.ts",
     "src/stores/helpers/floating-comment-instances.test.ts",
-    "src/stores/superdoc-store-extended.test.ts",
-    "src/stores/superdoc-store.test.ts"
+    "src/stores/superdoc-store-extended.test.ts"
   ]
 }

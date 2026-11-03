@@ -562,14 +562,6 @@ const RELOCATION_RULES = typeSurface.relocations.map(({ pkg, distEntry, matchSub
   matchSubpaths,
 }));
 
-function isRelocatedSpecifier(mod) {
-  return RELOCATION_RULES.some((rule) =>
-    rule.matchSubpaths
-      ? mod === rule.pkg || mod.startsWith(rule.pkg + '/')
-      : mod === rule.pkg,
-  );
-}
-
 function makeRelocationRewriter({ pkg, distEntry, matchSubpaths }) {
   // Match the package name with optional subpath, e.g. `@superdoc/contracts` or
   // `@superdoc/contracts/engines/tabs.js`. Anchored to either side of the
@@ -593,21 +585,6 @@ const RELOCATION_REWRITERS = RELOCATION_RULES.map((rule) => ({
   pkg: rule.pkg,
   rewrite: makeRelocationRewriter(rule),
 }));
-
-// Any root specifier added here should also be listed in
-// RELOCATION_GUARD_PACKAGES so it cannot fall back to an ambient `any`
-// shim after we intentionally skip shim generation. List source:
-// type-surface.config.cjs (`unshimmedPrivateSpecifiers`).
-const UNSHIMMED_PRIVATE_SPECIFIERS = new Set(typeSurface.unshimmedPrivateSpecifiers);
-
-function shouldSkipWorkspaceShim(mod) {
-  return (
-    mod.startsWith('.') ||
-    mod.startsWith('@superdoc/document-api') ||
-    isRelocatedSpecifier(mod) ||
-    UNSHIMMED_PRIVATE_SPECIFIERS.has(mod)
-  );
-}
 
 const dtsFiles = findDtsFiles(distRoot);
 for (const filePath of dtsFiles) {
@@ -734,13 +711,6 @@ console.log('[ensure-types] ✓ Verified type entry points');
 // previously injected into entry-point d.ts is also dropped; vite-plugin-dts
 // emits clean entries and the next build overwrites any stale references.
 // ---------------------------------------------------------------------------
-
-// `shouldSkipWorkspaceShim` is intentionally retained: it is no longer used
-// by shim generation, but kept as documentation for the relocation policy
-// (relocated specifiers + UNSHIMMED_PRIVATE_SPECIFIERS + document-api public
-// surface). Future audit rules that need to
-// classify workspace specifiers can reuse it.
-void shouldSkipWorkspaceShim;
 
 // Clean up artifacts from the old shim mechanism. vite-plugin-dts overwrites
 // entry-point d.ts on each build, so the triple-slash references injected by

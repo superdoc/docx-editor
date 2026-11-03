@@ -34,6 +34,7 @@
     "next-env.d.ts",
     "../../packages/superdoc/src/vite-env.d.ts",
     "../../packages/superdoc/src/shims-vue.d.ts",
+    "../../packages/layout-engine/layout-bridge/src/bidi-js.d.ts",
     "**/*.ts",
     "**/*.tsx",
     ".next/types/**/*.ts",

@@ -1,5 +1,3 @@
-// oxlint-disable-next-line typescript/triple-slash-reference -- apps/docs compiles this file without bidi-js.d.ts in its include.
-/// <reference path="./bidi-js.d.ts" />
 import bidiFactory from 'bidi-js';
 import type { Line, NeutralLineGeometry, ParagraphBlock, TextRun } from '@superdoc/contracts';
 import type { FontMeasureContext } from '@superdoc/font-system';

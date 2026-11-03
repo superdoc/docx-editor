@@ -744,111 +744,7 @@ const init = async () => {
       surfaces: {
         findReplace: true,
       },
-      // Test custom context menu configuration
-      contextMenu: {
-        // defaultItems: true, // Include default items
-        // sections: [
-        //   {
-        //     id: 'custom-section',
-        //     items: [
-        //       {
-        //         id: 'show-context',
-        //         label: 'Show Context',
-        //         showWhen: (context) => context.trigger === 'click',
-        //         render: (context) => {
-        //           const container = document.createElement('div');
-        //           container.style.display = 'flex';
-        //           container.style.alignItems = 'center';
-        //           container.innerHTML = `
-        //             <span style="margin-right: 8px;">🔍</span>
-        //             <span>Show Context</span>
-        //           `;
-        //           return container;
-        //         },
-        //         action: (editor, context) => {
-        //           console.log('context', context);
-        //         }
-        //       },
-        //       {
-        //         id:'delete table',
-        //         label: 'Delete Table',
-        //         render: (context) => {
-        //           const container = document.createElement('div');
-        //           container.style.display = 'flex';
-        //           container.style.alignItems = 'center';
-        //           container.innerHTML = `
-        //             <span style="margin-right: 8px;">🗑️</span>
-        //             <span>Delete Table</span>
-        //           `;
-        //           return container;
-        //         },
-        //         action: (editor) => {
-        //           editor.commands.deleteTable();
-        //         },
-        //         showWhen: (context) => context.isInTable
-        //       },
-        //       {
-        //         id: 'highlight-text',
-        //         label: 'Highlight Selection',
-        //         showWhen: (context) => ['slash', 'click'].includes(context.trigger),
-        //         render: (context) => {
-        //           const container = document.createElement('div');
-        //           container.style.display = 'flex';
-        //           container.style.alignItems = 'center';
-        //           container.innerHTML = `
-        //             <span style="margin-right: 8px; color: #ffa500;">✨</span>
-        //             <span>Highlight "${context.selectedText || 'text'}"</span>
-        //           `;
-        //           return container;
-        //         },
-        //         action: (editor) => {
-        //           editor.commands.setHighlight('#ffff00');
-        //         },
-        //         showWhen: (context) => context.hasSelection
-        //       },
-        //       {
-        //         id: 'insert-emoji',
-        //         label: 'Insert Emoji',
-        //         showWhen: (context) => (context.trigger === 'click' || context.trigger === 'slash') && context.hasSelection,
-        //         render: (context) => {
-        //           const container = document.createElement('div');
-        //           container.style.display = 'flex';
-        //           container.style.alignItems = 'center';
-        //           container.innerHTML = `
-        //             <span style="margin-right: 8px;">😀</span>
-        //             <span>Insert Emoji</span>
-        //           `;
-        //           return container;
-        //         },
-        //         action: (editor) => {
-        //           editor.commands.insertContent('¯\\_(ツ)_/¯');
-        //         }
-        //       },
-        //     ]
-        //   }
-        // ],
-        // // Alternative: use menuProvider function
-        // // @todo: decide if we want to expose this in the documentation or not for simplicity?
-        // menuProvider: (context, defaultSections) => {
-        //   return [
-        //     ...defaultSections,
-        //     {
-        //       id: 'dynamic-section',
-        //       items: [
-        //         {
-        //           id: 'dynamic-item',
-        //           label: `Custom for ${context.documentMode}`,
-        //           showWhen: (context) => ['slash', 'click'].includes(context.trigger),
-        //           action: (editor) => {
-        //             editor.commands.insertContent(`Mode: ${context.documentMode} `);
-        //           }
-        //         }
-        //       ]
-        //     }
-        //   ];
-        // }
-
-      },
+      contextMenu: {},
       // 'hrbr-fields': {},
 
       ai: {
@@ -883,16 +779,6 @@ const init = async () => {
     onContentError,
     // handleImageUpload: async (file) => url,
 
-    // Tracked change bubble button handlers - replace default accept/reject behavior
-    // Only fires from bubble buttons, not toolbar or context menu
-    // onTrackedChangeBubbleAccept: (comment, editor) => {
-    //   console.log('Custom accept handler', comment);
-    //   editor.commands.acceptTrackedChangeById(comment.commentId);
-    // },
-    // onTrackedChangeBubbleReject: (comment, editor) => {
-    //   console.log('Custom reject handler', comment);
-    //   editor.commands.rejectTrackedChangeById(comment.commentId);
-    // },
     // Override icons.
     toolbarIcons: {},
   };

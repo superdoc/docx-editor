@@ -83,8 +83,8 @@ const noLocalObjectGuard = {
     schema: [
       {
         type: 'object',
-        properties: { home: { type: 'string' }, name: { type: 'string' } },
-        required: ['home', 'name'],
+        properties: { home: { type: 'string' }, name: { type: 'string' }, from: { type: 'string' } },
+        required: ['name'],
         additionalProperties: false,
       },
     ],

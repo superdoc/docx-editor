@@ -51,6 +51,7 @@ type SuperDocEditorEmits = {
   transaction: (event: SuperDocTransactionEvent) => boolean;
   'content-error': (event: SuperDocContentErrorEvent) => boolean;
   exception: (event: SuperDocExceptionEvent) => boolean;
+  /** @deprecated replaceWith=`superdoc.ui.zoom.observe` removeIn=v3.0 */
   'zoom-change': (event: SuperDocZoomChangeEvent) => boolean;
   'viewport-change': (event: SuperDocViewportChangeEvent) => boolean;
   'update:documentMode': (mode: DocumentMode) => boolean;
@@ -241,8 +242,7 @@ const SuperDocEditorImplementation = defineComponent({
             isInitializing = false;
             replaceUiBinding(event.superdoc, props.uiBinding ? raw(props.uiBinding) : null);
             if (pendingMode && pendingMode !== mode) {
-              // Assign before calling: the mode-change event fires
-              // synchronously and must not echo into v-model.
+              // Assign before calling: the mode-change event fires synchronously and must not echo into v-model.
               appliedMode = pendingMode;
               event.superdoc.setDocumentMode(appliedMode);
             }

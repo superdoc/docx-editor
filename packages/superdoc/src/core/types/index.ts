@@ -4638,6 +4638,8 @@ export interface Config {
    * Callback when the zoom level changes. Fires for every zoom source:
    * `setZoom()`, the toolbar zoom control, and fit-width
    * adjustments.
+   *
+   * @deprecated replaceWith=`superdoc.ui.zoom.observe` removeIn=v3.0
    */
   onZoomChange?: (params: SuperDocZoomPayload) => void;
   /**

@@ -174,7 +174,10 @@ export interface CallbackProps {
   /** Callback when an exception is thrown */
   onException?: (event: SuperDocExceptionEvent) => void;
 
-  /** Callback when the zoom level changes (setZoom, toolbar, or fit-width mode) */
+  /**
+   * Callback when the zoom level changes (setZoom, toolbar, or fit-width mode)
+   * @deprecated replaceWith=`superdoc.ui.zoom.observe` removeIn=v3.0
+   */
   onZoomChange?: (event: SuperDocZoomChangeEvent) => void;
 
   /** Callback when the implied fit changes (rounded fit zoom or base page width); see the core viewport-change event */

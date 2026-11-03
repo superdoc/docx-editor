@@ -570,10 +570,12 @@ interface SuperDocEventMap {
   'comments-list-change': [SuperDocCommentsListChangePayload];
   /** Requests the shell open its find/replace surface (e.g. the toolbar search button). */
   'search:open': [];
+  /** @deprecated replaceWith=`superdoc.ui.zoom.observe` removeIn=v3.0 */
   zoomChange: [SuperDocZoomPayload];
   'measurement-unit-change': [SuperDocMeasurementUnitChangePayload];
   'page-margins-change': [SuperDocPageMarginsChangePayload];
   'formatting-marks-change': [SuperDocFormattingMarksChangePayload];
+  /** @deprecated replaceWith=`superdoc.ui.document.observe` removeIn=v3.0 */
   'document-mode-change': [SuperDocDocumentModeChangePayload];
   /**
    * The active editor was assigned or cleared. Internal: the UI controller
@@ -605,6 +607,11 @@ interface SuperDocEventMap {
   'fonts-resolved': [FontsResolvedPayload];
   'fonts-changed': [FontsChangedPayload];
   'pagination-update': [SuperDocPaginationUpdatePayload];
+  /**
+   * Never emitted by SuperDoc 2.
+   *
+   * @deprecated replaceWith=`editor-update` and `doc.lists.list` removeIn=v3.0
+   */
   'list-definitions-change': [ListDefinitionsPayload];
   'comments-update': [SuperDocCommentsUpdatePayload];
   'content-control:active-change': [ContentControlActiveChangePayload];
@@ -2197,10 +2204,6 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
       );
     }
   }
-
-  // ---------------------------------------------------------------------------
-  // Late-upgrade helpers
-  // ---------------------------------------------------------------------------
 
   #readStoreDocV2Collaboration(rawStoreDoc: RuntimeDocument | null): RuntimeDocument['v2Collaboration'] | null {
     if (!rawStoreDoc) return null;

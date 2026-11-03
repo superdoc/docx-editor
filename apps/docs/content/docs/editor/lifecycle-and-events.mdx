@@ -37,6 +37,35 @@ In a collaborative room, `onEditorUpdate` also fires when another collaborator's
 when the handler writes back to your application or marks this user's changes as unsaved. A remote event always
 reports `surface: 'body'` because the room does not say which part of the document changed.
 
+## Choose where to listen
+
+The `SuperDoc` instance reports the instance: its lifecycle, failures, the document lock, the collaboration session,
+and the built-in UI's own chrome. Everything about one area of the document or the view belongs to that area of
+[`superdoc.ui`](/editor/custom-ui/controller-setup), where `getSnapshot()` and `observe()` report state, `onChange()`
+reports committed changes, and `onX()` reports an interaction.
+
+| Your question                                                 | Where to listen                                                   |
+| ------------------------------------------------------------- | ----------------------------------------------------------------- |
+| Is the document open, and did opening it fail?                | `onReady`, `onException`                                          |
+| Is the document locked, and is collaboration still connected? | `onLocked`, `onCollaborationConnectionChange`                     |
+| Did the built-in comments list appear or disappear?           | `onCommentsListChange`                                            |
+| What changed in the document?                                 | `superdoc.ui.document.onChange()`                                 |
+| What is the zoom, the mode, or the undo depth right now?      | `superdoc.ui.zoom`, `superdoc.ui.document`, `superdoc.ui.history` |
+
+An instance event is deprecated once its `superdoc.ui` replacement reports everything the event reported. Deprecated
+events keep working until SuperDoc 3.0.
+
+| Deprecated event                                        | Replacement                                                                                                    |
+| ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `zoomChange` and `onZoomChange`                         | [`superdoc.ui.zoom.observe()`](/editor/custom-ui/zoom-and-document-state#build-zoom-and-download-controls)     |
+| `document-mode-change`                                  | [`superdoc.ui.document.observe()`](/editor/custom-ui/zoom-and-document-state#build-zoom-and-download-controls) |
+| `list-definitions-change` and `onListDefinitionsChange` | `onEditorUpdate` and `doc.lists.list()`                                                                        |
+
+The document snapshot reports the mode. SuperDoc 2 never emits `list-definitions-change`.
+
+`history-change` stays on the instance: it reports every open document with its `documentId`, while
+`superdoc.ui.history` follows the active document.
+
 ## Handle rejected edits
 
 The browser Editor reports a rejected keyboard edit through `onException` (or the `exception` event),
@@ -66,19 +95,16 @@ context rather than evidence of the rejection's cause.
 Call `unmountEditor()` when the owning route or component unmounts. It removes the button listener and calls
 `destroy()`. The React Quickstart's `SuperDocEditor` component handles its own Editor cleanup.
 
-For a temporary panel, use `on()` and `off()` with the same function. This fragment assumes the ready `superdoc`
-instance from the example above:
+For a temporary panel, keep the function a `superdoc.ui` subscription returns and call it when the panel closes. An
+instance event uses `on()` and `off()` with the same function. This fragment assumes the ready `superdoc` instance
+from the example above:
 
 ```ts
-import type { SuperDocZoomPayload } from 'superdoc';
-
-const onZoom = ({ zoom }: SuperDocZoomPayload): void => {
-  console.log('Zoom:', zoom);
-};
-
-superdoc.on('zoomChange', onZoom);
+const stopZoom = superdoc.ui.zoom.observe(({ value }) => {
+  console.log('Zoom:', value);
+});
 // When the panel closes:
-superdoc.off('zoomChange', onZoom);
+stopZoom();
 ```
 
 ## Check the flow

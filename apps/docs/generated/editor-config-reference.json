@@ -361,14 +361,6 @@
       "group": "other"
     },
     {
-      "name": "onZoomChange",
-      "type": "(params: {\n  zoom: number;\n  mode: \"manual\" | \"fit-width\";\n}) => void",
-      "typeName": "(params: SuperDocZoomPayload) => void",
-      "required": false,
-      "description": "Callback when the zoom level changes. Fires for every zoom source: `setZoom()`, the toolbar zoom control, and fit-width adjustments.",
-      "group": "other"
-    },
-    {
       "name": "onViewportChange",
       "type": "(params: {\n  availableWidth: number;\n  documentWidth: number;\n  fitZoom: number;\n}) => void",
       "typeName": "(params: SuperDocViewportChangePayload) => void",

@@ -26,9 +26,6 @@
 
 .hero h1 {
   position: relative;
-  /* Wide enough to hold "SuperDoc v2 is here" on two lines that break after the
-     wordmark, rather than stranding "here" on its own. */
-  max-width: 15ch;
   margin: 0 auto 1.125rem;
   font-size: clamp(1.625rem, 6vw, 4rem);
   font-weight: 600;
@@ -36,8 +33,6 @@
   line-height: 1.1;
 }
 
-/* "SuperDoc" is the wordmark and takes the website's flat wordmark blue;
-   "Documentation" carries the blue-to-violet gradient. */
 .heroWordmark {
   color: var(--sd-wordmark-blue);
 }
@@ -62,11 +57,64 @@
 
 .hero > p {
   position: relative;
-  max-width: 35rem;
+  max-width: 54rem;
   margin: 0 auto 1.875rem;
   color: #5a5a61;
   font-size: clamp(0.875rem, 2vw, 1.125rem);
   line-height: 1.6;
+  text-wrap: balance;
+}
+
+.heroLink {
+  --hero-link-text: var(--sd-blue-700);
+  --hero-link-underline: rgb(68 120 255 / 0.6);
+  --hero-link-hover-surface: var(--sd-blue-50);
+  --hero-link-hover-text: var(--sd-blue-500);
+  --hero-link-hover-underline: var(--sd-blue-500);
+  margin: 0 -0.25rem;
+  padding: 3px 0.25rem;
+  border-radius: 8px;
+  color: var(--hero-link-text);
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  transition:
+    color 300ms ease-out,
+    background-color 300ms ease-out;
+}
+
+.heroLinkAgent {
+  --hero-link-text: #6b21a8;
+  --hero-link-underline: rgb(192 132 252 / 0.6);
+  --hero-link-hover-surface: #f3e8ff;
+  --hero-link-hover-text: var(--sd-gradient-to);
+  --hero-link-hover-underline: #a855f7;
+}
+
+.heroLink svg {
+  display: inline-block;
+  width: 1.1em;
+  height: 1.1em;
+  margin-right: 0.25rem;
+  vertical-align: -0.2em;
+  opacity: 0.8;
+}
+
+.heroLink span {
+  text-decoration: underline;
+  text-decoration-color: var(--hero-link-underline);
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 3px;
+  transition: text-decoration-color 300ms ease-out;
+}
+
+.heroLink:hover {
+  background: var(--hero-link-hover-surface);
+  color: var(--hero-link-hover-text);
+}
+
+.heroLink:hover span {
+  text-decoration-color: var(--hero-link-hover-underline);
 }
 
 /* Quieter than the subhead: it speaks to the minority arriving from v1, and
@@ -262,6 +310,22 @@
 
 :global(.dark) .hero > p {
   color: #c8cdd7;
+}
+
+:global(.dark) .heroLinkEditor {
+  --hero-link-text: var(--sd-blue-300);
+  --hero-link-underline: rgb(68 120 255 / 0.5);
+  --hero-link-hover-surface: rgb(19 85 255 / 0.15);
+  --hero-link-hover-text: var(--sd-blue-200);
+  --hero-link-hover-underline: var(--sd-blue-400);
+}
+
+:global(.dark) .heroLinkAgent {
+  --hero-link-text: #d8b4fe;
+  --hero-link-underline: rgb(192 132 252 / 0.5);
+  --hero-link-hover-surface: rgb(168 85 247 / 0.15);
+  --hero-link-hover-text: #e9d5ff;
+  --hero-link-hover-underline: var(--sd-gradient-to);
 }
 
 @media (max-width: 54rem) {

@@ -1,3 +1,4 @@
+import { Bot, FilePenLine } from 'lucide-react';
 import Link from 'next/link';
 import { AgentPrompts } from '@/components/agent-prompts';
 import { CopyCommand } from '@/components/copy-command';
@@ -9,9 +10,20 @@ export function DocsHome() {
     <main className={styles.home}>
       <header className={styles.hero}>
         <h1>
-          <span className={styles.heroWordmark}>SuperDoc</span> <span>v2 is here</span>
+          <span className={styles.heroWordmark}>SuperDoc</span> <span>Documentation</span>
         </h1>
-        <p>Add DOCX editing into your product and agentic workflows</p>
+        <p>
+          <Link className={`${styles.heroLink} ${styles.heroLinkEditor}`} href='/editor/quickstart'>
+            <FilePenLine aria-hidden='true' />
+            <span>DOCX Editor</span>
+          </Link>{' '}
+          and{' '}
+          <Link className={`${styles.heroLink} ${styles.heroLinkAgent}`} href='/agents/overview'>
+            <Bot aria-hidden='true' />
+            <span>Agent SDK</span>
+          </Link>{' '}
+          for reviewing, filling, and editing documents. Fully customizable.
+        </p>
         <div className={styles.heroActions}>
           <CopyCommand command='npm install superdoc' />
         </div>
@@ -32,7 +44,7 @@ export function DocsHome() {
           <div className={styles.pathGrid}>
             <Link className={styles.pathCard} href='/editor/quickstart'>
               <div className={styles.cardCopy}>
-                <h3>Web-based DOCX editor</h3>
+                <h3>DOCX Editor</h3>
                 <p>Open, edit, review, and export DOCX files in your app.</p>
                 <span className={styles.cardAction}>
                   Editor quickstart <span aria-hidden='true'>→</span>
@@ -49,10 +61,10 @@ export function DocsHome() {
 
             <Link className={styles.pathCard} href='/agents/overview'>
               <div className={styles.cardCopy}>
-                <h3>Server-side DOCX automation</h3>
+                <h3>Agent SDK</h3>
                 <p>Inspect and change documents from SDKs, CLIs, pipelines, or agents.</p>
                 <span className={styles.cardAction}>
-                  Agents &amp; automation <span aria-hidden='true'>→</span>
+                  Agent SDK overview <span aria-hidden='true'>→</span>
                 </span>
               </div>
               <div className={styles.codePreview} aria-hidden='true'>

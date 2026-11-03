@@ -24,8 +24,6 @@
   --sd-blue-700: #0b3399;
   --sd-blue: var(--sd-blue-500);
   --sd-blue-hover: var(--sd-blue-600);
-  /* The wordmark blue from the SuperDoc website. Distinct from --sd-blue,
-     which is the interactive blue used for buttons, links, and focus rings. */
   --sd-wordmark-blue: #2374dd;
   --sd-gradient-from: #2563eb;
   --sd-gradient-to: #9333ea;

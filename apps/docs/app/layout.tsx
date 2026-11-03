@@ -19,7 +19,7 @@ export const metadata: Metadata = {
     default: 'SuperDoc Documentation',
     template: '%s | SuperDoc',
   },
-  description: 'Documentation for the SuperDoc document engine.',
+  description: 'DOCX Editor and Agent SDK for reviewing, filling, and editing documents. Fully customizable.',
   manifest: '/site.webmanifest',
   icons: {
     icon: [

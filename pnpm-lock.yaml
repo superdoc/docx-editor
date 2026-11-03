@@ -986,15 +986,9 @@ importers:
 
   packages/layout-engine/tests:
     dependencies:
-      '@superdoc/common':
-        specifier: workspace:*
-        version: link:../../../shared/common
       '@superdoc/contracts':
         specifier: workspace:*
         version: link:../contracts
-      '@superdoc/geometry-utils':
-        specifier: workspace:*
-        version: link:../geometry-utils
       '@superdoc/layout-engine':
         specifier: workspace:*
         version: link:../layout-engine

@@ -12,9 +12,7 @@
   "dependencies": {
     "@superdoc/layout-engine": "workspace:*",
     "@superdoc/measuring-dom": "workspace:*",
-    "@superdoc/contracts": "workspace:*",
-    "@superdoc/geometry-utils": "workspace:*",
-    "@superdoc/common": "workspace:*"
+    "@superdoc/contracts": "workspace:*"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "catalog:",

@@ -132,6 +132,8 @@ import type {
 } from '@superdoc/document-api';
 
 import type { BrowserDocumentApi, PartialBrowserDocumentApi } from '../browser-document-api.js';
+import type { ContentControlClickPayload } from '../content-control-ref.js';
+export type { ContentControlClickPayload, ContentControlRef } from '../content-control-ref.js';
 import type { ExportParams } from '../export-types.js';
 import type { SuperDocVisualHandle, SuperDocVisualOptions } from '../../core/extensions/types.js';
 import type { DocumentReplacementResult } from '../document-replacement.js';
@@ -1285,6 +1287,7 @@ export interface ContentControlsHandle extends SnapshotSubscribable<ContentContr
    * should use {@link observe}.
    */
   observeActivePath(listener: (snapshot: ContentControlsSlice) => void): () => void;
+  onClick(listener: (payload: ContentControlClickPayload) => void): () => void;
   /** Event-shaped alias of {@link observe}. */
   subscribe(listener: (event: { snapshot: ContentControlsSlice }) => void): () => void;
   /** Read the current content-controls snapshot. */

@@ -16,6 +16,8 @@ import type {
   TrackChangesItem,
   ContentControlsHandle,
   ContentControlsSlice,
+  ContentControlClickPayload,
+  ContentControlRef,
   ContentControlFocusResult,
   ContentControlHighlightResult,
   MetadataHandle,
@@ -172,6 +174,22 @@ const _ccObserveReturn: AssertEqual<ReturnType<ContentControlsHandle['observe']>
 const stopActivePath = contentControls.observeActivePath(() => undefined);
 stopActivePath();
 void [_ccObserveActivePath, _ccObserveActivePathReturn, _ccObserveReturn];
+const _ccOnClick: AssertEqual<
+  Parameters<ContentControlsHandle['onClick']>,
+  [listener: (payload: ContentControlClickPayload) => void]
+> = true;
+const _ccOnClickReturn: AssertEqual<ReturnType<ContentControlsHandle['onClick']>, () => void> = true;
+const _ccClickTarget: AssertEqual<ContentControlClickPayload['target'], ContentControlRef> = true;
+const stopClicks = contentControls.onClick(({ target, source }) => {
+  target.id satisfies string;
+  target.controlType satisfies ContentControlRef['controlType'];
+  target.scope satisfies 'inline' | 'block';
+  source satisfies 'pointer';
+});
+stopClicks();
+// @ts-expect-error A click listener is required; the handle never raises clicks.
+void contentControls.onClick();
+void [_ccOnClick, _ccOnClickReturn, _ccClickTarget];
 // Reactive reads come from the snapshot; `doc` owns fresh live reads.
 const _ccItems: AssertEqual<ReturnType<ContentControlsHandle['getSnapshot']>['items'], readonly ContentControlInfo[]> =
   true;

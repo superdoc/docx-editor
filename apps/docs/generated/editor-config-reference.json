@@ -260,14 +260,6 @@
       "group": "other"
     },
     {
-      "name": "onContentControlClick",
-      "type": "(params: {\n  target: ContentControlRef;\n  source: \"pointer\";\n}) => void",
-      "typeName": "(params: ContentControlClickPayload) => void",
-      "required": false,
-      "description": "Callback when someone clicks inside a content control.",
-      "group": "other"
-    },
-    {
       "name": "onAwarenessUpdate",
       "type": "(params: {\n  states: AwarenessState[];\n  added: number[];\n  removed: number[];\n  superdoc: SuperDocClass;\n}) => void",
       "typeName": "(params: SuperDocAwarenessUpdatePayload) => void",

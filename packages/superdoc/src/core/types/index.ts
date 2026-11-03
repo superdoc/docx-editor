@@ -16,7 +16,7 @@ import type { DiagnosticsConfig } from './diagnostics.js';
 import type { Doc as YDoc } from 'yjs';
 import type { HocuspocusProviderWebsocket } from '@hocuspocus/provider';
 import type { Ref, ComputedRef } from 'vue';
-import type { ContentControlType, HyperlinkTarget } from '@superdoc/document-api';
+import type { HyperlinkTarget } from '@superdoc/document-api';
 
 import type {
   DocumentFontOption,
@@ -42,6 +42,8 @@ export type SuperDoc = SuperDocClass;
 // share the definition without importing the `SuperDoc` class type from here.
 import type { BrowserDocumentApi } from '../../public/browser-document-api.js';
 export type { BrowserDocumentApi } from '../../public/browser-document-api.js';
+
+import type { ContentControlClickPayload, ContentControlRef } from '../../public/content-control-ref.js';
 
 import type { CustomCommandContext, FontFamilyOption as ToolbarFontFamilyOption } from '../../public/ui/types.js';
 export type { CommentsType, ExportParams, ExportType } from '../../public/export-types.js';
@@ -3300,19 +3302,7 @@ export interface EditorTransactionEvent {
   sectionType?: string | null;
 }
 
-/** A content control reported by an Editor interaction callback. */
-export interface ContentControlRef {
-  /** Content-control id from the DOCX. */
-  id: string;
-  /** Content-control tag, when the DOCX defines one. */
-  tag?: string;
-  /** Display name from the DOCX, when defined. */
-  alias?: string;
-  /** Content-control type, such as `text`, `checkbox`, or `date`. */
-  controlType: ContentControlType;
-  /** Whether the control is inline or contains one or more blocks. */
-  scope: 'inline' | 'block';
-}
+export type { ContentControlRef } from '../../public/content-control-ref.js';
 
 /**
  * Previous content-control reference shape.
@@ -3341,13 +3331,7 @@ export interface ContentControlActiveChangePayload {
   source: 'keyboard' | 'pointer';
 }
 
-/** Details reported when someone clicks inside a content control. */
-export interface ContentControlClickPayload {
-  /** Innermost clicked content control. */
-  target: ContentControlRef;
-  /** Content-control clicks always originate from a pointer. */
-  source: 'pointer';
-}
+export type { ContentControlClickPayload } from '../../public/content-control-ref.js';
 
 export interface SuperDocLayoutEngineOptions {
   /**
@@ -4583,7 +4567,10 @@ export interface Config {
    * @deprecated replaceWith=`superdoc.ui.contentControls.observe` compat-indefinitely=v2 event compatibility
    */
   onContentControlActiveChange?: (params: ContentControlActiveChangePayload) => void;
-  /** Callback when someone clicks inside a content control. */
+  /**
+   * Callback when someone clicks inside a content control.
+   * @deprecated replaceWith=`superdoc.ui.contentControls.onClick` removeIn=v3.0
+   */
   onContentControlClick?: (params: ContentControlClickPayload) => void;
   /** Callback when awareness is updated. */
   onAwarenessUpdate?: (params: SuperDocAwarenessUpdatePayload) => void;

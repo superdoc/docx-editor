@@ -268,8 +268,6 @@ import type { SuperDocActiveEditorExtensions } from './extensions/index.js';
 import type { EditorRuntime, EditorRuntimeId, EditorRuntimeUser } from './editor-runtime/index.js';
 import type { EditorRuntimeRegistryUnsubscribe } from './editor-runtime/editor-runtime-registry.js';
 import type * as Y from 'yjs';
-// `Whiteboard` is already imported as a value above (line 19); reuse it
-// as a type here without a separate `import type` declaration.
 import type { WhiteboardData } from './whiteboard/Whiteboard.js';
 
 type ContentControlCatalogItem = {
@@ -615,6 +613,7 @@ interface SuperDocEventMap {
   'list-definitions-change': [ListDefinitionsPayload];
   'comments-update': [SuperDocCommentsUpdatePayload];
   'content-control:active-change': [ContentControlActiveChangePayload];
+  /** @deprecated replaceWith=`superdoc.ui.contentControls.onClick` removeIn=v3.0 */
   'content-control:click': [ContentControlClickPayload];
   'collaboration-ready': [SuperDocEditorPayload];
   'awareness-update': [SuperDocAwarenessUpdatePayload];
@@ -625,16 +624,13 @@ interface SuperDocEventMap {
   'whiteboard:change': [WhiteboardData];
   'whiteboard:enabled': [boolean];
   'whiteboard:tool': [string];
+  /** A union of payloads; narrow by `stage`, `code`, `itemName`, `source`, or `diagnosticCode` before reading on. */
   exception: [SuperDocExceptionPayload];
   'viewport-change': [SuperDocViewportChangePayload];
   'source:complete': [];
   'source:signals-complete': [];
 }
 // Notes on the event map above:
-//
-// `exception` is typed as `SuperDocExceptionPayload`, a union of
-// producer-specific payloads. Consumers narrow by `stage`, `code`,
-// `itemName`, `source`, or `diagnosticCode` before reading other fields.
 //
 // `fonts-resolved` uses a listener-transport pattern: SuperDoc never
 // emits it directly. `SuperDoc.vue:719` reads

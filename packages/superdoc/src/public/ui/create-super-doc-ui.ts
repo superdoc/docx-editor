@@ -46,6 +46,7 @@ import type {
   CommentsSlice,
   ContextMenuItem,
   ContentControlInfo,
+  ContentControlClickPayload,
   ContentControlFocusResult,
   ContentControlHighlightResult,
   ContentControlsHandle,
@@ -1859,6 +1860,12 @@ function documentChangeFromHostEvent(event: LooseRecord): DocumentChangeFacts | 
     txId: readTxId(receipt.txId),
     scope: documentChangeScope(receipt.affectedStories),
   };
+}
+
+function isContentControlClickPayload(value: unknown): value is ContentControlClickPayload {
+  if (!isPlainObject(value) || value.source !== 'pointer' || !isPlainObject(value.target)) return false;
+  const { id, controlType, scope } = value.target;
+  return typeof id === 'string' && typeof controlType === 'string' && (scope === 'inline' || scope === 'block');
 }
 
 function commandResultSucceeded(result: CommandExecutionResult): boolean {
@@ -12251,6 +12258,20 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     safeCall(() => (host?.clearContentControlHighlight as AnyFn | undefined)?.call(host), undefined);
   };
   documentResetHooks.push(clearContentControlHighlight);
+  const contentControlClickListeners = new Set<(payload: ContentControlClickPayload) => void>();
+  const attachContentControlClick = (): void => {
+    const on = hostMethod(superdoc, 'on');
+    if (!on) return;
+    const handler = (payload: unknown): void => {
+      if (!isContentControlClickPayload(payload)) return;
+      for (const listener of Array.from(contentControlClickListeners)) safeCall(() => listener(payload), undefined);
+    };
+    on('content-control:click', handler);
+    detachers.push(() => {
+      hostMethod(superdoc, 'off')?.('content-control:click', handler);
+    });
+  };
+  attachContentControlClick();
   const contentControls: ContentControlsHandle = {
     clearHighlight: clearContentControlHighlight,
     highlight: async (input): Promise<ContentControlHighlightResult> => {
@@ -12298,6 +12319,11 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     subscribe: contentControlsSnap.subscribe,
     observe: contentControlsSnap.observe,
     observeActivePath: contentControlsPassiveSnap.observe,
+    onClick: (listener) => {
+      if (disposed) return () => {};
+      contentControlClickListeners.add(listener);
+      return () => contentControlClickListeners.delete(listener);
+    },
     list: () => {
       ensureContentControlsCatalog('api');
       return contentControlsSub.get().items;
@@ -14532,6 +14558,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     painterCommandDoc = null;
     painterModeListeners.clear();
     documentChangeListeners.clear();
+    contentControlClickListeners.clear();
     // In-flight search work outlives this call the same way a painter capture
     // does; moving the token is what stops its continuation from publishing.
     searchRequestGeneration += 1;

@@ -293,6 +293,32 @@ describe('content-control:click', () => {
     });
   });
 
+  it('resolves clicks for a ui.contentControls.onClick listener with no instance listener', async () => {
+    const controls: ContentControl[] = [
+      { id: 'ui-only', kind: 'inline', controlType: 'text', properties: { alias: 'Ui only' } },
+    ];
+    const { selector, superdoc } = mountWithControls(() => controls);
+    const payloads: Array<{ target: { id: string } }> = [];
+    const activePath = vi.fn();
+    superdoc.ui.contentControls.onClick((payload) => payloads.push(payload));
+    superdoc.ui.contentControls.observeActivePath(activePath);
+    activePath.mockClear();
+
+    expect(superdoc.listenerCount('content-control:click')).toBe(1);
+
+    const control = appendControl(selector, controls[0], 'Ui only target');
+    control.click();
+    await vi.waitFor(() => {
+      expect(payloads).toHaveLength(1);
+    });
+    control.click();
+
+    await vi.waitFor(() => {
+      expect(payloads.map(({ target }) => target.id)).toEqual(['ui-only', 'ui-only']);
+    });
+    expect(activePath).not.toHaveBeenCalled();
+  });
+
   it('falls back to data-sdt-id when a block label click has no container id', async () => {
     const controls: ContentControl[] = [
       {

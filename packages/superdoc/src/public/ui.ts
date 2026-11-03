@@ -76,6 +76,8 @@ export type {
   BookmarkAddress,
   ContentControlFocusResult,
   ContentControlHighlightResult,
+  ContentControlClickPayload,
+  ContentControlRef,
   FontsHandle,
   ZoomHandle,
   HistoryHandle,

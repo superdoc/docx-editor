@@ -55,7 +55,8 @@ part of the document, and the click callback continues to work.
 
 ## Choose the next layer
 
-Use `onContentControlClick` for behavior tied to one click. Use
+Use `superdoc.ui.contentControls.onClick` for behavior tied to one click; it replaces `onContentControlClick`, which
+still works and is deprecated for removal in v3.0. Use
 [custom content-control UI](/editor/custom-ui/content-controls) for a persistent field list, navigation, or
 application-owned chrome.
 

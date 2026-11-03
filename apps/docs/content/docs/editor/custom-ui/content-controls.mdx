@@ -118,6 +118,26 @@ state refreshes when remote document changes are observed, so cached ranges also
 edits. Each client's `activeIds` follows its own selection; another client's caret does not become locally active.
 A rejected keystroke inside a content-locked inline field leaves shared text unchanged on both clients.
 
+## React to a field click
+
+`ui.contentControls.onClick` reports each click inside a content control. When controls are nested, `target` is the
+innermost one:
+
+```ts
+const stopClicks = ui.contentControls.onClick(({ target }) => {
+  // Select target.id in your panel.
+});
+// Call stopClicks() when the panel is removed.
+```
+
+Use it instead of the slices when the click itself is the event. Clicking the field the caret is already in leaves
+`activeIds` unchanged, so `observe` and `observeActivePath` report nothing; `onClick` reports every click. The payload
+is `{ target, source: 'pointer' }`, where `target` carries the control's `id`, `tag`, `alias`, `controlType`, and
+`scope`.
+
+This replaces the `content-control:click` instance event and the `onContentControlClick` configuration callback. Both
+still work and are deprecated for removal in v3.0.
+
 ## Highlight a field from your panel
 
 Use `highlight()` when a pointer enters a panel row, and `clearHighlight()` when it leaves:

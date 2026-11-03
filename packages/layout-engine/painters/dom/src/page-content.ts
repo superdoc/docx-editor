@@ -1340,7 +1340,12 @@ export function* planDetachedPageFragments(
   const existing = new Map(state?.fragments.map((fragment) => [fragment.key, fragment]));
   const boundaries = computeSdtBoundaries(page.items, ctx.sdtLabelsRendered);
   const borders = computeBetweenBorderFlags(page.items);
-  const result = [];
+  const result: {
+    item: ResolvedPaintItem;
+    context: FragmentRenderContext;
+    sdtBoundary?: SdtBoundaryOptions;
+    betweenInfo?: BetweenBorderInfo;
+  }[] = [];
   for (const [index, item] of page.items.entries()) {
     yield;
     if (item.kind !== 'fragment') continue;

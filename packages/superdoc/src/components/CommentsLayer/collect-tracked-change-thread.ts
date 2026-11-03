@@ -1,5 +1,7 @@
 import { trackedChangeThreadParentIdForComment } from './tracked-change-threading.js';
 
+type CommentId = string | number;
+
 /**
  * Collect every comment that should appear inside the tracked-change dialog
  * for `parentComment`. Walks two sources of membership:
@@ -19,10 +21,10 @@ import { trackedChangeThreadParentIdForComment } from './tracked-change-threadin
  */
 export const collectTrackedChangeThread = <
   Comment extends {
-    commentId: string;
-    parentCommentId?: string | null;
-    threadingParentCommentId?: string | null;
-    trackedChangeThreadParentId?: string | null;
+    commentId: CommentId;
+    parentCommentId?: CommentId | null;
+    threadingParentCommentId?: CommentId | null;
+    trackedChangeThreadParentId?: CommentId | null;
   },
 >(
   parentComment: Comment,
@@ -30,11 +32,11 @@ export const collectTrackedChangeThread = <
 ): Array<Comment> => {
   const trackedChangeId = parentComment.commentId;
   const threadIds = new Set([trackedChangeId]);
-  const queue: string[] = [];
+  const queue: CommentId[] = [];
 
   allComments.forEach((comment) => {
     if (comment.commentId === trackedChangeId) return;
-    const parentIds = [comment.parentCommentId, comment.threadingParentCommentId]
+    const parentIds: CommentId[] = [comment.parentCommentId, comment.threadingParentCommentId]
       .filter((id) => id != null)
       .map((id) => String(id));
     const isDirectChild = parentIds.includes(trackedChangeId);
@@ -50,7 +52,7 @@ export const collectTrackedChangeThread = <
   for (let i = 0; i < queue.length; i += 1) {
     const parentId = queue[i];
     allComments.forEach((comment) => {
-      const parentIds = [comment.parentCommentId, comment.threadingParentCommentId]
+      const parentIds: CommentId[] = [comment.parentCommentId, comment.threadingParentCommentId]
         .filter((id) => id != null)
         .map((id) => String(id));
       if (parentIds.includes(parentId) && !threadIds.has(comment.commentId)) {

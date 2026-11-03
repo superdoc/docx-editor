@@ -92,8 +92,8 @@ export const buildTrackedChangeThreadOwnerIndex = <Comment extends TrackedChange
 
 export const buildTrackedChangeThreadIndex = <Comment extends TrackedChangeThreadFields>(
   allComments: ReadonlyArray<Comment>,
-  previous: ReadonlyMap<CommentId, ReadonlyArray<Comment>> = new Map(),
-): Map<CommentId, ReadonlyArray<Comment>> => {
+  previous: ReadonlyMap<Comment['commentId'], ReadonlyArray<Comment>> = new Map(),
+): Map<Comment['commentId'], ReadonlyArray<Comment>> => {
   const childrenByParentId = new Map<string, Comment[]>();
   const anchoredCommentsByTrackedChangeId = new Map<string, Comment[]>();
   const commentsById = new Map<CommentId, Comment[]>();
@@ -111,7 +111,7 @@ export const buildTrackedChangeThreadIndex = <Comment extends TrackedChangeThrea
     }
   });
 
-  const next = new Map<CommentId, ReadonlyArray<Comment>>();
+  const next = new Map<Comment['commentId'], ReadonlyArray<Comment>>();
   for (const parentComment of allComments) {
     if (!parentComment?.trackedChange || parentComment.commentId == null) continue;
     const trackedChangeId = parentComment.commentId;

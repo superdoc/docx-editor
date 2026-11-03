@@ -29,7 +29,7 @@ function checkProbeTest(source: string) {
   }
 }
 
-const EXCLUDED_TEST_CEILING = 53;
+const EXCLUDED_TEST_CEILING = 52;
 
 interface TestTypeCheckConfig {
   extends: string;
@@ -80,8 +80,8 @@ describe('tsconfig.test.json', () => {
     expect(config.exclude).toEqual([...config.exclude].sort());
   });
 
-  it('caps the excluded tests, so a PR that adds an exception must raise this ceiling', () => {
-    expect(config.exclude.length).toBeLessThanOrEqual(EXCLUDED_TEST_CEILING);
+  it('pins the excluded test count, so a PR that removes an exception must lower this ceiling', () => {
+    expect(config.exclude.length).toBe(EXCLUDED_TEST_CEILING);
   });
 
   it('checks every test file that is not excluded', () => {

@@ -2,11 +2,14 @@ import { describe, expect, it } from 'vite-plus/test';
 import { collectTrackedChangeThread } from '../../components/CommentsLayer/collect-tracked-change-thread.js';
 import { buildTrackedChangeDecisionLinkIndex, buildTrackedChangeThreadIndex } from './tracked-change-thread-index.js';
 
-const sortedLegacyThread = (parent, comments) =>
+type LegacyThreadComment = Parameters<typeof collectTrackedChangeThread>[0] & { createdTime?: number };
+type ThreadIndexComment = Parameters<typeof buildTrackedChangeThreadIndex>[0][number];
+
+const sortedLegacyThread = <Comment extends LegacyThreadComment>(parent: Comment, comments: ReadonlyArray<Comment>) =>
   collectTrackedChangeThread(parent, comments).sort((left, right) => {
     if (left === parent) return -1;
     if (right === parent) return 1;
-    return left.createdTime - right.createdTime;
+    return left.createdTime! - right.createdTime!;
   });
 
 describe('buildTrackedChangeThreadIndex', () => {
@@ -80,7 +83,7 @@ describe('buildTrackedChangeThreadIndex', () => {
   it('replaces per-card full-list scans with one bounded graph pass', () => {
     let legacyReads = 0;
     let indexedReads = 0;
-    const makeRows = (recordRead) =>
+    const makeRows = (recordRead: () => void) =>
       Array.from(
         { length: 561 },
         (_, index) =>
@@ -224,7 +227,7 @@ describe('buildTrackedChangeDecisionLinkIndex', () => {
       trackedChangeSide: 'inserted',
       createdTime: 2,
     };
-    const comments = [tracked, spatial];
+    const comments: ThreadIndexComment[] = [tracked, spatial];
 
     expect(buildTrackedChangeThreadIndex(comments).get('tc-1')).toEqual([tracked]);
     expect(buildTrackedChangeDecisionLinkIndex(comments).get('tc-1')).toEqual([spatial]);

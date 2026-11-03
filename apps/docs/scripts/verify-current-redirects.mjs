@@ -11,6 +11,11 @@ const defaultRedirectsPath = resolve(scriptDirectory, '../out/_redirects');
 const v1SectionMarker = '# V1 route dispositions';
 const defaultConcurrency = 12;
 const defaultRequestTimeoutMs = 25_000;
+const maxAttempts = 3;
+const defaultRetryDelayMs = 2_000;
+
+const isTransientStatus = (status) => status >= 500;
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export function parseCurrentRedirectRules(contents) {
   const rules = [];
@@ -57,19 +62,32 @@ async function cancelBody(response) {
   }
 }
 
-async function probeRedirect(rule, { origin, fetchImpl, requestTimeoutMs }) {
-  const requested = new URL(rule.source, origin);
-  const expected = new URL(rule.destination, origin);
-  let response;
-
-  try {
-    response = await fetchImpl(requested, {
-      redirect: 'manual',
-      signal: AbortSignal.timeout(requestTimeoutMs),
-    });
-  } catch (error) {
-    return { ...rule, failure: `request failed: ${error.message}` };
+async function fetchWithRetry(url, redirect, { fetchImpl, requestTimeoutMs, retryDelayMs }) {
+  for (let attempt = 1; ; attempt++) {
+    const isLastAttempt = attempt === maxAttempts;
+    let response;
+    try {
+      response = await fetchImpl(url, { redirect, signal: AbortSignal.timeout(requestTimeoutMs) });
+    } catch (error) {
+      if (isLastAttempt) return { error };
+      await wait(retryDelayMs);
+      continue;
+    }
+    if (isLastAttempt || !isTransientStatus(response.status)) return { response };
+    await cancelBody(response);
+    await wait(retryDelayMs);
   }
+}
+
+async function probeRedirect(rule, options) {
+  const requested = new URL(rule.source, options.origin);
+  const expected = new URL(rule.destination, options.origin);
+
+  const manual = await fetchWithRetry(requested, 'manual', options);
+  if (manual.error) {
+    return { ...rule, failure: `request failed: ${manual.error.message}` };
+  }
+  let response = manual.response;
 
   const location = response.headers.get('location');
   const receivedStatus = response.status;
@@ -87,14 +105,11 @@ async function probeRedirect(rule, { origin, fetchImpl, requestTimeoutMs }) {
     return { ...rule, failure: `got Location ${receivedDestination.href}` };
   }
 
-  try {
-    response = await fetchImpl(requested, {
-      redirect: 'follow',
-      signal: AbortSignal.timeout(requestTimeoutMs),
-    });
-  } catch (error) {
-    return { ...rule, failure: `redirect failed: ${error.message}` };
+  const followed = await fetchWithRetry(requested, 'follow', options);
+  if (followed.error) {
+    return { ...rule, failure: `redirect failed: ${followed.error.message}` };
   }
+  response = followed.response;
 
   const finalStatus = response.status;
   const finalUrl = response.url;
@@ -117,6 +132,7 @@ export async function probeCurrentRedirects(
     fetchImpl = fetch,
     concurrency = defaultConcurrency,
     requestTimeoutMs = defaultRequestTimeoutMs,
+    retryDelayMs = defaultRetryDelayMs,
   },
 ) {
   const normalizedOrigin = new URL(origin).origin;
@@ -126,7 +142,9 @@ export async function probeCurrentRedirects(
     const batch = rules.slice(index, index + concurrency);
     results.push(
       ...(await Promise.all(
-        batch.map((rule) => probeRedirect(rule, { origin: normalizedOrigin, fetchImpl, requestTimeoutMs })),
+        batch.map((rule) =>
+          probeRedirect(rule, { origin: normalizedOrigin, fetchImpl, requestTimeoutMs, retryDelayMs }),
+        ),
       )),
     );
   }

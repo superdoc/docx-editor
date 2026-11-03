@@ -20,16 +20,17 @@ import { INTENDED_MERGES, collapsedRoutes, probe } from '../scripts/verify-route
 
 const readConfig = async (name) => JSON.parse(await readFile(new URL(`../config/${name}`, import.meta.url), 'utf8'));
 
-test('route probe recovers from a transport timeout and closes the successful response', async () => {
+test('route probe recovers from two transport timeouts and closes the successful response', async () => {
   let requests = 0;
   let bodyCanceled = false;
   const result = await probe(
     { source: '/document-api/reference/footnotes/get', kind: 'v2', destination: '/document-api/reference/footnotes/get/' },
     {
       probeOrigin: 'https://docs.example.test',
+      retryDelayMs: 0,
       fetchImpl: async () => {
         requests++;
-        if (requests === 1) throw new Error('The operation was aborted due to timeout');
+        if (requests < 3) throw new Error('The operation was aborted due to timeout');
         return {
           status: 200,
           url: 'https://docs.example.test/document-api/reference/footnotes/get/',
@@ -39,9 +40,85 @@ test('route probe recovers from a transport timeout and closes the successful re
     },
   );
 
-  assert.equal(requests, 2);
+  assert.equal(requests, 3);
   assert.equal(bodyCanceled, true);
   assert.equal(result.failure, undefined);
+});
+
+test('route probe reports a transport timeout that persists across every attempt', async () => {
+  let requests = 0;
+  const result = await probe(
+    { source: '/document-api/reference/footnotes/get', kind: 'v2', destination: '/document-api/reference/footnotes/get/' },
+    {
+      probeOrigin: 'https://docs.example.test',
+      retryDelayMs: 0,
+      fetchImpl: async () => {
+        requests++;
+        throw new Error('The operation was aborted due to timeout');
+      },
+    },
+  );
+
+  assert.equal(requests, 3);
+  assert.match(result.failure, /^request failed: /u);
+});
+
+test('route probe retries a server error and passes when the page then loads', async () => {
+  let requests = 0;
+  const result = await probe(
+    { source: '/document-api/reference/lists/join', kind: 'v2', destination: '/document-api/reference/lists/join/' },
+    {
+      probeOrigin: 'https://docs.example.test',
+      retryDelayMs: 0,
+      fetchImpl: async () => {
+        requests++;
+        return {
+          status: requests === 1 ? 500 : 200,
+          url: 'https://docs.example.test/document-api/reference/lists/join/',
+          body: null,
+        };
+      },
+    },
+  );
+
+  assert.equal(requests, 2);
+  assert.equal(result.failure, undefined);
+});
+
+test('route probe reports a server error that persists across every attempt', async () => {
+  let requests = 0;
+  const result = await probe(
+    { source: '/document-api/reference/lists/join', kind: 'v2', destination: '/document-api/reference/lists/join/' },
+    {
+      probeOrigin: 'https://docs.example.test',
+      retryDelayMs: 0,
+      fetchImpl: async () => {
+        requests++;
+        return { status: 500, url: 'https://docs.example.test/document-api/reference/lists/join/', body: null };
+      },
+    },
+  );
+
+  assert.equal(requests, 3);
+  assert.equal(result.failure, 'final status 500');
+});
+
+test('route probe reports a missing page without retrying it', async () => {
+  let requests = 0;
+  const result = await probe(
+    { source: '/document-api/reference/lists/join', kind: 'v2', destination: '/document-api/reference/lists/join/' },
+    {
+      probeOrigin: 'https://docs.example.test',
+      retryDelayMs: 0,
+      fetchImpl: async () => {
+        requests++;
+        return { status: 404, url: 'https://docs.example.test/document-api/reference/lists/join/', body: null };
+      },
+    },
+  );
+
+  assert.equal(requests, 1);
+  assert.equal(result.failure, 'final status 404');
 });
 
 test('route probe reports a wrong destination without retrying it', async () => {

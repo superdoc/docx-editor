@@ -95,3 +95,44 @@ test('reports ignored rules, wrong destinations, and broken landing pages', asyn
   assert.match(results[1].failure, /got Location .*\/somewhere-else\//u);
   assert.match(results[2].failure, /destination returned 404/u);
 });
+
+test('retries a server error on the redirect and its landing page, then passes', async (t) => {
+  const seen = new Map();
+  const origin = await serve(t, (request, response) => {
+    const count = (seen.get(request.url) ?? 0) + 1;
+    seen.set(request.url, count);
+    if (count === 1) {
+      response.writeHead(500).end('busy');
+      return;
+    }
+    if (request.url === '/old') {
+      response.writeHead(301, { location: '/new/' }).end();
+      return;
+    }
+    response.writeHead(request.url === '/new/' ? 200 : 404).end();
+  });
+
+  const results = await probeCurrentRedirects([{ source: '/old', destination: '/new/', status: 301 }], {
+    origin,
+    retryDelayMs: 0,
+  });
+
+  assert.deepEqual(results, [{ source: '/old', destination: '/new/', status: 301 }]);
+  assert.equal(seen.get('/new/'), 2);
+});
+
+test('reports a redirect whose server error persists across every attempt', async (t) => {
+  let requests = 0;
+  const origin = await serve(t, (_request, response) => {
+    requests++;
+    response.writeHead(500).end('down');
+  });
+
+  const results = await probeCurrentRedirects([{ source: '/old', destination: '/new/', status: 301 }], {
+    origin,
+    retryDelayMs: 0,
+  });
+
+  assert.equal(results[0].failure, 'got status 500');
+  assert.equal(requests, 3);
+});

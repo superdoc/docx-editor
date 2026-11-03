@@ -29,6 +29,19 @@ const origin = new URL(process.argv[2] ?? 'https://superdoc-docs-next.pages.dev'
 // here means the routing is wrong rather than the probe too eager.
 const concurrency = 12;
 const requestTimeoutMs = 25_000;
+const maxAttempts = 3;
+const defaultRetryDelayMs = 2_000;
+
+const isTransientStatus = (status) => status >= 500;
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function cancelBody(response) {
+  try {
+    await response.body?.cancel();
+  } catch {
+    // The body is irrelevant to the route contract and may already be closed.
+  }
+}
 
 /** Drops a trailing slash, except from the root path where it is the whole path. */
 function stripTrailingSlash(value) {
@@ -40,28 +53,32 @@ function samePath(left, right) {
   return stripTrailingSlash(left) === stripTrailingSlash(right);
 }
 
-export async function probe({ source, kind, destination }, { probeOrigin = origin, fetchImpl = fetch } = {}) {
+export async function probe(
+  { source, kind, destination },
+  { probeOrigin = origin, fetchImpl = fetch, retryDelayMs = defaultRetryDelayMs } = {},
+) {
   const requested = `${probeOrigin}${source}`;
   let response;
-  for (let attempt = 0; attempt < 2; attempt++) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const isLastAttempt = attempt === maxAttempts;
     try {
       response = await fetchImpl(requested, {
         redirect: 'follow',
         signal: AbortSignal.timeout(requestTimeoutMs),
       });
-      break;
     } catch (error) {
-      if (attempt === 1) return { source, kind, failure: `request failed: ${error.message}` };
+      if (isLastAttempt) return { source, kind, failure: `request failed: ${error.message}` };
+      await wait(retryDelayMs);
+      continue;
     }
+    if (isLastAttempt || !isTransientStatus(response.status)) break;
+    await cancelBody(response);
+    await wait(retryDelayMs);
   }
 
   const final = new URL(response.url);
   const status = response.status;
-  try {
-    await response.body?.cancel();
-  } catch {
-    // The body is irrelevant to the route contract and may already be closed.
-  }
+  await cancelBody(response);
   const landed = `${final.origin}${final.pathname}`;
 
   // A retired route is meant to 404 here rather than resolve anywhere. Checking

@@ -225,6 +225,7 @@ import {
   type SelectionTrackDecisionPlan,
 } from './tracked-change-ids.js';
 import { emitUiBenchTiming, readUiBenchRuntime, uiBenchNowMs } from './ui-bench-timing.js';
+import { createAsyncReadCache, type AsyncReadEntry } from './async-read-cache.js';
 import { COMMENTS_CATALOG_PART_URIS, combineStatus, isHeavyDocReadKey } from './heavy-read-policy.js';
 import {
   EMPTY_SELECTION,
@@ -866,34 +867,12 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
   // forward declaration; it is only read at command-execution time.
   let controllerRef: SuperDocUI | null = null;
 
-  // -- async read coordinator ------------------------------------------------
-  // The browser Document API facade settles reads asynchronously by contract
-  // (`forceAsync`). The reactive store therefore NEVER reads a promise-capable
-  // doc method during snapshot computation. Instead every doc read flows
-  // through this coordinator, which:
-  //   - serves the last settled value from a per-key cache keyed by an
-  //     invalidation token (active-editor identity + document-mutation revision,
-  //     plus a per-read suffix for selection- and block-scoped reads);
-  //   - issues at most one in-flight read per (key, token), coalescing repeated
-  //     requests within and across recomputes;
-  //   - guards against stale resolutions: a settle is accepted only while its
-  //     token is still the one in flight for that key, so an older read can
-  //     never overwrite newer state;
-  //   - schedules a single coalesced recompute when new values land, so
-  //     `computeState()` always re-runs against settled cache only.
-  // Synchronous (inline-mode) reads settle on the same tick and are served fresh
-  // immediately, so inline behavior is preserved.
-  type AsyncReadEntry = {
-    token: string | null;
-    value: unknown;
-    hasSettled: boolean;
-    inflightToken: string | null;
-    failedToken?: string | null;
-    failureCount?: number;
-    retryAtMs?: number;
-    settled?: Promise<void>;
-  };
-  const asyncReads = new Map<string, AsyncReadEntry>();
+  const asyncReadCache = createAsyncReadCache({
+    isDisposed: () => disposed,
+    recomputeAfterSettle: () => recompute('async-read-settled'),
+    recomputeWhenRetryDue: () => recompute(),
+  });
+  const asyncReads = asyncReadCache.entries;
   const coldAsyncReadDeferrals = new Set<string>();
   let lastEffectiveInlineReadKey: string | null = null;
   let pendingEffectiveInlineRead: {
@@ -901,46 +880,12 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     ready: boolean;
     timer: ReturnType<typeof setTimeout> | null;
   } | null = null;
-  let asyncRefreshScheduled = false;
-  let asyncReadFailureRetryTimer: ReturnType<typeof setTimeout> | null = null;
-  let asyncReadFailureRetryAtMs = 0;
   let foregroundAsyncRetryTimer: ReturnType<typeof setTimeout> | null = null;
   let pendingSelectionSeedValidationToken: string | null = null;
   let typedCaretValidationHeld = false;
   let typingContentInvalidationTimer: ReturnType<typeof setTimeout> | null = null;
-  const pendingAsyncReadSettlements: Array<{
-    key: string;
-    settledAtMs: number;
-    commandId: string | null;
-    commandKind: string | null;
-  }> = [];
-  const scheduleAsyncRefresh = (): void => {
-    if (asyncRefreshScheduled || disposed) return;
-    asyncRefreshScheduled = true;
-    const run = (): void => {
-      asyncRefreshScheduled = false;
-      if (!disposed) recompute('async-read-settled');
-    };
-    if (typeof queueMicrotask === 'function') queueMicrotask(run);
-    else void Promise.resolve().then(run);
-  };
-
-  const ASYNC_READ_FAILURE_RETRY_BASE_MS = 250;
-  const ASYNC_READ_FAILURE_RETRY_MAX_MS = 5_000;
-  const scheduleAsyncReadFailureRetry = (retryAtMs: number): void => {
-    if (disposed) return;
-    if (asyncReadFailureRetryTimer && asyncReadFailureRetryAtMs <= retryAtMs) return;
-    if (asyncReadFailureRetryTimer) clearTimeout(asyncReadFailureRetryTimer);
-    asyncReadFailureRetryAtMs = retryAtMs;
-    asyncReadFailureRetryTimer = setTimeout(
-      () => {
-        asyncReadFailureRetryTimer = null;
-        asyncReadFailureRetryAtMs = 0;
-        if (!disposed) recompute();
-      },
-      Math.max(0, retryAtMs - Date.now()),
-    );
-  };
+  const scheduleAsyncRefresh = asyncReadCache.scheduleRefresh;
+  const scheduleAsyncReadFailureRetry = asyncReadCache.scheduleFailureRetry;
 
   // Invalidation tokens.
   const editorIdentityIds = new WeakMap<object, number>();
@@ -1520,7 +1465,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
         scheduleForegroundAsyncRetry();
         return;
       }
-      if (typedCaretValidationHeld && Date.now() - lastTypingMutationAtMs < HEAVY_READ_IDLE_MS) {
+      if (typedCaretValidationHeld && typingIsRecent()) {
         const token = selectionReadToken();
         if (asyncReads.get('selection')?.token !== token) {
           refreshSelectionFromHost(undefined, true);
@@ -1720,196 +1665,69 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     }, 500);
   };
 
-  const issueAsyncRead = (
-    key: string,
-    token: string,
-    run: () => unknown,
-    normalize: (raw: unknown) => unknown,
-  ): AsyncReadEntry | null => {
-    let raw: unknown;
-    try {
-      raw = run();
-    } catch {
-      raw = undefined;
+  const issueAsyncRead = asyncReadCache.issue;
+
+  const holdsTypedCaretSelection = (key: string): boolean =>
+    key === 'selection' && typedCaretValidationHeld && typingIsRecent();
+
+  const holdsHeavyRead = (key: string, token: string): boolean => {
+    if (!isHeavyDocReadKey(key) || heavyReadDemandActive(key, token)) return false;
+    if (hostSourceLoadPhase() === 'loading') {
+      heavyReadsHeldUntilIdle = true;
+      armSourceLoadCompletionRecompute();
+      return true;
     }
-    if (!isPromiseLike(raw)) {
-      const settled: AsyncReadEntry = {
-        token,
-        value: normalize(raw),
-        hasSettled: true,
-        inflightToken: null,
-        failedToken: null,
-        failureCount: 0,
-        retryAtMs: 0,
-      };
-      asyncReads.set(key, settled);
-      return settled;
+    if (heavyReadsHeldUntilIdle || typingIsRecent()) {
+      heavyReadsHeldUntilIdle = true;
+      scheduleHeavyReadCompletionRecompute();
+      return true;
     }
-    const prev = asyncReads.get(key);
-    const retryingSameToken = prev?.failedToken === token;
-    asyncReads.set(key, {
-      token: prev?.token ?? null,
-      value: prev?.value ?? null,
-      hasSettled: prev?.hasSettled ?? false,
-      inflightToken: token,
-      failedToken: retryingSameToken ? token : null,
-      failureCount: retryingSameToken ? (prev.failureCount ?? 0) : 0,
-      retryAtMs: 0,
-    });
-    const settled = Promise.resolve(raw).then(
-      (resolved) => {
-        const entry = asyncReads.get(key);
-        if (!entry || entry.inflightToken !== token) return; // superseded by a newer read
-        asyncReads.set(key, {
-          token,
-          value: normalize(resolved),
-          hasSettled: true,
-          inflightToken: null,
-          failedToken: null,
-          failureCount: 0,
-          retryAtMs: 0,
-        });
-        const { sink, workerContext } = readUiBenchRuntime();
-        if (sink) {
-          const settledAtMs = uiBenchNowMs();
-          pendingAsyncReadSettlements.push({
-            key,
-            settledAtMs,
-            commandId: workerContext?.commandId ?? null,
-            commandKind: workerContext?.commandKind ?? null,
-          });
-          emitUiBenchTiming({
-            stage: 'superdoc-ui-async-read-settled',
-            atMs: settledAtMs,
-            key,
-            settledAtMs,
-            commandId: workerContext?.commandId ?? null,
-            commandKind: workerContext?.commandKind ?? null,
-          });
-        }
-        scheduleAsyncRefresh();
-      },
-      () => {
-        const entry = asyncReads.get(key);
-        if (!entry || entry.inflightToken !== token) return;
-        const failureCount = entry.failedToken === token ? (entry.failureCount ?? 0) + 1 : 1;
-        const retryDelayMs = Math.min(
-          ASYNC_READ_FAILURE_RETRY_MAX_MS,
-          ASYNC_READ_FAILURE_RETRY_BASE_MS * 2 ** Math.min(failureCount - 1, 8),
-        );
-        const retryAtMs = Date.now() + retryDelayMs;
-        asyncReads.set(key, {
-          ...entry,
-          settled: undefined,
-          inflightToken: null,
-          failedToken: token,
-          failureCount,
-          retryAtMs,
-        });
-        scheduleAsyncReadFailureRetry(retryAtMs);
-      },
-    );
-    const entry = asyncReads.get(key);
-    if (entry?.inflightToken === token) entry.settled = settled;
-    return null;
+    return false;
   };
 
-  /**
-   * Read a doc value through the settled cache. Returns the best-known value
-   * plus a {@link SliceStatus}: `ready` (settled for this token), `stale`
-   * (older settled value while a refresh runs), or `pending` (nothing settled
-   * yet). Never returns or surfaces a promise.
-   */
+  const waitingForFailureRetry = (
+    entry: AsyncReadEntry | undefined,
+    token: string,
+  ): entry is AsyncReadEntry & { retryAtMs: number } =>
+    entry?.failedToken === token && entry.inflightToken == null && (entry.retryAtMs ?? 0) > Date.now();
+
   const readAsync = <T>(
     key: string,
     token: string,
     run: () => unknown,
     normalize: (raw: unknown) => T | null,
   ): { value: T | null; status: SliceStatus } => {
+    const serve = (
+      entry: AsyncReadEntry | null | undefined,
+      status: SliceStatus,
+    ): { value: T | null; status: SliceStatus } =>
+      entry?.hasSettled ? { value: entry.value as T | null, status } : { value: null, status: 'pending' };
     const entry = asyncReads.get(key);
-    if (entry && entry.token === token && entry.hasSettled) {
-      return { value: entry.value as T | null, status: 'ready' };
-    }
-    if (key === 'selection' && typedCaretValidationHeld && Date.now() - lastTypingMutationAtMs < HEAVY_READ_IDLE_MS) {
+    if (entry && entry.token === token && entry.hasSettled) return serve(entry, 'ready');
+    if (holdsTypedCaretSelection(key)) {
       scheduleForegroundAsyncRetry(HEAVY_READ_IDLE_POLL_MS);
-      return { value: entry?.hasSettled ? (entry.value as T) : null, status: entry?.hasSettled ? 'stale' : 'pending' };
+      return serve(entry, 'stale');
     }
-    // Heavy-read gate: while the source is actively loading, passive recompute
-    // neither cold-starts nor refreshes catalog-scale reads. Settled values
-    // (from any token) serve as `stale`; nothing settled serves `pending`.
-    // Explicit demand for the current content revision bypasses the gate (and
-    // then flows through the normal foreground-mutation deferral below).
-    // The hold PERSISTS past source-complete until the input-idle release:
-    // without it, the first typing-driven recompute after completion would
-    // stampede every deferred catalog read into the keystroke path (the
-    // migrated-cliff failure mode the W0 red run pinned).
-    if (isHeavyDocReadKey(key) && !heavyReadDemandActive(key, token)) {
-      if (hostSourceLoadPhase() === 'loading') {
-        heavyReadsHeldUntilIdle = true;
-        armSourceLoadCompletionRecompute();
-        if (entry?.hasSettled) return { value: entry.value as T | null, status: 'stale' };
-        return { value: null, status: 'pending' };
-      }
-      if (heavyReadsHeldUntilIdle) {
-        // Loading finished but the idle release has not fired yet (or the
-        // loading subscription was unavailable): keep serving stale/pending
-        // and make sure the release is scheduled.
-        scheduleHeavyReadCompletionRecompute();
-        if (entry?.hasSettled) return { value: entry.value as T | null, status: 'stale' };
-        return { value: null, status: 'pending' };
-      }
-      // Steady-phase typing hold: catalog-scale reads re-fetch per content
-      // revision, so a sustained typing burst otherwise re-issues them into
-      // every inter-key gap the moment the host's foreground window lapses
-      // (measured on North: comments.list occupied the worker for 7.8s and
-      // starved the mutation lane). Release only after real input idle.
-      const nowMs = Date.now();
-      if (nowMs - lastTypingMutationAtMs < HEAVY_READ_IDLE_MS) {
-        heavyReadsHeldUntilIdle = true;
-        scheduleHeavyReadCompletionRecompute();
-        if (entry?.hasSettled) return { value: entry.value as T | null, status: 'stale' };
-        return { value: null, status: 'pending' };
-      }
-    }
+    if (holdsHeavyRead(key, token)) return serve(entry, 'stale');
     if (foregroundMutationActive()) {
       scheduleForegroundAsyncRetry();
-      if (entry?.hasSettled) return { value: entry.value as T | null, status: 'stale' };
-      return { value: null, status: 'pending' };
+      return serve(entry, 'stale');
     }
-    if (entry?.failedToken === token && entry.inflightToken == null && (entry.retryAtMs ?? 0) > Date.now()) {
-      scheduleAsyncReadFailureRetry(entry.retryAtMs!);
-      if (entry.hasSettled) return { value: entry.value as T | null, status: 'stale' };
-      return { value: null, status: 'pending' };
+    if (waitingForFailureRetry(entry, token)) {
+      scheduleAsyncReadFailureRetry(entry.retryAtMs);
+      return serve(entry, 'stale');
     }
-    if (!entry && key.startsWith('effInline:') && shouldDeferEffectiveInlineRead(key)) {
-      return { value: null, status: 'pending' };
-    }
-    if (!entry && shouldDeferColdAsyncRead(key, token)) {
-      return { value: null, status: 'pending' };
-    }
+    if (!entry && key.startsWith('effInline:') && shouldDeferEffectiveInlineRead(key)) return serve(entry, 'pending');
+    if (!entry && shouldDeferColdAsyncRead(key, token)) return serve(entry, 'pending');
     if (!entry || entry.inflightToken !== token) {
-      const completed = issueAsyncRead(key, token, run, normalize as (raw: unknown) => unknown);
-      if (completed) return { value: completed.value as T | null, status: 'ready' };
+      const completed = issueAsyncRead(key, token, run, normalize);
+      if (completed) return serve(completed, 'ready');
     }
-    const current = asyncReads.get(key);
-    if (current?.hasSettled) return { value: current.value as T | null, status: 'stale' };
-    return { value: null, status: 'pending' };
+    return serve(asyncReads.get(key), 'stale');
   };
 
-  const clearAsyncReadKeys = (predicate: (key: string) => boolean): void => {
-    for (const key of asyncReads.keys()) {
-      if (predicate(key)) asyncReads.delete(key);
-    }
-  };
-
-  const seedAsyncRead = (
-    key: string,
-    token: string | null,
-    value: unknown,
-    inflightToken: string | null = null,
-  ): void => {
-    asyncReads.set(key, { token, value, hasSettled: true, inflightToken });
-  };
+  const clearAsyncReadKeys = asyncReadCache.clearKeys;
+  const seedAsyncRead = asyncReadCache.seed;
 
   const selectionValidationSnapshot = (): { held: boolean; pendingToken: string | null } => ({
     held: typedCaretValidationHeld,
@@ -1954,9 +1772,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     resetPostPaintSelectionRefresh();
     lastCoordinatorEditor = editor;
     asyncReads.clear();
-    if (asyncReadFailureRetryTimer) clearTimeout(asyncReadFailureRetryTimer);
-    asyncReadFailureRetryTimer = null;
-    asyncReadFailureRetryAtMs = 0;
+    asyncReadCache.cancelFailureRetry();
     if (pendingEffectiveInlineRead?.timer) clearTimeout(pendingEffectiveInlineRead.timer);
     pendingEffectiveInlineRead = null;
     lastEffectiveInlineReadKey = null;
@@ -5314,7 +5130,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
         completedAtMs,
         durationMs: completedAtMs - startedAtMs,
         phaseMs,
-        asyncReadSettlements: pendingAsyncReadSettlements.splice(0),
+        asyncReadSettlements: asyncReadCache.drainSettlements(),
       });
     }
     return nextState;
@@ -12525,11 +12341,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       clearTimeout(foregroundAsyncRetryTimer);
       foregroundAsyncRetryTimer = null;
     }
-    if (asyncReadFailureRetryTimer) {
-      clearTimeout(asyncReadFailureRetryTimer);
-      asyncReadFailureRetryTimer = null;
-      asyncReadFailureRetryAtMs = 0;
-    }
+    asyncReadCache.cancelFailureRetry();
     if (pendingEffectiveInlineRead?.timer) {
       clearTimeout(pendingEffectiveInlineRead.timer);
       pendingEffectiveInlineRead.timer = null;

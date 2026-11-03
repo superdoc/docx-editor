@@ -1,7 +1,7 @@
 {
   "name": "@superdoc/vue",
   "version": "2.1.2-next.3",
-  "description": "Vue 3 wrapper for the SuperDoc browser editor",
+  "description": "Vue 3 wrapper for the SuperDoc browser DOCX editor.",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",

@@ -10,12 +10,14 @@
 </div>
 
 <p align="center">
-  <strong>SuperDoc</strong> is the open source DOCX editor and agent SDK for reviewing, filling, and editing DOCX files.
+  <strong>SuperDoc</strong> is the open source DOCX Editor and Agent SDK for reviewing, filling, and editing documents. Word-quality DOCX editing, built for your product.
 </p>
 
-- **Word compatible.** Tracked changes, threaded comments, tables, headers, and footers stay DOCX structures, and pages lay out as in Word. Edits write back to OOXML without an HTML conversion step.
+Tracked changes, threaded comments, tables, headers, and footers stay DOCX structures, and pages lay out as in Word. Edits write back to OOXML without an HTML conversion step.
+
+- **Open Source.** AGPLv3, with a commercial license for proprietary deployments.
 - **Self-hosted.** Runs in the browser, on your servers, or inside your agent workflows (Node.js, Python, Rust, CLI, MCP). It does not require document content to be sent to SuperDoc.
-- **Customizable.** Use the built-in UI or build your own on the same Document API.
+- **Custom UI.** Use the built-in UI or build your own on the same Document API.
 
 <p align="center">
   <a target="_blank" href="https://www.superdoc.dev">Live demo</a> · <a target="_blank" href="https://docs.superdoc.dev">Documentation</a> · <a href="#quick-start-docx-editor">Editor quick start</a> · <a href="#quick-start-docx-agent">Agent quick start</a> · <a target="_blank" href="https://github.com/superdoc/docx-editor/issues/new?template=bug-report.yml">Report a bug</a>

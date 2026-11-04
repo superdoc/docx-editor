@@ -3,7 +3,7 @@ import type { CoupledFootnotePaginationOptions } from './coupled-footnote-pagina
 import type { FootnoteRange } from './footnote-content';
 
 export type FootnoteCertificatePreparedOptions = Readonly<Omit<CoupledFootnotePaginationOptions, 'start'>>;
-type PendingEntry = Readonly<{ id: string; ranges: readonly Readonly<FootnoteRange>[] }>;
+type PendingEntry = Readonly<{ id: string; ranges: readonly Readonly<FootnoteRange>[]; started?: boolean }>;
 export type FootnotePendingQueue = ReadonlyMap<number, readonly PendingEntry[]>;
 
 declare const ownerBrand: unique symbol;
@@ -69,6 +69,7 @@ const immutableQueueCopy = (source: FootnotePendingQueue): FootnotePendingQueue 
           Object.freeze({
             id: entry.id,
             ranges: Object.freeze(entry.ranges.map((range) => Object.freeze({ ...range }))),
+            ...(entry.started === false ? { started: false } : {}),
           }),
         ),
       ),
@@ -210,7 +211,12 @@ export const pendingFootnoteQueuesEqual = (left: FootnotePendingQueue, right: Fo
     for (let entryIndex = 0; entryIndex < entries.length; entryIndex += 1) {
       const entry = entries[entryIndex];
       const otherEntry = otherEntries[entryIndex];
-      if (entry.id !== otherEntry.id || entry.ranges.length !== otherEntry.ranges.length) return false;
+      if (
+        entry.id !== otherEntry.id ||
+        entry.started !== otherEntry.started ||
+        entry.ranges.length !== otherEntry.ranges.length
+      )
+        return false;
       for (let rangeIndex = 0; rangeIndex < entry.ranges.length; rangeIndex += 1) {
         if (!rangesEqual(entry.ranges[rangeIndex], otherEntry.ranges[rangeIndex])) return false;
       }

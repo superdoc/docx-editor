@@ -127,6 +127,40 @@ function createMockTableMeasure(
 }
 
 describe('layoutTableBlock', () => {
+  it('keeps partial-row continuations above the footnote bottom', () => {
+    const block = createMockTableBlock(1);
+    const measure = createMockTableMeasure([100], [300], [Array(10).fill(30)]);
+    const pages: Array<{ fragments: TableFragment[] }> = [{ fragments: [] }];
+    let pageIndex = 0;
+    let state = {
+      page: pages[0],
+      columnIndex: 0,
+      cursorY: 0,
+      contentBottom: 150,
+      pageFootnoteReserve: 50,
+      topMargin: 0,
+    };
+
+    layoutTableBlock({
+      block,
+      measure,
+      columnWidth: 100,
+      ensurePage: () => state,
+      advanceColumn: () => {
+        pageIndex += 1;
+        pages.push({ fragments: [] });
+        state = { ...state, page: pages[pageIndex], cursorY: 0, contentBottom: 200, pageFootnoteReserve: 0 };
+        return state;
+      },
+      columnX: () => 0,
+      footnoteRowBottom: () => (pageIndex === 0 ? 150 : 200),
+    });
+
+    expect(pages[0].fragments.length).toBeGreaterThan(0);
+    expect(Math.max(...pages[0].fragments.map((fragment) => fragment.y + fragment.height))).toBeLessThanOrEqual(150);
+    expect(pages[1]?.fragments.length).toBeGreaterThan(0);
+  });
+
   describe('metadata generation', () => {
     it('keeps row-span inspection proportional to the table across many page fragments', () => {
       const rowCount = 200;

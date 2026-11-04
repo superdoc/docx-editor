@@ -53,7 +53,14 @@ export type PageState = {
    * i.e. all anchors except the last must fit fully; only the last may split.
    * Identified by refId so callers can dedupe and walk in document order.
    */
-  footnoteAnchorsThisPage: Array<{ pmPos: number; refId: string; fullHeight: number; firstLineHeight: number }>;
+  footnoteAnchorsThisPage: Array<{
+    pmPos: number;
+    refId: string;
+    fullHeight: number;
+    firstLineHeight: number;
+    rowIndex?: number;
+  }>;
+  footnoteRequiredStartRefId?: string;
 };
 
 export type PaginatorOptions = {
@@ -81,6 +88,7 @@ export type PaginatorOptions = {
     footnoteDemandThisPage: number;
     footnoteRefsThisPage: number;
     footnoteAnchorsThisPage: readonly PageState['footnoteAnchorsThisPage'][number][];
+    footnoteRequiredStartRefId?: string;
   };
   pageNumberOffset?: number;
   createPage(number: number, pageMargins: PageMargins, pageSizeOverride?: { w: number; h: number }): Page;
@@ -101,6 +109,7 @@ export type PaginatorOptions = {
   getFootnoteReserveForPage?: (pageIndex: number) => number;
   /** Coupled note-only continuation pages are real content before note injection. */
   keepNoteOnlyPages?: boolean;
+  initializeEmptyBodyBottom?: boolean;
 };
 
 export class PaginationEarlyStop extends Error {
@@ -216,11 +225,12 @@ export function createPaginator(opts: PaginatorOptions) {
       lastParagraphStyleId: undefined,
       lastParagraphContextualSpacing: false,
       maxCursorY: topMargin,
-      ...(opts.keepNoteOnlyPages ? { committedBodyBottom: topMargin } : {}),
+      ...(opts.initializeEmptyBodyBottom ? { committedBodyBottom: topMargin } : {}),
       pageFootnoteReserve,
       footnoteDemandThisPage: 0,
       footnoteRefsThisPage: 0,
       footnoteAnchorsThisPage: [],
+      footnoteRequiredStartRefId: undefined,
     };
     const initial = pageIndex === 0 ? opts.initialPageState : undefined;
     if (initial) {
@@ -241,6 +251,7 @@ export function createPaginator(opts: PaginatorOptions) {
       state.footnoteDemandThisPage = initial.footnoteDemandThisPage;
       state.footnoteRefsThisPage = initial.footnoteRefsThisPage;
       state.footnoteAnchorsThisPage = initial.footnoteAnchorsThisPage.map((anchor) => ({ ...anchor }));
+      state.footnoteRequiredStartRefId = initial.footnoteRequiredStartRefId;
     }
     states.push(state);
     pages.push(state.page);
@@ -272,6 +283,7 @@ export function createPaginator(opts: PaginatorOptions) {
       // Footnotes are reserved per-column; the body slicer's demand formula
       // must reset per-column. Field names retain "ThisPage" for back-compat.
       state.footnoteAnchorsThisPage = [];
+      state.footnoteRequiredStartRefId = undefined;
       state.footnoteRefsThisPage = 0;
       return state;
     }

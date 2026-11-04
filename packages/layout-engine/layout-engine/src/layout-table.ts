@@ -39,6 +39,8 @@ export type TableLayoutContext = {
   columnX: (state: PageState, columnIndex?: number) => number;
   resumeCursor?: TableLayoutCursor;
   onFragmentStart?: (state: PageState, cursor: TableLayoutCursor) => void;
+  footnoteRowBottom?: (rowIndex: number, startRow: number, state: PageState) => number;
+  onFragmentPlaced?: (state: PageState, fragment: TableFragment) => void;
 };
 
 export type TableLayoutCursor = {
@@ -1221,6 +1223,7 @@ function findSplitPoint(
   fullPageHeight?: number,
   _pendingPartialRow?: PartialRowInfo | null,
   includeMergedTails?: (partial: PartialRowInfo, startRow: number, budget: number, fullPageHeight?: number) => boolean,
+  availableForRow?: (rowIndex: number) => number,
 ): SplitPointResult {
   let lastFitRow = startRow; // Last row that fit completely (exclusive end index)
   const borderCollapse = block.attrs?.borderCollapse ?? (block.attrs?.cellSpacing != null ? 'separate' : 'collapse');
@@ -1240,7 +1243,7 @@ function findSplitPoint(
       }
       spanEnd = Math.min(spanEnd, block.rows.length);
       const withSpan = computeFragmentFitHeight(measure, startRow, spanEnd, 0, borderCollapse);
-      if (withSpan <= availableHeight) {
+      if (withSpan <= (availableForRow?.(i) ?? availableHeight)) {
         lastFitRow = spanEnd;
         i = spanEnd - 1;
         continue;
@@ -1257,7 +1260,8 @@ function findSplitPoint(
 
     // Check if this row fits: use full fragment height (rows + spacing + borders) so pagination matches render
     const fragmentHeightWithRow = computeFragmentFitHeight(measure, startRow, i + 1, 0, borderCollapse);
-    if (fragmentHeightWithRow <= availableHeight) {
+    const rowAvailableHeight = availableForRow?.(i) ?? availableHeight;
+    if (fragmentHeightWithRow <= rowAvailableHeight) {
       // Row fits completely
       lastFitRow = i + 1; // Next row index (exclusive)
     } else {
@@ -1265,12 +1269,13 @@ function findSplitPoint(
       // When lastFitRow === startRow (first row doesn't fit), no rows have been placed yet, so
       // we must subtract the vertical space that appears before the first row (top spacing + top border)
       // instead of using computeFragmentHeight(startRow, startRow) which is 0.
-      let remainingHeight = availableHeight - computeFragmentHeight(measure, startRow, lastFitRow, 0, borderCollapse);
+      let remainingHeight =
+        rowAvailableHeight - computeFragmentHeight(measure, startRow, lastFitRow, 0, borderCollapse);
       if (lastFitRow === startRow) {
         const cellSpacingPx = measure.cellSpacingPx ?? 0;
         const topBorderPx =
           borderCollapse === 'separate' && measure.tableBorderWidths ? measure.tableBorderWidths.top : 0;
-        remainingHeight = availableHeight - cellSpacingPx - topBorderPx;
+        remainingHeight = rowAvailableHeight - cellSpacingPx - topBorderPx;
       }
 
       // Check if this is an over-tall row (exceeds full page height) - force split regardless of cantSplit
@@ -1438,6 +1443,7 @@ function layoutMonolithicTable(context: TableLayoutContext): void {
   };
   applyTableFragmentPmRange(fragment, context.block, context.measure);
   state.page.fragments.push(fragment);
+  context.onFragmentPlaced?.(state, fragment);
   state.cursorY += height;
   state.maxCursorY = Math.max(state.maxCursorY, state.cursorY);
 }
@@ -1541,6 +1547,8 @@ export function* layoutTableBlockSteps({
   columnX,
   resumeCursor,
   onFragmentStart,
+  footnoteRowBottom,
+  onFragmentPlaced,
 }: TableLayoutContext): Generator<TableLayoutStep, void, void> {
   // Anchored/floating tables are normally placed by the float manager when we layout their anchor
   // paragraph. Treat full-width floating tables as inline so they flow like normal tables and
@@ -1594,7 +1602,7 @@ export function* layoutTableBlockSteps({
   // Check if we need to advance column/page before starting the table
   // If the table doesn't fit in the current position and there's already content on the page,
   // move to the next column/page to avoid starting a table that immediately needs to split
-  const availableHeight = state.contentBottom - state.cursorY;
+  const availableHeight = (footnoteRowBottom?.(0, 0, state) ?? state.contentBottom) - state.cursorY;
 
   // Table start preflight check: Decide whether to start the table on the current page
   // or advance to a new page. This prevents starting a table that immediately splits,
@@ -1608,10 +1616,12 @@ export function* layoutTableBlockSteps({
     const firstRowCantSplit = block.rows[0]?.attrs?.tableRowProperties?.cantSplit === true;
     const firstRowHeight = measure.rows[0]?.height ?? measure.totalHeight ?? 0;
     const firstRowSlack = hasExplicitRowHeightSlack(block.rows[0], measure.rows[0]);
-    const firstRowFitsPage = firstRowHeight <= state.contentBottom;
+    const firstRowFitsPage = firstRowHeight <= state.contentBottom + state.pageFootnoteReserve - state.topMargin;
     const treatFirstRowAsCantSplit = firstRowCantSplit || (firstRowSlack && firstRowFitsPage);
     const headerHeight = computeFragmentFitHeight(measure, 0, headerCount, 0, borderCollapse);
-    const fullPageHeight = state.contentBottom - (state.topMargin ?? 0);
+    const fullPageHeight =
+      (footnoteRowBottom ? state.contentBottom + state.pageFootnoteReserve : state.contentBottom) -
+      (state.topMargin ?? 0);
 
     if (headerCount > 0 && headerHeight <= fullPageHeight && headerHeight > availableHeight) {
       // Keep the initial repeating header together when it fits a fresh column.
@@ -1701,6 +1711,7 @@ export function* layoutTableBlockSteps({
       retryWithoutHeaders: false,
     });
     state.page.fragments.push(fragment);
+    onFragmentPlaced?.(state, fragment);
     state.cursorY += height;
     state.maxCursorY = Math.max(state.maxCursorY, state.cursorY);
     yield { index: 1, total: 1 };
@@ -1794,7 +1805,8 @@ export function* layoutTableBlockSteps({
       }
     }
     state = ensurePage();
-    const availableHeight = state.contentBottom - state.cursorY;
+    const availableHeight =
+      (footnoteRowBottom ? state.contentBottom + state.pageFootnoteReserve : state.contentBottom) - state.cursorY;
     const fragmentCursor = cloneTableLayoutCursor({
       currentRow,
       isTableContinuation,
@@ -1860,7 +1872,9 @@ export function* layoutTableBlockSteps({
     // Calculate full page height (for detecting over-tall rows)
     // This is the actual usable content area height, accounting for top margin.
     // The ?? 0 handles test fixtures that may not set topMargin.
-    const fullPageHeight = state.contentBottom - (state.topMargin ?? 0);
+    const fullPageHeight =
+      (footnoteRowBottom ? state.contentBottom + state.pageFootnoteReserve : state.contentBottom) -
+      (state.topMargin ?? 0);
 
     // When headers are repeated on every page, the force-progress threshold
     // must account for the header budget. Otherwise a segment that's smaller
@@ -1873,12 +1887,18 @@ export function* layoutTableBlockSteps({
     if (pendingPartialRow !== null) {
       const rowIndex = pendingPartialRow.rowIndex;
       const fromLineByCell = pendingPartialRow.toLineByCell;
+      const continuationAvailableForBody = footnoteRowBottom
+        ? Math.min(
+            availableForBody,
+            Math.max(0, footnoteRowBottom(rowIndex, rowIndex, state) - state.cursorY - repeatedHeaderHeight),
+          )
+        : availableForBody;
 
       const continuationPartialRow = computePartialRow(
         rowIndex,
         block.rows[rowIndex],
         measure,
-        availableForBody,
+        continuationAvailableForBody,
         fromLineByCell,
         fullPageHeightForBody,
       );
@@ -1886,7 +1906,7 @@ export function* layoutTableBlockSteps({
       const mergedProgress = includeMergedTails(
         continuationPartialRow,
         rowIndex,
-        availableForBody,
+        continuationAvailableForBody,
         fullPageHeightForBody,
       );
       const madeProgress =
@@ -1955,6 +1975,7 @@ export function* layoutTableBlockSteps({
         applyTableFragmentPmRange(fragment, block, measure);
         onFragmentStart?.(state, fragmentCursor);
         state.page.fragments.push(fragment);
+        onFragmentPlaced?.(state, fragment);
         state.cursorY += fragmentHeight;
         state.maxCursorY = Math.max(state.maxCursorY, state.cursorY);
         yield { index: Math.min(block.rows.length, rowIndex + 1), total: block.rows.length };
@@ -2002,6 +2023,10 @@ export function* layoutTableBlockSteps({
       fullPageHeightForBody,
       undefined,
       includeMergedTails,
+      footnoteRowBottom
+        ? (rowIndex) =>
+            Math.max(0, footnoteRowBottom(rowIndex, bodyStartRow, state) - state.cursorY - repeatedHeaderHeight)
+        : undefined,
     );
 
     // If no rows fit and page has content, advance
@@ -2088,6 +2113,7 @@ export function* layoutTableBlockSteps({
       applyTableFragmentPmRange(fragment, block, measure);
       onFragmentStart?.(state, fragmentCursor);
       state.page.fragments.push(fragment);
+      onFragmentPlaced?.(state, fragment);
       state.cursorY += fragmentHeight;
       state.maxCursorY = Math.max(state.maxCursorY, state.cursorY);
       yield { index: Math.min(block.rows.length, forcedEndRow), total: block.rows.length };
@@ -2143,6 +2169,7 @@ export function* layoutTableBlockSteps({
     applyTableFragmentPmRange(fragment, block, measure);
     onFragmentStart?.(state, fragmentCursor);
     state.page.fragments.push(fragment);
+    onFragmentPlaced?.(state, fragment);
     state.cursorY += fragmentHeight;
     state.maxCursorY = Math.max(state.maxCursorY, state.cursorY);
     yield { index: Math.min(block.rows.length, endRow), total: block.rows.length };

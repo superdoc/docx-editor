@@ -223,7 +223,7 @@ describe('coupled footnote page sequence', () => {
     expect(sut.flow.hasPendingContinuation()).toBe(false);
   });
 
-  it('preserves incoming-first order and the new cluster ordered minimum across page boundaries', () => {
+  it('preserves incoming-first order across page boundaries', () => {
     const incoming = note('incoming', [10, 10, 10, 10]);
     const first = note('first', [10, 10]);
     const last = note('last', [10, 10, 10]);
@@ -235,12 +235,11 @@ describe('coupled footnote page sequence', () => {
     expect(
       sut.plan.slicesByPage.get(1)?.map(({ id, isContinuation, totalHeight }) => ({ id, isContinuation, totalHeight })),
     ).toEqual([
-      { id: 'incoming', isContinuation: true, totalHeight: 10 },
+      { id: 'incoming', isContinuation: true, totalHeight: 20 },
       { id: 'first', isContinuation: false, totalHeight: 20 },
-      { id: 'last', isContinuation: false, totalHeight: 10 },
     ]);
-    expect(sut.flow.incomingDemand(2)).toEqual({ height: 30, refs: 2 });
-    expect(sut.plan.ledgersByPage.get(1)?.lastAnchorRenderedLines).toBe(1);
+    expect(sut.flow.incomingDemand(2)).toEqual({ height: 30, refs: 1 });
+    expect(sut.plan.ledgersByPage.get(1)?.lastAnchorRenderedLines).toBe(0);
   });
 
   it('returns only remaining content height and reference count, without separator or gaps', () => {
@@ -331,15 +330,22 @@ describe('coupled footnote page sequence', () => {
     expect(sut.plan.reserves).toEqual([]);
   });
 
-  it('rejects a page that would defer a non-last new anchor instead of placing it completely', () => {
+  it('accepts a partial non-last anchor and defers the next anchor', () => {
     const sut = createCoupledFootnotePagination(options([note('first', [10, 10, 10, 10]), note('last', [10])]));
 
-    expect(() => sut.flow.completePage(boundary(0, ['first', 'last'], 39))).toThrow(
+    sut.flow.completePage(boundary(0, ['first', 'last'], 39));
+
+    expect(sut.plan.slicesByPage.get(0)?.map((slice) => slice.id)).toEqual(['first']);
+    expect(sut.flow.incomingDemand(1)).toEqual({ height: 20, refs: 2 });
+    expect(sut.flow.hasPendingContinuation()).toBe(true);
+  });
+
+  it('rejects a page when its required same-line anchor cannot start', () => {
+    const sut = createCoupledFootnotePagination(options([note('first', [10, 10, 10, 10]), note('last', [10])]));
+
+    expect(() => sut.flow.completePage({ ...boundary(0, ['first', 'last'], 39), requiredStartRefId: 'last' })).toThrow(
       expect.objectContaining({ code: 'ordered-minimum' }),
     );
-
-    expect(sut.plan.reserves).toEqual([]);
-    expect(sut.flow.hasPendingContinuation()).toBe(false);
   });
 
   it('rejects forced placement beyond physical capacity before changing page margins', () => {

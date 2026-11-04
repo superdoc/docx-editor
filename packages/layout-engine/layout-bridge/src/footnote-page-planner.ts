@@ -1,8 +1,8 @@
 import type { FootnotePageLedger, Measure } from '@superdoc/contracts';
 import { fitFootnoteContent, getRangeRenderHeight, type FootnoteRange, type FootnoteSlice } from './footnote-content';
 
-export type PendingFootnote = { id: string; ranges: FootnoteRange[] };
-type IncomingFootnote = { readonly id: string; readonly ranges: readonly FootnoteRange[] };
+export type PendingFootnote = { id: string; ranges: FootnoteRange[]; started?: boolean };
+type IncomingFootnote = { readonly id: string; readonly ranges: readonly FootnoteRange[]; readonly started?: boolean };
 
 export type FootnotePageLedgerDraft = Omit<FootnotePageLedger, 'pageIndex' | 'appliedBodyReservePx' | 'deadReservePx'>;
 
@@ -17,6 +17,9 @@ export type FootnotePagePlanInput = {
   fullHeightById: ReadonlyMap<string, number>;
   firstLineHeightById: ReadonlyMap<string, number>;
   pendingByColumn: ReadonlyMap<number, readonly IncomingFootnote[]>;
+  requiredStartId?: string;
+  deferStartIds?: ReadonlySet<string>;
+  noteOnlyPage?: boolean;
   separatorSpacingBefore: number;
   dividerHeight: number;
   continuationDividerHeight: number;
@@ -86,7 +89,8 @@ export const planFootnotePage = (input: FootnotePagePlanInput): FootnotePagePlan
   for (const [columnIndex, entries] of input.pendingByColumn) {
     const targetIndex = columnIndex < columnCount ? columnIndex : columnCount - 1;
     const list = pendingForPage.get(targetIndex) ?? [];
-    for (const entry of entries) list.push({ id: entry.id, ranges: entry.ranges.slice() });
+    for (const entry of entries)
+      list.push({ id: entry.id, ranges: entry.ranges.slice(), ...(entry.started === false ? { started: false } : {}) });
     pendingForPage.set(targetIndex, list);
   }
   const continuationIn = continuationEntries(pendingForPage);
@@ -103,12 +107,13 @@ export const planFootnotePage = (input: FootnotePagePlanInput): FootnotePagePlan
     let usedHeight = 0;
     const columnSlices: FootnoteSlice[] = [];
     const nextPending: PendingFootnote[] = [];
+    const ids = input.idsByColumn.get(columnIndex) ?? [];
+    const requiredStartId = input.requiredStartId ?? ids[0];
 
     const placeFootnote = (
       id: string,
       ranges: readonly FootnoteRange[],
       isContinuation: boolean,
-      isLastOnPage: boolean,
     ): { placed: boolean; remaining: FootnoteRange[] } => {
       if (ranges.length === 0) return { placed: false, remaining: [] };
 
@@ -117,9 +122,11 @@ export const planFootnotePage = (input: FootnotePagePlanInput): FootnotePagePlan
       const overhead = isFirstSlice ? safeSeparatorSpacingBefore + separatorHeight + safeTopPadding : 0;
       const gapBefore = !isFirstSlice ? safeGap : 0;
       const availableHeight = Math.max(0, placementCeiling - usedHeight - overhead - gapBefore);
-      // SD-2656: only the last new anchor or a continuation may force its first
-      // range. The caller must reject physical overflow reported below.
-      const allowForceFirst = (isLastOnPage || isContinuation) && placementCeiling > 0;
+      const allowForceFirst =
+        (isContinuation ||
+          (id === requiredStartId && !input.deferStartIds?.has(id)) ||
+          (input.noteOnlyPage === true && columnSlices.length === 0)) &&
+        placementCeiling > 0;
       const { slice, remainingRanges } = fitFootnoteContent(
         id,
         ranges,
@@ -131,7 +138,7 @@ export const planFootnotePage = (input: FootnotePagePlanInput): FootnotePagePlan
         allowForceFirst,
       );
 
-      if (slice.ranges.length === 0 || (!isLastOnPage && !isContinuation && remainingRanges.length > 0)) {
+      if (slice.ranges.length === 0) {
         return { placed: false, remaining: ranges.slice() };
       }
 
@@ -144,51 +151,38 @@ export const planFootnotePage = (input: FootnotePagePlanInput): FootnotePagePlan
       return { placed: true, remaining: remainingRanges };
     };
 
-    const ids = input.idsByColumn.get(columnIndex) ?? [];
-    const lastIdx = ids.length - 1;
-    let clusterReserve = 0;
-    for (let index = 0; index < ids.length; index += 1) {
-      clusterReserve += index === lastIdx ? firstLineOf(ids[index]) : fullHeightOf(ids[index]);
-      if (index > 0) clusterReserve += safeGap;
-    }
-
-    // Reserve the ordered cluster while placing continuations at the visual top.
-    usedHeight += clusterReserve;
     const pending = pendingForPage.get(columnIndex) ?? [];
-    for (let index = 0; index < pending.length; index += 1) {
-      const entry = pending[index];
+    const queue = [
+      ...pending.map((entry) => ({ id: entry.id, ranges: entry.ranges, continuation: entry.started !== false })),
+      ...ids.map((id) => ({ id, ranges: input.rangesByFootnoteId.get(id) ?? [], continuation: false })),
+    ];
+    for (let index = 0; index < queue.length; index += 1) {
+      const entry = queue[index];
       if (entry.ranges.length === 0) continue;
-      const result = placeFootnote(entry.id, entry.ranges, true, false);
+      const result = placeFootnote(entry.id, entry.ranges, entry.continuation);
       if (!result.placed) {
-        for (const deferred of pending.slice(index)) {
-          if (deferred.ranges.length > 0) nextPending.push(deferred);
+        for (const deferred of queue.slice(index)) {
+          if (deferred.ranges.length > 0)
+            nextPending.push({
+              id: deferred.id,
+              ranges: deferred.ranges.slice(),
+              ...(deferred.continuation ? {} : { started: false }),
+            });
         }
         break;
       }
       if (result.remaining.length > 0) {
         nextPending.push({ id: entry.id, ranges: result.remaining });
-        for (const deferred of pending.slice(index + 1)) {
-          if (deferred.ranges.length > 0) nextPending.push(deferred);
+        for (const deferred of queue.slice(index + 1)) {
+          if (deferred.ranges.length > 0)
+            nextPending.push({
+              id: deferred.id,
+              ranges: deferred.ranges.slice(),
+              ...(deferred.continuation ? {} : { started: false }),
+            });
         }
         break;
       }
-    }
-    usedHeight -= clusterReserve;
-
-    for (let index = 0; index < ids.length; index += 1) {
-      const id = ids[index];
-      const ranges = input.rangesByFootnoteId.get(id) ?? [];
-      if (ranges.length === 0) continue;
-      const result = placeFootnote(id, ranges, false, index === lastIdx);
-      if (!result.placed) {
-        nextPending.push({ id, ranges: ranges.slice() });
-        for (let remainingIndex = index + 1; remainingIndex < ids.length; remainingIndex += 1) {
-          const remainingId = ids[remainingIndex];
-          nextPending.push({ id: remainingId, ranges: (input.rangesByFootnoteId.get(remainingId) ?? []).slice() });
-        }
-        break;
-      }
-      if (result.remaining.length > 0) nextPending.push({ id, ranges: result.remaining });
     }
 
     if (columnSlices.length > 0) {
@@ -249,9 +243,10 @@ export const planFootnotePage = (input: FootnotePagePlanInput): FootnotePagePlan
     }
   }
   if (anchorIds.length > 0) {
+    const requiredIndex = Math.max(0, anchorIds.indexOf(input.requiredStartId ?? anchorIds[0]));
     for (let index = 0; index < anchorIds.length; index += 1) {
-      mandatoryReserve +=
-        index === anchorIds.length - 1 ? firstLineOf(anchorIds[index]) : fullHeightOf(anchorIds[index]);
+      if (index < requiredIndex) mandatoryReserve += fullHeightOf(anchorIds[index]);
+      if (index === requiredIndex) mandatoryReserve += firstLineOf(anchorIds[index]);
       preferredReserve += fullHeightOf(anchorIds[index]);
       if (index > 0) {
         mandatoryReserve += safeGap;

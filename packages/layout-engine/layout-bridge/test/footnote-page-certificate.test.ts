@@ -104,6 +104,24 @@ describe('private footnote page certificates', () => {
     );
   });
 
+  it('retains an unstarted pending note through issuance and rebase', () => {
+    const sourcePage = page();
+    const owner = createFootnoteCertificateOwner(preparedOptions());
+    const pending = new Map([[0, [{ id: 'later', ranges: [range()], started: false }]]]);
+    issueFootnotePageCertificate(sourcePage, owner, {
+      pageIndex: 7,
+      incomingByColumn: pending,
+      outgoingByColumn: pending,
+    });
+    const targetPage = { ...page(), number: 9 };
+
+    const rebased = rebaseFootnotePageCertificate(sourcePage, targetPage, 1, owner);
+
+    expect(rebased?.incomingByColumn.get(0)?.[0]?.started).toBe(false);
+    expect(rebased?.outgoingByColumn.get(0)?.[0]?.started).toBe(false);
+    expect(pendingFootnoteQueuesEqual(rebased!.outgoingByColumn, pending)).toBe(true);
+  });
+
   it('does not treat another issued owner with identical prepared options as the expected owner', () => {
     const prepared = preparedOptions();
     const sourcePage = page();
@@ -462,6 +480,11 @@ describe('exact continuation queue equality', () => {
     const equal = pendingFootnoteQueuesEqual(first, second);
 
     expect(equal).toBe(false);
+  });
+
+  it('distinguishes an unstarted note from a continuation with identical ranges', () => {
+    const unstarted = new Map([[0, [{ id: 'note', ranges: [range()], started: false }]]]);
+    expect(pendingFootnoteQueuesEqual(unstarted, queue())).toBe(false);
   });
 
   it.each([

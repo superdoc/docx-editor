@@ -162,14 +162,14 @@ describe('footnote page placement', () => {
       extendedSliceIds: [],
       continuationIn: [],
       continuationOut: [],
-      mandatoryReservePx: 43,
+      mandatoryReservePx: 21,
       preferredReservePx: 43,
       actualBandHeightPx: 43,
       lastAnchorRenderedLines: 1,
     });
   });
 
-  it('puts incoming continuation above complete non-last anchors and the first line of the last anchor', () => {
+  it('keeps the incoming continuation ahead of new anchors when it fills the page', () => {
     const incoming = paragraphNote('incoming', [[10, 10, 10, 10]]);
     const first = paragraphNote('first', [[10, 10]]);
     const last = paragraphNote('last', [[10, 10, 10]]);
@@ -182,28 +182,21 @@ describe('footnote page placement', () => {
     const result = sut(input);
 
     expect(result.slices.map(({ id, isContinuation, totalHeight }) => ({ id, isContinuation, totalHeight }))).toEqual([
-      { id: 'incoming', isContinuation: true, totalHeight: 30 },
+      { id: 'incoming', isContinuation: true, totalHeight: 40 },
       { id: 'first', isContinuation: false, totalHeight: 20 },
-      { id: 'last', isContinuation: false, totalHeight: 10 },
     ]);
-    expect(result.pendingByColumn.get(0)).toEqual([
-      { id: 'incoming', ranges: paragraphRanges(incoming, 3, 4) },
-      { id: 'last', ranges: paragraphRanges(last, 1, 3) },
-    ]);
-    expect(result.reserve).toBe(73);
+    expect(result.pendingByColumn.get(0)).toEqual([{ id: 'last', ranges: last.ranges, started: false }]);
+    expect(result.reserve).toBe(71);
     expect(result.overflowHeightPx).toBe(0);
     expect(result.hasContinuationByColumn).toEqual(new Map([[0, true]]));
     expect(result.ledger).toMatchObject({
       anchorIds: ['first', 'last'],
-      mandatorySliceIds: ['first', 'last'],
+      mandatorySliceIds: ['first'],
       continuationSliceIds: ['incoming'],
-      mandatoryReservePx: 83,
+      mandatoryReservePx: 63,
       preferredReservePx: 103,
-      lastAnchorRenderedLines: 1,
-      continuationOut: [
-        { id: 'incoming', remainingRangeCount: 1, remainingHeightPx: 10 },
-        { id: 'last', remainingRangeCount: 1, remainingHeightPx: 20 },
-      ],
+      lastAnchorRenderedLines: 0,
+      continuationOut: [{ id: 'last', remainingRangeCount: 1, remainingHeightPx: 30 }],
     });
   });
 
@@ -233,37 +226,39 @@ describe('footnote page placement', () => {
         pageIndex: 0,
         columnIndex: 0,
         isContinuation: true,
-        ranges: paragraphRanges(first, 0, 2),
-        totalHeight: 20,
-      },
-      {
-        id: fresh.id,
-        pageIndex: 0,
-        columnIndex: 0,
-        isContinuation: false,
-        ranges: fresh.ranges,
-        totalHeight: 10,
+        ranges: paragraphRanges(first, 0, 3),
+        totalHeight: 30,
       },
     ]);
     expect(result.pendingByColumn.get(0)).toEqual([
-      { id: first.id, ranges: paragraphRanges(first, 2, 4) },
+      { id: first.id, ranges: paragraphRanges(first, 3, 4) },
       { id: second.id, ranges: second.ranges },
+      { id: fresh.id, ranges: fresh.ranges, started: false },
     ]);
     expect(result.overflowHeightPx).toBe(0);
   });
 
-  it('defers a non-last anchor intact when only some of its lines fit', () => {
+  it('starts a long non-last anchor and defers later anchors in order', () => {
     const first = paragraphNote('first', [[10, 10, 10, 10]]);
     const last = paragraphNote('last', [[10]]);
 
     const result = sut(pageInput([first, last], { availableHeight: 39 }));
 
-    expect(result.slices).toEqual([]);
-    expect(result.pendingByColumn.get(0)).toEqual([
-      { id: 'first', ranges: first.ranges },
-      { id: 'last', ranges: last.ranges },
+    expect(result.slices).toEqual([
+      {
+        id: first.id,
+        pageIndex: 0,
+        columnIndex: 0,
+        isContinuation: false,
+        ranges: paragraphRanges(first, 0, 3),
+        totalHeight: 30,
+      },
     ]);
-    expect(result.reserve).toBe(0);
+    expect(result.pendingByColumn.get(0)).toEqual([
+      { id: 'first', ranges: paragraphRanges(first, 3, 4) },
+      { id: 'last', ranges: last.ranges, started: false },
+    ]);
+    expect(result.reserve).toBe(39);
     expect(result.hasUnresolvedContent).toBe(true);
   });
 
@@ -444,6 +439,27 @@ describe('footnote page placement', () => {
     expect(result.hasUnresolvedContent).toBe(true);
   });
 
+  it('defers an unstarted table note when its first line cannot fit below the row', () => {
+    const note = paragraphNote('row-note', [[16, 16]]);
+    const first = sut(pageInput([note], { availableHeight: 15, deferStartIds: new Set([note.id]) }));
+
+    expect(first.slices).toEqual([]);
+    expect(first.capped).toBe(false);
+    expect(first.pendingByColumn.get(0)).toEqual([{ id: note.id, ranges: note.ranges, started: false }]);
+
+    const second = sut(
+      pageInput([note], {
+        pageIndex: 1,
+        idsByColumn: new Map(),
+        availableHeight: 100,
+        pendingByColumn: first.pendingByColumn,
+        noteOnlyPage: true,
+      }),
+    );
+    expect(lineTokens(second.slices.flatMap((slice) => slice.ranges))).toEqual(lineTokens(note.ranges));
+    expect(second.pendingByColumn.size).toBe(0);
+  });
+
   it('returns all unresolved ranges without forced placement when the page has zero note capacity', () => {
     const incoming = paragraphNote('incoming', [[10, 10]]);
     const fresh = paragraphNote('fresh', [[12]]);
@@ -458,7 +474,7 @@ describe('footnote page placement', () => {
     expect(result.slices).toEqual([]);
     expect(result.pendingByColumn.get(0)).toEqual([
       { id: incoming.id, ranges: incoming.ranges },
-      { id: fresh.id, ranges: fresh.ranges },
+      { id: fresh.id, ranges: fresh.ranges, started: false },
     ]);
     expect(result.reserve).toBe(0);
     expect(result.overflowHeightPx).toBe(0);

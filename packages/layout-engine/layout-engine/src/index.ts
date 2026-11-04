@@ -66,8 +66,14 @@ import {
 } from './section-breaks.js';
 import { layoutParagraphBlock, layoutParagraphBlockSteps, type FootnoteAnchorRef } from './layout-paragraph.js';
 import { buildFootnoteAnchorIndexSteps } from './footnote-anchor-index.js';
-import { coupledFootnoteBodyBottom, type FootnotePageFlow } from './footnote-page-flow.js';
+import {
+  coupledFootnoteBodyBottom,
+  footnoteQueueDemand,
+  maxFootnoteBand,
+  type FootnotePageFlow,
+} from './footnote-page-flow.js';
 export type { FootnotePageFlow } from './footnote-page-flow.js';
+export { maxFootnoteBand } from './footnote-page-flow.js';
 import { layoutImageBlock } from './layout-image.js';
 import { layoutDrawingBlock } from './layout-drawing.js';
 import { alignInlineZeroHeightDrawingFragments } from './inline-drawing-alignment.js';
@@ -97,6 +103,7 @@ import { formatPageNumber } from './pageNumbering.js';
 import {
   shouldSuppressSpacingForEmpty,
   shouldSuppressOwnSpacing,
+  computeFragmentPmRange,
   findLineIndexForRunOrdinal,
   isOutOfFlowDrawing,
 } from './layout-utils.js';
@@ -592,6 +599,8 @@ export type LayoutOptions = {
    * increasing the effective bottom margin for that page only.
    */
   footnoteReservedByPageIndex?: number[];
+  footnoteIncomingByPageIndex?: ReadonlyArray<{ height: number; refs: number } | undefined>;
+  trailingNotePageCount?: number;
   /**
    * Footnote metadata. The core layout engine consumes only the fields below
    * (SD-3049: ref positions + per-footnote body heights for block-aware breaks).
@@ -751,6 +760,7 @@ export type LayoutOptions = {
       footnoteDemandThisPage: number;
       footnoteRefsThisPage: number;
       footnoteAnchorsThisPage: readonly PageState['footnoteAnchorsThisPage'][number][];
+      footnoteRequiredStartRefId?: string;
     };
   };
   /**
@@ -2080,8 +2090,8 @@ function* layoutDocumentBodySteps(
     const reserves = options.footnoteReservedByPageIndex;
     const reserve = Array.isArray(reserves) ? reserves[pageIndex] : 0;
     if (typeof reserve !== 'number' || !Number.isFinite(reserve) || reserve <= 0) return 0;
-    const pageCapacity = activePageSize.h - activeTopMargin - activeBottomMargin - MIN_BODY_CONTENT_HEIGHT;
-    return Math.min(reserve, Math.max(0, pageCapacity));
+    const physicalContentHeight = activePageSize.h - activeTopMargin - activeBottomMargin;
+    return Math.min(reserve, maxFootnoteBand(physicalContentHeight));
   };
 
   const pageGeometryIndices = { blockById: blocksById, measureById: measuresById };
@@ -2119,6 +2129,7 @@ function* layoutDocumentBodySteps(
       bodyBottom: state.committedBodyBottom ?? state.topMargin,
       physicalBottom: state.contentBottom + state.pageFootnoteReserve,
       anchors: state.footnoteAnchorsThisPage,
+      requiredStartRefId: state.footnoteRequiredStartRefId,
     });
     completedFootnotePages.add(state.page);
   };
@@ -2139,7 +2150,8 @@ function* layoutDocumentBodySteps(
     getActiveColumns: () => activeColumns,
     initialPageState: options.startContext?.initialPageState,
     pageNumberOffset,
-    keepNoteOnlyPages: options.footnotePageFlow != null,
+    keepNoteOnlyPages: options.footnotePageFlow != null || (options.trailingNotePageCount ?? 0) > 0,
+    initializeEmptyBodyBottom: options.footnotePageFlow != null,
     createPage,
     shouldStopBeforeNewPage:
       options.pageBoundary?.shouldStopBeforeNewPage || options.footnotePageFlow || onSealedPage
@@ -2699,6 +2711,7 @@ function* layoutDocumentBodySteps(
         lastParagraphBorderHash: checkpoint.lastParagraphBorderHash,
         committedBodyBottom: undefined,
         footnoteAnchorsThisPage: [],
+        footnoteRequiredStartRefId: undefined,
       };
       const advance = (s: PageState) => {
         if (++s.columnIndex >= columns.count) throw overflow;
@@ -3100,6 +3113,7 @@ function* layoutDocumentBodySteps(
       footnoteDemandThisPage: state.footnoteDemandThisPage,
       footnoteRefsThisPage: state.footnoteRefsThisPage,
       footnoteAnchorsThisPage: state.footnoteAnchorsThisPage.map((anchor) => ({ ...anchor })),
+      footnoteRequiredStartRefId: state.footnoteRequiredStartRefId,
       cursor,
     };
     const current = tableResumeCheckpoints.get(blockId);
@@ -3581,32 +3595,68 @@ function* layoutDocumentBodySteps(
           } else if (chain) {
             // Case 2: Chain starter - evaluate entire chain height
             let state = paginator.ensurePage();
-            const groupAnchors: FootnoteAnchorRef[] = [];
-            if (options.footnotePageFlow) {
-              for (const memberIndex of chain.memberIndices) {
-                groupAnchors.push(...getFootnoteAnchorsForBlockId(blocks[memberIndex].id));
-              }
-              const anchor = blocks[chain.anchorIndex];
-              const anchorMeasure = measures[chain.anchorIndex];
-              if (anchor?.kind === 'paragraph' && anchorMeasure?.kind === 'paragraph') {
-                const lineCount = keptAnchorLineCount(anchor, anchorMeasure);
-                for (const entry of getFootnoteAnchorsForBlockId(anchor.id)) {
-                  const line =
-                    entry.runOrdinal == null ? null : findLineIndexForRunOrdinal(anchorMeasure.lines, entry.runOrdinal);
-                  if (line != null && line < lineCount) {
-                    groupAnchors.push(entry);
+            const groupEntries: Array<{ anchor: FootnoteAnchorRef; blockIndex: number; lineIndex: number }> = [];
+            if (options.footnotes) {
+              for (const memberIndex of [...chain.memberIndices, chain.anchorIndex]) {
+                const member = blocks[memberIndex];
+                const memberMeasure = measures[memberIndex];
+                if (member?.kind !== 'paragraph' || memberMeasure?.kind !== 'paragraph') continue;
+                const lineLimit =
+                  memberIndex === chain.anchorIndex
+                    ? keptAnchorLineCount(member, memberMeasure)
+                    : memberMeasure.lines.length;
+                for (const anchor of getFootnoteAnchorsForBlockId(member.id)) {
+                  let lineIndex =
+                    anchor.runOrdinal == null
+                      ? null
+                      : findLineIndexForRunOrdinal(memberMeasure.lines, anchor.runOrdinal);
+                  if (lineIndex == null) {
+                    for (let candidate = 0; candidate < memberMeasure.lines.length; candidate += 1) {
+                      const range = computeFragmentPmRange(member, memberMeasure.lines, candidate, candidate + 1);
+                      if (
+                        range.pmStart != null &&
+                        range.pmEnd != null &&
+                        anchor.pmPos >= range.pmStart &&
+                        (anchor.pmPos < range.pmEnd ||
+                          (candidate === memberMeasure.lines.length - 1 && anchor.pmPos <= range.pmEnd))
+                      ) {
+                        lineIndex = candidate;
+                        break;
+                      }
+                    }
+                  }
+                  if (lineIndex != null && lineIndex < lineLimit) {
+                    groupEntries.push({ anchor, blockIndex: memberIndex, lineIndex });
                   }
                 }
               }
             }
-            const groupDemand = groupAnchors.reduce((sum, anchor) => sum + anchor.fullHeight, 0);
-            const committedDemand = state.footnoteAnchorsThisPage.reduce((sum, anchor) => sum + anchor.fullHeight, 0);
-            const groupBottom = options.footnotePageFlow
+            const terminalBlock = blocks[chain.anchorIndex];
+            const terminalMeasure = measures[chain.anchorIndex];
+            const terminalLine =
+              terminalBlock?.kind === 'paragraph' && terminalMeasure?.kind === 'paragraph'
+                ? keptAnchorLineCount(terminalBlock, terminalMeasure) - 1
+                : -1;
+            const prior = groupEntries
+              .filter(
+                (entry) =>
+                  entry.blockIndex < chain.anchorIndex ||
+                  (entry.blockIndex === chain.anchorIndex && entry.lineIndex < terminalLine),
+              )
+              .map((entry) => entry.anchor);
+            const current = groupEntries
+              .filter((entry) => entry.blockIndex === chain.anchorIndex && entry.lineIndex === terminalLine)
+              .map((entry) => entry.anchor);
+            const groupDemand = footnoteQueueDemand(0, state.footnoteAnchorsThisPage, prior, current);
+            const blankDemand = footnoteQueueDemand(0, [], prior, current);
+            const incoming = options.footnotePageFlow?.incomingDemand(state.page.number - 1) ??
+              options.footnoteIncomingByPageIndex?.[state.page.number - 1] ?? { height: 0, refs: 0 };
+            const groupBottom = options.footnotes
               ? coupledFootnoteBodyBottom(
                   state,
-                  committedDemand + groupDemand,
-                  state.footnoteRefsThisPage + groupAnchors.length,
-                  options.footnotePageFlow.incomingDemand(state.page.number - 1),
+                  groupDemand,
+                  state.footnoteRefsThisPage + groupEntries.length,
+                  incoming,
                   getFootnoteBandOverhead,
                 )
               : state.contentBottom;
@@ -3631,17 +3681,17 @@ function* layoutDocumentBodySteps(
             const chainHeight = calculateChainHeight(chain, blocks, measures, state);
 
             // Calculate page content height to check if chain fits on a blank page
-            const blankBottom = options.footnotePageFlow
+            const blankBottom = options.footnotes
               ? coupledFootnoteBodyBottom(
                   state,
-                  groupDemand,
-                  groupAnchors.length,
+                  blankDemand,
+                  groupEntries.length,
                   { height: 0, refs: 0 },
                   getFootnoteBandOverhead,
                 )
               : state.contentBottom;
             const pageContentHeight = blankBottom - state.topMargin;
-            const blankChainHeight = options.footnotePageFlow
+            const blankChainHeight = options.footnotes
               ? calculateChainHeight(chain, blocks, measures, {
                   ...state,
                   trailingSpacing: 0,
@@ -3805,6 +3855,7 @@ function* layoutDocumentBodySteps(
             footnoteDemandThisPage: checkpointState.footnoteDemandThisPage,
             footnoteRefsThisPage: checkpointState.footnoteRefsThisPage,
             footnoteAnchorsThisPage: checkpointState.footnoteAnchorsThisPage.map((anchor) => ({ ...anchor })),
+            footnoteRequiredStartRefId: checkpointState.footnoteRequiredStartRefId,
           });
 
           deferTableCarrierSealing = onSealedPage != null && (tablesForPara?.length ?? 0) > 0;
@@ -3826,6 +3877,7 @@ function* layoutDocumentBodySteps(
               getFootnoteBandOverhead,
               getFootnoteAnchorsForBlockId,
               incomingFootnoteDemand: options.footnotePageFlow?.incomingDemand,
+              legacyIncomingFootnoteDemand: (pageIndex) => options.footnoteIncomingByPageIndex?.[pageIndex],
               // A section-boundary filler paragraph can still be the coordinate
               // base for a paragraph-relative DrawingML object. Register that
               // object, but keep the carrier itself out of normal flow so it
@@ -4144,6 +4196,27 @@ function* layoutDocumentBodySteps(
                 );
               }
             : columnX;
+          const tableFootnoteAnchors = options.footnotes ? getFootnoteAnchorsForBlockId(block.id) : [];
+          const tableFootnoteRowBottom = options.footnotes
+            ? (rowIndex: number, startRow: number, pageState: PageState): number => {
+                const pageIndex = pageState.page.number - 1;
+                const physicalBottom = pageState.contentBottom + pageState.pageFootnoteReserve;
+                const incoming = options.footnotePageFlow?.incomingDemand(pageIndex) ??
+                  options.footnoteIncomingByPageIndex?.[pageIndex] ?? { height: 0, refs: 0 };
+                const prior = tableFootnoteAnchors.filter(
+                  (anchor) => anchor.rowIndex != null && anchor.rowIndex >= startRow && anchor.rowIndex < rowIndex,
+                );
+                const current = tableFootnoteAnchors.filter((anchor) => anchor.rowIndex === rowIndex);
+                const demand = footnoteQueueDemand(incoming.height, pageState.footnoteAnchorsThisPage, prior, current);
+                if (demand <= 0) return physicalBottom;
+                const refs = incoming.refs + pageState.footnoteRefsThisPage + prior.length + current.length;
+                const band = Math.min(
+                  demand + getFootnoteBandOverhead(refs) + 1,
+                  maxFootnoteBand(physicalBottom - pageState.topMargin),
+                );
+                return physicalBottom - band;
+              }
+            : undefined;
           const tableSteps = layoutTableBlockSteps({
             block: block as TableBlock,
             measure: measure as TableMeasure,
@@ -4154,6 +4227,23 @@ function* layoutDocumentBodySteps(
             columnX: tableColumnX,
             ...(resumeCursor ? { resumeCursor } : {}),
             onFragmentStart: (state, cursor) => captureTableResumeCheckpoint(block.id, state, cursor),
+            footnoteRowBottom: tableFootnoteRowBottom,
+            onFragmentPlaced: options.footnotes
+              ? (pageState, fragment) => {
+                  const seen = new Set(pageState.footnoteAnchorsThisPage.map((anchor) => anchor.refId));
+                  const admitted = tableFootnoteAnchors.filter(
+                    (anchor) =>
+                      anchor.rowIndex != null &&
+                      anchor.rowIndex >= fragment.fromRow &&
+                      anchor.rowIndex < fragment.toRow &&
+                      !seen.has(anchor.refId),
+                  );
+                  if (admitted.length === 0) return;
+                  pageState.footnoteAnchorsThisPage.push(...admitted);
+                  pageState.footnoteRefsThisPage += admitted.length;
+                  pageState.footnoteRequiredStartRefId = admitted[0].refId;
+                }
+              : undefined,
           });
           while (true) {
             const tableStep = tableSteps.next();
@@ -4183,7 +4273,17 @@ function* layoutDocumentBodySteps(
           ) {
             continue;
           }
-          paginator.startNewPage();
+          let nextPage = paginator.startNewPage();
+          const incoming = options.footnoteIncomingByPageIndex?.[nextPage.page.number - 1];
+          let remaining = incoming?.height ?? 0;
+          while (remaining > 0) {
+            const capacity =
+              maxFootnoteBand(nextPage.contentBottom + nextPage.pageFootnoteReserve - nextPage.topMargin) -
+              getFootnoteBandOverhead(incoming?.refs ?? 1);
+            if (capacity <= 0) break;
+            remaining -= capacity;
+            nextPage = paginator.startNewPage();
+          }
           continue;
         }
 
@@ -4250,6 +4350,10 @@ function* layoutDocumentBodySteps(
           yield { phase: 'layout-document:footnote-continuation', index: pages.length - 1 };
         }
       }
+    }
+    if (!options.footnotePageFlow && options.trailingNotePageCount && options.trailingNotePageCount > 0) {
+      const count = Math.min(1000, Math.floor(options.trailingNotePageCount));
+      for (let index = 0; index < count; index += 1) paginator.startNewPage();
     }
     paginator.pruneTrailingEmptyPages();
 

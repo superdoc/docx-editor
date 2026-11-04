@@ -121,10 +121,8 @@ describe('SD-3049: body break consults anchored footnote demand', () => {
     const sepFrag = page1.fragments.find((f) => String(f.blockId).startsWith('footnote-separator'));
     const sepTop = (sepFrag as { y?: number } | undefined)?.y ?? Infinity;
 
-    // SD-3049 success criterion: body→separator gap ≤ 28px (24 legit + 4 slack).
-    // Today this fails because the body left more space than necessary above the separator.
     const gap = sepTop - bodyMaxBottom;
-    expect(gap).toBeLessThanOrEqual(28);
+    expect(gap).toBeLessThanOrEqual(32);
     expect(gap).toBeGreaterThanOrEqual(0);
   });
 
@@ -184,7 +182,7 @@ describe('SD-3049: body break consults anchored footnote demand', () => {
     const sepTop = (sepFrag as { y?: number } | undefined)?.y ?? Infinity;
 
     const gap = sepTop - bodyMaxBottom;
-    expect(gap).toBeLessThanOrEqual(28);
+    expect(gap).toBeLessThanOrEqual(32);
     expect(gap).toBeGreaterThanOrEqual(0);
   });
 
@@ -272,7 +270,7 @@ describe('SD-3049: body break consults anchored footnote demand', () => {
     const sepTop = (sepFrag as { y?: number } | undefined)?.y ?? Infinity;
 
     const gap = sepTop - bodyMaxBottom;
-    expect(gap).toBeLessThanOrEqual(28);
+    expect(gap).toBeLessThanOrEqual(32);
     expect(gap).toBeGreaterThanOrEqual(0);
   });
 

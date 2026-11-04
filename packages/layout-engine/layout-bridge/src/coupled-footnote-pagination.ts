@@ -26,6 +26,7 @@ export type CoupledFootnotePageCompletion = {
   bodyBottom: number;
   physicalBottom: number;
   anchors: readonly { refId: string }[];
+  requiredStartRefId?: string;
 };
 
 export type CoupledFootnotePageFlow = {
@@ -158,6 +159,7 @@ const copyPending = (pending: FootnotePagePlanInput['pendingByColumn']): Map<num
       entries.map((entry) => ({
         id: entry.id,
         ranges: entry.ranges.map((range) => ({ ...range })),
+        ...(entry.started === false ? { started: false } : {}),
       })),
     );
   }
@@ -237,6 +239,7 @@ export const createCoupledFootnotePagination = (
     bodyBottom,
     physicalBottom,
     anchors,
+    requiredStartRefId,
   }: CoupledFootnotePageCompletion): void => {
     requireNextPage(pageIndex);
     function fail(code: CoupledFootnotePaginationFailure, message: string, id?: string): never {
@@ -319,6 +322,7 @@ export const createCoupledFootnotePagination = (
       availableHeight: capacity,
       idsByColumn: new Map([[0, ids]]),
       pendingByColumn,
+      requiredStartId: requiredStartRefId,
     });
     // The diagnostic ledger is rounded and can sum multiple columns. Admission
     // is tied to the actual placed band, with only floating-point tolerance.
@@ -344,10 +348,15 @@ export const createCoupledFootnotePagination = (
       if (!conservesRanges(ranges, actual))
         fail('range-conservation', `Footnote ${id} did not conserve its exact source ranges`, id);
     }
-    for (let index = 0; index < ids.length; index += 1) {
+    const requiredId = requiredStartRefId ?? ids[0];
+    const requiredIndex = requiredId == null ? -1 : ids.indexOf(requiredId);
+    if (requiredId != null && (requiredIndex < 0 || !placedById.get(requiredId)?.length)) {
+      fail('ordered-minimum', `Footnote ${requiredId} did not start on its reference page`, requiredId);
+    }
+    for (let index = 0; index < requiredIndex; index += 1) {
       const id = ids[index];
-      if (!placedById.get(id)?.length || (index < ids.length - 1 && outgoingById.get(id)?.length)) {
-        fail('ordered-minimum', `Footnote ${id} did not satisfy the page's ordered anchor minimum`, id);
+      if (!placedById.get(id)?.length || outgoingById.get(id)?.length) {
+        fail('ordered-minimum', `Footnote ${id} did not finish before the required start`, id);
       }
     }
     if (ids.length === 0 && incoming.refs > 0 && pagePlan.slices.length === 0) {

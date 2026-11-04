@@ -109,8 +109,47 @@ const truncatedWarningKeys = (spy: ReturnType<typeof vi.spyOn>) =>
     .map(([, detail]) => `content-truncated:${(detail as { ids: string[] }).ids.join(',')}`);
 
 describe('footnote diagnostic document boundaries', () => {
+  it('drains every line when continuation pages cannot fill the physical band', async () => {
+    const { blocks, options } = makeScenario();
+    options.pageSize = { w: 612, h: MARGINS.top + MARGINS.bottom + 121 };
+    options.footnotes!.separatorSpacingBefore = 0;
+    options.footnotes!.topPadding = 4;
+    options.footnotes!.dividerHeight = 6;
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const measureBlock: Parameters<typeof incrementalLayout>[4] = async (block) => {
+      const textLength = block.kind === 'paragraph' ? (block.runs?.[0]?.text?.length ?? 1) : 1;
+      return block.id.startsWith('footnote-')
+        ? makeMeasure(70, 10, textLength)
+        : makeMeasure(BODY_LINE_HEIGHT, 1, textLength);
+    };
+
+    const result = await incrementalLayout([], null, blocks, options, measureBlock);
+    const renderedLines = result.layout.pages.flatMap((page) =>
+      page.fragments.flatMap((fragment) => {
+        if (fragment.blockId !== 'footnote-1-0-paragraph' || fragment.kind !== 'para') return [];
+        return Array.from({ length: fragment.toLine - fragment.fromLine }, (_, index) => fragment.fromLine + index);
+      }),
+    );
+
+    expect(renderedLines).toEqual(Array.from({ length: 10 }, (_, index) => index));
+    expect(truncatedWarningKeys(warn)).toEqual([]);
+  });
+
+  it('does not report truncation when final continuation pages drain the queue', async () => {
+    const { blocks, options, measureBlock } = makeScenario();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    options.footnotes!.refs.push({ id: '3', pos: 3 });
+    options.footnotes!.blocksById.set('3', [makeParagraph('footnote-3-0-paragraph', 'Third tall note.', 0)]);
+
+    const result = await incrementalLayout([], null, blocks, options, measureBlock);
+
+    expect(result.layout.pages.length).toBeGreaterThan(1);
+    expect(truncatedWarningKeys(warn)).toEqual([]);
+  });
+
   it('dedupes the same truncation key after an edit and allows a new note key', async () => {
     const { blocks, options, measureBlock } = makeScenario();
+    options.pageSize = { w: 612, h: MARGINS.top + MARGINS.bottom + 1 };
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     options.footnotes!.refs.push({ id: '3', pos: 3 });
     options.footnotes!.blocksById.set('3', [makeParagraph('footnote-3-0-paragraph', 'Third tall note.', 0)]);

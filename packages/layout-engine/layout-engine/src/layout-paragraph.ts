@@ -1,6 +1,6 @@
 import type { FloatingObjectManager } from './floating-objects';
 import type { PageState } from './paginator';
-import { coupledFootnoteBodyBottom, type FootnotePageFlow } from './footnote-page-flow';
+import { coupledFootnoteBodyBottom, footnoteQueueDemand, type FootnotePageFlow } from './footnote-page-flow';
 import type {
   PageMargins,
   ParagraphBlock,
@@ -116,6 +116,7 @@ export type FootnoteAnchorRef = {
   refId: string;
   fullHeight: number;
   firstLineHeight: number;
+  rowIndex?: number;
 };
 
 /**
@@ -372,6 +373,7 @@ function calculateFirstLineIndent(block: ParagraphBlock, measure: ParagraphMeasu
 
 export type ParagraphLayoutContext = {
   incomingFootnoteDemand?: FootnotePageFlow['incomingDemand'];
+  legacyIncomingFootnoteDemand?: (pageIndex: number) => { height: number; refs: number } | undefined;
   block: ParagraphBlock;
   measure: ParagraphMeasure;
   columnWidth: number;
@@ -1348,9 +1350,24 @@ export function* layoutParagraphBlockSteps(
   const refreshAnchorLines = () => {
     anchorLines.clear();
     for (const anchor of paragraphAnchors) {
-      if (anchor.runOrdinal == null) continue;
-      const lineIndex = findLineIndexForRunOrdinal(lines, anchor.runOrdinal);
-      if (lineIndex != null) anchorLines.set(anchor, lineIndex);
+      if (anchor.runOrdinal != null) {
+        const lineIndex = findLineIndexForRunOrdinal(lines, anchor.runOrdinal);
+        if (lineIndex != null) anchorLines.set(anchor, lineIndex);
+        continue;
+      }
+      for (let index = 0; index < lines.length; index += 1) {
+        const range = computeFragmentPmRange(block, lines, index, index + 1);
+        if (
+          range.pmStart != null &&
+          range.pmEnd != null &&
+          anchor.pmPos >= range.pmStart &&
+          (anchor.pmPos < range.pmEnd || (index === lines.length - 1 && anchor.pmPos <= range.pmEnd))
+        ) {
+          anchorLines.set(anchor, index);
+          break;
+        }
+      }
+      if (!anchorLines.has(anchor) && lines.length > 0) anchorLines.set(anchor, lines.length - 1);
     }
   };
   refreshAnchorLines();
@@ -1472,23 +1489,26 @@ export function* layoutParagraphBlockSteps(
     const keepLines = attrs?.keepLines === true;
     if (keepLines && fromLine === 0) {
       const neededSpacingBefore = collapseSpacingBefore(spacingBefore, state.trailingSpacing);
-      const keptAnchors = ctx.incomingFootnoteDemand ? getSliceAnchors(0, lines.length) : [];
-      const keptDemand = keptAnchors.reduce((sum, anchor) => sum + anchor.fullHeight, 0);
-      const committedDemand = ctx.incomingFootnoteDemand
-        ? state.footnoteAnchorsThisPage.reduce((sum, anchor) => sum + anchor.fullHeight, 0)
-        : 0;
+      const hasFootnoteFlow = ctx.incomingFootnoteDemand || ctx.legacyIncomingFootnoteDemand;
+      const keptAnchors = hasFootnoteFlow ? getSliceAnchors(0, lines.length) : [];
+      const terminalLine = lines.length - 1;
+      const priorAnchors = keptAnchors.filter((anchor) => (anchorLines.get(anchor) ?? -1) < terminalLine);
+      const currentAnchors = keptAnchors.filter((anchor) => (anchorLines.get(anchor) ?? -1) === terminalLine);
+      const keptDemand = footnoteQueueDemand(0, state.footnoteAnchorsThisPage ?? [], priorAnchors, currentAnchors);
+      const blankDemand = footnoteQueueDemand(0, [], priorAnchors, currentAnchors);
       const overhead = ctx.getFootnoteBandOverhead ?? ((refs: number) => (refs > 0 ? 22 + (refs - 1) * 2 : 0));
-      const keptBottom = ctx.incomingFootnoteDemand
+      const keptBottom = hasFootnoteFlow
         ? coupledFootnoteBodyBottom(
             state,
-            committedDemand + keptDemand,
+            keptDemand,
             state.footnoteRefsThisPage + keptAnchors.length,
-            ctx.incomingFootnoteDemand(state.page.number - 1),
+            ctx.incomingFootnoteDemand?.(state.page.number - 1) ??
+              ctx.legacyIncomingFootnoteDemand?.(state.page.number - 1) ?? { height: 0, refs: 0 },
             overhead,
           )
         : state.contentBottom;
-      const blankBottom = ctx.incomingFootnoteDemand
-        ? coupledFootnoteBodyBottom(state, keptDemand, keptAnchors.length, { height: 0, refs: 0 }, overhead)
+      const blankBottom = hasFootnoteFlow
+        ? coupledFootnoteBodyBottom(state, blankDemand, keptAnchors.length, { height: 0, refs: 0 }, overhead)
         : state.contentBottom;
       const pageContentHeight = blankBottom - state.topMargin;
       const linesHeight = lines.reduce((sum, line) => sum + (line.lineHeight || 0), 0);
@@ -1675,53 +1695,27 @@ export function* layoutParagraphBlockSteps(
           state.footnoteRefsThisPage + extraRefs,
           ctx.incomingFootnoteDemand(state.page.number - 1),
           ctx.getFootnoteBandOverhead ?? fallbackBandOverhead,
-          lines[fromLine]?.lineHeight ?? 0,
         );
       }
-      const totalDemand = extraDemand;
-      const totalRefs = state.footnoteRefsThisPage + extraRefs;
+      const incoming = ctx.legacyIncomingFootnoteDemand?.(state.page.number - 1);
+      const totalDemand = extraDemand + (incoming?.height ?? 0);
+      const totalRefs = state.footnoteRefsThisPage + extraRefs + (incoming?.refs ?? 0);
       const demandWithOverhead = totalDemand > 0 ? totalDemand + bandOverhead(totalRefs) : 0;
-      // SD-2656: respect the planner's per-page reserve as a floor. The
-      // convergence loop sets `state.pageFootnoteReserve` to communicate
-      // continuation demand from prior pages (fn body content that was
-      // deferred because it didn't fit on its anchor page). Range-aware
-      // demand alone misses this — the slicer only knows about fns anchored
-      // in THIS page's body, not about fn bodies migrating in from previous
-      // pages. Taking the max of (continuation-reserve, anchored-demand+
-      // overhead) ensures body leaves room for whichever is larger.
-      const reservedSpace = Math.max(state.pageFootnoteReserve, demandWithOverhead);
+      const reservedSpace = incoming ? demandWithOverhead : Math.max(state.pageFootnoteReserve, demandWithOverhead);
       const minBodyLineHeight = lines[fromLine]?.lineHeight ?? 0;
-      const maxAdditional = Math.max(0, rawContentBottom - state.topMargin - minBodyLineHeight);
+      const maxAdditional = Math.max(0, rawContentBottom - state.topMargin - (incoming ? 1 : minBodyLineHeight));
       return rawContentBottom - Math.min(reservedSpace, maxAdditional);
     };
 
-    // SD-2656: pre-slicer advance check must preview the FIRST candidate
-    // line's footnote demand. Without this preview, the in-slicer force-
-    // commit-first-line rule would unconditionally place line 0 even when
-    // its fn anchors push the band off the page. This was the band-overflow
-    // bug seen on the reference fixture's p19 (two fns ended up in the band
-    // on top of a prior fn, pushing the band ~140 px past pageH).
-    //
-    // The pre-slicer check is allowed to defer the entire block to next
-    // page only when the page already has body content (otherwise we'd
-    // deadlock on oversized fns). On an empty page, the slicer's force-
-    // commit-first-line rule keeps making progress and the band may end
-    // up clipped — but that case is handled by the planner's continuation
-    // split (separate fix path).
-    // Reserve the full footnote cluster height up front, so the body slicer
-    // backs off enough lines that every anchored footnote fits whole on its
-    // own page. This matches Word's pagination, which knows each footnote's
-    // full demand at every line decision rather than reserving a minimum
-    // and patching later. Cost: bodies that previously packed to the brink
-    // grow ≤ 1–4 pages per fixture; gain: footnote splits drop to ~0 on
-    // the representative complex-footnote fixtures we measured.
-    const computeFootnoteClusterDemand = (candidate: ReadonlyArray<FootnoteAnchorRef>): number => {
+    const computeFootnoteClusterDemand = (
+      candidate: ReadonlyArray<FootnoteAnchorRef>,
+      terminalLine: number,
+    ): number => {
       const committed = state.footnoteAnchorsThisPage ?? [];
       if (candidate.length === 0 && committed.length === 0) return 0;
-      let demand = 0;
-      for (const anchor of committed) demand += anchor.fullHeight;
-      for (const anchor of candidate) demand += anchor.fullHeight;
-      return demand;
+      const currentLine = candidate.filter((anchor) => anchorLines.get(anchor) === terminalLine);
+      const prior = candidate.filter((anchor) => anchorLines.get(anchor) !== terminalLine);
+      return footnoteQueueDemand(0, committed, prior, currentLine);
     };
 
     const previewAnchors = getSliceAnchors(fromLine, fromLine + 1);
@@ -1729,7 +1723,7 @@ export function* layoutParagraphBlockSteps(
     // Re-evaluates against current state after advanceColumn (footnoteAnchorsThisPage
     // resets on a fresh page, so demand can shrink).
     const computePreviewBottom = () => {
-      const demand = computeFootnoteClusterDemand(previewAnchors);
+      const demand = computeFootnoteClusterDemand(previewAnchors, fromLine);
       return computeEffectiveBottom(demand, previewRefs);
     };
     let effectiveBottom = computePreviewBottom();
@@ -1749,6 +1743,15 @@ export function* layoutParagraphBlockSteps(
 
     const nextLineHeight = lines[fromLine].lineHeight || 0;
     const remainingHeight = effectiveBottom - state.cursorY;
+    if (
+      (ctx.incomingFootnoteDemand?.(state.page.number - 1).refs ||
+        ctx.legacyIncomingFootnoteDemand?.(state.page.number - 1)?.refs) &&
+      state.page.fragments.length === 0 &&
+      remainingHeight < nextLineHeight
+    ) {
+      advanceColumn(state);
+      continue;
+    }
     if (pageHasNonTableAnchorContent(state) && remainingHeight < nextLineHeight) {
       state = advanceColumn(state);
       if (needsColumnMeasure(state)) continue;
@@ -1793,7 +1796,7 @@ export function* layoutParagraphBlockSteps(
         splitsWithinColumn =
           candidateVerticalClearance + lineHeight + borderExpansion.bottom <=
           computeEffectiveBottom(
-            computeFootnoteClusterDemand(candidateAnchors),
+            computeFootnoteClusterDemand(candidateAnchors, toLine),
             getSliceRefCount(candidateAnchors, fromLine, toLine + 1),
           );
         // Commit the lines above the float as one fragment. The next loop
@@ -1801,8 +1804,7 @@ export function* layoutParagraphBlockSteps(
         break;
       }
       const candidateAnchors = getSliceAnchors(fromLine, toLine + 1);
-      // Preserve full-cluster acceptance; only marker ownership changes.
-      const orderedDemand = computeFootnoteClusterDemand(candidateAnchors);
+      const orderedDemand = computeFootnoteClusterDemand(candidateAnchors, toLine);
       const nextRefs = getSliceRefCount(candidateAnchors, fromLine, toLine + 1);
 
       if (toLine === fromLine) {
@@ -1851,7 +1853,7 @@ export function* layoutParagraphBlockSteps(
       height -= lines[toLine].lineHeight || 0;
       advanceForWidow = true;
       const adjustedAnchors = getSliceAnchors(fromLine, toLine);
-      sliceDemand = computeFootnoteClusterDemand(adjustedAnchors);
+      sliceDemand = computeFootnoteClusterDemand(adjustedAnchors, toLine - 1);
       sliceRefs = getSliceRefCount(adjustedAnchors, fromLine, toLine);
     }
 
@@ -1878,6 +1880,10 @@ export function* layoutParagraphBlockSteps(
         for (const a of newAnchors) {
           if (!seen.has(a.refId)) state.footnoteAnchorsThisPage.push(a);
         }
+        const latestLine = Math.max(...newAnchors.map((anchor) => anchorLines.get(anchor) ?? fromLine));
+        state.footnoteRequiredStartRefId = newAnchors.find(
+          (anchor) => (anchorLines.get(anchor) ?? fromLine) === latestLine,
+        )?.refId;
       }
     }
     void effectiveBottom;

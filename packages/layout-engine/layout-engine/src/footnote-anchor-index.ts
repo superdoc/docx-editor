@@ -115,13 +115,26 @@ export function* buildFootnoteAnchorIndexSteps(
     if (checkpoint) yield checkpoint;
     if (block.kind === 'paragraph') paragraphsById.set(block.id, block);
   }
-  const appendAnchor = (position: number, refId: string, ownerId: string, runOrdinal?: number): boolean => {
+  const appendAnchor = (
+    position: number,
+    refId: string,
+    ownerId: string,
+    runOrdinal?: number,
+    rowIndex?: number,
+  ): boolean => {
     const fullHeight = bodyHeights.get(refId);
     if (!validBodyHeight(fullHeight)) return false;
     const firstLineRaw = firstLineHeights?.get(refId);
     const firstLineHeight = validBodyHeight(firstLineRaw) ? Math.min(firstLineRaw, fullHeight) : fullHeight;
     const list = out.get(ownerId) ?? [];
-    list.push({ pmPos: position, refId, fullHeight, firstLineHeight, ...(runOrdinal == null ? {} : { runOrdinal }) });
+    list.push({
+      pmPos: position,
+      refId,
+      fullHeight,
+      firstLineHeight,
+      ...(runOrdinal == null ? {} : { runOrdinal }),
+      ...(rowIndex == null ? {} : { rowIndex }),
+    });
     out.set(ownerId, list);
     return true;
   };
@@ -217,14 +230,18 @@ export function* buildFootnoteAnchorIndexSteps(
     return low;
   }
 
-  const record = (position: number, refId: string, topLevelId: string): boolean => {
-    if (!appendAnchor(position, refId, topLevelId)) return false;
+  const record = (position: number, refId: string, topLevelId: string, rowIndex?: number): boolean => {
+    if (!appendAnchor(position, refId, topLevelId, undefined, rowIndex)) return false;
     refByPos.delete(position);
     removeIndexedPosition(position);
     return true;
   };
 
-  function* recordIfHitSteps(range: PmRange, topLevelId: string): Generator<LayoutWorkCheckpoint, void, void> {
+  function* recordIfHitSteps(
+    range: PmRange,
+    topLevelId: string,
+    rowIndex?: number,
+  ): Generator<LayoutWorkCheckpoint, void, void> {
     if (canUseIndexedLookup && Number.isFinite(range.pmStart) && Number.isFinite(range.pmEnd)) {
       let refIndex = findNextActiveIndex(yield* lowerBoundRefPositionSteps(range.pmStart));
       while (refIndex < sortedRefPositions.length) {
@@ -234,7 +251,7 @@ export function* buildFootnoteAnchorIndexSteps(
         if (diagnostics) diagnostics.rangeComparisons += 1;
         if (position > range.pmEnd) break;
         const refId = refByPos.get(position);
-        if (refId != null) record(position, refId, topLevelId);
+        if (refId != null) record(position, refId, topLevelId, rowIndex);
         else removeIndexedPosition(position);
         refIndex = findNextActiveIndex(refIndex);
       }
@@ -249,7 +266,7 @@ export function* buildFootnoteAnchorIndexSteps(
         diagnostics.legacyComparisons += 1;
       }
       if (position < range.pmStart || position > range.pmEnd) continue;
-      record(position, refId, topLevelId);
+      record(position, refId, topLevelId, rowIndex);
     }
   }
 
@@ -265,10 +282,11 @@ export function* buildFootnoteAnchorIndexSteps(
       }
     }
     const range = yield* resolveBlockPmRangeSteps(block);
-    if (range) yield* recordIfHitSteps(range, block.id);
+    if (range && block.kind !== 'table') yield* recordIfHitSteps(range, block.id);
 
     if (block.kind !== 'table') continue;
-    for (const row of block.rows ?? []) {
+    for (let rowIndex = 0; rowIndex < (block.rows?.length ?? 0); rowIndex += 1) {
+      const row = block.rows[rowIndex];
       for (const cell of row.cells ?? []) {
         const cellChildren: FlowBlock[] = cell.blocks
           ? (cell.blocks as FlowBlock[])
@@ -279,10 +297,11 @@ export function* buildFootnoteAnchorIndexSteps(
           const childCheckpoint = nextCheckpoint();
           if (childCheckpoint) yield childCheckpoint;
           const childRange = yield* resolveBlockPmRangeSteps(child);
-          if (childRange) yield* recordIfHitSteps(childRange, block.id);
+          if (childRange) yield* recordIfHitSteps(childRange, block.id, rowIndex);
         }
       }
     }
+    if (range) yield* recordIfHitSteps(range, block.id);
   }
 
   for (const [topLevelId, list] of out) {

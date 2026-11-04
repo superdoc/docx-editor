@@ -3887,7 +3887,9 @@ export type LayoutBlockResumeCheckpoint = {
     refId: string;
     fullHeight: number;
     firstLineHeight: number;
+    rowIndex?: number;
   }[];
+  footnoteRequiredStartRefId?: string;
 };
 
 /** Final layout output ready for painting. */

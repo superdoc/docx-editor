@@ -7,7 +7,7 @@ import {
   type FootnoteAnchorIndexInput,
 } from './footnote-anchor-index';
 
-type AnchorEntry = { pmPos: number; refId: string; fullHeight: number; firstLineHeight: number };
+type AnchorEntry = { pmPos: number; refId: string; fullHeight: number; firstLineHeight: number; rowIndex?: number };
 
 const paragraph = (id: string, pmStart?: number, pmEnd?: number): FlowBlock =>
   ({
@@ -68,7 +68,7 @@ const legacyAnchorIndex = (
     return pmStart == null ? null : { pmStart, pmEnd: pmEnd ?? pmStart + 1 };
   };
 
-  const recordHits = (range: { pmStart: number; pmEnd: number }, topLevelId: string): void => {
+  const recordHits = (range: { pmStart: number; pmEnd: number }, topLevelId: string, rowIndex?: number): void => {
     for (const [position, refId] of refByPos.entries()) {
       comparisons += 1;
       if (position < range.pmStart || position > range.pmEnd) continue;
@@ -80,7 +80,7 @@ const legacyAnchorIndex = (
           ? Math.min(firstLineRaw, fullHeight)
           : fullHeight;
       const entries = result.get(topLevelId) ?? [];
-      entries.push({ pmPos: position, refId, fullHeight, firstLineHeight });
+      entries.push({ pmPos: position, refId, fullHeight, firstLineHeight, ...(rowIndex == null ? {} : { rowIndex }) });
       result.set(topLevelId, entries);
       refByPos.delete(position);
     }
@@ -89,9 +89,9 @@ const legacyAnchorIndex = (
   for (const block of blocks) {
     if (refByPos.size === 0) break;
     const range = resolveRange(block);
-    if (range) recordHits(range, block.id);
+    if (range && block.kind !== 'table') recordHits(range, block.id);
     if (block.kind !== 'table') continue;
-    for (const row of block.rows ?? []) {
+    for (const [rowIndex, row] of (block.rows ?? []).entries()) {
       for (const cell of row.cells ?? []) {
         const children: FlowBlock[] = cell.blocks
           ? (cell.blocks as FlowBlock[])
@@ -100,10 +100,11 @@ const legacyAnchorIndex = (
             : [];
         for (const child of children) {
           const childRange = resolveRange(child);
-          if (childRange) recordHits(childRange, block.id);
+          if (childRange) recordHits(childRange, block.id, rowIndex);
         }
       }
     }
+    if (range) recordHits(range, block.id);
   }
 
   for (const entries of result.values()) entries.sort((left, right) => left.pmPos - right.pmPos);

@@ -258,7 +258,7 @@ describe('Footnote multi-pass reserve loop', () => {
           : makeMeasure(20, 17),
     );
 
-    expect(result.bridgeTiming.counters.footnotePreferredUnimprovableTargetsSkipped).toBeGreaterThan(0);
+    expect(result.bridgeTiming.counters.footnotePreferredTrialsDeferred).toBeGreaterThan(0);
     expect(result.bridgeTiming.counters.footnotePreferredRelayouts).toBe(0);
     expect(result.layout.pages[0]?.footnoteLedger?.continuationOut).toEqual([
       { id: '1', remainingRangeCount: 1, remainingHeightPx: 70 },
@@ -378,6 +378,14 @@ describe('Footnote multi-pass reserve loop', () => {
     // bottom margin / footer region).
     const physicalBottom = (page2.size?.h ?? pageHeight) - (margins.bottom ?? 72);
     expect(bodyMaxY + (page2.footnoteReserved ?? 0)).toBeLessThanOrEqual(physicalBottom + 1);
+    for (const page of layout.pages) {
+      const appliedReserve = page.footnoteReserved ?? 0;
+      const ledger = page.footnoteLedger;
+      expect(ledger?.appliedBodyReservePx ?? 0).toBe(appliedReserve);
+      expect(ledger?.actualBandHeightPx ?? 0).toBeLessThanOrEqual(appliedReserve + 1);
+      const pagePhysicalBottom = (page.size?.h ?? pageHeight) - (page.baseMargins?.bottom ?? margins.bottom);
+      expect((page.bodyMaxY ?? 0) + appliedReserve).toBeLessThanOrEqual(pagePhysicalBottom + 1);
+    }
   });
 
   it('stops a doomed tighten regrow at the accepted page-count ceiling', async () => {

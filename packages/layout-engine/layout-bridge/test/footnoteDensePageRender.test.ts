@@ -71,6 +71,70 @@ const countRenderedLines = (
 };
 
 describe('SD-3400 prerequisite: footnote render on a dense terminal page', () => {
+  it('starts an early table-row footnote below its first partial row', async () => {
+    const cellParagraph = makeParagraph('table-cell-paragraph', 'Table row with an early note.', 0) as ParagraphBlock;
+    const table: TableBlock = {
+      kind: 'table',
+      id: 'splittable-table',
+      rows: [{ id: 'splittable-row', cells: [{ id: 'splittable-cell', blocks: [cellParagraph] }] }],
+    };
+    const cellMeasure = makeMeasure(20, 15);
+    const tableMeasure: TableMeasure = {
+      kind: 'table',
+      rows: [{ height: 300, cells: [{ width: 400, height: 300, blocks: [cellMeasure] }] }],
+      columnWidths: [400],
+      totalWidth: 400,
+      totalHeight: 300,
+    };
+    const footnote = makeParagraph('footnote-1-0-paragraph', 'Two line note.', 0);
+    const measureBlock = vi.fn(async (block: FlowBlock) => {
+      if (block.kind === 'table') return tableMeasure;
+      if (block.id === footnote.id) return makeMeasure(30, 2);
+      return makeMeasure(20, 1);
+    });
+    const margins = { top: 50, right: 50, bottom: 50, left: 50 };
+
+    const result = await incrementalLayout(
+      [],
+      null,
+      [table],
+      {
+        pageSize: { w: 500, h: 300 },
+        margins,
+        footnotes: {
+          refs: [{ id: '1', blockId: cellParagraph.id, pos: 2 }],
+          blocksById: new Map([['1', [footnote]]]),
+          topPadding: 4,
+          dividerHeight: 6,
+        },
+      },
+      measureBlock,
+    );
+
+    const firstPage = result.layout.pages[0];
+    expect(firstPage.fragments.some((fragment) => fragment.blockId === footnote.id)).toBe(true);
+    const noteRanges = result.layout.pages.flatMap((page) =>
+      page.fragments.flatMap((fragment) =>
+        fragment.blockId === footnote.id && fragment.kind === 'para'
+          ? [{ fromLine: fragment.fromLine, toLine: fragment.toLine }]
+          : [],
+      ),
+    );
+    expect(noteRanges).toEqual([
+      { fromLine: 0, toLine: 1 },
+      { fromLine: 1, toLine: 2 },
+    ]);
+    const tableBottom = Math.max(
+      ...firstPage.fragments
+        .filter((fragment) => fragment.blockId === table.id)
+        .map((fragment) => fragment.y + fragment.height),
+    );
+    const noteTop = Math.min(
+      ...firstPage.fragments.filter((fragment) => fragment.blockId === footnote.id).map((fragment) => fragment.y),
+    );
+    expect(tableBottom).toBeLessThanOrEqual(noteTop);
+  });
+
   it('renders the footnote body even when the body nearly fills the only page', async () => {
     // Page geometry: body region = 600px (h 744, margins 72/72), line height 20.
     // 30 body lines × 20 = 600px → the body fills the region exactly, leaving ~0

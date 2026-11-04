@@ -1157,7 +1157,7 @@ describe('incrementalLayout affected frontier', () => {
         footnotes: {
           refs: [6, 16, 26].map((index) => ({
             id: String(index),
-            pos: Number.MAX_SAFE_INTEGER,
+            pos: previousBlocks[index]!.runs[0]!.pmStart! + 1,
             blockId: previousBlocks[index]!.id,
           })),
           blocksById: new Map(

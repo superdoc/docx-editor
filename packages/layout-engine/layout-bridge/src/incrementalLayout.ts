@@ -77,6 +77,7 @@ import {
   normalizeChapterMarkerText,
   SEMANTIC_PAGE_HEIGHT_PX,
   SINGLE_COLUMN_DEFAULT,
+  maxFootnoteBand,
   resolveTableFrame,
   generateFragmentMetadata,
   readTableLayoutResumeCheckpoints,
@@ -827,6 +828,7 @@ export type IncrementalLayoutBridgeTiming = {
     headerFooterPreLayoutBodyBlocksEnumerated: number;
     headerFooterPreLayoutSectionsEnumerated: number;
     footnoteRelayouts: number;
+    footnoteIncomingDemandUnconverged: number;
     footnoteReserveRelayouts: number;
     footnoteGrowRelayouts: number;
     footnoteTightenRelayouts: number;
@@ -900,6 +902,7 @@ function progressiveTimingSnapshot(): IncrementalLayoutBridgeTiming {
       headerFooterPreLayoutBodyBlocksEnumerated: 0,
       headerFooterPreLayoutSectionsEnumerated: 0,
       footnoteRelayouts: 0,
+      footnoteIncomingDemandUnconverged: 0,
       footnoteReserveRelayouts: 0,
       footnoteGrowRelayouts: 0,
       footnoteTightenRelayouts: 0,
@@ -2064,7 +2067,6 @@ const resolveFootnoteMeasurementWidth = (options: LayoutOptions, blocks?: FlowBl
   return width;
 };
 
-const MIN_FOOTNOTE_BODY_HEIGHT = 1;
 const DEFAULT_FOOTNOTE_SEPARATOR_SPACING_BEFORE = 12;
 const MAX_FOOTNOTE_LAYOUT_PASSES = 4;
 
@@ -2083,12 +2085,11 @@ const computeMaxFootnoteReserve = (layoutForPages: Layout, pageIndex: number, ba
   // can't fit under body's actual position — which is what Word does.
   // Falls back to the legacy calc for pages without recorded bodyMaxY.
   const bodyMaxY = (page as { bodyMaxY?: number }).bodyMaxY;
+  const maximumBand = maxFootnoteBand(pageSize.h - topMargin - bottomMargin);
   if (typeof bodyMaxY === 'number' && Number.isFinite(bodyMaxY) && bodyMaxY > topMargin) {
-    return Math.max(0, pageSize.h - bottomMargin - bodyMaxY);
+    return Math.min(maximumBand, Math.max(0, pageSize.h - bottomMargin - bodyMaxY));
   }
-  const availableForBody = pageSize.h - topMargin - bottomMargin;
-  if (!Number.isFinite(availableForBody)) return 0;
-  return Math.max(0, availableForBody - MIN_FOOTNOTE_BODY_HEIGHT);
+  return maximumBand;
 };
 
 type FootnoteLayoutPlan = {
@@ -2101,6 +2102,9 @@ type FootnoteLayoutPlan = {
   // vs extendedSlices and the continuation in/out queues — surface that here
   // so injectFragments can attach it to each Page object.
   ledgersByPage: Map<number, FootnotePageLedgerDraft>;
+  overflowByPage?: Map<number, number>;
+  truncatedIds?: string[];
+  pendingAfterLastPageHeight?: number;
 };
 
 /**
@@ -4485,6 +4489,7 @@ async function incrementalLayoutComplete(
   const footnoteStart = performance.now();
   let footnoteFullRelayoutPerformed = false;
   let footnoteRelayouts = 0;
+  let footnoteIncomingDemandUnconverged = 0;
   let footnoteCoupledRelayouts = initialLayoutInvocationTiming.coupledPasses;
   let footnoteCoupledPages = initialLayoutInvocationTiming.coupledPages;
   let footnoteCoupledFallbacks = initialLayoutInvocationTiming.coupledFallbacks;
@@ -4613,6 +4618,20 @@ async function incrementalLayoutComplete(
         }
       };
 
+      let legacyIncomingByPageIndex: Array<{ height: number; refs: number } | undefined> = [];
+      let legacyIncomingAppliedToLayout: Array<{ height: number; refs: number } | undefined> = [];
+      const firstChangedIncomingPage = (pageCount: number): number | null => {
+        for (let pageIndex = 0; pageIndex < pageCount; pageIndex += 1) {
+          const applied = legacyIncomingAppliedToLayout[pageIndex];
+          const planned = legacyIncomingByPageIndex[pageIndex];
+          if ((applied?.height ?? 0) !== (planned?.height ?? 0) || (applied?.refs ?? 0) !== (planned?.refs ?? 0))
+            return pageIndex;
+        }
+        return null;
+      };
+      const incomingDemandMatchesLayout = (pageCount: number): boolean => firstChangedIncomingPage(pageCount) === null;
+      let trailingNotePageCount = 0;
+
       const computeFootnoteLayoutPlan = (
         layoutForPages: Layout,
         idsByColumn: Map<number, Map<number, string[]>>,
@@ -4625,7 +4644,7 @@ async function incrementalLayoutComplete(
         const reserves: number[] = new Array(pageCount).fill(0);
         const hasContinuationByColumn = new Map<string, boolean>();
         const rangesByFootnoteId = new Map<string, FootnoteRange[]>();
-        const cappedPages = new Set<number>();
+        const overflowByPage = new Map<number, number>();
         // SD-2656 Phase 0: per-page ledger drafts captured during planning.
         const ledgersByPage = new Map<number, FootnotePageLedgerDraft>();
 
@@ -4654,6 +4673,10 @@ async function incrementalLayoutComplete(
         for (let pageIndex = 0; pageIndex < pageCount; pageIndex += 1) {
           const baseReserve = Number.isFinite(baseReserves?.[pageIndex]) ? Math.max(0, baseReserves[pageIndex]) : 0;
           const maxReserve = computeMaxFootnoteReserve(layoutForPages, pageIndex, baseReserve);
+          const pageForNotes = layoutForPages.pages[pageIndex];
+          const pageTop = normalizeMargin(pageForNotes?.margins?.top, DEFAULT_MARGINS.top);
+          const bodyMaxY = pageForNotes && 'bodyMaxY' in pageForNotes ? pageForNotes.bodyMaxY : undefined;
+          const noteOnlyPage = typeof bodyMaxY === 'number' && bodyMaxY <= pageTop + 1;
           const columns = pageColumns.get(pageIndex);
           const columnCount = Math.max(1, Math.floor(columns?.count ?? 1));
 
@@ -4698,6 +4721,8 @@ async function incrementalLayoutComplete(
             fullHeightById: fullRangeHeightById,
             firstLineHeightById,
             pendingByColumn,
+            deferStartIds: tableOwnedFootnoteIds,
+            noteOnlyPage,
             separatorSpacingBefore,
             dividerHeight: safeDividerHeight,
             continuationDividerHeight,
@@ -4706,7 +4731,7 @@ async function incrementalLayoutComplete(
           });
           pendingByColumn = pagePlan.pendingByColumn;
           if (pagePlan.slices.length > 0) slicesByPage.set(pageIndex, pagePlan.slices);
-          if (pagePlan.capped) cappedPages.add(pageIndex);
+          if (pagePlan.overflowHeightPx > 0) overflowByPage.set(pageIndex, pagePlan.overflowHeightPx);
           reserves[pageIndex] = Math.max(reserves[pageIndex] ?? 0, pagePlan.reserve);
           for (const [columnIndex, continuing] of pagePlan.hasContinuationByColumn) {
             if (continuing) hasContinuationByColumn.set(pageIndex + ':' + columnIndex, true);
@@ -4759,8 +4784,9 @@ async function incrementalLayoutComplete(
             const size = page?.size ?? layoutForPages.pageSize ?? DEFAULT_PAGE_SIZE;
             const top = normalizeMargin(page?.margins?.top, DEFAULT_MARGINS.top);
             const bottom = normalizeMargin(page?.margins?.bottom, DEFAULT_MARGINS.bottom);
-            const physicalContentHeight = Math.max(0, size.h - top - bottom);
-            return Math.max(0, physicalContentHeight - MIN_FOOTNOTE_BODY_HEIGHT * 20);
+            const applied = page?.footnoteReserved ?? baseReserves[targetPageIndex] ?? 0;
+            const physicalBottom = Math.max(0, bottom - applied);
+            return maxFootnoteBand(size.h - top - physicalBottom);
           };
 
           const bandOverhead = safeSeparatorSpacingBefore + continuationDividerHeight + safeTopPadding;
@@ -4836,32 +4862,54 @@ async function incrementalLayoutComplete(
           }
         }
 
-        if (cappedPages.size > 0) {
-          const pages = Array.from(cappedPages).sort((left, right) => left - right);
-          const key = `reserve-capped:${pages.join(',')}`;
-          if (!emittedFootnoteWarningKeys.has(key)) {
-            emittedFootnoteWarningKeys.add(key);
-            console.warn('[layout] Footnote reserve capped to preserve body area', { pages });
-          }
-        }
-        if (pendingByColumn.size > 0) {
-          const pendingIds = new Set<string>();
-          pendingByColumn.forEach((entries) => entries.forEach((entry) => pendingIds.add(entry.id)));
-          const ids = Array.from(pendingIds).sort();
-          const key = `content-truncated:${ids.join(',')}`;
-          if (!emittedFootnoteWarningKeys.has(key)) {
-            emittedFootnoteWarningKeys.add(key);
-            console.warn('[layout] Footnote content truncated: extends beyond document pages', { ids });
-          }
-        }
+        const pendingIds = new Set<string>();
+        pendingByColumn.forEach((entries) => entries.forEach((entry) => pendingIds.add(entry.id)));
 
+        legacyIncomingByPageIndex = Array.from({ length: pageCount }, (_, pageIndex) => {
+          const entries = ledgersByPage.get(pageIndex)?.continuationIn ?? [];
+          return { height: entries.reduce((sum, entry) => sum + entry.remainingHeightPx, 0), refs: entries.length };
+        });
         return {
           slicesByPage,
           reserves,
           hasContinuationByColumn,
           separatorSpacingBefore: safeSeparatorSpacingBefore,
           ledgersByPage,
+          overflowByPage,
+          truncatedIds: [...pendingIds].sort(),
+          pendingAfterLastPageHeight: [...pendingByColumn.values()].reduce(
+            (columnTotal, entries) =>
+              columnTotal +
+              entries.reduce(
+                (entryTotal, entry) =>
+                  entryTotal + entry.ranges.reduce((rangeTotal, range) => rangeTotal + getRangeRenderHeight(range), 0),
+                0,
+              ),
+            0,
+          ),
         };
+      };
+
+      const emitFinalFootnoteWarnings = (plan: FootnoteLayoutPlan) => {
+        if (plan.overflowByPage?.size) {
+          const pages = [...plan.overflowByPage.keys()].sort((left, right) => left - right);
+          const key = `reserve-capped:${pages.join(',')}`;
+          if (!emittedFootnoteWarningKeys.has(key)) {
+            emittedFootnoteWarningKeys.add(key);
+            console.warn('[layout] Footnote reserve capped to preserve body area', {
+              pages,
+              overflowPxByPage: Object.fromEntries(plan.overflowByPage),
+            });
+          }
+        }
+        if (plan.truncatedIds?.length) {
+          const ids = plan.truncatedIds;
+          const key = `content-truncated:${ids.join(',')}`;
+          if (!emittedFootnoteWarningKeys.has(key)) {
+            emittedFootnoteWarningKeys.add(key);
+            console.warn('[layout] Footnote content truncated: extends beyond document pages', { ids });
+          }
+        }
       };
 
       const injectFragments = (
@@ -5294,6 +5342,8 @@ async function incrementalLayoutComplete(
         plannerSeparatorSpacingBefore?: number,
         label = 'footnote-relayout',
       ): Promise<Layout> => {
+        const incomingDiffPageIndex = firstChangedIncomingPage(layout.pages.length);
+        legacyIncomingAppliedToLayout = legacyIncomingByPageIndex.map((entry) => entry && { ...entry });
         footnoteRelayouts += 1;
         if (label.includes('revert')) footnoteRelayoutBreakdown.revert += 1;
         else if (label.startsWith('reserve-loop')) footnoteRelayoutBreakdown.reserve += 1;
@@ -5306,6 +5356,8 @@ async function incrementalLayoutComplete(
         const footnoteLayoutOptions: LayoutOptions = {
           ...options,
           footnoteReservedByPageIndex,
+          footnoteIncomingByPageIndex: legacyIncomingByPageIndex,
+          trailingNotePageCount,
           footnotes: {
             ...footnotesInput,
             bodyHeightById,
@@ -5342,8 +5394,21 @@ async function incrementalLayoutComplete(
           }
           return null;
         })();
+        const reservesMatchLayout = (candidate: Layout): boolean =>
+          candidate.pages.every((page, pageIndex) => {
+            const requested = footnoteReservedByPageIndex[pageIndex] ?? 0;
+            const applied = page.footnoteReserved ?? 0;
+            const pageSize = page.size ?? candidate.pageSize ?? DEFAULT_PAGE_SIZE;
+            const top = normalizeMargin(page.margins?.top, DEFAULT_MARGINS.top);
+            const bottomWithReserve = normalizeMargin(page.margins?.bottom, DEFAULT_MARGINS.bottom);
+            const physicalBottom = Math.max(0, bottomWithReserve - applied);
+            const expected = Math.min(requested, maxFootnoteBand(pageSize.h - top - physicalBottom));
+            return Math.abs(applied - expected) < 0.01;
+          });
         const tryInternalReservePassReuse = async (): Promise<Layout | null> => {
           if (
+            (incomingDiffPageIndex != null &&
+              (reserveDiffPageIndex == null || incomingDiffPageIndex < reserveDiffPageIndex)) ||
             reserveDiffPageIndex == null ||
             reserveDiffPageIndex <= 0 ||
             layout.pages.length === 0 ||
@@ -5435,6 +5500,7 @@ async function incrementalLayoutComplete(
               execution: layoutExecution,
             }),
           );
+          if (!reservesMatchLayout(localized.layout)) return null;
           if (localized.reuse.mode === 'full') {
             layoutReuseSummary = localized.reuse;
             footnoteFullRelayoutPerformed = true;
@@ -5494,7 +5560,19 @@ async function incrementalLayoutComplete(
               execution: layoutExecution,
             }),
           );
-          if (localized.reuse.mode !== 'full') {
+          if (!reservesMatchLayout(localized.layout)) {
+            layoutReuseSummary = {
+              ...localized.reuse,
+              mode: 'full',
+              reason: 'footnote-reserve-reuse-mismatch',
+              tailDisposition: 'relaid-to-document-end',
+              checkpointPageIndex: null,
+              convergencePageIndex: null,
+              sourceConvergencePageIndex: null,
+              pagesSplicedByReuse: 0,
+              tailAdoption: null,
+            };
+          } else if (localized.reuse.mode !== 'full') {
             layoutReuseSummary = {
               ...localized.reuse,
               reason: `m4-footnote-reserve-localized;${localized.reuse.reason}`,
@@ -5512,12 +5590,13 @@ async function incrementalLayoutComplete(
             currentFootnoteLayoutReserves = footnoteReservedByPageIndex.slice();
             currentFootnoteSeparatorSpacingBefore = nextFootnoteSeparatorSpacingBefore;
             return localizedLayout;
+          } else {
+            layoutReuseSummary = localized.reuse;
+            footnoteFullRelayoutPerformed = true;
+            currentFootnoteLayoutReserves = footnoteReservedByPageIndex.slice();
+            currentFootnoteSeparatorSpacingBefore = nextFootnoteSeparatorSpacingBefore;
+            return localized.layout;
           }
-          layoutReuseSummary = localized.reuse;
-          footnoteFullRelayoutPerformed = true;
-          currentFootnoteLayoutReserves = footnoteReservedByPageIndex.slice();
-          currentFootnoteSeparatorSpacingBefore = nextFootnoteSeparatorSpacingBefore;
-          return localized.layout;
         }
         footnoteFullRelayoutPerformed = true;
         const fullLayout = await timeFootnotePagination(() =>
@@ -5629,6 +5708,7 @@ async function incrementalLayoutComplete(
             noteFirstLineHeightById: new Map(firstLineHeightById),
           };
         }
+        emitFinalFootnoteWarnings(finalPlan);
         return nextFootnoteReserveSeed;
       };
 
@@ -6258,7 +6338,7 @@ async function incrementalLayoutComplete(
             const physicalContentHeight = pageSize.h - topMargin - physicalBottomMargin;
             if (!Number.isFinite(physicalContentHeight)) return requested;
 
-            return Math.min(requested, Math.max(0, physicalContentHeight - MIN_FOOTNOTE_BODY_HEIGHT));
+            return Math.min(requested, maxFootnoteBand(physicalContentHeight));
           };
           // Grow-only convergence: ensures every page reserves at least as much
           // as its plan demands, so footnotes never render past the page bottom.
@@ -6500,6 +6580,28 @@ async function incrementalLayoutComplete(
             }
           }
 
+          const lastBodyPage = layout.pages.at(-1);
+          const lastBodyPageSize = lastBodyPage?.size ?? layout.pageSize ?? DEFAULT_PAGE_SIZE;
+          const lastBodyTop = normalizeMargin(lastBodyPage?.margins?.top, DEFAULT_MARGINS.top);
+          const lastBodyBottom = normalizeMargin(lastBodyPage?.margins?.bottom, DEFAULT_MARGINS.bottom);
+          const lastBodyReserve = lastBodyPage?.footnoteReserved ?? 0;
+          const trailingBand = maxFootnoteBand(lastBodyPageSize.h - lastBodyTop - lastBodyBottom + lastBodyReserve);
+          for (
+            let extraPage = 0;
+            trailingBand > 0 &&
+            (finalPlan.pendingAfterLastPageHeight ?? 0) > 0 &&
+            (finalPlan.truncatedIds?.length ?? 0) > 0;
+            extraPage += 1
+          ) {
+            const pendingBefore = finalPlan.pendingAfterLastPageHeight ?? 0;
+            trailingNotePageCount += 1;
+            const target = reservesAppliedToLayout.slice();
+            target[layout.pages.length] = trailingBand;
+            await applyReserves(target, `trailing-note-page-${extraPage + 1}`);
+            await growReserves(GROW_MAX_PASSES);
+            if ((finalPlan.pendingAfterLastPageHeight ?? 0) >= pendingBefore) break;
+          }
+
           // Absorb one-line footnote widows by bumping their reserve to
           // preferred. Keep this narrow: single-anchor clusters benefit from the
           // classic widow/orphan absorb, but multi-anchor footnote bands can
@@ -6532,7 +6634,8 @@ async function incrementalLayoutComplete(
               await applyReserves(safeApplied, 'widow-orphan-revert');
             }
           };
-          await runWidowOrphanAbsorb();
+          const legacyWholeNoteRefinement = false;
+          if (legacyWholeNoteRefinement) await runWidowOrphanAbsorb();
           // Preferred-reserve trials are a Word-like refinement above the
           // mandatory correctness floor. A broad warm reflow has already
           // repaginated a large suffix; do not make an interactive commit pay
@@ -6544,8 +6647,18 @@ async function incrementalLayoutComplete(
             layoutReuseSummary.pagesPaginated,
             MAX_WARM_RELAID_PAGES_FOR_PREFERRED_TRIALS,
           );
-          if (shouldRunPreferredTrials) await runPreferredReserveTrials();
+          if (legacyWholeNoteRefinement && shouldRunPreferredTrials) await runPreferredReserveTrials();
           else footnotePreferredTrialsDeferred += 1;
+
+          for (
+            let pass = 0;
+            !incomingDemandMatchesLayout(layout.pages.length) && pass < MAX_FOOTNOTE_LAYOUT_PASSES;
+            pass += 1
+          ) {
+            await applyReserves(reservesAppliedToLayout.slice(), `incoming-demand-pass-${pass + 1}`);
+            if (!(await growReserves(GROW_MAX_PASSES))) break;
+          }
+          footnoteIncomingDemandUnconverged = Number(!incomingDemandMatchesLayout(layout.pages.length));
 
           let footnotePageIndexesToFinalize: ReadonlySet<number> | null = null;
           if (!footnoteFullRelayoutPerformed && layoutReuseSummary.mode !== 'full') {
@@ -6603,6 +6716,8 @@ async function incrementalLayoutComplete(
               `[Perf] 4.5 footnote warm-start: captured a near-fixed-point (stabilized=${reservesStabilized}); next run settles it`,
             );
           }
+        } else {
+          emitFinalFootnoteWarnings(plan);
         }
       }
     }
@@ -6859,6 +6974,7 @@ async function incrementalLayoutComplete(
       headerFooterPreLayoutBodyBlocksEnumerated,
       headerFooterPreLayoutSectionsEnumerated,
       footnoteRelayouts,
+      footnoteIncomingDemandUnconverged,
       footnoteReserveRelayouts: footnoteRelayoutBreakdown.reserve,
       footnoteGrowRelayouts: footnoteRelayoutBreakdown.grow,
       footnoteTightenRelayouts: footnoteRelayoutBreakdown.tighten,

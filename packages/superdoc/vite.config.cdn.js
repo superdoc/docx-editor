@@ -50,7 +50,14 @@ export default defineConfig(({ command }) => {
     },
     plugins,
     resolve: {
-      alias: [...fontSystemAliases, ...getAliases(command, v2Resolution)],
+      alias: [
+        {
+          find: /^\.\/collaboration-comment-map\.js$/,
+          replacement: path.resolve(here, 'src/core/collaboration/cdn-collaboration-comment-map.ts'),
+        },
+        ...fontSystemAliases,
+        ...getAliases(command, v2Resolution),
+      ],
       extensions: ['.mjs', '.js', '.mts', '.ts', '.jsx', '.tsx', '.json'],
       conditions: v2Resolution.conditions,
     },

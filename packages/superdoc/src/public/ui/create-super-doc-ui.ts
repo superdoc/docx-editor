@@ -681,11 +681,25 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     return editCommands && typeof editCommands === 'object' ? (editCommands as LooseRecord) : null;
   };
 
+  let editCommandReadScope: { source: LooseRecord | null; snapshot: unknown; read: boolean } | null = null;
+
+  const readEditCommandSnapshot = (): unknown => {
+    const source = getEditCommands();
+    const getSnapshot = hostMethod(source, 'getSnapshot');
+    if (!getSnapshot) return null;
+    const scope = editCommandReadScope;
+    const snap = scope?.read && scope.source === source ? scope.snapshot : safeCall<unknown>(() => getSnapshot(), null);
+    if (scope) {
+      scope.source = source;
+      scope.snapshot = snap;
+      scope.read = true;
+    }
+    return snap;
+  };
+
   /** Read one edit-command snapshot entry (`activeEditor.editCommands.getSnapshot().commands[id]`). */
   const readEditCommandStateEntry = (commandId: string): LooseRecord | null => {
-    const getSnapshot = hostMethod(getEditCommands(), 'getSnapshot');
-    if (!getSnapshot) return null;
-    const snap = safeCall<unknown>(() => getSnapshot(), null);
+    const snap = readEditCommandSnapshot();
     const commands = isPlainObject(snap) ? snap.commands : undefined;
     const entry = isPlainObject(commands) ? commands[commandId] : undefined;
     return isPlainObject(entry) ? entry : null;
@@ -919,6 +933,12 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     uiTrackedChangesCatalogState.inFlight = null;
   };
 
+  const noteUiTrackedChangesCatalogCommit = (event: object): void => {
+    if (uiTrackedChangesCatalogState.countedCommitEvents.has(event)) return;
+    uiTrackedChangesCatalogState.countedCommitEvents.add(event);
+    uiTrackedChangesCatalogState.commitSeq += 1;
+  };
+
   const beginUiReviewMutation = (token: unknown): void => {
     const activeTokens = uiTrackedChangesCatalogState.activeMutationTokens;
     if (typeof token !== 'string' || token.length === 0 || activeTokens.has(token)) return;
@@ -949,8 +969,9 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       return Promise.reject(new Error('ui-review-catalog-superseded'));
     }
     const generation = uiTrackedChangesCatalogState.generation;
+    const commitSeq = uiTrackedChangesCatalogState.commitSeq;
     const existing = uiTrackedChangesCatalogState.inFlight;
-    if (existing?.generation === generation) return existing.promise;
+    if (existing?.generation === generation && existing.commitSeq === commitSeq) return existing.promise;
     const signal = uiTrackedChangesCatalogState.abortController.signal;
     const validateResult = (result: unknown): unknown => {
       const record = isPlainObject(result) ? result : undefined;
@@ -987,7 +1008,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       }
     }
     const promise = Promise.resolve(rawResult).then(validateResult);
-    uiTrackedChangesCatalogState.inFlight = { generation, promise };
+    uiTrackedChangesCatalogState.inFlight = { generation, commitSeq, promise };
     void promise.then(
       () => {
         if (uiTrackedChangesCatalogState.inFlight?.promise === promise) {
@@ -2830,8 +2851,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       historySource = source;
       historySlice = EMPTY_HISTORY;
     }
-    const getSnapshot = hostMethod(source, 'getSnapshot');
-    const snapshot = getSnapshot ? safeCall<unknown>(() => getSnapshot(), null) : null;
+    const snapshot = readEditCommandSnapshot();
     const read = isPlainObject(snapshot) && isPlainObject(snapshot.history) ? snapshot.history : null;
     const { undoDepth, redoDepth } = read ?? {};
     if (typeof undoDepth !== 'number' || typeof redoDepth !== 'number') return historySlice;
@@ -5063,7 +5083,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     };
   };
 
-  const computeState = (reason = 'direct'): SuperDocUIState => {
+  const computeStateSnapshot = (reason: string): SuperDocUIState => {
     const { sink } = readUiBenchRuntime();
     const startedAtMs = sink ? uiBenchNowMs() : 0;
     const phaseMs: Record<string, number> = {};
@@ -5134,6 +5154,16 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       });
     }
     return nextState;
+  };
+
+  const computeState = (reason = 'direct'): SuperDocUIState => {
+    const previous = editCommandReadScope;
+    editCommandReadScope = { source: null, snapshot: null, read: false };
+    try {
+      return computeStateSnapshot(reason);
+    } finally {
+      editCommandReadScope = previous;
+    }
   };
 
   const syncOptimisticInlineSelection = (selection: SelectionSlice): void => {
@@ -5598,6 +5628,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
           (type === 'mutation:committed' && mutationCommittedEventChangedVisibleContent(event)) ||
           type === 'collaboration:remote-changed'
         ) {
+          noteUiTrackedChangesCatalogCommit(event);
           // A confirmed toggle belongs to its source revision. A later actual
           // mutation must not inherit it while that revision's read is pending.
           for (const [commandId, optimistic] of optimisticInlineToggles) {

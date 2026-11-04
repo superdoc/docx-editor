@@ -11,11 +11,12 @@ export const ENGINE_NATIVE_CLI_LEGAL_FILES = Object.freeze([...ENGINE_NATIVE_RUN
 export const ENGINE_NATIVE_RUNTIME_EXPORTS = Object.freeze([
   'COLLAB_V2_DIAGNOSTICS', 'CollabV2DiagnosticError', 'DocumentRpcInvalidParamsError',
   'MAX_DOCUMENT_HOST_REQUEST_TIMEOUT_MS', 'createDocumentHost', 'createDocumentRuntimeSessionManager',
-  'createHocuspocusSingleDocAdapter', 'createLiveblocksSingleDocAdapter', 'createV2DocumentApiHost',
-  'createV2SingleDocCollaborationRuntime', 'createYWebsocketSingleDocAdapter', 'documentRpcErrorData',
-  'isDocumentHostError', 'isDocumentRpcMethod', 'isDocumentRuntimeError', 'openDocumentRuntime',
-  'openV2CollaborativeDocumentSession', 'openV2DocumentApiHost', 'redactForDiagnostics',
-  'resolveDocumentRpcResponseTimeout', 'saveCollaborativeDocumentSession', 'saveDocumentSession', 'saveDocumentSessionWithDiagnostics',
+  'createHocuspocusSingleDocAdapter', 'createLiveblocksSingleDocAdapter',
+  'createYWebsocketSingleDocAdapter', 'documentRpcErrorData',
+  'isDocumentHostError', 'isDocumentRpcMethod', 'isDocumentRuntimeError', 'openDocumentEngineHost', 'openDocumentRuntime',
+  'openTypedCollaborativeDocumentEngineHost', 'redactForDiagnostics',
+  'resolveDocumentRpcResponseTimeout',
+  'selectedDocumentEngine',
 ].sort());
 
 export function isEngineRuntimeOutputDestination(id, destination) {
@@ -56,7 +57,7 @@ export function verifyEngineNativeRuntime(directory, expectedProtection) {
     || sha256(code.slice(manifest.banner.length)) !== entry.obfuscatedSha256
     || JSON.stringify(inventory.exports) !== JSON.stringify(ENGINE_NATIVE_RUNTIME_EXPORTS)
     || !Array.isArray(inventory.imports)
-    || inventory.imports.some((specifier) => specifier !== 'yjs' && !builtins.has(specifier))
+    || inventory.imports.some((specifier) => specifier !== 'yjs' && specifier !== '@napi-rs/canvas' && !builtins.has(specifier))
     || !Array.isArray(inventory.modules) || inventory.modules.length === 0
     || inventory.modules.some((module) => typeof module?.path !== 'string'
       || !module.path.startsWith('superdoc/v2/') || module.path.split('/').some((part) => part === '..' || part === '.')

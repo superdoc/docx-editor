@@ -600,15 +600,43 @@ const EXEMPT_PATHS = new Map([
   [
     'apps/cli/src/__tests__/lib/collaboration/v2-error-mapping.test.ts',
     {
-      reason: 'asserts the private engine diagnostics contract; skipped when absent',
-      allow: /(?:^|\/)v2\/headless\/dist\//,
+      reason: 'asserts the private engine diagnostics contract (one engine: the native runtime build)',
+      allow: /^(?:\.\.\/){7}v2\/dist-native\/runtime\/native-runtime\.js$/,
     },
   ],
   [
     'apps/cli/src/__tests__/runtime-v2-open-lifecycle.test.ts',
     {
-      reason: 'exercises the private engine runtime lifecycle; skipped when absent',
-      allow: /(?:^|\/)v2\/headless\/dist\//,
+      reason: 'exercises the private engine runtime lifecycle (one engine: the native runtime build)',
+      allow: /^(?:\.\.\/){5}v2\/dist-native\/runtime\/native-runtime\.js$/,
+    },
+  ],
+  [
+    'apps/cli/src/__tests__/runtime-typed-collaboration.test.ts',
+    {
+      reason: 'exercises typed collaborative open through the private native runtime build',
+      allow: /^(?:\.\.\/){5}v2\/dist-native\/runtime\/native-runtime\.js$/,
+    },
+  ],
+  [
+    'apps/cli/src/__tests__/typed-collaborative-close-a3c.test.ts',
+    {
+      reason: 'asserts typed collaborative close against the private native runtime build and its engine host type',
+      allow: /^(?:\.\.\/){5}v2\/(?:dist-native\/runtime\/native-runtime|src\/document-engine)\.js$/,
+    },
+  ],
+  [
+    'apps/cli/src/__tests__/runtime-typed-remote-change.test.ts',
+    {
+      reason: 'seeds a private collaboration room (bootstrap helpers) to assert the typed remote-change event',
+      allow: /^(?:\.\.\/){5}v2\/collaboration-v2\/src\/(?:manifest\/bootstrap|setup\/bootstrap-docx)$/,
+    },
+  ],
+  [
+    'apps/cli/scripts/__tests__/cli-version-build.test.ts',
+    {
+      reason: 'pins the native CLI compile to the private engine canvas version and its built (dist-native) inputs',
+      allow: /^(?:\.\.\/){5}v2\/(?:package\.json)?$/,
     },
   ],
   [

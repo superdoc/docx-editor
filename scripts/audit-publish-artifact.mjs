@@ -38,6 +38,7 @@ export const PRIVATE_SOURCE_PATH_MARKERS = [
   '/v2/src/',
   'v2-browser-shell/src',
   'editor-core/src',
+  'typed-core/src',
   'collaboration-upgrade/src',
   'collaboration-v2/src',
   'document-api-v2-adapter/src',
@@ -51,6 +52,7 @@ export const PRIVATE_SOURCE_PATH_MARKERS = [
 const PRIVATE_IMPL_PACKAGES = [
   '@superdoc/v2-browser-shell',
   '@superdoc/editor-core',
+  '@superdoc/typed-core',
   '@superdoc/collaboration-upgrade',
   '@superdoc/collaboration-v2',
   '@superdoc/document-api-v2-adapter',

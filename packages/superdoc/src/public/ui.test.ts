@@ -20063,6 +20063,81 @@ describe('public ui — async browser reads (read coordinator)', () => {
     ui.destroy();
   });
 
+  it('never publishes a shared catalog read that started before a later document commit (O19)', async () => {
+    const hostEvents: Array<(event: Record<string, unknown>) => void> = [];
+    const resolvers: Array<(value: Record<string, unknown>) => void> = [];
+    const listTrackedChanges = vi.fn(
+      () =>
+        new Promise<Record<string, unknown>>((resolve) => {
+          resolvers.push(resolve);
+        }),
+    );
+    const items = (count: number) =>
+      Array.from({ length: count }, (_, index) => ({ id: `tc-${index + 1}`, type: 'insert' }));
+    const { superdoc } = makeAsyncSuperdoc({ v2TrackedChanges: { listTrackedChanges }, hostEvents });
+    const ui = createSuperDocUI({ superdoc });
+    const independentUi = createSuperDocUI({ superdoc });
+    const seen: ReturnType<typeof ui.trackChanges.getSnapshot>[] = [];
+    const stop = ui.trackChanges.observe((value) => seen.push(value));
+    const stopIndependent = independentUi.trackChanges.observe(() => undefined);
+    await flush();
+    expect(listTrackedChanges).toHaveBeenCalledTimes(1);
+
+    const commit = { type: 'document:mutated', source: 'facade', hasCommitEvent: false };
+    for (const listener of hostEvents) listener(commit);
+    await flush();
+    expect(listTrackedChanges).toHaveBeenCalledTimes(2);
+
+    resolvers[1]!({ ok: true, items: items(3) });
+    await flush();
+    expect(ui.trackChanges.getSnapshot()).toMatchObject({ status: 'ready', total: 3 });
+    expect(independentUi.trackChanges.getSnapshot()).toMatchObject({ status: 'ready', total: 3 });
+    const publishedBeforeLateRead = seen.length;
+
+    resolvers[0]!({ ok: true, items: items(1) });
+    await flush();
+    expect(ui.trackChanges.getSnapshot()).toMatchObject({ status: 'ready', total: 3 });
+    expect(independentUi.trackChanges.getSnapshot()).toMatchObject({ status: 'ready', total: 3 });
+    expect(seen.slice(publishedBeforeLateRead).some((value) => value.total !== 3)).toBe(false);
+    expect(seen.some((value) => value.total === 1)).toBe(false);
+    expect(listTrackedChanges).toHaveBeenCalledTimes(2);
+
+    stop();
+    stopIndependent();
+    independentUi.destroy();
+    ui.destroy();
+  });
+
+  it('does not publish a pre-commit catalog read as ready for the newer content (O19)', async () => {
+    const hostEvents: Array<(event: Record<string, unknown>) => void> = [];
+    const resolvers: Array<(value: Record<string, unknown>) => void> = [];
+    const listTrackedChanges = vi.fn(
+      () =>
+        new Promise<Record<string, unknown>>((resolve) => {
+          resolvers.push(resolve);
+        }),
+    );
+    const { superdoc } = makeAsyncSuperdoc({ v2TrackedChanges: { listTrackedChanges }, hostEvents });
+    const ui = createSuperDocUI({ superdoc });
+    const stop = ui.trackChanges.observe(() => undefined);
+    await flush();
+    const commit = { type: 'document:mutated', source: 'facade', hasCommitEvent: false };
+    for (const listener of hostEvents) listener(commit);
+    await flush();
+
+    resolvers[0]?.({ ok: true, items: [{ id: 'tc-old', type: 'insert' }] });
+    await flush();
+    const snapshot = ui.trackChanges.getSnapshot();
+    expect(snapshot.status === 'ready' && snapshot.items.some((item) => item.id === 'tc-old')).toBe(false);
+
+    resolvers[1]?.({ ok: true, items: [{ id: 'tc-new', type: 'insert' }] });
+    await flush();
+    expect(ui.trackChanges.getSnapshot()).toMatchObject({ status: 'ready', total: 1, items: [{ id: 'tc-new' }] });
+
+    stop();
+    ui.destroy();
+  });
+
   it('keeps explicit directory demand available while a committed window read is active', async () => {
     const listTrackedChanges = vi.fn(() => Promise.resolve({ ok: true, items: [] }));
     const rawTrackChangesList = vi.fn(() => Promise.resolve({ items: [] }));

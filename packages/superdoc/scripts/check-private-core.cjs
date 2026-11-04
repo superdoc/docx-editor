@@ -37,6 +37,7 @@ const PRIVATE_V2_PACKAGES = [
   '@superdoc/v2-host',
   '@superdoc/v2-browser-shell',
   '@superdoc/editor-core',
+  '@superdoc/typed-core',
   '@superdoc/headless',
   '@superdoc/collaboration-upgrade',
   '@superdoc/collaboration-v2',
@@ -47,6 +48,7 @@ const PRIVATE_V2_PACKAGES = [
 
 const PRIVATE_V2_PACKAGE_MANIFESTS = [
   'editor-core/package.json',
+  'typed-core/package.json',
   'headless/package.json',
   'collaboration-upgrade/package.json',
   'collaboration-v2/package.json',

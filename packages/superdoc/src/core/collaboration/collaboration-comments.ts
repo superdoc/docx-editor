@@ -1,6 +1,7 @@
-import { Map as YMap, type Array as YArray, type Doc as YDoc } from 'yjs';
+import type { Array as YArray, Doc as YDoc } from 'yjs';
 import type { User } from '../types/index.js';
 import { isPlainObject } from '../../helpers/object-guards.js';
+import { createCollaborationCommentMap } from './collaboration-comment-map.js';
 
 export type CollaborationCommentEvent = {
   comment: unknown;
@@ -19,7 +20,7 @@ export const addYComment = (
   user: User | undefined,
 ): void => {
   const comment = readComment(event);
-  const yComment = new YMap(Object.entries(comment));
+  const yComment = createCollaborationCommentMap(Object.entries(comment));
 
   ydoc.transact(
     () => {
@@ -36,7 +37,7 @@ export const updateYComment = (
   user: User | undefined,
 ): void => {
   const comment = readComment(event);
-  const yComment = new YMap(Object.entries(comment));
+  const yComment = createCollaborationCommentMap(Object.entries(comment));
   const commentIndex = getCommentIndex(yArray, comment);
   if (commentIndex === -1) return;
 

@@ -4,9 +4,12 @@ export type SharedUiTrackedChangesCatalogState = {
   abortController: AbortController;
   inFlight: {
     generation: number;
+    commitSeq: number;
     promise: Promise<unknown>;
   } | null;
   activeMutationTokens: Set<string>;
+  commitSeq: number;
+  countedCommitEvents: WeakSet<object>;
 };
 
 export const sharedUiTrackedChangesCatalogByHost = new WeakMap<object, SharedUiTrackedChangesCatalogState>();
@@ -20,6 +23,8 @@ export function acquireSharedUiTrackedChangesCatalog(host: object): SharedUiTrac
       abortController: new AbortController(),
       inFlight: null,
       activeMutationTokens: new Set(),
+      commitSeq: 0,
+      countedCommitEvents: new WeakSet(),
     };
     sharedUiTrackedChangesCatalogByHost.set(host, state);
   }

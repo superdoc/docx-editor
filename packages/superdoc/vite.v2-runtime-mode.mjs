@@ -65,6 +65,13 @@ export function resolveEnginePackageRoot(fromUrl) {
  */
 export function buildSourceModeAliases({ v2Root, layoutEngineRoot }) {
   return [
+    { find: /^fflate$/, replacement: path.resolve(v2Root, 'v2-browser-shell/node_modules/fflate/esm/browser.js') },
+    { find: /^@superdoc\/typed-core\/(.*)$/, replacement: path.resolve(v2Root, 'typed-core/src/$1') },
+    { find: /^@superdoc\/v2-test-support\/leaf\/(.*)$/, replacement: path.resolve(v2Root, 'test-support/src/$1') },
+    { find: /^@superdoc\/headless\/leaf\/(.*)$/, replacement: path.resolve(v2Root, 'headless/src/$1') },
+    { find: /^@superdoc\/v2-host\/leaf\/(.*)$/, replacement: path.resolve(v2Root, 'v2-host/src/$1') },
+    { find: /^@superdoc\/document-api-v2-adapter\/leaf\/(.*)$/, replacement: path.resolve(v2Root, 'document-api-v2-adapter/src/$1') },
+    { find: /^@superdoc\/style-model\/leaf\/(.*)$/, replacement: path.resolve(v2Root, 'style-model/src/$1') },
     {
       find: '@superdoc/review-index/worker-entry',
       replacement: path.resolve(v2Root, 'packages/review-index/src/worker/review-index-worker-entry.ts'),
@@ -95,6 +102,8 @@ export function buildSourceModeAliases({ v2Root, layoutEngineRoot }) {
     { find: /^@superdoc\/docx-engine$/, replacement: path.resolve(v2Root, 'src/superdoc/index.ts') },
     // editor-core kernel
     { find: '@superdoc/editor-core/browser', replacement: path.resolve(v2Root, 'editor-core/src/browser.ts') },
+    { find: /^@superdoc\/collaboration-v2\/leaf\/(.*)$/, replacement: path.resolve(v2Root, 'collaboration-v2/src/$1') },
+    { find: /^@superdoc\/editor-core\/leaf\/(.*)$/, replacement: path.resolve(v2Root, 'editor-core/src/$1') },
     { find: '@superdoc/editor-core/document/internal', replacement: path.resolve(v2Root, 'editor-core/src/document/sd-document-session-internal.ts') },
     { find: '@superdoc/editor-core/fixtures', replacement: path.resolve(v2Root, 'editor-core/src/document/source-signals/fixtures.ts') },
     { find: '@superdoc/editor-core/search', replacement: path.resolve(v2Root, 'editor-core/src/search/index.ts') },
@@ -140,6 +149,9 @@ export function buildSourceModeAliases({ v2Root, layoutEngineRoot }) {
     { find: /^@superdoc\/style-engine\/ooxml$/, replacement: path.resolve(layoutEngineRoot, 'style-engine/src/ooxml/index.ts') },
     { find: /^@superdoc\/style-engine$/, replacement: path.resolve(layoutEngineRoot, 'style-engine/src/index.ts') },
     { find: /^@superdoc\/word-layout$/, replacement: path.resolve(layoutEngineRoot, '../word-layout/src/index.ts') },
+    { find: /^@superdoc\/font-utils$/, replacement: path.resolve(layoutEngineRoot, '../../shared/font-utils/index.js') },
+    { find: /^@superdoc\/font-system\/bundled$/, replacement: path.resolve(layoutEngineRoot, '../../shared/font-system/src/bundled.ts') },
+    { find: /^@superdoc\/font-system$/, replacement: path.resolve(layoutEngineRoot, '../../shared/font-system/src/index.ts') },
     // headless / host / layout adapter / style model
     { find: '@superdoc/headless/contracts', replacement: path.resolve(v2Root, 'headless/src/contracts/index.ts') },
     { find: '@superdoc/headless/browser', replacement: path.resolve(v2Root, 'headless/src/browser.ts') },
@@ -152,6 +164,7 @@ export function buildSourceModeAliases({ v2Root, layoutEngineRoot }) {
     { find: /^@superdoc\/headless\/extensions$/, replacement: path.resolve(v2Root, 'headless/src/extensions/index.ts') },
     { find: /^@superdoc\/headless$/, replacement: path.resolve(v2Root, 'headless/src/index.ts') },
     { find: '@superdoc/v2-host/browser', replacement: path.resolve(v2Root, 'v2-host/src/browser.ts') },
+    { find: '@superdoc/v2-host/shell-support', replacement: path.resolve(v2Root, 'v2-host/src/shell-support.ts') },
     { find: '@superdoc/v2-host/review-ui', replacement: path.resolve(v2Root, 'v2-host/src/review-ui.ts') },
     { find: /^@superdoc\/v2-host$/, replacement: path.resolve(v2Root, 'v2-host/src/index.ts') },
     { find: /^@superdoc\/v2-layout-adapter$/, replacement: path.resolve(v2Root, 'v2-layout-adapter/src/index.ts') },

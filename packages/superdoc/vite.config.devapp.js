@@ -33,6 +33,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const fontSystemAliases = [
   { find: '@superdoc/font-system/bundled', replacement: path.resolve(here, '../../shared/font-system/src/bundled.ts') },
   { find: '@superdoc/font-system', replacement: path.resolve(here, '../../shared/font-system/src/index.ts') },
+  { find: /^@superdoc\/font-utils$/, replacement: path.resolve(here, '../../shared/font-utils/index.js') },
 ];
 
 export default defineConfig(({ command }) => {

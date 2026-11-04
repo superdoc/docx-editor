@@ -76,6 +76,7 @@ import {
   mutationCommittedEventChangedDocument,
 } from './helpers/v2-review-mutation-impact.js';
 import { resolveV2ReviewTargetCommentId } from './helpers/v2-review-target.js';
+import { createReviewGeometryDelivery } from './helpers/v2-review-geometry-delivery.js';
 import {
   createV2AuthorRequiredNotificationGate,
   isV2AuthorRequiredRejection,
@@ -732,6 +733,8 @@ const v2GeometryAvailable = ref(false);
 const v2ReviewSidebarUnlocked = ref(false);
 const v2GeometryEpoch = ref<number | null>(null);
 let v2GeometryRafHandle = 0;
+let v2GeometryReplayRafHandle = 0;
+let v2GeometryReplayGeneration = 0;
 let v2TrackedChangeRestampRetainPaints = 0;
 let v2TrackedChangeRestampRetentionReason: string | null = null;
 const TRACKED_CHANGE_CARRIERS_RESTAMPED_EVENT = 'superdoc:v2-tracked-change-carriers-restamped';
@@ -2120,7 +2123,8 @@ const publishV2PendingPositionEntry = (entry: ReturnType<typeof buildV2PendingPo
 // caching, pending-row preservation, missing-mount/layers clearing, and
 // scroll/resize/zoom recollection (see `v2-geometry-publisher.js`). The
 // SuperDoc.vue side only feeds payloads and observes the published state.
-const v2GeometryPublisher = resolvedEditorIntegration.createGeometryPublisher({
+let scheduleV2GeometryReplay: (payload: V2GeometryPayload | null) => void = () => {};
+const v2GeometryPublisherOptions = {
   getLayersContainer: () => layers.value ?? null,
   isCommentsEnabled: () => Boolean(commentsModuleConfig.value) && shouldRenderCommentsInViewing.value,
   publishPositions: (positions, options) => handleEditorLocationsUpdate(positions, options),
@@ -2136,7 +2140,11 @@ const v2GeometryPublisher = resolvedEditorIntegration.createGeometryPublisher({
       v2GeometryEpoch.value = v2GeometryPublisher.getLastEpoch();
     }
   },
-});
+  onCommittedPagePaint: ({ payload }: { payload: V2GeometryPayload | null }) => scheduleV2GeometryReplay(payload),
+} satisfies Parameters<typeof resolvedEditorIntegration.createGeometryPublisher>[0] & {
+  onCommittedPagePaint: (event: { payload: V2GeometryPayload | null }) => void;
+};
+const v2GeometryPublisher = resolvedEditorIntegration.createGeometryPublisher(v2GeometryPublisherOptions);
 
 const armV2TrackedChangeRestampGeometryRetention = (reason = 'tracked-change-restamp') => {
   v2TrackedChangeRestampRetainPaints = Math.max(v2TrackedChangeRestampRetainPaints, 3);
@@ -2173,23 +2181,67 @@ type V2GeometryPublishOptionsInput = V2GeometryPublishOptions | (() => V2Geometr
 const resolveV2GeometryPublishOptions = (options: V2GeometryPublishOptionsInput) =>
   typeof options === 'function' ? options() : options;
 
+const isV2GeometryReady = (current: V2GeometryPayload | null): current is V2GeometryPayload => {
+  if (!current?.mountContainer || !commentsModuleConfig.value || !shouldRenderCommentsInViewing.value) return false;
+  const mount = current.mount as { getRenderEpoch?: () => number | null | undefined } | null | undefined;
+  let liveEpoch: number | null | undefined;
+  try {
+    liveEpoch = mount?.getRenderEpoch?.();
+  } catch {
+    return false;
+  }
+  return (
+    v2GeometryPublisher.getLastPayload() === current &&
+    v2GeometryPublisher.getLastEpoch() != null &&
+    v2GeometryPublisher.getLastEpoch() === current.epoch &&
+    (liveEpoch == null || liveEpoch === current.epoch)
+  );
+};
+
 const scheduleV2GeometryPublish = (payload: V2GeometryPayload, options: V2GeometryPublishOptionsInput = undefined) => {
   v2GeometryRender.value = payload;
   if (v2GeometryRafHandle && typeof cancelAnimationFrame === 'function') {
     cancelAnimationFrame(v2GeometryRafHandle);
   }
+  const publish = () => {
+    const current = v2GeometryRender.value;
+    void Promise.resolve(v2GeometryPublisher.publish(current, resolveV2GeometryPublishOptions(options))).then(() => {
+      if (current === v2GeometryRender.value && isV2GeometryReady(current)) v2ReviewGeometryDelivery.flush(current);
+    });
+  };
   if (typeof requestAnimationFrame !== 'function') {
-    void v2GeometryPublisher.publish(v2GeometryRender.value, resolveV2GeometryPublishOptions(options));
+    publish();
     return;
   }
   v2GeometryRafHandle = requestAnimationFrame(() => {
     v2GeometryRafHandle = 0;
-    void v2GeometryPublisher.publish(v2GeometryRender.value, resolveV2GeometryPublishOptions(options));
+    publish();
   });
+};
+
+const v2ReviewGeometryDelivery = createReviewGeometryDelivery((current: V2GeometryPayload, packet) => {
+  v2GeometryPublisher.noteCommittedPageWindow?.(packet);
+  scheduleV2GeometryPublish(current);
+});
+
+scheduleV2GeometryReplay = (payload) => {
+  if (!payload || payload !== v2GeometryRender.value) return;
+  const generation = ++v2GeometryReplayGeneration;
+  if (v2GeometryReplayRafHandle && typeof cancelAnimationFrame === 'function')
+    cancelAnimationFrame(v2GeometryReplayRafHandle);
+  const replay = () => {
+    v2GeometryReplayRafHandle = 0;
+    if (generation === v2GeometryReplayGeneration && payload === v2GeometryRender.value && isV2GeometryReady(payload)) {
+      v2ReviewGeometryDelivery.replay(payload);
+    }
+  };
+  if (typeof requestAnimationFrame === 'function') v2GeometryReplayRafHandle = requestAnimationFrame(replay);
+  else queueMicrotask(replay);
 };
 
 const onV2Render = (payload: V2GeometryPayload | null | undefined) => {
   if (!payload) return;
+  v2ReviewGeometryDelivery.observe(payload);
   scheduleV2GeometryPublish(payload, () => takeV2TrackedChangeRestampGeometryRetention());
   if (v2HasRangeSelection.value) scheduleV2SelectionToolbarStateSync();
 };
@@ -2234,7 +2286,12 @@ const onV2RenderCleared = (payload: { documentId?: string | null } | null | unde
     cancelAnimationFrame(v2GeometryRafHandle);
   }
   v2GeometryRafHandle = 0;
+  if (v2GeometryReplayRafHandle && typeof cancelAnimationFrame === 'function')
+    cancelAnimationFrame(v2GeometryReplayRafHandle);
+  v2GeometryReplayRafHandle = 0;
+  v2GeometryReplayGeneration++;
   v2GeometryRender.value = null;
+  v2ReviewGeometryDelivery.reset();
   v2GeometryEpoch.value = null;
   v2GeometryAvailable.value = false;
   v2ReviewSidebarUnlocked.value = false;
@@ -2431,14 +2488,15 @@ const recollectV2GeometryIfActive = (options: V2GeometryPublishOptionsInput = un
   if (v2GeometryRafHandle && typeof cancelAnimationFrame === 'function') {
     cancelAnimationFrame(v2GeometryRafHandle);
   }
-  if (typeof requestAnimationFrame !== 'function') {
-    void v2GeometryPublisher.recollect(resolveV2GeometryPublishOptions(options));
-    return;
-  }
-  v2GeometryRafHandle = requestAnimationFrame(() => {
+  const recollect = () => {
     v2GeometryRafHandle = 0;
-    void v2GeometryPublisher.recollect(resolveV2GeometryPublishOptions(options));
-  });
+    const current = v2GeometryRender.value;
+    void Promise.resolve(v2GeometryPublisher.recollect(resolveV2GeometryPublishOptions(options))).then(() => {
+      if (current === v2GeometryRender.value && isV2GeometryReady(current)) v2ReviewGeometryDelivery.replay(current);
+    });
+  };
+  if (typeof requestAnimationFrame !== 'function') recollect();
+  else v2GeometryRafHandle = requestAnimationFrame(recollect);
 };
 
 // Coordinate the V2 review surface across `setDocumentMode` transitions as one
@@ -2786,7 +2844,12 @@ const editorOptions = (doc: ShellDocument) => {
     onPageCountKnown: proxy.$superdoc.config.onPageCountKnown ?? null,
     onReviewWindowCommitted: (payload) => {
       v2ReviewWindowController.onCommittedPagePaint?.({ ...payload, documentId: doc.id });
-      v2GeometryPublisher.noteCommittedPageWindow?.(payload);
+      if (payload.reviewGeometry && Array.isArray(payload.pageIndices)) {
+        const current = v2GeometryRender.value;
+        v2ReviewGeometryDelivery.notify(String(doc.id), payload, current, isV2GeometryReady(current));
+      } else {
+        v2GeometryPublisher.noteCommittedPageWindow?.(payload);
+      }
     },
     // `fonts-changed` is relayed through SuperDoc.ts from the active v2 font facet.
     // Passing the config callback directly here would double-deliver every v2 report.

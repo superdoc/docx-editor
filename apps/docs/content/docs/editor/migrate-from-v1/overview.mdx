@@ -501,31 +501,39 @@ The [preview API](/editor/collaboration/connect-two-editors#configure-your-appli
 
 #### Split-origin worker assets
 
-If your JavaScript bundle is served from a different origin than the application, copy the composed document
-worker to the application's origin and pass its URL explicitly. The file ships in `@superdoc/docx-engine/dist/assets/`:
+The editor runs on the page and starts no document worker, so a split-origin deployment no longer needs to copy a
+worker to the application's origin. Built-in collaboration providers (Hocuspocus, y-websocket, Liveblocks) also sync
+on the page.
 
-| `workerUrls` key | File                                  |
-| ---------------- | ------------------------------------- |
-| `document`       | `dom-worker-entry-<hash>.js`          |
-| `collaboration`  | The same `dom-worker-entry-<hash>.js` |
+Existing build and deploy steps keep working. `@superdoc/docx-engine/dist/assets/` still ships a small
+`dom-worker-entry-<hash>.js` compatibility file, and `dist/manifest.json` still names it in `domWorkerRelativePath`, so
+steps that copy that file or read that field do not fail. The file is an empty module; SuperDoc does not load it. You
+can remove the copy step.
 
-The hash changes with each engine version, so copy the files as part of your build rather than by hand.
+`workerUrls.document` and `workerUrls.reviewIndex` are accepted and ignored. `workerUrls.collaboration` is used only
+for a [provider extension](/editor/collaboration/use-your-own-provider#write-a-provider-extension)
+(`providerType: 'extension'`): it is the URL of your own collaboration worker, which must be a same-origin module
+worker built with the same SuperDoc version as the page.
 
 ```ts
 new SuperDoc({
   selector: '#editor',
-  document,
-  workerUrls: {
-    document: '/superdoc-workers/document.js',
-    collaboration: '/superdoc-workers/document.js',
-  },
+  document: { url: '/contract.docx', collaboration },
+  workerUrls: { collaboration: '/workers/collaboration-worker.js' },
 });
 ```
 
-Each URL must be same-origin with the page and serve a module worker. Omit this option when SuperDoc and the
-application share an origin; the bundled worker URLs remain the default.
-The optional `reviewIndex` key is accepted for configuration compatibility. Mounted editors process review
-in the document worker and do not load a separate review worker.
+### Upgrading from an earlier v2 release
+
+- The editor runs on the page. There is no document worker, so `workerUrls.document` has no effect, and a
+  Content-Security-Policy `worker-src` entry is not needed for the document.
+- Custom collaboration workers built with `bootstrapSuperDocCollaborationWorker` must be rebuilt with the new SuperDoc
+  version. A worker built with an earlier version does not connect.
+- Upgrade every client that joins the same collaboration room together. Do not mix clients from before and after this
+  release in one room.
+- Layout in Node uses the optional native `@napi-rs/canvas` package for text measurement. It installs with
+  `@superdoc/docx-engine` on supported platforms. Without it, Node layout falls back to approximate text metrics, so
+  page breaks can differ from the browser.
 
 ## 7. Verify one DOCX round trip
 

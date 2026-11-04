@@ -31,18 +31,21 @@ Use HTTPS, restrictive CORS, and a Content Security Policy that permits only the
 
 ### Load the Editor from a CDN
 
-The script-tag build loads the DOCX Engine from `https://cdn.jsdelivr.net`. Browsers do not start a module worker from
-another origin, so SuperDoc starts each worker from a `blob:` URL on your page's origin and imports the engine's
-worker file from the CDN. A page with a Content Security Policy must allow both:
+The script-tag build loads the DOCX Engine from `https://cdn.jsdelivr.net`. The editor runs on the page and starts no
+document worker, so the policy needs no `worker-src` entry for the document. A page with a Content Security Policy must
+allow the CDN for scripts and styles:
 
 ```http
-Content-Security-Policy: script-src 'self' https://cdn.jsdelivr.net; worker-src 'self' blob:; style-src-elem 'self' https://cdn.jsdelivr.net
+Content-Security-Policy: script-src 'self' https://cdn.jsdelivr.net; style-src-elem 'self' https://cdn.jsdelivr.net
 ```
 
 Pin an exact `superdoc` version in the script URL. To serve the engine yourself, set
 `window.SUPERDOC_ENGINE_CDN_BASE_URL` before the SuperDoc script and serve the `@superdoc/docx-engine` package with
-CORS enabled. If your policy cannot allow `blob:` workers, install from npm and serve the workers from your own origin
-with [`workerUrls`](/editor/migrate-from-v1/overview#split-origin-worker-assets).
+CORS enabled.
+
+A [provider extension](/editor/collaboration/use-your-own-provider#write-a-provider-extension) runs your own
+collaboration worker from `workerUrls.collaboration`. Serve it from your page's origin and allow it in `worker-src`
+(for example `worker-src 'self'`). Built-in collaboration providers start no worker.
 
 ## Pass a nonce to runtime styles
 

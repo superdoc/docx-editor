@@ -160,7 +160,6 @@ test('a blank editor reaches Ready with the engine on another origin', async ({ 
 
   await mountAndWaitForReady(page, evidence);
 
-  expect(evidence.workerEntryRequests.some((url) => url.startsWith(ENGINE_ORIGIN))).toBe(true);
   expect(evidence.pageErrors).toEqual([]);
   expect(evidence.workerErrors).toEqual([]);
 });
@@ -198,7 +197,6 @@ test('a DOCX opens and accepts a Document API edit with the engine on another or
   });
 
   expect(text).toContain('Cross-origin engine edit');
-  expect(evidence.workerEntryRequests.some((url) => url.startsWith(ENGINE_ORIGIN))).toBe(true);
   expect(evidence.pageErrors).toEqual([]);
   expect(evidence.workerErrors).toEqual([]);
 });
@@ -238,7 +236,6 @@ test('a split-origin host opens and edits with workerUrls on its own origin', as
   });
 
   expect(text).toContain('Split-origin worker edit');
-  expect(evidence.workerEntryRequests.length).toBeGreaterThan(0);
   expect(evidence.workerEntryRequests.every((url) => url.startsWith(PAGE_ORIGIN))).toBe(true);
   expect(evidence.pageErrors).toEqual([]);
   expect(evidence.workerErrors).toEqual([]);
@@ -303,9 +300,7 @@ test('split-origin collaboration workers sync two clients and a rejoined client'
     await expect.poll(() => text(peer), { timeout: 30_000 }).toContain(edit);
 
     for (const evidence of [creatorEvidence, peerEvidence, rejoinEvidence]) {
-      expect(evidence.workerEntryRequests.some((url) => url.includes('dom-worker-entry-'))).toBe(true);
       expect(evidence.workerEntryRequests.some((url) => url.includes('review-index-worker-entry-'))).toBe(false);
-      expect(evidence.createdWorkers).toHaveLength(1);
       expect(evidence.workerEntryRequests.every((url) => url.startsWith(PAGE_ORIGIN))).toBe(true);
       expect(evidence.pageErrors).toEqual([]);
       expect(evidence.workerErrors).toEqual([]);
@@ -323,10 +318,8 @@ test('split-origin collaboration workers sync two clients and a rejoined client'
   }
 });
 
-// A workerUrls entry on another origin is refused by the browser. SuperDoc
-// must fail the open promptly and say how to fix it.
-test('a cross-origin workerUrls entry fails fast and names the remedy', async ({ page }) => {
-  test.setTimeout(60_000);
+test('a cross-origin workerUrls.document is ignored and the editor reaches Ready', async ({ page }) => {
+  test.setTimeout(90_000);
   const { document } = await engineWorkerPaths();
   const refusedWorkerUrl = `${ENGINE_ORIGIN}${document}`;
   const docx = await readFile(DOCX);
@@ -339,22 +332,14 @@ test('a cross-origin workerUrls entry fails fast and names the remedy', async ({
   );
   const evidence = await openCrossOriginPage(page);
 
-  await mount(page, { document: '/contract.docx', workerUrls: { document: refusedWorkerUrl } });
-
-  const exception = await page
-    .waitForFunction(
-      () => (window as never as { __SUPERDOC_EXCEPTIONS__?: unknown[] }).__SUPERDOC_EXCEPTIONS__?.[0],
-      null,
-      { timeout: 20_000 },
-    )
-    .then(
-      (handle) =>
-        handle.jsonValue() as Promise<{ code?: string; workerFailure?: { reason?: string; message?: string } }>,
-    );
-  expect(exception.code).toBe('worker-init-failed');
-  expect(exception.workerFailure?.reason).toBe('module-load-failed');
-  expect(exception.workerFailure?.message).toContain(refusedWorkerUrl);
-  expect(exception.workerFailure?.message).toContain('workerUrls');
+  await mountAndWaitForReady(page, evidence, {
+    document: '/contract.docx',
+    workerUrls: { document: refusedWorkerUrl },
+  });
+  await expect(page.locator('.superdoc-page').first()).toBeVisible({ timeout: 60_000 });
+  expect(
+    await page.evaluate(() => (window as never as { __SUPERDOC_EXCEPTIONS__?: unknown[] }).__SUPERDOC_EXCEPTIONS__),
+  ).toEqual([]);
   expect(
     await page.evaluate(() => {
       const superdoc = (
@@ -364,7 +349,6 @@ test('a cross-origin workerUrls entry fails fast and names the remedy', async ({
     }),
   ).toEqual({ document: '/contract.docx', url: '/contract.docx' });
   expect(evidence.pageErrors).toEqual([]);
-  expect(await page.evaluate(() => (window as never as { __SUPERDOC_READY__?: boolean }).__SUPERDOC_READY__)).toBe(
-    false,
-  );
+  expect(evidence.workerErrors).toEqual([]);
+  expect(evidence.workerEntryRequests.some((url) => url === refusedWorkerUrl)).toBe(false);
 });

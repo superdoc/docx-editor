@@ -37,7 +37,11 @@ Use `viewOptions: { layout: 'web' }` with `layoutEngineOptions: { flowMode: 'sem
 
 ## Control worker startup
 
-Keep the default 30-second `workerStartupTimeoutMs` unless measurements show that the worker bundle needs more time to download or evaluate. Use `workerUrls` when the application must serve the document, collaboration, and review-index module workers from explicit same-origin URLs.
+The editor runs on the page and starts no document worker, so opening a document has no worker startup to tune.
+`workerStartupTimeoutMs` applies only to a [provider extension](/editor/collaboration/use-your-own-provider#write-a-provider-extension):
+it bounds how long your collaboration worker at `workerUrls.collaboration` may take to load and answer. It defaults to
+the collaboration `syncTimeoutMs`, or 30 seconds. Raise it only when measurements show that worker needs more time to
+download or evaluate.
 
 Worker load errors fail immediately; increasing the timeout does not repair a missing file, blocked Content Security Policy, or invalid worker response. See [Secure integration](/editor/secure-integration) for the browser boundary.
 

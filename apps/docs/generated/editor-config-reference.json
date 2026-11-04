@@ -500,14 +500,14 @@
       "type": "{\n  document?: string | URL;\n  collaboration?: string | URL;\n  reviewIndex?: string | URL;\n}",
       "typeName": "V2WorkerUrlsConfig",
       "required": false,
-      "description": "Optional same-origin URLs for v2's browser worker assets. Configure these when the application and SuperDoc bundle are served from different origins. Omitted entries keep SuperDoc's bundled worker URLs.",
+      "description": "Worker URLs. Only `collaboration` is used: the provider-extension collaboration worker for `providerType: 'extension'`. `document` and `reviewIndex` are accepted and ignored because the editor runs on the page.",
       "group": "other"
     },
     {
       "name": "workerStartupTimeoutMs",
       "type": "number",
       "required": false,
-      "description": "Budget for the document worker to start up, in milliseconds (default: 30000). Measured from worker spawn, so it covers script download, parsing, evaluation, and the worker's first response to SuperDoc. Raise it when a large worker chunk is served over a slow connection or a cold dev-server cache; lower it to fail faster. Worker load errors are reported immediately and do not wait for this budget. Must be a finite positive number no greater than 2147483647, the platform timer ceiling above which a delay would fire immediately.",
+      "description": "Budget for the provider-extension collaboration worker (`workerUrls.collaboration`, `providerType: 'extension'`) to start up and send its first response, in milliseconds. Defaults to the collaboration `syncTimeoutMs`, or 30000. Worker load errors are reported immediately and do not wait for this budget. Ignored by the built-in providers and by documents opened without collaboration, which start no worker.",
       "group": "other"
     },
     {

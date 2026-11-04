@@ -4326,16 +4326,25 @@ export interface SurfacesConfig {
 }
 
 /**
- * Browser worker asset URLs for deployments where application code and built
- * SuperDoc assets are served from different origins. Each URL must resolve to
- * a same-origin module worker served by the embedding application.
+ * Worker URLs accepted by v2. The editor runs on the page and starts no
+ * document worker, so only `collaboration` is used, and only by collaboration
+ * targets with `providerType: 'extension'`.
  */
 interface V2WorkerUrlsConfig {
-  /** Main document worker used by non-collaborative v2 documents. */
+  /**
+   * @deprecated The editor runs on the page and starts no document worker.
+   * Accepted and ignored for configuration compatibility.
+   */
   document?: string | URL;
-  /** Collaboration-capable document worker used by v2 collaboration rooms. */
+  /**
+   * Your provider-extension collaboration worker, built with
+   * `bootstrapSuperDocCollaborationWorker` from the same SuperDoc version.
+   * Must be a same-origin module worker URL. Required for
+   * `providerType: 'extension'`; ignored by the built-in providers, which
+   * sync on the page.
+   */
   collaboration?: string | URL;
-  /** @deprecated Review processing runs in the document worker. Accepted for configuration compatibility. */
+  /** @deprecated Accepted and ignored for configuration compatibility. */
   reviewIndex?: string | URL;
 }
 
@@ -4805,20 +4814,18 @@ export interface Config {
    */
   fonts?: FontsConfig;
   /**
-   * Optional same-origin URLs for v2's browser worker assets. Configure these
-   * when the application and SuperDoc bundle are served from different origins.
-   * Omitted entries keep SuperDoc's bundled worker URLs.
+   * Worker URLs. Only `collaboration` is used: the provider-extension
+   * collaboration worker for `providerType: 'extension'`. `document` and
+   * `reviewIndex` are accepted and ignored because the editor runs on the page.
    */
   workerUrls?: V2WorkerUrlsConfig;
   /**
-   * Budget for the document worker to start up, in milliseconds
-   * (default: 30000). Measured from worker spawn, so it covers script
-   * download, parsing, evaluation, and the worker's first response to
-   * SuperDoc. Raise it when a large worker chunk is served
-   * over a slow connection or a cold dev-server cache; lower it to fail faster.
-   * Worker load errors are reported immediately and do not wait for this
-   * budget. Must be a finite positive number no greater than 2147483647, the
-   * platform timer ceiling above which a delay would fire immediately.
+   * Budget for the provider-extension collaboration worker
+   * (`workerUrls.collaboration`, `providerType: 'extension'`) to start up and
+   * send its first response, in milliseconds. Defaults to the collaboration
+   * `syncTimeoutMs`, or 30000. Worker load errors are reported immediately and
+   * do not wait for this budget. Ignored by the built-in providers and by
+   * documents opened without collaboration, which start no worker.
    */
   workerStartupTimeoutMs?: number;
   /**

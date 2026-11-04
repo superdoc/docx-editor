@@ -4,8 +4,8 @@ navTitle: Use your own provider
 description: Keep an existing Hocuspocus or other Yjs provider setup, either through built-in settings or a provider extension.
 ---
 
-SuperDoc owns the browser's shared document. It creates the `Y.Doc` inside a worker and opens the provider connection
-for it. You cannot hand it a `Y.Doc` or provider instance you already created. You can keep your server, your provider
+SuperDoc owns the browser's shared document. It creates the `Y.Doc` and opens the provider connection for it. You
+cannot hand it a `Y.Doc` or provider instance you already created. You can keep your server, your provider
 library, and your authentication. Pick one of two ways to connect them.
 
 <Callout title='Preview API'>
@@ -19,7 +19,7 @@ library, and your authentication. Pick one of two ways to connect them.
 | ----------------------------- | ---------------------------------------------------------- | ----------------------------------------------------------------------- |
 | Use it when                   | Your server speaks Hocuspocus, y-websocket, or Liveblocks. | You need your own connection code, for example custom provider options. |
 | What you write                | Connection settings in `document.collaboration`.           | A worker module with an adapter, plus settings that name it.            |
-| Worker                        | SuperDoc's default worker.                                 | Your worker, passed as `workerUrls.collaboration`.                      |
+| Worker                        | None. The provider syncs on the page.                      | Your worker, passed as `workerUrls.collaboration`.                      |
 | Shared-room check on `create` | Yes.                                                       | No. Readiness means local readiness only.                               |
 
 Start with a built-in provider. Most existing Hocuspocus setups need only settings. Write an extension only when the
@@ -79,8 +79,9 @@ An extension has three parts:
 
 ### 1. Write the adapter and worker
 
-Create a worker module, for example `collaboration-worker.ts`. It registers every adapter your application uses. Built-in providers keep working in the same
-worker.
+Create a worker module, for example `collaboration-worker.ts`. It registers every adapter your application uses.
+Built-in providers do not need it; they sync on the page. Build the worker with the same SuperDoc version as the page,
+and rebuild it whenever you upgrade SuperDoc. A worker built with a different version does not open the room.
 
 ```ts
 import { HocuspocusProvider, HocuspocusProviderWebsocket } from '@hocuspocus/provider';
@@ -202,7 +203,7 @@ restore a room](/editor/collaboration/save-and-restore-a-room).
 
 ## Limits
 
-- An extension works only in a worker that registers it. The default worker has no extensions.
+- An extension works only in a worker that registers it. SuperDoc ships no default collaboration worker.
 - SuperDoc supports the three provider families above. Other Yjs providers may work through an extension if they
   follow one of those protocols, but SuperDoc does not test them.
 - `superdoc.provider` is not your provider instance. In v2 it only offers `sendStateless(message)`.

@@ -207,8 +207,8 @@ const summaries = {
   telemetry: 'Configure telemetry sent when a DOCX becomes ready.',
   proofing: 'Configure spelling and grammar checks.',
   fonts: 'Configure document fonts and font asset loading.',
-  workerUrls: 'Load browser workers from same-origin URLs.',
-  workerStartupTimeoutMs: 'Set how long the document worker may take to start.',
+  workerUrls: 'Set the provider-extension collaboration worker URL.',
+  workerStartupTimeoutMs: 'Set how long the provider-extension collaboration worker may take to start.',
   useLayoutEngine: 'Pass or omit layout engine options when a DOCX editor opens.',
   zoom: 'Set the initial zoom and fit-to-width behavior.',
   measurementUnit: 'Set the ruler and measurement unit.',
@@ -361,8 +361,11 @@ const presentation = {
     example: { value: '{ assetBaseUrl: … }', code: "fonts: { assetBaseUrl: '/fonts/' }" },
   },
   workerUrls: {
-    example: { value: '{ document: … }', code: "workerUrls: { document: '/workers/document.js' }" },
-    guide: { label: 'Secure integration', href: '/editor/secure-integration' },
+    example: {
+      value: '{ collaboration: … }',
+      code: "workerUrls: { collaboration: '/workers/collaboration-worker.js' }",
+    },
+    guide: { label: 'Use your own provider', href: '/editor/collaboration/use-your-own-provider' },
   },
   onReady: {
     kind: 'starter',

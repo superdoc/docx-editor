@@ -7,6 +7,7 @@ import { DOCX } from '@superdoc/common';
 import { useSuperdocStore } from '../stores/superdoc-store.js';
 import { normalizeUiConfig } from '../core/config/normalize-ui-config.js';
 import SuperDoc from '../SuperDoc.vue';
+import { makeV2CommentsAdapter } from '../test-support/v2-review-adapters.js';
 
 // The shell fixture replaces the editor; keep the real integration and bridge
 // without evaluating the unused source editor runtime during engine loading.
@@ -137,14 +138,14 @@ describe('V2 floating comment action selection continuity', () => {
           },
         }),
       };
-      superdoc.activeEditor.v2Comments = {
+      superdoc.activeEditor.v2Comments = makeV2CommentsAdapter({
         documentId: 'doc-a',
         getCapabilityState: () => ({ canWrite: true }),
         captureCurrentSelection: vi.fn(async () => {
           order.push('capture');
           return { ok: true, target };
         }),
-      };
+      });
       document.body.append(wrapper.element);
       wrapper.element.append(mountContainer);
       anchor.textContent = 'need';

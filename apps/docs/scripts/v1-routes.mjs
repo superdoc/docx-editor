@@ -36,6 +36,7 @@ const defaultOutputDirectory = resolve(scriptDirectory, '../out');
 // anyone.
 const shippedLinkRoots = ['packages', 'apps/cli', 'apps/mcp', 'apps/vscode-ext'];
 const defaultRoutesPath = resolve(scriptDirectory, '../config/routes.json');
+const exportedFileRoutes = new Set(['/llms.txt', '/llms-full.txt', '/llms-reference.txt', '/robots.txt', '/sitemap.xml']);
 
 // Where a V1 URL can end up. Every inventoried route gets exactly one.
 export const dispositionKinds = new Set(['v2', 'archive', 'retired']);
@@ -198,6 +199,7 @@ export function validateDispositions({ manifest, dispositions, v2Routes, shipped
 
   const covered = (path) =>
     v2Routes.has(path) ||
+    exportedFileRoutes.has(path) ||
     dispositions.has(path) ||
     patternPrefixes.some((prefix) => prefix.length > 1 && path.startsWith(prefix));
 

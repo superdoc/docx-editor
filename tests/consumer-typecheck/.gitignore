@@ -1,3 +1,5 @@
 # Build artifact: written per-scenario by typecheck-matrix.mjs
 tsconfig.matrix.json
 src/docs-snippets/
+
+tsconfig.matrix-*.json

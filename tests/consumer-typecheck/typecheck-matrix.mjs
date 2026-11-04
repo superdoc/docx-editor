@@ -9,8 +9,9 @@
  * Pass --use-existing-tarball to freshly install an already-built
  * superdoc.tgz, or --skip-pack to reuse the already-installed fixture.
  */
-import { execFileSync, execSync } from 'child_process';
-import { existsSync, mkdtempSync, readdirSync, rmSync } from 'fs';
+import { execFile, execFileSync, execSync } from 'child_process';
+import { promisify } from 'node:util';
+import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
@@ -180,46 +181,55 @@ console.log('TypeScript Compatibility Matrix');
 console.log('='.repeat(80));
 console.log();
 
-for (const scenario of scenarios) {
-  const tsconfig = {
-    compilerOptions: {
-      target: 'ES2022',
-      module: scenario.module,
-      moduleResolution: scenario.moduleResolution,
-      strict: scenario.strict,
-      skipLibCheck: scenario.skipLibCheck,
-      noEmit: true,
-      esModuleInterop: true,
-      types: ['node'],
-      ...(scenario.noPropertyAccessFromIndexSignature
-        ? { noPropertyAccessFromIndexSignature: true }
-        : {}),
-    },
-    include: scenario.files,
-  };
+const execute = promisify(execFile);
+let cursor = 0;
+async function worker() {
+  while (cursor < scenarios.length) {
+    const index = cursor++;
+    const scenario = scenarios[index];
+    const tsconfig = {
+      compilerOptions: {
+        target: 'ES2022',
+        module: scenario.module,
+        moduleResolution: scenario.moduleResolution,
+        strict: scenario.strict,
+        skipLibCheck: scenario.skipLibCheck,
+        noEmit: true,
+        esModuleInterop: true,
+        types: ['node'],
+        ...(scenario.noPropertyAccessFromIndexSignature
+          ? { noPropertyAccessFromIndexSignature: true }
+          : {}),
+      },
+      include: scenario.files,
+    };
 
-  const tsconfigPath = join(__dirname, 'tsconfig.matrix.json');
-  const { writeFileSync } = await import('fs');
-  writeFileSync(tsconfigPath, JSON.stringify(tsconfig, null, 2));
+    const tsconfigPath = join(__dirname, `tsconfig.matrix-${process.pid}-${index}.json`);
+    writeFileSync(tsconfigPath, JSON.stringify(tsconfig, null, 2));
 
-  console.log(`Running: ${scenario.name}`);
-  try {
-    execSync(`${tscPath} -p tsconfig.matrix.json`, {
-      cwd: __dirname,
-      stdio: 'pipe',
-    });
-    console.log('  PASS\n');
-    passed += 1;
-  } catch (error) {
-    console.error('  FAIL');
-    const stdout = error.stdout?.toString();
-    const stderr = error.stderr?.toString();
-    if (stdout) console.error(stdout);
-    if (stderr) console.error(stderr);
-    console.error();
-    failed += 1;
+    console.log(`Running: ${scenario.name}`);
+    try {
+      await execute(tscPath, ['-p', tsconfigPath], {
+        cwd: __dirname,
+        timeout: 300000,
+        killSignal: 'SIGKILL',
+      });
+      console.log(`  PASS: ${scenario.name}\n`);
+      passed += 1;
+    } catch (error) {
+      console.error(`  FAIL: ${scenario.name}`);
+      const stdout = error.stdout?.toString();
+      const stderr = error.stderr?.toString();
+      if (stdout) console.error(stdout);
+      if (stderr) console.error(stderr);
+      console.error();
+      failed += 1;
+    } finally {
+      rmSync(tsconfigPath, { force: true });
+    }
   }
 }
+await Promise.all(Array.from({ length: Math.min(4, scenarios.length) }, worker));
 
 console.log('='.repeat(80));
 console.log(`Results: ${passed} passed, ${failed} failed`);

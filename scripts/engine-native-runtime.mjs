@@ -6,6 +6,7 @@ import path from 'node:path';
 export const ENGINE_NATIVE_RUNTIME_ID = 'native-runtime';
 export const ENGINE_NATIVE_RUNTIME_DESTINATION = 'dist-native';
 export const ENGINE_NATIVE_RUNTIME_FILE = 'native-runtime.js';
+export const ENGINE_NATIVE_RUNTIME_TYPES = "export * from '../../src/native-runtime.js';\n";
 export const ENGINE_NATIVE_RUNTIME_LEGAL_FILES = Object.freeze(['DOCX-ENGINE-LICENSE.md', 'NOTICE.md', 'THIRD_PARTY_NOTICES']);
 export const ENGINE_NATIVE_CLI_LEGAL_FILES = Object.freeze([...ENGINE_NATIVE_RUNTIME_LEGAL_FILES, 'YJS-LICENSE']);
 export const ENGINE_NATIVE_RUNTIME_EXPORTS = Object.freeze([

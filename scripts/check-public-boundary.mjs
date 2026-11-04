@@ -659,6 +659,15 @@ const EXEMPT_PATHS = new Map([
       allow: /^\/Users\/(?:example|runner|administrator)\//,
     },
   ],
+  [
+    'packages/superdoc/scripts/ensure-types.test.ts',
+    {
+      reason:
+        'seeds emitted declarations into a temporary dist root; their shared/common specifiers resolve inside ' +
+        'that root, which is what ensure-types rewrites',
+      allow: /^(?:\.\.\/){4,5}shared\/common(?:\/[a-z-]+\.js)?$/,
+    },
+  ],
 ]);
 
 /**

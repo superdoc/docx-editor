@@ -250,6 +250,9 @@ importers:
       '@emnapi/runtime':
         specifier: ^1.9.1
         version: 1.9.1
+      '@oxlint/plugins':
+        specifier: 1.73.0
+        version: 1.73.0
       '@semantic-release/changelog':
         specifier: 'catalog:'
         version: 6.0.3(semantic-release@24.2.9(typescript@5.9.3))

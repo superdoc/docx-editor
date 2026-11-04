@@ -246,6 +246,7 @@ import {
   selectionStory,
   selectionTargetForRestore,
   selectionTextAddresses,
+  selectionTargetFromTextTarget,
   textAddressesFromTarget,
   type CellSelectionCapture,
   type TextSelectionTarget,
@@ -264,7 +265,7 @@ type FirstPartyCommandMutation = {
   };
   supports: (memberPath: string) => boolean;
   run: (memberPath: string, args: readonly unknown[]) => unknown;
-  runListApply: (input: unknown) => Promise<boolean>;
+  runListApply: (input: unknown) => Promise<unknown>;
 };
 
 const firstPartyCommandMutations = new WeakMap<object, WeakMap<object, FirstPartyCommandMutation>>();
@@ -3749,6 +3750,71 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     collapsedTextAddressFromSelection(selection) != null &&
     typeof getHost()?.setPendingInlineFormat === 'function';
 
+  type PendingListRequest = {
+    editor: ReturnType<typeof getEditor>;
+    doc: unknown;
+    mode: ReturnType<typeof readDocumentMode>;
+    kind: 'bullet' | 'ordered';
+    optionsKey: string;
+    scope: string | null;
+    scopePromise: Promise<string | null>;
+    decisionSettled: Promise<void>;
+    repeatIntent: {
+      acceptsRepeats: boolean;
+      sourceResult: (() => Promise<CommandExecutionResult>) | null;
+      state: Promise<unknown> | null;
+    };
+    result: Promise<CommandExecutionResult>;
+    cancelled: boolean;
+    cancel: (reason?: unknown) => void;
+  };
+  const pendingListRequests = new Set<PendingListRequest>();
+  const listCommandSourceSettlements = new WeakMap<SelectionSlice, Promise<CommandExecutionResult>>();
+  const capturedListApplications = new WeakMap<SelectionSlice, (input: unknown) => unknown>();
+  let nextListRequest = 0;
+  const listTableSelection = (
+    selection: SelectionSlice,
+  ): { tableId: string; story: { kind: 'story'; storyType: 'body' }; cellIds: string[] } | null => {
+    const table = selection.tableSelection;
+    if (
+      table?.kind !== 'tableCells' ||
+      table.selectionMode !== 'cells' ||
+      !table.tableId ||
+      !Array.isArray(table.cells) ||
+      table.cells.length === 0 ||
+      table.cells.some((cell) => !cell || typeof cell.nodeId !== 'string' || !cell.nodeId)
+    )
+      return null;
+    const story = table.story ?? selectionStory(selection);
+    if (story.kind !== 'story' || story.storyType !== 'body') return null;
+    const cellIds = table.cells.map((cell) => cell.nodeId).sort();
+    return new Set(cellIds).size === cellIds.length
+      ? { tableId: table.tableId, story: { kind: 'story', storyType: 'body' }, cellIds }
+      : null;
+  };
+  const listSelectionScope = (selection: SelectionSlice): string | null => {
+    if (selection.tableSelection?.selectionMode === 'cells') {
+      const table = listTableSelection(selection);
+      return table
+        ? JSON.stringify([storyLocatorSignature(table.story), { tableId: table.tableId, cellIds: table.cellIds }])
+        : null;
+    }
+    const blocks = selectionBlockIds(selection);
+    return blocks.length ? JSON.stringify([storyLocatorSignature(selectionStory(selection)), blocks]) : null;
+  };
+  const listCommandIsPending = (kind: 'bullet' | 'ordered', selection: SelectionSlice): boolean => {
+    const scope = listSelectionScope(selection);
+    return [...pendingListRequests].some(
+      (request) =>
+        !request.cancelled &&
+        request.editor === getEditor() &&
+        request.doc === getEditor()?.doc &&
+        request.mode === readDocumentMode() &&
+        request.kind === kind &&
+        (request.scope == null || scope == null || request.scope === scope),
+    );
+  };
+
   const computeCommandState = (
     id: string,
     doc: LooseRecord | null,
@@ -3790,7 +3856,13 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
           );
         }
         return normalizeCommandState(
-          { enabled, active: activeSeed === listKind, supported, value: entry?.value },
+          {
+            enabled,
+            active: activeSeed === listKind,
+            supported,
+            value: entry?.value,
+            pending: listCommandIsPending(listKind, selection),
+          },
           'builtin',
         );
       }
@@ -5797,6 +5869,10 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
 
   const recompute = (reason = 'unspecified'): void => {
     if (disposed) return;
+    for (const request of pendingListRequests) {
+      if (request.editor !== getEditor() || request.doc !== getEditor()?.doc) request.cancel('owner-changed');
+      else if (!request.cancelled && request.mode !== readDocumentMode()) request.cancel();
+    }
     const { sink } = readUiBenchRuntime();
     const startedAtMs = sink ? uiBenchNowMs() : 0;
     // Any recompute satisfies a queued edit-command refresh, whatever triggered
@@ -6317,16 +6393,19 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     return !info || (info.empty === true && !info.target && !info.selectionTarget);
   };
 
-  function executeListToggleCommand(kind: 'bullet' | 'ordered', payload: unknown): CommandExecutionResult {
+  function executeListToggleCommand(
+    kind: 'bullet' | 'ordered',
+    payload: unknown,
+    preparedSelection?: SelectionSlice,
+  ): CommandExecutionResult {
     if (hasInactiveTextSelection()) return false;
     const editCommands = getEditCommands();
     const apply = hostMethod(editCommands?.lists, 'apply');
     const host = getHost();
+    const requiresRegisteredMutation = firstPartyCommandDoc !== undefined && getEditor()?.editorVersion === 2;
     const firstPartyMutation =
-      firstPartyCommandDoc !== undefined && getEditor()?.editorVersion === 2 && host
-        ? firstPartyCommandMutations.get(superdoc)?.get(host)
-        : null;
-    if (firstPartyCommandDoc !== undefined && getEditor()?.editorVersion === 2 && !firstPartyMutation) return false;
+      requiresRegisteredMutation && host ? firstPartyCommandMutations.get(superdoc)?.get(host) : null;
+    if (requiresRegisteredMutation && !firstPartyMutation) return false;
     if (!firstPartyMutation && !apply) return false;
     // The style dropdowns emit a bare style-key string (e.g. 'upper-roman');
     // the public command surface also accepts an options object. Normalize both
@@ -6341,8 +6420,57 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     const input: LooseRecord = { kind, behavior: behavior ?? 'toggle' };
     if (preset !== undefined) input.preset = preset;
     if (continuity !== undefined) input.continuity = continuity;
+    if (preparedSelection && getEditor()?.editorVersion === 2) {
+      if (preparedSelection.tableSelection?.selectionMode === 'cells') {
+        const table = listTableSelection(preparedSelection);
+        if (!table) return false;
+        input.tableSelection = table;
+      } else {
+        const target = preparedSelection.selectionTarget ?? selectionTargetFromTextTarget(preparedSelection.target);
+        if (!target) return false;
+        input.target = target;
+      }
+    }
+    const candidateReadiness = getEditor()?.documentMutationReadiness;
+    const readiness = isPlainObject(candidateReadiness) ? candidateReadiness : undefined;
     try {
-      return settleCommandExecution(firstPartyMutation ? firstPartyMutation.runListApply(input) : apply?.(input));
+      const capturedApply = preparedSelection ? capturedListApplications.get(preparedSelection) : undefined;
+      const operation = capturedApply
+        ? capturedApply(input)
+        : firstPartyMutation
+          ? firstPartyMutation.runListApply(input)
+          : apply?.(input);
+      if (!preparedSelection) return settleCommandExecution(operation);
+      const source = Promise.resolve(operation).then((raw) => {
+        const mapped = commandResultFromOperationResult(raw);
+        if (!commandResultSucceeded(mapped)) return { result: mapped, receipt: undefined };
+        const nestedResult = commandResultFromOperationResult(isPlainObject(raw) ? raw.receipt : undefined);
+        const receipt = isSuccessfulReceipt(nestedResult)
+          ? nestedResult
+          : isSuccessfulReceipt(mapped)
+            ? mapped
+            : undefined;
+        return { result: firstPartyMutation ? true : mapped, receipt };
+      });
+      listCommandSourceSettlements.set(
+        preparedSelection,
+        source.then(
+          ({ result }) => result,
+          () => false,
+        ),
+      );
+      return settleCommandExecution(
+        source.then(async ({ result, receipt }) => {
+          if (!commandResultSucceeded(result)) return result;
+          const whenPainted = readiness?.whenPainted;
+          if (typeof whenPainted === 'function') {
+            try {
+              await whenPainted.call(readiness, receipt);
+            } catch {}
+          }
+          return result;
+        }),
+      );
     } catch {
       return false;
     }
@@ -7873,7 +8001,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       if (readDocumentMode() === 'viewing') return false;
       const editCommands = getEditCommands();
       const apply = (editCommands?.lists as LooseRecord | undefined)?.apply;
-      if (typeof apply === 'function') return executeListToggleCommand(listKind, payload);
+      if (typeof apply === 'function') return executeListToggleCommand(listKind, payload, preparedSelection);
     }
     const trackCommand = trackDecisionCommand(id);
     if (trackCommand) return executeTrackDecisionCommand(trackCommand, payload);
@@ -8689,6 +8817,265 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     recompute();
   };
 
+  const runListCommandAsync = (
+    id: string,
+    kind: 'bullet' | 'ordered',
+    payload: unknown,
+    context: ViewportContext | undefined,
+    firstParty: boolean,
+    requireEnabled: boolean,
+    invocation: {
+      editor: ReturnType<typeof getEditor>;
+      doc: ReturnType<typeof getDoc>;
+      mode: ReturnType<typeof readDocumentMode>;
+      host: LooseRecord | undefined;
+    },
+  ): Promise<CommandExecutionResult> => {
+    const { editor, doc, mode, host } = invocation;
+    const lifetime = safeCall<unknown>(() => hostMethod(host, 'getForegroundInteractionLifetime')?.(), undefined);
+    const capture = hostMethod(host, 'captureListCommand');
+    const captured = safeCall<unknown>(() => capture?.(lifetime), null);
+    const admission = isPlainObject(captured) ? captured : undefined;
+    const readCaptured = hostMethod(admission, 'read');
+    const submit = hostMethod(admission, 'run');
+    const release = hostMethod(admission, 'release');
+    const sourceResult = hostMethod(admission, 'sourceResult');
+    const repeatState = hostMethod(admission, 'repeatState');
+    const canRepeat = hostMethod(admission, 'canRepeat');
+    if (capture && (!admission || !readCaptured || !submit || !release)) {
+      release?.();
+      return Promise.resolve(false);
+    }
+    const releaseAdmission = () => safeCall(() => release?.(), undefined);
+    const selectionPromise = (async () => {
+      try {
+        if (admission) await admission.ready;
+        const api = doc?.selection;
+        const current = isPlainObject(api) ? api.current : undefined;
+        if (typeof current !== 'function') return selectionSliceFromInfo(null, 'pending');
+        const input = {
+          includeText: false,
+          ...(editor?.editorVersion === 2 ? { offsetSpace: 'selection' } : {}),
+        };
+        const read = () => current.call(api, input);
+        const raw = await (readCaptured ? readCaptured(input, read) : read());
+        const info = normalizeSelectionInfo(raw);
+        return selectionSliceFromInfo(info, info ? 'ready' : 'pending');
+      } catch {
+        return selectionSliceFromInfo(null, 'pending');
+      }
+    })();
+    const overrides: LooseRecord =
+      typeof payload === 'string' ? presetFromToolbarStyleKey(payload) : isPlainObject(payload) ? payload : {};
+    const optionsKey =
+      safeCall(
+        () =>
+          JSON.stringify({
+            behavior: overrides.behavior ?? 'toggle',
+            preset: overrides.preset,
+            continuity: overrides.continuity,
+          }),
+        null,
+      ) ?? `invalid:${++nextListRequest}`;
+    const earlier = [...pendingListRequests];
+    let settleDecision!: () => void;
+    const decisionSettled = new Promise<void>((settle) => {
+      settleDecision = settle;
+    });
+    let resolve!: (result: CommandExecutionResult) => void;
+    const result = new Promise<CommandExecutionResult>((settle) => {
+      resolve = settle;
+    });
+    let cancelSettlement!: () => void;
+    const cancelled = new Promise<false>((settle) => {
+      cancelSettlement = () => settle(false);
+    });
+    let detachRetirement = () => {};
+    let cancelledWithSourceResult = false;
+    const request: PendingListRequest = {
+      editor,
+      doc,
+      mode,
+      kind,
+      optionsKey,
+      scope: null,
+      scopePromise: Promise.resolve(null),
+      decisionSettled,
+      repeatIntent: {
+        acceptsRepeats: true,
+        sourceResult: sourceResult
+          ? () =>
+              Promise.resolve(safeCall(() => sourceResult(), false)).then(commandResultFromOperationResult, () => false)
+          : null,
+        state: repeatState ? Promise.resolve(safeCall(() => repeatState(), null)).catch(() => null) : null,
+      },
+      result,
+      cancelled: false,
+      cancel: (reason) => {
+        if (request.cancelled && reason !== 'ui-destroy' && reason !== 'owner-changed') return;
+        cancelledWithSourceResult =
+          reason !== 'ui-destroy' &&
+          !disposed &&
+          (sourceResult != null || (getEditor() === editor && getEditor()?.doc === doc && readDocumentMode() !== mode));
+        request.cancelled = true;
+        detachRetirement();
+        releaseAdmission();
+        settleDecision();
+        cancelSettlement();
+        if (!cancelledWithSourceResult) {
+          pendingListRequests.delete(request);
+          resolve(false);
+        } else {
+          void (request.repeatIntent.sourceResult?.() ?? Promise.resolve(false)).then((value) => {
+            pendingListRequests.delete(request);
+            if (!disposed) recompute();
+            resolve(disposed || getEditor() !== editor || getEditor()?.doc !== doc ? false : value);
+          });
+        }
+      },
+    };
+    const lifetimeRecord = isPlainObject(lifetime) ? lifetime : undefined;
+    const removeRetirement = hostMethod(lifetimeRecord, 'removeEventListener');
+    detachRetirement = () => safeCall(() => removeRetirement?.('abort', request.cancel), undefined);
+    safeCall(
+      () => hostMethod(lifetimeRecord, 'addEventListener')?.('abort', request.cancel, { once: true }),
+      undefined,
+    );
+    if (lifetimeRecord?.aborted === true) request.cancel();
+    request.scopePromise = selectionPromise.then((selection) => {
+      request.scope = listSelectionScope(selection);
+      if (!disposed && !request.cancelled) recompute();
+      return request.scope;
+    });
+    if (!request.cancelled) pendingListRequests.add(request);
+    recompute();
+    void selectionPromise
+      .then(async (selection) => {
+        try {
+          if (
+            disposed ||
+            request.cancelled ||
+            getEditor() !== editor ||
+            getEditor()?.doc !== doc ||
+            readDocumentMode() !== mode
+          )
+            return false;
+          const scope = await request.scopePromise;
+          if (!scope) return false;
+          for (const previous of earlier.reverse()) {
+            if (
+              previous.cancelled ||
+              previous.editor !== editor ||
+              previous.doc !== doc ||
+              previous.mode !== mode ||
+              (await previous.scopePromise) !== scope
+            )
+              continue;
+            await previous.decisionSettled;
+            if (
+              disposed ||
+              request.cancelled ||
+              getEditor() !== editor ||
+              getEditor()?.doc !== doc ||
+              readDocumentMode() !== mode
+            )
+              return false;
+            if (previous.cancelled) continue;
+            let repeat =
+              previous.repeatIntent.acceptsRepeats && previous.kind === kind && previous.optionsKey === optionsKey;
+            if (repeat && previous.repeatIntent.state) {
+              const state = await previous.repeatIntent.state;
+              if (state) {
+                const verified = canRepeat ? await canRepeat(state) : null;
+                if (verified == null) return false;
+                repeat = verified === true;
+              } else {
+                const outcome = previous.repeatIntent.sourceResult ? await previous.repeatIntent.sourceResult() : null;
+                if (outcome == null || commandResultSucceeded(outcome)) return false;
+                repeat = false;
+              }
+            }
+            if (
+              disposed ||
+              request.cancelled ||
+              getEditor() !== editor ||
+              getEditor()?.doc !== doc ||
+              readDocumentMode() !== mode
+            )
+              return false;
+            if (previous.cancelled) continue;
+            if (repeat && previous.repeatIntent.acceptsRepeats) {
+              request.repeatIntent = previous.repeatIntent;
+              releaseAdmission();
+              return previous.result;
+            }
+            previous.repeatIntent.acceptsRepeats = false;
+            break;
+          }
+          const execute = (signal?: AbortSignal) => {
+            if (
+              disposed ||
+              request.cancelled ||
+              signal?.aborted ||
+              getEditor() !== editor ||
+              getEditor()?.doc !== doc ||
+              readDocumentMode() !== mode
+            )
+              return false;
+            if (requireEnabled) {
+              const command = computeCommandState(id, doc, selection, projectSelectionInlineValues(selection));
+              if (!command.supported || !command.enabled) return false;
+            }
+            const capturedApply = hostMethod(admission, 'apply');
+            if (capturedApply) capturedListApplications.set(selection, (input) => capturedApply(input, firstParty));
+            const dispatch = () => runCommand(id, payload, context, firstParty, selection);
+            try {
+              if (submit) submit(dispatch);
+              else dispatch();
+            } finally {
+              capturedListApplications.delete(selection);
+            }
+            const source = listCommandSourceSettlements.get(selection) ?? Promise.resolve(false);
+            request.repeatIntent.sourceResult ??= () => source;
+            signal?.addEventListener('abort', request.cancel, { once: true });
+            return Promise.race([lastCommandSettlement, cancelled]).finally(() =>
+              signal?.removeEventListener('abort', request.cancel),
+            );
+          };
+          const runForeground = admission?.ownsHistory === true ? null : hostMethod(host, 'runForegroundInteraction');
+          return runForeground ? runForeground(execute, lifetime) : execute();
+        } finally {
+          settleDecision();
+        }
+      })
+      .then(
+        (value) => commandResultFromOperationResult(value),
+        () => {
+          settleDecision();
+          return false;
+        },
+      )
+      .then(async (value) => {
+        releaseAdmission();
+        if (
+          sourceResult &&
+          commandResultSucceeded(value) &&
+          !commandResultSucceeded(await (request.repeatIntent.sourceResult?.() ?? Promise.resolve(false)))
+        )
+          value = false;
+        if (cancelledWithSourceResult) {
+          value = await (request.repeatIntent.sourceResult?.() ?? Promise.resolve(false));
+          if (disposed || getEditor() !== editor || getEditor()?.doc !== doc) value = false;
+        }
+        if (!commandResultSucceeded(value)) request.repeatIntent.acceptsRepeats = false;
+        detachRetirement();
+        pendingListRequests.delete(request);
+        if (!disposed) recompute();
+        resolve(value);
+      });
+    return result;
+  };
+
   const runCommandAsync = (
     id: string,
     payload: unknown,
@@ -8696,10 +9083,19 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     firstParty: boolean,
     requireEnabled = false,
   ): Promise<CommandExecutionResult> => {
+    const listKind = !customCommands.has(id) ? listToggleKind(id) : null;
     const editor = getEditor();
-    const doc = editor?.doc;
+    const listDoc = listKind ? getDoc() : null;
+    const doc = listKind ? listDoc : editor?.doc;
     const mode = readDocumentMode();
     const host = editor?.host as LooseRecord | undefined;
+    if (listKind)
+      return runListCommandAsync(id, listKind, payload, context, firstParty, requireEnabled, {
+        editor,
+        doc: listDoc,
+        mode,
+        host,
+      });
     const reader =
       firstParty && getCommandDescriptor(id)?.inline?.kind === 'toggle' && !customCommands.has(id) && host
         ? firstPartyCommandMutations.get(superdoc)?.get(host)?.selectionReader?.capture()
@@ -12356,6 +12752,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
   };
 
   const destroy = (): void => {
+    for (const request of pendingListRequests) request.cancel('ui-destroy');
     if (disposed) return;
     watermark.destroy();
     clearContentControlHighlight();

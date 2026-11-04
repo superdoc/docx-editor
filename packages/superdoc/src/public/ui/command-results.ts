@@ -153,6 +153,7 @@ export function normalizeCommandState(state: Partial<CommandState>, source: Comm
     enabled,
     disabled: !enabled,
     active: state.active ?? false,
+    ...(typeof state.pending === 'boolean' ? { pending: state.pending } : {}),
     supported,
     value: state.value,
     source,

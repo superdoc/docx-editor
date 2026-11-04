@@ -20,7 +20,7 @@ interface ToolbarButtonItem {
   inlineTextInputVisible: Ref<boolean | undefined>;
   hasInlineTextInput: Ref<boolean | undefined>;
   style: Ref<StyleValue | undefined>;
-  attributes: Ref<{ className?: unknown; ariaLabel?: string }>;
+  attributes: Ref<{ className?: unknown; ariaLabel?: string; ariaBusy?: boolean }>;
   nestedOptions?: Ref<{ label?: string }[]>;
 }
 
@@ -259,6 +259,7 @@ const caretIcon = computed(() => {
     :role="isOverflowItem ? 'menuitem' : 'button'"
     :aria-label="attributes.ariaLabel"
     :aria-disabled="disabled ? 'true' : undefined"
+    :aria-busy="attributes.ariaBusy || undefined"
     data-sd-part="toolbar-item"
     @click="handleOuterClick"
     @keydown.enter="onEnterKeydown($event)"
@@ -283,6 +284,9 @@ const caretIcon = computed(() => {
         :data-item="`btn-${name || ''}-main`"
         @click="handleSplitMainClick($event)"
       >
+        <span v-if="attributes.ariaBusy && isSplit" role="status" aria-label="Applying list" style="font-weight: 700"
+          >…</span
+        >
         <ToolbarButtonIcon v-if="icon" :color="iconColor" class="sd-toolbar-icon" :icon="icon" :name="name">
         </ToolbarButtonIcon>
         <div class="sd-button-label" v-if="label && !hideLabel && !inlineTextInputVisible">
@@ -300,6 +304,7 @@ const caretIcon = computed(() => {
       </div>
 
       <template v-else>
+        <span v-if="attributes.ariaBusy" role="status" aria-label="Applying list" style="font-weight: 700">…</span>
         <ToolbarButtonIcon v-if="icon" :color="iconColor" class="sd-toolbar-icon" :icon="icon" :name="name">
         </ToolbarButtonIcon>
 

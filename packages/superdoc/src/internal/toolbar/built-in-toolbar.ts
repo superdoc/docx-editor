@@ -990,6 +990,12 @@ export class BuiltInToolbar extends EventEmitter {
     if (!commandId) return false;
 
     const commandState = this.snapshot?.commands?.[commandId];
+    if (
+      (name === 'list' || name === 'numberedlist') &&
+      item.attributes.value.ariaBusy !== Boolean(commandState?.pending)
+    ) {
+      item.attributes.value = { ...item.attributes.value, ariaBusy: Boolean(commandState?.pending) };
+    }
     if (shouldKeepEnabledForV1ToolbarParity(name, commandState)) item.setDisabled(false);
     else item.setDisabled(Boolean(commandState?.disabled));
 

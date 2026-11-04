@@ -63,6 +63,9 @@ const state: CommandState = handle.getState();
 const _reason: SuperDocUIReason | (string & {}) | undefined = state.reason;
 const _supported: boolean = state.supported;
 const _enabled: boolean = state.enabled;
+const _pending: boolean | undefined = state.pending;
+const _pendingType: AssertEqual<CommandState['pending'], boolean | undefined> = true;
+void [_pending, _pendingType];
 const _handleExecute: AssertEqual<ReturnType<CommandHandle['execute']>, CommandExecutionResult> = true;
 const _handleExecuteAsync: AssertEqual<
   ReturnType<CommandHandle['executeAsync']>,

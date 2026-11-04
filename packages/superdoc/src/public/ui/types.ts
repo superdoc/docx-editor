@@ -298,6 +298,7 @@ export interface FontSizeOption {
 
 /** Observable enable/active state for a toolbar-style command. */
 export interface CommandState {
+  pending?: boolean;
   /** Availability for a control in the current selection / mode snapshot. */
   enabled: boolean;
   /** Compatibility inverse of `enabled` for demo code that models commands as disabled. */

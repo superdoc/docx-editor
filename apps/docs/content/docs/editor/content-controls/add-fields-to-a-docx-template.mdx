@@ -98,6 +98,74 @@ Keep the formatting read and selection target at the same document revision. If 
 the destination's formatting, creation returns `CAPABILITY_UNAVAILABLE` without changing the document or history.
 Pass explicit `inline` values to bypass automatic inheritance.
 
+## Turn a newly typed suggestion into a field
+
+In **Suggesting** mode, type `receiving_party` into an ordinary body paragraph. Select the entire token once and wait
+for the selection to settle before reading `superdoc.ui.selection.getSnapshot()`:
+
+```js
+async function convertSelectedPendingToken(superdoc) {
+  const selection = superdoc.ui.selection.getSnapshot();
+  const at = selection?.selectionTarget;
+  if (selection?.status !== 'ready' || selection.quotedText !== 'receiving_party' || !at) {
+    return { kind: 'selection-not-ready' };
+  }
+  try {
+    const receipt = await superdoc.activeEditor.doc.create.contentControl({
+      kind: 'inline',
+      controlType: 'text',
+      at,
+      alias: 'receiving_party',
+      content: 'receiving_party',
+      lockMode: 'unlocked',
+    });
+    if (!receipt.success) return { kind: 'refused', failure: receipt.failure };
+    return { kind: 'converted', receipt };
+  } catch (error) {
+    return { kind: 'fault', error };
+  }
+}
+```
+
+Omitting the second argument inherits the editor's Suggesting mode. You can also pass `{ changeMode: 'tracked' }` as
+the second argument. `superdoc.ui.selection.current()` synchronously returns the best-known cached selection data;
+awaiting it does not wait for worker selection reads. Use the settled `getSnapshot()` flow above and its
+`status === 'ready'` check before using the selection target.
+
+This conversion supports one complete, simple insertion created by the current author in the current session, with
+a unique revision identity. Supply identical plain-text `content` and omit `inline`: conversion preserves the
+original formatted runs, including existing bold and italic within the token. Pending tracked formatting changes,
+such as bold applied to the token while in Suggesting mode, are refused.
+
+Conversion preserves the original Word revision IDs and source insertion ID. The public canonical review ID changes
+to identify a structural content-control insertion; use the returned reference after conversion.
+
+The field and token share one review decision. **Accept** keeps both; **Reject** removes both. The conversion receipt's
+`trackedChangeRefs` identifies the current review reference. Use that reference or read the current review list
+before deciding. One Undo restores the original text suggestion, and
+one Redo restores the field.
+
+Partial selections, selections spanning multiple revisions, foreign or imported insertions, ambiguous or split
+revisions, pending tracked formatting changes, and complex content such as nested controls or fields are refused.
+Linked revisions, including a pending paragraph decision or the inserted half of a paired replacement, are also refused.
+Changed content, rich-text payloads and explicit `inline` formatting
+overrides are unsupported for this conversion. A refusal returns `success: false` with a `CAPABILITY_UNAVAILABLE`
+failure receipt and leaves the document, history and review state unchanged. Check `receipt.failure` to show the
+reason. You can select a supported complete insertion or create a separate field at a collapsed selection outside
+pending revisions. Previews with `dryRun: true` are also atomic and leave the document, history and review state unchanged.
+
+Tracked range creation over accepted text is also refused when that paragraph contains another pending text revision
+or paragraph decision, even when the selection does not overlap it. Accepted-token replacement remains supported in
+paragraphs without pending revisions; separate-field insertion outside revision wrappers uses a collapsed selection.
+
+Tracked range replacement with different content is refused atomically until the field and replaced text can remain
+one decision through export/reopen. Use identical plain-text content for token conversion or accepted-token
+replacement, or a collapsed selection for a separate field.
+
+Handle exceptions separately from refusal receipts: malformed input can throw a validation error, and transport or
+runtime faults can reject the call. The example returns those exceptions as `kind: 'fault'`. The private `offsetSpace`
+option is not consumed by this operation and cannot enable an unsupported conversion.
+
 ## Keep the fields in your template
 
 Export the DOCX from the standalone example and reopen it. Confirm that the client name is an inline text control and

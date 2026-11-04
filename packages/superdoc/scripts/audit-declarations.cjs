@@ -22,11 +22,6 @@
  *    defense if a future change re-introduces the file or runs against
  *    a stale tarball.
  *
- *  Rule 4 (FAIL in strict mode): a `shared/common` specifier that does not
- *    end in `.js` and resolve to a declaration under `dist/shared/common/`.
- *    ensure-types rewrites each imported name to the file that declares it;
- *    anything left over is unresolvable for packed consumers.
- *
  *  Informational: the set of modules still declared in `_internal-shims.d.ts`
  *    when the file exists. After SD-2942 the file is not emitted, so this
  *    section is normally absent.
@@ -211,7 +206,9 @@ if (relocatedInShim.length > 0) {
 
 if (sharedCommonFindings.size > 0) {
   violations.push('unrelocated-shared-common');
-  console.log(`FAIL  Unrelocated shared/common specifiers: ${sharedCommonFindings.size} files`);
+  console.log(
+    `FAIL  Unrelocated shared/common specifiers (ensure-types must rewrite each to a .js declaration under dist/shared/common/, or packed consumers cannot resolve it): ${sharedCommonFindings.size} files`,
+  );
   for (const [file, specifiers] of [...sharedCommonFindings].sort()) {
     console.log(`      ${file}: ${[...specifiers].sort().join(', ')}`);
   }

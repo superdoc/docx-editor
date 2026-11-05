@@ -1852,7 +1852,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     if (typeof text !== 'string' || text.length === 0) {
       return failedReceipt('insertText requires a non-empty string.', 'INVALID_INPUT');
     }
-    if (readDocumentMode() === 'viewing') {
+    if (documentIsReadOnly()) {
       return failedReceipt('The document is read-only.', 'DOCUMENT_READONLY');
     }
     const doc = getDoc();
@@ -1928,6 +1928,12 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     return fromRuntime ?? fromOptions;
   };
 
+  const documentIsReadOnly = (): boolean => {
+    if (readDocumentMode() === 'viewing') return true;
+    const connection = safeCall<unknown>(() => hostMethod(superdoc, 'getCollaborationConnectionState')?.(), null);
+    return isPlainObject(connection) && connection.state === 'failed';
+  };
+
   const commentsAreReadOnly = (): boolean => {
     const superdocRecord = superdoc && typeof superdoc === 'object' ? (superdoc as LooseRecord) : null;
     // Interaction policy outlives the built-in comment UI. With `ui: false` or
@@ -1944,7 +1950,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
   };
 
   const trackedChangeDecisionDisabledReason = (): SuperDocUIReason | undefined => {
-    if (readDocumentMode() === 'viewing') return SUPERDOC_UI_REASONS.documentReadonly;
+    if (documentIsReadOnly()) return SUPERDOC_UI_REASONS.documentReadonly;
 
     const superdocRecord = superdoc && typeof superdoc === 'object' ? (superdoc as LooseRecord) : null;
     const trackedChanges = (superdocRecord?.interactionConfig as LooseRecord | undefined)?.trackedChanges as
@@ -3833,7 +3839,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       );
       return normalizeCommandState({ supported: true, enabled: true, ...partial }, 'custom');
     }
-    const readonly = readDocumentMode() === 'viewing';
+    const readonly = documentIsReadOnly();
     const listKind = listToggleKind(id);
     if (listKind) {
       const editCommands = getEditCommands();
@@ -3887,7 +3893,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       return normalizeCommandState({ enabled: reason == null, active: false, supported, reason }, 'builtin');
     }
     if (id === 'copy-format') {
-      if (readDocumentMode() === 'viewing') {
+      if (readonly) {
         return normalizeCommandState({ supported: true, enabled: false, active: false }, 'builtin');
       }
       if (!getEditor()) {
@@ -6080,6 +6086,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     }
   };
   attach(superdoc, HOST_EVENTS);
+  attach(superdoc, ['collaboration-connection-change']);
   syncHostSelectionSubscription();
   syncEditCommandsSubscription();
   syncV2ReviewWindowSubscription();
@@ -8037,14 +8044,14 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     }
     const listKind = listToggleKind(id);
     if (listKind) {
-      if (readDocumentMode() === 'viewing') return false;
+      if (documentIsReadOnly()) return false;
       const editCommands = getEditCommands();
       const apply = (editCommands?.lists as LooseRecord | undefined)?.apply;
       if (typeof apply === 'function') return executeListToggleCommand(listKind, payload, preparedSelection);
     }
     const trackCommand = trackDecisionCommand(id);
     if (trackCommand) return executeTrackDecisionCommand(trackCommand, payload);
-    if (id === 'copy-format') return settleCommandExecution(executeCopyFormat());
+    if (id === 'copy-format') return documentIsReadOnly() ? false : settleCommandExecution(executeCopyFormat());
     const descriptor = getCommandDescriptor(id);
     // Deferred / unsupported / unknown ids fail closed and never mutate.
     if (!descriptor || descriptor.disposition !== 'routed') return false;
@@ -8066,13 +8073,13 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     }
     // The clear-formatting command resolves its own sub-operations internally.
     if (descriptor.inline?.kind === 'clear') {
-      if (descriptor.mutates && readDocumentMode() === 'viewing') return false;
+      if (descriptor.mutates && documentIsReadOnly()) return false;
       return settleCommandExecution(executeClearFormattingCommand());
     }
     // Routed via a Document API operation. Mutating commands are read-only guarded.
     const route = descriptor.docRoute;
     if (!route) return false;
-    if (descriptor.mutates && readDocumentMode() === 'viewing') return false;
+    if (descriptor.mutates && documentIsReadOnly()) return false;
     const doc = getDoc();
     const op = resolveDocOperation(doc, route);
     if (!op) return false;

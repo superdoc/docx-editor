@@ -249,7 +249,7 @@ const V1_ENABLED_ON_SELECTION_REASON = new Set([
 const V1_ENABLED_ON_EMPTY_REASON = new Set(['list', 'numberedlist']);
 
 function shouldKeepEnabledForV1ToolbarParity(name: string, commandState: CommandState | undefined): boolean {
-  if (name === 'fontFamily' || name === 'fontSize') return true;
+  if (name === 'fontFamily' || name === 'fontSize') return commandState?.reason !== 'document-readonly';
   if (
     V1_ENABLED_ON_EMPTY_REASON.has(name) &&
     commandState?.disabled &&

@@ -24,6 +24,7 @@ import { createHighContrastMode, type HighContrastMode } from '../composables/us
 import { createSuperdocVueApp } from './create-app.js';
 import { createDownload, cleanName } from './helpers/export.js';
 import { initCollaborationComments } from './collaboration/helpers.js';
+import { createCollaborationException } from './collaboration/collaboration-exception.js';
 import {
   resolveV2CollaborationTarget,
   type LegacyCollaborationLike,
@@ -684,6 +685,7 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
 
   /** Latest `collaboration-connection-change` payload, for late readers. */
   #v2ConnectionState: SuperDocCollaborationConnectionChangePayload | null = null;
+  #v2ConnectionFailureReported = false;
 
   /** Whether the current collaboration room has completed a sync at least once. */
   #v2ConnectionHasSynced = false;
@@ -1876,6 +1878,7 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
     if (this.#v2ConnectionState?.documentId !== documentId) {
       this.#v2ConnectionState = null;
       this.#v2ConnectionHasSynced = false;
+      this.#v2ConnectionFailureReported = false;
     }
     const publish = (snapshot: V2ConnectionSnapshotLike) => {
       if (this.#destroyed) return;
@@ -1890,8 +1893,21 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
         superdoc: this,
       };
       this.#v2ConnectionState = payload;
-      if (snapshot.state === 'synced') this.#v2ConnectionHasSynced = true;
-      this.emit('collaboration-connection-change', payload);
+      if (snapshot.state === 'synced') {
+        this.#v2ConnectionHasSynced = true;
+        this.#v2ConnectionFailureReported = false;
+      }
+      const firstFailure = snapshot.state === 'failed' && !this.#v2ConnectionFailureReported;
+      if (firstFailure) this.#v2ConnectionFailureReported = true;
+      const reportFailure = firstFailure && snapshot.detail !== 'worker-transport-failed';
+      try {
+        this.emit('collaboration-connection-change', payload);
+      } finally {
+        if (reportFailure) {
+          const exception = createCollaborationException('collaboration-connection-failed', documentId);
+          if (exception) this.emit('exception', exception);
+        }
+      }
     };
     try {
       const initialSnapshot = connection.getSnapshot?.();

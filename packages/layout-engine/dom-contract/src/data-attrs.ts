@@ -33,6 +33,9 @@ export const DATA_ATTRS = {
   /** JSON-encoded table boundary metadata for resize overlays. */
   TABLE_BOUNDARIES: 'data-table-boundaries',
 
+  TABLE_ID: 'data-table-id',
+  ROW_INDEX: 'data-row-index',
+
   /** SDT unique identifier. */
   SDT_ID: 'data-sdt-id',
 
@@ -89,6 +92,8 @@ export const DATASET_KEYS = {
   PM_END: 'pmEnd',
   LAYOUT_EPOCH: 'layoutEpoch',
   TABLE_BOUNDARIES: 'tableBoundaries',
+  TABLE_ID: 'tableId',
+  ROW_INDEX: 'rowIndex',
   SDT_ID: 'sdtId',
   SDT_TYPE: 'sdtType',
   FIELD_ID: 'fieldId',

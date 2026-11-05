@@ -51,8 +51,63 @@ as a toolbar.
 ## Keep context tied to selection
 
 `ui.tables.getContext()` returns the current table ID, row and column indices, cell ID, and dimensions when the host can
-resolve them. Treat that snapshot as presentation state. Do not cache it as a durable mutation target or derive table
-identity from painted DOM attributes.
+resolve them. Treat that snapshot as presentation state. Do not cache it as a durable mutation target or derive
+Document API mutation targets from painted DOM attributes.
+
+## Identify painted rows for overlays
+
+Each painted `.superdoc-table-fragment` exposes an opaque `data-table-id`. Each painted cell exposes
+`data-row-index`, the decimal, zero-based index of its logical owner row. Together with the editor/document instance,
+these identify a row for hover outlines and hit testing. Compare table IDs as strings; do not decode them or parse
+`data-layout-block-ref`.
+
+The V2 browser currently exposes this painted cell surface for body tables, including nested body tables. Other
+stories do not yet expose the same surface. Pass the mount element belonging exclusively to one editor as
+`editorRoot`; a shared ancestor containing several editors can combine unrelated rows with equal IDs.
+
+Resolve the painted rectangle at the pointer, then collect cells owned by its nearest table. Inspect rectangles rather
+than relying on `elementFromPoint().closest()`: decorative cells may ignore pointer events, and nested text may be
+painted outside its nested cell's DOM subtree. Reverse DOM order gives nested cells priority over their outer cell:
+
+```ts
+function paintedRowAtPoint(editorRoot: HTMLElement, clientX: number, clientY: number) {
+  const cells = Array.from(editorRoot.querySelectorAll<HTMLElement>('[data-row-index]'));
+  const cell = cells.reverse().find((candidate) => {
+    const rect = candidate.getBoundingClientRect();
+    return clientX >= rect.left && clientX < rect.right && clientY >= rect.top && clientY < rect.bottom;
+  });
+  const table = cell?.closest<HTMLElement>('[data-table-id]');
+  if (!cell || !table) return;
+  const pieces = cells.filter(
+    (candidate) =>
+      candidate.dataset.rowIndex === cell.dataset.rowIndex &&
+      candidate.closest<HTMLElement>('[data-table-id]')?.dataset.tableId === table.dataset.tableId,
+  );
+  return {
+    tableId: table.dataset.tableId,
+    rowIndex: cell.dataset.rowIndex,
+    rectangles: pieces.map((piece) => piece.getBoundingClientRect()),
+  };
+}
+```
+
+One row can have several painted pieces across pages. Split rows and repeated headers keep their original row index.
+A vertically merged cell, including its page continuation, belongs to its starting row throughout its rectangle;
+a horizontal span remains one cell. Nested tables have their own table IDs, so use the nearest enclosing table when
+grouping cells. There is no required row wrapper. These markers preserve the separate accessibility table and focus
+behavior. Call this lookup for points within the editor's visible viewport; keep host overlays `pointer-events: none`
+so they preserve editor interaction.
+
+The table ID is scoped to one mounted editor/document and story. Row mapping survives scrolling, page unmount/remount,
+repaint, repagination, and text or formatting edits that preserve table structure and source ownership. DOM elements
+can be replaced on any paint; only mounted page content has markers. Reacquire markers after structural edits,
+including inserting or removing blocks before a table, table/row insertion, deletion, reorder, merge or split,
+document replacement, save/reopen, or Word round trips. IDs are not synchronization identifiers across peers.
+
+`data-table-id` is an overlay identifier, not a Document API `table.nodeId` or mutation locator. An optional
+`data-source-node-id` does not change that contract. Use `ui.tables` or Document API discovery for commands. Durable
+table addresses across structural edits and reopen are tracked separately in SD-5000; these markers do not provide
+durable row addresses.
 
 ## Verify the controls
 

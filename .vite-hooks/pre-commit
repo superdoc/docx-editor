@@ -6,3 +6,7 @@
 cd "$hooks_package"
 export PATH="$PWD/node_modules/.bin:$PATH"
 vp staged
+if [ -f "$committing_root/scripts/check-guardrails.mjs" ] && ! git diff --cached --quiet; then
+  cd "$committing_root"
+  node scripts/check-guardrails.mjs
+fi

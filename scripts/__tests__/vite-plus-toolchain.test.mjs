@@ -2491,6 +2491,79 @@ test('the hooks run when they sit at the repository root, as in the exported rep
   }
 });
 
+function installGuardrailsProbe(box, orbitRoot, exitCode) {
+  mkdirSync(join(orbitRoot, 'scripts'), { recursive: true });
+  const marker = JSON.stringify(join(box.scratch, 'guardrails-ran-in'));
+  writeFileSync(
+    join(orbitRoot, 'scripts', 'check-guardrails.mjs'),
+    `import { writeFileSync } from 'node:fs'; writeFileSync(${marker}, process.cwd()); console.error('guardrails refused staged.ts'); process.exit(${exitCode});\n`,
+  );
+  box.git(orbitRoot, 'add', 'scripts/check-guardrails.mjs');
+  box.git(orbitRoot, 'commit', '-q', '-m', 'chore: add guardrails probe');
+}
+
+test('in an Orbit checkout, pre-commit runs the guardrails check from the Orbit root after vp staged', () => {
+  const box = hookSandbox();
+  try {
+    const orbit = box.repo(join(box.scratch, 'orbit'));
+    const hooksPath = box.install(join(orbit, 'superdoc', 'public'));
+    installGuardrailsProbe(box, orbit, 0);
+
+    box.commit(orbit, hooksPath, 'a.txt');
+    assert.equal(box.ranIn('vp'), join(orbit, 'superdoc', 'public'));
+    assert.equal(box.ranIn('guardrails'), orbit);
+  } finally {
+    box.dispose();
+  }
+});
+
+test('in an Orbit checkout, a failed guardrails check blocks the commit and shows its output', () => {
+  const box = hookSandbox();
+  try {
+    const orbit = box.repo(join(box.scratch, 'orbit'));
+    const hooksPath = box.install(join(orbit, 'superdoc', 'public'));
+    installGuardrailsProbe(box, orbit, 1);
+    const before = box.git(orbit, 'rev-parse', 'HEAD');
+
+    assert.throws(() => box.commit(orbit, hooksPath, 'a.txt'), (error) => /guardrails refused staged\.ts/.test(String(error.stderr)));
+    assert.equal(box.git(orbit, 'rev-parse', 'HEAD'), before);
+    assert.equal(box.ranIn('guardrails'), orbit);
+  } finally {
+    box.dispose();
+  }
+});
+
+test('in an Orbit checkout, an empty commit skips the guardrails check, which refuses an empty index', () => {
+  const box = hookSandbox();
+  try {
+    const orbit = box.repo(join(box.scratch, 'orbit'));
+    const hooksPath = box.install(join(orbit, 'superdoc', 'public'));
+    installGuardrailsProbe(box, orbit, 1);
+
+    box.git(orbit, '-c', `core.hooksPath=${hooksPath}`, 'commit', '-q', '--allow-empty', '-m', 'chore: empty');
+    assert.equal(box.ranIn('guardrails'), null);
+  } finally {
+    box.dispose();
+  }
+});
+
+test('the exported repository has no guardrails script, so pre-commit runs only vp staged and still commits', () => {
+  const box = hookSandbox();
+  try {
+    const exported = box.repo(join(box.scratch, 'exported'));
+    const hooksPath = box.install(exported);
+    const before = box.git(exported, 'rev-parse', 'HEAD');
+
+    box.commit(exported, hooksPath, 'a.txt');
+    assert.notEqual(box.git(exported, 'rev-parse', 'HEAD'), before);
+    assert.equal(box.ranIn('vp'), exported);
+    assert.equal(box.ranIn('guardrails'), null);
+    assert.equal(existsSync(join(exported, 'scripts', 'check-guardrails.mjs')), false);
+  } finally {
+    box.dispose();
+  }
+});
+
 test('a refused commit prints a command that fixes this checkout without touching shared config', () => {
   for (const scope of ['local', 'worktree', 'global']) {
     const box = hookSandbox();

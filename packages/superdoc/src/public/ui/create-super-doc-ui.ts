@@ -2505,11 +2505,14 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     if (active && !pendingTrackChangeRevealFocuses.has(active)) {
       const directory = asyncReads.get('trackChanges');
       const directoryItems =
-        directory?.token === token && directory.hasSettled && Array.isArray(directory.value)
+        directory?.token === token &&
+        directory.hasSettled &&
+        Array.isArray(directory.value) &&
+        incompleteTrackChangesDirectoryReadTokens.get('trackChanges') !== token
           ? filterPostDecisionTrackChanges(projectTrackChangesItems(directory.value), postDecisionIds)
           : null;
       const activeValidationItems =
-        directoryLeaseCounts.trackChanges > 0 ? directoryItems : active.story ? allStoryItems : items;
+        directoryItems ?? (directoryLeaseCounts.trackChanges > 0 ? null : active.story ? allStoryItems : items);
       if (
         activeValidationItems &&
         !activeValidationItems.some((row) => entityRowMatchesRequest(row, active.id, active.story))
@@ -10130,7 +10133,36 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       .catch(() => undefined)
       .then(() => navigateAndScrollCurrentRequest(step, requestedAtInvalidation));
   };
+  const waitForTrackChangeNavigationDirectory = async (requestedAtInvalidation: number): Promise<boolean> => {
+    const editor = getEditor(),
+      deadline = Date.now() + 15_000;
+    if (!editor) return false;
+    while (
+      !disposed &&
+      getEditor() === editor &&
+      queuedTrackChangeNavigationInvalidation === requestedAtInvalidation &&
+      Date.now() < deadline
+    ) {
+      if (readTrackChangesDirectory().status === 'ready') return true;
+      if (asyncReads.get('trackChanges')?.failedToken === contentToken()) return false;
+      await new Promise<void>((resolve) => setTimeout(resolve, Math.min(16, deadline - Date.now())));
+    }
+    return false;
+  };
   const navigateAndScrollCurrentRequest = async (
+    step: 1 | -1,
+    requestedAtInvalidation: number,
+  ): Promise<ScrollIntoViewOutput> => {
+    if (queuedTrackChangeNavigationInvalidation !== requestedAtInvalidation) return { success: false };
+    const release = acquireDirectoryLease('trackChanges');
+    try {
+      if (!(await waitForTrackChangeNavigationDirectory(requestedAtInvalidation))) return { success: false };
+      return await navigateAndScrollReadyRequest(step, requestedAtInvalidation);
+    } finally {
+      release();
+    }
+  };
+  const navigateAndScrollReadyRequest = async (
     step: 1 | -1,
     requestedAtInvalidation: number,
   ): Promise<ScrollIntoViewOutput> => {

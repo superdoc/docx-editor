@@ -7639,6 +7639,188 @@ describe('public ui — track changes workflow parity (row 748)', () => {
     expect(ui.trackChanges.getSnapshot().activeId).toBe('tc-1');
   });
 
+  describe('document-wide directory navigation', () => {
+    function mountDirectory() {
+      const rows = [
+        ...items.slice(0, 2),
+        {
+          ...items[0],
+          id: 'tc-distant',
+          target: { kind: 'text', segments: [{ blockId: 'P3', range: { start: 0, end: 3 } }] },
+        },
+      ];
+      let resolve!: (value: unknown) => void;
+      let reject!: (reason: unknown) => void;
+      const directory = new Promise((done, fail) => {
+        resolve = done;
+        reject = fail;
+      });
+      const scroll = vi.fn(async () => ({ success: true }));
+      const hostListeners = new Set<(event: Record<string, unknown>) => void>();
+      const { superdoc } = makeWorkflowSuperdoc({
+        trackChanges: { list: () => directory, get: ({ id }: { id: string }) => rows.find((row) => row.id === id) },
+        host: {
+          scrollTargetIntoView: scroll,
+          events: {
+            subscribe: (listener: (event: Record<string, unknown>) => void) => {
+              hostListeners.add(listener);
+              return () => hostListeners.delete(listener);
+            },
+          },
+        },
+      });
+      Object.assign(superdoc.activeEditor!, {
+        editorVersion: 2,
+        reviewWindow: {
+          getSnapshot: () => ({ status: 'ready', trackedChangeItems: items.slice(0, 2), commentItems: [] }),
+          subscribe: () => () => {},
+        },
+      });
+      const ui = createSuperDocUI({ superdoc });
+      const settle = async () => {
+        await new Promise((done) => setTimeout(done, 0));
+      };
+      return {
+        ui,
+        rows,
+        scroll,
+        resolve: () => resolve({ items: rows }),
+        resolvePartial: () => resolve({ items: [rows[0]], complete: false, sourceCoverageComplete: false }),
+        emitHostEvent: (event: Record<string, unknown>) => {
+          for (const listener of hostListeners) listener(event);
+        },
+        reject,
+        settle,
+      };
+    }
+    it.each(['list', 'navigateNext'] as const)(
+      'keeps a visible active change while an incomplete directory is loaded (%s)',
+      async (operation) => {
+        const f = mountDirectory();
+        try {
+          expect(f.ui.trackChanges.setActive('tc-2')).toBe(true);
+          const navigation = operation === 'list' ? null : f.ui.trackChanges.navigateNext();
+          if (operation === 'list') f.ui.trackChanges.list();
+          await f.settle();
+          f.resolvePartial();
+          await f.settle();
+          await f.settle();
+          expect(f.ui.trackChanges.getSnapshot().activeId).toBe('tc-2');
+          if (navigation) {
+            f.ui.destroy();
+            await expect(navigation).resolves.toEqual({ success: false });
+          }
+        } finally {
+          f.ui.destroy();
+        }
+      },
+    );
+    it('waits for the complete directory before wrapping previous beyond the visible window', async () => {
+      const f = mountDirectory();
+      try {
+        expect(f.ui.trackChanges.setActive('tc-1')).toBe(true);
+        const navigation = f.ui.trackChanges.navigatePrevious();
+        await f.settle();
+        expect(f.scroll).not.toHaveBeenCalled();
+        f.resolve();
+        await expect(navigation).resolves.toEqual({ success: true });
+        await f.settle();
+        expect(f.ui.trackChanges.getSnapshot().activeId).toBe('tc-distant');
+        expect(f.scroll).toHaveBeenCalledWith(
+          { target: f.rows[2].target, block: 'center', behavior: 'auto' },
+          expect.any(Function),
+        );
+      } finally {
+        f.resolve();
+        f.ui.destroy();
+      }
+    });
+    it.each([false, true])(
+      'retains off-window focus after complete-directory navigation (observer: %s)',
+      async (observed) => {
+        const f = mountDirectory(),
+          stop = observed ? f.ui.trackChanges.observe(() => {}) : () => {};
+        try {
+          f.ui.trackChanges.list();
+          f.resolve();
+          await f.settle();
+          expect(f.ui.trackChanges.setActive('tc-1')).toBe(true);
+          await expect(f.ui.trackChanges.navigatePrevious()).resolves.toEqual({ success: true });
+          await f.settle();
+          expect(f.ui.trackChanges.getSnapshot().activeId).toBe('tc-distant');
+        } finally {
+          stop();
+          f.ui.destroy();
+        }
+      },
+    );
+    it('keeps waiting for the directory when the document changes during navigation', async () => {
+      const f = mountDirectory();
+      try {
+        expect(f.ui.trackChanges.setActive('tc-1')).toBe(true);
+        const navigation = f.ui.trackChanges.navigatePrevious();
+        await f.settle();
+        f.emitHostEvent({ type: 'collaboration:remote-changed' });
+        await f.settle();
+        f.resolve();
+        await expect(navigation).resolves.toEqual({ success: true });
+        await f.settle();
+        expect(f.ui.trackChanges.getSnapshot().activeId).toBe('tc-distant');
+      } finally {
+        f.resolve();
+        f.ui.destroy();
+      }
+    });
+    it('fails a rejected directory without navigating the visible window', async () => {
+      const f = mountDirectory();
+      try {
+        f.ui.trackChanges.setActive('tc-1');
+        const navigation = f.ui.trackChanges.navigatePrevious();
+        await f.settle();
+        f.reject(new Error('directory unavailable'));
+        await expect(navigation).resolves.toEqual({ success: false });
+        expect(f.scroll).not.toHaveBeenCalled();
+        expect(f.ui.trackChanges.getSnapshot().activeId).toBe('tc-1');
+      } finally {
+        f.ui.destroy();
+      }
+    });
+    it.each(['focus', 'destroy'])('supersedes a directory wait after %s', async (operation) => {
+      const f = mountDirectory();
+      try {
+        f.ui.trackChanges.setActive('tc-1');
+        const navigation = f.ui.trackChanges.navigatePrevious();
+        await f.settle();
+        if (operation === 'focus') f.ui.trackChanges.setActive('tc-2');
+        else f.ui.destroy();
+        await expect(navigation).resolves.toEqual({ success: false });
+        f.resolve();
+        await f.settle();
+        expect(f.scroll).not.toHaveBeenCalled();
+        if (operation === 'focus') expect(f.ui.trackChanges.getSnapshot().activeId).toBe('tc-2');
+      } finally {
+        f.resolve();
+        f.ui.destroy();
+      }
+    });
+    it('bounds an unresponsive directory without changing focus', async () => {
+      vi.useFakeTimers();
+      const f = mountDirectory();
+      try {
+        f.ui.trackChanges.setActive('tc-1');
+        const navigation = f.ui.trackChanges.navigatePrevious();
+        await vi.advanceTimersByTimeAsync(15_001);
+        await expect(navigation).resolves.toEqual({ success: false });
+        expect(f.scroll).not.toHaveBeenCalled();
+        expect(f.ui.trackChanges.getSnapshot().activeId).toBe('tc-1');
+      } finally {
+        f.resolve();
+        f.ui.destroy();
+        vi.useRealTimers();
+      }
+    });
+  });
+
   it('keeps rapid navigation queued when the host enriches panel focus with its painted alias', async () => {
     let activeReviewTarget: Record<string, unknown> | null = null;
     let publishReviewSnapshot: ((snapshot: { activeReviewTarget: unknown }) => void) | null = null;

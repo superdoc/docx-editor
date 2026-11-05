@@ -96,6 +96,25 @@ Keep `satisfies ToolbarConfig` from the examples. It checks control IDs, icon an
 item shapes without widening the object. Prefer one composition strategy instead of combining a long `items` allowlist
 with a long `excludeItems` list.
 
+## Use Word highlight choices
+
+Replace the built-in Highlight control with a custom dropdown to offer Word's named text-highlight colors. This example
+keeps the rest of the default toolbar and maps Word labels such as **Turquoise** to the native highlight value `cyan`.
+
+<include>../../../../snippets/editor/word-highlight-toolbar.ts</include>
+
+Pass this configuration as `ui: { toolbar }` in your existing Editor setup and provide a toolbar element with
+`id="toolbar"`. Toolbar composition is a startup option; recreate the Editor to change the available choices.
+
+The `highlight-color` command applies the chosen value to the current selection. Named values export as native Word
+highlights. **No Color** sends `none`, which suppresses inherited highlight too. Sending `null` instead removes direct
+highlight and can reveal a highlight inherited from a style. You can also use RGB values for application-specific
+colors; those export as text shading.
+
+The dropdown remembers the last option you chose; it does not show the effective highlight of newly selected text.
+These choices configure ordinary text highlighting. Tracked-change author colors, comment highlights, and the global
+`colors` option have separate purposes.
+
 ## Check the narrow layout
 
 `responsiveTo: 'container'` measures the toolbar mount instead of the browser window. With the default

@@ -6,9 +6,10 @@ interface ClickOutsideElement extends HTMLElement {
 }
 
 type ClickOutsideHandler = (event: MouseEvent) => void;
+type ClickOutsideBinding = Pick<DirectiveBinding<ClickOutsideHandler>, 'value'>;
 
 interface ClickOutsideRegistry {
-  bindings: Map<ClickOutsideElement, DirectiveBinding<ClickOutsideHandler>>;
+  bindings: Map<ClickOutsideElement, ClickOutsideBinding>;
   listener: (event: MouseEvent) => void;
 }
 
@@ -27,14 +28,14 @@ function unregister(el: ClickOutsideElement, ownerDocument: Document): void {
   }
 }
 
-function register(el: ClickOutsideElement, binding: DirectiveBinding<ClickOutsideHandler>): void {
+function register(el: ClickOutsideElement, binding: ClickOutsideBinding): void {
   const ownerDocument = ownerDocumentFor(el);
   if (el.__clickOutsideDocument && el.__clickOutsideDocument !== ownerDocument) {
     unregister(el, el.__clickOutsideDocument);
   }
   let registry = registries.get(ownerDocument);
   if (!registry) {
-    const bindings = new Map<ClickOutsideElement, DirectiveBinding<ClickOutsideHandler>>();
+    const bindings = new Map<ClickOutsideElement, ClickOutsideBinding>();
     const listener = (event: MouseEvent) => {
       const path = typeof event.composedPath === 'function' ? event.composedPath() : null;
       for (const [element, currentBinding] of bindings) {
@@ -52,10 +53,10 @@ function register(el: ClickOutsideElement, binding: DirectiveBinding<ClickOutsid
 }
 
 export default {
-  mounted(el: ClickOutsideElement, binding: DirectiveBinding<ClickOutsideHandler>) {
+  mounted(el: ClickOutsideElement, binding: ClickOutsideBinding) {
     register(el, binding);
   },
-  updated(el: ClickOutsideElement, binding: DirectiveBinding<ClickOutsideHandler>) {
+  updated(el: ClickOutsideElement, binding: ClickOutsideBinding) {
     register(el, binding);
   },
   unmounted(el: ClickOutsideElement) {

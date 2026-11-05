@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Comment, Context, CreateRule, ESTree, Plugin } from '@oxlint/plugins';
+import { disableDirectiveReason } from './disable-directive-reason.mts';
 import { noComments } from './no-comments.mts';
 
 type MaybeNode = ESTree.Node | null | undefined;
@@ -221,6 +222,7 @@ const noTsCommentInJs = {
 export default {
   meta: { name: 'superdoc' },
   rules: {
+    'disable-directive-reason': disableDirectiveReason,
     'no-comments': noComments,
     'no-local-object-guard': noLocalObjectGuard,
     'no-ts-comment-in-js': noTsCommentInJs,

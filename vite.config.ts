@@ -78,6 +78,7 @@ export default defineConfig({
     jsPlugins: [{ name: 'superdoc', specifier: './scripts/oxlint/superdoc-plugin.mts' }],
     categories: { correctness: 'error' },
     rules: {
+      'superdoc/disable-directive-reason': 'error',
       'superdoc/no-local-object-guard': 'error',
       'typescript/ban-ts-comment': ['error', { 'ts-expect-error': true, 'ts-ignore': true, 'ts-nocheck': true }],
       'superdoc/no-ts-comment-in-js': 'error',
@@ -151,6 +152,7 @@ export default defineConfig({
       'packages/superdoc/src/components/CommentsLayer/**/*.test.*',
       'packages/superdoc/src/public/ui.test.ts',
     ],
+    options: { reportUnusedDisableDirectives: 'error' },
   },
   // Run from the pre-commit hook via `vp staged`. Expensive repo checks that
   // used to run in Lefthook lanes (CLI build, vscode-ext lint, examples

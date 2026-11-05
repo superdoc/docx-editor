@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -92,10 +92,7 @@ function countLines(cases: readonly (readonly [string, string, number])[]): void
 function lintInPublicLayout(file: string, sources: readonly string[]): number[] {
   const root = mkdtempSync(join(os.tmpdir(), 'oxlint-no-comments-public-'));
   try {
-    mkdirSync(join(root, 'scripts/oxlint'), { recursive: true });
-    for (const name of ['superdoc-plugin.mts', 'no-comments.mts']) {
-      copyFileSync(join(PUBLIC_ROOT, 'scripts/oxlint', name), join(root, 'scripts/oxlint', name));
-    }
+    cpSync(join(PUBLIC_ROOT, 'scripts/oxlint'), join(root, 'scripts/oxlint'), { recursive: true });
     symlinkSync(join(PUBLIC_ROOT, 'node_modules'), join(root, 'node_modules'), 'dir');
     mkdirSync(dirname(join(root, file)), { recursive: true });
     return sources.map((source) => {

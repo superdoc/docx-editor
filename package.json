@@ -31,7 +31,7 @@
     "publish": "node scripts/publish-superdoc.cjs",
     "format": "vp fmt",
     "format:check": "pnpm run check:format-coverage && vp fmt --check",
-    "lint": "node --test scripts/__tests__/oxlint-superdoc-plugin.test.mjs scripts/__tests__/oxlint-no-comments.test.mts scripts/__tests__/lint-coverage.test.mjs && vp lint packages shared scripts apps/cli apps/mcp apps/vscode-ext",
+    "lint": "node --test scripts/__tests__/oxlint-superdoc-plugin.test.mjs scripts/__tests__/oxlint-no-comments.test.mts scripts/__tests__/oxlint-disable-directive-reason.test.mts scripts/__tests__/lint-coverage.test.mjs && vp lint packages shared scripts apps/cli apps/mcp apps/vscode-ext",
     "lint:fix": "vp lint --fix packages shared scripts apps/cli apps/mcp apps/vscode-ext",
     "pack": "pnpm run type-check && pnpm run pack:es",
     "release": "pnpm run type-check && pnpm --prefix packages/superdoc exec semantic-release",

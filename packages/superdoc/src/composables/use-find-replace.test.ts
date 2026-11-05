@@ -629,7 +629,7 @@ describe('useFindReplace', () => {
 
       // The composable should call this when open() is called while already open
       // We can verify by opening again
-      findReplace.open();
+      void findReplace.open();
       expect(focusFn).toHaveBeenCalled();
     });
   });

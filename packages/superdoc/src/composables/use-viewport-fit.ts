@@ -366,7 +366,7 @@ export function useViewportFit({
   // mid render pass; evaluating post-flush sees the settled DOM and avoids
   // a one-frame fit bounce.
   watch(superdocContainerWidth, () => {
-    nextTick(() => evaluateViewport());
+    void nextTick(() => evaluateViewport());
   });
   watch(isReady, (ready) => {
     if (ready) evaluateViewport();
@@ -379,7 +379,7 @@ export function useViewportFit({
   });
   if (showCommentsSidebar) {
     watch(showCommentsSidebar, () => {
-      nextTick(() => evaluateViewport());
+      void nextTick(() => evaluateViewport());
     });
   }
 
@@ -387,16 +387,16 @@ export function useViewportFit({
   // without a container resize (orientation, margins, document swap).
   // Re-evaluate on the editor lifecycle signals that change the base width.
   const handleEditorCreate = () => {
-    nextTick(() => evaluateViewport());
+    void nextTick(() => evaluateViewport());
   };
   const handlePaginationUpdate = () => {
     // paginationUpdate is emitted mid render pass; defer like the other
     // hooks so measurement never forces a layout flush against the
     // freshly mutated tree.
-    nextTick(() => evaluateViewport());
+    void nextTick(() => evaluateViewport());
   };
   const handlePdfDocumentReady = () => {
-    nextTick(() => evaluateViewport());
+    void nextTick(() => evaluateViewport());
   };
 
   const superdocAtSetup = getSuperdoc();

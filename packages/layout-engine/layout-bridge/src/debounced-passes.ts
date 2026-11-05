@@ -85,7 +85,7 @@ export class DebouncedPassManager {
 
     // Set up new debounce timer
     const timer = setTimeout(() => {
-      this.executePass(passId);
+      void this.executePass(passId);
     }, pass.delay);
 
     this.timers.set(passId, timer);

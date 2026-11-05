@@ -83,6 +83,16 @@ export default defineConfig({
       'typescript/ban-ts-comment': ['error', { 'ts-expect-error': true, 'ts-ignore': true, 'ts-nocheck': true }],
       'superdoc/no-ts-comment-in-js': 'error',
       'typescript/no-explicit-any': 'error',
+      'typescript/no-floating-promises': 'error',
+      'typescript/unbound-method': 'off',
+      'typescript/no-redundant-type-constituents': 'off',
+      'typescript/no-base-to-string': 'off',
+      'typescript/restrict-template-expressions': 'off',
+      'typescript/await-thenable': 'off',
+      'typescript/require-array-sort-compare': 'off',
+      'typescript/no-duplicate-type-constituents': 'off',
+      'typescript/no-misused-spread': 'off',
+      'typescript/no-useless-default-assignment': 'off',
       // Every hit was intentional: preallocated arrays in layout hot paths,
       // sanitizers that match control characters, and `[...listeners]`
       // snapshots that keep listeners added mid-notify from running.
@@ -152,7 +162,7 @@ export default defineConfig({
       'packages/superdoc/src/components/CommentsLayer/**/*.test.*',
       'packages/superdoc/src/public/ui.test.ts',
     ],
-    options: { reportUnusedDisableDirectives: 'error' },
+    options: { reportUnusedDisableDirectives: 'error', typeAware: true },
   },
   // Run from the pre-commit hook via `vp staged`. Expensive repo checks that
   // used to run in Lefthook lanes (CLI build, vscode-ext lint, examples

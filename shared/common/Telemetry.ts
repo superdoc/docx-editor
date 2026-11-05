@@ -100,7 +100,7 @@ export class Telemetry {
       documentCreatedAt,
     };
 
-    this.sendEvent(event);
+    void this.sendEvent(event);
   }
 
   private async sendEvent(event: DocumentOpenEvent): Promise<void> {

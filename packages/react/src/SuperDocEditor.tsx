@@ -318,7 +318,7 @@ function SuperDocEditorInner(props: SuperDocEditorProps, ref: ForwardedRef<Super
       }
     };
 
-    initSuperDoc();
+    void initSuperDoc();
 
     // Cleanup function
     return () => {

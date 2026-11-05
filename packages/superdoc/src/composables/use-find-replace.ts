@@ -817,7 +817,7 @@ export function useFindReplace({
       // Capture handle ID for stale-settle detection
       const handleId = surfaceHandle.id;
 
-      surfaceHandle.result.then(() => {
+      void surfaceHandle.result.then(() => {
         if (currentSurfaceHandle?.id === handleId) {
           stopPolling();
           clearEditorSession(currentEditor);

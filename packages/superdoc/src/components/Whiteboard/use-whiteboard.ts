@@ -106,7 +106,7 @@ export const useWhiteboard = <B extends WhiteboardSource>({ proxy, layers, docum
         .map((page) => markRaw(page));
       whiteboardTotalPages.value = whiteboardPages.value.length;
     }
-    nextTick(() => {
+    void nextTick(() => {
       updateWhiteboardPageOffsets();
       checkWhiteboardReady();
     });
@@ -123,7 +123,7 @@ export const useWhiteboard = <B extends WhiteboardSource>({ proxy, layers, docum
     });
     whiteboardPages.value = pages.map((page) => markRaw(page));
     whiteboardTotalPages.value = whiteboardPages.value.length;
-    nextTick(() => updateWhiteboardPageOffsets());
+    void nextTick(() => updateWhiteboardPageOffsets());
   };
 
   const handleWhiteboardEnabled = (enabled: boolean) => {

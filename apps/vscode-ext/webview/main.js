@@ -123,7 +123,7 @@ function scheduleAutoSave() {
   }
 
   saveTimeout = setTimeout(() => {
-    saveDocument();
+    void saveDocument();
   }, AUTO_SAVE_DELAY);
 }
 
@@ -200,6 +200,6 @@ document.addEventListener('keydown', (event) => {
   // Ctrl/Cmd + S to save
   if ((event.ctrlKey || event.metaKey) && event.key === 's') {
     event.preventDefault();
-    saveDocument();
+    void saveDocument();
   }
 });

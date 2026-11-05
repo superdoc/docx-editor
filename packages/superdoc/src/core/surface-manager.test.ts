@@ -318,7 +318,7 @@ describe('SurfaceManager', () => {
       staleSurface.resolve('stale-result');
 
       let replacementSettled = false;
-      replacementHandle.result.then(() => {
+      void replacementHandle.result.then(() => {
         replacementSettled = true;
       });
       await Promise.resolve();
@@ -343,7 +343,7 @@ describe('SurfaceManager', () => {
       staleSurface.close('stale-close');
 
       let replacementSettled = false;
-      replacementHandle.result.then(() => {
+      void replacementHandle.result.then(() => {
         replacementSettled = true;
       });
       await Promise.resolve();

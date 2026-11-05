@@ -67,7 +67,7 @@ describe('comments-store inputs its types guard', () => {
       commands: { insertComment: vi.fn() },
     });
 
-    store.showAddComment(superdoc);
+    void store.showAddComment(superdoc);
 
     expect(superdoc.emit).toHaveBeenCalledWith(
       'comments-update',

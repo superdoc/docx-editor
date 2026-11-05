@@ -1107,7 +1107,7 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
     container.addEventListener('keydown', this.#handleContentControlKeyDown, true);
     container.addEventListener('click', this.#handleContentControlClick, true);
     this.#onConfig('content-control:active-change', config.onContentControlActiveChange);
-    this.#init(config, container);
+    void this.#init(config, container);
     this.#contentControlEventBridgeReady = true;
     if (this.listenerCount('content-control:active-change') > 0) void this.ui;
   }
@@ -1738,7 +1738,7 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
         this.emit('exception', payload),
       );
     }
-    this.superdocStore.init(this.config);
+    void this.superdocStore.init(this.config);
     const commentsModuleConfig = this.config.modules.comments;
     // `commentsModuleConfig` is `false | object | undefined`. A truthy
     // check already rules out both `false` and `undefined`, so an

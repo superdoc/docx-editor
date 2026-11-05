@@ -931,7 +931,11 @@ export const useCommentsStore = defineStore('comments', () => {
           emitTrackedChangeEvent(emitData);
           return;
         }
-        addHydratedComment({ superdoc: requireHost(superdoc, 'handleTrackedChangeUpdate'), comment, broadcastChanges });
+        void addHydratedComment({
+          superdoc: requireHost(superdoc, 'handleTrackedChangeUpdate'),
+          comment,
+          broadcastChanges,
+        });
         trackedChangeIdentityIndex?.add(comment);
       } else if (event === 'update') {
         // If we have an update event, simply update the composable comment

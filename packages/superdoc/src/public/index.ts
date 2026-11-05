@@ -158,6 +158,7 @@ export type {
   CommentsResponsiveConfig,
   TouchInteractionConfig,
   TrackChangesInteractionConfig,
+  WritingAssistanceConfig,
 } from '../core/types/index.js';
 export type { TrackChangeHighlightColors } from '../core/types/index.js';
 export type { ContentControlsConfig } from '../core/types/index.js';

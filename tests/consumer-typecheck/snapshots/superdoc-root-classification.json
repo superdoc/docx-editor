@@ -1,13 +1,13 @@
 {
   "generatedAt": "2026-09-02T00:00:00.000Z",
   "summary": {
-    "total": 324,
+    "total": 325,
     "byBucket": {
       "legacy-root": 3,
-      "supported-root": 321
+      "supported-root": 322
     },
     "byConfidence": {
-      "high": 274,
+      "high": 275,
       "medium": 50
     }
   },
@@ -3085,6 +3085,17 @@
       "name": "TrackChangesInteractionConfig",
       "bucket": "supported-root",
       "rationale": "Named client-side tracked-change decision policy accepted by InteractionConfig.trackedChanges.",
+      "confidence": "high",
+      "source": "config-supported",
+      "inDts": true,
+      "inDcts": true,
+      "inEsm": false,
+      "inCjs": false
+    },
+    {
+      "name": "WritingAssistanceConfig",
+      "bucket": "supported-root",
+      "rationale": "Named opt-in native keyboard writing assistance accepted by InteractionConfig.writingAssistance.",
       "confidence": "high",
       "source": "config-supported",
       "inDts": true,

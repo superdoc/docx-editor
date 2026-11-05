@@ -4296,6 +4296,16 @@ export interface TrackChangesInteractionConfig {
   allowDecisions?: boolean;
 }
 
+/** Native keyboard writing assistance requested from the device keyboard. */
+export interface WritingAssistanceConfig {
+  /** Let the keyboard apply autocorrect and predictive replacements (default: false). */
+  autocorrect?: boolean;
+  /** Keyboard auto-capitalization mode (default: 'off'). */
+  autocapitalize?: 'off' | 'sentences' | 'words' | 'characters';
+  /** Let the keyboard underline and suggest spelling fixes (default: false). */
+  spellcheck?: boolean;
+}
+
 /**
  * Opt-in touch behavior for this Editor. Every field defaults to off, and
  * omitted or `false` values keep the existing touch behavior unchanged.
@@ -4333,6 +4343,8 @@ export interface InteractionConfig {
   trackedChanges?: TrackChangesInteractionConfig;
   /** Opt-in touch behavior. Omitted fields keep the existing behavior. */
   touch?: TouchInteractionConfig;
+  /** Native keyboard writing assistance. Everything is off when omitted. */
+  writingAssistance?: WritingAssistanceConfig;
 }
 
 /**

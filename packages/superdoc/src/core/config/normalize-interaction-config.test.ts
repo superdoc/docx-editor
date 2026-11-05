@@ -8,6 +8,7 @@ describe('normalizeInteractionConfig', () => {
       comments: { level: 'resolve', readOnly: false, allowResolve: true },
       trackedChanges: { allowDecisions: true },
       touch: { gestures: false },
+      writingAssistance: { enabled: false, autocorrect: false, autocapitalize: 'off', spellcheck: false },
     });
   });
 
@@ -58,6 +59,7 @@ describe('normalizeInteractionConfig', () => {
       comments: { level: 'read', readOnly: true, allowResolve: false },
       trackedChanges: { allowDecisions: false },
       touch: { gestures: false },
+      writingAssistance: { enabled: false, autocorrect: false, autocapitalize: 'off', spellcheck: false },
     });
   });
 
@@ -70,6 +72,7 @@ describe('normalizeInteractionConfig', () => {
       comments: { level: 'read', readOnly: true, allowResolve: true },
       trackedChanges: { allowDecisions: false },
       touch: { gestures: false },
+      writingAssistance: { enabled: false, autocorrect: false, autocapitalize: 'off', spellcheck: false },
     });
   });
 
@@ -86,6 +89,7 @@ describe('normalizeInteractionConfig', () => {
       comments: { level: 'write', readOnly: false, allowResolve: false },
       trackedChanges: { allowDecisions: true },
       touch: { gestures: false },
+      writingAssistance: { enabled: false, autocorrect: false, autocapitalize: 'off', spellcheck: false },
     });
   });
 
@@ -104,6 +108,7 @@ describe('normalizeInteractionConfig', () => {
       comments: { level: 'resolve', readOnly: false, allowResolve: true },
       trackedChanges: { allowDecisions: true },
       touch: { gestures: false },
+      writingAssistance: { enabled: false, autocorrect: false, autocapitalize: 'off', spellcheck: false },
     });
 
     const policy = normalizeInteractionConfig({
@@ -122,6 +127,46 @@ describe('normalizeInteractionConfig', () => {
     const policy = normalizeInteractionConfig({ ui: false, interaction: { comments: { readOnly: true } } });
 
     expect(policy.comments.readOnly).toBe(true);
+  });
+});
+
+describe('normalizeInteractionConfig writing assistance', () => {
+  const off = { enabled: false, autocorrect: false, autocapitalize: 'off', spellcheck: false };
+
+  it('is disabled when omitted or empty', () => {
+    expect(normalizeInteractionConfig({}).writingAssistance).toEqual(off);
+    expect(normalizeInteractionConfig({ interaction: { writingAssistance: {} } }).writingAssistance).toEqual(off);
+  });
+
+  it('stays disabled when every field is explicitly off', () => {
+    const config = { autocorrect: false, autocapitalize: 'off', spellcheck: false } as const;
+    expect(normalizeInteractionConfig({ interaction: { writingAssistance: config } }).writingAssistance).toEqual(off);
+  });
+
+  it.each([
+    [{ autocorrect: true }, { enabled: true, autocorrect: true, autocapitalize: 'off', spellcheck: false }],
+    [{ spellcheck: true }, { enabled: true, autocorrect: false, autocapitalize: 'off', spellcheck: true }],
+    [
+      { autocapitalize: 'sentences' },
+      { enabled: true, autocorrect: false, autocapitalize: 'sentences', spellcheck: false },
+    ],
+    [{ autocapitalize: 'words' }, { enabled: true, autocorrect: false, autocapitalize: 'words', spellcheck: false }],
+    [
+      { autocapitalize: 'characters' },
+      { enabled: true, autocorrect: false, autocapitalize: 'characters', spellcheck: false },
+    ],
+  ] as const)('enables on %j', (writingAssistance, expected) => {
+    expect(normalizeInteractionConfig({ interaction: { writingAssistance } }).writingAssistance).toEqual(expected);
+  });
+
+  it('ignores truthy non-boolean and invalid values', () => {
+    const invalid = { autocorrect: 'yes', autocapitalize: 'always', spellcheck: 1 };
+    expect(
+      normalizeInteractionConfig({ interaction: { writingAssistance: invalid as never } }).writingAssistance,
+    ).toEqual(off);
+    expect(normalizeInteractionConfig({ interaction: { writingAssistance: 'on' as never } }).writingAssistance).toEqual(
+      off,
+    );
   });
 });
 

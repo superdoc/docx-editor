@@ -20,6 +20,7 @@ import type {
   Modules,
   TouchInteractionConfig,
   TrackChangesInteractionConfig,
+  WritingAssistanceConfig,
 } from '../types/index.js';
 
 type InteractionSource = Pick<Config, 'interaction' | 'modules'>;
@@ -34,7 +35,16 @@ type NormalizedInteractionConfig = {
   };
   trackedChanges: { allowDecisions: boolean };
   touch: { gestures: boolean };
+  writingAssistance: {
+    enabled: boolean;
+    autocorrect: boolean;
+    autocapitalize: NonNullable<WritingAssistanceConfig['autocapitalize']>;
+    spellcheck: boolean;
+  };
 };
+
+const isAutocapitalize = (value: unknown): value is NonNullable<WritingAssistanceConfig['autocapitalize']> =>
+  value === 'off' || value === 'sentences' || value === 'words' || value === 'characters';
 
 const isCommentInteractionLevel = (value: unknown): value is CommentInteractionLevel =>
   value === 'read' || value === 'write' || value === 'resolve';
@@ -65,6 +75,15 @@ export function normalizeInteractionConfig(config: InteractionSource = {}): Norm
   const hasCanonicalLevel = isCommentInteractionLevel(canonicalLevel);
   const level = hasCanonicalLevel ? canonicalLevel : legacyReadOnly ? 'read' : legacyAllowResolve ? 'resolve' : 'write';
 
+  const interactionWritingAssistance: WritingAssistanceConfig = isPlainObject(interaction.writingAssistance)
+    ? interaction.writingAssistance
+    : {};
+  const autocorrect = interactionWritingAssistance.autocorrect === true;
+  const autocapitalize = isAutocapitalize(interactionWritingAssistance.autocapitalize)
+    ? interactionWritingAssistance.autocapitalize
+    : 'off';
+  const spellcheck = interactionWritingAssistance.spellcheck === true;
+
   const canonicalAllowDecisions = interactionTrackedChanges.allowDecisions;
   const interactionTouch: TouchInteractionConfig = isPlainObject(interaction.touch) ? interaction.touch : {};
 
@@ -83,6 +102,12 @@ export function normalizeInteractionConfig(config: InteractionSource = {}): Norm
     },
     touch: {
       gestures: interactionTouch.gestures === true,
+    },
+    writingAssistance: {
+      enabled: autocorrect || autocapitalize !== 'off' || spellcheck,
+      autocorrect,
+      autocapitalize,
+      spellcheck,
     },
   };
 }

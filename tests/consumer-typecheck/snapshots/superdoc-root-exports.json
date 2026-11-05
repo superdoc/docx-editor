@@ -331,6 +331,7 @@
         "ViewingOptions",
         "ViewingTrackedChangesMode",
         "ViewingVisibilityConfig",
+        "WritingAssistanceConfig",
         "buildTheme",
         "compareVersions",
         "createTheme",
@@ -661,6 +662,7 @@
         "ViewingOptions",
         "ViewingTrackedChangesMode",
         "ViewingVisibilityConfig",
+        "WritingAssistanceConfig",
         "buildTheme",
         "compareVersions",
         "createTheme",
@@ -711,11 +713,11 @@
     }
   },
   "counts": {
-    "types.import": 324,
-    "types.require": 324,
+    "types.import": 325,
+    "types.require": 325,
     "import": 13,
     "require": 13,
-    "union": 324
+    "union": 325
   },
   "divergences": {
     "typesImportVsRequire": {
@@ -1038,7 +1040,8 @@
         "ViewOptions",
         "ViewingOptions",
         "ViewingTrackedChangesMode",
-        "ViewingVisibilityConfig"
+        "ViewingVisibilityConfig",
+        "WritingAssistanceConfig"
       ],
       "runtimeOnly": []
     }

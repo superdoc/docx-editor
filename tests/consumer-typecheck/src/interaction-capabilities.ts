@@ -13,6 +13,7 @@ import type {
   SuperDoc,
   TouchInteractionConfig,
   TrackChangesInteractionConfig,
+  WritingAssistanceConfig,
 } from 'superdoc';
 
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
@@ -49,6 +50,24 @@ const _commentInteractionLevel: CommentInteractionLevel = 'resolve';
 const _commentInteractionConfig: CommentInteractionConfig = { level: 'write' };
 const _trackChangesInteractionConfig: TrackChangesInteractionConfig = { allowDecisions: false };
 
+const _writingAssistanceConfig: WritingAssistanceConfig = {
+  autocorrect: true,
+  autocapitalize: 'sentences',
+  spellcheck: true,
+};
+const _writingAssistanceInteraction: Config = {
+  selector: '#editor',
+  interaction: { writingAssistance: { autocapitalize: 'words' } },
+};
+
+const _invalidWritingAssistance: Config = {
+  selector: '#editor',
+  interaction: {
+    // @ts-expect-error autocapitalize accepts only off, sentences, words, or characters.
+    writingAssistance: { autocapitalize: 'always' },
+  },
+};
+
 const _invalidLevel: Config = {
   selector: '#editor',
   interaction: {
@@ -61,6 +80,11 @@ declare const sd: SuperDoc;
 const _levelType: AssertEqual<typeof sd.interactionConfig.comments.level, 'read' | 'write' | 'resolve'> = true;
 const _decisionType: AssertEqual<typeof sd.interactionConfig.trackedChanges.allowDecisions, boolean> = true;
 const _touchGesturesType: AssertEqual<typeof sd.interactionConfig.touch.gestures, boolean> = true;
+const _writingAssistanceEnabledType: AssertEqual<typeof sd.interactionConfig.writingAssistance.enabled, boolean> = true;
+const _autocapitalizeType: AssertEqual<
+  typeof sd.interactionConfig.writingAssistance.autocapitalize,
+  'off' | 'sentences' | 'words' | 'characters'
+> = true;
 
 void [
   _canonicalConfig,
@@ -75,4 +99,9 @@ void [
   _touchInteractionConfig,
   _invalidTouchGestures,
   _touchGesturesType,
+  _writingAssistanceConfig,
+  _writingAssistanceInteraction,
+  _invalidWritingAssistance,
+  _writingAssistanceEnabledType,
+  _autocapitalizeType,
 ];

@@ -23,8 +23,11 @@ function readExactEngineVersion() {
 // unaffected (an alias there would make vite-plugin-dts emit unresolvable source paths).
 // The /bundled subpath alias precedes the bare one (longest-prefix wins).
 const fontSystemAliases = [
-  { find: '@superdoc/font-system/bundled', replacement: path.resolve(here, '../../shared/font-system/src/bundled.ts') },
-  { find: '@superdoc/font-system', replacement: path.resolve(here, '../../shared/font-system/src/index.ts') },
+  {
+    find: /^@superdoc\/font-system\/bundled$/,
+    replacement: path.resolve(here, '../../shared/font-system/src/bundled.ts'),
+  },
+  { find: /^@superdoc\/font-system$/, replacement: path.resolve(here, '../../shared/font-system/src/index.ts') },
 ];
 
 // Standalone browser bundle for CDN / <script> tag consumption.

@@ -16,7 +16,8 @@
       "source": "./src/bundled.ts",
       "types": "./src/bundled.ts",
       "default": "./src/bundled.ts"
-    }
+    },
+    "./assets/*": "./assets/*"
   },
   "files": [
     "src",

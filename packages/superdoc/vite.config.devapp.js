@@ -31,8 +31,11 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 // there breaks the dts build), so this app build adds it explicitly, same as
 // vite.config.cdn.js. `/bundled` precedes the bare alias (longest-prefix wins).
 const fontSystemAliases = [
-  { find: '@superdoc/font-system/bundled', replacement: path.resolve(here, '../../shared/font-system/src/bundled.ts') },
-  { find: '@superdoc/font-system', replacement: path.resolve(here, '../../shared/font-system/src/index.ts') },
+  {
+    find: /^@superdoc\/font-system\/bundled$/,
+    replacement: path.resolve(here, '../../shared/font-system/src/bundled.ts'),
+  },
+  { find: /^@superdoc\/font-system$/, replacement: path.resolve(here, '../../shared/font-system/src/index.ts') },
   { find: /^@superdoc\/font-utils$/, replacement: path.resolve(here, '../../shared/font-utils/index.js') },
 ];
 

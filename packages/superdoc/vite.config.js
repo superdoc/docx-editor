@@ -362,8 +362,8 @@ export default defineConfig(({ mode, command }) => {
       alias: [
         ...(process.env.VITEST || isDev
           ? [
-              { find: '@superdoc/font-system/bundled', replacement: path.resolve(__dirname, '../../shared/font-system/src/bundled.ts') },
-              { find: '@superdoc/font-system', replacement: path.resolve(__dirname, '../../shared/font-system/src/index.ts') },
+              { find: /^@superdoc\/font-system\/bundled$/, replacement: path.resolve(__dirname, '../../shared/font-system/src/bundled.ts') },
+              { find: /^@superdoc\/font-system$/, replacement: path.resolve(__dirname, '../../shared/font-system/src/index.ts') },
             ]
           : []),
         ...getAliases(command, v2Resolution),

@@ -26,6 +26,7 @@ import { toCssFontFamily } from '@superdoc/font-utils';
 
 import { type BundledActivation, FULLY_ACTIVE_BUNDLED } from './activation';
 import { BUNDLED_MANIFEST } from './bundled-manifest';
+import { BUNDLED_FACE_FAMILIES } from './bundled-face-names';
 import { SUBSTITUTION_EVIDENCE, type FaceSlot } from './substitution-evidence';
 
 export type FontResolutionReason =
@@ -317,6 +318,14 @@ export class FontResolver {
     this.#activation = activation;
   }
 
+  resolveBundledAlias(logicalFamily: string): string | undefined {
+    const primary = splitStack(logicalFamily)[0] ?? logicalFamily;
+    const key = normalizeFamilyKey(primary);
+    return this.#activation.packConfigured && Object.prototype.hasOwnProperty.call(BUNDLED_FACE_FAMILIES, key)
+      ? BUNDLED_FACE_FAMILIES[key]
+      : undefined;
+  }
+
   /**
    * Apply this document's bundled-font activation, derived from the editor's `fonts` config.
    * Config-time only: the document font controller calls this before the first measure. Busts the
@@ -488,6 +497,8 @@ export class FontResolver {
     // An explicit `fonts.map` override is always honored - it is a customer instruction, not a
     // bundled-pack suggestion, so it is NOT gated by activation.
     if (override) return { physical: override, reason: 'custom_mapping' };
+    const alias = this.resolveBundledAlias(bareFamily);
+    if (alias) return { physical: alias, reason: 'bundled_substitute' };
     // Bundled substitutes / category fallbacks only apply when this document's pack is active. With
     // no pack configured (baseline), the logical family passes through to system fonts so nothing
     // fetches a substitute that is not being served; curation narrows which families are active.
@@ -537,6 +548,12 @@ export class FontResolver {
     // 2b. a registered real face for the logical family itself (customer `fonts.add`).
     if (hasFace(primary, face.weight, face.style)) {
       return { physical: primary, reason: 'registered_face' };
+    }
+    const alias = this.resolveBundledAlias(primary);
+    if (alias) {
+      return hasFace(alias, face.weight, face.style)
+        ? { physical: alias, reason: 'bundled_substitute' }
+        : { physical: primary, reason: 'fallback_face_absent' };
     }
     // 3/4. docfonts fallback: either a bundled substitute or a lower-fidelity category fallback - but
     //      ONLY when this document's bundled pack is active for this family (config-presence +

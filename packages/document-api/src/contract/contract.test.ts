@@ -1360,12 +1360,14 @@ describe('document-api contract catalog', () => {
   it('publishes the full setFlowOptions paragraph flow booleans in the contract input schema', () => {
     const schemas = buildInternalContractSchemas();
     const setFlowOptionsInput = schemas.operations['format.paragraph.setFlowOptions'].input as {
-      properties?: Record<string, { type?: string }>;
+      properties?: Record<string, { type?: string; oneOf?: Array<{ type: string }> }>;
       anyOf?: Array<{ required?: string[] }>;
     };
 
-    expect(setFlowOptionsInput.properties?.contextualSpacing?.type).toBe('boolean');
-    expect(setFlowOptionsInput.properties?.pageBreakBefore?.type).toBe('boolean');
+    expect(setFlowOptionsInput.properties?.contextualSpacing).toEqual({
+      oneOf: [{ type: 'boolean' }, { type: 'null' }],
+    });
+    expect(setFlowOptionsInput.properties?.pageBreakBefore).toEqual({ oneOf: [{ type: 'boolean' }, { type: 'null' }] });
     expect(setFlowOptionsInput.properties?.suppressAutoHyphens?.type).toBe('boolean');
     expect(setFlowOptionsInput.properties?.autoSpaceDE?.type).toBe('boolean');
     expect(setFlowOptionsInput.properties?.autoSpaceDN?.type).toBe('boolean');

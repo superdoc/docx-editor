@@ -40,7 +40,7 @@ export type OperationRegistry = {
     ? {
         input: MethodInput<Method>;
         options: MethodOptions<Method>;
-        output: Id extends 'mutations.preview' | 'mutations.apply' | 'plan.execute'
+        output: Id extends 'mutations.preview' | 'mutations.apply' | 'plan.execute' | 'format.paragraph.applyBatch'
           ? Awaited<MethodReturn<Method>>
           : MethodReturn<Method>;
       }
@@ -85,7 +85,10 @@ type AttributedInvokeRequest<T extends OperationId> = T extends 'insert'
 export type InvokeRequest<T extends OperationId> = MethodInvokeRequest<T> | AttributedInvokeRequest<T>;
 
 /** Typed invoke result narrowed by `operationId`. */
-export type InvokeResult<T extends OperationId> = T extends 'mutations.preview' | 'mutations.apply'
+export type InvokeResult<T extends OperationId> = T extends
+  | 'mutations.preview'
+  | 'mutations.apply'
+  | 'format.paragraph.applyBatch'
   ? Promise<OperationRegistry[T]['output']>
   : T extends 'plan.execute'
     ? OperationRegistry[T]['output'] | Promise<OperationRegistry[T]['output']>

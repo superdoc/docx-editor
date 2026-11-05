@@ -6,7 +6,9 @@ import { isFiniteNumber } from '../../helpers/is-finite-number.js';
 import type { CommandDescriptor } from './commands.js';
 import { CLEAR_INLINE_FORMATTING_KEYS, INLINE_PROPERTY_BY_KEY } from '@superdoc/document-api';
 
-export type EffectiveInlineUniformityState = { state: 'uniform'; value: string } | { state: 'mixed' | 'unresolvable' };
+export type EffectiveInlineUniformityState =
+  | { state: 'uniform'; value: string }
+  | { state: 'mixed' | 'unresolvable' | 'absent' };
 
 export function readEffectiveInlineUniformityStates(
   raw: unknown,
@@ -19,7 +21,12 @@ export function readEffectiveInlineUniformityStates(
     states[key] =
       isPlainObject(entry) && entry.state === 'uniform' && typeof entry.value === 'string'
         ? { state: 'uniform', value: entry.value }
-        : { state: isPlainObject(entry) && entry.state === 'mixed' ? 'mixed' : 'unresolvable' };
+        : {
+            state:
+              isPlainObject(entry) && (entry.state === 'mixed' || entry.state === 'absent')
+                ? entry.state
+                : 'unresolvable',
+          };
   }
   return states;
 }

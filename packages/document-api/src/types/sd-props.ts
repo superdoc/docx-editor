@@ -221,6 +221,12 @@ export interface SDParagraphProps {
     firstLine?: number;
     /** Hanging indent in points. */
     hanging?: number;
+    leftChars?: number;
+    rightChars?: number;
+    startChars?: number;
+    endChars?: number;
+    firstLineChars?: number;
+    hangingChars?: number;
   };
   spacing?: {
     /** Space before in points. */
@@ -235,6 +241,7 @@ export interface SDParagraphProps {
     line?: number;
     lineRule?: 'auto' | 'multiple' | 'exact' | 'atLeast';
   };
+  contextualSpacing?: boolean;
   keepWithNext?: boolean;
   keepLines?: boolean;
   pageBreakBefore?: boolean;

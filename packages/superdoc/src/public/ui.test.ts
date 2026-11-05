@@ -8,7 +8,12 @@ import {
 } from './ui/create-super-doc-ui.js';
 import { SUPERDOC_UI_REASONS } from './ui/reasons.js';
 import { COMMAND_CATALOG, ALL_BUILT_IN_COMMAND_IDS } from './ui/commands.js';
-import { LIST_PRESET_IDS } from '@superdoc/document-api';
+import { captureParagraphPaintOperations } from './ui/format-painter-paragraph.js';
+import {
+  LIST_PRESET_IDS,
+  PARAGRAPH_BATCH_MAX_EXPANDED_WRITES,
+  PARAGRAPH_BATCH_MAX_PAYLOAD_BYTES,
+} from '@superdoc/document-api';
 import { bulletStyleButtons, numberedStyleButtons } from '../internal/toolbar/built-in/list-style-buttons.js';
 
 // Shared non-empty selection used by inline-format command tests. The public
@@ -4546,7 +4551,7 @@ describe('public ui — command reason taxonomy', () => {
             ? { readEffectiveInlineUniformity: opts.readEffectiveInlineUniformity }
             : {}),
         },
-        styles: { paragraph: { setStyle, clearStyle } },
+        styles: { paragraph: { setStyleRef: setStyle, setStyle, clearStyle } },
         ...(opts.listStyle
           ? {
               lists: {
@@ -5147,8 +5152,51 @@ describe('public ui — command reason taxonomy', () => {
     });
   });
 
-  it('copy-format applies inline formatting as one tracked selection mutation in suggesting mode', async () => {
+  it.each(['footnote', 'endnote'])(
+    'SD-6351 copy-format applies editing inline formatting directly in a %s',
+    async (storyType) => {
+      const { superdoc, apply, setSelection, targetSelection } = makeFormatPainterSuperdoc({
+        story: { kind: 'story', storyType, noteId: '1' },
+        sourceParagraphMark: false,
+        targetParagraphMark: false,
+      });
+      const execute = vi.fn(() => {
+        throw Object.assign(new Error('Atomic plans support existing body/header/footer parts only'), {
+          code: 'CAPABILITY_UNAVAILABLE',
+        });
+      });
+      (superdoc.activeEditor as any).editorVersion = 2;
+      (superdoc.activeEditor.doc as any).plan = { execute };
+      const ui = createSuperDocUI({ superdoc });
+      try {
+        expect(await ui.commands.executeAsync('copy-format')).toBe(true);
+        setSelection(targetSelection);
+        ui.formatPainter.notifyPointerUp();
+        await vi.waitFor(() => expect(apply).toHaveBeenCalledTimes(1));
+        expect(apply).toHaveBeenCalledWith(
+          {
+            target: targetSelection.selectionTarget,
+            inline: { bold: true, color: '#D2003F' },
+          },
+          { offsetSpace: 'kernel' },
+        );
+        expect(execute).not.toHaveBeenCalled();
+        await vi.waitFor(() => expect(ui.commands.get('copy-format').getState().active).toBe(false));
+      } finally {
+        ui.destroy();
+      }
+    },
+  );
+
+  it('SD-6351 copy-format applies tracked inline formatting directly when an atomic plan is available', async () => {
     const { superdoc, apply, setSelection, targetSelection } = makeFormatPainterSuperdoc({ mode: 'suggesting' });
+    const execute = vi.fn(() => {
+      throw Object.assign(new Error('Shared atomic plans do not support tracked changes'), {
+        code: 'CAPABILITY_UNAVAILABLE',
+      });
+    });
+    (superdoc.activeEditor as any).editorVersion = 2;
+    (superdoc.activeEditor.doc as any).plan = { execute };
     const ui = createSuperDocUI({ superdoc });
 
     expect(await ui.commands.executeAsync('copy-format')).toBe(true);
@@ -5166,6 +5214,8 @@ describe('public ui — command reason taxonomy', () => {
       },
       { changeMode: 'tracked', offsetSpace: 'kernel' },
     );
+    expect(execute).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(ui.commands.get('copy-format').getState().active).toBe(false));
   });
 
   it.each([false, true])(
@@ -5870,6 +5920,89 @@ describe('public ui — command reason taxonomy', () => {
     });
   });
 
+  it('SD-6351 CASE-8 failed atomic paint remains armed without sequential fallback and binds the plan receiver', async () => {
+    const fixture = makeFormatPainterSuperdoc({ sourceParagraphProps: { alignment: 'center' } });
+    const receivers: string[] = [];
+    const execute = vi.fn(function (this: { adapterName: string }) {
+      receivers.push(this.adapterName);
+      return { failure: { entryIndex: 1, message: 'Late refusal' }, receipts: [] };
+    });
+    (fixture.superdoc.activeEditor.doc as any).plan = { adapterName: 'atomic', execute };
+    const ui = createSuperDocUI({ superdoc: fixture.superdoc });
+    expect(await ui.commands.executeAsync('copy-format')).toBe(true);
+    fixture.setSelection(fixture.targetSelection);
+    ui.formatPainter.notifyPointerUp();
+    await vi.waitFor(() => expect(execute).toHaveBeenCalledTimes(1));
+    expect(execute).toHaveBeenCalledWith(expect.objectContaining({ atomic: true }));
+    expect(receivers).toEqual(['atomic']);
+    expect(fixture.apply).not.toHaveBeenCalled();
+    expect(fixture.setAlignment).not.toHaveBeenCalled();
+    expect(ui.commands.get('copy-format').getState().active).toBe(true);
+  });
+
+  it('SD-6351 CASE-1 copy-format captures the first of two marked source paragraphs', async () => {
+    const fixture = makeFormatPainterSuperdoc({
+      sourceParagraphProps: { alignment: 'center', spacing: { line: 2, lineRule: 'auto' }, indent: { left: 36 } },
+    });
+    fixture.setSelection({
+      empty: false,
+      target: {
+        kind: 'text',
+        segments: [
+          { blockId: 'P1', range: { start: 0, end: 5 } },
+          { blockId: 'P4', range: { start: 0, end: 5 } },
+          { blockId: 'P2', range: { start: 0, end: 0 } },
+        ],
+      },
+      selectionTarget: {
+        kind: 'selection',
+        start: { kind: 'text', blockId: 'P1', offset: 0 },
+        end: { kind: 'text', blockId: 'P2', offset: 0 },
+      },
+      activeMarks: [],
+      activeCommentIds: [],
+      activeChangeIds: [],
+      text: 'helloworld',
+    });
+    const ui = createSuperDocUI({ superdoc: fixture.superdoc });
+    expect(await ui.commands.executeAsync('copy-format')).toBe(true);
+    fixture.setSelection(fixture.targetSelection);
+    ui.formatPainter.notifyPointerUp();
+    await vi.waitFor(() =>
+      expect(fixture.setSpacing).toHaveBeenCalledWith({
+        target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P2' },
+        line: 480,
+        lineRule: 'auto',
+      }),
+    );
+    expect(fixture.setAlignment).toHaveBeenCalledWith({
+      target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P2' },
+      alignment: 'center',
+    });
+    expect(fixture.setIndentation).toHaveBeenCalledWith({
+      target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P2' },
+      left: 720,
+    });
+    for (const setter of [
+      fixture.setSpacing,
+      fixture.clearSpacing,
+      fixture.setAlignment,
+      fixture.clearAlignment,
+      fixture.setIndentation,
+      fixture.clearIndentation,
+      fixture.setStyle,
+      fixture.clearStyle,
+      fixture.setMarkRunProps,
+      fixture.setNumbering,
+    ]) {
+      for (const call of setter.mock.calls) {
+        expect(call).toEqual([
+          expect.objectContaining({ target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P2' } }),
+        ]);
+      }
+    }
+  });
+
   it('copy-format replaces target paragraph spacing with the source spacing in twips', async () => {
     const { superdoc, setSpacing, clearSpacing, setSelection, targetSelection } = makeFormatPainterSuperdoc({
       sourceParagraphProps: { spacing: { before: 6, after: 12, line: 1.5, lineRule: 'auto' } },
@@ -5887,6 +6020,61 @@ describe('public ui — command reason taxonomy', () => {
     });
     expect(clearSpacing).toHaveBeenCalledWith({ target });
     expect(clearSpacing.mock.invocationCallOrder[0]).toBeLessThan(setSpacing.mock.invocationCallOrder[0]);
+  });
+
+  it('SD-6351 CASE-2 replaces target-only borders shading and tabs before setting the source values', async () => {
+    const paragraphOps = {
+      clearBorder: vi.fn(() => ({ success: true })),
+      setBorder: vi.fn(() => ({ success: true })),
+      clearShading: vi.fn(() => ({ success: true })),
+      setShading: vi.fn(() => ({ success: true })),
+      clearAllTabStops: vi.fn(() => ({ success: true })),
+      setTabStop: vi.fn(() => ({ success: true })),
+    };
+    const fixture = makeFormatPainterSuperdoc({
+      sourceParagraphProps: {
+        borders: { bottom: { style: 'single', width: 1, color: { model: 'rgb', value: 'FF0000' } } },
+        shading: { fill: { model: 'rgb', value: 'FFFF00' } },
+        tabs: [{ kind: 'set', alignment: 'right', position: 72, leader: 'dot' }],
+      },
+      targetParagraphProps: {
+        borders: { top: { style: 'double', width: 2, color: { model: 'rgb', value: '0000FF' } } },
+        shading: { fill: { model: 'rgb', value: '00FFFF' } },
+        tabs: [{ kind: 'set', alignment: 'left', position: 36 }],
+      },
+      paragraphOps,
+    });
+    const ui = createSuperDocUI({ superdoc: fixture.superdoc });
+    expect(await ui.commands.executeAsync('copy-format')).toBe(true);
+    fixture.setSelection(fixture.targetSelection);
+    ui.formatPainter.notifyPointerUp();
+    const target = { kind: 'block', nodeType: 'paragraph', nodeId: 'P2' };
+    await vi.waitFor(() =>
+      expect(paragraphOps.setTabStop).toHaveBeenCalledExactlyOnceWith({
+        target,
+        alignment: 'right',
+        position: 1440,
+        leader: 'dot',
+      }),
+    );
+    expect(paragraphOps.clearBorder).toHaveBeenCalledExactlyOnceWith({ target, side: 'all' });
+    expect(paragraphOps.setBorder).toHaveBeenCalledExactlyOnceWith({
+      target,
+      side: 'bottom',
+      style: 'single',
+      size: 8,
+      color: 'FF0000',
+    });
+    expect(paragraphOps.clearShading).toHaveBeenCalledExactlyOnceWith({ target });
+    expect(paragraphOps.setShading).toHaveBeenCalledExactlyOnceWith({ target, fill: 'FFFF00' });
+    expect(paragraphOps.clearAllTabStops).toHaveBeenCalledExactlyOnceWith({ target });
+    for (const [clear, set] of [
+      [paragraphOps.clearBorder, paragraphOps.setBorder],
+      [paragraphOps.clearShading, paragraphOps.setShading],
+      [paragraphOps.clearAllTabStops, paragraphOps.setTabStop],
+    ]) {
+      expect(clear.mock.invocationCallOrder[0]).toBeLessThan(set.mock.invocationCallOrder[0]);
+    }
   });
 
   it('copy-format calls a custom paragraph adapter method with its owning object as receiver', async () => {
@@ -6172,6 +6360,351 @@ describe('public ui — command reason taxonomy', () => {
         alignment: 'center',
       });
     });
+  });
+
+  it.each(['expanded writes', 'payload'] as const)(
+    'SD-6351 capacity refusal refreshes UI without partial painting for %s',
+    async (bound) => {
+      const fixture = makeFormatPainterSuperdoc({ sourceParagraphProps: { alignment: 'center' } });
+      const execute = vi.fn(async () => ({ receipts: [], captures: {} }));
+      fixture.superdoc.activeEditor.doc.plan = { execute } as any;
+      fixture.superdoc.activeEditor.doc.capabilities = {
+        get: () => ({ operations: { 'format.paragraph.applyBatch': { available: true } } }),
+      } as any;
+      fixture.superdoc.activeEditor.doc.format.paragraph.applyBatch = vi.fn() as any;
+      const operationCount =
+        captureParagraphPaintOperations(
+          { alignment: 'center' },
+          (operationId) => operationId.split('.').at(-1)! in fixture.superdoc.activeEditor.doc.format.paragraph,
+        ).length + 1;
+      const ids =
+        bound === 'expanded writes'
+          ? Array.from(
+              { length: Math.floor(PARAGRAPH_BATCH_MAX_EXPANDED_WRITES / operationCount) + 1 },
+              (_, i) => `T${i}`,
+            )
+          : ['T'.repeat(PARAGRAPH_BATCH_MAX_PAYLOAD_BYTES)];
+      fixture.targetSelection.target.segments = [
+        ...ids.map((blockId) => ({ blockId, range: { start: 0, end: 5 } })),
+        { blockId: 'Neighbor', range: { start: 0, end: 0 } },
+      ];
+      fixture.targetSelection.selectionTarget.start.blockId = ids[0];
+      fixture.targetSelection.selectionTarget.end.blockId = 'Neighbor';
+      fixture.targetSelection.selectionTarget.end.offset = 0;
+      const ui = createSuperDocUI({ superdoc: fixture.superdoc });
+      try {
+        expect(await ui.commands.executeAsync('copy-format')).toBe(true);
+        const refreshed = vi.fn();
+        ui.select(
+          (state) => state,
+          () => false,
+        ).subscribe(refreshed);
+        await Promise.resolve();
+        await Promise.resolve();
+        refreshed.mockClear();
+        fixture.setSelection(fixture.targetSelection);
+        ui.formatPainter.notifyPointerUp();
+        await vi.waitFor(() => expect(refreshed).toHaveBeenCalled());
+        expect(execute).not.toHaveBeenCalled();
+        expect(fixture.apply).not.toHaveBeenCalled();
+        expect(fixture.setAlignment).not.toHaveBeenCalled();
+        expect(ui.commands.get('copy-format').getState().active).toBe(true);
+      } finally {
+        ui.destroy();
+      }
+    },
+  );
+
+  it.each([false, true])(
+    'SD-6351 capacity actual UI builder bounds 1001 named-style inline entries emptyInterior=%s',
+    async (emptyInterior) => {
+      const read = vi.fn().mockImplementation((input) => ({
+        success: true,
+        values:
+          input.includeDefaultFloor === false
+            ? { fontFamily: { state: 'absent' }, fontSize: { state: 'absent' } }
+            : {
+                fontFamily: { state: 'uniform', value: 'Source default' },
+                fontSize: { state: 'uniform', value: '13' },
+              },
+      }));
+      const { superdoc, setSelection, targetSelection } = makeFormatPainterSuperdoc({
+        sourceStyleRef: 'PaintStyle',
+        sourceParagraphMark: true,
+        targetParagraphMark: true,
+        readEffectiveInlineUniformity: read,
+      });
+      const execute = vi.fn(async () => ({ receipts: [], captures: {} }));
+      superdoc.activeEditor.doc.plan = { execute } as any;
+      superdoc.activeEditor.doc.capabilities = {
+        get: () => ({ operations: { 'format.paragraph.applyBatch': { available: true } } }),
+      } as any;
+      superdoc.activeEditor.doc.format.paragraph.applyBatch = vi.fn() as any;
+      const ids = Array.from({ length: 1001 }, (_, i) => `T${i}`);
+      if (emptyInterior) ids.splice(500, 0, 'Empty');
+      const getNode = superdoc.activeEditor.doc.getNode;
+      superdoc.activeEditor.doc.getNode = function (input) {
+        const result = getNode.call(this, input);
+        if (input.nodeId === 'Empty') result.node.paragraph.inlines = [];
+        return result;
+      } as any;
+      targetSelection.target.segments = [
+        ...ids.map((blockId) => ({ blockId, range: { start: 0, end: blockId === 'Empty' ? 0 : 5 } })),
+        { blockId: 'Neighbor', range: { start: 0, end: 0 } },
+      ];
+      targetSelection.selectionTarget.start.blockId = ids[0];
+      targetSelection.selectionTarget.end.blockId = 'Neighbor';
+      targetSelection.selectionTarget.end.offset = 0;
+      const ui = createSuperDocUI({ superdoc });
+      expect(await ui.commands.executeAsync('copy-format')).toBe(true);
+      setSelection(targetSelection);
+      ui.formatPainter.notifyPointerUp();
+      await vi.waitFor(() => expect(execute).toHaveBeenCalledTimes(1));
+      const entries = execute.mock.calls[0][0].entries;
+      console.log(
+        JSON.stringify({
+          capacityNamedBuilderInlineEntries: entries.filter((entry) => entry.operationId === 'format.apply').length,
+          callerEntries: entries.length,
+        }),
+      );
+      expect(entries.filter((entry) => entry.operationId === 'format.apply')).toHaveLength(1);
+      expect(entries).toHaveLength(3);
+      expect(entries[0].input.target).toBe(targetSelection.selectionTarget);
+      expect(entries[0].input.inline).toMatchObject({ fontFamily: null, fontSize: null });
+      expect(entries.slice(1).flatMap((entry) => entry.input.targets.map((target) => target.nodeId))).toEqual(ids);
+      ui.destroy();
+    },
+  );
+
+  it.each(['visible', 'tracked'])(
+    'SD-6351 copy-format splits painted object targets using canonical segment offsets (%s)',
+    async (coordinateSpace) => {
+      const fixture = makeFormatPainterSuperdoc({
+        sourceStyleRef: 'PaintStyle',
+        sourceParagraphMark: true,
+        readEffectiveInlineUniformity: () => ({
+          success: true,
+          values: {
+            fontFamily: { state: 'absent' },
+            fontSize: { state: 'absent' },
+          },
+        }),
+      });
+      const execute = vi.fn(async () => ({ receipts: [], captures: {} }));
+      fixture.superdoc.activeEditor.doc.plan = { execute } as any;
+      const story = { kind: 'story', storyType: 'body' };
+      const destination = {
+        ...fixture.targetSelection,
+        target: {
+          kind: 'text',
+          story,
+          segments: [
+            { blockId: 'P2', range: { start: 2, end: 5 } },
+            { blockId: 'P3', range: { start: 0, end: 5 } },
+            { blockId: 'Neighbor', range: { start: 0, end: 0 } },
+          ],
+        },
+        selectionTarget: null,
+      };
+      const native = {
+        kind: 'selection',
+        story,
+        coordinateSpace,
+        start: { kind: 'text', blockId: 'P2', offset: 3 },
+        end: { kind: 'text', blockId: 'Neighbor', offset: 0 },
+      };
+      const held = { story, anchor: { blockId: 'P2', blockOffset: 3 }, focus: { blockId: 'Neighbor', blockOffset: 0 } };
+      const selectionHandle = {
+        getSnapshot: () => held,
+        toSelectionTarget: () => ({ kind: 'ok', mode: 'range', target: native }),
+      };
+      fixture.superdoc.activeEditor.host = {
+        getHandles: () => ({ selection: selectionHandle, editing: { selection: selectionHandle } }),
+        readAppliedSelectionPresentation: () => ({ selection: destination }),
+      } as any;
+      const ui = createSuperDocUI({ superdoc: fixture.superdoc });
+      try {
+        expect(await ui.commands.executeAsync('copy-format')).toBe(true);
+        fixture.setSelection(destination);
+        ui.formatPainter.notifyPointerUp();
+        await vi.waitFor(() => expect(execute).toHaveBeenCalledTimes(1));
+        const inline = execute.mock.calls[0][0].entries.filter((entry) => entry.operationId === 'format.apply');
+        expect(inline).toHaveLength(2);
+        expect(inline.map((entry) => entry.input.target)).toEqual([
+          {
+            kind: 'selection',
+            story,
+            start: { kind: 'text', blockId: 'P2', offset: 2 },
+            end: { kind: 'text', blockId: 'P2', offset: 5 },
+          },
+          {
+            kind: 'selection',
+            story,
+            start: { kind: 'text', blockId: 'P3', offset: 0 },
+            end: { kind: 'text', blockId: 'P3', offset: 5 },
+          },
+        ]);
+        expect(inline.map((entry) => entry.options)).toEqual([{ offsetSpace: 'kernel' }, { offsetSpace: 'kernel' }]);
+      } finally {
+        ui.destroy();
+      }
+    },
+  );
+
+  it('SD-6351 capacity coalescing preserves partial boundaries coordinate space and unmarked suffix payload', async () => {
+    const read = vi.fn().mockImplementation((input) => ({
+      success: true,
+      values:
+        input.includeDefaultFloor === false
+          ? { fontFamily: { state: 'absent' }, fontSize: { state: 'absent' } }
+          : {
+              fontFamily: { state: 'uniform', value: 'Source default' },
+              fontSize: { state: 'uniform', value: '13' },
+            },
+    }));
+    const { superdoc, setSelection, targetSelection } = makeFormatPainterSuperdoc({
+      sourceStyleRef: 'PaintStyle',
+      sourceParagraphMark: true,
+      readEffectiveInlineUniformity: read,
+    });
+    const execute = vi.fn(async () => ({ receipts: [], captures: {} }));
+    superdoc.activeEditor.doc.plan = { execute } as any;
+    superdoc.activeEditor.doc.capabilities = {
+      get: () => ({ operations: { 'format.paragraph.applyBatch': { available: true } } }),
+    } as any;
+    superdoc.activeEditor.doc.format.paragraph.applyBatch = vi.fn() as any;
+    targetSelection.target.segments = [
+      { blockId: 'P2', range: { start: 2, end: 5 } },
+      { blockId: 'P3', range: { start: 0, end: 5 } },
+      { blockId: 'P4', range: { start: 0, end: 2 } },
+    ];
+    targetSelection.selectionTarget.start.offset = 2;
+    targetSelection.selectionTarget.end = { kind: 'text', blockId: 'P4', offset: 2 };
+    (targetSelection.selectionTarget as any).coordinateSpace = 'tracked';
+    const ui = createSuperDocUI({ superdoc });
+    expect(await ui.commands.executeAsync('copy-format')).toBe(true);
+    setSelection(targetSelection);
+    ui.formatPainter.notifyPointerUp();
+    await vi.waitFor(() => expect(execute).toHaveBeenCalledTimes(1));
+    const entries = execute.mock.calls[0][0].entries;
+    expect(entries).toHaveLength(3);
+    expect(entries[0]).toMatchObject({
+      operationId: 'format.apply',
+      input: {
+        target: { start: { blockId: 'P2', offset: 2 }, end: { blockId: 'P3', offset: 5 }, coordinateSpace: 'tracked' },
+        inline: { fontFamily: null, fontSize: null },
+      },
+      options: { offsetSpace: 'selection' },
+    });
+    expect(entries[1]).toMatchObject({
+      operationId: 'format.apply',
+      input: {
+        target: { start: { blockId: 'P4', offset: 0 }, end: { blockId: 'P4', offset: 2 }, coordinateSpace: 'tracked' },
+        inline: { fontFamily: 'Source default', fontSize: 13 },
+      },
+    });
+    expect(entries[2].input.targets.map((target) => target.nodeId)).toEqual(['P2', 'P3']);
+    ui.destroy();
+  });
+
+  it.each([true, false])(
+    'copy-format preserves default inheritance only when the named paragraph style transfers (marked=%s)',
+    async (marked) => {
+      const read = vi.fn().mockImplementation((input) => ({
+        success: true,
+        values:
+          input.includeDefaultFloor === false
+            ? { fontFamily: { state: 'absent' }, fontSize: { state: 'absent' } }
+            : {
+                fontFamily: { state: 'uniform', value: 'Source default' },
+                fontSize: { state: 'uniform', value: '13' },
+              },
+      }));
+      const { superdoc, apply, setStyle, setSelection, targetSelection } = makeFormatPainterSuperdoc({
+        sourceStyleRef: 'PaintStyle',
+        sourceParagraphMark: true,
+        targetParagraphMark: marked,
+        readEffectiveInlineUniformity: read,
+      });
+      const ui = createSuperDocUI({ superdoc });
+      expect(await ui.commands.executeAsync('copy-format')).toBe(true);
+      setSelection(targetSelection);
+      ui.formatPainter.notifyPointerUp();
+      await vi.waitFor(() => expect(apply).toHaveBeenCalledTimes(1));
+      expect(apply.mock.calls[0][0].inline).toMatchObject({
+        bold: true,
+        fontFamily: marked ? null : 'Source default',
+        fontSize: marked ? null : 13,
+      });
+      if (marked)
+        await vi.waitFor(() =>
+          expect(setStyle).toHaveBeenCalledWith({
+            target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P2' },
+            styleId: 'PaintStyle',
+          }),
+        );
+      else {
+        expect(setStyle).not.toHaveBeenCalled();
+        expect(apply.mock.calls[0][0].target).toBe(targetSelection.selectionTarget);
+      }
+      ui.destroy();
+    },
+  );
+
+  it('copy-format preserves the complete disjoint cell target and metadata when inheriting a named style font', async () => {
+    const read = vi.fn().mockImplementation((input) => ({
+      success: true,
+      values:
+        input.includeDefaultFloor === false
+          ? { fontFamily: { state: 'absent' }, fontSize: { state: 'absent' } }
+          : {
+              fontFamily: { state: 'uniform', value: 'Source default' },
+              fontSize: { state: 'uniform', value: '13' },
+            },
+    }));
+    const { superdoc, apply, setStyle, setSelection, targetSelection } = makeFormatPainterSuperdoc({
+      sourceStyleRef: 'PaintStyle',
+      sourceParagraphMark: true,
+      readEffectiveInlineUniformity: read,
+    });
+    let cells = false;
+    const rawTarget = {
+      kind: 'selection',
+      start: { kind: 'text', blockId: 'P2', offset: 3 },
+      end: { kind: 'text', blockId: 'P6', offset: 2 },
+    };
+    superdoc.activeEditor.host = {
+      getHandles: () => ({
+        selection: {
+          getSnapshot: () => ({ tableCells: cells }),
+          toSelectionTarget: () => ({ kind: 'ok', mode: 'range', target: rawTarget }),
+        },
+      }),
+    } as any;
+    const ui = createSuperDocUI({ superdoc });
+    expect(await ui.commands.executeAsync('copy-format')).toBe(true);
+    cells = true;
+    targetSelection.target.segments = ['P2', 'P3', 'P5', 'P6'].map((blockId) => ({
+      blockId,
+      range: { start: 0, end: 5 },
+    }));
+    setSelection({ ...targetSelection, selectionTarget: null });
+    ui.formatPainter.notifyPointerUp();
+    await vi.waitFor(() => expect(ui.commands.get('copy-format').getState().active).toBe(false));
+    expect(apply).toHaveBeenCalledExactlyOnceWith(
+      {
+        target: rawTarget,
+        inline: {
+          bold: true,
+          color: '#D2003F',
+          fontFamily: null,
+          fontSize: null,
+        },
+      },
+      { offsetSpace: 'selection', tableCellSelection: { anchorBlockId: 'P2', focusBlockId: 'P6' } },
+    );
+    expect(setStyle.mock.calls.map((call) => call[0].target.nodeId)).toEqual(['P2', 'P3', 'P5', 'P6']);
+    ui.destroy();
   });
 
   it('copy-format omits mixed inline props from the captured source selection', async () => {
@@ -21284,5 +21817,166 @@ describe('public ui — async browser reads (read coordinator)', () => {
     expect(typeof ui.commands.executeAsync).toBe('function');
     expect(typeof ui.toolbar.executeAsync).toBe('function');
     expect(typeof ui.commands.get('bold').executeAsync).toBe('function');
+  });
+});
+
+describe('SD-6351 paragraph capture conversions', () => {
+  it.each([
+    ['auto', 2, 480],
+    ['exact', 24, 480],
+    ['atLeast', 18, 360],
+    ['multiple', 1.125, 270],
+  ])(
+    'SD-6351 CASE-1 converts %s line spacing without losing zero or fractional distances',
+    (lineRule, line, expected) => {
+      const operations = captureParagraphPaintOperations({
+        spacing: { lineRule, line, before: 0.03, after: 0 },
+        indent: { left: 0, hanging: 18 },
+      });
+      expect(operations).toContainEqual({
+        operationId: 'format.paragraph.setSpacing',
+        input: { before: 1, after: 0, line: expected, lineRule: lineRule === 'multiple' ? 'auto' : lineRule },
+      });
+      expect(operations).toContainEqual({
+        operationId: 'format.paragraph.setIndentation',
+        input: { left: 0, hanging: 360 },
+      });
+      expect(operations.findIndex((entry) => entry.operationId === 'format.paragraph.clearIndentation')).toBeLessThan(
+        operations.findIndex((entry) => entry.operationId === 'format.paragraph.setIndentation'),
+      );
+    },
+  );
+  it('SD-6351 CASE-2 converts border eighth-points and tab twips', () => {
+    const operations = captureParagraphPaintOperations({
+      borders: { bottom: { style: 'single', width: 1.125, space: 2, color: { model: 'rgb', value: 'FF0000' } } },
+      shading: { fill: { model: 'rgb', value: 'FFFF00' } },
+      tabs: [
+        { kind: 'set', alignment: 'right', position: 72, leader: 'dot' },
+        { kind: 'clear', position: 36 },
+      ],
+      keepWithNext: true,
+      keepLines: false,
+      widowControl: true,
+      contextualSpacing: true,
+      outlineLevel: 2,
+    });
+    expect(operations).toContainEqual({
+      operationId: 'format.paragraph.setBorder',
+      input: { side: 'bottom', style: 'single', size: 9, space: 2, color: 'FF0000' },
+    });
+    expect(operations).toContainEqual({
+      operationId: 'format.paragraph.setTabStop',
+      input: { alignment: 'right', position: 1440, leader: 'dot' },
+    });
+    expect(operations).toContainEqual({
+      operationId: 'format.paragraph.setTabStop',
+      input: { alignment: 'clear', position: 720 },
+    });
+    expect(operations).toContainEqual({ operationId: 'format.paragraph.setShading', input: { fill: 'FFFF00' } });
+    expect(operations).toContainEqual({ operationId: 'format.paragraph.setOutlineLevel', input: { outlineLevel: 2 } });
+    expect(operations).toContainEqual({
+      operationId: 'format.paragraph.setKeepOptions',
+      input: { keepNext: true, keepLines: false, widowControl: true },
+    });
+    expect(operations).toContainEqual({
+      operationId: 'format.paragraph.setFlowOptions',
+      input: { contextualSpacing: true, pageBreakBefore: null },
+    });
+  });
+  it('SD-6351 CASE-3 preserves entire unrepresentable groups', () => {
+    const operations = captureParagraphPaintOperations({
+      borders: { bottom: { style: 'single', color: { model: 'theme', theme: 'accent1' } } },
+      shading: { fill: { model: 'theme', theme: 'accent2' } },
+      tabs: [{ position: 72, leader: 'line' }],
+      spacing: { before: 6, beforeLines: 100 },
+    });
+    expect(operations.some((entry) => /Border|Shading|Tab|Spacing/.test(entry.operationId))).toBe(false);
+  });
+  it('SD-6351 CASE-6 distinguishes absence and false and preserves alignment for direction', () => {
+    expect(captureParagraphPaintOperations({})).toContainEqual({
+      operationId: 'format.paragraph.setKeepOptions',
+      input: { keepNext: null, keepLines: null, widowControl: null },
+    });
+    const operations = captureParagraphPaintOperations({
+      bidi: false,
+      pageBreakBefore: false,
+      contextualSpacing: false,
+      keepWithNext: false,
+      widowControl: true,
+    });
+    expect(operations).toContainEqual({
+      operationId: 'format.paragraph.setDirection',
+      input: { direction: 'ltr', alignmentPolicy: 'preserve' },
+    });
+    expect(operations).toContainEqual({
+      operationId: 'format.paragraph.setFlowOptions',
+      input: { contextualSpacing: false, pageBreakBefore: false },
+    });
+  });
+});
+
+it('SD-6351 CASE-3 preserves a complete group when its setter is unavailable', () => {
+  const operations = captureParagraphPaintOperations(
+    {
+      spacing: { before: 6 },
+      shading: { fill: { model: 'rgb', value: 'FFFF00' } },
+    },
+    (operationId: string) => !['format.paragraph.setSpacing', 'format.paragraph.setShading'].includes(operationId),
+  );
+  expect(operations.some((entry) => /Spacing|Shading/.test(entry.operationId))).toBe(false);
+});
+
+it.each([true, false])('SD-6351 CASE-6 prepares direction before physical alignment bidi=%s', (bidi) => {
+  const operations = captureParagraphPaintOperations({ bidi, alignment: 'right' });
+  expect(operations.findIndex((entry) => entry.operationId === 'format.paragraph.setDirection')).toBeLessThan(
+    operations.findIndex((entry) => entry.operationId === 'format.paragraph.setAlignment'),
+  );
+});
+
+describe('SD-6351 read boundary capture', () => {
+  it.each([
+    { firstLine: 6, hanging: 12 },
+    { firstLine: 0, hanging: 12 },
+    { firstLine: 6, hanging: 0 },
+    { firstLine: 0, hanging: 0 },
+    { firstLineChars: 100 },
+    { left: 36, leftChars: 200 },
+  ])('preserves complete unrepresentable indent %o', (indent) => {
+    const operations = captureParagraphPaintOperations({
+      indent,
+      shading: { fill: { model: 'rgb', value: 'FFFF00' } },
+    });
+    expect(operations.some((op) => /Indentation/.test(op.operationId))).toBe(false);
+    expect(operations).toContainEqual({ operationId: 'format.paragraph.setShading', input: { fill: 'FFFF00' } });
+  });
+  it.each(['auto', 'exact', 'atLeast'])('transfers explicit %s line rule without a line', (lineRule) => {
+    for (const before of [undefined, 0, 6]) {
+      const operations = captureParagraphPaintOperations({
+        spacing: { lineRule, ...(before == null ? {} : { before }) },
+      });
+      expect(operations.filter((op) => /Spacing/.test(op.operationId))).toEqual([
+        { operationId: 'format.paragraph.clearSpacing', input: {} },
+        {
+          operationId: 'format.paragraph.setSpacing',
+          input: { lineRule, ...(before == null ? {} : { before: before * 20 }) },
+        },
+      ]);
+    }
+  });
+  it('retains absent-source resets and unavailable whole-group preservation', () => {
+    expect(captureParagraphPaintOperations({})).toEqual(
+      expect.arrayContaining(
+        ['clearIndentation', 'clearSpacing', 'clearAlignment'].map((name) => ({
+          operationId: `format.paragraph.${name}`,
+          input: {},
+        })),
+      ),
+    );
+    expect(
+      captureParagraphPaintOperations(
+        { spacing: { lineRule: 'exact' } },
+        (id) => id !== 'format.paragraph.setSpacing',
+      ).some((op) => /Spacing/.test(op.operationId)),
+    ).toBe(false);
   });
 });

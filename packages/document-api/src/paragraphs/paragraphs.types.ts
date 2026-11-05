@@ -150,9 +150,9 @@ export interface ParagraphsClearSpacingInput {
 /** paragraphs.setKeepOptions */
 export interface ParagraphsSetKeepOptionsInput {
   target: ParagraphTarget;
-  keepNext?: boolean;
-  keepLines?: boolean;
-  widowControl?: boolean;
+  keepNext?: boolean | null;
+  keepLines?: boolean | null;
+  widowControl?: boolean | null;
 }
 
 /** paragraphs.setOutlineLevel */
@@ -164,8 +164,8 @@ export interface ParagraphsSetOutlineLevelInput {
 /** paragraphs.setFlowOptions */
 export interface ParagraphsSetFlowOptionsInput {
   target: ParagraphTarget;
-  contextualSpacing?: boolean;
-  pageBreakBefore?: boolean;
+  contextualSpacing?: boolean | null;
+  pageBreakBefore?: boolean | null;
   suppressAutoHyphens?: boolean;
   /** `w:autoSpaceDE` — auto-space between East-Asian and Latin text. */
   autoSpaceDE?: boolean;
@@ -283,3 +283,54 @@ export interface ParagraphsSetNumberingInput {
   /** Numbering level (`w:ilvl`), 0-8. Defaults to 0 when omitted. */
   level?: number;
 }
+
+export interface ParagraphBatchInputs {
+  'styles.paragraph.setStyleRef': ParagraphsSetStyleRefInput;
+  'styles.paragraph.clearStyle': ParagraphsClearStyleInput;
+  'format.paragraph.setAlignment': ParagraphsSetAlignmentInput;
+  'format.paragraph.clearAlignment': ParagraphsClearAlignmentInput;
+  'format.paragraph.setSpacing': ParagraphsSetSpacingInput;
+  'format.paragraph.clearSpacing': ParagraphsClearSpacingInput;
+  'format.paragraph.setIndentation': ParagraphsSetIndentationInput;
+  'format.paragraph.clearIndentation': ParagraphsClearIndentationInput;
+  'format.paragraph.setKeepOptions': ParagraphsSetKeepOptionsInput;
+  'format.paragraph.setFlowOptions': ParagraphsSetFlowOptionsInput;
+  'format.paragraph.setOutlineLevel': ParagraphsSetOutlineLevelInput;
+  'format.paragraph.setBorder': ParagraphsSetBorderInput;
+  'format.paragraph.clearBorder': ParagraphsClearBorderInput;
+  'format.paragraph.setShading': ParagraphsSetShadingInput;
+  'format.paragraph.clearShading': ParagraphsClearShadingInput;
+  'format.paragraph.setTabStop': ParagraphsSetTabStopInput;
+  'format.paragraph.clearAllTabStops': ParagraphsClearAllTabStopsInput;
+  'format.paragraph.setDirection': ParagraphsSetDirectionInput;
+  'format.paragraph.clearDirection': ParagraphsClearDirectionInput;
+  'format.paragraph.setMarkRunProps': ParagraphsSetMarkRunPropsInput;
+}
+
+export type ParagraphBatchOperation = {
+  [Id in keyof ParagraphBatchInputs]: {
+    operationId: Id;
+    input: keyof Omit<ParagraphBatchInputs[Id], 'target'> extends never
+      ? Record<string, never>
+      : Omit<ParagraphBatchInputs[Id], 'target'>;
+  };
+}[keyof ParagraphBatchInputs];
+
+export interface ParagraphsApplyBatchInput {
+  targets: ParagraphTarget[];
+  operations: ParagraphBatchOperation[];
+}
+
+export type ParagraphBatchMutationResult =
+  | {
+      success: true;
+      resolution: { targets: ParagraphTarget[] };
+      appliedChangeMode?: ChangeMode;
+      trackedChangeRefs?: ReceiptInsert[];
+    }
+  | ParagraphMutationFailure;
+
+export const PARAGRAPH_BATCH_MAX_TARGETS = 1000;
+export const PARAGRAPH_BATCH_MAX_OPERATIONS = 1000;
+export const PARAGRAPH_BATCH_MAX_EXPANDED_WRITES = 32000;
+export const PARAGRAPH_BATCH_MAX_PAYLOAD_BYTES = 1048576;

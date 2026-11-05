@@ -567,6 +567,8 @@ export * from './tables/table-style-presets.js';
 import type {
   ParagraphsAdapter,
   ParagraphFormatApi,
+  ParagraphsApplyBatchInput,
+  ParagraphBatchMutationResult,
   ParagraphStylesApi,
   ParagraphsSetStyleInput,
   ParagraphsSetStyleRefInput,
@@ -595,6 +597,7 @@ import type {
   ParagraphMutationResult,
 } from './paragraphs/paragraphs.js';
 import {
+  executeParagraphsApplyBatch,
   executeParagraphsSetStyle,
   executeParagraphsSetStyleRef,
   executeParagraphsClearStyle,
@@ -1662,6 +1665,19 @@ export type * from './citations/citations.types.js';
 export type * from './authorities/authorities.types.js';
 export type { ListsAdapter } from './lists/lists.js';
 export type { SectionsAdapter } from './sections/sections.js';
+export {
+  validateParagraphsApplyBatchInput,
+  PARAGRAPH_BATCH_OPERATION_IDS,
+  PARAGRAPH_BATCH_MAX_TARGETS,
+  PARAGRAPH_BATCH_MAX_OPERATIONS,
+  PARAGRAPH_BATCH_MAX_EXPANDED_WRITES,
+  PARAGRAPH_BATCH_MAX_PAYLOAD_BYTES,
+} from './paragraphs/paragraphs.js';
+export type {
+  ParagraphsApplyBatchInput,
+  ParagraphBatchOperation,
+  ParagraphBatchMutationResult,
+} from './paragraphs/paragraphs.js';
 export type { ParagraphsAdapter, ParagraphFormatApi, ParagraphStylesApi } from './paragraphs/paragraphs.js';
 export type {
   ParagraphTarget,
@@ -2550,6 +2566,7 @@ const HOOK_GATED_OPERATIONS: ReadonlyArray<{
   // Optional chaining despite the required type: the namespace loop above
   // tolerates a missing adapter, and a JavaScript host can pass one.
 }> = [
+  { operationId: 'format.paragraph.applyBatch', hasHook: (adapters) => !!adapters.paragraphs?.applyBatch },
   { operationId: 'styles.create', hasHook: (a) => typeof a.styles?.create === 'function' },
   { operationId: 'format.readSelection', hasHook: (a) => typeof a.selectionMutation?.readSelection === 'function' },
 ];
@@ -2585,7 +2602,9 @@ function capabilityFailureResult(
       },
     },
   };
-  return operationId === 'templates.apply' ? Promise.resolve(result) : result;
+  return operationId === 'templates.apply' || operationId === 'format.paragraph.applyBatch'
+    ? Promise.resolve(result)
+    : result;
 }
 
 function installCapabilityPreflight(api: DocumentApi, adapter: CapabilitiesAdapter | undefined): void {
@@ -2803,6 +2822,9 @@ export function createDocumentApi(adapters: DocumentApiAdapters): DocumentApi {
         return executeFormatReadSelection(adapters.selectionMutation, input);
       },
       paragraph: {
+        applyBatch(input: ParagraphsApplyBatchInput, options?: MutationOptions): Promise<ParagraphBatchMutationResult> {
+          return executeParagraphsApplyBatch(adapters.paragraphs, input, options);
+        },
         resetDirectFormatting(
           input: ParagraphsResetDirectFormattingInput,
           options?: MutationOptions,

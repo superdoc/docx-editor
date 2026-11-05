@@ -104,6 +104,7 @@ export interface IntentGroupMeta {
 }
 
 export const V1_RUNTIME_UNAVAILABLE_OPERATION_IDS = [
+  'format.paragraph.applyBatch',
   'selection.releaseSnapshot',
   'blocks.split',
   'blocks.merge',
@@ -767,7 +768,7 @@ export const OPERATION_DEFINITIONS = {
     memberPath: 'get',
     description: 'Read the full document as an SDDocument structure.',
     expectedResult:
-      "Returns an SDDocument with body content projected into SDM/1 canonical shapes, plus the document's authored styles, theme (labeled document or fallback), docDefaults, and diagnostics for missing or unreadable style parts.",
+      "Returns an SDDocument with body content projected into SDM/1 canonical shapes, plus the document's authored styles, theme (labeled document or fallback), docDefaults, and diagnostics for missing or unreadable style parts. Paragraph indent *Chars values remain hundredths of a character; numeric distances remain points. Read-model fields do not expand operation-specific authoring support.",
     requiresDocumentContext: true,
     metadata: readOperation({
       idempotency: 'idempotent',
@@ -794,7 +795,8 @@ export const OPERATION_DEFINITIONS = {
   getNode: {
     memberPath: 'getNode',
     description: 'Retrieve a single node by target position.',
-    expectedResult: 'Returns an SDNodeResult envelope with the projected SDM/1 node and canonical address.',
+    expectedResult:
+      'Returns an SDNodeResult envelope with the projected SDM/1 node and canonical address. Paragraph indent *Chars values remain hundredths of a character; numeric distances remain points. Paragraph setters and fragment materialization retain their operation-specific property limits.',
     requiresDocumentContext: true,
     metadata: readOperation({
       idempotency: 'idempotent',
@@ -807,7 +809,8 @@ export const OPERATION_DEFINITIONS = {
     memberPath: 'getNodeById',
     description:
       'Resolve a block ID across the body, linked headers/footers, and supported textboxes, optionally restricted by story. Paragraphs at every table-cell depth and top-level body/header/footer tables are supported; notes, comments, glossary, and nested table containers are excluded.',
-    expectedResult: 'Returns an SDNodeResult envelope with the projected SDM/1 node and canonical address.',
+    expectedResult:
+      'Returns an SDNodeResult envelope with the projected SDM/1 node and canonical address. Paragraph indent *Chars values remain hundredths of a character; numeric distances remain points. Paragraph setters and fragment materialization retain their operation-specific property limits.',
     requiresDocumentContext: true,
     metadata: readOperation({
       idempotency: 'idempotent',
@@ -1797,6 +1800,30 @@ export const OPERATION_DEFINITIONS = {
       throws: T_PARAGRAPH_MUTATION,
     }),
     referenceDocPath: 'format/paragraph/reset-direct-formatting.mdx',
+    referenceGroup: 'format.paragraph',
+  },
+  'format.paragraph.applyBatch': {
+    memberPath: 'format.paragraph.applyBatch',
+    description:
+      'Apply an explicit ordered paragraph action program target-major to 1..1000 unique existing targets in one story, atomically. Accepts 1..1000 closed actions, at most 32000 expanded writer calls and 1048576 JSON bytes, cumulative across batches in an atomic plan. Uses existing writer validation; omitted groups are preserved. No nested plans, per-action targets/options or dry run. Expected revision is consumed once at batch start; live freshness is checked again before publication. Shared sessions support direct identity-preserving writes only.',
+    expectedResult:
+      'Resolves to ParagraphBatchMutationResult with resolution.targets, applied mode and tracked refs when committed, or indexed failure details. An all-no-op batch succeeds without revision, publication or history. Standalone commits once; inside an atomic plan shares its one preparation, publication and Undo/Redo unit.',
+    requiresDocumentContext: true,
+    metadata: mutationOperation({
+      idempotency: 'conditional',
+      supportsDryRun: false,
+      trackedSupport: 'conditional',
+      possibleFailureCodes: [
+        'INVALID_INPUT',
+        'TARGET_NOT_FOUND',
+        'REVISION_MISMATCH',
+        'PERMISSION_DENIED',
+        'CAPABILITY_UNAVAILABLE',
+        'PRECONDITION_FAILED',
+      ],
+      throws: T_PARAGRAPH_MUTATION,
+    }),
+    referenceDocPath: 'format/paragraph/apply-batch.mdx',
     referenceGroup: 'format.paragraph',
   },
   'format.paragraph.setAlignment': {

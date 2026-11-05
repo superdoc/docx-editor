@@ -1,3 +1,11 @@
+import {
+  PARAGRAPH_BATCH_MAX_TARGETS,
+  PARAGRAPH_BATCH_MAX_EXPANDED_WRITES,
+  PARAGRAPH_BATCH_MAX_PAYLOAD_BYTES,
+  type DocumentApiCapabilities,
+  type ParagraphBatchOperation,
+  type SDRunProps,
+} from '@superdoc/document-api';
 import { readViewportBatch } from './viewport-batch.js';
 import { readBuiltInTrackedChangePermissionDecision } from '../../core/collaboration/permissions.js';
 import { beginInteraction, recordInteraction } from '../../internal/diagnostics/interaction-history.js';
@@ -18,6 +26,7 @@ import { beginInteraction, recordInteraction } from '../../internal/diagnostics/
 import { shallowEqual } from './equality.js';
 import { createWatermarkController } from './watermark-controller.js';
 import { buildStyleMatchPatch, STYLE_MATCH_READ_KEYS } from './style-match-patch.js';
+import { captureParagraphPaintOperations } from './format-painter-paragraph.js';
 import { sdRunPropsToInlineRunPatch, selectionKey } from './format-painter-helpers.js';
 import {
   getV2TrackedChangeMutationImpact,
@@ -190,7 +199,6 @@ import {
 import {
   PARAGRAPH_INDENT_STEP_TWIPS,
   buildTableCommandInput,
-  pointsToTwips,
   readMergeRange,
   readParagraphIndentationFromResult,
   type ParagraphIndentationTwips,
@@ -8484,7 +8492,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     // Selecting visible characters alone must not copy paragraph formatting.
     let paragraphSnapshot: FormatPainterParagraphSnapshot | null = null;
     const paragraphSegments = formatPainterParagraphSegments(segments, sourceWholeCells);
-    if (paragraphSegments.length === 1) {
+    if (paragraphSegments.length > 0) {
       const segment = paragraphSegments[0];
       const nodeResult = (await readBlockNode(paragraphTarget(segment.blockId, sourceStory))) as
         | LooseRecord
@@ -8493,6 +8501,17 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       if (node && getParagraphLikeData(node)) {
         paragraphSnapshot = await extractParagraphSnapshot(node, segment.blockId, doc, sourceStory);
       }
+    }
+    if (paragraphSnapshot?.styleId && effectiveInput) {
+      const authored = await readEffectiveInlineUniformityNow({
+        ...effectiveInput,
+        keys: ['fontFamily', 'fontSize'],
+        includeCaret: true,
+        includeDefaultFloor: false,
+      });
+      paragraphSnapshot.inheritedFontKeys = (['fontFamily', 'fontSize'] as const).filter(
+        (key) => authored?.[key]?.state === 'absent',
+      );
     }
 
     return {
@@ -8577,18 +8596,10 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     const para = getParagraphLikeData(node)!;
     const props = (para['props'] as LooseRecord | undefined) ?? {};
     const styleId = (para['styleRef'] as string | null) ?? null;
-    const alignment = (props['alignment'] as FormatPainterParagraphSnapshot['alignment']) ?? null;
-    const spacing = (props['spacing'] as unknown) ?? null;
-    const indent = (props['indent'] as LooseRecord | undefined) ?? null;
-    const indentation = indent
-      ? {
-          ...(indent['left'] != null ? { left: indent['left'] as number } : {}),
-          ...(indent['right'] != null ? { right: indent['right'] as number } : {}),
-          ...(indent['firstLine'] != null ? { firstLine: indent['firstLine'] as number } : {}),
-          ...(indent['hanging'] != null ? { hanging: indent['hanging'] as number } : {}),
-        }
-      : null;
-    const markRunProps = (props['markRunProps'] as unknown) ?? null;
+    const operations = captureParagraphPaintOperations(props, (operationId) =>
+      Boolean(resolveDocOperation(doc, operationId)),
+    );
+    const markRunProps = (props['markRunProps'] as SDRunProps | undefined) ?? null;
 
     const rawNumId = (props['numbering'] as LooseRecord | undefined)?.['numId'];
     const numId = typeof rawNumId === 'string' ? parseInt(rawNumId, 10) : typeof rawNumId === 'number' ? rawNumId : NaN;
@@ -8609,7 +8620,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       }
     }
 
-    return { styleId, alignment, spacing, indentation, markRunProps, numbering, listStyle };
+    return { styleId, operations, markRunProps, numbering, listStyle };
   };
 
   const maybeApply = async (): Promise<void> => {
@@ -8727,12 +8738,19 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     const segments: readonly TextSegment[] = Array.isArray(selTarget?.segments) ? selTarget.segments : [];
     const targetStory = selTarget?.story;
     const inline = { ...snap.inline };
+    const contiguousTextLengths = new Map<string, number>();
     if (!selectionIsEmpty) {
       for (const segment of formatPainterTextSegments(segments)) {
         const result = await readBlockNode(paragraphTarget(segment.blockId, targetStory));
         const node = result?.node as LooseRecord | undefined;
         const para = node ? getParagraphLikeData(node) : null;
         const runs = (Array.isArray(para?.inlines) ? para.inlines : []) as LooseRecord[];
+        if (runs.every((run) => typeof (run.run as LooseRecord | undefined)?.text === 'string')) {
+          contiguousTextLengths.set(
+            segment.blockId,
+            runs.reduce((length, run) => length + ((run.run as LooseRecord).text as string).length, 0),
+          );
+        }
         for (const props of sliceRunProps(runs, segment.range)) {
           for (const key of Object.keys(sdRunPropsToInlineRunPatch(props))) {
             const fontAlias = key === 'rFonts' ? 'fontFamily' : key === 'fontFamily' ? 'rFonts' : null;
@@ -8753,111 +8771,222 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
         return;
     }
 
-    // Explicit OFF overrides inherited marks; null removes target-only values.
-    // A caret target receives paragraph formatting without changing its text.
-    if (!selectionIsEmpty && Object.keys(inline).length > 0) {
-      const inlineOp = resolveDocOperation(doc, 'format.apply');
-      if (inlineOp && selectionTarget) {
-        try {
-          const result = await Promise.resolve(
-            callInlineFormatMutation(
-              'format.apply',
-              inlineOp,
-              { target: selectionTarget, inline },
-              selection,
-              tableCellSelection,
-            ),
+    const entries: Array<{ operationId: string; input: LooseRecord; options?: unknown }> = [];
+    const options = editorMutationOptionsForRoute('format.apply');
+    if (options?.success === false) return;
+    const inlineOptions = {
+      ...options,
+      ...(tableCellSelection || paintedTarget || (selectionTarget as LooseRecord | null)?.coordinateSpace === 'tracked'
+        ? { offsetSpace: 'selection' }
+        : selection.selectionTarget
+          ? { offsetSpace: 'kernel' }
+          : {}),
+      ...(tableCellSelection ? { tableCellSelection } : {}),
+    };
+    const add = (operationId: string, input: LooseRecord, entryOptions: unknown = options) => {
+      entries.push({ operationId, input, ...(entryOptions ? { options: entryOptions } : {}) });
+    };
+    if (
+      !selectionIsEmpty &&
+      Object.keys(inline).length > 0 &&
+      selectionTarget &&
+      resolveDocOperation(doc, 'format.apply')
+    ) {
+      const inheritedFontKeys = snap.paragraph?.inheritedFontKeys ?? [];
+      const styledBlocks = new Set(
+        formatPainterParagraphSegments(segments, Boolean(tableCellSelection)).map((segment) => segment.blockId),
+      );
+      if (inheritedFontKeys.length > 0 && styledBlocks.size > 0 && !tableCellSelection) {
+        const textSegments = formatPainterTextSegments(segments);
+        const original = selectionTarget as LooseRecord;
+        const start = original.start as LooseRecord | undefined;
+        const end = original.end as LooseRecord | undefined;
+        const first = segments[0];
+        const last = segments.at(-1);
+        const canonical =
+          original.kind === 'selection' &&
+          start?.kind === 'text' &&
+          end?.kind === 'text' &&
+          start.blockId === first?.blockId &&
+          start.offset === first?.range.start &&
+          end.blockId === last?.blockId &&
+          end.offset === last?.range.end &&
+          JSON.stringify(original.story ?? null) === JSON.stringify(targetStory ?? null) &&
+          new Set(segments.map((segment) => segment.blockId)).size === segments.length &&
+          segments.every(
+            (segment, index) =>
+              segment.range.start >= 0 &&
+              segment.range.end >= segment.range.start &&
+              (index === 0 || segment.range.start === 0) &&
+              (index === segments.length - 1 || contiguousTextLengths.get(segment.blockId) === segment.range.end),
           );
+        if (canonical) {
+          const styledInline = { ...inline };
+          for (const key of inheritedFontKeys) styledInline[key] = null;
+          const partial = textSegments.at(-1);
+          if (partial && !styledBlocks.has(partial.blockId)) {
+            const marked = textSegments.slice(0, -1);
+            const markedEnd = marked.at(-1);
+            if (markedEnd)
+              add(
+                'format.apply',
+                {
+                  target: { ...original, end: { ...end, blockId: markedEnd.blockId, offset: markedEnd.range.end } },
+                  inline: styledInline,
+                },
+                inlineOptions,
+              );
+            add(
+              'format.apply',
+              {
+                target: { ...original, start: { ...start, blockId: partial.blockId, offset: partial.range.start } },
+                inline,
+              },
+              inlineOptions,
+            );
+          } else {
+            add('format.apply', { target: selectionTarget, inline: styledInline }, inlineOptions);
+          }
+        } else {
+          for (const segment of textSegments) {
+            const segmentInline = { ...inline };
+            if (styledBlocks.has(segment.blockId)) for (const key of inheritedFontKeys) segmentInline[key] = null;
+            add(
+              'format.apply',
+              {
+                target: {
+                  kind: 'selection',
+                  ...(targetStory ? { story: targetStory } : {}),
+                  start: { kind: 'text', blockId: segment.blockId, offset: segment.range.start },
+                  end: { kind: 'text', blockId: segment.blockId, offset: segment.range.end },
+                },
+                inline: segmentInline,
+              },
+              { ...options, offsetSpace: 'kernel' },
+            );
+          }
+        }
+      } else {
+        if (tableCellSelection && styledBlocks.size > 0) for (const key of inheritedFontKeys) inline[key] = null;
+        add('format.apply', { target: selectionTarget, inline }, inlineOptions);
+      }
+    }
+    if (snap.paragraph) {
+      const capabilities = (await resolveDocOperation(doc, 'capabilities.get')?.()) as
+        | DocumentApiCapabilities
+        | undefined;
+      const batchSupported =
+        capabilities?.operations?.['format.paragraph.applyBatch']?.available === true &&
+        Boolean(resolveDocOperation(doc, 'format.paragraph.applyBatch'));
+      const batchTargets: LooseRecord[] = [];
+      const { styleId, operations, markRunProps, numbering, listStyle } = snap.paragraph;
+      const batchOperations: ParagraphBatchOperation[] = [
+        ...(styleId
+          ? [{ operationId: 'styles.paragraph.setStyleRef' as const, input: { styleId } }]
+          : [{ operationId: 'styles.paragraph.clearStyle' as const, input: {} }]),
+        ...operations,
+        ...(markRunProps
+          ? [{ operationId: 'format.paragraph.setMarkRunProps' as const, input: { markRunProps } }]
+          : []),
+      ];
+      for (const segment of formatPainterParagraphSegments(segments, Boolean(tableCellSelection))) {
+        const blockAddress = paragraphTarget(segment.blockId, targetStory);
+        const nodeResult = await readBlockNode(blockAddress);
+        const node = nodeResult?.node as LooseRecord | undefined;
+        const para = node ? getParagraphLikeData(node) : null;
+        if (!para) continue;
+        const target = {
+          ...blockAddress,
+          nodeType: (nodeResult?.address as LooseRecord | undefined)?.nodeType ?? node?.kind ?? 'paragraph',
+        };
+        if (batchSupported) batchTargets.push(target);
+        else {
+          if (styleId) add('styles.paragraph.setStyleRef', { target, styleId });
+          else if (para.styleRef) add('styles.paragraph.clearStyle', { target });
+          for (const operation of operations) add(operation.operationId, { target, ...operation.input });
+          if (markRunProps) add('format.paragraph.setMarkRunProps', { target, markRunProps });
+        }
+        if (numbering) add('format.paragraph.setNumbering', { target, ...numbering });
+        if (listStyle && target.nodeType === 'listItem')
+          add('lists.applyStyle', {
+            target: listItemTarget(segment.blockId, targetStory),
+            style: listStyle,
+          });
+      }
+      if (batchSupported) {
+        if (batchTargets.length * batchOperations.length > PARAGRAPH_BATCH_MAX_EXPANDED_WRITES) {
+          recompute();
+          return;
+        }
+        let payloadBytes = 0;
+        for (let index = 0; index < batchTargets.length; index += PARAGRAPH_BATCH_MAX_TARGETS) {
+          const input = {
+            targets: batchTargets.slice(index, index + PARAGRAPH_BATCH_MAX_TARGETS),
+            operations: batchOperations,
+          };
+          payloadBytes += new TextEncoder().encode(JSON.stringify(input)).length;
+          if (payloadBytes > PARAGRAPH_BATCH_MAX_PAYLOAD_BYTES) {
+            recompute();
+            return;
+          }
+          add('format.paragraph.applyBatch', input);
+        }
+      }
+    }
+    if (
+      disposed ||
+      painter.snapshot !== snap ||
+      getEditor() !== ownerEditor ||
+      ownerEditor?.doc !== ownerDoc ||
+      readDocumentMode() !== ownerMode ||
+      readDocumentMode() === 'viewing'
+    )
+      return;
+    const currentLocks = computeActiveContentControlLockModes(
+      doc.contentControls as LooseRecord | undefined,
+      targetSelection,
+    );
+    if (contentControlLockReason(currentLocks.lockModesById)) return;
+    try {
+      const execute = resolveDocOperation(doc, 'plan.execute');
+      if (entries.length === 1 && entries[0].operationId === 'format.apply') {
+        const apply = resolveDocOperation(doc, 'format.apply');
+        if (!apply) return;
+        const result = await apply(entries[0].input, entries[0].options);
+        if (!commandResultSucceeded(commandResultFromOperationResult(result))) {
+          recompute();
+          return;
+        }
+      } else if (execute) {
+        const result = await execute({ atomic: true, entries });
+        if (!result || (result as LooseRecord).failure || (result as LooseRecord).success === false) {
+          recompute();
+          return;
+        }
+      } else {
+        if (ownerEditor?.editorVersion === 2) return;
+        for (const entry of entries) {
+          const operation = resolveDocOperation(doc, entry.operationId);
+          if (!operation) continue;
+          const result = entry.options ? await operation(entry.input, entry.options) : await operation(entry.input);
           if (!commandResultSucceeded(commandResultFromOperationResult(result))) {
             recompute();
             return;
           }
-        } catch {
-          recompute();
-          return;
         }
       }
+    } catch {
+      recompute();
+      return;
     }
-
-    if (snap.paragraph) {
-      for (const segment of formatPainterParagraphSegments(segments, Boolean(tableCellSelection))) {
-        const blockAddress = paragraphTarget(segment.blockId, targetStory);
-        const nodeResult = (await readBlockNode(blockAddress)) as LooseRecord | undefined;
-        const node = (nodeResult?.['node'] as LooseRecord | undefined) ?? null;
-        const nodeAddress = (nodeResult?.['address'] as LooseRecord | undefined) ?? null;
-        if (!node) continue;
-
-        const nodeType =
-          (nodeAddress?.['nodeType'] as string | undefined) ?? (node['kind'] as string | undefined) ?? 'paragraph';
-        const target = {
-          kind: 'block',
-          nodeType,
-          nodeId: segment.blockId,
-          ...(targetStory && typeof targetStory === 'object' ? { story: targetStory } : {}),
-        };
-        const { styleId, alignment, spacing, indentation, markRunProps, numbering, listStyle } = snap.paragraph;
-
-        const targetProps = getParagraphLikeData(node)?.props as LooseRecord | undefined;
-        if (styleId) await resolveDocOperation(doc, 'styles.paragraph.setStyle')?.({ target, styleId });
-        else if (getParagraphLikeData(node)?.styleRef)
-          await resolveDocOperation(doc, 'styles.paragraph.clearStyle')?.({ target });
-        if (alignment) await resolveDocOperation(doc, 'format.paragraph.setAlignment')?.({ target, alignment });
-        else if (targetProps?.alignment != null)
-          await resolveDocOperation(doc, 'format.paragraph.clearAlignment')?.({ target });
-        // Replace these groups, including fields absent from a nonempty source
-        // group, without resetting unrelated pPr such as borders or section data.
-        if (targetProps?.spacing != null) await resolveDocOperation(doc, 'format.paragraph.clearSpacing')?.({ target });
-        if (targetProps?.indent != null)
-          await resolveDocOperation(doc, 'format.paragraph.clearIndentation')?.({ target });
-        if (spacing) {
-          const sp = spacing as Record<string, unknown>;
-          const rawLr = (sp['lineRule'] as string | undefined) ?? 'auto';
-          // setSpacing only accepts 'auto' | 'exact' | 'atLeast'; 'multiple' (valid on read) maps to 'auto'.
-          const WRITE_LINE_RULES = new Set(['auto', 'exact', 'atLeast']);
-          const lr = WRITE_LINE_RULES.has(rawLr) ? rawLr : 'auto';
-          const rawSpacing = {
-            ...(sp['before'] != null ? { before: Math.round((sp['before'] as number) * 20) } : {}),
-            ...(sp['after'] != null ? { after: Math.round((sp['after'] as number) * 20) } : {}),
-            ...(sp['line'] != null
-              ? {
-                  line: Math.round(lr === 'auto' ? (sp['line'] as number) * 240 : (sp['line'] as number) * 20),
-                  lineRule: lr,
-                }
-              : {}),
-          };
-          await resolveDocOperation(doc, 'format.paragraph.setSpacing')?.({ target, ...rawSpacing });
-        }
-        if (indentation) {
-          const rawIndentation = {
-            ...(indentation.left != null ? { left: pointsToTwips(indentation.left) } : {}),
-            ...(indentation.right != null ? { right: pointsToTwips(indentation.right) } : {}),
-            ...(indentation.firstLine != null ? { firstLine: pointsToTwips(indentation.firstLine) } : {}),
-            ...(indentation.hanging != null ? { hanging: pointsToTwips(indentation.hanging) } : {}),
-          };
-          await resolveDocOperation(doc, 'format.paragraph.setIndentation')?.({ target, ...rawIndentation });
-        }
-        if (markRunProps)
-          await resolveDocOperation(doc, 'format.paragraph.setMarkRunProps')?.({ target, markRunProps });
-        if (numbering) await resolveDocOperation(doc, 'format.paragraph.setNumbering')?.({ target, ...numbering });
-
-        if (listStyle) {
-          const targetNodeResult = (await readBlockNode(blockAddress)) as LooseRecord | undefined;
-          const blockIsListItem =
-            (targetNodeResult?.['address'] as LooseRecord | undefined)?.['nodeType'] === 'listItem';
-          if (blockIsListItem) {
-            await resolveDocOperation(
-              doc,
-              'lists.applyStyle',
-            )?.({
-              target: listItemTarget(segment.blockId, targetStory),
-              style: listStyle,
-            });
-          } else if (numbering) {
-            await resolveDocOperation(doc, 'format.paragraph.setNumbering')?.({ target, ...numbering });
-          }
-        }
-      }
-    }
+    if (
+      disposed ||
+      painter.snapshot !== snap ||
+      getEditor() !== ownerEditor ||
+      ownerEditor?.doc !== ownerDoc ||
+      readDocumentMode() !== ownerMode
+    )
+      return;
 
     if (painter.mode === 'armed') exitFormatPainter();
     recompute();

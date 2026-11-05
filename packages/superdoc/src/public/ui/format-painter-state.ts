@@ -1,11 +1,13 @@
+import type { SDRunProps } from '@superdoc/document-api';
+import type { ParagraphPaintOperation } from './format-painter-paragraph.js';
+
 export type FormatPainterMode = 'idle' | 'armed' | 'persistent';
 
 export interface FormatPainterParagraphSnapshot {
   styleId: string | null;
-  alignment: 'left' | 'right' | 'center' | 'justify' | null;
-  spacing: unknown | null;
-  indentation: { left?: number; right?: number; firstLine?: number; hanging?: number } | null;
-  markRunProps: unknown | null;
+  inheritedFontKeys?: Array<'fontFamily' | 'fontSize'>;
+  operations: ParagraphPaintOperation[];
+  markRunProps: SDRunProps | null;
   numbering: { numId: number; level?: number } | null;
   listStyle: unknown | null;
 }

@@ -12,6 +12,9 @@ import { isRecord } from '../object-guards.js';
 import { validateStoryLocator } from '../validation/story-validator.js';
 import type {
   ParagraphTarget,
+  ParagraphsApplyBatchInput,
+  ParagraphBatchOperation,
+  ParagraphBatchMutationResult,
   ParagraphMutationResult,
   ParagraphsSetStyleInput,
   ParagraphSemanticStyleRole,
@@ -40,6 +43,10 @@ import type {
   ParagraphsSetNumberingInput,
 } from './paragraphs.types.js';
 import {
+  PARAGRAPH_BATCH_MAX_TARGETS,
+  PARAGRAPH_BATCH_MAX_OPERATIONS,
+  PARAGRAPH_BATCH_MAX_EXPANDED_WRITES,
+  PARAGRAPH_BATCH_MAX_PAYLOAD_BYTES,
   PARAGRAPH_ALIGNMENTS,
   TAB_STOP_ALIGNMENTS,
   TAB_STOP_LEADERS,
@@ -61,6 +68,9 @@ function assertNoUnknownParagraphFields(
 // Re-export types
 export type {
   ParagraphTarget,
+  ParagraphsApplyBatchInput,
+  ParagraphBatchOperation,
+  ParagraphBatchMutationResult,
   ParagraphBlockType,
   ParagraphMutationResult,
   ParagraphMutationSuccess,
@@ -101,6 +111,10 @@ export type {
   AlignmentPolicy,
 } from './paragraphs.types.js';
 export {
+  PARAGRAPH_BATCH_MAX_TARGETS,
+  PARAGRAPH_BATCH_MAX_OPERATIONS,
+  PARAGRAPH_BATCH_MAX_EXPANDED_WRITES,
+  PARAGRAPH_BATCH_MAX_PAYLOAD_BYTES,
   PARAGRAPH_ALIGNMENTS,
   TAB_STOP_ALIGNMENTS,
   TAB_STOP_LEADERS,
@@ -116,6 +130,7 @@ export {
 // ---------------------------------------------------------------------------
 
 export interface ParagraphsAdapter {
+  applyBatch?(input: ParagraphsApplyBatchInput, options?: MutationOptions): Promise<ParagraphBatchMutationResult>;
   setStyle(input: ParagraphsSetStyleInput, options?: MutationOptions): ParagraphMutationResult;
   setStyleRef(input: ParagraphsSetStyleRefInput, options?: MutationOptions): ParagraphMutationResult;
   clearStyle(input: ParagraphsClearStyleInput, options?: MutationOptions): ParagraphMutationResult;
@@ -147,6 +162,7 @@ export interface ParagraphsAdapter {
 
 /** Public API surface for `format.paragraph.*`: direct paragraph formatting. */
 export interface ParagraphFormatApi {
+  applyBatch(input: ParagraphsApplyBatchInput, options?: MutationOptions): Promise<ParagraphBatchMutationResult>;
   resetDirectFormatting(
     input: ParagraphsResetDirectFormattingInput,
     options?: MutationOptions,
@@ -555,9 +571,9 @@ function validateSetKeepOptions(input: unknown): asserts input is ParagraphsSetK
   const rec = input as Record<string, unknown>;
   assertNotEmptyPatch(rec, ['keepNext', 'keepLines', 'widowControl'], op);
 
-  if (rec.keepNext !== undefined) assertStrictBoolean(rec.keepNext, 'keepNext', op);
-  if (rec.keepLines !== undefined) assertStrictBoolean(rec.keepLines, 'keepLines', op);
-  if (rec.widowControl !== undefined) assertStrictBoolean(rec.widowControl, 'widowControl', op);
+  if (rec.keepNext != null) assertStrictBoolean(rec.keepNext, 'keepNext', op);
+  if (rec.keepLines != null) assertStrictBoolean(rec.keepLines, 'keepLines', op);
+  if (rec.widowControl != null) assertStrictBoolean(rec.widowControl, 'widowControl', op);
 }
 
 function validateSetOutlineLevel(input: unknown): asserts input is ParagraphsSetOutlineLevelInput {
@@ -603,8 +619,8 @@ function validateSetFlowOptions(input: unknown): asserts input is ParagraphsSetF
     op,
   );
 
-  if (rec.contextualSpacing !== undefined) assertStrictBoolean(rec.contextualSpacing, 'contextualSpacing', op);
-  if (rec.pageBreakBefore !== undefined) assertStrictBoolean(rec.pageBreakBefore, 'pageBreakBefore', op);
+  if (rec.contextualSpacing != null) assertStrictBoolean(rec.contextualSpacing, 'contextualSpacing', op);
+  if (rec.pageBreakBefore != null) assertStrictBoolean(rec.pageBreakBefore, 'pageBreakBefore', op);
   if (rec.suppressAutoHyphens !== undefined) assertStrictBoolean(rec.suppressAutoHyphens, 'suppressAutoHyphens', op);
   if (rec.autoSpaceDE !== undefined) assertStrictBoolean(rec.autoSpaceDE, 'autoSpaceDE', op);
   if (rec.autoSpaceDN !== undefined) assertStrictBoolean(rec.autoSpaceDN, 'autoSpaceDN', op);
@@ -1160,4 +1176,138 @@ export function executeParagraphsSetNumbering(
 ): ParagraphMutationResult {
   validateSetNumbering(input);
   return adapter.setNumbering(input, normalizeMutationOptions(options));
+}
+
+const paragraphBatchValidators: Record<ParagraphBatchOperation['operationId'], (input: unknown) => void> = {
+  'styles.paragraph.setStyleRef': validateSetStyleRef,
+  'styles.paragraph.clearStyle': validateClearStyle,
+  'format.paragraph.setAlignment': validateSetAlignment,
+  'format.paragraph.clearAlignment': validateClearAlignment,
+  'format.paragraph.setSpacing': validateSetSpacing,
+  'format.paragraph.clearSpacing': validateClearSpacing,
+  'format.paragraph.setIndentation': validateSetIndentation,
+  'format.paragraph.clearIndentation': validateClearIndentation,
+  'format.paragraph.setKeepOptions': validateSetKeepOptions,
+  'format.paragraph.setFlowOptions': validateSetFlowOptions,
+  'format.paragraph.setOutlineLevel': validateSetOutlineLevel,
+  'format.paragraph.setBorder': validateSetBorder,
+  'format.paragraph.clearBorder': validateClearBorder,
+  'format.paragraph.setShading': validateSetShading,
+  'format.paragraph.clearShading': validateClearShading,
+  'format.paragraph.setTabStop': validateSetTabStop,
+  'format.paragraph.clearAllTabStops': validateClearAllTabStops,
+  'format.paragraph.setDirection': validateSetDirection,
+  'format.paragraph.clearDirection': validateClearDirection,
+  'format.paragraph.setMarkRunProps': validateSetMarkRunProps,
+};
+
+function isParagraphBatchOperationId(value: unknown): value is ParagraphBatchOperation['operationId'] {
+  return typeof value === 'string' && Object.prototype.hasOwnProperty.call(paragraphBatchValidators, value);
+}
+
+export const PARAGRAPH_BATCH_OPERATION_IDS = Object.keys(paragraphBatchValidators).filter(isParagraphBatchOperationId);
+
+function assertParagraphBatchData(
+  value: unknown,
+  ancestors = new Set<object>(),
+  depth = 0,
+  budget = { units: 0 },
+): void {
+  budget.units += typeof value === 'string' ? value.length : 1;
+  if (budget.units > PARAGRAPH_BATCH_MAX_PAYLOAD_BYTES)
+    throw new DocumentApiValidationError('INVALID_INPUT', 'Paragraph batch payloads accept at most 1048576 bytes.');
+  if (
+    value === null ||
+    typeof value === 'string' ||
+    typeof value === 'boolean' ||
+    (typeof value === 'number' && Number.isFinite(value))
+  )
+    return;
+  if (
+    typeof value !== 'object' ||
+    depth > 64 ||
+    ancestors.has(value) ||
+    (!Array.isArray(value) && Object.getPrototypeOf(value) !== Object.prototype)
+  ) {
+    throw new DocumentApiValidationError('INVALID_INPUT', 'Paragraph batches require finite, acyclic JSON data.');
+  }
+  ancestors.add(value);
+  for (const [key, child] of Object.entries(value)) {
+    budget.units += key.length;
+    assertParagraphBatchData(child, ancestors, depth + 1, budget);
+  }
+  ancestors.delete(value);
+}
+
+export function validateParagraphsApplyBatchInput(input: unknown): asserts input is ParagraphsApplyBatchInput {
+  const op = 'format.paragraph.applyBatch';
+  if (!isRecord(input)) throw new DocumentApiValidationError('INVALID_INPUT', `${op} input must be an object.`);
+  assertNoUnknownParagraphFields(input, new Set(['targets', 'operations']), op);
+  if (
+    !Array.isArray(input.targets) ||
+    input.targets.length < 1 ||
+    input.targets.length > PARAGRAPH_BATCH_MAX_TARGETS ||
+    !Array.isArray(input.operations) ||
+    input.operations.length < 1 ||
+    input.operations.length > PARAGRAPH_BATCH_MAX_OPERATIONS ||
+    input.targets.length * input.operations.length > PARAGRAPH_BATCH_MAX_EXPANDED_WRITES
+  ) {
+    throw new DocumentApiValidationError(
+      'INVALID_INPUT',
+      'Paragraph batches accept 1..1000 targets, 1..1000 operations, and at most 32000 expanded writes.',
+    );
+  }
+  assertParagraphBatchData(input);
+  if (new TextEncoder().encode(JSON.stringify(input)).length > PARAGRAPH_BATCH_MAX_PAYLOAD_BYTES) {
+    throw new DocumentApiValidationError('INVALID_INPUT', 'Paragraph batch payloads accept at most 1048576 bytes.');
+  }
+  for (const target of input.targets) {
+    assertParagraphTarget({ target }, op);
+    assertNoUnknownParagraphFields(target, new Set(['kind', 'nodeType', 'nodeId', 'story']), op);
+  }
+  const identities = new Set(input.targets.map((target) => JSON.stringify([target.story ?? null, target.nodeId])));
+  if (identities.size !== input.targets.length)
+    throw new DocumentApiValidationError('INVALID_INPUT', 'Paragraph batch targets must be unique.');
+  for (const operation of input.operations) {
+    if (!isRecord(operation) || !isParagraphBatchOperationId(operation.operationId) || !isRecord(operation.input)) {
+      throw new DocumentApiValidationError(
+        'INVALID_INPUT',
+        'Paragraph batches require a supported closed paragraph action.',
+      );
+    }
+    assertNoUnknownParagraphFields(operation, new Set(['operationId', 'input']), op);
+    if (Object.prototype.hasOwnProperty.call(operation.input, 'target'))
+      throw new DocumentApiValidationError('INVALID_INPUT', 'Paragraph batch actions cannot supply a target.');
+    const validate = paragraphBatchValidators[operation.operationId];
+    for (const target of input.targets) validate({ ...operation.input, target });
+  }
+}
+
+export async function executeParagraphsApplyBatch(
+  adapter: ParagraphsAdapter,
+  input: ParagraphsApplyBatchInput,
+  options?: MutationOptions,
+): Promise<ParagraphBatchMutationResult> {
+  validateParagraphsApplyBatchInput(input);
+  if (options !== undefined) {
+    if (!isRecord(options))
+      throw new DocumentApiValidationError('INVALID_INPUT', 'Paragraph batch options must be an object.');
+    assertNoUnknownParagraphFields(
+      options,
+      new Set(['changeMode', 'expectedRevision', 'dryRun', 'changeTag']),
+      'format.paragraph.applyBatch',
+    );
+    if (options.dryRun !== undefined) assertStrictBoolean(options.dryRun, 'dryRun', 'format.paragraph.applyBatch');
+  }
+  const normalized = normalizeMutationOptions(options);
+  if (normalized.dryRun)
+    throw new DocumentApiValidationError('CAPABILITY_UNAVAILABLE', 'Paragraph batches do not support dry run.');
+  if (!adapter.applyBatch)
+    return {
+      success: false,
+      failure: { code: 'CAPABILITY_UNAVAILABLE', message: 'Paragraph batching is unavailable on this host.' },
+    };
+  const snapshot: unknown = JSON.parse(JSON.stringify(input));
+  validateParagraphsApplyBatchInput(snapshot);
+  return adapter.applyBatch(snapshot, normalized);
 }

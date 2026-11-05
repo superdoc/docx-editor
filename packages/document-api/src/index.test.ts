@@ -1738,6 +1738,27 @@ describe('createDocumentApi', () => {
       } as unknown as DocumentApiAdapters);
     }
 
+    it('masks the optional paragraph batch hook and preserves the asynchronous refusal shape', async () => {
+      const api = createDocumentApi({
+        capabilities: makeCapabilitiesAdapter({
+          operations: {
+            'format.paragraph.applyBatch': { available: true, tracked: false, dryRun: false },
+          } as unknown as DocumentApiCapabilities['operations'],
+        }),
+        paragraphs: {},
+      } as unknown as DocumentApiAdapters);
+      expect(api.capabilities().operations['format.paragraph.applyBatch']).toMatchObject({
+        available: false,
+        reasons: ['OPERATION_UNAVAILABLE'],
+      });
+      const result = api.format.paragraph.applyBatch({
+        targets: [{ kind: 'block', nodeType: 'paragraph', nodeId: 'p1' }],
+        operations: [{ operationId: 'format.paragraph.clearSpacing', input: {} }],
+      });
+      expect(result).toBeInstanceOf(Promise);
+      expect(await result).toMatchObject({ success: false, failure: { code: 'CAPABILITY_UNAVAILABLE' } });
+    });
+
     it('masks format.readSelection when its optional adapter hook is absent', async () => {
       const api = createDocumentApi({
         capabilities: makeCapabilitiesAdapter({

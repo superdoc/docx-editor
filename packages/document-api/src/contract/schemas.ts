@@ -9,6 +9,11 @@ import { TABLE_COLOR_PATTERN_SOURCE } from '../tables/color-formats.js';
 import { TABLE_PRESET_IDS, TABLE_PRESET_LIST_MAX_LIMIT } from '../tables/table-style-presets.js';
 import { INLINE_DIRECTIVES } from '../types/style-policy.types.js';
 import {
+  PARAGRAPH_BATCH_OPERATION_IDS,
+  PARAGRAPH_BATCH_MAX_TARGETS,
+  PARAGRAPH_BATCH_MAX_OPERATIONS,
+  PARAGRAPH_BATCH_MAX_EXPANDED_WRITES,
+  PARAGRAPH_BATCH_MAX_PAYLOAD_BYTES,
   PARAGRAPH_ALIGNMENTS,
   TAB_STOP_ALIGNMENTS,
   TAB_STOP_LEADERS,
@@ -41,7 +46,13 @@ import {
   SD_PROJECTION_STATUSES,
 } from '../types/content-projection.js';
 import { SD_CONVERSION_FRAGMENT_SCHEMA, SD_CONVERSION_FRAGMENT_SCHEMA_DEFS } from './sd-fragment-schema.js';
-type JsonSchema = Record<string, unknown>;
+type JsonSchema = {
+  [key: string]: unknown;
+  properties?: Record<string, JsonSchema>;
+  required?: readonly string[];
+  anyOf?: JsonSchema[];
+  oneOf?: JsonSchema[];
+};
 const customNumberingFormatInputSchema: JsonSchema = {
   type: 'string',
   minLength: 1,
@@ -2265,6 +2276,15 @@ const paragraphMutationSuccessSchema = objectSchema(
     trackedChangeRefs: arraySchema(trackChangeRefSchema),
   },
   ['success', 'target', 'resolution'],
+);
+const paragraphBatchMutationSuccessSchema = objectSchema(
+  {
+    success: { const: true },
+    resolution: objectSchema({ targets: arraySchema(paragraphTargetSchema) }, ['targets']),
+    appliedChangeMode: { enum: ['direct', 'tracked'] },
+    trackedChangeRefs: arraySchema(trackChangeRefSchema),
+  },
+  ['success', 'resolution'],
 );
 function paragraphMutationFailureSchemaFor(operationId: OperationId): JsonSchema {
   return objectSchema(
@@ -5994,6 +6014,14 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
     success: paragraphMutationSuccessSchema,
     failure: paragraphMutationFailureSchemaFor('format.paragraph.resetDirectFormatting'),
   },
+  'format.paragraph.applyBatch': {
+    input: {},
+    output: {
+      oneOf: [paragraphBatchMutationSuccessSchema, paragraphMutationFailureSchemaFor('format.paragraph.applyBatch')],
+    },
+    success: paragraphBatchMutationSuccessSchema,
+    failure: paragraphMutationFailureSchemaFor('format.paragraph.applyBatch'),
+  },
   'format.paragraph.setAlignment': {
     input: objectSchema(
       {
@@ -6087,9 +6115,9 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
       ...objectSchema(
         {
           target: paragraphTargetSchema,
-          keepNext: { type: 'boolean' },
-          keepLines: { type: 'boolean' },
-          widowControl: { type: 'boolean' },
+          keepNext: { oneOf: [{ type: 'boolean' }, { type: 'null' }] },
+          keepLines: { oneOf: [{ type: 'boolean' }, { type: 'null' }] },
+          widowControl: { oneOf: [{ type: 'boolean' }, { type: 'null' }] },
         },
         ['target'],
       ),
@@ -6120,8 +6148,8 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
       ...objectSchema(
         {
           target: paragraphTargetSchema,
-          contextualSpacing: { type: 'boolean' },
-          pageBreakBefore: { type: 'boolean' },
+          contextualSpacing: { oneOf: [{ type: 'boolean' }, { type: 'null' }] },
+          pageBreakBefore: { oneOf: [{ type: 'boolean' }, { type: 'null' }] },
           suppressAutoHyphens: { type: 'boolean' },
           autoSpaceDE: { type: 'boolean' },
           autoSpaceDN: { type: 'boolean' },
@@ -11944,6 +11972,52 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
 export function buildInternalContractSchemas(): InternalContractSchemas {
   // Cast is safe: the runtime loops below verify completeness against OPERATION_IDS.
   const operations = { ...operationSchemas } as unknown as Record<OperationId, OperationSchemaSet>;
+  operations['format.paragraph.applyBatch'].input = objectSchema(
+    {
+      targets: {
+        ...arraySchema(paragraphTargetSchema),
+        minItems: 1,
+        maxItems: PARAGRAPH_BATCH_MAX_TARGETS,
+        uniqueItems: true,
+      },
+      operations: {
+        type: 'array',
+        minItems: 1,
+        maxItems: PARAGRAPH_BATCH_MAX_OPERATIONS,
+        items: {
+          oneOf: PARAGRAPH_BATCH_OPERATION_IDS.map((operationId) => {
+            const input = operations[operationId].input;
+            const properties = Object.fromEntries(
+              Object.entries(input.properties ?? {}).filter(([key]) => key !== 'target'),
+            );
+            const actionInput: JsonSchema = {
+              ...input,
+              properties,
+              required: (input.required ?? []).filter((key) => key !== 'target'),
+            };
+            const nonemptyOptions = operationId === 'format.paragraph.setShading' ? input.oneOf : input.anyOf;
+            if (nonemptyOptions) {
+              actionInput.anyOf = nonemptyOptions.map((option) => ({
+                ...option,
+                required: (option.required ?? []).filter((key) => key !== 'target'),
+              }));
+            }
+            if (operationId === 'format.paragraph.setShading') delete actionInput.oneOf;
+            return objectSchema(
+              {
+                operationId: { const: operationId },
+                input: actionInput,
+              },
+              ['operationId', 'input'],
+            );
+          }),
+        },
+      },
+    },
+    ['targets', 'operations'],
+  );
+  operations['format.paragraph.applyBatch'].input.description =
+    `At most ${PARAGRAPH_BATCH_MAX_EXPANDED_WRITES} expanded writes and ${PARAGRAPH_BATCH_MAX_PAYLOAD_BYTES} JSON bytes, cumulative per atomic plan; targets must resolve to unique nodes in one existing story. No dry run.`;
   for (const operationId of OPERATION_IDS) {
     if (!operations[operationId]) {
       throw new Error(`Schema generation missing operation "${operationId}".`);

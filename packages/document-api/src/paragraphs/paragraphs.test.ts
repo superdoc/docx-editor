@@ -9,8 +9,10 @@ import type {
   ParagraphsSetTabStopInput,
 } from './paragraphs.js';
 import {
+  executeParagraphsApplyBatch,
   executeParagraphsClearTabStop,
   executeParagraphsSetFlowOptions,
+  executeParagraphsSetKeepOptions,
   executeParagraphsSetIndentation,
   executeParagraphsSetMarkRunProps,
   executeParagraphsSetNumbering,
@@ -345,5 +347,81 @@ describe('executeParagraphsSetMarkRunProps', () => {
         },
       }),
     ).toThrow(DocumentApiValidationError);
+  });
+});
+
+it('SD-6351 CASE-3 accepts nullable keep and flow resets without accepting null on unrelated flags', () => {
+  const adapter = makeAdapter();
+  expect(
+    executeParagraphsSetKeepOptions(adapter, {
+      target: makeTarget(),
+      keepNext: null,
+      keepLines: false,
+      widowControl: null,
+    }).success,
+  ).toBe(true);
+  expect(adapter.setKeepOptions).toHaveBeenCalledWith(
+    { target: makeTarget(), keepNext: null, keepLines: false, widowControl: null },
+    expect.objectContaining({ changeMode: 'direct' }),
+  );
+  expect(
+    executeParagraphsSetFlowOptions(adapter, { target: makeTarget(), contextualSpacing: null, pageBreakBefore: null })
+      .success,
+  ).toBe(true);
+  expect(() =>
+    executeParagraphsSetFlowOptions(adapter, { target: makeTarget(), suppressAutoHyphens: null } as never),
+  ).toThrow(DocumentApiValidationError);
+});
+
+describe('explicit paragraph action batch validation', () => {
+  it('delegates a validated closed program and refuses unsupported adapters', async () => {
+    const input = {
+      targets: [makeTarget()],
+      operations: [{ operationId: 'format.paragraph.setSpacing' as const, input: { before: 120 } }],
+    };
+    expect(await executeParagraphsApplyBatch(makeAdapter(), input)).toMatchObject({
+      success: false,
+      failure: { code: 'CAPABILITY_UNAVAILABLE' },
+    });
+    const applyBatch = mock(async () => ({ success: true as const, resolution: { targets: input.targets } }));
+    expect(await executeParagraphsApplyBatch({ ...makeAdapter(), applyBatch }, input)).toEqual({
+      success: true,
+      resolution: { targets: input.targets },
+    });
+    expect(applyBatch).toHaveBeenCalledWith(input, {
+      changeMode: 'direct',
+      dryRun: false,
+      expectedRevision: undefined,
+    });
+  });
+  it('rejects unknown, nested, duplicate, nonfinite, per-action target/options and extra fields before delegation', async () => {
+    const valid = {
+      targets: [makeTarget()],
+      operations: [{ operationId: 'format.paragraph.clearSpacing', input: {} }],
+    };
+    for (const input of [
+      { ...valid, extra: true },
+      { ...valid, targets: [] },
+      { ...valid, targets: [makeTarget(), { ...makeTarget(), nodeType: 'heading' }] },
+      { ...valid, operations: [] },
+      { ...valid, operations: [{ operationId: 'plan.execute', input: { entries: [] } }] },
+      { ...valid, operations: [{ operationId: 'format.apply', input: { inline: { bold: true } } }] },
+      { ...valid, operations: [{ operationId: 'format.paragraph.clearSpacing', input: { target: makeTarget() } }] },
+      { ...valid, operations: [{ operationId: 'format.paragraph.clearSpacing', input: {}, options: {} }] },
+      { ...valid, operations: [{ operationId: 'format.paragraph.setSpacing', input: { before: NaN } }] },
+      {
+        ...valid,
+        operations: [{ operationId: 'format.paragraph.setSpacing', input: { before: 1, addToHistory: false } }],
+      },
+    ]) {
+      await expect(executeParagraphsApplyBatch(makeAdapter(), input as never)).rejects.toBeInstanceOf(
+        DocumentApiValidationError,
+      );
+    }
+    for (const options of [{ dryRun: true }, { author: { name: 'X' } }, { addToHistory: false }, { dryRun: 1 }]) {
+      await expect(executeParagraphsApplyBatch(makeAdapter(), valid as never, options as never)).rejects.toBeInstanceOf(
+        DocumentApiValidationError,
+      );
+    }
   });
 });

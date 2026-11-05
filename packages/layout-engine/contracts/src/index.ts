@@ -37,6 +37,7 @@ export {
 } from './engines/tables.js';
 
 export { effectiveTableCellSpacing } from './table-cell-spacing.js';
+export { isTableCellVectorOverlay } from './table-cell-vector-overlay.js';
 
 export {
   createHeaderFooterResolutionIndex,

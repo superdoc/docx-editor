@@ -27,6 +27,7 @@ import type {
 } from '@superdoc/contracts';
 import {
   effectiveTableCellSpacing,
+  isTableCellVectorOverlay,
   rescaleColumnWidths,
   normalizeZIndex,
   resolveFloatingZIndex,
@@ -1325,6 +1326,7 @@ export function* renderTableCellWork(deps: TableCellRenderDependencies): RenderW
     );
 
     const wrapExclusions: WrapExclusion[] = [];
+    const anchoredElements: Array<{ element: HTMLElement; isVectorOverlay: boolean }> = [];
     for (const entry of anchoredBlocks) {
       const anchoredBlock = entry.block;
       const anchoredMeasure = entry.measure;
@@ -1424,8 +1426,9 @@ export function* renderTableCellWork(deps: TableCellRenderDependencies): RenderW
             buildImageHyperlinkAnchor: buildTableImageHyperlinkAnchor,
           }),
         );
-        content.appendChild(imageWrapper);
+        anchoredElements.push({ element: imageWrapper, isVectorOverlay: false });
       } else {
+        const isVectorOverlay = !verticalText && isTableCellVectorOverlay(anchoredBlock);
         const drawingWrapper = doc.createElement('div');
         drawingWrapper.style.position = 'absolute';
         drawingWrapper.style.left = `${left}px`;
@@ -1445,7 +1448,7 @@ export function* renderTableCellWork(deps: TableCellRenderDependencies): RenderW
         drawingInner.style.display = 'flex';
         drawingInner.style.alignItems = 'center';
         drawingInner.style.justifyContent = 'center';
-        drawingInner.style.overflow = 'hidden';
+        drawingInner.style.overflow = isVectorOverlay ? 'visible' : 'hidden';
 
         if (anchoredBlock.drawingKind === 'image' && 'src' in anchoredBlock && anchoredBlock.src) {
           drawingInner.appendChild(
@@ -1466,6 +1469,7 @@ export function* renderTableCellWork(deps: TableCellRenderDependencies): RenderW
           );
           drawingContent.style.width = '100%';
           drawingContent.style.height = '100%';
+          if (isVectorOverlay) drawingContent.style.overflow = 'visible';
           drawingInner.appendChild(drawingContent);
         } else {
           const placeholder = doc.createElement('div');
@@ -1482,8 +1486,45 @@ export function* renderTableCellWork(deps: TableCellRenderDependencies): RenderW
         }
 
         drawingWrapper.appendChild(drawingInner);
-        content.appendChild(drawingWrapper);
+        anchoredElements.push({ element: drawingWrapper, isVectorOverlay });
       }
+    }
+
+    if (anchoredElements.some(({ isVectorOverlay }) => isVectorOverlay)) {
+      const flowContent = doc.importNode(content, false);
+      flowContent.style.zIndex = '';
+      flowContent.style.transform = '';
+      flowContent.style.transformOrigin = '';
+      flowContent.append(...Array.from(content.childNodes));
+      const flowViewport = doc.createElement('div');
+      flowViewport.className = 'superdoc-table-cell-flow-viewport';
+      flowViewport.style.position = 'absolute';
+      flowViewport.style.left = `${-paddingLeft}px`;
+      flowViewport.style.top = `${-paddingTop}px`;
+      flowViewport.style.width = `calc(100% + ${paddingLeft + paddingRight}px)`;
+      flowViewport.style.height = `calc(100% + ${paddingTop + paddingBottom}px)`;
+      flowViewport.style.padding = `${paddingTop}px ${paddingRight}px ${paddingBottom}px ${paddingLeft}px`;
+      flowViewport.style.boxSizing = 'border-box';
+      flowViewport.style.overflow = cellEl.style.overflow;
+      flowViewport.appendChild(flowContent);
+      content.appendChild(flowViewport);
+      for (const { element, isVectorOverlay } of anchoredElements) {
+        if (isVectorOverlay) {
+          content.appendChild(element);
+        } else {
+          const anchorViewport = doc.importNode(flowViewport, false);
+          anchorViewport.className = 'superdoc-table-cell-anchor-viewport';
+          anchorViewport.style.pointerEvents = 'none';
+          element.style.pointerEvents ||= 'auto';
+          const anchorContent = doc.importNode(flowContent, false);
+          anchorContent.appendChild(element);
+          anchorViewport.appendChild(anchorContent);
+          content.appendChild(anchorViewport);
+        }
+      }
+      cellEl.style.overflow = 'visible';
+    } else {
+      content.append(...anchoredElements.map(({ element }) => element));
     }
 
     // Apply wrapSquare exclusions after all blocks are rendered and anchored positions are known.

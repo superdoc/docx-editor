@@ -77,6 +77,7 @@ import {
   type TableBorderValue,
   EMPTY_SDT_PLACEHOLDER_TEXT,
   effectiveTableCellSpacing,
+  isTableCellVectorOverlay,
   expandRunsForInlineNewlines,
   isEmptySdtPlaceholderRun,
   isShapeTextBaselineWarp,
@@ -5403,7 +5404,7 @@ async function measureTableBlock(
         // Anchored/floating objects inside table cells do not contribute to cell height.
         if (isAnchoredOutOfFlow) {
           const anchoredBlock = block as ImageBlock | DrawingBlock;
-          if (anchoredBlock.anchor?.layoutInCell === true) {
+          if (anchoredBlock.anchor?.layoutInCell === true && !isTableCellVectorOverlay(anchoredBlock)) {
             layoutInCellAnchors.push({ block: anchoredBlock, height: blockHeight });
           }
           continue;

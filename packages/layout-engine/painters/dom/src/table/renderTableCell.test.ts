@@ -101,6 +101,257 @@ describe('renderTableCell', () => {
     },
   });
 
+  it.each(['top', 'center', 'bottom'] as const)(
+    'SD-6124 unclips vector ink while retaining an ordinary flow viewport aligned %s',
+    (verticalAlign) => {
+      const drawing: DrawingBlock = {
+        kind: 'drawing',
+        id: 'overlay',
+        drawingKind: 'vectorShape',
+        shapeKind: 'line',
+        geometry: { width: 5, height: 166, rotation: 0 },
+        anchor: { isAnchored: true, layoutInCell: true, offsetV: -75, offsetH: 12, vRelativeFrom: 'paragraph' },
+        wrap: { type: 'None' },
+        attrs: { anchorParagraphId: paragraphBlock.id },
+      };
+      const result = renderTableCell({
+        ...createBaseDeps(),
+        rowHeight: 50,
+        isRtl: true,
+        cell: {
+          ...baseCell,
+          blocks: [paragraphBlock, drawing],
+          attrs: {
+            verticalAlign,
+            padding: { top: 3, bottom: 7, left: 5, right: 9 },
+          },
+        },
+        cellMeasure: {
+          ...baseCellMeasure,
+          height: 30,
+          blocks: [paragraphMeasure, { kind: 'drawing', width: 5, height: 166 }],
+        },
+        renderLine: () => {
+          const line = doc.createElement('div');
+          line.textContent = 'Clipped flow';
+          return line;
+        },
+        renderDrawingContent: () => {
+          const shape = doc.createElement('div');
+          shape.className = 'shape';
+          shape.style.overflow = 'hidden';
+          return shape;
+        },
+      });
+      expect(result.cellElement.style.overflow).toBe('visible');
+      expect(result.cellElement.style.paddingLeft).toBe('9px');
+      const drawingElement = result.cellElement.querySelector<HTMLElement>('[data-block-id="overlay"]')!;
+      expect(drawingElement.style.left).toBe('12px');
+      expect(drawingElement.style.top).toBe(
+        `${-75 + (verticalAlign === 'center' ? 10 : verticalAlign === 'bottom' ? 20 : 0)}px`,
+      );
+      expect(drawingElement.querySelector<HTMLElement>('.superdoc-table-drawing')!.style.overflow).toBe('visible');
+      expect(drawingElement.querySelector<HTMLElement>('.shape')!.style.overflow).toBe('visible');
+      const flowViewport = result.cellElement.querySelector<HTMLElement>('.superdoc-table-cell-flow-viewport')!;
+      expect(flowViewport.style.overflow).toBe('hidden');
+      expect(flowViewport.textContent).toBe('Clipped flow');
+      expect(flowViewport.contains(drawingElement)).toBe(false);
+    },
+  );
+
+  it.each([false, true])('SD-6124 keeps a positive filled rectangle clipped with decorative line=%s', (hasLine) => {
+    const rectangle: DrawingBlock = {
+      kind: 'drawing',
+      id: 'rectangle',
+      drawingKind: 'vectorShape',
+      shapeKind: 'rect',
+      fillColor: '#0060FF',
+      geometry: { width: 192, height: 48 },
+      anchor: { isAnchored: true, layoutInCell: true, vRelativeFrom: 'paragraph', offsetV: 27 },
+      wrap: { type: 'None' },
+      attrs: { anchorParagraphId: paragraphBlock.id },
+    };
+    const line: DrawingBlock = {
+      ...rectangle,
+      id: 'line',
+      shapeKind: 'line',
+      anchor: { ...rectangle.anchor, offsetV: -75 },
+    };
+    const { cellElement } = renderTableCell({
+      ...createBaseDeps(),
+      cell: { ...baseCell, blocks: [paragraphBlock, rectangle, ...(hasLine ? [line] : [])] },
+      cellMeasure: {
+        ...baseCellMeasure,
+        blocks: [
+          paragraphMeasure,
+          { kind: 'drawing', width: 192, height: 48 },
+          ...(hasLine ? [{ kind: 'drawing' as const, width: 192, height: 48 }] : []),
+        ],
+      },
+      renderDrawingContent: () => doc.createElement('div'),
+    });
+    const element = cellElement.querySelector<HTMLElement>('[data-block-id="rectangle"]')!;
+    expect(element.querySelector<HTMLElement>('.superdoc-table-drawing')!.style.overflow).toBe('hidden');
+    expect(element.parentElement!.closest<HTMLElement>('[style*="overflow: hidden"]')).not.toBeNull();
+    expect(cellElement.querySelector('.superdoc-table-cell-flow-viewport') !== null).toBe(hasLine);
+  });
+
+  for (const direction of ['btLr', 'tbRl'] as const) {
+    it.each([false, true])(
+      `SD-6124 retains physical clipping for ${direction} with asymmetric padding and vector=%s`,
+      (hasVector) => {
+        const vector: DrawingBlock = {
+          kind: 'drawing',
+          id: 'vertical-vector',
+          drawingKind: 'vectorShape',
+          shapeKind: 'line',
+          geometry: { width: 40, height: 40 },
+          anchor: { isAnchored: true, layoutInCell: true, vRelativeFrom: 'paragraph', offsetV: -75 },
+          wrap: { type: 'None' },
+          attrs: { anchorParagraphId: paragraphBlock.id },
+        };
+        const { cellElement } = renderTableCell({
+          ...createBaseDeps(),
+          rowHeight: 80,
+          cell: {
+            ...baseCell,
+            blocks: hasVector ? [paragraphBlock, vector] : [paragraphBlock],
+            attrs: { padding: { left: 13, right: 3, top: 7, bottom: 19 } },
+          },
+          cellMeasure: {
+            ...baseCellMeasure,
+            width: 120,
+            height: 200,
+            verticalText: { direction, inlineSize: 54, blockSize: 104 },
+            blocks: hasVector ? [paragraphMeasure, { kind: 'drawing', width: 40, height: 40 }] : [paragraphMeasure],
+          },
+          renderDrawingContent: () => doc.createElement('div'),
+        });
+        expect(cellElement.style.overflow).toBe('hidden');
+        expect(cellElement.querySelector('.superdoc-table-cell-flow-viewport')).toBeNull();
+        const content = cellElement.firstElementChild as HTMLElement;
+        expect(content.style.width).toBe('54px');
+        expect(content.style.height).toBe('104px');
+        expect(content.style.transform).toBe(
+          direction === 'btLr' ? 'translate(0, 54px) rotate(-90deg)' : 'translate(104px, 0) rotate(90deg)',
+        );
+        const drawing = cellElement.querySelector<HTMLElement>('.superdoc-table-drawing');
+        if (hasVector) expect(drawing!.style.overflow).toBe('hidden');
+        else expect(drawing).toBeNull();
+      },
+    );
+  }
+
+  for (const otherKind of ['raster', 'text-bearing drawing'] as const) {
+    for (const vectorFirst of [true, false]) {
+      it.each([
+        { vectorZ: 1, otherZ: 1, vectorBehind: false, otherBehind: false },
+        { vectorZ: 3, otherZ: 1, vectorBehind: false, otherBehind: false },
+        { vectorZ: 1, otherZ: 3, vectorBehind: false, otherBehind: false },
+        { vectorZ: 1, otherZ: 1, vectorBehind: true, otherBehind: true },
+        { vectorZ: 3, otherZ: 1, vectorBehind: true, otherBehind: false },
+        { vectorZ: 1, otherZ: 3, vectorBehind: false, otherBehind: true },
+      ])(`SD-6124 preserves anchor source order with ${otherKind}, vectorFirst=${vectorFirst}, %j`, (layers) => {
+        const vector: DrawingBlock = {
+          kind: 'drawing',
+          id: 'vector',
+          drawingKind: 'vectorShape',
+          shapeKind: 'line',
+          geometry: { width: 40, height: 40 },
+          anchor: { isAnchored: true, offsetV: 20, offsetH: 20, behindDoc: layers.vectorBehind },
+          wrap: { type: 'None' },
+          zIndex: layers.vectorZ,
+        };
+        const other: ImageBlock | DrawingBlock =
+          otherKind === 'raster'
+            ? {
+                kind: 'image',
+                id: 'other',
+                src: 'data:image/png;base64,iVBORw0KGgo=',
+                width: 40,
+                height: 40,
+                anchor: { ...vector.anchor, behindDoc: layers.otherBehind },
+                wrap: { type: 'None' },
+                zIndex: layers.otherZ,
+              }
+            : {
+                ...vector,
+                id: 'other',
+                anchor: { ...vector.anchor, behindDoc: layers.otherBehind },
+                zIndex: layers.otherZ,
+                textContent: { parts: [{ text: 'Shape text' }] },
+              };
+        const objects = vectorFirst ? [vector, other] : [other, vector];
+        const { cellElement } = renderTableCell({
+          ...createBaseDeps(),
+          cell: { ...baseCell, blocks: [paragraphBlock, ...objects] },
+          cellMeasure: {
+            ...baseCellMeasure,
+            blocks: [paragraphMeasure, ...objects.map((block) => ({ kind: block.kind, width: 40, height: 40 }))],
+          },
+        });
+        const wrappers = objects.map((block) =>
+          cellElement.querySelector<HTMLElement>(`[data-block-id="${block.id}"], [data-sd-block-id="${block.id}"]`)!,
+        );
+        expect(wrappers[0].compareDocumentPosition(wrappers[1]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        const vectorWrapper = wrappers[vectorFirst ? 0 : 1];
+        const otherWrapper = wrappers[vectorFirst ? 1 : 0];
+        expect(vectorWrapper.style.zIndex).toBe(String(layers.vectorBehind ? 0 : layers.vectorZ));
+        expect(otherWrapper.style.zIndex).toBe(String(layers.otherBehind ? 0 : layers.otherZ));
+        expect(vectorWrapper.closest('.superdoc-table-cell-flow-viewport')).toBeNull();
+        expect(otherWrapper.closest<HTMLElement>('[style*="overflow: hidden"]')).not.toBeNull();
+      });
+    }
+  }
+
+  it('SD-6124 retains the SDT chrome overflow exception alongside a vector overlay', () => {
+    const paragraph: ParagraphBlock = {
+      ...paragraphBlock,
+      attrs: { sdt: { type: 'documentSection', id: 'section', title: 'Section' } },
+    };
+    const drawing: DrawingBlock = {
+      kind: 'drawing',
+      id: 'overlay',
+      drawingKind: 'vectorShape',
+      shapeKind: 'line',
+      geometry: { width: 5, height: 166, rotation: 0 },
+      anchor: { isAnchored: true, vRelativeFrom: 'paragraph', offsetV: -75 },
+      wrap: { type: 'None' },
+      attrs: { anchorParagraphId: paragraph.id },
+    };
+    const { cellElement } = renderTableCell({
+      ...createBaseDeps(),
+      cell: { ...baseCell, blocks: [paragraph, drawing] },
+      cellMeasure: { ...baseCellMeasure, blocks: [paragraphMeasure, { kind: 'drawing', width: 5, height: 166 }] },
+    });
+    expect(cellElement.style.overflow).toBe('visible');
+    expect(cellElement.querySelector<HTMLElement>('.superdoc-table-cell-flow-viewport')!.style.overflow).toBe(
+      'visible',
+    );
+  });
+
+  it('SD-6124 does not paint an overlay on a slice without its anchor paragraph', () => {
+    const drawing: DrawingBlock = {
+      kind: 'drawing',
+      id: 'overlay',
+      drawingKind: 'vectorShape',
+      shapeKind: 'line',
+      geometry: { width: 5, height: 166, rotation: 0 },
+      anchor: { isAnchored: true, offsetV: -75, vRelativeFrom: 'paragraph' },
+      wrap: { type: 'None' },
+      attrs: { anchorParagraphId: paragraphBlock.id },
+    };
+    const result = renderTableCell({
+      ...createBaseDeps(),
+      fromLine: 1,
+      toLine: 2,
+      cell: { ...baseCell, blocks: [paragraphBlock, drawing] },
+      cellMeasure: { ...baseCellMeasure, blocks: [paragraphMeasure, { kind: 'drawing', width: 5, height: 166 }] },
+    });
+    expect(result.cellElement.querySelector('[data-block-id="overlay"]')).toBeNull();
+    expect(result.cellElement.style.overflow).toBe('hidden');
+  });
+
   it('uses an end-of-cell mark for the final paragraph in a table cell', () => {
     const secondParagraphBlock: ParagraphBlock = {
       kind: 'paragraph',

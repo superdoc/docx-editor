@@ -9273,6 +9273,114 @@ describe('measureBlock', () => {
       expect(cellMeasure.height).toBe(expectedCellHeight);
     });
 
+    it.each(
+      [-75, 75].flatMap((offsetV) =>
+        [true, false].flatMap((behindDoc) =>
+          ['line', 'zero-width-custom-line', 'one-unit-custom-line'].map((shapeKind) => ({
+            offsetV,
+            behindDoc,
+            shapeKind,
+          })),
+        ),
+      ),
+    )(
+      'SD-6124 leaves row height unchanged for a $shapeKind overlay at $offsetV behind=$behindDoc',
+      async ({ offsetV, behindDoc, shapeKind }) => {
+        const paragraph: ParagraphBlock = {
+          kind: 'paragraph',
+          id: 'anchor-paragraph',
+          runs: [{ text: 'Anchor', fontFamily: 'Arial', fontSize: 16 }],
+        };
+        const drawing: DrawingBlock = {
+          kind: 'drawing',
+          id: 'overlay',
+          drawingKind: 'vectorShape',
+          shapeKind: shapeKind === 'line' ? 'line' : undefined,
+          ...(shapeKind !== 'line'
+            ? {
+                customGeometry: {
+                  paths: [{ d: 'M 1 0 L 0 100', w: shapeKind === 'zero-width-custom-line' ? 0 : 1, h: 100 }],
+                },
+              }
+            : {}),
+          geometry: { width: 5, height: 166, rotation: 0 },
+          anchor: { isAnchored: true, layoutInCell: true, vRelativeFrom: 'paragraph', offsetV, behindDoc },
+          wrap: { type: 'None', distTop: 3, distBottom: 4 },
+          attrs: { anchorParagraphId: paragraph.id },
+        };
+        const table: TableBlock = {
+          kind: 'table',
+          id: 'overlay-table',
+          rows: [
+            {
+              id: 'row',
+              cells: [
+                {
+                  id: 'cell',
+                  blocks: [paragraph],
+                  attrs: { padding: { top: 2, bottom: 3 } },
+                },
+              ],
+            },
+          ],
+        };
+        const control = await measureBlock(table, 1000);
+        table.rows[0].cells[0].blocks = [paragraph, drawing];
+        const actual = await measureBlock(table, 1000);
+        expect(actual.kind).toBe('table');
+        expect(control.kind).toBe('table');
+        if (actual.kind !== 'table' || control.kind !== 'table') throw new Error('expected tables');
+        expect(actual.rows[0].height).toBe(control.rows[0].height);
+        expect(actual.rows[0].cells[0].height).toBe(control.rows[0].cells[0].height);
+        expect(actual.rows[0].cells[0].blocks[1]).toMatchObject({ width: 5, height: 166 });
+      },
+    );
+
+    it.each(['positive-filled-vector', 'wrapped-vector', 'text-vector', 'textbox', 'group'] as const)(
+      'SD-6124 retains the layoutInCell footprint for %s',
+      async (kind) => {
+        const drawing: DrawingBlock = {
+          kind: 'drawing',
+          id: 'reserved-drawing',
+          drawingKind: 'vectorShape',
+          shapeKind: kind === 'positive-filled-vector' ? 'rect' : 'line',
+          fillColor: kind === 'positive-filled-vector' ? '#0060FF' : undefined,
+          geometry: { width: 20, height: 40, rotation: 0 },
+          anchor: { isAnchored: true, layoutInCell: true, vRelativeFrom: 'paragraph', offsetV: 5 },
+          wrap: { type: kind === 'wrapped-vector' ? 'Square' : 'None', distTop: 3, distBottom: 4 },
+          attrs: { anchorParagraphId: 'paragraph' },
+          ...(kind === 'text-vector' ? { textContent: { parts: [{ text: 'Shape text' }] } } : {}),
+          ...(kind === 'textbox' ? { drawingKind: 'textboxShape' as const } : {}),
+          ...(kind === 'group' ? { drawingKind: 'shapeGroup' as const, shapes: [] } : {}),
+        };
+        const table: TableBlock = {
+          kind: 'table',
+          id: 'table',
+          rows: [
+            {
+              id: 'row',
+              cells: [
+                {
+                  id: 'cell',
+                  blocks: [
+                    {
+                      kind: 'paragraph',
+                      id: 'paragraph',
+                      runs: [{ text: 'Anchor', fontFamily: 'Arial', fontSize: 16 }],
+                    },
+                    drawing,
+                  ],
+                },
+              ],
+            },
+          ],
+        };
+        const measure = await measureBlock(table, 1000);
+        if (measure.kind !== 'table') throw new Error('expected table');
+        expect(measure.rows[0].cells[0].height).toBe(5 + 40 + 3 + 4);
+      },
+    );
+
     it('expands a table cell for an anchored object with layoutInCell enabled', async () => {
       const table: FlowBlock = {
         kind: 'table',

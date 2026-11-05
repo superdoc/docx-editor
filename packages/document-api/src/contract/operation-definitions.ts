@@ -4189,9 +4189,9 @@ export const OPERATION_DEFINITIONS = {
   },
   'tables.getProperties': {
     memberPath: 'tables.getProperties',
-    description: 'Retrieve layout and style properties of a table.',
+    description: 'Retrieve layout, style, and authored row and grid column dimensions of a table.',
     expectedResult:
-      'Returns a TablesGetPropertiesOutput with direct table layout and style state, including style options, borders, default cell margins, and cell spacing when explicitly set.',
+      'Returns a TablesGetPropertiesOutput with direct table layout and style state and optional indexed rows and columns. Row heightPt and grid widthPt are authored points, not rendered sizes. Unspecified dimensions and unstored heightRule are omitted; explicit zero and auto are retained. Existing style options, borders, default cell margins, and cell spacing are included when explicitly set.',
     requiresDocumentContext: true,
     metadata: readOperation({
       idempotency: 'idempotent',

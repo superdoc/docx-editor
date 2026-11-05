@@ -111,6 +111,19 @@ durable row addresses.
 
 ## Verify the controls
 
+To initialize a dimension dialog for an explicit table, read `editor.doc.tables.getProperties({ nodeId })`.
+V2 returns `rows` with zero-based `rowIndex`, optional `heightPt`, and optional `heightRule` (`atLeast`, `exact`, or
+`auto`), and `columns` with zero-based `columnIndex` and optional `widthPt`. Both sizes are authored points,
+normalized to the nearest twip (1/20 point), rather than measured layout sizes. Column widths come from the saved
+table grid, rather than cell preferred widths or AutoFit measurements. Existing table-level `preferredWidth` uses twips.
+Export can normalize grids to reconcile a fixed preferred table width; reopening reports the grid stored in that export.
+Use fixed layout with `preferredWidthType: 'auto'` when authoring column widths independently of an overall table width.
+
+An omitted size means no direct authored value; an explicit zero remains `0`. An omitted `heightRule` remains absent
+even when a height is stored. Preserve that distinction in the dialog instead of assuming a rule. For example,
+`{ rowIndex: 0 }` differs from `{ rowIndex: 0, heightPt: 0, heightRule: 'auto' }`, and `{ columnIndex: 0 }` differs
+from `{ columnIndex: 0, widthPt: 0 }`. The array containers are optional in the public contract for adapter compatibility.
+
 Place the caret in the milestone table, add a row, delete a row, and choose **Download DOCX**. Outside the table, both row buttons should disable
 with a contextual reason.
 

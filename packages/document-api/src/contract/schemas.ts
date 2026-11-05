@@ -9941,6 +9941,46 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
       {
         nodeId: { type: 'string' },
         address: tableAddressSchema,
+        rows: {
+          ...arraySchema(
+            objectSchema(
+              {
+                rowIndex: { type: 'integer', minimum: 0 },
+                heightPt: {
+                  type: 'number',
+                  minimum: 0,
+                  description:
+                    'Direct authored row height in points, normalized to twip precision. Omitted when unspecified; explicit zero is retained.',
+                },
+                heightRule: {
+                  enum: ['atLeast', 'exact', 'auto'],
+                  description: 'Direct authored height rule. Omitted when not stored, independently of heightPt.',
+                },
+              },
+              ['rowIndex'],
+            ),
+          ),
+          description:
+            'Rows in logical table order, with zero-based indices and optional authored dimensions. These are source values, not rendered heights.',
+        },
+        columns: {
+          ...arraySchema(
+            objectSchema(
+              {
+                columnIndex: { type: 'integer', minimum: 0 },
+                widthPt: {
+                  type: 'number',
+                  minimum: 0,
+                  description:
+                    'Direct authored grid column width in points, normalized to twip precision. Omitted when unspecified; explicit zero is retained. Not a cell preferred width or rendered width.',
+                },
+              },
+              ['columnIndex'],
+            ),
+          ),
+          description:
+            'Authored grid columns in logical order, with zero-based indices. No widths are inferred from cells or layout.',
+        },
         styleId: { type: 'string' },
         alignment: { enum: ['left', 'center', 'right'] },
         direction: { enum: ['ltr', 'rtl'] },

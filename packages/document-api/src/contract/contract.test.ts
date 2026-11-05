@@ -122,6 +122,31 @@ describe('document-api contract catalog', () => {
     );
     expect(OPERATION_DEFINITIONS['tables.sort'].metadata.throws.preApply).toContain('INVALID_ARGUMENT');
   });
+
+  it('describes optional authored table dimensions without changing required table properties', () => {
+    const output = buildInternalContractSchemas().operations['tables.getProperties'].output as ContractTestSchemaShape;
+    expect(output.required).toEqual(['nodeId', 'address']);
+    const rows = output.properties?.rows;
+    const columns = output.properties?.columns;
+    expect(rows?.type).toBe('array');
+    expect(columns?.type).toBe('array');
+    expect(rows?.items?.required).toEqual(['rowIndex']);
+    expect(columns?.items?.required).toEqual(['columnIndex']);
+    expect(rows?.items?.additionalProperties).toBe(false);
+    expect(columns?.items?.additionalProperties).toBe(false);
+    expect(rows?.items?.properties?.rowIndex).toEqual({ type: 'integer', minimum: 0 });
+    expect(columns?.items?.properties?.columnIndex).toEqual({ type: 'integer', minimum: 0 });
+    expect(rows?.items?.properties?.heightPt).toMatchObject({ type: 'number', minimum: 0 });
+    expect(columns?.items?.properties?.widthPt).toMatchObject({ type: 'number', minimum: 0 });
+    expect(rows?.items?.properties?.heightRule?.enum).toEqual(['atLeast', 'exact', 'auto']);
+    expect(
+      collectUnknownPropertySchemaErrors(output, {
+        nodeId: 'table-1',
+        address: { kind: 'block', nodeType: 'table', nodeId: 'table-1' },
+      }),
+    ).toEqual([]);
+  });
+
   it('derives legacy tracked booleans from the canonical support level', () => {
     for (const operationId of OPERATION_IDS) {
       const metadata = OPERATION_DEFINITIONS[operationId].metadata;

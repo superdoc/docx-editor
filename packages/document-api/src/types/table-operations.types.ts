@@ -763,6 +763,15 @@ export type TablesGetPropertiesInput = TableLocator;
 export interface TablesGetPropertiesOutput {
   nodeId: string;
   address: TableAddress;
+  rows?: Array<{
+    rowIndex: number;
+    heightPt?: number;
+    heightRule?: 'atLeast' | 'exact' | 'auto';
+  }>;
+  columns?: Array<{
+    columnIndex: number;
+    widthPt?: number;
+  }>;
   styleId?: string;
   alignment?: TableAlignment;
   direction?: TableDirection;

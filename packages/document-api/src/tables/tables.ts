@@ -2,7 +2,18 @@ import type { MutationOptions } from '../write/write.js';
 import { normalizeMutationOptions } from '../write/write.js';
 import { DocumentApiValidationError } from '../errors.js';
 import { TABLE_COLOR_PATTERN as TABLE_BORDER_COLOR_PATTERN } from './color-formats.js';
+import {
+  TABLE_PRESET_LIST_MAX_LIMIT,
+  isTablePresetId,
+  isWordTablePresetId,
+  listTablePresets,
+  type TablePresetGroup,
+  type TablePresetSource,
+  type TablesListPresetsInput,
+  type TablesListPresetsOutput,
+} from './table-style-presets.js';
 import type {
+  TablesApplyPresetInput,
   TablesApplyStyleInput,
   TablesSetBordersInput,
   TablesSetCellPaddingInput,
@@ -629,5 +640,109 @@ export function executeTablesSetCellPadding<TResult>(
     );
   }
 
+  return adapter(input, normalizeMutationOptions(options));
+}
+
+const TABLE_PRESET_SOURCES = ['word', 'superdoc'] as const satisfies readonly TablePresetSource[];
+const TABLE_PRESET_GROUPS = ['plain', 'grid', 'list', 'convenience'] as const satisfies readonly TablePresetGroup[];
+
+function isOneOf<T extends string>(values: readonly T[], value: unknown): value is T {
+  return values.some((candidate) => candidate === value);
+}
+const TABLE_PRESET_LIST_INPUT_KEYS: readonly string[] = ['source', 'group', 'query', 'limit', 'offset'];
+
+export function executeTablesListPresets(input: TablesListPresetsInput | undefined): TablesListPresetsOutput {
+  const request = input ?? {};
+  if (!isRecord(request)) {
+    throw new DocumentApiValidationError('INVALID_INPUT', 'tables.listPresets input must be an object.');
+  }
+  for (const key of Object.keys(request)) {
+    if (!TABLE_PRESET_LIST_INPUT_KEYS.includes(key)) {
+      throw new DocumentApiValidationError('INVALID_INPUT', `tables.listPresets: unknown field "${key}".`, {
+        field: key,
+      });
+    }
+  }
+  if (request.source !== undefined && !isOneOf(TABLE_PRESET_SOURCES, request.source)) {
+    throw new DocumentApiValidationError('INVALID_INPUT', 'tables.listPresets: source must be "word" or "superdoc".', {
+      field: 'source',
+      value: request.source,
+    });
+  }
+  if (request.group !== undefined && !isOneOf(TABLE_PRESET_GROUPS, request.group)) {
+    throw new DocumentApiValidationError(
+      'INVALID_INPUT',
+      'tables.listPresets: group must be "plain", "grid", "list", or "convenience".',
+      { field: 'group', value: request.group },
+    );
+  }
+  if (request.query !== undefined && typeof request.query !== 'string') {
+    throw new DocumentApiValidationError('INVALID_INPUT', 'tables.listPresets: query must be a string.', {
+      field: 'query',
+    });
+  }
+  if (
+    request.limit !== undefined &&
+    (typeof request.limit !== 'number' ||
+      !Number.isSafeInteger(request.limit) ||
+      request.limit < 1 ||
+      request.limit > TABLE_PRESET_LIST_MAX_LIMIT)
+  ) {
+    throw new DocumentApiValidationError(
+      'INVALID_INPUT',
+      `tables.listPresets: limit must be an integer from 1 to ${TABLE_PRESET_LIST_MAX_LIMIT}.`,
+      { field: 'limit', value: request.limit },
+    );
+  }
+  if (
+    request.offset !== undefined &&
+    (typeof request.offset !== 'number' || !Number.isSafeInteger(request.offset) || request.offset < 0)
+  ) {
+    throw new DocumentApiValidationError('INVALID_INPUT', 'tables.listPresets: offset must be a nonnegative integer.', {
+      field: 'offset',
+      value: request.offset,
+    });
+  }
+  return listTablePresets({
+    ...(isOneOf(TABLE_PRESET_SOURCES, request.source) ? { source: request.source } : {}),
+    ...(isOneOf(TABLE_PRESET_GROUPS, request.group) ? { group: request.group } : {}),
+    ...(typeof request.query === 'string' ? { query: request.query } : {}),
+    ...(typeof request.limit === 'number' ? { limit: request.limit } : {}),
+    ...(typeof request.offset === 'number' ? { offset: request.offset } : {}),
+  });
+}
+
+export function executeTablesApplyPreset<TResult>(
+  adapter: (input: TablesApplyPresetInput, options?: MutationOptions) => TResult,
+  input: TablesApplyPresetInput,
+  options?: MutationOptions,
+): TResult {
+  validateTableLocator(input, 'tables.applyPreset');
+  if (!isTablePresetId(input.preset)) {
+    throw new DocumentApiValidationError(
+      'INVALID_INPUT',
+      `tables.applyPreset: unknown preset "${String(input.preset)}". Call tables.listPresets for valid preset IDs.`,
+      { field: 'preset', value: input.preset },
+    );
+  }
+  if (input.accentColor !== undefined && isWordTablePresetId(input.preset)) {
+    throw new DocumentApiValidationError(
+      'INVALID_INPUT',
+      `tables.applyPreset: accentColor applies only to SuperDoc presets. Word preset "${input.preset}" uses document theme colors; choose its "-accent-N" variant instead.`,
+      { field: 'accentColor' },
+    );
+  }
+  if (input.styleOptions !== undefined) {
+    if (!isRecord(input.styleOptions)) {
+      throw new DocumentApiValidationError(
+        'INVALID_INPUT',
+        'tables.applyPreset: styleOptions must be a plain object.',
+        {
+          field: 'styleOptions',
+        },
+      );
+    }
+    if (Object.keys(input.styleOptions).length > 0) validateStyleOptionsPatch(input.styleOptions, 'tables.applyPreset');
+  }
   return adapter(input, normalizeMutationOptions(options));
 }

@@ -4099,18 +4099,38 @@ export const OPERATION_DEFINITIONS = {
   'tables.applyPreset': {
     memberPath: 'tables.applyPreset',
     description:
-      'Apply a named visual preset to a table. Presets: "grid" (1pt black borders all around), "minimal" (no outer borders, hairline grey row separators + thicker bottom), "striped" (banded rows on, 0.5pt grey borders), "accent" (filled header row + thick accent top/bottom; defaults to dark blue, override with `accentColor`). ' +
-      'Composes set_borders + set_style_options + header-row shading in one call. Available via the document API and `superdoc_mutations` (intentionally NOT exposed as a top-level action on `superdoc_table`. Agents should compose explicit set_borders / set_shading / set_style_options calls so they always pick concrete colors that match the document context).',
-    expectedResult: 'Returns a TableMutationResult receipt.',
+      'Apply a named table style preset to a table. Word presets (IDs starting with "word.", such as "word.grid-table-4-accent-1") install the built-in Word table style definition into the document when needed and reference it from the table, so the result opens in Word as that named style and follows the document theme. ' +
+      'Call tables.listPresets first to get valid preset IDs. Use the "-accent-N" variants for theme accent colors; accentColor is rejected for Word presets. ' +
+      "Optional styleOptions set the header row, last row, first column, last column, banded rows, and banded columns flags; omitted flags keep the table's current settings. Word presets remove table-level borders and shading so the style governs them; direct cell or run formatting is preserved and can override the style. " +
+      'In real-time collaboration every client receives the style definition and the table change together. ' +
+      'Word presets are direct edits only: tracked mode returns CAPABILITY_UNAVAILABLE. ' +
+      'SuperDoc convenience presets "grid", "minimal", "striped", and "accent" keep their existing behavior: they write direct borders, banding, and header shading (accentColor overrides the "accent" color). ' +
+      'Use tables.applyStyle instead to reference a style ID that already exists in the document (see tables.getStyles).',
+    expectedResult:
+      'Returns a TableMutationResult receipt. Read tables.getProperties to see the installed Word style ID, which can differ from the Word default when the document already customizes that style.',
     requiresDocumentContext: true,
     metadata: mutationOperation({
       idempotency: 'idempotent',
       supportsDryRun: true,
       trackedSupport: 'never',
-      possibleFailureCodes: ['INVALID_TARGET'],
-      throws: T_NOT_FOUND_COMMAND,
+      possibleFailureCodes: ['INVALID_TARGET', 'INVALID_INPUT', 'CAPABILITY_UNAVAILABLE', 'PRECONDITION_FAILED'],
+      throws: [...T_NOT_FOUND_COMMAND, 'INVALID_INPUT'],
+      remediationHints: ['Call tables.listPresets to find a valid preset ID before applying one.'],
     }),
     referenceDocPath: 'tables/apply-preset.mdx',
+    referenceGroup: 'tables',
+  },
+  'tables.listPresets': {
+    memberPath: 'tables.listPresets',
+    description:
+      'List built-in table style presets that tables.applyPreset accepts: 105 Word table styles (Table Grid, Grid Table Light, Plain Table 1-5, and the Grid Table and List Table designs 1-7 with neutral and Accent 1-6 variants) plus the four SuperDoc convenience presets. ' +
+      'Filter by source ("word" or "superdoc"), group ("plain", "grid", "list", "convenience"), or a query that matches preset IDs and display names. Results are paginated: follow nextOffset until it is null to see every match. ' +
+      'This is a fixed catalogue; it does not read or change the document. Use tables.getStyles to list table styles already defined in the document.',
+    expectedResult:
+      'Returns a TablesListPresetsOutput page with items (id, name, source, group, accent), the exact filtered total, the page offset, and nextOffset (null when no more matches remain).',
+    requiresDocumentContext: true,
+    metadata: readOperation({ idempotency: 'idempotent', throws: ['INVALID_INPUT'] }),
+    referenceDocPath: 'tables/list-presets.mdx',
     referenceGroup: 'tables',
   },
   // -------------------------------------------------------------------------

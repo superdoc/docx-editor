@@ -439,8 +439,8 @@ describe('ooxml - resolveRunProperties', () => {
     const result = resolveRunProperties(params, {}, null, tableInfo);
     expect(result.fontSize).toBe(15);
     expect(result.bold).toBe(true);
-    expect(result.italic).toBe(true);
-    expect(result.color).toEqual({ val: 'CCCCCC' });
+    expect(result.italic).toBeUndefined();
+    expect(result.color).toEqual({ val: 'AAAAAA' });
   });
   it('does not treat paragraph mark run properties as inherited text styling', () => {
     const params = buildParams({ translatedLinkedStyles: null });
@@ -802,6 +802,128 @@ describe('ooxml - resolveTableCellProperties', () => {
     const result = resolveTableCellProperties(null, tableInfo, gridTable4Styles);
     // band1Horz overrides wholeTable
     expect(result.shading).toEqual({ val: 'clear', color: 'auto', fill: 'C1E4F5' });
+  });
+
+  it('keeps row bands off header and total rows and column bands off first and last columns', () => {
+    const styles = {
+      ...emptyStyles,
+      styles: {
+        ListTable6Colorful: {
+          type: 'table',
+          tableProperties: { tableStyleRowBandSize: 1, tableStyleColBandSize: 1 },
+          tableStyleProperties: {
+            band1Horz: { tableCellProperties: { shading: { val: 'clear', color: 'auto', fill: 'ROWBND' } } },
+            band1Vert: { tableCellProperties: { borders: { left: { val: 'single', color: 'COLBND', size: 4 } } } },
+          },
+        },
+      },
+    };
+    const allOn = {
+      firstRow: true,
+      lastRow: true,
+      firstColumn: true,
+      lastColumn: true,
+      noHBand: false,
+      noVBand: false,
+    };
+    const cellAt = (rowIndex: number, cellIndex: number) =>
+      resolveTableCellProperties(
+        null,
+        {
+          tableProperties: { tableStyleId: 'ListTable6Colorful', tblLook: allOn },
+          rowIndex,
+          cellIndex,
+          numRows: 5,
+          numCells: 4,
+        },
+        styles,
+      );
+    const rows = [0, 1, 2, 3, 4];
+    const cells = [0, 1, 2, 3];
+    expect(rows.map((row) => cells.map((cell) => cellAt(row, cell).shading?.fill ?? null))).toEqual([
+      [null, null, null, null],
+      ['ROWBND', 'ROWBND', 'ROWBND', 'ROWBND'],
+      [null, null, null, null],
+      ['ROWBND', 'ROWBND', 'ROWBND', 'ROWBND'],
+      [null, null, null, null],
+    ]);
+    expect(rows.map((row) => cells.map((cell) => cellAt(row, cell).borders?.left?.color ?? null))).toEqual(
+      rows.map(() => [null, 'COLBND', null, null]),
+    );
+  });
+
+  it('bands rows and columns that cnfStyle marks as edges when those style options are off', () => {
+    const styles = {
+      ...emptyStyles,
+      styles: {
+        Banded: {
+          type: 'table',
+          tableProperties: { tableStyleRowBandSize: 1, tableStyleColBandSize: 1 },
+          tableStyleProperties: {
+            band1Horz: { tableCellProperties: { shading: { val: 'clear', color: 'auto', fill: 'ROWBND' } } },
+            band1Vert: { tableCellProperties: { borders: { left: { val: 'single', color: 'COLBND', size: 4 } } } },
+          },
+        },
+      },
+    };
+    const allOff = {
+      firstRow: false,
+      lastRow: false,
+      firstColumn: false,
+      lastColumn: false,
+      noHBand: false,
+      noVBand: false,
+    };
+    const resolve = (
+      rowIndex: number,
+      cellIndex: number,
+      edge: 'firstRow' | 'lastRow' | 'firstColumn' | 'lastColumn',
+    ) =>
+      resolveTableCellProperties(
+        null,
+        {
+          tableProperties: { tableStyleId: 'Banded', tblLook: allOff },
+          rowIndex,
+          cellIndex,
+          numRows: 3,
+          numCells: 3,
+          rowCnfStyle: edge === 'firstRow' || edge === 'lastRow' ? { [edge]: true } : null,
+          cellCnfStyle: edge === 'firstColumn' || edge === 'lastColumn' ? { [edge]: true } : null,
+        },
+        styles,
+      );
+    expect(resolve(0, 0, 'firstRow').shading?.fill).toBe('ROWBND');
+    expect(resolve(2, 0, 'lastRow').shading?.fill).toBe('ROWBND');
+    expect(resolve(0, 0, 'firstColumn').borders?.left?.color).toBe('COLBND');
+    expect(resolve(0, 2, 'lastColumn').borders?.left?.color).toBe('COLBND');
+  });
+
+  it('keeps column bands off a spanning cell that cnfStyle marks as the last column', () => {
+    const styles = {
+      ...emptyStyles,
+      styles: {
+        Banded: {
+          type: 'table',
+          tableProperties: { tableStyleRowBandSize: 1, tableStyleColBandSize: 1 },
+          tableStyleProperties: {
+            band1Vert: { tableCellProperties: { shading: { val: 'clear', color: 'auto', fill: 'COLBND' } } },
+          },
+        },
+      },
+    };
+    const result = resolveTableCellProperties(
+      null,
+      {
+        tableProperties: { tableStyleId: 'Banded', tblLook: { lastColumn: true, noHBand: true, noVBand: false } },
+        rowIndex: 1,
+        cellIndex: 2,
+        numRows: 3,
+        numCells: 4,
+        cellCnfStyle: { lastColumn: true },
+      },
+      styles,
+    );
+    expect(result.shading).toBeUndefined();
   });
 
   it('falls back to wholeTable when no band matches', () => {

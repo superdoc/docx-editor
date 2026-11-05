@@ -6,6 +6,7 @@ import { SELECTION_EDGE_NODE_TYPES } from '../types/address.js';
 import { INLINE_PROPERTY_REGISTRY, buildInlineRunPatchSchema } from '../format/inline-run-patch.js';
 import { CONTENT_CONTROL_INLINE_FORMAT_KEYS } from '../content-controls/content-controls.types.js';
 import { TABLE_COLOR_PATTERN_SOURCE } from '../tables/color-formats.js';
+import { TABLE_PRESET_IDS, TABLE_PRESET_LIST_MAX_LIMIT } from '../tables/table-style-presets.js';
 import { INLINE_DIRECTIVES } from '../types/style-policy.types.js';
 import {
   PARAGRAPH_ALIGNMENTS,
@@ -9807,8 +9808,21 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
         {
           target: tableAddressSchema,
           nodeId: { type: 'string' },
-          preset: { enum: ['grid', 'minimal', 'striped', 'accent'] },
+          preset: {
+            type: 'string',
+            enum: [...TABLE_PRESET_IDS],
+            description: 'Preset ID from tables.listPresets, for example "word.grid-table-4-accent-1" or "striped".',
+          },
           accentColor: { type: 'string', pattern: tableBorderColorPattern },
+          styleOptions: objectSchema({
+            headerRow: { type: 'boolean' },
+            lastRow: { type: 'boolean' },
+            totalRow: { type: 'boolean' },
+            firstColumn: { type: 'boolean' },
+            lastColumn: { type: 'boolean' },
+            bandedRows: { type: 'boolean' },
+            bandedColumns: { type: 'boolean' },
+          }),
         },
         ['preset'],
       ),
@@ -9817,6 +9831,35 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
     output: tableMutationResultSchema,
     success: tableMutationSuccessSchema,
     failure: tableMutationFailureSchema,
+  },
+  'tables.listPresets': {
+    input: objectSchema({
+      source: { enum: ['word', 'superdoc'] },
+      group: { enum: ['plain', 'grid', 'list', 'convenience'] },
+      query: { type: 'string' },
+      limit: { type: 'integer', minimum: 1, maximum: TABLE_PRESET_LIST_MAX_LIMIT },
+      offset: { type: 'integer', minimum: 0 },
+    }),
+    output: objectSchema(
+      {
+        items: arraySchema(
+          objectSchema(
+            {
+              id: { type: 'string' },
+              name: { type: 'string' },
+              source: { enum: ['word', 'superdoc'] },
+              group: { enum: ['plain', 'grid', 'list', 'convenience'] },
+              accent: { oneOf: [{ type: 'integer', minimum: 1, maximum: 6 }, { type: 'null' }] },
+            },
+            ['id', 'name', 'source', 'group', 'accent'],
+          ),
+        ),
+        total: { type: 'integer', minimum: 0 },
+        offset: { type: 'integer', minimum: 0 },
+        nextOffset: { oneOf: [{ type: 'integer', minimum: 0 }, { type: 'null' }] },
+      },
+      ['items', 'total', 'offset', 'nextOffset'],
+    ),
   },
   // --- tables.* reads (B4 ref handoff) ---
   'tables.get': {

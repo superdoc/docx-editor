@@ -1,3 +1,4 @@
+import type { TablePresetId } from '../tables/table-style-presets.js';
 import type {
   BlockNodeAddress,
   TableAddress,
@@ -594,25 +595,12 @@ export interface TablesSetTableOptionsInput extends TableLocator {
   cellSpacingPt?: number | null;
 }
 
-/**
- * Named visual presets for tables. Each preset composes borders, shading,
- * and conditional-format flags into a polished look.
- *
- * - `grid` — 0.5pt black borders all around, no shading.
- * - `minimal` — no outer borders, hairline grey separators between rows.
- * - `striped` — banded rows on, 0.5pt grey borders all around.
- * - `accent` — header row filled with `accentColor` (default `1F3864`),
- *   thick accent bottom under the header.
- */
-export type TablePresetName = 'grid' | 'minimal' | 'striped' | 'accent';
+export type TablePresetName = TablePresetId;
 
 export interface TablesApplyPresetInput extends TableLocator {
   preset: TablePresetName;
-  /**
-   * Optional accent color (hex; same format as `setShading.color`).
-   * Used by presets that need an accent (`accent`). Ignored otherwise.
-   */
   accentColor?: string;
+  styleOptions?: TableStyleOptionsPatch;
 }
 
 // ---------------------------------------------------------------------------

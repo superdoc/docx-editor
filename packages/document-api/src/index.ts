@@ -559,7 +559,11 @@ import {
   executeTablesSetBorders,
   executeTablesSetCellPadding,
   executeTablesSetTableOptions,
+  executeTablesApplyPreset,
+  executeTablesListPresets,
 } from './tables/tables.js';
+import type { TablesListPresetsInput, TablesListPresetsOutput } from './tables/table-style-presets.js';
+export * from './tables/table-style-presets.js';
 import type {
   ParagraphsAdapter,
   ParagraphFormatApi,
@@ -1996,6 +2000,7 @@ export interface TablesApi {
   setBorders(input: TablesSetBordersInput, options?: MutationOptions): TableMutationResult;
   setTableOptions(input: TablesSetTableOptionsInput, options?: MutationOptions): TableMutationResult;
   applyPreset(input: TablesApplyPresetInput, options?: MutationOptions): TableMutationResult;
+  listPresets(input?: TablesListPresetsInput): TablesListPresetsOutput;
   get(input: TablesGetInput): TablesGetOutput;
   getCells(input: TablesGetCellsInput): TablesGetCellsOutput;
   getProperties(input: TablesGetPropertiesInput): TablesGetPropertiesOutput;
@@ -2003,7 +2008,7 @@ export interface TablesApi {
   setDefaultStyle(input: TablesSetDefaultStyleInput, options?: MutationOptions): DocumentMutationResult;
   clearDefaultStyle(input?: TablesClearDefaultStyleInput, options?: MutationOptions): DocumentMutationResult;
 }
-export type TablesAdapter = Omit<TablesApi, 'moveRow' | 'moveColumn'> & {
+export type TablesAdapter = Omit<TablesApi, 'moveRow' | 'moveColumn' | 'listPresets'> & {
   moveRow?: TablesApi['moveRow'];
   moveColumn?: TablesApi['moveColumn'];
 };
@@ -3543,12 +3548,10 @@ export function createDocumentApi(adapters: DocumentApiAdapters): DocumentApi {
         );
       },
       applyPreset(input, options?) {
-        return executeTableLocatorOp(
-          'tables.applyPreset',
-          adapters.tables.applyPreset.bind(adapters.tables),
-          input,
-          options,
-        );
+        return executeTablesApplyPreset(adapters.tables.applyPreset.bind(adapters.tables), input, options);
+      },
+      listPresets(input?) {
+        return executeTablesListPresets(input);
       },
       get(input) {
         return adapters.tables.get(input);

@@ -719,19 +719,25 @@ function determineCellStyleTypes(
   const rowGroup = Math.floor(bandRowIndex / normalizedRowBandSize);
   const colGroup = Math.floor(bandColIndex / normalizedColBandSize);
 
-  if (!tblLook?.noHBand) {
-    applicable.add(rowGroup % 2 === 0 ? 'band1Horz' : 'band2Horz');
-  }
-
-  if (!tblLook?.noVBand) {
-    applicable.add(colGroup % 2 === 0 ? 'band1Vert' : 'band2Vert');
-  }
-
   // Row/column edge flags — reused for both row/col styles and corner gating.
   const isFirstRow = !!tblLook?.firstRow && rowIndex === 0;
   const isLastRow = !!tblLook?.lastRow && numRows != null && numRows > 0 && rowIndex === numRows - 1;
   const isFirstCol = !!tblLook?.firstColumn && cellIndex === 0;
   const isLastCol = !!tblLook?.lastColumn && numCells != null && numCells > 0 && cellIndex === numCells - 1;
+
+  const conditionalEdge = (flag: 'firstRow' | 'lastRow' | 'firstColumn' | 'lastColumn') =>
+    !!tblLook?.[flag] && (rowCnfStyle?.[flag] === true || cellCnfStyle?.[flag] === true);
+  const inHeaderOrTotalRow = isFirstRow || isLastRow || conditionalEdge('firstRow') || conditionalEdge('lastRow');
+  const inFirstOrLastColumn =
+    isFirstCol || isLastCol || conditionalEdge('firstColumn') || conditionalEdge('lastColumn');
+
+  if (!tblLook?.noHBand && !inHeaderOrTotalRow) {
+    applicable.add(rowGroup % 2 === 0 ? 'band1Horz' : 'band2Horz');
+  }
+
+  if (!tblLook?.noVBand && !inFirstOrLastColumn) {
+    applicable.add(colGroup % 2 === 0 ? 'band1Vert' : 'band2Vert');
+  }
 
   if (isFirstRow) applicable.add('firstRow');
   if (isFirstCol) applicable.add('firstCol');

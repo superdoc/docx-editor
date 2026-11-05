@@ -4297,6 +4297,29 @@ export interface TrackChangesInteractionConfig {
 }
 
 /**
+ * Opt-in touch behavior for this Editor. Every field defaults to off, and
+ * omitted or `false` values keep the existing touch behavior unchanged.
+ * Mouse, pen and keyboard input are never affected.
+ */
+export interface TouchInteractionConfig {
+  /**
+   * Opt in to SuperDoc-owned touch gestures (default: false).
+   *
+   * When enabled, a stationary touch hold on document content opens the
+   * existing SuperDoc context menu when the finger lifts, with the same caret
+   * and selection rules as a right-click. The lift does not activate content
+   * underneath. Where the browser shows its own text-selection menu for the
+   * hold (iOS Safari), it is dismissed once the SuperDoc menu opens and the
+   * held word stays selected in SuperDoc; where the browser reports the hold
+   * as a context-menu event (Android Chrome), the existing right-click path
+   * opens the menu once. A hold during IME composition does nothing. Taps and
+   * swipes keep their existing behavior. Hosts that disable the context menu,
+   * and viewing mode, keep native behavior. Read when the editor mounts.
+   */
+  gestures?: boolean;
+}
+
+/**
  * Controls which interactions this Editor allows, independent of what
  * SuperDoc renders.
  *
@@ -4308,6 +4331,8 @@ export interface InteractionConfig {
   comments?: CommentInteractionConfig;
   /** Tracked-change interaction policy. */
   trackedChanges?: TrackChangesInteractionConfig;
+  /** Opt-in touch behavior. Omitted fields keep the existing behavior. */
+  touch?: TouchInteractionConfig;
 }
 
 /**

@@ -156,6 +156,7 @@ export type {
   CommentsConfig,
   CommentsLayout,
   CommentsResponsiveConfig,
+  TouchInteractionConfig,
   TrackChangesInteractionConfig,
 } from '../core/types/index.js';
 export type { TrackChangeHighlightColors } from '../core/types/index.js';

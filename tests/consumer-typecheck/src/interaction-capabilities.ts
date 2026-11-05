@@ -11,6 +11,7 @@ import type {
   Config,
   InteractionConfig,
   SuperDoc,
+  TouchInteractionConfig,
   TrackChangesInteractionConfig,
 } from 'superdoc';
 
@@ -30,6 +31,20 @@ const _interactionConfig: InteractionConfig = {
   trackedChanges: { allowDecisions: true },
 };
 
+const _touchGestures: Config = {
+  selector: '#editor',
+  interaction: { touch: { gestures: true } },
+};
+const _touchInteractionConfig: TouchInteractionConfig = { gestures: false };
+
+const _invalidTouchGestures: Config = {
+  selector: '#editor',
+  interaction: {
+    // @ts-expect-error touch gestures are an explicit boolean opt-in.
+    touch: { gestures: 'auto' },
+  },
+};
+
 const _commentInteractionLevel: CommentInteractionLevel = 'resolve';
 const _commentInteractionConfig: CommentInteractionConfig = { level: 'write' };
 const _trackChangesInteractionConfig: TrackChangesInteractionConfig = { allowDecisions: false };
@@ -45,6 +60,7 @@ const _invalidLevel: Config = {
 declare const sd: SuperDoc;
 const _levelType: AssertEqual<typeof sd.interactionConfig.comments.level, 'read' | 'write' | 'resolve'> = true;
 const _decisionType: AssertEqual<typeof sd.interactionConfig.trackedChanges.allowDecisions, boolean> = true;
+const _touchGesturesType: AssertEqual<typeof sd.interactionConfig.touch.gestures, boolean> = true;
 
 void [
   _canonicalConfig,
@@ -55,4 +71,8 @@ void [
   _invalidLevel,
   _levelType,
   _decisionType,
+  _touchGestures,
+  _touchInteractionConfig,
+  _invalidTouchGestures,
+  _touchGesturesType,
 ];

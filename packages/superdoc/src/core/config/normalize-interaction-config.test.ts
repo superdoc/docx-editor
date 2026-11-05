@@ -7,6 +7,24 @@ describe('normalizeInteractionConfig', () => {
     expect(normalizeInteractionConfig({})).toEqual({
       comments: { level: 'resolve', readOnly: false, allowResolve: true },
       trackedChanges: { allowDecisions: true },
+      touch: { gestures: false },
+    });
+  });
+
+  it.each([
+    [undefined, false],
+    [{}, false],
+    [{ gestures: false }, false],
+    [{ gestures: true }, true],
+    [{ gestures: 'true' }, false],
+    [{ gestures: 1 }, false],
+  ])('enables touch gestures only for an explicit true (%o)', (touch, gestures) => {
+    expect(normalizeInteractionConfig({ interaction: { touch } as never }).touch).toEqual({ gestures });
+  });
+
+  it('keeps touch gestures off when only other interaction policy is configured', () => {
+    expect(normalizeInteractionConfig({ interaction: { comments: { level: 'read' } } }).touch).toEqual({
+      gestures: false,
     });
   });
 
@@ -39,6 +57,7 @@ describe('normalizeInteractionConfig', () => {
     expect(policy).toEqual({
       comments: { level: 'read', readOnly: true, allowResolve: false },
       trackedChanges: { allowDecisions: false },
+      touch: { gestures: false },
     });
   });
 
@@ -50,6 +69,7 @@ describe('normalizeInteractionConfig', () => {
     expect(policy).toEqual({
       comments: { level: 'read', readOnly: true, allowResolve: true },
       trackedChanges: { allowDecisions: false },
+      touch: { gestures: false },
     });
   });
 
@@ -65,6 +85,7 @@ describe('normalizeInteractionConfig', () => {
     expect(policy).toEqual({
       comments: { level: 'write', readOnly: false, allowResolve: false },
       trackedChanges: { allowDecisions: true },
+      touch: { gestures: false },
     });
   });
 
@@ -82,6 +103,7 @@ describe('normalizeInteractionConfig', () => {
     expect(normalizeInteractionConfig({ modules: { comments: false } })).toEqual({
       comments: { level: 'resolve', readOnly: false, allowResolve: true },
       trackedChanges: { allowDecisions: true },
+      touch: { gestures: false },
     });
 
     const policy = normalizeInteractionConfig({

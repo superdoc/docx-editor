@@ -18,6 +18,7 @@ import type {
   Config,
   InteractionConfig,
   Modules,
+  TouchInteractionConfig,
   TrackChangesInteractionConfig,
 } from '../types/index.js';
 
@@ -32,6 +33,7 @@ type NormalizedInteractionConfig = {
     allowResolve: boolean;
   };
   trackedChanges: { allowDecisions: boolean };
+  touch: { gestures: boolean };
 };
 
 const isCommentInteractionLevel = (value: unknown): value is CommentInteractionLevel =>
@@ -64,6 +66,7 @@ export function normalizeInteractionConfig(config: InteractionSource = {}): Norm
   const level = hasCanonicalLevel ? canonicalLevel : legacyReadOnly ? 'read' : legacyAllowResolve ? 'resolve' : 'write';
 
   const canonicalAllowDecisions = interactionTrackedChanges.allowDecisions;
+  const interactionTouch: TouchInteractionConfig = isPlainObject(interaction.touch) ? interaction.touch : {};
 
   return {
     comments: {
@@ -77,6 +80,9 @@ export function normalizeInteractionConfig(config: InteractionSource = {}): Norm
       // Deprecated `readOnly` blocked accept/reject as well as comment writes.
       // Preserve that behavior unless the new dedicated field is explicit.
       allowDecisions: typeof canonicalAllowDecisions === 'boolean' ? canonicalAllowDecisions : !legacyReadOnly,
+    },
+    touch: {
+      gestures: interactionTouch.gestures === true,
     },
   };
 }

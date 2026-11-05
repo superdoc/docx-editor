@@ -308,6 +308,7 @@
         "ToolbarOptionalItemId",
         "ToolbarRegion",
         "ToolbarStringId",
+        "TouchInteractionConfig",
         "TrackChangeAuthor",
         "TrackChangeHighlightColors",
         "TrackChangesAuthorColorsConfig",
@@ -637,6 +638,7 @@
         "ToolbarOptionalItemId",
         "ToolbarRegion",
         "ToolbarStringId",
+        "TouchInteractionConfig",
         "TrackChangeAuthor",
         "TrackChangeHighlightColors",
         "TrackChangesAuthorColorsConfig",
@@ -709,11 +711,11 @@
     }
   },
   "counts": {
-    "types.import": 323,
-    "types.require": 323,
+    "types.import": 324,
+    "types.require": 324,
     "import": 13,
     "require": 13,
-    "union": 323
+    "union": 324
   },
   "divergences": {
     "typesImportVsRequire": {
@@ -1014,6 +1016,7 @@
         "ToolbarOptionalItemId",
         "ToolbarRegion",
         "ToolbarStringId",
+        "TouchInteractionConfig",
         "TrackChangeAuthor",
         "TrackChangeHighlightColors",
         "TrackChangesAuthorColorsConfig",

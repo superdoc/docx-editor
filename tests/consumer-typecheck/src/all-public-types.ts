@@ -306,6 +306,7 @@ import type {
   TrackChangeAuthor,
   TrackChangesAuthorColorsConfig,
   TrackChangesConfig,
+  TouchInteractionConfig,
   TrackChangesInteractionConfig,
   TrackChangesModuleConfig,
   TrackChangesReplacementMode,
@@ -604,6 +605,7 @@ const _real_TextTarget: AssertNotAny<TextTarget> = true;
 const _real_TrackChangeAuthor: AssertNotAny<TrackChangeAuthor> = true;
 const _real_TrackChangesAuthorColorsConfig: AssertNotAny<TrackChangesAuthorColorsConfig> = true;
 const _real_TrackChangesConfig: AssertNotAny<TrackChangesConfig> = true;
+const _real_TouchInteractionConfig: AssertNotAny<TouchInteractionConfig> = true;
 const _real_TrackChangesInteractionConfig: AssertNotAny<TrackChangesInteractionConfig> = true;
 const _real_TrackChangesModuleConfig: AssertNotAny<TrackChangesModuleConfig> = true;
 const _real_TrackChangesReplacementMode: AssertNotAny<TrackChangesReplacementMode> = true;

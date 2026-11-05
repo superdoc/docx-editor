@@ -1,13 +1,13 @@
 {
   "generatedAt": "2026-09-02T00:00:00.000Z",
   "summary": {
-    "total": 323,
+    "total": 324,
     "byBucket": {
       "legacy-root": 3,
-      "supported-root": 320
+      "supported-root": 321
     },
     "byConfidence": {
-      "high": 273,
+      "high": 274,
       "medium": 50
     }
   },
@@ -3063,6 +3063,17 @@
       "name": "TrackChangesConfig",
       "bucket": "supported-root",
       "rationale": "Canonical configuration for grouped or separate replacement review and tracked-change color overrides.",
+      "confidence": "high",
+      "source": "config-supported",
+      "inDts": true,
+      "inDcts": true,
+      "inEsm": false,
+      "inCjs": false
+    },
+    {
+      "name": "TouchInteractionConfig",
+      "bucket": "supported-root",
+      "rationale": "Named opt-in touch behavior policy accepted by InteractionConfig.touch.",
       "confidence": "high",
       "source": "config-supported",
       "inDts": true,

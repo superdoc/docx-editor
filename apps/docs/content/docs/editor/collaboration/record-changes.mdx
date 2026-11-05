@@ -56,13 +56,20 @@ const superdoc = new SuperDoc({
 });
 ```
 
-To attach a claim, add `user.claim`. It is a string, or a function that returns a string or a promise of one:
+To attach a claim, add `user.claim`. It is a string, or a function that returns a string or a promise of one. Supply `fetchClaim` in your application:
 
 ```ts
-user: {
-  id: 'alex',
-  claim: async ({ documentId, clientId }) => fetchClaim(documentId, clientId),
-}
+import { SuperDoc } from 'superdoc';
+
+declare function fetchClaim(documentId: string, clientId: number): Promise<string>;
+
+const superdoc = new SuperDoc({
+  selector: '#editor',
+  user: {
+    id: 'alex',
+    claim: async ({ documentId, clientId }) => fetchClaim(documentId, clientId),
+  },
+});
 ```
 
 In an SDK, pass the claim for one open request the way you pass a collaboration token. It does not travel in command-line arguments and is never saved:

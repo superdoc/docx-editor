@@ -553,6 +553,7 @@
     "/editor/collaboration/initialize-a-document/",
     "/editor/collaboration/observe-edits/",
     "/editor/collaboration/presence-and-awareness/",
+    "/editor/collaboration/record-changes/",
     "/editor/collaboration/run-a-server/",
     "/editor/collaboration/save-and-restore-a-room/",
     "/editor/collaboration/upgrade-a-document/",

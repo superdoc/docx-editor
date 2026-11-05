@@ -143,8 +143,8 @@ export interface DiffApplyResult {
   coverage: DiffCoverage;
   summary: DiffSummary;
   diagnostics: string[];
-  /** Style definitions applied directly; these changes remain when body revisions are rejected. */
-  styleChanges?: { changeMode: 'direct'; partUris: string[] };
+  /** Style policy used for this comparison. Tracked mode preserves unused proposal definitions after rejection. */
+  styleChanges?: { changeMode: 'direct' | 'tracked'; partUris: string[] };
 }
 
 // ---------------------------------------------------------------------------
@@ -154,15 +154,15 @@ export interface DiffApplyResult {
 /** Input for `diff.compare`. */
 export interface DiffCompareInput {
   targetSnapshot: DiffSnapshot;
-  /** Assess tracked eligibility with explicit consent to apply style definitions directly. */
-  styleChangeMode?: 'direct';
+  /** Directly adopt definitions, or review references to separate proposed styles. */
+  styleChangeMode?: 'direct' | 'tracked';
 }
 
 /** Input for `diff.apply`. */
 export interface DiffApplyInput {
   diff: DiffPayload;
-  /** Apply target style definitions directly, even when body changes are tracked. */
-  styleChangeMode?: 'direct';
+  /** Tracked styles require tracked application; direct styles persist after body rejection. */
+  styleChangeMode?: 'direct' | 'tracked';
 }
 
 // ---------------------------------------------------------------------------

@@ -47,6 +47,43 @@ try {
 
 A blocker names the affected families and a stable code (for example `structural-paragraph-unsupported` or `header-footer-tracked-lifecycle-unsupported`). `diff.apply` enforces the same boundary at apply time: an unsupported family fails the whole call closed, with no partial output and no mutation, rather than silently applying a broader replacement than requested. See the [`diff.apply` reference](/document-api/reference/diff/apply) for every documented family and blocker code.
 
+## Review style changes
+
+For standalone SDK comparisons, request `styleChangeMode: 'tracked'` on both calls:
+
+```ts
+const diff = await baseDoc.diff.compare({ targetSnapshot, styleChangeMode: 'tracked' });
+const result = await baseDoc.diff.apply({
+  diff,
+  changeMode: 'tracked',
+  styleChangeMode: 'tracked',
+});
+await baseDoc.save({ out: 'comparison.docx' });
+```
+
+This flow preserves the original definitions, creates distinctly named proposed styles,
+and tracks the affected style references. Accepting the comparison keeps the proposed
+text and styling; rejecting it restores the original text and effective styling. The
+saved DOCX carries the revisions for review in Word. Paragraph style references use
+formatting revisions; character style changes may use inline replacement revisions.
+`result.styleChanges.changeMode` identifies this policy as `tracked`.
+
+Unused definitions can remain after either decision, including an unused style added
+by the target. They do not create a visible revision by themselves. The result's
+`diagnostics` disclose this retention. Proposed styles have separate names so Word
+can retain both versions; this flow does not rename accepted styles back to the target's
+original names.
+
+The supported scope is non-default paragraph and character styles used in the main
+body, including inherited styles and outline-based TOCs. TOCs that select an affected
+style by identity (`\o`) or name (`\t`) are refused. Changes to defaults, table styles, affected styles
+used in other stories, simultaneous table topology changes, and inputs with pending
+revisions are refused. Adding a definition for an already-used unresolved style is
+also refused. Decide pending revisions before making another style comparison.
+Numbering and settings keep their existing restrictions. Check eligibility for the
+actual pair. The versioned suggest-only review-store surface retains its separate
+policy and does not accept this option.
+
 ## Definitions and replay limits
 
 Style, settings and numbering definitions are shared across the document. Their replacement is not represented by native tracked body revisions. The default tracked policy refuses a changed definition with `definition-replay-tracked-unsupported`, including any accompanying body edit. To adopt changed styles directly while tracking supported body edits, explicitly consent on both calls:
@@ -120,3 +157,5 @@ pair eligibility), and SD-3647 (header/footer coverage), with the narrower follo
 Document API comparison suites and update this matrix whenever diff eligibility, replay behavior, or review-group
 contracts change. For a runnable version of the workflow above, see the [document comparison
 example](https://go.superdoc.dev/examples/document-comparison).
+
+The retained legacy comparison adapter refuses tracked style policy with `CAPABILITY_UNSUPPORTED`; use the current typed engine through the standalone SDK.

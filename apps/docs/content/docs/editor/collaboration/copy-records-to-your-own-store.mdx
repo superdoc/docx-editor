@@ -1,0 +1,133 @@
+---
+title: Copy change records to your own store
+navTitle: Copy records
+description: Run an observer that joins a room with an SDK and writes each change record to your database.
+---
+
+An **observer** is a backend process that joins a collaboration room with a SuperDoc SDK. It reads [change records](/editor/collaboration/record-changes) as they arrive and writes them to your own storage. Your collaboration server needs no SuperDoc code.
+
+## Before you start
+
+Install the SDK for your language. See the [Node.js](/agents/automation/node-sdk), [Python](/agents/automation/python-sdk) or [Rust](/agents/automation/rust-sdk) guide.
+
+The observer opens the room the same way any SDK session does. It supports these providers:
+
+| `providerType`  | Room                   | Authentication                                                                   |
+| --------------- | ---------------------- | -------------------------------------------------------------------------------- |
+| `'hocuspocus'`  | `url` and `documentId` | A token for this open request: `collaborationAuth: { type: 'token', token }`.    |
+| `'y-websocket'` | `url` and `documentId` | A token for this open request, as for Hocuspocus.                                |
+| `'liveblocks'`  | `roomId`               | `authEndpoint` or `publicApiKey` in `collaboration`. There is no per-open token. |
+
+The samples below use Hocuspocus. For another provider, change the `collaboration` object and the authentication.
+
+Give the observer read-only access where your server supports it. On Hocuspocus, mark the observer's connection read-only. The [server template](/editor/collaboration/deploy-a-server#check-access) does this when its access check returns `readOnly: true`. A read-only connection writes nothing to the room, not even attribution keys. The observer makes no edits of its own.
+
+## Run the observer
+
+Each sample keeps its history in local files under `history/<documentId>/`: `records.jsonl`, `cursor.txt` and a `snapshots/` folder. Replace the file code with your database and keep the same steps.
+
+### Node.js
+
+Save this as `observe-room.ts`:
+
+<include>../../../../snippets/headless/observe-room.ts</include>
+
+Run it with a token for the room:
+
+```bash
+OBSERVER_TOKEN=... COLLAB_URL=wss://collab.example.com DOCUMENT_ID=contract-123 npx tsx observe-room.ts
+```
+
+Press Ctrl+C to stop. The observer finishes its current wait, which takes up to 30 seconds, then closes the document.
+
+### Python
+
+Save this as `observe_room.py`:
+
+<include>../../../../snippets/headless/python-observe-room.py</include>
+
+Run it with `OBSERVER_TOKEN`, `COLLAB_URL` and `DOCUMENT_ID` set, the same way as the Node.js sample. Ctrl+C stops it and closes the document. `AsyncSuperDocClient` takes the same calls with `await`.
+
+### Rust
+
+Add `observe_room.rs` to your crate:
+
+<include>../../../../snippets/headless/rust-observe-room.rs</include>
+
+Call `observe_room` with a connected `Client`, as in the [Rust SDK guide](/agents/automation/rust-sdk). It returns when `should_stop` returns `true`, and closes the document either way. The sample needs `serde_json` and `tokio` with the `macros` and `rt` features.
+
+## How the loop works
+
+The three samples follow the same steps:
+
+1. Join the room with `roomMode: 'join'`.
+2. Take a snapshot. A session sees only the edits made after it joined, so this snapshot records the state it started from.
+3. Call `changes.list({ after: cursor, waitMs: 30000, includeUpdate: true })`. The call returns as soon as a record after the cursor exists, or with no records after 30 seconds.
+4. Append each record whose `id` is not stored yet. Use `id` as the primary key in your database and insert only when it is absent.
+5. Replace the cursor with the one the result returns, then save it. Do this on every call, even when there are no records.
+6. Take a snapshot every 250 records, every 10 minutes while the room is active, when a call returns nothing after activity, and when `truncated` is `true`.
+
+These numbers are sample defaults. SuperDoc does not schedule snapshots for you.
+
+## What to keep
+
+A record's `update` is the exact Yjs update behind it, base64 encoded. Keep it when you want to inspect or audit the bytes of an edit. An [oversized record](/editor/collaboration/record-changes#oversized-records) can arrive without its `update` and with part of its text left out.
+
+A snapshot holds the revision, the cursor, the last change id, the time, the Yjs state vector and, with `includeState`, the room's full state as a base64 Yjs update. Use snapshots, not records, to rebuild a room's state. Updates that produce no record, such as SuperDoc's own maintenance writes, are not in your record list.
+
+SuperDoc sessions keep deleted content. Content deleted before the observer joined is in a snapshot only if your server's Yjs documents keep deleted content (garbage collection off).
+
+## Restarts and gaps
+
+<Callout variant='warning' title='A cursor belongs to the session that issued it'>
+  Never build or compare cursors. After the observer restarts, its saved cursor comes from an earlier session. The first
+  call then returns from the oldest record the new session holds, with `truncated: true`. The loop stores those records,
+  adopts the new cursor and takes a snapshot. The next call is normal again.
+</Callout>
+
+Edits made while no observer was connected have no records. The new session starts empty and sees only what happens after it joins. The snapshot it takes first gives you the room's state at that point, and its state vector shows where the gap ends.
+
+`truncated: true` also means the session dropped records before you read them, for example because the observer fell behind the session's [retention window](/editor/collaboration/record-changes#which-sessions-record). The loop takes a snapshot when it sees it.
+
+If a call throws, for example because the connection failed, close the document, open the room again and continue from your saved cursor. Run the observer under a supervisor that restarts it when it exits.
+
+## Push instead of poll
+
+The SDK host also sends each batch of records as an `event.change` notification with params `{ sessionId, records }`. Pushed records carry no `update` and no cursor. To keep a complete history, treat a notification as a signal to call `changes.list` from your cursor. This loop prints each record; store them as the polling samples do:
+
+<include>../../../../snippets/headless/observe-room-push.ts</include>
+
+When a subscriber falls behind, the SDK drops the oldest notifications and raises `NOTIFICATIONS_LAGGED`. The loop above loses nothing, because it reads records from its cursor. A record can arrive by push and by `changes.list`, so keep deduplicating on `id`. `event.remoteChange` still reports only that something changed.
+
+In Python, `client.subscribe(capacity=256)` returns a stream with `recv(timeout=30)`, which returns `None` on timeout. In Rust, `client.subscribe()` returns a stream with `recv().await`. Both raise an error with code `NOTIFICATIONS_LAGGED` when they fall behind.
+
+Polling with `waitMs` has no lag case, so it is the simpler loop to start with.
+
+## Run more than one observer
+
+Run one observer per room. Sessions that receive the same update compute the same id, including for merges and moves. Yjs can merge updates, for example while a client reconnects, and a merged update forms one record with a new id that covers the same edits. Two observers can therefore store the same edit under different ids. Do not merge their histories by id alone.
+
+## Name versions
+
+A named version is a pointer into your store. Keep:
+
+```json
+{
+  "name": "Sent to legal",
+  "revision": "48",
+  "cursor": "…",
+  "snapshotRef": "history/contract-123/snapshots/2026-11-05T10-15-00.000Z.json",
+  "createdBy": "alex",
+  "createdAt": "2026-11-05T10:15:00Z"
+}
+```
+
+`revision` and `cursor` come from `changes.snapshot()`. `snapshotRef` points at the stored state. Create a version when someone saves, on a timer, or when the room goes idle.
+
+You can also export a DOCX at that point and store it next to the pointer. See [Version history](/editor/version-history) for DOCX versions. Restoring a version in a live room is a workflow your server owns. See [Restore shared documents separately](/editor/version-history#restore-shared-documents-separately).
+
+## Next steps
+
+- [Verify claims](/editor/collaboration/verify-claims) in the observer and store the result next to each record.
+- Persist the room itself with [Save and restore a room](/editor/collaboration/save-and-restore-a-room).
+- [Read authorship on your own server](/editor/collaboration/read-authorship-on-your-server) when you only need who sent each update.

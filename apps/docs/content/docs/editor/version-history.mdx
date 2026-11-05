@@ -92,6 +92,13 @@ is current.
 Open a second tab before saving Version 2. After restoring Version 1 as Version 3, a save from that stale tab should
 return `409` and leave Version 3 current.
 
+## Record who changed a shared document
+
+A DOCX version records what the document looked like, not who changed it. In a collaboration room, each SuperDoc
+session also produces change records that name the author of each edit. SuperDoc does not store them. To keep them
+and point named versions at them, see [Record who changed what](/editor/collaboration/record-changes) and
+[Copy records to your own store](/editor/collaboration/copy-records-to-your-own-store).
+
 ## Restore shared documents separately
 
 These helpers restore a standalone Editor, not a live collaboration room. A DOCX snapshot is not the room's saved
@@ -101,9 +108,6 @@ Restore button as a coordinated room-recovery policy.
 Your application needs a server-owned recovery policy for connected editors and writes arriving during recovery.
 See [Save and restore a room](/editor/collaboration/save-and-restore-a-room) for room persistence. It demonstrates
 reopening saved state, not rolling a live room back to an earlier version.
-
-To keep a history of who changed what in a shared document, and to point named versions at it, see
-[Record who changed what](/editor/collaboration/record-changes). SuperDoc does not store that history. Your servers do.
 
 Use [Secure integration](/editor/secure-integration) to protect the version routes. Use
 [Export options](/editor/export-options) when saved versions need a specific comments or tracked-changes policy.

@@ -10,6 +10,7 @@
     "test": "playwright test",
     "test:persistence": "playwright test --config playwright.persistence.config.ts",
     "test:storage": "tsx --test local-storage.test.ts",
+    "test:attribution": "tsx --test attribution-authors.test.ts",
     "test:access": "playwright test --config playwright.access.config.ts",
     "browsers": "playwright install chromium",
     "preview": "vite preview"

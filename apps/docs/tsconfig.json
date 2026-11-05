@@ -41,5 +41,5 @@
     ".next/dev/types/**/*.ts",
     ".source/**/*.ts"
   ],
-  "exclude": ["node_modules", "scripts", "collaboration-server"]
+  "exclude": ["node_modules", "scripts", "collaboration-server", "snippets/headless"]
 }

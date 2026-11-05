@@ -1,0 +1,88 @@
+---
+title: Verify who made a change
+navTitle: Verify claims
+description: Attach a signed identity claim to each editing session and verify it on your server.
+---
+
+A record's actor is what the editing client declared. Any client can declare any actor id. To trust it, have your application sign a **claim** for each session and verify it on your server. SuperDoc carries the claim into the room and onto each record from that client. **SuperDoc never verifies a claim and never reports a verified state.**
+
+## Attach a claim
+
+In the browser, set `user.claim` next to `user.id`. It is a string, or a function that returns a string or a promise of one. The function receives the collaboration `documentId` and the session's Yjs `clientId`:
+
+```ts
+import { SuperDoc } from 'superdoc';
+
+declare function fetchClaim(documentId: string, clientId: number): Promise<string>;
+
+const superdoc = new SuperDoc({
+  selector: '#editor',
+  user: {
+    id: 'alex',
+    claim: async ({ documentId, clientId }) => fetchClaim(documentId, clientId),
+  },
+});
+```
+
+Supply `fetchClaim` in your application. It calls your backend, which signs the claim.
+
+In an SDK, pass the claim with one open request, the way you pass a collaboration token:
+
+| SDK     | Call                                                                                           |
+| ------- | ---------------------------------------------------------------------------------------------- |
+| Node.js | `client.open(params, { identityClaim })`                                                       |
+| Python  | `client.open(params, identity_claim=claim)`                                                    |
+| Rust    | `client.open_with_identity_claim(&params, OpenOptions::default(), IdentityClaim::new(claim)?)` |
+
+The SDK sends the claim beside the open request, not in command-line arguments. A claim is at most 16,384 characters. It needs a collaboration document.
+
+For the CLI, a collaboration profile can name an environment variable with `claimEnv`, with the same rules as `tokenEnv`. Do not combine `claimEnv` with a per-open claim.
+
+The client writes the claim into its `attribution:client` key with its first edit. Every client in the room can read it, so put no secrets in it.
+
+## Choose a claim format
+
+SuperDoc treats the claim as an opaque string. The recommended claim is a JWT that your application signs:
+
+| Field | Value                                                                                                                                                                                  |
+| ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sub` | The user id. It must equal `user.id`.                                                                                                                                                  |
+| `aud` | The document id, so the claim cannot be reused in another room.                                                                                                                        |
+| `exp` | When the claim stops being valid. The claim reaches the room with the session's first edit, which can come long after the editor opened, so allow for the length of a working session. |
+| `jti` | A unique id for each SuperDoc session.                                                                                                                                                 |
+| `cid` | Optional. The Yjs client id. Only the function form of `user.claim` can supply it, because the client id exists once the session connects.                                             |
+
+This profile is documentation. SuperDoc does not enforce it.
+
+## Verify claims in the observer
+
+A verifier checks the signature, `sub` against the actor id, `aud` against the document id, `exp`, and `cid` when present. It also keeps the first client id seen for each `jti`. A `jti` that appears on a second client id is a copied claim: keep the first and reject the second.
+
+This reference verifier uses only `node:crypto` and HMAC-SHA256, so it needs no dependency. Use your own key management and algorithm in production.
+
+<include>../../../../../../examples/collaboration/verify-claim.ts</include>
+
+Create one verifier per room in your [observer](/editor/collaboration/copy-records-to-your-own-store), and check each client the room lists:
+
+```ts
+const verify = createClaimVerifier(claimSecret, documentId);
+
+for (const client of (await doc.changes.actors()).items) {
+  const result = verify(client.actorId, client.claim, client.clientId);
+  await saveClaimResult(
+    { documentId, clientId: client.clientId, actorId: client.actorId, claim: client.claim },
+    result,
+  );
+}
+```
+
+`claimSecret` is your signing key and `saveClaimResult` is your own storage call. To check a single record, call `verify(record.actor?.id ?? null, record.actor?.claim, record.session.clientId)`.
+
+A client can change its actor id or claim during a session without changing its client id, and a claim from the function form can arrive after the first edit. So store each result under the document id, client id, actor id and claim it checked, and keep earlier results for earlier records. Verify a claim when the observer first sees that combination. The verifier compares `exp` with the current time, so an old claim fails when you check it again later. A restarted observer should reuse the results it stored.
+
+The record itself never changes: its `provenance` stays `declared`. Join your stored result to a record by `session.clientId`, `actor.id` and `actor.claim`.
+
+## Next steps
+
+- [Copy records to your own store](/editor/collaboration/copy-records-to-your-own-store) to run the observer.
+- [Control access to a room](/editor/collaboration/control-room-access) so only authorized users connect.

@@ -204,7 +204,7 @@ The SDK does not include a collaboration server, and closing a document does not
 
 ## Record who changed what
 
-A Rust backend can join a room as an observer and copy attributed change records into its own store with `document.api().changes().list(&params).await`. See [Record who changed what](/editor/collaboration/record-changes).
+A Rust backend can join a room as an observer and copy attributed change records into its own store with `document.api().changes().list(&params).await`. A cursor is valid only in the session that returned it. See [Copy records to your own store](/editor/collaboration/copy-records-to-your-own-store) for a complete observer.
 
 ## Next steps
 

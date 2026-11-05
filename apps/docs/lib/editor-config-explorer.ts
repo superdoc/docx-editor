@@ -134,7 +134,7 @@ const summaries = {
   documents: 'Load documents through the legacy multi-document field.',
   fieldContext: 'Provide V2 field values for one initial document; use Document.fieldContext for multiple documents.',
   fieldUpdatePolicy: 'Refresh supported unlocked V2 fields when opening a local editable document.',
-  user: 'Identify the current user for collaboration and tracked changes.',
+  user: 'Identify the current user for collaboration, tracked changes, and change records.',
   users: 'Provide the people available for mentions.',
   colors: 'Provide awareness colors for users.',
   ui: 'Choose which built-in interface parts SuperDoc renders.',
@@ -252,8 +252,8 @@ const presentation = {
   user: {
     kind: 'starter',
     example: {
-      value: "{ name: 'Jordan Lee', … }",
-      code: "user: {\n  name: 'Jordan Lee',\n  email: 'jordan@example.com',\n}",
+      value: "{ id: 'jordan', name: 'Jordan Lee', … }",
+      code: "user: {\n  id: 'jordan',\n  name: 'Jordan Lee',\n  email: 'jordan@example.com',\n}",
     },
   },
   ui: {
@@ -398,7 +398,10 @@ const presentation = {
     guide: { label: 'Performance', href: '/editor/performance-and-large-documents' },
   },
   changes: {
-    example: { value: '{ retainRecords: 500 }', code: 'changes: { retainRecords: 500 }' },
+    example: {
+      value: '{ retainRecords: 500, … }',
+      code: 'changes: { retainRecords: 500, retainBytes: 4 * 1024 * 1024 }',
+    },
     guide: { label: 'Record changes', href: '/editor/collaboration/record-changes' },
   },
   workerStartupTimeoutMs: {

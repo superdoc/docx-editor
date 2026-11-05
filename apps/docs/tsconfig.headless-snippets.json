@@ -12,6 +12,6 @@
     "types": ["node"],
     "paths": {}
   },
-  "include": ["snippets/headless/**/*.mjs", "snippets/agents/**/*.mjs"],
+  "include": ["snippets/headless/**/*.mjs", "snippets/headless/**/*.ts", "snippets/agents/**/*.mjs"],
   "exclude": ["node_modules"]
 }

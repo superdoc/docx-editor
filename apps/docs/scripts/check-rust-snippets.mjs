@@ -11,7 +11,13 @@ const project = mkdtempSync(resolve(tmpdir(), 'superdoc-rust-docs-'));
 try {
   mkdirSync(resolve(project, 'src'));
   copyFileSync(resolve(app, 'snippets/headless/rust-accept-changes.rs'), resolve(project, 'src/main.rs'));
-  const modules = ['rust-batch-comments', 'rust-handle-errors', 'rust-provision-runtime', 'rust-collaboration'];
+  const modules = [
+    'rust-batch-comments',
+    'rust-handle-errors',
+    'rust-provision-runtime',
+    'rust-collaboration',
+    'rust-observe-room',
+  ];
   for (const name of modules) {
     copyFileSync(resolve(app, `snippets/headless/${name}.rs`), resolve(project, `src/${name.replaceAll('-', '_')}.rs`));
   }

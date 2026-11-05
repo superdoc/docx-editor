@@ -1,0 +1,104 @@
+---
+title: Read authorship on your own server
+navTitle: Read authorship
+description: Tell which user sent each collaborative update by reading the attribution keys SuperDoc writes into the room.
+---
+
+SuperDoc editors declare who they are inside the room. Any Yjs server can read those declarations from the room's `meta` map and tell which user sent each update. Nothing from SuperDoc runs on the server.
+
+This gives you "who changed the room, and when". It does not tell you which paragraph changed. For paragraph-level records, [run an observer](/editor/collaboration/copy-records-to-your-own-store).
+
+## The attribution keys
+
+Each SuperDoc client writes two keys into the root map `meta`. It writes only its own keys. Values are plain JSON objects. SuperDoc adds no other root type to the room.
+
+| Key                                | Value                                                              |
+| ---------------------------------- | ------------------------------------------------------------------ |
+| `attribution:client:<yjsClientId>` | `{ v: 1, actorId, name?, email?, sessionId, declaredAt, claim? }`  |
+| `attribution:stamp:<yjsClientId>`  | `{ v: 1, at, actorType, cause, changeTag?, fromClock?, toClock? }` |
+
+- `actorId` is a string, or `null` when the session has no actor id.
+- `sessionId` is random for each SuperDoc session and stays the same for its lifetime.
+- `declaredAt` and `at` are ISO 8601 UTC timestamps from the writing client's clock.
+- `actorType` is `human` or `code`. `cause` is `user`, `api`, `undo`, `redo` or `maintenance`.
+- `claim` is the client's [identity claim](/editor/collaboration/verify-claims), copied as given. Every client in the room can read it.
+- `v` is the contract version. Ignore keys and fields you do not know.
+
+## When SuperDoc writes them
+
+- The client key is written in the same Yjs transaction as the client's first edit. It is rewritten only when the identity or claim changes. A claim that arrives after the first edit is written in a transaction of its own.
+- The stamp is written in the same transaction as an edit when the edit's cause, actor type or change tag changes, when the last stamp is 10 seconds old or older, and when the edit inserts no content of its own, such as a deletion.
+- Read-only sessions never write either key.
+- Transactions that SuperDoc runs for its own upkeep, such as seeding or repairing a room, produce no change records. When one changes content, the client writes a stamp with cause `maintenance`. `fromClock` and `toClock` give the range of that client's struct clocks the transaction covers, up to and including the stamp itself at `toClock`.
+
+So every content update from a SuperDoc client inserts at least one struct with that client's id: its content, or its stamp.
+
+## Find who sent an update
+
+1. Apply the update to the room's `Y.Doc` as usual.
+2. Decode the update and collect the client ids of the structs it inserts.
+3. Look up `attribution:client:<clientId>` and `attribution:stamp:<clientId>` in `meta` for each one.
+4. Skip the update if all its inserted structs belong to one client whose stamp has cause `maintenance`, and every struct lies from `fromClock` up to `toClock`. Anything else is an edit. An update that also carries other content, for example an edit merged with upkeep after a reconnect, is an edit.
+
+A client id with no client key belongs to an older SuperDoc version, to a client whose keys were removed after 30 days, or to a writer that is not SuperDoc. Treat its author as unknown.
+
+This function does those steps with the `yjs` package:
+
+<include>../../../../../../examples/collaboration/attribution-authors.ts</include>
+
+Call it from your server's change hook. With Hocuspocus, `onChange` runs after the update is applied:
+
+```ts
+import { Hocuspocus } from '@hocuspocus/server';
+import { attributeUpdate } from './attribution-authors';
+
+const server = new Hocuspocus({
+  async onChange({ documentName, document, update }) {
+    const { maintenance, authors } = attributeUpdate(document, update);
+    if (maintenance) return;
+    const [primary] = authors;
+    console.log(documentName, primary?.declaration?.actorId ?? 'unknown', primary?.stamp?.at);
+  },
+});
+```
+
+`authors` lists the clients largest first, by the number of structs each inserted. A yrs server reads the same two keys from its root map `meta`.
+
+The stamp's `at` is the time of that client's latest stamp. Stamps are written at most every 10 seconds while the cause, actor type and change tag stay the same, so `at` can be up to about 10 seconds before the edit. Use your server's clock for the time you received the update.
+
+## Remove stale keys
+
+A SuperDoc session that joins an existing room removes the keys of other clients whose newest key is older than 30 days. It does this about 3 seconds after its own first edit, 200 clients at a time, until none are left. Read-only sessions do not remove keys.
+
+Edits that reach the room after their client's keys were removed are recorded without an actor. This can happen when a device edits offline for more than 30 days and then reconnects.
+
+## Rooms with older SuperDoc versions
+
+Clients on SuperDoc versions without change records can share a room with newer clients. They open, edit, save and join as before, and the room format does not change. They do not write attribution keys, and they ignore the keys that newer clients write.
+
+A newer session records an older client's edits like any other remote edit. The fields the older client cannot declare are empty:
+
+| Field         | Value for an older client's edit                                |
+| ------------- | --------------------------------------------------------------- |
+| `actor`       | `{ id: null }`                                                  |
+| `provenance`  | `unknown`                                                       |
+| `actorType`   | `null`                                                          |
+| `cause`       | `null`, including for undo and redo                             |
+| `at.declared` | `null`. `at.observed` is set.                                   |
+| `session`     | `{ id: null, clientId }`, with the older client's Yjs client id |
+
+`changes.actors()` does not list older clients, and `changes.list({ actorId })` never returns their records. To find them, keep records whose `actor.id` is `null` and group them by `session.clientId`. A client id stays the same for one session of the older client. Older clients still write `lastEditActorType`. SuperDoc does not use it for `actorType`.
+
+Older clients write no maintenance stamps, so every content change they make is recorded, including their own repair writes. Some operations in older clients rewrite more of a paragraph than they change. SuperDoc leaves the values they rewrote without changing out of the records.
+
+When one update carries content from several clients, for example after a reconnect, the record's `actor` is the client that wrote the most content, `contributors` lists every client that wrote content, and `provenance` is `relayed`. An older client appears as `{ id: null }`.
+
+When a newer client replaces the room's file, it keeps the other clients' attribution keys and stamps the replacement as maintenance, so other sessions record no change for it. When an older client replaces the file, it removes every client's attribution keys, and other sessions record no change for the replacement. Each newer client writes its keys again with its next edit. Until then, `changes.actors()` does not list it.
+
+The 30-day cleanup removes keys only. Older clients have none, so it never affects them.
+
+To attribute every edit, upgrade every client that edits the room.
+
+## Relation to `lastEditActorType`
+
+`content.<shard>.meta.lastEditActorType` is a separate, older signal. It is written as [Observe story edits on your server](/editor/collaboration/observe-edits) describes, and it only says whether the last edit to a story came from the UI or from code. The attribution keys add who made the edit.

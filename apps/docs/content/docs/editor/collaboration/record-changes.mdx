@@ -1,491 +1,197 @@
 ---
 title: Record who changed what
 navTitle: Record changes
-description: Turn each collaborative edit into an attributed change record, and keep your own history from any Yjs server.
+description: Read attributed change records from a collaboration room, and learn what your server does to keep them.
 ---
 
-Every SuperDoc session turns each committed document change into a **change record**: who made it, when, which story and paragraph it touched, what text or formatting changed, and why. You read records through the Document API, from the browser or from the Node.js, Python and Rust SDKs.
+SuperDoc turns each edit a session sees into a **change record**: who made it, when, which paragraph it touched, and what text or formatting changed. You read records through the Document API, in the browser or from the Node.js, Python and Rust SDKs.
 
-SuperDoc does not store history. Your servers and storage do. This page shows how to read records, how to keep them in your own store from any Yjs server, and how to verify who a record says made the change.
+Each session keeps only a short window of recent records. SuperDoc does not store history. To keep one, copy records into your own database.
 
-## What a change record holds
+## Try it
 
-One record is produced for each applied Yjs transaction that changed story content, comments, tracked changes or bookmarks. Typing a word is one record. A paste is one record.
+You need a collaboration room that SuperDoc editors join, and the [Node.js SDK](/agents/automation/node-sdk).
 
-| Field          | Meaning                                                                                                 |
-| -------------- | ------------------------------------------------------------------------------------------------------- |
-| `id`           | Deterministic id. Every session that receives the same Yjs update computes the same id.                 |
-| `seq`          | Number that grows by one for each record in this session, starting at 1.                                |
-| `revision`     | The document revision after the change, as `doc.info` and receipts report it.                           |
-| `origin`       | `local` for edits made in this session, `remote` for edits from other clients.                          |
-| `actor`        | The primary author: `{ id, name?, email?, claim? }`, or `null`.                                         |
-| `contributors` | Other authors. Present only when more than one client wrote content in the same record.                 |
-| `actorType`    | `human` for supported SuperDoc UI edits, `code` for public API calls, or `null`.                        |
-| `cause`        | `user`, `api`, `undo`, `redo`, or `null`.                                                               |
-| `provenance`   | `authored`, `declared`, `relayed` or `unknown`. See below.                                              |
-| `at`           | `{ declared, observed }`. `declared` is the writing client's clock. `observed` is this session's clock. |
-| `session`      | `{ id, clientId }`: the SuperDoc session and its Yjs client id.                                         |
-| `changeTag`    | The tag your application passed to the Document API call, when there is one.                            |
-| `changes`      | What changed, as a list of block changes.                                                               |
-| `update`       | The Yjs update for exactly this transaction, base64 encoded. Only with `includeUpdate`.                 |
+### 1. Give each editor an actor id
 
-Each entry in `changes` has a `kind`: `text`, `format`, `paragraph`, `split`, `merge`, `move`, `create`, `remove`, `table` or `sidecar`. A `text` change carries the block id, the range of the inserted text, and the inserted and deleted strings. A `sidecar` change lists the ids of the comments, tracked changes or bookmarks it affected.
-
-`provenance` says how much to trust the actor:
-
-- `authored`: this session made the edit and has a configured actor id.
-- `declared`: another client made the edit and its actor came from that client's declaration in the room.
-- `relayed`: content from more than one client arrived in one transaction, for example after a reconnect. `contributors` lists them.
-- `unknown`: no actor id is available.
-
-A claim, if present, is copied onto the actor. SuperDoc never verifies it and never reports a verified state. See [Verify identity with claims](#verify-identity-with-claims).
-
-Normal editing stays normal editing. Suggestions stay [tracked changes](/editor/track-changes). A change record describes the edit that created, accepted or rejected them.
-
-## Set an identity
-
-Records name an author only when the session knows who it is. Set an actor id:
-
-- Browser: `user.id` in the `SuperDoc` configuration. This field already exists and is optional.
-- SDKs: `userId` in the `doc.open` request, next to `userName` and `userEmail`. The CLI flag is `--user-id`.
+Records name an author only when the editing session has one. Add `user.id` to each editor's `SuperDoc` configuration:
 
 ```ts
 const superdoc = new SuperDoc({
   selector: '#editor',
+  document: { url: '/contract.docx', collaboration },
   user: { id: 'alex', name: 'Alex', email: 'alex@example.com' },
 });
 ```
 
-To attach a claim, add `user.claim`. It is a string, or a function that returns a string or a promise of one. Supply `fetchClaim` in your application:
+### 2. Print records from the room
 
-```ts
-import { SuperDoc } from 'superdoc';
+Save this script as `print-changes.ts`. It joins the room, waits for edits, and prints who made each one:
 
-declare function fetchClaim(documentId: string, clientId: number): Promise<string>;
+<include>../../../../snippets/headless/print-changes.ts</include>
 
-const superdoc = new SuperDoc({
-  selector: '#editor',
-  user: {
-    id: 'alex',
-    claim: async ({ documentId, clientId }) => fetchClaim(documentId, clientId),
-  },
-});
+Run it against your room, then edit the document in a browser:
+
+```bash
+OBSERVER_TOKEN=... COLLAB_URL=wss://collab.example.com DOCUMENT_ID=contract-123 npx tsx print-changes.ts
 ```
 
-In an SDK, pass the claim for one open request the way you pass a collaboration token. It does not travel in command-line arguments and is never saved:
+Each line shows the time, the actor id, and the kinds of change in one record. The script stops after ten polls of up to 30 seconds each.
 
-| SDK     | Call                                                                                           |
-| ------- | ---------------------------------------------------------------------------------------------- |
-| Node.js | `client.open(params, { identityClaim })`                                                       |
-| Python  | `client.open(params, identity_claim=claim)`                                                    |
-| Rust    | `client.open_with_identity_claim(&params, OpenOptions::default(), IdentityClaim::new(claim)?)` |
+## What SuperDoc does and what your server does
 
-For the CLI, a collaboration profile names an environment variable with `claimEnv`, with the same rules as `tokenEnv`.
+| Job                           | SuperDoc                                                                                             | Your application or server                                                                               |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| Say who is editing            | Publishes the actor id you set into the room, with an optional claim.                                | Authenticates users, issues tokens and claims, and decides who joins.                                    |
+| Turn edits into records       | Each session records the edits it sees and keeps the last 1,000 records or 8 MiB.                    | Runs an [observer](/editor/collaboration/copy-records-to-your-own-store) that copies records out.        |
+| Keep history                  | Returns record ids, cursors, snapshots, Yjs state vectors and, on request, each record's Yjs update. | Stores records, ignores duplicate ids, schedules snapshots, and sets retention and backups.              |
+| Attribute updates on a server | Writes each client's identity and a timestamp into the room's `meta` map.                            | [Reads those keys](/editor/collaboration/read-authorship-on-your-server) if it does not run an observer. |
+| Trust the author              | Copies a claim into the room and onto records. Never verifies it.                                    | [Verifies claims](/editor/collaboration/verify-claims) and stores the result.                            |
+| Timeline, replay and restore  | Not provided.                                                                                        | Builds them from stored records and snapshots.                                                           |
 
-SuperDoc never derives an identity from a name, an email, a cursor color or a session id.
+## What a record holds
 
-Nothing changes for an application that sets none of these. Editing, saving and collaboration behave as before. Records from a session without an actor id carry `actor: null` and `provenance: 'unknown'`, and `changes.list` reports `identity: 'missing'`, so the gap is visible.
-
-## Read records in the browser
-
-Use the Document API on the active editor:
-
-```ts
-const doc = superdoc.activeEditor.doc;
-
-const { items, cursor, truncated, identity } = doc.changes.list({ limit: 50 });
-const record = doc.changes.get({ id: items[0].id });
-const history = doc.changes.resolve({ blockId: 'p-12' });
-const actors = doc.changes.actors();
-const snapshot = doc.changes.snapshot();
-```
-
-| Operation          | Returns                                                                                    |
-| ------------------ | ------------------------------------------------------------------------------------------ |
-| `changes.list`     | Records, oldest first, with `cursor`, `truncated`, `identity` and `collaboration`.         |
-| `changes.get`      | One record by `id`, or `null`.                                                             |
-| `changes.resolve`  | Records for a block, following the paragraphs it was split from or merged with.            |
-| `changes.actors`   | The room's client table: Yjs client id, actor id, name, email, session id and claim.       |
-| `changes.snapshot` | The current revision, cursor, last change id, state vector, and optionally the full state. |
-
-All five are read operations. They do not change the document, and they work in viewing mode. `changes.list` accepts `after`, `limit` (1 to 1,000, default 100), `story`, `blockId`, `actorId`, `includeUpdate` and `waitMs`.
-
-To react to a collaborator's edit as it arrives, use the document change listener on the UI controller. A change with `cause: 'remote'` carries the records behind it in `records`, oldest first:
-
-```ts
-const stop = superdoc.ui.document.onChange((change) => {
-  for (const record of change.records ?? []) {
-    console.log(
-      record.actor?.id,
-      record.changes.map((entry) => entry.kind),
-    );
-  }
-});
-```
-
-`records` is present only when the engine recorded the remote transactions, and `scope` is then taken from the stories the records touched. For edits made in this editor, read `doc.changes.list` after the change.
-
-<Callout variant='warning' title='Records are a window, not a store'>
-  Each session keeps a bounded list of recent records: 1,000 records or 8 MiB, whichever comes first. The oldest are
-  dropped first. In the browser, set `changes: { retainRecords, retainBytes }` in the configuration to change the
-  limits. In an SDK, pass `changesRetainRecords` and `changesRetainBytes` to `doc.open`. A session also sees only the
-  changes made while it was connected. To keep a history, copy records into your own store, as described next.
-</Callout>
-
-## Keep a history from any Yjs server
-
-Change records work with any Yjs server: a y-websocket server, including Rust yrs servers such as y-sweet, Hocuspocus, or Liveblocks. You add no code to the server. A process in your backend joins the room as an **observer session**, reads records, and writes them to your own database.
-
-The observer:
-
-1. Opens the room headless with an SDK, using a read-only token. A read-only session writes nothing to the room.
-2. Loops on `changes.list({ after: cursor, waitMs: 30000, includeUpdate: true })`. The call returns as soon as a record after `cursor` exists, or empty after 30 seconds.
-3. Appends each record to your store, with its update. A repeated read returns the same `id`, so it stores the same row.
-4. Saves the new `cursor` after the records are stored.
-5. Takes `changes.snapshot({ includeState: true })` and stores the result:
-   - every 250 records,
-   - every 10 minutes while the room is active,
-   - when the room goes idle, which is a poll that returns nothing after activity.
-6. Takes a snapshot straight away when `truncated` is `true`.
-
-These numbers are sample defaults. SuperDoc does not schedule snapshots for you.
-
-A snapshot holds the revision, the cursor, the last change id, the Yjs state vector and, with `includeState`, the full state as a base64 Yjs update. The state keeps deleted content, so a stored snapshot is enough to replay what happened after it.
-
-`truncated: true` means records after your cursor are not available to this session. They were dropped before you read them, for example because the observer was slow, or your cursor came from an earlier session. Records may be missing from your list. The snapshot you take next restores a complete state, and the state vector shows where the gap was.
-
-`waitMs` does not block other requests on the session, and the host keeps it below its request timeout.
-
-### Node.js
-
-```ts
-import { SuperDocClient } from '@superdoc/sdk';
-
-const SNAPSHOT_EVERY_RECORDS = 250;
-const SNAPSHOT_EVERY_MS = 10 * 60 * 1000;
-
-export async function observeRoom(client: SuperDocClient, store: HistoryStore, signal: AbortSignal) {
-  const doc = await client.open(
-    {
-      collaboration: {
-        providerType: 'y-websocket',
-        url: 'wss://collaboration.example.com',
-        documentId: 'contract-123',
-        roomMode: 'join',
-      },
-    },
-    { collaborationAuth: { type: 'token', token: readOnlyToken } },
-  );
-
-  let cursor = await store.loadCursor();
-  let sinceSnapshot = 0;
-  let lastSnapshotAt = Date.now();
-
-  const snapshot = async () => {
-    await store.saveSnapshot(await doc.changes.snapshot({ includeState: true }));
-    sinceSnapshot = 0;
-    lastSnapshotAt = Date.now();
-  };
-
-  try {
-    while (!signal.aborted) {
-      const result = await doc.changes.list({ after: cursor ?? undefined, waitMs: 30000, includeUpdate: true });
-      if (result.items.length) {
-        await store.appendRecords(result.items);
-        cursor = result.cursor;
-        await store.saveCursor(cursor);
-        sinceSnapshot += result.items.length;
-      }
-      const idle = result.items.length === 0 && sinceSnapshot > 0;
-      const stale = sinceSnapshot > 0 && Date.now() - lastSnapshotAt >= SNAPSHOT_EVERY_MS;
-      if (result.truncated || idle || stale || sinceSnapshot >= SNAPSHOT_EVERY_RECORDS) await snapshot();
-    }
-  } finally {
-    await doc.close({ discard: true });
-  }
-}
-```
-
-`HistoryStore` is your own interface over your database. It needs `loadCursor`, `saveCursor`, `appendRecords` (ignoring ids it already has) and `saveSnapshot`.
-
-### Python
-
-```python
-import time
-
-from superdoc import SuperDocClient
-
-SNAPSHOT_EVERY_RECORDS = 250
-SNAPSHOT_EVERY_SECONDS = 10 * 60
-
-
-def observe_room(client: SuperDocClient, store, should_stop):
-    document = client.open(
-        {
-            "collaboration": {
-                "providerType": "y-websocket",
-                "url": "wss://collaboration.example.com",
-                "documentId": "contract-123",
-                "roomMode": "join",
-            },
-        },
-        collaboration_auth={"type": "token", "token": read_only_token},
-    )
-
-    cursor = store.load_cursor()
-    since_snapshot = 0
-    last_snapshot_at = time.monotonic()
-
-    def snapshot():
-        nonlocal since_snapshot, last_snapshot_at
-        store.save_snapshot(document.changes.snapshot({"includeState": True}))
-        since_snapshot = 0
-        last_snapshot_at = time.monotonic()
-
-    try:
-        while not should_stop():
-            params = {"waitMs": 30000, "includeUpdate": True}
-            if cursor is not None:
-                params["after"] = cursor
-            result = document.changes.list(params)
-            if result["items"]:
-                store.append_records(result["items"])
-                cursor = result["cursor"]
-                store.save_cursor(cursor)
-                since_snapshot += len(result["items"])
-            idle = not result["items"] and since_snapshot > 0
-            stale = since_snapshot > 0 and time.monotonic() - last_snapshot_at >= SNAPSHOT_EVERY_SECONDS
-            if result["truncated"] or idle or stale or since_snapshot >= SNAPSHOT_EVERY_RECORDS:
-                snapshot()
-    finally:
-        document.close({"discard": True})
-```
-
-<Callout variant='info' title='Async Python'>
-  `AsyncSuperDocClient` has the same structure. Add `await` to each client call and use your own stop condition in place
-  of `should_stop`.
-</Callout>
-
-### Rust
-
-```rust
-use std::time::{Duration, Instant};
-
-use superdoc_sdk::{
-    generated::types::{DocChangesListBoundParams, DocChangesSnapshotBoundParams, DocOpenParams},
-    wire::{Nullable, Number},
-    Client, CollaborationAuth, OpenOptions,
-};
-use tokio_util::sync::CancellationToken;
-
-const SNAPSHOT_EVERY_RECORDS: usize = 250;
-const SNAPSHOT_EVERY: Duration = Duration::from_secs(10 * 60);
-
-pub async fn observe_room(
-    client: &Client,
-    store: &dyn HistoryStore,
-    stop: CancellationToken,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let params: DocOpenParams = serde_json::from_value(serde_json::json!({
-        "collaboration": {
-            "providerType": "y-websocket",
-            "url": "wss://collaboration.example.com",
-            "documentId": "contract-123",
-            "roomMode": "join"
-        }
-    }))?;
-    let options = OpenOptions {
-        collaboration_auth: Some(CollaborationAuth::token(read_only_token())?),
-        ..OpenOptions::default()
-    };
-    let document = client.open_with_options(&params, options).await?;
-
-    let mut cursor = store.load_cursor().await?;
-    let mut since_snapshot = 0;
-    let mut last_snapshot_at = Instant::now();
-
-    while !stop.is_cancelled() {
-        let mut list = DocChangesListBoundParams::new()
-            .with_wait_ms(Number::new(30000.0)?)
-            .with_include_update(true);
-        if let Some(after) = &cursor {
-            list = list.with_after(after.clone());
-        }
-        let result = document.api().changes().list(&list).await?;
-
-        if !result.items.is_empty() {
-            store.append_records(&serde_json::to_value(&result.items)?).await?;
-            cursor = match &result.cursor {
-                Nullable::Value(next) => Some(next.clone()),
-                Nullable::Null => cursor,
-            };
-            store.save_cursor(cursor.as_deref()).await?;
-            since_snapshot += result.items.len();
-        }
-        let idle = result.items.is_empty() && since_snapshot > 0;
-        let stale = since_snapshot > 0 && last_snapshot_at.elapsed() >= SNAPSHOT_EVERY;
-        if result.truncated || idle || stale || since_snapshot >= SNAPSHOT_EVERY_RECORDS {
-            let snapshot = document
-                .api()
-                .changes()
-                .snapshot(&DocChangesSnapshotBoundParams::new().with_include_state(true))
-                .await?;
-            store.save_snapshot(&serde_json::to_value(&snapshot)?).await?;
-            since_snapshot = 0;
-            last_snapshot_at = Instant::now();
-        }
-    }
-    Ok(())
-}
-```
-
-The three loops have the same structure. `HistoryStore` is your own interface; in Rust it takes the records as JSON values. Run one per room. Ids match across sessions only when they receive the same updates. Yjs may merge updates, for example while a client reconnects, and a merged update forms one record with a new id that covers the same edits. Two observers can therefore store the same edit under different ids, so don't merge their histories by id alone.
-
-<Callout variant='warning' title='A cursor belongs to the session that issued it'>
-  A cursor is only valid in the session that returned it. After the observer restarts, a saved cursor comes from another
-  session, so the first read returns from the oldest retained record with `truncated: true`. The loop above handles
-  this: it appends the records, ignores ids it already stored, and takes a snapshot. A new session also sees only what
-  happened after it joined, so the snapshot is what closes the gap.
-</Callout>
-
-### Push instead of poll
-
-The host also sends each batch of records to every subscriber as a notification. Its method is `event.change` and its params are `{ sessionId, records }`. Subscribe to host notifications instead of polling. Each SDK delivers the raw notification frames `{ jsonrpc, method, params }`. Filter on `params.sessionId` if the client has several documents open.
-
-Node.js:
-
-```ts
-const notifications = client.subscribe({ capacity: 256 });
-
-for (;;) {
-  try {
-    const next = await notifications.next();
-    if (next.done) break;
-    if (next.value.method !== 'event.change') continue;
-    const { records } = next.value.params as { records: unknown[] };
-    await store.appendRecords(records);
-  } catch (error) {
-    if (error instanceof SuperDocCliError && error.code === 'NOTIFICATIONS_LAGGED') {
-      cursor = await resync(doc, store, cursor);
-      continue;
-    }
-    throw error;
-  }
-}
-```
-
-Python:
-
-```python
-notifications = client.subscribe(capacity=256)
-
-while True:
-    try:
-        frame = notifications.recv(timeout=30)
-    except SuperDocError as error:
-        if error.code == "NOTIFICATIONS_LAGGED":
-            cursor = resync(document, store, cursor)
-            continue
-        raise
-    if frame is None or frame["method"] != "event.change":
-        continue
-    store.append_records(frame["params"]["records"])
-```
-
-`AsyncSuperDocClient.subscribe()` returns a stream with `async for` and `await notifications.recv(timeout=None)`.
-
-Rust:
-
-```rust
-let mut notifications = client.subscribe();
-loop {
-    match notifications.recv().await {
-        Ok(frame) => {
-            if frame["method"] == "event.change" {
-                store.append_records(&frame["params"]["records"]).await?;
-            }
-        }
-        Err(error) if error.code == "NOTIFICATIONS_LAGGED" => {
-            cursor = resync(&document, store, cursor).await?;
-        }
-        Err(error) => return Err(error.into()),
-    }
-}
-```
-
-When a subscriber is slow, the SDK drops the oldest notifications and raises `NOTIFICATIONS_LAGGED`, never silently. Resynchronize with `resync`: call `changes.list({ after: cursor })` until it returns no records, append them, and take a snapshot. Keep the cursor of the last record you stored. Dedupe on record `id`, as a record can arrive by push and by resync. `event.remoteChange` still exists and still reports only that something changed.
-
-Polling with `waitMs` has no lag case, so it is the simpler loop to start with. Use push when you want records on arrival without a pending request.
-
-## Named versions
-
-A named version is a pointer into your store. Keep:
+A session produces one record for each Yjs update it applies or sends that changes story content, comments, tracked changes or bookmarks. An update with no change SuperDoc can describe produces no record. This record is one edit by Alex, seen by another session (values are illustrative):
 
 ```json
 {
-  "name": "Sent to legal",
-  "revision": "…",
-  "cursor": "…",
-  "snapshotRef": "snapshots/contract-123/…",
-  "createdBy": "alex",
-  "createdAt": "2026-11-04T10:15:00Z"
+  "id": "9c1e4b7a2f60d38e5b1a7c42",
+  "seq": 12,
+  "revision": "48",
+  "origin": "remote",
+  "actor": { "id": "alex", "name": "Alex", "email": "alex@example.com" },
+  "actorType": "human",
+  "cause": "user",
+  "provenance": "declared",
+  "at": { "declared": "2026-11-05T10:15:02.114Z", "observed": "2026-11-05T10:15:02.391Z" },
+  "session": { "id": "5b0f2c1e-8d7a-4f3b-9e21-6c4a0d8b7f13", "clientId": 2841734019 },
+  "changes": [
+    {
+      "kind": "text",
+      "story": { "kind": "story", "storyType": "body" },
+      "blockId": "p-12",
+      "range": { "start": 31, "end": 45 },
+      "inserted": "within 30 days",
+      "deleted": ""
+    }
+  ]
 }
 ```
 
-`revision` and `cursor` come from `changes.snapshot()`. `snapshotRef` points at the stored state. Create a version when someone saves, on a timer, or when the room goes idle. The idle snapshot is a natural boundary.
+| Field          | Meaning                                                                                                                                   |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`           | Computed from the Yjs update. Sessions that receive the same update compute the same id.                                                  |
+| `seq`          | Starts at 1 and grows by one for each record in this session.                                                                             |
+| `revision`     | The document revision after the change, as `doc.info` and receipts report it.                                                             |
+| `origin`       | `local` for edits made in this session, `remote` for edits from other clients.                                                            |
+| `actor`        | The primary author: `{ id, name?, email?, claim? }`. `id` is `null` when the author declared none.                                        |
+| `contributors` | The clients that wrote content in the record. Present only when there is more than one.                                                   |
+| `actorType`    | `human` for supported SuperDoc UI edits, `code` for public API calls, or `null`.                                                          |
+| `cause`        | The kind of action: `user`, `api`, `undo`, `redo`, or `null`.                                                                             |
+| `provenance`   | How the actor was found: `authored`, `declared`, `relayed` or `unknown`. See below.                                                       |
+| `at`           | `declared` is the writing client's clock, or `null`. `observed` is this session's clock.                                                  |
+| `session`      | `id` is the writing SuperDoc session, or `null`. `clientId` is its Yjs client id.                                                         |
+| `changeTag`    | The `changeTag` your application passed in the Document API call's options, when there is one.                                            |
+| `changes`      | What changed. Each entry has a `kind`: `text`, `format`, `paragraph`, `split`, `merge`, `move`, `create`, `remove`, `table` or `sidecar`. |
+| `update`       | The Yjs update behind the record, base64 encoded. Only with `includeUpdate: true`.                                                        |
 
-You can also export a DOCX at that point and store it next to the pointer. See [Version history](/editor/version-history) for DOCX versions. Restoring a version in a live room is a separate workflow that your server owns. See [Restore shared documents separately](/editor/version-history#restore-shared-documents-separately).
+Suggestions stay [tracked changes](/editor/track-changes); a record describes the edit that created, accepted or rejected one.
 
-## The room contract
+`provenance` says where the actor came from:
 
-SuperDoc writes two keys into the room's existing `meta` map (the Yjs root map `meta`). It adds no new root type. Each client writes only its own keys. Values are plain JSON objects.
+- `authored`: this session made the edit and has an actor id.
+- `declared`: another client made the edit, and the actor is that client's declaration in the room.
+- `relayed`: content from more than one client arrived in one update, for example after a reconnect. `actor` is the client that wrote the most content, and `contributors` lists every client that wrote content.
+- `unknown`: no actor id is available.
 
-| Key                                | When it is written                                                                                                                                               | Value                                                              |
-| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| `attribution:client:<yjsClientId>` | In the same transaction as the client's first editing transaction. Rewritten only if the identity or claim changes.                                              | `{ v: 1, actorId, name?, email?, sessionId, declaredAt, claim? }`  |
-| `attribution:stamp:<yjsClientId>`  | In the same transaction as an edit when its cause, actor type or change tag changes, at least every 10 seconds, and when the edit inserts no content of its own. | `{ v: 1, at, actorType, cause, changeTag?, fromClock?, toClock? }` |
+## What each change describes
 
-- `actorId` is a string, or `null` when the session has no actor id.
-- `at` and `declaredAt` are ISO 8601 UTC timestamps from the writing client's clock.
-- `actorType` is `human` or `code`. `cause` is `user`, `api`, `undo`, `redo` or `maintenance`.
-- `sessionId` is random for each SuperDoc session and stays the same for its lifetime.
+Every change except `sidecar` names its `story`: the body (`{ kind: 'story', storyType: 'body' }`), a header or footer part (`storyType: 'headerFooterPart'` with `refId`), a footnote or endnote (`storyType: 'footnote'` or `'endnote'` with `noteId`), or a text box (`storyType: 'textbox'` with `textboxId`).
 
-Both keys are written in the same Yjs transaction as the edit they describe, so no reader sees one without the other. Read-only sessions never write them. Bootstrap, seed, replacement and repair transactions produce no records. When one of them changes content, the client writes a stamp with cause `maintenance` in it. `fromClock` and `toClock` give the client's struct clocks that transaction covers, from `fromClock` up to and including the stamp itself at `toClock`. Other sessions skip an update only when every struct it inserts is that client's and falls in that range. An update that also carries other content, for example a user edit merged with maintenance after a reconnect, is recorded in full. The client's next edit writes a new stamp. A server that keeps its own log can apply the same rule.
+| `kind`      | What it reports                                                                                                                                                                                                                                                                              |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `text`      | The paragraph's `blockId`, the `range` of the inserted text, and the `inserted` and `deleted` strings.                                                                                                                                                                                       |
+| `format`    | A formatted `range` and its `attributes`.                                                                                                                                                                                                                                                    |
+| `paragraph` | Changed paragraph `properties`, including `inlineObjects` such as images and fields.                                                                                                                                                                                                         |
+| `split`     | A paragraph split at `offset` into `blockId` and `tailBlockId`.                                                                                                                                                                                                                              |
+| `merge`     | `mergedBlockId` joined into `blockId`.                                                                                                                                                                                                                                                       |
+| `move`      | A paragraph that changed position, with the paragraph it now follows in `afterBlockId`. A paragraph rewritten in place is reported as `text` and `paragraph` changes, not as a move.                                                                                                         |
+| `create`    | A new paragraph and its `text`, including paragraphs created by a paste and paragraphs in footnotes and endnotes.                                                                                                                                                                            |
+| `remove`    | A removed paragraph and the `text` it had.                                                                                                                                                                                                                                                   |
+| `table`     | A table's structure changed. `tableId` is the public table id. `detail` lists what `changed` (for example `rowsInserted`, `cellsMerged`, `width`, `tableCreated`), row, column and cell counts before and after, the affected `blockIds`, and `previousTableId` when the table's id changed. |
+| `sidecar`   | The ids of the comments, tracked changes or bookmarks an edit affected (`affects` and `ids`). Tracked formatting and its acceptance also carry a tracked-change sidecar.                                                                                                                     |
 
-A SuperDoc session that joins an existing room removes both keys of any other client whose binding and stamp are older than 30 days. It does this once, after its first edit. Edits that reach the room after their client's keys were removed, such as edits made on a device that was offline for more than 30 days, are recorded without an actor.
+Changing the page settings of the document's last section is reported as a `paragraph` change on the last body paragraph, with the section's markup in `properties.sectPr`.
 
-The `v` field is the contract version. Readers should ignore keys and fields they do not know.
+### Oversized records
 
-A server with no SuperDoc code can use these keys. Every Yjs update carries the struct ids `(clientId, clock)` of what it inserted. Look up `attribution:client:<clientId>` in the room's `meta` map to find the actor, and `attribution:stamp:<clientId>` for the declared time. In JavaScript, `doc.getMap('meta')`. In Rust with yrs, `doc.get_or_insert_map("meta")` and read the two keys. Then record "actor X changed the room at T" for each update. A server sees paragraph-level detail only through an observer session.
+A single record is capped at 64 KiB or the session's `retainBytes`, whichever is larger. When an edit is bigger, for example a very large paste, the record keeps as much text as fits and adds one more `paragraph` change with `properties.truncated`:
 
-`content.<shard>.meta.lastEditActorType` is unchanged. It is still written the way [Observe story edits on your server](/editor/collaboration/observe-edits) describes. Its write cadence changed: SuperDoc skips the write for some edits and follows with one trailing write, as that page describes.
+```json
+{ "truncated": { "omittedCharacters": 182340, "omittedChanges": 0, "update": true } }
+```
 
-## Verify identity with claims
+`omittedCharacters` and `omittedChanges` count what was left out. `update: true` means the record also has no `update`, even with `includeUpdate`. The room itself is unaffected; take a snapshot when you need the full state.
 
-A claim is a signed statement from your application that a client is a given user. SuperDoc copies the claim into the room and onto each record from that client. **SuperDoc never verifies a claim and never reports a verified state.** Verification is yours, in the observer or on your server.
+## Set an identity
 
-The recommended claim is a JWT that your application signs:
+- Browser: set `user.id` in the `SuperDoc` configuration, next to `name` and `email`.
+- SDKs: pass `userId` in the `doc.open` request, next to `userName` and `userEmail`.
+- CLI: pass `--user-id` to `open`.
 
-| Field | Value                                                                                                                                      |
-| ----- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `sub` | The user id. It must equal `user.id`.                                                                                                      |
-| `aud` | The document id. A claim cannot be reused in another room.                                                                                 |
-| `exp` | A short expiry, for example a few minutes.                                                                                                 |
-| `jti` | A unique id for each SuperDoc session.                                                                                                     |
-| `cid` | Optional. The Yjs client id. Only the function form of `user.claim` can supply it, because the client id exists once the session connects. |
+SuperDoc never derives an identity from a name, an email, a cursor color or a session id.
 
-This profile is documentation. SuperDoc does not enforce it.
+Without an actor id, editing, saving and collaboration work as before. Each editing client still writes its two attribution keys into the room's `meta` map, with `actorId: null`. Its records carry `actor: { id: null }` and `provenance: 'unknown'`, and `changes.list` reports `identity: 'missing'`, so the gap is visible.
 
-A verifier checks the signature, `sub` against the record's actor id, `aud` against the document id, `exp`, and `cid` when present. It also keeps the first client id seen for each `jti`. A `jti` that appears on a second client id is a copied claim: keep the first and reject the second.
+To let your server check that an actor id is genuine, attach a signed claim. See [Verify claims](/editor/collaboration/verify-claims).
 
-This reference verifier uses only `node:crypto` and HMAC-SHA256, so it needs no dependency. Use your own key management and your own algorithm in production.
+## Read records in the browser
 
-<include>../../../../../../examples/collaboration/verify-claim.ts</include>
+Every `changes` operation returns a promise:
 
-In the observer, call it for each actor in `changes.actors()` and for each record's `actor` and `session.clientId`. Store the result next to the record. The record itself still says `declared`.
+<include>../../../../snippets/editor/record-changes.ts</include>
+
+| Operation          | Returns                                                                                                                                      |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `changes.list`     | Records oldest first, with `cursor`, `truncated`, `identity` and `collaboration`.                                                            |
+| `changes.get`      | One record by `id`, or `null`.                                                                                                               |
+| `changes.resolve`  | The last `limit` records for a block, following the paragraphs it was split from or merged with, and the `lineage` of block ids it followed. |
+| `changes.actors`   | The room's client table: Yjs client id, actor id, name, email, session id, declaration time and claim.                                       |
+| `changes.snapshot` | The current revision, cursor, last change id, Yjs state vector, time, and with `includeState` the full state.                                |
+
+`changes.list` accepts `after` (a cursor), `limit` (1 to 1,000, default 100), `story`, `blockId`, `actorId`, `includeUpdate` and `waitMs` (0 to 30,000). `changes.resolve` and `changes.list({ blockId })` follow splits and merges only through records the session still holds. These are reads. A session with a read-only connection can call them.
+
+`superdoc.ui.document.onChange` reports a collaborator's edit with `cause: 'remote'`. That change carries the records behind it in `records`, oldest first, when the session recorded them. For edits made in this editor, read `doc.changes.list`.
+
+## Which sessions record
+
+- A session in a collaboration room records its own edits and the edits it receives. `changes.list` reports `collaboration: true`.
+- A session that is not in a room records its own edits, reports `collaboration: false`, and writes no attribution keys.
+- A session with a read-only connection records the edits it receives and writes nothing to the room.
+
+<Callout variant='warning' title='Records are a window, not a store'>
+  Each session keeps 1,000 records or 8 MiB, whichever comes first. The size counts captured updates. The oldest
+  records are dropped first, and `truncated: true` tells you records you asked for are gone. In the browser, set
+  `changes: { retainRecords, retainBytes }` to change the limits. In an SDK, pass `changesRetainRecords` and
+  `changesRetainBytes` to `doc.open`. A session also sees only the edits made while it is connected.
+</Callout>
+
+## Limits
+
+These are current limits. Plan your history around them.
+
+- SuperDoc has no history store, no timeline or replay UI, and no restore workflow for a live room. Restoring a room is a workflow your server owns.
+- A session records only the edits it sees while connected. If your observer is down, the edits made meanwhile have no records. A snapshot taken when it returns has the room's state, but not who made each edit.
+- Records are not authentication. A claim is copied, never verified, and `actorType: 'human'` does not prove a person acted.
+- `at.declared` comes from the writing client's clock. For an edit from another client, it is the time of that client's latest timestamp in the room, which can be up to about 10 seconds before the edit.
+- Edits from a client that was idle for more than 30 days may have no author. See [Remove stale keys](/editor/collaboration/read-authorship-on-your-server#remove-stale-keys).
+- Edits from SuperDoc versions without change records have no author. See [Rooms with older SuperDoc versions](/editor/collaboration/read-authorship-on-your-server#rooms-with-older-superdoc-versions).
+- Table structure changes inside footnotes and endnotes are left out of records.
+- When SuperDoc deletes text in a follow-up transaction while another transaction is finishing, the author's record and its peers' records for that edit can differ.
 
 ## Next steps
 
-- Use the [Node.js](/agents/automation/node-sdk), [Python](/agents/automation/python-sdk) or [Rust](/agents/automation/rust-sdk) SDK guide for installation and the client lifecycle.
-- Persist the room with [Save and restore a room](/editor/collaboration/save-and-restore-a-room).
+- [Copy records to your own store](/editor/collaboration/copy-records-to-your-own-store) with an observer.
+- [Read authorship on your own server](/editor/collaboration/read-authorship-on-your-server) without running SuperDoc there.
+- [Verify claims](/editor/collaboration/verify-claims) so you can trust who a record names.
 - Read the [Document API reference](/document-api/reference) for every `changes` operation.

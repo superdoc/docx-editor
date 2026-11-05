@@ -217,6 +217,10 @@ except SuperDocError as error:
     raise
 ```
 
+## Record who changed what
+
+A Python backend can join a room as an observer and copy attributed change records into its own store with `document.changes.list({"after": cursor, "waitMs": 30000, "includeUpdate": True})`. See [Record who changed what](/editor/collaboration/record-changes).
+
 Use the [Node.js SDK](/agents/automation/node-sdk) for the same deterministic workflow from JavaScript or TypeScript.
 For Rust, follow the [Rust SDK guide](/agents/automation/rust-sdk).
 For the operation and receipt model shared by every SDK, continue with the

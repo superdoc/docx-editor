@@ -69,6 +69,11 @@ export type {
   TemporaryMutationHandleInput,
   TemporaryMutationReceipt,
   StoryLocator as DocumentStoryLocator,
+  ChangeRecord,
+  ChangeActor,
+  ChangeCause,
+  ChangeProvenance,
+  BlockChange,
   OperationId,
   OperationCall,
   OperationInput,
@@ -129,6 +134,7 @@ import type {
   StylesGetCatalogInput,
   StylesGetCatalogResult,
   StoryLocator as DocumentStoryLocator,
+  ChangeRecord,
 } from '@superdoc/document-api';
 
 import type { BrowserDocumentApi, PartialBrowserDocumentApi } from '../browser-document-api.js';
@@ -851,6 +857,12 @@ export interface SuperDocDocumentChange {
   changeTag: string | null;
   txId: string | null;
   scope: { kind: 'known'; stories: DocumentStoryLocator[] } | { kind: 'unknown' };
+  /**
+   * Attributed change records behind a remote change, oldest first. Present
+   * only when the engine recorded the remote transactions; `scope` is then
+   * derived from the stories the records touched.
+   */
+  records?: ChangeRecord[];
 }
 
 /** Document-level state slice. */

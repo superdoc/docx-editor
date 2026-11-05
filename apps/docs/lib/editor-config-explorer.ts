@@ -51,6 +51,7 @@ const fieldsByGroup = {
     'fieldUpdatePolicy',
     'hyperlinks',
     'trackChanges',
+    'changes',
     'isLocked',
     'lockedBy',
     'suppressDefaultDocxStyles',
@@ -187,6 +188,7 @@ const summaries = {
   comments: 'Legacy comment visibility setting.',
   hyperlinks: 'Choose what happens when a person activates a hyperlink.',
   trackChanges: 'Configure replacement review and tracked-change colors.',
+  changes: 'Limit how many attributed change records each session keeps.',
   isLocked: 'Set the initial shared lock metadata.',
   handleImageUpload: 'Store images inserted into the document.',
   lockedBy: 'Identify the user who locked the Editor.',
@@ -394,6 +396,10 @@ const presentation = {
       code: 'layoutEngineOptions: {\n  virtualization: { enabled: true, window: 5, overscan: 1 },\n}',
     },
     guide: { label: 'Performance', href: '/editor/performance-and-large-documents' },
+  },
+  changes: {
+    example: { value: '{ retainRecords: 500 }', code: 'changes: { retainRecords: 500 }' },
+    guide: { label: 'Record changes', href: '/editor/collaboration/record-changes' },
   },
   workerStartupTimeoutMs: {
     default: '30000',

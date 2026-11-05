@@ -202,6 +202,10 @@ The SDK does not include a collaboration server, and closing a document does not
 [Run a collaboration server](/editor/collaboration/run-a-server) and
 [Save and restore a room](/editor/collaboration/save-and-restore-a-room).
 
+## Record who changed what
+
+A Rust backend can join a room as an observer and copy attributed change records into its own store with `document.api().changes().list(&params).await`. See [Record who changed what](/editor/collaboration/record-changes).
+
 ## Next steps
 
 - Read the [Document API mental model](/document-api/mental-model) for how targets, receipts, and revisions work.

@@ -9,6 +9,7 @@
     "coordinate-room-creation",
     "save-and-restore-a-room",
     "observe-edits",
+    "record-changes",
     "control-room-access",
     "run-a-server",
     "deploy-a-server",

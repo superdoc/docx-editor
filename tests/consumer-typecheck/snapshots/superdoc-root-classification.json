@@ -1,13 +1,13 @@
 {
   "generatedAt": "2026-09-02T00:00:00.000Z",
   "summary": {
-    "total": 315,
+    "total": 323,
     "byBucket": {
       "legacy-root": 3,
-      "supported-root": 312
+      "supported-root": 320
     },
     "byConfidence": {
-      "high": 265,
+      "high": 273,
       "medium": 50
     }
   },
@@ -3472,6 +3472,94 @@
       "rationale": "Additive host integration contract documented in editor/integration-hooks; optional load lifetime or existing page metrics facade.",
       "confidence": "high",
       "source": "integration",
+      "inDts": true,
+      "inDcts": true,
+      "inEsm": false,
+      "inCjs": false
+    },
+    {
+      "name": "UserClaim",
+      "bucket": "supported-root",
+      "rationale": "Type of User.claim: an opaque identity claim string, or a function of the collaboration document id and Yjs client id that returns one. Published with collaborative change records; SuperDoc never verifies it.",
+      "confidence": "high",
+      "source": "config-supported",
+      "inDts": true,
+      "inDcts": true,
+      "inEsm": false,
+      "inCjs": false
+    },
+    {
+      "name": "UserClaimContext",
+      "bucket": "supported-root",
+      "rationale": "Argument passed to a UserClaim function: the collaboration documentId and the session Yjs clientId.",
+      "confidence": "high",
+      "source": "config-supported",
+      "inDts": true,
+      "inDcts": true,
+      "inEsm": false,
+      "inCjs": false
+    },
+    {
+      "name": "ChangesConfig",
+      "bucket": "supported-root",
+      "rationale": "Type of Config.changes: per-session retention limits (retainRecords, retainBytes) for attributed change records read through activeEditor.doc.changes.",
+      "confidence": "high",
+      "source": "config-supported",
+      "inDts": true,
+      "inDcts": true,
+      "inEsm": false,
+      "inCjs": false
+    },
+    {
+      "name": "ChangeRecord",
+      "bucket": "supported-root",
+      "rationale": "Document API attributed change record returned by activeEditor.doc.changes.* and delivered on remote SuperDocDocumentChange.records.",
+      "confidence": "high",
+      "source": "doc-api",
+      "inDts": true,
+      "inDcts": true,
+      "inEsm": false,
+      "inCjs": false
+    },
+    {
+      "name": "ChangeActor",
+      "bucket": "supported-root",
+      "rationale": "Document API actor identity (id, name, email, claim) on a ChangeRecord.",
+      "confidence": "high",
+      "source": "doc-api",
+      "inDts": true,
+      "inDcts": true,
+      "inEsm": false,
+      "inCjs": false
+    },
+    {
+      "name": "ChangeCause",
+      "bucket": "supported-root",
+      "rationale": "Document API cause of a ChangeRecord (user, api, undo, redo).",
+      "confidence": "high",
+      "source": "doc-api",
+      "inDts": true,
+      "inDcts": true,
+      "inEsm": false,
+      "inCjs": false
+    },
+    {
+      "name": "ChangeProvenance",
+      "bucket": "supported-root",
+      "rationale": "Document API provenance of a ChangeRecord actor (authored, declared, relayed, unknown).",
+      "confidence": "high",
+      "source": "doc-api",
+      "inDts": true,
+      "inDcts": true,
+      "inEsm": false,
+      "inCjs": false
+    },
+    {
+      "name": "BlockChange",
+      "bucket": "supported-root",
+      "rationale": "Document API per-block change entry inside ChangeRecord.changes.",
+      "confidence": "high",
+      "source": "doc-api",
       "inDts": true,
       "inDcts": true,
       "inEsm": false,

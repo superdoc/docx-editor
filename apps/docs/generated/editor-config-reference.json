@@ -101,7 +101,7 @@
     },
     {
       "name": "user",
-      "type": "{\n  color?: string;\n  id?: null | string;\n  name?: null | string;\n  email?: null | string;\n  image?: null | string;\n}",
+      "type": "{\n  color?: string;\n  id?: null | string;\n  name?: null | string;\n  email?: null | string;\n  image?: null | string;\n  claim?: string | (ctx: UserClaimContext) => string | Promise<string>;\n}",
       "typeName": "AwarenessUser",
       "required": false,
       "description": "The current user of this SuperDoc. Typed as `AwarenessUser` (an extension of `User` with the optional `color` field) so consumers can pass an explicit awareness color and have the runtime honor it as an override - `SuperDoc#assignUserColor()` skips its hash-based assignment when `user.color` is already set.",
@@ -430,7 +430,7 @@
     },
     {
       "name": "lockedBy",
-      "type": "{\n  id?: null | string;\n  name?: null | string;\n  email?: null | string;\n  image?: null | string;\n}",
+      "type": "{\n  id?: null | string;\n  name?: null | string;\n  email?: null | string;\n  image?: null | string;\n  claim?: string | (ctx: UserClaimContext) => string | Promise<string>;\n}",
       "typeName": "User",
       "required": false,
       "description": "User associated with the initial shared lock metadata.",
@@ -508,6 +508,14 @@
       "type": "number",
       "required": false,
       "description": "Budget for the provider-extension collaboration worker (`workerUrls.collaboration`, `providerType: 'extension'`) to start up and send its first response, in milliseconds. Defaults to the collaboration `syncTimeoutMs`, or 30000. Worker load errors are reported immediately and do not wait for this budget. Ignored by the built-in providers and by documents opened without collaboration, which start no worker.",
+      "group": "other"
+    },
+    {
+      "name": "changes",
+      "type": "{\n  retainRecords?: number;\n  retainBytes?: number;\n}",
+      "typeName": "ChangesConfig",
+      "required": false,
+      "description": "Retention of attributed change records read through `activeEditor.doc.changes`.",
       "group": "other"
     },
     {

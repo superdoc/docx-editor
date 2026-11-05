@@ -3635,6 +3635,153 @@ const tableMutationResultSchema: JsonSchema = {
 const createTableResultSchema: JsonSchema = {
   oneOf: [createTableSuccessSchema, tableMutationFailureSchema],
 };
+const changesOpenObjectSchema: JsonSchema = { type: 'object', additionalProperties: true };
+const changesNonEmptyStringSchema: JsonSchema = { type: 'string', minLength: 1 };
+const changesLimitSchema: JsonSchema = {
+  type: 'integer',
+  minimum: 1,
+  maximum: 1000,
+  description: 'Maximum number of records to return. Defaults to 100.',
+};
+const changesTextRangeSchema: JsonSchema = objectSchema(
+  { start: { type: 'integer', minimum: 0 }, end: { type: 'integer', minimum: 0 } },
+  ['start', 'end'],
+);
+const changeActorSchema: JsonSchema = objectSchema(
+  {
+    id: { type: ['string', 'null'] },
+    name: { type: 'string' },
+    email: { type: 'string' },
+    claim: { type: 'string', description: 'Application-supplied identity claim. SuperDoc does not verify it.' },
+  },
+  ['id'],
+);
+const blockChangeSchema: JsonSchema = {
+  oneOf: [
+    objectSchema(
+      {
+        kind: { const: 'text' },
+        story: ref('StoryLocator'),
+        blockId: { type: 'string' },
+        range: changesTextRangeSchema,
+        inserted: { type: 'string' },
+        deleted: { type: 'string' },
+      },
+      ['kind', 'story', 'blockId', 'range', 'inserted', 'deleted'],
+    ),
+    objectSchema(
+      {
+        kind: { const: 'format' },
+        story: ref('StoryLocator'),
+        blockId: { type: 'string' },
+        range: changesTextRangeSchema,
+        attributes: changesOpenObjectSchema,
+      },
+      ['kind', 'story', 'blockId', 'range', 'attributes'],
+    ),
+    objectSchema(
+      {
+        kind: { const: 'paragraph' },
+        story: ref('StoryLocator'),
+        blockId: { type: 'string' },
+        properties: changesOpenObjectSchema,
+      },
+      ['kind', 'story', 'blockId', 'properties'],
+    ),
+    objectSchema(
+      {
+        kind: { const: 'split' },
+        story: ref('StoryLocator'),
+        blockId: { type: 'string' },
+        tailBlockId: { type: 'string' },
+        offset: { type: 'integer', minimum: 0 },
+      },
+      ['kind', 'story', 'blockId', 'tailBlockId', 'offset'],
+    ),
+    objectSchema(
+      {
+        kind: { const: 'merge' },
+        story: ref('StoryLocator'),
+        blockId: { type: 'string' },
+        mergedBlockId: { type: 'string' },
+      },
+      ['kind', 'story', 'blockId', 'mergedBlockId'],
+    ),
+    objectSchema(
+      {
+        kind: { const: 'move' },
+        story: ref('StoryLocator'),
+        blockId: { type: 'string' },
+        afterBlockId: { type: ['string', 'null'] },
+      },
+      ['kind', 'story', 'blockId', 'afterBlockId'],
+    ),
+    objectSchema(
+      {
+        kind: { const: 'create' },
+        story: ref('StoryLocator'),
+        blockId: { type: 'string' },
+        text: { type: 'string' },
+      },
+      ['kind', 'story', 'blockId', 'text'],
+    ),
+    objectSchema(
+      {
+        kind: { const: 'remove' },
+        story: ref('StoryLocator'),
+        blockId: { type: 'string' },
+        text: { type: 'string' },
+      },
+      ['kind', 'story', 'blockId', 'text'],
+    ),
+    objectSchema(
+      {
+        kind: { const: 'table' },
+        story: ref('StoryLocator'),
+        tableId: { type: 'string' },
+        detail: changesOpenObjectSchema,
+      },
+      ['kind', 'story', 'tableId', 'detail'],
+    ),
+    objectSchema(
+      {
+        kind: { const: 'sidecar' },
+        affects: { enum: ['comment', 'trackedChange', 'bookmark'] },
+        ids: arraySchema({ type: 'string' }),
+      },
+      ['kind', 'affects', 'ids'],
+    ),
+  ],
+};
+const changeRecordSchema: JsonSchema = objectSchema(
+  {
+    id: {
+      type: 'string',
+      description: 'Deterministic id: identical transactions yield identical ids in every session.',
+    },
+    seq: { type: 'integer', minimum: 1 },
+    revision: { type: 'string' },
+    origin: { enum: ['local', 'remote'] },
+    actor: { oneOf: [changeActorSchema, { type: 'null' }] },
+    contributors: arraySchema(changeActorSchema),
+    actorType: { oneOf: [{ enum: ['human', 'code'] }, { type: 'null' }] },
+    cause: { oneOf: [{ enum: ['user', 'api', 'undo', 'redo'] }, { type: 'null' }] },
+    provenance: { enum: ['authored', 'declared', 'relayed', 'unknown'] },
+    at: objectSchema({ declared: { type: ['string', 'null'] }, observed: { type: 'string' } }, [
+      'declared',
+      'observed',
+    ]),
+    session: objectSchema({ id: { type: ['string', 'null'] }, clientId: { type: 'integer', minimum: 0 } }, [
+      'id',
+      'clientId',
+    ]),
+    changeTag: { type: 'string' },
+    changes: arraySchema(blockChangeSchema),
+    update: { type: 'string', description: 'Base64 Yjs v1 update for exactly this transaction.' },
+  },
+  ['id', 'seq', 'revision', 'origin', 'actor', 'actorType', 'cause', 'provenance', 'at', 'session', 'changes'],
+);
+const changeCursorSchema: JsonSchema = { type: ['string', 'null'] };
 const historyActionSuccessSchema: JsonSchema = objectSchema(
   {
     noop: { type: 'boolean' },
@@ -9830,6 +9977,97 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
     output: historyActionSuccessSchema,
     success: historyActionSuccessSchema,
     failure: historyActionFailureSchema,
+  },
+  'changes.list': {
+    input: objectSchema({
+      after: {
+        ...changesNonEmptyStringSchema,
+        description: 'Cursor from a previous result. Omit to read from the oldest retained record.',
+      },
+      limit: changesLimitSchema,
+      story: ref('StoryLocator'),
+      blockId: {
+        ...changesNonEmptyStringSchema,
+        description: 'Matches the block or any block in its split/merge lineage.',
+      },
+      actorId: changesNonEmptyStringSchema,
+      includeUpdate: { type: 'boolean', description: "Include each record's base64 Yjs update. Defaults to false." },
+      waitMs: {
+        type: 'integer',
+        minimum: 0,
+        maximum: 30000,
+        description: 'Wait up to this many milliseconds for at least one record after `after`. Defaults to 0.',
+      },
+    }),
+    output: objectSchema(
+      {
+        items: arraySchema(changeRecordSchema),
+        cursor: changeCursorSchema,
+        truncated: { type: 'boolean' },
+        identity: { enum: ['configured', 'missing'] },
+        collaboration: { type: 'boolean' },
+      },
+      ['items', 'cursor', 'truncated', 'identity', 'collaboration'],
+    ),
+  },
+  'changes.get': {
+    input: objectSchema({ id: changesNonEmptyStringSchema }, ['id']),
+    output: { oneOf: [changeRecordSchema, { type: 'null' }] },
+  },
+  'changes.resolve': {
+    input: objectSchema({ blockId: changesNonEmptyStringSchema, limit: changesLimitSchema }, ['blockId']),
+    output: objectSchema(
+      {
+        blockId: { type: 'string' },
+        lineage: arraySchema({ type: 'string' }),
+        items: arraySchema(changeRecordSchema),
+      },
+      ['blockId', 'lineage', 'items'],
+    ),
+  },
+  'changes.actors': {
+    input: strictEmptyObjectSchema,
+    output: objectSchema(
+      {
+        items: arraySchema(
+          objectSchema(
+            {
+              clientId: { type: 'integer', minimum: 0 },
+              actorId: { type: ['string', 'null'] },
+              name: { type: 'string' },
+              email: { type: 'string' },
+              sessionId: { type: 'string' },
+              declaredAt: { type: 'string' },
+              claim: { type: 'string' },
+            },
+            ['clientId', 'actorId', 'sessionId', 'declaredAt'],
+          ),
+        ),
+      },
+      ['items'],
+    ),
+  },
+  'changes.snapshot': {
+    input: objectSchema({
+      includeState: {
+        type: 'boolean',
+        description: 'Include the base64 Yjs v1 state update, deleted content included.',
+      },
+    }),
+    output: objectSchema(
+      {
+        revision: { type: 'string' },
+        cursor: changeCursorSchema,
+        lastChangeId: { type: ['string', 'null'] },
+        stateVector: {
+          type: 'string',
+          description: 'Base64 Yjs state vector. Empty when the session has no room document.',
+        },
+        state: { type: 'string' },
+        at: { type: 'string' },
+      },
+      ['revision', 'cursor', 'lastChangeId', 'stateVector', 'at'],
+    ),
   },
   // -------------------------------------------------------------------------
   // TOC schemas

@@ -479,11 +479,39 @@ export interface V2AuthoringFacade {
  * `#assignUserColor()` after `#init`.
  */
 export interface User {
+  /** Stable application user id. Collaborative change records report it as the actor id. */
   id?: string | null;
   name?: string | null;
   email?: string | null;
   image?: string | null;
+  /**
+   * Opaque identity claim published with this session's change records, such as
+   * a JWT your server signs. SuperDoc never verifies it.
+   */
+  claim?: UserClaim;
   [key: string]: unknown;
+}
+
+/** Context passed to a {@link UserClaim} function. */
+export interface UserClaimContext {
+  /** Collaboration document id of the session. */
+  documentId: string;
+  /** Yjs client id of the session. */
+  clientId: number;
+}
+
+/**
+ * Identity claim for {@link User.claim}: a string, or a function that returns
+ * one for the session's collaboration document and Yjs client id.
+ */
+export type UserClaim = string | ((ctx: UserClaimContext) => string | Promise<string>);
+
+/** Per-session retention of attributed change records (`doc.changes`). */
+export interface ChangesConfig {
+  /** Maximum number of retained records. Defaults to 1000. */
+  retainRecords?: number;
+  /** Maximum retained size in bytes, including captured updates. Defaults to 8 MiB. */
+  retainBytes?: number;
 }
 
 /** V2-neutral active editor facade exposed by legacy shell methods. */
@@ -4828,6 +4856,8 @@ export interface Config {
    * documents opened without collaboration, which start no worker.
    */
   workerStartupTimeoutMs?: number;
+  /** Retention of attributed change records read through `activeEditor.doc.changes`. */
+  changes?: ChangesConfig;
   /**
    * Whether `layoutEngineOptions` are passed when a DOCX editor opens.
    *

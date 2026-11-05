@@ -27,6 +27,17 @@ export * from './capabilities/html-markdown-support.js';
 export * from './inline-semantics/index.js';
 export type { HistoryAdapter, HistoryApi } from './history/history.js';
 export { executeHistoryGet, executeHistoryUndo, executeHistoryRedo } from './history/history.js';
+export type { ChangesAdapter, ChangesApi } from './changes/changes.js';
+export {
+  CHANGES_LIST_LIMIT_MAX,
+  CHANGES_WAIT_MS_MAX,
+  executeChangesActors,
+  executeChangesGet,
+  executeChangesList,
+  executeChangesResolve,
+  executeChangesSnapshot,
+} from './changes/changes.js';
+export type * from './changes/changes.types.js';
 export type { DiffAdapter, DiffApi } from './diff/diff.js';
 export * from './diff/diff.types.js';
 export type { ExportAdapter, ExportApi } from './export/export.js';
@@ -489,6 +500,25 @@ export {
 import type { HistoryAdapter, HistoryApi } from './history/history.js';
 import type { HistoryState, HistoryActionResult } from './history/history.types.js';
 import { executeHistoryGet, executeHistoryUndo, executeHistoryRedo } from './history/history.js';
+import type { ChangesAdapter, ChangesApi } from './changes/changes.js';
+import {
+  executeChangesActors,
+  executeChangesGet,
+  executeChangesList,
+  executeChangesResolve,
+  executeChangesSnapshot,
+} from './changes/changes.js';
+import type {
+  ChangeRecord,
+  ChangesActorsResult,
+  ChangesGetInput,
+  ChangesListInput,
+  ChangesListResult,
+  ChangesResolveInput,
+  ChangesResolveResult,
+  ChangesSnapshotInput,
+  ChangesSnapshotResult,
+} from './changes/changes.types.js';
 import type { DiffAdapter, DiffApi } from './diff/diff.js';
 import { executeDiffCapture, executeDiffCompare, executeDiffApply } from './diff/diff.js';
 import type {
@@ -2246,6 +2276,7 @@ export interface DocumentApiSurface {
    * Session-scoped: reflects the runtime undo/redo stack, not persistent state.
    */
   history: HistoryApi;
+  changes: ChangesApi;
   /**
    * Document-level protection state and editing restriction operations.
    */
@@ -2348,6 +2379,7 @@ export interface DocumentApiAdapters {
   /** Modeful DOCX export. Optional; gated when the engine does not provide it. */
   export?: ExportAdapter;
   history: HistoryAdapter;
+  changes?: ChangesAdapter;
   protection: ProtectionAdapter;
   permissionRanges: PermissionRangesAdapter;
   /** Custom XML Data Storage Part operations. Optional; not all engines support custom XML. */
@@ -2494,6 +2526,7 @@ const ADAPTER_GATED_PREFIXES = [
   'authorities',
   'export',
   'watermarks',
+  'changes',
 ] as const;
 
 /**
@@ -4170,6 +4203,23 @@ export function createDocumentApi(adapters: DocumentApiAdapters): DocumentApi {
       },
       redo(): HistoryActionResult {
         return executeHistoryRedo(adapters.history);
+      },
+    },
+    changes: {
+      list(input?: ChangesListInput): Promise<ChangesListResult> {
+        return executeChangesList(adapters.changes, input);
+      },
+      get(input: ChangesGetInput): Promise<ChangeRecord | null> {
+        return executeChangesGet(adapters.changes, input);
+      },
+      resolve(input: ChangesResolveInput): Promise<ChangesResolveResult> {
+        return executeChangesResolve(adapters.changes, input);
+      },
+      actors(): Promise<ChangesActorsResult> {
+        return executeChangesActors(adapters.changes);
+      },
+      snapshot(input?: ChangesSnapshotInput): Promise<ChangesSnapshotResult> {
+        return executeChangesSnapshot(adapters.changes, input);
       },
     },
     protection: {

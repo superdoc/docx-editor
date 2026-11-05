@@ -44,6 +44,7 @@ export type ReferenceGroupKey =
   | 'mutations'
   | 'tables'
   | 'history'
+  | 'changes'
   | 'toc'
   | 'images'
   | 'hyperlinks'
@@ -4405,6 +4406,84 @@ export const OPERATION_DEFINITIONS = {
     referenceGroup: 'history',
     intentGroup: 'edit',
     intentAction: 'redo',
+  },
+  'changes.list': {
+    memberPath: 'changes.list',
+    description:
+      "List the change records this session retains, oldest first, with each change's actor, cause, provenance and affected blocks. Pass the returned cursor back as `after` to read only newer records; `waitMs` long-polls until at least one newer record exists.",
+    expectedResult:
+      'Returns a ChangesListResult with items (oldest to newest), a resume cursor, a truncated flag when records after `after` were evicted, the session identity state and whether the session is collaborative.',
+    requiresDocumentContext: true,
+    metadata: readOperation({
+      idempotency: 'idempotent',
+      throws: ['INVALID_INPUT', 'CAPABILITY_UNAVAILABLE'],
+      returnsPromise: true,
+    }),
+    referenceDocPath: 'changes/list.mdx',
+    referenceGroup: 'changes',
+    batchable: false,
+  },
+  'changes.get': {
+    memberPath: 'changes.get',
+    description: 'Get one retained change record by id.',
+    expectedResult: 'Returns the ChangeRecord with that id, or null when this session does not retain it.',
+    requiresDocumentContext: true,
+    metadata: readOperation({
+      idempotency: 'idempotent',
+      throws: ['INVALID_INPUT', 'CAPABILITY_UNAVAILABLE'],
+      returnsPromise: true,
+    }),
+    referenceDocPath: 'changes/get.mdx',
+    referenceGroup: 'changes',
+    batchable: false,
+  },
+  'changes.resolve': {
+    memberPath: 'changes.resolve',
+    description:
+      'List the retained change records that touched a block, following the blocks it was split from or merged with.',
+    expectedResult:
+      'Returns a ChangesResolveResult with the block id, its lineage (the block plus the blocks it was split from or merged with) and the matching records, oldest to newest.',
+    requiresDocumentContext: true,
+    metadata: readOperation({
+      idempotency: 'idempotent',
+      throws: ['INVALID_INPUT', 'CAPABILITY_UNAVAILABLE'],
+      returnsPromise: true,
+    }),
+    referenceDocPath: 'changes/resolve.mdx',
+    referenceGroup: 'changes',
+    batchable: false,
+  },
+  'changes.actors': {
+    memberPath: 'changes.actors',
+    description:
+      'List the identities that collaboration clients declared for this document. Identities and claims are declared by each client and are not verified by SuperDoc.',
+    expectedResult:
+      'Returns a ChangesActorsResult with one item per declared client binding: client id, actor id, optional name, email and claim, session id and declaration time.',
+    requiresDocumentContext: true,
+    metadata: readOperation({
+      idempotency: 'idempotent',
+      throws: ['CAPABILITY_UNAVAILABLE'],
+      returnsPromise: true,
+    }),
+    referenceDocPath: 'changes/actors.mdx',
+    referenceGroup: 'changes',
+    batchable: false,
+  },
+  'changes.snapshot': {
+    memberPath: 'changes.snapshot',
+    description:
+      'Capture the current revision, change cursor and collaboration state vector so a verifier can later replay or compare change records against this point.',
+    expectedResult:
+      'Returns a ChangesSnapshotResult with the revision, change cursor, last change id, base64 state vector, optional base64 full state and capture time.',
+    requiresDocumentContext: true,
+    metadata: readOperation({
+      idempotency: 'idempotent',
+      throws: ['INVALID_INPUT', 'CAPABILITY_UNAVAILABLE'],
+      returnsPromise: true,
+    }),
+    referenceDocPath: 'changes/snapshot.mdx',
+    referenceGroup: 'changes',
+    batchable: false,
   },
   // -------------------------------------------------------------------------
   // Create: image

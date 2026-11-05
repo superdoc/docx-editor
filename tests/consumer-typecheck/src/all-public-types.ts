@@ -638,3 +638,22 @@ const _real_PageBodyTarget: AssertNotAny<PageBodyTarget> = true;
 const _real_PageMetricsHandle: AssertNotAny<PageMetricsHandle> = true;
 const _real_PageMetricsPage: AssertNotAny<PageMetricsPage> = true;
 const _real_PageMetricsSnapshot: AssertNotAny<PageMetricsSnapshot> = true;
+
+import type {
+  BlockChange,
+  ChangeActor,
+  ChangeCause,
+  ChangeProvenance,
+  ChangeRecord,
+  ChangesConfig,
+  UserClaim,
+  UserClaimContext,
+} from 'superdoc';
+const _real_BlockChange: AssertNotAny<BlockChange> = true;
+const _real_ChangeActor: AssertNotAny<ChangeActor> = true;
+const _real_ChangeCause: AssertNotAny<ChangeCause> = true;
+const _real_ChangeProvenance: AssertNotAny<ChangeProvenance> = true;
+const _real_ChangeRecord: AssertNotAny<ChangeRecord> = true;
+const _real_ChangesConfig: AssertNotAny<ChangesConfig> = true;
+const _real_UserClaim: AssertNotAny<UserClaim> = true;
+const _real_UserClaimContext: AssertNotAny<UserClaimContext> = true;

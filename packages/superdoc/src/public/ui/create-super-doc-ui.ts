@@ -28,6 +28,8 @@ import { isV2EditableTextMutationEvent } from '../../helpers/v2-typing-mutation-
 import { isSyntheticTrackedChangeCommentLaneItem } from '../../helpers/tracked-change-comment-lane.js';
 import { ALL_BUILT_IN_COMMAND_IDS, getCommandDescriptor, type CommandDescriptor } from './commands.js';
 import { SUPERDOC_UI_REASONS, type SuperDocUIReason } from './reasons.js';
+import { remoteChangeRecordsOf, remoteDocumentChange } from './document-change-records.js';
+import type { ChangeRecord } from '@superdoc/document-api';
 import type {
   CommandHandle,
   CommandExecutionResult,
@@ -330,9 +332,6 @@ function documentChangeScope(stories: unknown): SuperDocDocumentChange['scope'] 
 }
 
 function documentChangeFromHostEvent(event: LooseRecord): DocumentChangeFacts | null {
-  if (event.type === 'collaboration:remote-changed') {
-    return { cause: 'remote', changeTag: null, txId: null, scope: { kind: 'unknown' } };
-  }
   if (event.type !== 'mutation:committed') return null;
   if (event.origin === 'history') {
     const result = isPlainObject(event.result) ? event.result : null;
@@ -5656,18 +5655,55 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     const counter = documentChangeCounters.get(host);
     return counter && counter.replacement === readDocumentReplacement(host) ? counter : startDocumentChangeEpoch(host);
   };
-  const publishDocumentChange = (host: object, event: LooseRecord): void => {
-    if (event.type === 'collaboration:document-replaced' || event.documentReplaced === true) {
-      startDocumentChangeEpoch(host);
-      return;
-    }
+  const pendingRemoteChangeRecords = new WeakMap<object, ChangeRecord[]>();
+  const emitDocumentChange = (host: object, facts: DocumentChangeFacts): void => {
     if (documentChangeListeners.size === 0) return;
-    const facts = documentChangeFromHostEvent(event);
-    if (!facts) return;
     const counter = currentDocumentChangeCounter(host);
     counter.seq += 1;
     const change: SuperDocDocumentChange = { documentEpoch: counter.epoch, seq: counter.seq, ...facts };
     for (const listener of Array.from(documentChangeListeners)) safeCall(() => listener(change), undefined);
+  };
+  const takePendingRemoteChangeRecords = (host: object): ChangeRecord[] => {
+    const records = pendingRemoteChangeRecords.get(host) ?? [];
+    pendingRemoteChangeRecords.delete(host);
+    return records;
+  };
+  const flushPendingRemoteChangeRecords = (host: object): void => {
+    const records = takePendingRemoteChangeRecords(host);
+    if (records.length > 0) emitDocumentChange(host, remoteDocumentChange(records));
+  };
+  const holdRemoteChangeRecords = (host: object, records: ChangeRecord[]): void => {
+    const pending = pendingRemoteChangeRecords.get(host);
+    if (pending) {
+      pending.push(...records);
+      return;
+    }
+    pendingRemoteChangeRecords.set(host, records);
+    const flush = () => flushPendingRemoteChangeRecords(host);
+    if (typeof queueMicrotask === 'function') queueMicrotask(flush);
+    else void Promise.resolve().then(flush);
+  };
+  const publishDocumentChange = (host: object, event: LooseRecord): void => {
+    if (event.type === 'collaboration:document-replaced' || event.documentReplaced === true) {
+      pendingRemoteChangeRecords.delete(host);
+      startDocumentChangeEpoch(host);
+      return;
+    }
+    if (documentChangeListeners.size === 0) {
+      pendingRemoteChangeRecords.delete(host);
+      return;
+    }
+    if (event.type === 'changes:recorded') {
+      const records = remoteChangeRecordsOf(event);
+      if (records.length > 0) holdRemoteChangeRecords(host, records);
+      return;
+    }
+    if (event.type === 'collaboration:remote-changed') {
+      emitDocumentChange(host, remoteDocumentChange(takePendingRemoteChangeRecords(host)));
+      return;
+    }
+    const facts = documentChangeFromHostEvent(event);
+    if (facts) emitDocumentChange(host, facts);
   };
   const syncHostEventsSubscription = (): void => {
     const editor = getEditor();

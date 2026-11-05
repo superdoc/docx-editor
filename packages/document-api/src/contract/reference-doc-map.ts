@@ -107,6 +107,11 @@ const GROUP_METADATA: Record<ReferenceGroupKey, { title: string; description: st
     description: 'Undo/redo history state and navigation.',
     pagePath: 'history/index.mdx',
   },
+  changes: {
+    title: 'Changes',
+    description: 'Edit attribution: who changed what, when, and through which session.',
+    pagePath: 'changes/index.mdx',
+  },
   toc: {
     title: 'Table of Contents',
     description: 'Table of contents lifecycle and configuration.',

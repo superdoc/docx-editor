@@ -179,5 +179,9 @@ try {
 To run an agent next to people editing in the browser, follow [Add an agent](/editor/collaboration/deploy-a-server#add-an-agent)
 in the collaboration server guide.
 
+## Record who changed what
+
+A Node.js backend can join a room as an observer and copy attributed change records into its own store with `await doc.changes.list({ after, waitMs: 30000, includeUpdate: true })`. See [Record who changed what](/editor/collaboration/record-changes).
+
 Prefer Python? Follow the [Python SDK guide](/agents/automation/python-sdk) for the same deterministic workflow.
 For Rust, follow the [Rust SDK guide](/agents/automation/rust-sdk).

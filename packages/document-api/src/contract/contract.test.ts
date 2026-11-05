@@ -1792,6 +1792,7 @@ describe('document-api contract catalog', () => {
       'mutations',
       'tables',
       'history',
+      'changes',
       'toc',
       'images',
       'hyperlinks',
@@ -1914,6 +1915,11 @@ describe('document-api contract catalog', () => {
     const asyncOps = OPERATION_IDS.filter((id) => COMMAND_CATALOG[id].returnsPromise === true).sort();
     expect(asyncOps).toEqual([
       'capabilities.check',
+      'changes.actors',
+      'changes.get',
+      'changes.list',
+      'changes.resolve',
+      'changes.snapshot',
       'mutations.beginTemporary',
       'mutations.commitTemporary',
       'mutations.replaceTemporary',

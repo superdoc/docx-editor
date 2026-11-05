@@ -19,6 +19,7 @@ import type { CreateAdapter } from './create/create.js';
 import type { ListsAdapter } from './lists/lists.js';
 import type { CapabilitiesAdapter, DocumentApiCapabilities } from './capabilities/capabilities.js';
 import type { HistoryAdapter } from './history/history.js';
+import type { ChangesAdapter } from './changes/changes.js';
 import type { TablesAdapter } from './index.js';
 
 function makeFindAdapter(result: SDFindResult): FindAdapter {
@@ -1097,6 +1098,119 @@ describe('createDocumentApi', () => {
     expect(historyAdpt.redo).toHaveBeenCalledOnce();
     expect(undoResult).toEqual({ noop: true, revision: { before: '0', after: '0' } });
     expect(redoResult).toEqual({ noop: true, revision: { before: '0', after: '0' } });
+  });
+
+  describe('changes.* delegation', () => {
+    const record = {
+      id: 'a1b2c3d4e5f6a1b2c3d4e5f6',
+      seq: 1,
+      revision: '2',
+      origin: 'local' as const,
+      actor: { id: 'user-1', name: 'Ada' },
+      actorType: 'human' as const,
+      cause: 'user' as const,
+      provenance: 'authored' as const,
+      at: { declared: '2026-11-04T10:00:00.000Z', observed: '2026-11-04T10:00:00.001Z' },
+      session: { id: 'session-1', clientId: 42 },
+      changes: [
+        {
+          kind: 'text' as const,
+          story: { kind: 'story' as const, storyType: 'body' as const },
+          blockId: 'p1',
+          range: { start: 0, end: 5 },
+          inserted: 'Hello',
+          deleted: '',
+        },
+      ],
+    };
+
+    function makeChangesAdapter(): ChangesAdapter {
+      return {
+        list: mock(async () => ({
+          items: [record],
+          cursor: '1',
+          truncated: false,
+          identity: 'configured' as const,
+          collaboration: false,
+        })),
+        get: mock(async () => record),
+        resolve: mock(async () => ({ blockId: 'p1', lineage: ['p1'], items: [record] })),
+        actors: mock(async () => ({ items: [] })),
+        snapshot: mock(async () => ({
+          revision: '2',
+          cursor: '1',
+          lastChangeId: record.id,
+          stateVector: '',
+          at: '2026-11-04T10:00:01.000Z',
+        })),
+      };
+    }
+
+    function makeChangesApi(changes?: ChangesAdapter) {
+      return createDocumentApi({ changes } as unknown as DocumentApiAdapters);
+    }
+
+    it('delegates every changes operation to the changes adapter', async () => {
+      const changes = makeChangesAdapter();
+      const api = makeChangesApi(changes);
+
+      expect((await api.changes.list({ after: '0', limit: 10, includeUpdate: true, waitMs: 0 })).items).toEqual([
+        record,
+      ]);
+      expect(changes.list).toHaveBeenCalledWith({ after: '0', limit: 10, includeUpdate: true, waitMs: 0 });
+      expect(await api.changes.get({ id: record.id })).toEqual(record);
+      expect(changes.get).toHaveBeenCalledWith({ id: record.id });
+      expect((await api.changes.resolve({ blockId: 'p1' })).lineage).toEqual(['p1']);
+      expect(changes.resolve).toHaveBeenCalledWith({ blockId: 'p1' });
+      expect(await api.changes.actors()).toEqual({ items: [] });
+      expect(changes.actors).toHaveBeenCalledTimes(1);
+      expect((await api.changes.snapshot()).stateVector).toBe('');
+      expect(changes.snapshot).toHaveBeenCalledWith({});
+    });
+
+    it('passes an omitted list input to the adapter as an empty request', async () => {
+      const changes = makeChangesAdapter();
+      await makeChangesApi(changes).changes.list();
+      expect(changes.list).toHaveBeenCalledWith({});
+    });
+
+    it('routes changes operations through invoke', async () => {
+      const changes = makeChangesAdapter();
+      const api = makeChangesApi(changes);
+      await api.invoke({ operationId: 'changes.list', input: { limit: 5 } });
+      await api.invoke({ operationId: 'changes.snapshot', input: { includeState: true } });
+      expect(changes.list).toHaveBeenCalledWith({ limit: 5 });
+      expect(changes.snapshot).toHaveBeenCalledWith({ includeState: true });
+    });
+
+    it('rejects invalid input before calling the adapter', async () => {
+      const changes = makeChangesAdapter();
+      const api = makeChangesApi(changes);
+      await expect(api.changes.list({ limit: 0 })).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+      await expect(api.changes.get({ id: '' })).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+      expect(changes.list).not.toHaveBeenCalled();
+      expect(changes.get).not.toHaveBeenCalled();
+    });
+
+    it('rejects with CAPABILITY_UNAVAILABLE when the engine provides no changes adapter', async () => {
+      const api = makeChangesApi();
+      await expect(api.changes.list()).rejects.toMatchObject({ code: 'CAPABILITY_UNAVAILABLE' });
+      await expect(api.changes.actors()).rejects.toMatchObject({ code: 'CAPABILITY_UNAVAILABLE' });
+    });
+
+    it('marks changes operations unavailable in capabilities when the adapter is absent', () => {
+      const api = createDocumentApi({
+        capabilities: makeCapabilitiesAdapter({
+          operations: {
+            'changes.list': { available: true, tracked: false, dryRun: false },
+          } as unknown as DocumentApiCapabilities['operations'],
+        }),
+      } as unknown as DocumentApiAdapters);
+      expect(api.capabilities().operations['changes.list']).toMatchObject({
+        available: false,
+        reasons: ['NAMESPACE_UNAVAILABLE'],
+      });
+    });
   });
 
   describe('trackChanges.decide input validation', () => {

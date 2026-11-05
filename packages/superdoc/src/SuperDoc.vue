@@ -2858,6 +2858,7 @@ const editorOptions = (doc: ShellDocument) => {
     fieldContext: doc.fieldContext,
     fieldUpdatePolicy: proxy.$superdoc.config.fieldUpdatePolicy,
     workerStartupTimeoutMs: proxy.$superdoc.config.workerStartupTimeoutMs,
+    ...(proxy.$superdoc.config.changes ? { changes: proxy.$superdoc.config.changes } : {}),
     proofing: resolvedProofingConfig.value,
     isNewFile,
     password: getDocumentLoadPassword(doc),

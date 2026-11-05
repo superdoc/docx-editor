@@ -16,7 +16,7 @@ import type {
   CellBorders,
 } from '@superdoc/contracts';
 import { EMPTY_SDT_PLACEHOLDER_TEXT, expandRunsForInlineNewlines, calculateJustifySpacing } from '@superdoc/contracts';
-import { resolvePhysicalFamily } from '@superdoc/font-system';
+import { insertFontFamilyBeforeGeneric, resolvePhysicalFamily } from '@superdoc/font-system';
 
 const expectParagraphMeasure = (measure: Measure): ParagraphMeasure => {
   expect(measure.kind).toBe('paragraph');
@@ -10514,4 +10514,214 @@ describe('small-caps measurement', () => {
       }
     },
   );
+});
+
+describe('SD-7105 literal tabs after inline header images', () => {
+  const headerImage = { kind: 'image' as const, src: 'data:image/png;base64,iVBORw0KGgo=', width: 171, height: 33 };
+  const headerText = 'Header text';
+  const rightStop = (pos: number) => ({ tabs: [{ pos, val: 'end' as const }] });
+  const faces = [
+    { label: 'regular', marks: {} },
+    { label: 'bold', marks: { bold: true } },
+    { label: 'italic', marks: { italic: true } },
+    { label: 'bold italic', marks: { bold: true, italic: true } },
+  ];
+  const fontSizes = [10.67, 16, 24];
+  let signature = 0;
+
+  const symbolFallbackContext = () => {
+    const resolved: Array<{ family: unknown; weight: string; style: string }> = [];
+    signature += 1;
+    return {
+      resolved,
+      fontContext: {
+        fontSignature: `sd-7105-browser-symbol-fallback-${signature}`,
+        resolvePhysical: (family: string, face?: { weight: string; style: string }) => {
+          resolved.push({ family, weight: face?.weight ?? '400', style: face?.style ?? 'normal' });
+          return insertFontFamilyBeforeGeneric(resolvePhysicalFamily(family), 'Noto Sans Symbols 2');
+        },
+      },
+    };
+  };
+
+  const textRun = (text: string, fontSize: number, marks: { bold?: boolean; italic?: boolean }, pmStart: number) => ({
+    text,
+    fontFamily: 'Arial',
+    fontSize,
+    ...marks,
+    pmStart,
+    pmEnd: pmStart + text.length,
+  });
+
+  const literalTabBlock = (
+    fontSize: number,
+    marks: { bold?: boolean; italic?: boolean },
+    attrs?: FlowBlock['attrs'],
+  ): FlowBlock => ({
+    kind: 'paragraph',
+    id: 'sd-7105-literal',
+    runs: [{ ...headerImage, pmStart: 0, pmEnd: 1 }, textRun(`\t${headerText}`, fontSize, marks, 1)],
+    attrs,
+  });
+
+  const explicitTabBlock = (
+    fontSize: number,
+    marks: { bold?: boolean; italic?: boolean },
+    attrs?: FlowBlock['attrs'],
+  ): FlowBlock => ({
+    kind: 'paragraph',
+    id: 'sd-7105-explicit',
+    runs: [
+      { ...headerImage, pmStart: 0, pmEnd: 1 },
+      { kind: 'tab', text: '\t', fontFamily: 'Arial', fontSize, ...marks, pmStart: 1, pmEnd: 2 } as TabRun,
+      textRun(headerText, fontSize, marks, 2),
+    ],
+    attrs,
+  });
+
+  const measureWithSymbolFallback = async (block: FlowBlock, width = 720) => {
+    const { resolved, fontContext } = symbolFallbackContext();
+    const outcome = await measureBlock(block, width, fontContext).then(
+      (measure) => ({ measure, error: undefined }),
+      (error: unknown) => ({ measure: undefined, error }),
+    );
+    return { resolved, ...outcome };
+  };
+
+  const expectFiniteLineMetrics = (line: ParagraphMeasure['lines'][number]) => {
+    for (const value of [line.ascent, line.descent, line.lineHeight, line.width]) {
+      expect(Number.isFinite(value)).toBe(true);
+    }
+    expect(line.ascent).toBeGreaterThan(0);
+    expect(line.descent).toBeGreaterThan(0);
+    expect(line.lineHeight).toBeGreaterThan(0);
+  };
+
+  const expectTextSegmentsLikeExplicit = (
+    literalLine: ParagraphMeasure['lines'][number],
+    explicitLine: ParagraphMeasure['lines'][number],
+  ) => {
+    const literalText = literalLine.segments?.filter((segment) => segment.runIndex === 1) ?? [];
+    const explicitText = explicitLine.segments?.filter((segment) => segment.runIndex === 2) ?? [];
+    expect(literalText.length).toBeGreaterThan(0);
+    expect(literalText[0]?.fromChar).toBe(1);
+    expect(literalText.at(-1)?.toChar).toBe(headerText.length + 1);
+    expect(literalText.map(({ fromChar, toChar }) => [fromChar - 1, toChar - 1])).toEqual(
+      explicitText.map(({ fromChar, toChar }) => [fromChar, toChar]),
+    );
+    literalText.forEach((segment, index) => {
+      const explicitSegment = explicitText[index];
+      expect(Number.isFinite(segment.width)).toBe(true);
+      expect(segment.width).toBeCloseTo(explicitSegment?.width ?? Number.NaN, 5);
+      if (explicitSegment?.x === undefined) {
+        expect(segment.x).toBeUndefined();
+      } else {
+        expect(Number.isFinite(segment.x)).toBe(true);
+        expect(segment.x).toBeCloseTo(explicitSegment.x, 5);
+      }
+    });
+    return literalText;
+  };
+
+  const lineFontInfo = (line: ParagraphMeasure['lines'][number]) =>
+    (line as typeof line & { maxFontInfo?: Record<string, unknown> }).maxFontInfo;
+
+  describe.each(fontSizes)('at %spx', (fontSize) => {
+    it.each(faces)('carries the $label run font onto the synthetic tab', async ({ marks }) => {
+      const expectedFace = {
+        weight: marks.bold ? '700' : '400',
+        style: marks.italic ? 'italic' : 'normal',
+      };
+      const literal = await measureWithSymbolFallback(literalTabBlock(fontSize, marks, rightStop(10780)));
+
+      expect(literal.resolved).toEqual(
+        expect.arrayContaining([{ family: 'Arial', weight: expectedFace.weight, style: expectedFace.style }]),
+      );
+      expect(literal.resolved.filter((entry) => entry.family !== 'Arial')).toEqual([]);
+      expect(literal.error).toBeUndefined();
+
+      const explicit = await measureWithSymbolFallback(explicitTabBlock(fontSize, marks, rightStop(10780)));
+      expect(explicit.error).toBeUndefined();
+
+      const literalMeasure = expectParagraphMeasure(literal.measure!);
+      const explicitMeasure = expectParagraphMeasure(explicit.measure!);
+      expect(literalMeasure.lines).toHaveLength(1);
+      expect(explicitMeasure.lines).toHaveLength(1);
+      const [literalLine] = literalMeasure.lines;
+      const [explicitLine] = explicitMeasure.lines;
+
+      expect(lineFontInfo(literalLine)).toMatchObject({
+        wordLineMetricFamily: 'Arial',
+        fontSize,
+        bold: marks.bold,
+        italic: marks.italic,
+      });
+      expect(lineFontInfo(literalLine)?.fontFamily).toContain('Noto Sans Symbols 2');
+      expectFiniteLineMetrics(literalLine);
+      expect(literalLine.ascent).toBeCloseTo(explicitLine.ascent, 5);
+      expect(literalLine.descent).toBeCloseTo(explicitLine.descent, 5);
+      expect(literalLine.lineHeight).toBeCloseTo(explicitLine.lineHeight, 5);
+
+      expect(literalLine).toMatchObject({ fromRun: 0, fromChar: 0, toRun: 1, toChar: headerText.length + 1 });
+      expect(literalLine.tabWidths?.[1]).toBeCloseTo(explicitLine.tabWidths?.[1] ?? Number.NaN, 5);
+      expect(literalLine.tabWidths?.[1]).toBeGreaterThan(0);
+      expectTextSegmentsLikeExplicit(literalLine, explicitLine);
+      expect(extractSegmentText(literalTabBlock(fontSize, marks), literalLine).join('')).toBe(headerText);
+    });
+  });
+
+  it.each([
+    { label: 'authored 10780-twip right stop', attrs: rightStop(10780) },
+    { label: 'inside-margin 9000-twip right stop', attrs: rightStop(9000) },
+    { label: 'no authored stop', attrs: undefined },
+  ])('measures the image-first literal tab with the $label like an explicit tab', async ({ attrs }) => {
+    const marks = { bold: true };
+    const literal = await measureWithSymbolFallback(literalTabBlock(16, marks, attrs));
+    expect(literal.resolved.filter((entry) => entry.family !== 'Arial')).toEqual([]);
+    expect(literal.error).toBeUndefined();
+    const explicit = await measureWithSymbolFallback(explicitTabBlock(16, marks, attrs));
+    expect(explicit.error).toBeUndefined();
+
+    const literalLine = expectParagraphMeasure(literal.measure!).lines[0];
+    const explicitLine = expectParagraphMeasure(explicit.measure!).lines[0];
+    expectFiniteLineMetrics(literalLine);
+    expect(lineFontInfo(literalLine)).toMatchObject({ wordLineMetricFamily: 'Arial', fontSize: 16, bold: true });
+    expect(literalLine.lineHeight).toBeCloseTo(explicitLine.lineHeight, 5);
+    expect(literalLine.tabWidths?.[1]).toBeCloseTo(explicitLine.tabWidths?.[1] ?? Number.NaN, 5);
+    const literalText = expectTextSegmentsLikeExplicit(literalLine, explicitLine);
+    if (attrs?.tabs?.[0]?.pos === 9000) {
+      const last = literalText.at(-1);
+      expect((last?.x ?? Number.NaN) + (last?.width ?? Number.NaN)).toBeCloseTo(600, 0);
+    }
+  });
+
+  it('control: keeps the no-image literal-tab counterpart measurable with the run font', async () => {
+    const block: FlowBlock = {
+      kind: 'paragraph',
+      id: 'sd-7105-no-image',
+      runs: [textRun(`\t${headerText}`, 16, { italic: true }, 0)],
+      attrs: rightStop(10780),
+    };
+    const result = await measureWithSymbolFallback(block);
+    expect(result.error).toBeUndefined();
+    expect(result.resolved.filter((entry) => entry.family !== 'Arial')).toEqual([]);
+    const line = expectParagraphMeasure(result.measure!).lines[0];
+    expectFiniteLineMetrics(line);
+    expect(extractSegmentText(block, line).join('')).toBe(headerText);
+  });
+
+  it('control: keeps the no-literal-tab image counterpart measurable with the run font', async () => {
+    const block: FlowBlock = {
+      kind: 'paragraph',
+      id: 'sd-7105-no-tab',
+      runs: [{ ...headerImage, pmStart: 0, pmEnd: 1 }, textRun(headerText, 16, { bold: true }, 1)],
+      attrs: rightStop(10780),
+    };
+    const result = await measureWithSymbolFallback(block);
+    expect(result.error).toBeUndefined();
+    expect(result.resolved.filter((entry) => entry.family !== 'Arial')).toEqual([]);
+    const line = expectParagraphMeasure(result.measure!).lines[0];
+    expectFiniteLineMetrics(line);
+    expect(lineFontInfo(line)).toMatchObject({ wordLineMetricFamily: 'Arial', fontSize: 16, bold: true });
+  });
 });

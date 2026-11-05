@@ -2928,6 +2928,8 @@ async function measureParagraphBlock(
           const tabRun: TabRun = {
             kind: 'tab',
             text: '\t',
+            fontFamily: textRun.fontFamily,
+            fontSize: textRun.fontSize,
             pmStart: cursor,
             pmEnd: cursor + 1,
             vanish: textRun.vanish,
@@ -2936,6 +2938,8 @@ async function measureParagraphBlock(
             leader: (textRun as unknown as TabRun)?.leader ?? null,
             sdt: textRun.sdt,
           };
+          if (textRun.bold !== undefined) tabRun.bold = textRun.bold;
+          if (textRun.italic !== undefined) tabRun.italic = textRun.italic;
           expandedRuns.push(tabRun);
           expandedRunIndexMap.push(originalRunIndex);
           expandedRunCharOffsetMap.push(originalRunCharOffset + i);

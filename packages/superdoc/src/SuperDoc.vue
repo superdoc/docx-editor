@@ -1009,6 +1009,7 @@ const clearV2RuntimeRegistration = (documentId: string) => {
   }
   const entry = v2Runtimes.get(documentId);
   if (!entry) return;
+  entry.adapter.detach();
   proxy.$superdoc['unregisterEditorRuntime'](entry.runtimeId);
   v2Runtimes.delete(documentId);
   const hostRoot = subDocumentRoots.get(documentId);

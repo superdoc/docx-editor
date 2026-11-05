@@ -378,11 +378,13 @@ function rejectionCode(code: string): EditorRuntimeRejectionCode {
 export function createV2EditorRuntimeAdapter(options: V2EditorRuntimeAdapterOptions): {
   runtime: EditorRuntime;
   attachMountHandle(handle: HostMountHandleLike | null): void;
+  detach(): void;
 } {
   const { id, documentId, root, host, getLegacyEditorProjection, onUnregister } = options;
 
   let snapshot = host.getSnapshot();
   let didDispose = false;
+  let detached = false;
   let unregistered = false;
   let mountedFocusHandle: HostMountHandleLike | null = null;
   let tokenRevision = 0;
@@ -645,7 +647,18 @@ export function createV2EditorRuntimeAdapter(options: V2EditorRuntimeAdapterOpti
     }
   }
 
+  function releaseHostSubscriptions(): void {
+    hostUnsubscribe?.();
+    hostUnsubscribe = null;
+    pageMetricsUnsubscribe?.();
+    pageMetricsUnsubscribe = null;
+    selectionUnsubscribe?.();
+    selectionUnsubscribe = null;
+    activeSelectionController = null;
+  }
+
   function handleHostSnapshot(next: HostSnapshotLike): void {
+    if (detached || didDispose) return;
     snapshot = next;
     invalidatePositionTokens();
     syncSelectionSubscription();
@@ -653,10 +666,7 @@ export function createV2EditorRuntimeAdapter(options: V2EditorRuntimeAdapterOpti
     emit({ type: 'capabilities-change', capabilities: capabilities(next) });
     if (next.state === 'disposed' && !didDispose) {
       didDispose = true;
-      hostUnsubscribe?.();
-      pageMetricsUnsubscribe?.();
-      selectionUnsubscribe?.();
-      selectionUnsubscribe = null;
+      releaseHostSubscriptions();
       emit({ type: 'disposed' });
       listeners.clear();
       if (!unregistered) {
@@ -784,10 +794,7 @@ export function createV2EditorRuntimeAdapter(options: V2EditorRuntimeAdapterOpti
     await host.dispose();
     if (!didDispose) {
       didDispose = true;
-      hostUnsubscribe?.();
-      pageMetricsUnsubscribe?.();
-      selectionUnsubscribe?.();
-      selectionUnsubscribe = null;
+      releaseHostSubscriptions();
       emit({ type: 'disposed' });
       listeners.clear();
       if (!unregistered) {
@@ -871,8 +878,17 @@ export function createV2EditorRuntimeAdapter(options: V2EditorRuntimeAdapterOpti
   return {
     runtime,
     attachMountHandle(handle) {
+      if (detached || didDispose) return;
       mountedFocusHandle = handle;
       syncSelectionSubscription();
+    },
+    detach() {
+      if (detached) return;
+      detached = true;
+      unregistered = true;
+      releaseHostSubscriptions();
+      mountedFocusHandle = null;
+      listeners.clear();
     },
   };
 }

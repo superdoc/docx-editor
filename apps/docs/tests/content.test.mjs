@@ -4819,6 +4819,46 @@ async function collectReferenceExampleSources() {
   return Object.values(model.examples).map((example) => new URL(`../${example.sourcePath}`, import.meta.url));
 }
 
+test('identity claim example constructs SuperDoc and forwards the asynchronous claim', async () => {
+  let block;
+  for (const file of ['editor/collaboration/verify-claims.mdx', 'editor/collaboration/record-changes.mdx']) {
+    let page;
+    try {
+      page = await readFile(new URL(file, contentRoot), 'utf8');
+    } catch (error) {
+      if (error.code === 'ENOENT') continue;
+      throw error;
+    }
+    block = collectFencedCodeBlocks(page).find((item) => item.code.includes('fetchClaim(documentId, clientId)'));
+    if (block) break;
+  }
+  assert.ok(block, 'The identity claim configuration must remain an executable example');
+  const compiled = ts.transpileModule(block.code, {
+    fileName: 'identity-claim.ts',
+    compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
+    reportDiagnostics: true,
+  });
+  assert.deepEqual(compiled.diagnostics?.filter((item) => item.category === ts.DiagnosticCategory.Error), []);
+  class ExampleSuperDoc {
+    constructor(options) {
+      this.options = options;
+    }
+  }
+  const calls = [];
+  const fetchClaim = async (documentId, clientId) => {
+    calls.push({ documentId, clientId });
+    return 'signed-identity-claim';
+  };
+  const requireExample = (name) => {
+    assert.equal(name, 'superdoc');
+    return { SuperDoc: ExampleSuperDoc };
+  };
+  const example = new Function('require', 'exports', 'fetchClaim', `${compiled.outputText}\nreturn superdoc;`)(requireExample, {}, fetchClaim);
+  assert.equal(example.options.user.id, 'alex');
+  assert.equal(await example.options.user.claim({ documentId: 'contract-123', clientId: 42 }), 'signed-identity-claim');
+  assert.deepEqual(calls, [{ documentId: 'contract-123', clientId: 42 }]);
+});
+
 test('fenced code fragments parse', async () => {
   const issues = [];
 

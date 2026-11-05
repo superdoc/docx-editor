@@ -10,22 +10,22 @@ Your Hocuspocus server can distinguish edits made through SuperDoc's built-in UI
 
 For SuperDoc 2.x, the following attribution contract is supported:
 
-| Property | Contract                                                                                             |
-| -------- | ---------------------------------------------------------------------------------------------------- |
-| Location | `document.getMap('content').get(shardId).get('meta')`                                                |
-| Key      | `lastEditActorType`                                                                                  |
-| Values   | `human` or `code`                                                                                    |
-| Meaning  | `human`: supported first-party UI mutation; `code`: public API or application-owned command mutation |
-| Coupling | The key is written in the same Yjs transaction as the story edit it describes.                       |
-| Scope    | Independent last-write-wins value per story shard, not an edit history.                              |
+| Property | Contract                                                                                                                                                                                                                                                                         |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Location | `document.getMap('content').get(shardId).get('meta')`                                                                                                                                                                                                                            |
+| Key      | `lastEditActorType`                                                                                                                                                                                                                                                              |
+| Values   | `human` or `code`                                                                                                                                                                                                                                                                |
+| Meaning  | `human`: supported first-party UI mutation; `code`: public API or application-owned command mutation                                                                                                                                                                             |
+| Cadence  | Per SuperDoc session and story, the key is written in the edit's own Yjs transaction on the first edit, when the actor type changes, for deletion-only edits, for Undo/Redo, and at least every 10 seconds. Other edits are followed by one trailing write about 1 second later. |
+| Scope    | Independent last-write-wins value per story shard, not an edit history.                                                                                                                                                                                                          |
 
-Incompatible changes to this contract require a major release, migration guidance and release notes. Additive supported entry points and fixes that restore the documented classification can ship within 2.x. Keep counting both values: built-in Undo/Redo and F9 classification fixes do not change that filter. This contract does not retroactively certify every entry point in older releases.
+Incompatible changes to this contract require a major release, migration guidance and release notes. Additive supported entry points and fixes that restore the documented classification can ship within 2.x. The write cadence is a supported 2.x change that does not alter the key's classification: a SuperDoc session skips the write for some edits and follows with one trailing write carrying the same actor type, and it flushes pending trailing writes when the editor closes. Read-only sessions never write. The room namespace and schema do not change, and no application or server change is required. Writing the key on every keystroke prevented Yjs from merging consecutively typed characters, so rooms grew by about 30 bytes per keystroke permanently; rooms already written keep their history, and growth stops for new edits. Keep counting both values: built-in Undo/Redo and F9 classification fixes do not change that filter. This contract does not retroactively certify every entry point in older releases.
 
 Neither value authenticates a user or proves that a person physically initiated a call. Attribute connections using your server's authentication and authorization policy. Do not use `transaction.local` as a user identity.
 
 ## Observe writes, not retained values
 
-Read the actor inside the transaction that **writes the key**. A later metadata packet can retain an old actor value without representing another edit. Successive edits can also write the same value, so comparing the old and new strings misses edits.
+Read the actor inside the transaction that **writes the key**. A later metadata packet can retain an old actor value without representing another edit. A burst of same-actor edits produces a write at its start and a trailing write after it, so a saved-version timer still starts for every burst. Comparing the old and new strings still misses repeated same-actor bursts, so observe writes.
 
 This example registers the `content` map eagerly, follows each shard's `meta` map, and reports once per Yjs transaction with all attributed shards:
 
@@ -33,7 +33,7 @@ This example registers the `content` map eagerly, follows each shard's `meta` ma
 
 Install the observer in `onLoadDocument` **after restoring the room's authoritative stored Yjs state**, before returning the document for live synchronization. Restoring a snapshot can carry old attribution; it is initialization, not a new user edit. Likewise, suppress your own seed/import/replay operations using your server's initialization boundary. Do not infer intent from a full client snapshot arriving in an empty room: [persist and restore the room](/editor/collaboration/save-and-restore-a-room).
 
-In the callback, pass the document name and authenticated connection to your saved-version scheduler. If your policy starts a fifteen-minute timer on the first attributed edit, start it only while no timer is active. One command can affect several shards or transactions; the scheduler should coalesce them into the same timer. A repeated binary update is idempotent and does not produce a fresh actor-key write.
+In the callback, pass the document name and authenticated connection to your saved-version scheduler. If your policy starts a fifteen-minute timer on the first attributed edit, start it only while no timer is active. One command can affect several shards or transactions; the scheduler should coalesce them into the same timer. A repeated binary update is idempotent and does not produce a fresh actor-key write. A trailing write can arrive up to about 1 second after the last edit, which does not affect fifteen-minute timers.
 
 The callback is a scheduling input, not a storage acknowledgment. Continue persisting **all** Yjs room changes through your provider's storage flow, including metadata and comments. Do not filter room persistence with this observer.
 

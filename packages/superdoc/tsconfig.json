@@ -7,6 +7,7 @@
     "declaration": true,
     "emitDeclarationOnly": true,
     "allowImportingTsExtensions": true,
+    "rootDir": "..",
     "outDir": "dist",
     "declarationMap": false,
     "sourceMap": false,

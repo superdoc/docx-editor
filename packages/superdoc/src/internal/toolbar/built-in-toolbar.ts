@@ -60,7 +60,8 @@ import { useToolbarItem } from './built-in/use-toolbar-item.js';
 import type { ToolbarItem, ToolbarItemOption } from './built-in/use-toolbar-item.js';
 import { toolbarIcons } from './built-in/toolbarIcons.js';
 import { toolbarTexts } from './built-in/toolbarTexts.js';
-import { mapFontFamilyOptionsToToolbar } from './built-in/constants.js';
+import { mapFontFamilyOptionsToToolbar, TOOLBAR_FONTS } from './built-in/constants.js';
+import { normalizeFontOption } from './built-in/font-options.js';
 import { renderColorOptions } from './built-in/color-dropdown-helpers.js';
 import { findElementBySelector } from './built-in/general.js';
 import { HIGH_CONTRAST_MODE_KEY, type HighContrastMode } from '../../composables/use-high-contrast-mode.js';
@@ -491,7 +492,7 @@ export class BuiltInToolbar extends EventEmitter {
       const signature = this.#fontOptionsSignature();
       if (signature !== this._lastFontOptionsSignature) {
         this._lastFontOptionsSignature = signature;
-        this.#rebuildToolbarItems();
+        if (!this.#refreshFontFamilyOptions()) this.#rebuildToolbarItems();
       }
       this.updateToolbarState();
     };
@@ -747,6 +748,14 @@ export class BuiltInToolbar extends EventEmitter {
   #rebuildToolbarItems() {
     this.#makeToolbarItems();
     this.emit('toolbar-items-changed');
+  }
+
+  #refreshFontFamilyOptions(): boolean {
+    const items = this.#getAllToolbarItems().filter((item) => item.name.value === 'fontFamily');
+    if (!items.length) return false;
+    const options = (this.#resolveToolbarFonts(this.config.fonts) ?? TOOLBAR_FONTS).map(normalizeFontOption);
+    for (const item of items) item.nestedOptions.value = options.map((option) => ({ ...option }));
+    return true;
   }
 
   #fontOptionsSignature() {

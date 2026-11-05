@@ -152,6 +152,31 @@ describe('BuiltInToolbar', () => {
     }
   });
 
+  it('adds document fonts to the open font list without rebuilding the toolbar', () => {
+    let options = [{ label: 'Arial', value: 'Arial', previewFamily: 'Arial' }];
+    const host = makeHost({ fonts: { getDocumentFontOptions: () => [], getFontFamilyOptions: () => options } });
+    const toolbar = new BuiltInToolbar({ highContrastMode: createHighContrastMode(), superdoc: host });
+    const rebuilt = vi.fn();
+    toolbar.on('toolbar-items-changed', rebuilt);
+    try {
+      const fontFamily = toolbar.getToolbarItemByName('fontFamily')!;
+      const alignment = toolbar.getToolbarItemByName('textAlign')!;
+      alignment.expand.value = true;
+      options = [...options, { label: 'Calibri Light', value: 'Calibri Light', previewFamily: 'Carlito' }];
+      (host.emit as (event: string) => void)('fonts-changed');
+      expect(rebuilt).not.toHaveBeenCalled();
+      expect(toolbar.getToolbarItemByName('fontFamily')).toBe(fontFamily);
+      expect(toolbar.getToolbarItemByName('textAlign')).toBe(alignment);
+      expect(alignment.expand.value).toBe(true);
+      expect(fontFamily.nestedOptions.value.map((option) => option.label)).toEqual(['Arial', 'Calibri Light']);
+      fontFamily.activate({ fontFamily: 'Calibri Light' });
+      expect(fontFamily.label.value).toBe('Calibri Light');
+      expect(fontFamily.selectedValue.value).toBe('Calibri Light');
+    } finally {
+      toolbar.destroy();
+    }
+  });
+
   it('leaves Watermark out of the default toolbar and includes it when requested', () => {
     const host = makeHost();
     const defaultToolbar = new BuiltInToolbar({ highContrastMode: createHighContrastMode(), superdoc: host });

@@ -11,7 +11,7 @@ import type {
 import { sanitizeNumber } from './helpers';
 import { normalizeFontOption } from './font-options.js';
 import { useToolbarItem } from './use-toolbar-item';
-import type { ToolbarItemAttributes } from './use-toolbar-item';
+import type { ToolbarItemAttributes, ToolbarItemOption } from './use-toolbar-item';
 import AlignmentButtons from './AlignmentButtons.vue';
 import StyleButtonsList from './StyleButtonsList.vue';
 import { bulletStyleButtons, numberedStyleButtons } from './list-style-buttons.js';
@@ -264,6 +264,9 @@ export const makeDefaultItems = ({
   });
 
   const fontOptions: FontOption[] = (toolbarFonts ?? TOOLBAR_FONTS).map(normalizeFontOption);
+  const isFontOption = (option: ToolbarItemOption): option is FontOption =>
+    typeof option.label === 'string' && typeof option.key === 'string';
+  const currentFontOptions = (): FontOption[] => fontButton.nestedOptions.value.filter(isFontOption);
   const fontButton = useToolbarItem({
     type: 'dropdown',
     name: 'fontFamily',
@@ -293,8 +296,9 @@ export const makeDefaultItems = ({
       if (typeof fontFamily !== 'string' || !fontFamily) return;
       const family = fontFamily.split(',')[0];
       const optionValue = (option: FontOption) => option.value ?? option.label;
-      const defaultFont = fontOptions.find((option) => optionValue(option) === fontButton.defaultLabel.value);
-      const foundFont = fontOptions.find((option) => optionValue(option) === family);
+      const options = currentFontOptions();
+      const defaultFont = options.find((option) => optionValue(option) === fontButton.defaultLabel.value);
+      const foundFont = options.find((option) => optionValue(option) === family);
       if (foundFont) {
         fontButton.label.value = foundFont.label;
         fontButton.selectedValue.value = foundFont.key;
@@ -307,7 +311,7 @@ export const makeDefaultItems = ({
       }
     },
     onDeactivate: () => {
-      const defaultFont = fontOptions.find(
+      const defaultFont = currentFontOptions().find(
         (option) => (option.value ?? option.label) === fontButton.defaultLabel.value,
       );
       fontButton.label.value = defaultFont?.label ?? fontButton.defaultLabel.value;

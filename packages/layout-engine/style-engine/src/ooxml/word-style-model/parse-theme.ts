@@ -5,7 +5,7 @@
  */
 import { js2xml } from 'xml-js';
 
-import { findChild, findChildren, type OoxmlElement } from './parse-xml.js';
+import { findChildren, type OoxmlElement } from './parse-xml.js';
 
 export interface WordThemeColorPalette {
   readonly [colorName: string]: string;
@@ -49,18 +49,60 @@ export const DEFAULT_WORD_THEME_FONT_SCHEME: WordThemeFontScheme = {
   minor: { latin: 'Calibri' },
 };
 
-function parseColorPalette(theme: OoxmlElement | null | undefined): WordThemeColorPalette | undefined {
+const DRAWINGML_NAMESPACES = new Set([
+  'http://schemas.openxmlformats.org/drawingml/2006/main',
+  'http://purl.oclc.org/ooxml/drawingml/main',
+]);
+
+type ThemeReader = ReturnType<typeof createThemeReader>;
+
+function createThemeReader(root: OoxmlElement) {
+  const bindings = new WeakMap<OoxmlElement, Record<string, string>>();
+  const index = (node: OoxmlElement, inherited: Record<string, string>) => {
+    const namespaces = { ...inherited };
+    for (const [attribute, value] of Object.entries(node.attributes ?? {})) {
+      if (value === undefined) continue;
+      if (attribute === 'xmlns') namespaces[''] = value;
+      else if (attribute.startsWith('xmlns:')) namespaces[attribute.slice(6)] = value;
+    }
+    bindings.set(node, namespaces);
+    for (const child of node.elements ?? []) index(child, namespaces);
+  };
+  index(root, {});
+  const name = (node: OoxmlElement | null | undefined): string | undefined => {
+    if (!node?.name) return undefined;
+    const separator = node.name.indexOf(':');
+    const prefix = separator < 0 ? '' : node.name.slice(0, separator);
+    return DRAWINGML_NAMESPACES.has(bindings.get(node)?.[prefix] ?? '') ? node.name.slice(separator + 1) : undefined;
+  };
+  const child = (node: OoxmlElement | null | undefined, localName: string) =>
+    node?.elements?.find((element) => name(element) === localName);
+  const serialize = (node: OoxmlElement): string => {
+    const namespaces = bindings.get(node) ?? {};
+    if (!Object.entries(namespaces).some(([prefix, uri]) => prefix !== 'a' && DRAWINGML_NAMESPACES.has(uri)))
+      return serializeElement(node);
+    const attributes = { ...node.attributes };
+    for (const [prefix, uri] of Object.entries(namespaces)) attributes[prefix ? `xmlns:${prefix}` : 'xmlns'] = uri;
+    return serializeElement({ ...node, attributes });
+  };
+  return { name, child, serialize };
+}
+
+function parseColorPalette(
+  theme: OoxmlElement | null | undefined,
+  reader: ThemeReader,
+): WordThemeColorPalette | undefined {
   if (!theme) return undefined;
-  const themeElements = findChild(theme, 'a:themeElements');
-  const clrScheme = findChild(themeElements, 'a:clrScheme');
+  const themeElements = reader.child(theme, 'themeElements');
+  const clrScheme = reader.child(themeElements, 'clrScheme');
   if (!clrScheme?.elements?.length) return undefined;
   const palette: Record<string, string> = {};
   for (const colorNode of clrScheme.elements) {
-    const rawName = colorNode?.name;
-    if (!rawName) continue;
-    const colorName = rawName.replace(/^a:/, '');
+    const colorName = reader.name(colorNode);
     if (!colorName) continue;
-    const valueNode = colorNode.elements?.find((el) => el.attributes && (el.attributes.val || el.attributes.lastClr));
+    const valueNode = colorNode.elements?.find(
+      (el) => reader.name(el) && el.attributes && (el.attributes.val || el.attributes.lastClr),
+    );
     if (!valueNode) continue;
     // For a:sysClr, `val` is a logical name like "windowText" and `lastClr`
     // carries the actual hex. Prefer the hex when present.
@@ -76,28 +118,28 @@ function parseColorPalette(theme: OoxmlElement | null | undefined): WordThemeCol
   return Object.keys(palette).length ? palette : undefined;
 }
 
-function parseFontFamily(fontNode: OoxmlElement | undefined): WordThemeFontFamily | undefined {
+function parseFontFamily(fontNode: OoxmlElement | undefined, reader: ThemeReader): WordThemeFontFamily | undefined {
   if (!fontNode) return undefined;
   const out: { latin?: string; ea?: string; cs?: string } = {};
-  const latin = findChild(fontNode, 'a:latin');
+  const latin = reader.child(fontNode, 'latin');
   const typeface = latin?.attributes?.typeface;
   if (typeface) out.latin = typeface;
-  const ea = findChild(fontNode, 'a:ea');
+  const ea = reader.child(fontNode, 'ea');
   if (ea?.attributes?.typeface) out.ea = ea.attributes.typeface;
-  const cs = findChild(fontNode, 'a:cs');
+  const cs = reader.child(fontNode, 'cs');
   if (cs?.attributes?.typeface) out.cs = cs.attributes.typeface;
   return Object.keys(out).length ? out : undefined;
 }
 
-function parseFontScheme(theme: OoxmlElement | null | undefined): WordThemeFontScheme | undefined {
+function parseFontScheme(theme: OoxmlElement | null | undefined, reader: ThemeReader): WordThemeFontScheme | undefined {
   if (!theme) return undefined;
-  const themeElements = findChild(theme, 'a:themeElements');
-  const fontScheme = findChild(themeElements, 'a:fontScheme');
+  const themeElements = reader.child(theme, 'themeElements');
+  const fontScheme = reader.child(themeElements, 'fontScheme');
   if (!fontScheme) return undefined;
-  const majorRoot = findChild(fontScheme, 'a:majorFont');
-  const minorRoot = findChild(fontScheme, 'a:minorFont');
-  const major = parseFontFamily(majorRoot);
-  const minor = parseFontFamily(minorRoot);
+  const majorRoot = reader.child(fontScheme, 'majorFont');
+  const minorRoot = reader.child(fontScheme, 'minorFont');
+  const major = parseFontFamily(majorRoot, reader);
+  const minor = parseFontFamily(minorRoot, reader);
   if (!major && !minor) return undefined;
   return { major, minor };
 }
@@ -106,23 +148,29 @@ function serializeElement(element: OoxmlElement): string {
   return js2xml({ elements: [element] }, { compact: false, spaces: 0 });
 }
 
-function parseFormatScheme(theme: OoxmlElement | null | undefined): WordThemeFormatScheme | undefined {
+function parseFormatScheme(
+  theme: OoxmlElement | null | undefined,
+  reader: ThemeReader,
+): WordThemeFormatScheme | undefined {
   if (!theme) return undefined;
-  const themeElements = findChild(theme, 'a:themeElements');
-  const formatScheme = findChild(themeElements, 'a:fmtScheme');
+  const themeElements = reader.child(theme, 'themeElements');
+  const formatScheme = reader.child(themeElements, 'fmtScheme');
   if (!formatScheme) return undefined;
   const fillStyles =
-    findChild(formatScheme, 'a:fillStyleLst')
+    reader
+      .child(formatScheme, 'fillStyleLst')
       ?.elements?.filter((element) => element.type === 'element')
-      .map(serializeElement) ?? [];
+      .map(reader.serialize) ?? [];
   const backgroundFillStyles =
-    findChild(formatScheme, 'a:bgFillStyleLst')
+    reader
+      .child(formatScheme, 'bgFillStyleLst')
       ?.elements?.filter((element) => element.type === 'element')
-      .map(serializeElement) ?? [];
+      .map(reader.serialize) ?? [];
   const lineStyles =
-    findChild(formatScheme, 'a:lnStyleLst')
+    reader
+      .child(formatScheme, 'lnStyleLst')
       ?.elements?.filter((element) => element.type === 'element')
-      .map(serializeElement) ?? [];
+      .map(reader.serialize) ?? [];
   if (fillStyles.length === 0 && backgroundFillStyles.length === 0 && lineStyles.length === 0) return undefined;
   return { fillStyles, backgroundFillStyles, lineStyles };
 }
@@ -139,17 +187,18 @@ export interface ThemeParseResult {
  */
 export function compileThemeFromRoot(root: OoxmlElement | null | undefined): ThemeParseResult {
   if (!root) return {};
+  const reader = createThemeReader(root);
   // Accept either the `a:theme` root directly or a wrapper.
   let themeRoot: OoxmlElement | null | undefined = root;
-  if (root.name !== 'a:theme') {
-    themeRoot = findChild(root, 'a:theme') ?? root;
+  if (reader.name(root) !== 'theme') {
+    themeRoot = reader.child(root, 'theme') ?? root;
   }
   const out: ThemeParseResult = {};
-  const palette = parseColorPalette(themeRoot);
+  const palette = parseColorPalette(themeRoot, reader);
   if (palette) out.palette = palette;
-  const fontScheme = parseFontScheme(themeRoot);
+  const fontScheme = parseFontScheme(themeRoot, reader);
   if (fontScheme) out.fontScheme = fontScheme;
-  const formatScheme = parseFormatScheme(themeRoot);
+  const formatScheme = parseFormatScheme(themeRoot, reader);
   if (formatScheme) out.formatScheme = formatScheme;
   return out;
 }

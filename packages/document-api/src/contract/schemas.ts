@@ -5076,6 +5076,54 @@ const temporaryReceiptSchema = mutationSuccessSchema(
   },
   ['success', 'temporary', 'revision'],
 );
+const tablePresetColorSchema = objectSchema({
+  themeColor: {
+    type: 'string',
+    description: 'OOXML theme role. Resolve with styles.getTheme; never assume an accent has a fixed RGB.',
+  },
+  rgb: { type: 'string', pattern: '^[0-9A-F]{6}$' },
+  tint: {
+    type: 'string',
+    pattern: '^[0-9A-Fa-f]{2}$',
+    description: 'OOXML theme tint hex byte; 00 is white and FF leaves the theme color unchanged.',
+  },
+  shade: {
+    type: 'string',
+    pattern: '^[0-9A-Fa-f]{2}$',
+    description: 'OOXML theme shade hex byte; 00 is black and FF leaves the theme color unchanged.',
+  },
+});
+
+const tablePresetAppearanceSchema = objectSchema(
+  {
+    baseFill: tablePresetColorSchema,
+    header: objectSchema(
+      {
+        treatment: arraySchema({ enum: ['shading', 'bold', 'borders'] }),
+        fill: tablePresetColorSchema,
+        textColor: tablePresetColorSchema,
+      },
+      ['treatment'],
+    ),
+    bandedRows: objectSchema(
+      {
+        effect: { enum: ['none', 'shading', 'borders', 'shadingAndBorders'] },
+        fill: tablePresetColorSchema,
+        borderColor: tablePresetColorSchema,
+      },
+      ['effect'],
+    ),
+    borders: objectSchema(
+      {
+        layout: { enum: ['none', 'horizontal', 'outer', 'outerAndHorizontal', 'grid'] },
+        color: tablePresetColorSchema,
+      },
+      ['layout'],
+    ),
+  },
+  ['header', 'bandedRows', 'borders'],
+);
+
 const operationSchemas: Record<OperationId, OperationSchemaSet> = {
   'mutations.beginTemporary': {
     input: objectSchema(temporaryProgramProperties, ['tag', 'operations']),
@@ -9878,8 +9926,9 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
               source: { enum: ['word', 'superdoc'] },
               group: { enum: ['plain', 'grid', 'list', 'convenience'] },
               accent: { oneOf: [{ type: 'integer', minimum: 1, maximum: 6 }, { type: 'null' }] },
+              appearance: { oneOf: [tablePresetAppearanceSchema, { type: 'null' }] },
             },
-            ['id', 'name', 'source', 'group', 'accent'],
+            ['id', 'name', 'source', 'group', 'accent', 'appearance'],
           ),
         ),
         total: { type: 'integer', minimum: 0 },

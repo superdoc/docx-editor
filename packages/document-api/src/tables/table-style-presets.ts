@@ -1,3 +1,5 @@
+import { WORD_TABLE_PRESET_APPEARANCE } from './data/table-preset-appearance.generated.js';
+
 export type TablePresetSource = 'word' | 'superdoc';
 export type TablePresetGroup = 'plain' | 'grid' | 'list' | 'convenience';
 export type TablePresetAccent = 1 | 2 | 3 | 4 | 5 | 6;
@@ -20,12 +22,38 @@ export type WordTablePresetId = WordPlainTablePresetId | WordDesignedPresetId;
 
 export type TablePresetId = SuperDocTablePresetId | WordTablePresetId;
 
+export interface TablePresetColor {
+  themeColor?: string;
+  rgb?: string;
+  tint?: string;
+  shade?: string;
+}
+
+export interface TablePresetAppearance {
+  baseFill?: TablePresetColor;
+  header: {
+    treatment: Array<'shading' | 'bold' | 'borders'>;
+    fill?: TablePresetColor;
+    textColor?: TablePresetColor;
+  };
+  bandedRows: {
+    effect: 'none' | 'shading' | 'borders' | 'shadingAndBorders';
+    fill?: TablePresetColor;
+    borderColor?: TablePresetColor;
+  };
+  borders: {
+    layout: 'none' | 'horizontal' | 'outer' | 'outerAndHorizontal' | 'grid';
+    color?: TablePresetColor;
+  };
+}
+
 export interface TablePresetInfo {
   id: TablePresetId;
   name: string;
   source: TablePresetSource;
   group: TablePresetGroup;
   accent: TablePresetAccent | null;
+  appearance: TablePresetAppearance | null;
 }
 
 export interface WordTablePresetDefinition extends TablePresetInfo {
@@ -88,6 +116,12 @@ const WORD_ACCENTS = [1, 2, 3, 4, 5, 6] as const satisfies readonly TablePresetA
 
 export const WORD_ACCENT_DISPLAY_SEPARATOR = ' - ';
 
+function wordPresetAppearance(styleId: string): TablePresetAppearance {
+  const appearance = WORD_TABLE_PRESET_APPEARANCE[styleId];
+  if (!appearance) throw new Error(`Missing generated table preset appearance: ${styleId}`);
+  return appearance;
+}
+
 function buildDesignedWordPresets(): WordTablePresetDefinition[] {
   const presets: WordTablePresetDefinition[] = [];
   for (const family of WORD_FAMILIES) {
@@ -100,6 +134,7 @@ function buildDesignedWordPresets(): WordTablePresetDefinition[] {
         source: 'word',
         group: family.group,
         accent: null,
+        appearance: wordPresetAppearance(baseStyleId),
         wordStyleName: baseName,
         wordStyleId: baseStyleId,
       });
@@ -110,6 +145,7 @@ function buildDesignedWordPresets(): WordTablePresetDefinition[] {
           source: 'word',
           group: family.group,
           accent,
+          appearance: wordPresetAppearance(`${baseStyleId}-Accent${accent}`),
           wordStyleName: `${baseName} Accent ${accent}`,
           wordStyleId: `${baseStyleId}-Accent${accent}`,
         });
@@ -127,6 +163,7 @@ export const WORD_TABLE_PRESETS: readonly WordTablePresetDefinition[] = Object.f
       source: 'word',
       group: 'plain',
       accent: null,
+      appearance: wordPresetAppearance(style.wordStyleId),
       wordStyleName: style.wordStyleName,
       wordStyleId: style.wordStyleId,
     }),
@@ -142,13 +179,21 @@ export const SUPERDOC_TABLE_PRESETS: readonly TablePresetInfo[] = Object.freeze(
       source: 'superdoc',
       group: 'convenience',
       accent: null,
+      appearance: null,
     }),
   ),
 );
 
 export const TABLE_PRESET_CATALOGUE: readonly TablePresetInfo[] = Object.freeze([
   ...WORD_TABLE_PRESETS.map(
-    ({ id, name, source, group, accent }): TablePresetInfo => ({ id, name, source, group, accent }),
+    ({ id, name, source, group, accent, appearance }): TablePresetInfo => ({
+      id,
+      name,
+      source,
+      group,
+      accent,
+      appearance,
+    }),
   ),
   ...SUPERDOC_TABLE_PRESETS,
 ]);
@@ -212,10 +257,30 @@ export function listTablePresets(input: TablesListPresetsInput = {}): TablesList
     if (input.group !== undefined && preset.group !== input.group) return false;
     if (!query) return true;
     return (
-      normalizePresetSearchText(preset.id).includes(query) || normalizePresetSearchText(preset.name).includes(query)
+      normalizePresetSearchText(preset.id).includes(query) ||
+      normalizePresetSearchText(preset.name).includes(query) ||
+      ` ${normalizePresetSearchText(presetAppearanceSearchText(preset.appearance))} `.includes(` ${query} `)
     );
   });
-  const items = matches.slice(offset, offset + limit).map((preset) => ({ ...preset }));
+  const items: TablePresetInfo[] = [];
+  for (const preset of matches.slice(offset, offset + limit)) {
+    const candidate = structuredClone(preset);
+    const page = { items: [...items, candidate], total: matches.length, offset, nextOffset: matches.length };
+    if (items.length && JSON.stringify(page).length > 7750) break;
+    items.push(candidate);
+  }
   const end = offset + items.length;
   return { items, total: matches.length, offset, nextOffset: end < matches.length ? end : null };
+}
+
+function presetAppearanceSearchText(appearance: TablePresetAppearance | null): string {
+  if (!appearance) return '';
+  const features = appearance.header.treatment.map((treatment) => `header ${treatment}`);
+  const bandEffects =
+    appearance.bandedRows.effect === 'shadingAndBorders' ? ['shading', 'borders'] : [appearance.bandedRows.effect];
+  for (const effect of bandEffects) if (effect !== 'none') features.push(`${effect} banded rows`);
+  const borderLayouts =
+    appearance.borders.layout === 'outerAndHorizontal' ? ['outer', 'horizontal'] : [appearance.borders.layout];
+  for (const layout of borderLayouts) if (layout !== 'none') features.push(`${layout} borders`);
+  return features.join(' ');
 }

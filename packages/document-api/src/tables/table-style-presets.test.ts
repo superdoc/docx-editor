@@ -85,7 +85,7 @@ describe('listTablePresets', () => {
       'word.grid-table-4-accent-5',
       'word.grid-table-4-accent-6',
     ]);
-    expect(Object.keys(page.items[1]!).sort()).toEqual(['accent', 'group', 'id', 'name', 'source']);
+    expect(Object.keys(page.items[1]!).sort()).toEqual(['accent', 'appearance', 'group', 'id', 'name', 'source']);
   });
 
   it('paginates every entry once with stable ordering', () => {
@@ -121,8 +121,65 @@ describe('listTablePresets', () => {
   it('keeps every maximum-size page under the full tool result limit', () => {
     for (let offset = 0; offset < TABLE_PRESET_CATALOGUE.length; offset += TABLE_PRESET_LIST_MAX_LIMIT) {
       const page = listTablePresets({ limit: TABLE_PRESET_LIST_MAX_LIMIT, offset });
-      expect(JSON.stringify(page, null, 2).length).toBeLessThan(8000);
+      expect(JSON.stringify(page).length).toBeLessThan(8000);
     }
+  });
+
+  it('describes actual Word header and band effects without baking palette colors', () => {
+    const grid = getWordTablePreset('word.grid-table-4-accent-3')!.appearance!;
+    expect(grid.header).toEqual({
+      treatment: ['shading', 'bold', 'borders'],
+      fill: { themeColor: 'accent3' },
+      textColor: { themeColor: 'background1' },
+    });
+    expect(grid.bandedRows).toEqual({ effect: 'shading', fill: { themeColor: 'accent3', tint: '33' } });
+    expect(getWordTablePreset('word.list-table-3-accent-2')!.appearance!.bandedRows).toMatchObject({
+      effect: 'borders',
+      borderColor: { themeColor: 'accent2' },
+    });
+    expect(getWordTablePreset('word.list-table-1-light')!.appearance!).toMatchObject({
+      header: { treatment: ['bold', 'borders'] },
+      bandedRows: { effect: 'shading', fill: { themeColor: 'text1', tint: '33' } },
+      borders: { layout: 'horizontal' },
+    });
+    expect(getWordTablePreset('word.list-table-4')!.appearance!.borders.layout).toBe('outerAndHorizontal');
+    expect(listTablePresets({ query: 'green' }).total).toBe(0);
+    expect(listTablePresets({ query: 'horizontal borders' }).items.length).toBeGreaterThan(0);
+  });
+
+  it('indexes only declared appearance features', () => {
+    const bands = listTablePresets({ query: 'banded rows' });
+    expect(bands.total).toBe(96);
+    expect(bands.items.every((item) => item.appearance!.bandedRows.effect !== 'none')).toBe(true);
+    const horizontal = listTablePresets({ query: 'horizontal borders' });
+    expect(
+      horizontal.items.every((item) => ['horizontal', 'outerAndHorizontal'].includes(item.appearance!.borders.layout)),
+    ).toBe(true);
+    for (const query of ['horizontal borders', 'outer borders']) {
+      const ids: string[] = [];
+      let offset: number | null = 0;
+      while (offset !== null) {
+        const page = listTablePresets({ query, offset, limit: 25 });
+        ids.push(...page.items.map((item) => item.id));
+        offset = page.nextOffset;
+      }
+      for (const suffix of ['', '-accent-1', '-accent-2', '-accent-3', '-accent-4', '-accent-5', '-accent-6']) {
+        expect(ids).toContain(`word.list-table-4${suffix}`);
+      }
+    }
+    expect(
+      listTablePresets({ query: 'borders' }).items.some((item) => item.appearance!.borders.layout === 'none'),
+    ).toBe(false);
+  });
+
+  it('isolates nested result metadata from later reads', () => {
+    const first = listTablePresets({ query: 'grid table 4 accent 3' }).items[0]!;
+    first.appearance!.header.fill!.themeColor = 'accent6';
+    first.appearance!.header.treatment.length = 0;
+    expect(listTablePresets({ query: 'grid table 4 accent 3' }).items[0]!.appearance!.header).toMatchObject({
+      treatment: ['shading', 'bold', 'borders'],
+      fill: { themeColor: 'accent3' },
+    });
   });
 
   it('rejects invalid input before listing', () => {

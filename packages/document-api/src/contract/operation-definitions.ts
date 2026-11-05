@@ -4151,10 +4151,10 @@ export const OPERATION_DEFINITIONS = {
     memberPath: 'tables.listPresets',
     description:
       'List built-in table style presets that tables.applyPreset accepts: 105 Word table styles (Table Grid, Grid Table Light, Plain Table 1-5, and the Grid Table and List Table designs 1-7 with neutral and Accent 1-6 variants) plus the four SuperDoc convenience presets. ' +
-      'Filter by source ("word" or "superdoc"), group ("plain", "grid", "list", "convenience"), or a query that matches preset IDs and display names. Results are paginated: follow nextOffset until it is null to see every match. ' +
-      'This is a fixed catalogue; it does not read or change the document. Use tables.getStyles to list table styles already defined in the document.',
+      'Filter by source ("word" or "superdoc"), group ("plain", "grid", "list", "convenience"), or a query matching IDs, names, or appearance terms (shading, banded rows, horizontal borders). Pages contain up to limit items within the tool payload budget: follow nextOffset until null. ' +
+      'Word appearance describes declared header, first body-row band, and primary borders, conditional on headerRow/bandedRows options. Missing properties are inherited, not white or border-free. Document Normal Table, other enabled regions, and direct formatting can override these cues. Resolve themeColor through styles.getTheme: resolve every role through colorSchemeMapping first (text1/text2/background1/background2 use t1/t2/bg1/bg2 keys); unmapped accents use their same-named colorScheme slot. Apply OOXML hex tint/shade modifiers; a neutral accent:null may still use theme colors. Convenience appearance is null. This fixed catalogue does not read or change the document; tables.getStyles lists installed styles.',
     expectedResult:
-      'Returns a TablesListPresetsOutput page with items (id, name, source, group, accent), the exact filtered total, the page offset, and nextOffset (null when no more matches remain).',
+      'Returns a TablesListPresetsOutput page with items (id, name, source, group, accent, appearance), the exact filtered total, the page offset, and nextOffset (null when no more matches remain).',
     requiresDocumentContext: true,
     metadata: readOperation({ idempotency: 'idempotent', throws: ['INVALID_INPUT'] }),
     referenceDocPath: 'tables/list-presets.mdx',

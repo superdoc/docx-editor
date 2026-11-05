@@ -139,7 +139,7 @@
     },
     {
       "name": "interaction",
-      "type": "{\n  comments?: CommentInteractionConfig;\n  trackedChanges?: TrackChangesInteractionConfig;\n}",
+      "type": "{\n  comments?: CommentInteractionConfig;\n  trackedChanges?: TrackChangesInteractionConfig;\n  touch?: TouchInteractionConfig;\n  writingAssistance?: WritingAssistanceConfig;\n}",
       "typeName": "InteractionConfig",
       "required": false,
       "description": "Client-side interaction policy. Independent of `ui`, so it still applies when the application renders its own UI. This is not an authorization boundary.",

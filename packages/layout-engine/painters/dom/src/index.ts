@@ -307,3 +307,5 @@ export { buildLinkRenderData } from './runs/links.js';
 export { INLINE_TRACKED_CHANGE_DEFAULTS } from './styles.js';
 
 export { resolveDecorationFragmentPosition } from './decoration-geometry.js';
+export { createChartElement } from './chart-renderer.js';
+export { convertOmmlToMathml } from './features/math/omml-to-mathml.js';

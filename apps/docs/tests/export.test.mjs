@@ -1446,7 +1446,9 @@ test('collaboration introduces shared editing before setup and persistence', asy
   assert.match(guide, /mode=create&user=Alex/);
   assert.match(guide, /DocumentCollaborationConfig/);
   assert.match(guide, /document: \{ url: '\/sample.docx', collaboration \}/);
-  assert.match(guide, /Preview API/);
+  assert.match(guide, /\*\*Supported versions \(note\)\*\*/);
+  assert.match(guide, /work with SuperDoc 2\.26\.0, the version the\s+(?:>\s+)?example pins/);
+  assert.doesNotMatch(guide, /Preview API|pinned 2\.11\.0/);
   assert.doesNotMatch(guide, /v2Collaboration|V2CollaborationConfig/);
   assert.match(guide, /onCollaborationReady/);
   assert.match(guide, /Now type a reply in Sam's editor/);

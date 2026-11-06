@@ -56,7 +56,7 @@ The example's `demo-access.ts` supplies Hocuspocus's `onAuthenticate` hook:
 
 <include>../../../../../../examples/collaboration/demo-access.ts</include>
 
-For the pinned SuperDoc 2.11.0 example, `documentId: 'example-room'` reaches Hocuspocus as `sd2/v2.1/example-room`. The hook checks that exact provider room name, not just whether the token is valid. Keep this mapping with your document permissions; do not authorize by matching only a suffix.
+For the pinned SuperDoc 2.26.0 example, `documentId: 'example-room'` reaches Hocuspocus as `sd2/v2.1/example-room`. The hook checks that exact provider room name, not just whether the token is valid. Keep this mapping with your document permissions; do not authorize by matching only a suffix.
 
 Returning allows the connection; throwing rejects it. This example grants the same room access to creators and joiners; it does not implement separate create, read-only, or edit roles.
 
@@ -88,7 +88,7 @@ const onException: NonNullable<Config['onException']> = (failure) => {
 
 `access-denied` means the provider explicitly rejected the connection. It does not distinguish an invalid credential from missing room permission. A timeout is not proof of denied access, and a worker startup failure is not a collaboration rejection. Do not parse error messages or show the server's raw rejection text to users.
 
-The pinned 2.11.0 example reports only `Connection failed.`; keep its existing error handling until you upgrade. The embedded demo confirms rejection with its example server.
+The example reports only `Connection failed.`. The embedded demo confirms rejection with its example server.
 
 ## Connect your application's sign-in flow
 

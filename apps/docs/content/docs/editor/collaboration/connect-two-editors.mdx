@@ -22,7 +22,7 @@ pnpm install --ignore-scripts
 pnpm dev
 ```
 
-The example pins SuperDoc 2.11.0 and Hocuspocus 2.15.3. The install command skips dependency lifecycle scripts. Keep the terminal running: it serves the app on port `5173` and the collaboration connection on port `1234`.
+The example pins SuperDoc 2.26.0 and Hocuspocus 2.15.3. The install command skips dependency lifecycle scripts. Keep the terminal running: it serves the app on port `5173` and the collaboration connection on port `1234`.
 
 <Callout title='Local example only'>
   This server has no authentication or persistent storage. Use the included sample, not private documents. Restarting
@@ -50,9 +50,9 @@ Now type a reply in Sam's editor. It appears in Alex's editor too. Both editors 
 
 The connection belongs to the document. Both editors use the same server and room ID; the creator uses `create`, and everyone else uses `join`.
 
-<Callout title='Preview API'>
-  The `collaboration` configuration and typed connection failures below require the upcoming SuperDoc release. They are
-  available in the current source, not in the pinned 2.11.0 example. Run that example unchanged to try the behavior.
+<Callout title='Supported versions'>
+  The `collaboration` configuration and typed connection failures below work with SuperDoc 2.26.0, the version the
+  example pins.
 </Callout>
 
 ```ts
@@ -74,7 +74,7 @@ const superdoc = new SuperDoc({
 });
 ```
 
-Provide an `#editor` element and serve your DOCX at `/sample.docx`. Use these settings when integrating the preview API into your application, not as a patch to the pinned example.
+Provide an `#editor` element and serve your DOCX at `/sample.docx`. The example's `src/main.ts` passes the same `collaboration` settings on its document.
 
 | Setting                        | Its job                                                                      |
 | ------------------------------ | ---------------------------------------------------------------------------- |

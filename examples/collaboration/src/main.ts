@@ -28,7 +28,7 @@ const superdoc = new SuperDoc({
       id: 'shared-document',
       type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       data: await response.blob(),
-      v2Collaboration: {
+      collaboration: {
         providerType: 'hocuspocus',
         documentId: 'example-room',
         serverUrl: `ws://127.0.0.1:${collaborationPort}`,

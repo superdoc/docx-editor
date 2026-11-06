@@ -814,3 +814,119 @@ describe('normalizeFragmentsForRegion', () => {
     });
   });
 });
+
+describe('SD-5733 physical-page horizontal graphic anchors', () => {
+  for (const kind of ['image', 'drawing'] as const) {
+    for (const region of ['header', 'footer'] as const) {
+      it.each([
+        { alignH: 'right' as const, offsetH: 0, expected: -111.533 },
+        { alignH: 'center' as const, offsetH: 6, expected: -49.7665 },
+        { alignH: 'left' as const, offsetH: -14, expected: -14 },
+      ])(`${region} ${kind} preserves page-relative placement: %j`, ({ alignH, offsetH, expected }) => {
+        const width = 905.266;
+        const anchor = {
+          isAnchored: true,
+          hRelativeFrom: 'page' as const,
+          vRelativeFrom: 'paragraph' as const,
+          alignH,
+          offsetH,
+          offsetV: -59,
+        };
+        const block: FlowBlock =
+          kind === 'image'
+            ? { kind, id: 'graphic', src: 'data:image/png;base64,AAAA', width, height: 160, anchor }
+            : { kind, id: 'graphic', drawingKind: 'vectorShape', geometry: { width, height: 160 }, anchor };
+        const fragment = {
+          kind,
+          blockId: block.id,
+          drawingKind: 'vectorShape',
+          x: alignH === 'right' ? 655.8 - width : alignH === 'center' ? (655.8 - width) / 2 + offsetH : offsetH,
+          y: -59,
+          width,
+          height: 160,
+          isAnchored: true,
+        } as unknown as Fragment;
+        normalizeFragmentsForRegion([{ number: 1, fragments: [fragment] }], [block], [], region, {
+          width: 655.8,
+          pageWidth: 793.733,
+          pageHeight: 1122.533,
+          margins: { left: 71.8, right: 66.133, top: 72, bottom: 72, header: 48, footer: 36 },
+        });
+        expect(fragment.x).toBeCloseTo(expected, 3);
+        expect(fragment.y).toBe(-59);
+        expect(fragment.width).toBe(width);
+      });
+    }
+  }
+
+  for (const kind of ['image', 'drawing'] as const) {
+    for (const region of ['header', 'footer'] as const) {
+      it.each(['Square', 'Tight', 'Through', 'TopAndBottom'] as const)(
+        `${region} ${kind} keeps the horizontal position used by %s wrapping`,
+        (type) => {
+          const anchor = {
+            isAnchored: true,
+            hRelativeFrom: 'page' as const,
+            vRelativeFrom: 'paragraph' as const,
+            alignH: 'center' as const,
+          };
+          const wrap = { type, wrapText: 'right' as const };
+          const block: FlowBlock =
+            kind === 'image'
+              ? { kind, id: 'foreground', src: 'test.png', width: 200, height: 80, anchor, wrap }
+              : {
+                  kind,
+                  id: 'foreground',
+                  drawingKind: 'vectorShape',
+                  geometry: { width: 200, height: 80 },
+                  anchor,
+                  wrap,
+                };
+          const fragment = {
+            kind,
+            blockId: block.id,
+            x: 190,
+            y: 0,
+            width: 200,
+            height: 80,
+            isAnchored: true,
+          } as Fragment;
+          normalizeFragmentsForRegion([{ number: 1, fragments: [fragment] }], [block], [], region, {
+            width: 580,
+            pageWidth: 800,
+            pageHeight: 1000,
+            margins: { left: 20, right: 200, top: 72, bottom: 72, header: 24, footer: 24 },
+          });
+          expect(fragment.x).toBe(190);
+          expect(fragment.x + fragment.width).toBeLessThanOrEqual(410);
+        },
+      );
+    }
+  }
+
+  it.each(['column', 'character', 'margin'] as const)(
+    'preserves existing %s-relative horizontal positions',
+    (hRelativeFrom) => {
+      const block: FlowBlock = {
+        kind: 'image',
+        id: 'control',
+        src: 'data:image/png;base64,AAAA',
+        width: 306,
+        height: 172,
+        anchor: { isAnchored: true, hRelativeFrom, vRelativeFrom: 'paragraph', alignH: 'right', offsetH: 23 },
+      };
+      const fragment = {
+        kind: 'image',
+        blockId: block.id,
+        x: 214,
+        y: -59,
+        width: 306,
+        height: 172,
+        isAnchored: true,
+      } as Fragment;
+      normalizeFragmentsForRegion([{ number: 1, fragments: [fragment] }], [block], [], 'header', fullConstraints);
+      expect(fragment.x).toBe(214);
+      expect(fragment.y).toBe(-59);
+    },
+  );
+});

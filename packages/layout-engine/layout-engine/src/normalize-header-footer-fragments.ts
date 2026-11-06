@@ -310,6 +310,25 @@ export function normalizeFragmentsForRegion(
 
       if (!isAnchoredFragment(fragment)) continue;
 
+      if (
+        (block.kind === 'image' || block.kind === 'drawing') &&
+        block.anchor?.hRelativeFrom === 'page' &&
+        (!block.wrap || block.wrap.type === 'None' || block.wrap.type === 'Inline') &&
+        typeof constraints.pageWidth === 'number' &&
+        Number.isFinite(constraints.pageWidth) &&
+        constraints.pageWidth > 0
+      ) {
+        fragment.x = resolveAnchoredGraphicX(
+          block.anchor,
+          0,
+          { width: constraints.width ?? constraints.pageWidth, gap: 0, count: 1 },
+          ('width' in fragment ? fragment.width : 0) ?? 0,
+          constraints.margins,
+          constraints.pageWidth,
+          { pageNumber: page.number },
+        );
+      }
+
       if (kind === 'header' && fragment.kind === 'image' && isHeaderVmlWatermark(block)) {
         normalizeHeaderVmlWatermarkFragment(fragment, block, page.number, constraints);
         continue;

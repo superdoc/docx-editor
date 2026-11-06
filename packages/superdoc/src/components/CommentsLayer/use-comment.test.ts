@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vite-plus/test';
+import { describe, expect, it } from 'vite-plus/test';
 import useComment from './use-comment.js';
 
 const ONE_BY_ONE_PNG =

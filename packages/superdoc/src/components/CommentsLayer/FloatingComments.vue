@@ -465,7 +465,7 @@ const instantAlignmentInstanceKey = computed(() => {
 
 // Pre-compute all positions with collision avoidance
 const allPositions = computed(() => {
-  viewportRevision.value;
+  void viewportRevision.value;
   if (committedInstances.value)
     return committedInstances.value.map((instance) => ({
       id: instance.id,
@@ -609,7 +609,7 @@ const readReviewViewport = (): ReviewViewport | null => {
   const presentation = committedPresentation.value,
     container = floatingCommentsContainer.value;
   if (!presentation || !container) return null;
-  viewportRevision.value;
+  void viewportRevision.value;
   const viewport = getFloatingViewportRange();
   if (!viewport) return null;
   const rail = container.getBoundingClientRect();
@@ -687,7 +687,7 @@ watch(
 // The page surface, not review-card stacking, owns document height. Cards are
 // absolutely positioned and clipped/materialized by the bounded render window.
 const wrapperMinHeight = computed(() => {
-  viewportRevision.value;
+  void viewportRevision.value;
   return Math.max(0, props.parent?.clientHeight || 0, props.parent?.scrollHeight || 0);
 });
 

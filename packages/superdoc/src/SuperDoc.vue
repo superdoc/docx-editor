@@ -678,7 +678,7 @@ const superdocStyleVars = computed(() => {
   const trackChangeColors: TrackChangeHighlightColorSet = commentsConfig.trackChangeHighlightColors || {};
   const activeTrackChangeColors: TrackChangeHighlightColorSet = {
     ...trackChangeColors,
-    ...(commentsConfig.trackChangeActiveHighlightColors || {}),
+    ...commentsConfig.trackChangeActiveHighlightColors,
   };
   if (activeTrackChangeColors.insertBorder)
     vars['--sd-tracked-changes-insert-border'] = activeTrackChangeColors.insertBorder;
@@ -2115,7 +2115,7 @@ const syncV2SelectionToolbarState = () => {
 const publishV2PendingPositionEntry = (entry: ReturnType<typeof buildV2PendingPositionEntry>) => {
   if (!entry) return;
   handleEditorLocationsUpdate({
-    ...(editorCommentPositions.value ?? {}),
+    ...editorCommentPositions.value,
     pending: entry,
   });
 };
@@ -2905,7 +2905,7 @@ const editorOptions = (doc: ShellDocument) => {
     linkPopoverResolver: getHyperlinkActivationHandler(),
     layoutEngineOptions: useLayoutEngine
       ? {
-          ...(proxy.$superdoc.config.layoutEngineOptions || {}),
+          ...proxy.$superdoc.config.layoutEngineOptions,
           proofing: resolvedProofingConfig.value,
           debugLabel:
             (proxy.$superdoc.config.layoutEngineOptions as LegacyLayoutEngineOptions | undefined)?.debugLabel ??

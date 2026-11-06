@@ -7459,7 +7459,11 @@ describe('public ui — viewport.scrollIntoView parity', () => {
     expect(result).toEqual({ success: true });
     // A TextAddress is normalized to a single-segment text target.
     expect(scrollTargetIntoView).toHaveBeenCalledWith({
-      target: { kind: 'text', segments: [{ blockId: 'P1', range: { start: 0, end: 5 } }] },
+      target: {
+        kind: 'text',
+        segments: [{ blockId: 'P1', range: { start: 0, end: 5 } }],
+        story: { kind: 'story', storyType: 'body' },
+      },
       block: 'start',
       behavior: 'auto',
     });
@@ -7475,7 +7479,11 @@ describe('public ui — viewport.scrollIntoView parity', () => {
 
     expect(result).toEqual({ success: true });
     expect(scrollTargetIntoView).toHaveBeenCalledWith({
-      target: { kind: 'text', segments: [{ blockId: 'P1', range: { start: 0, end: 5 } }] },
+      target: {
+        kind: 'text',
+        segments: [{ blockId: 'P1', range: { start: 0, end: 5 } }],
+        story: { kind: 'story', storyType: 'body' },
+      },
       block: 'center',
       behavior: 'instant',
     });
@@ -7492,7 +7500,11 @@ describe('public ui — viewport.scrollIntoView parity', () => {
     expect(result).toEqual({ success: false });
     expect(scrollTargetIntoView).toHaveBeenCalledTimes(1);
     expect(scrollTargetIntoView).toHaveBeenCalledWith({
-      target: { kind: 'text', segments: [{ blockId: 'P-far', range: { start: 0, end: 0 } }] },
+      target: {
+        kind: 'text',
+        segments: [{ blockId: 'P-far', range: { start: 0, end: 0 } }],
+        story: { kind: 'story', storyType: 'body' },
+      },
       block: 'start',
       behavior: 'instant',
     });
@@ -7514,8 +7526,32 @@ describe('public ui — viewport.scrollIntoView parity', () => {
     const result = await ui.viewport.scrollIntoView({ target, block: 'nearest', behavior: 'auto' });
 
     expect(result).toEqual({ success: true });
-    // A multi-segment target passes through unchanged.
-    expect(scrollTargetIntoView).toHaveBeenCalledWith({ target, block: 'nearest', behavior: 'auto' });
+    expect(scrollTargetIntoView).toHaveBeenCalledWith({
+      target: { ...target, story: { kind: 'story', storyType: 'body' } },
+      block: 'nearest',
+      behavior: 'auto',
+    });
+  });
+
+  it('treats a note block without story as a body target', async () => {
+    const scrollTargetIntoView = vi.fn(async ({ target }: { target: { story?: { storyType?: string } } }) => ({
+      success: target.story?.storyType !== 'body',
+    }));
+    const { superdoc } = makeWorkflowSuperdoc({ host: { scrollTargetIntoView } });
+    const ui = createSuperDocUI({ superdoc });
+
+    expect(
+      await ui.viewport.scrollIntoView({ target: { kind: 'text', blockId: 'NOTE-1', range: { start: 0, end: 0 } } }),
+    ).toEqual({ success: false });
+    expect(scrollTargetIntoView).toHaveBeenCalledWith({
+      target: {
+        kind: 'text',
+        segments: [{ blockId: 'NOTE-1', range: { start: 0, end: 0 } }],
+        story: { kind: 'story', storyType: 'body' },
+      },
+      block: 'center',
+      behavior: 'smooth',
+    });
   });
 
   it('scrolls a comment entity into view', async () => {

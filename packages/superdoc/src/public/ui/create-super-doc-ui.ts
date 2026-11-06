@@ -11844,7 +11844,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
             kind: 'text',
             segments,
             ...(asTarget.coordinateSpace ? { coordinateSpace: asTarget.coordinateSpace } : {}),
-            ...(story ? { story } : {}),
+            story: story ?? { kind: 'story', storyType: 'body' },
           };
         }
       }

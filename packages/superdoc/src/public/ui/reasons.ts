@@ -94,6 +94,7 @@ export const SUPERDOC_UI_REASONS = {
    * are never gated by this reason.
    */
   contentControlLocked: 'content-control-locked',
+  deletedTextFormattingUnsupported: 'deleted-text-formatting-unsupported',
   /**
    * The current user is not allowed to run this command under the product
    * permissionResolver / role matrix (SD-3845). Distinct from document

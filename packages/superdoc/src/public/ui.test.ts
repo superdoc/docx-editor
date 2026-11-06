@@ -15974,6 +15974,396 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
     expect(host.setPendingInlineFormat).toHaveBeenCalledWith('bold', true);
   });
 
+  it.each(['bold', 'highlight-color', 'clear-formatting'])(
+    'gates %s for a deleted-only range without arming pending marks (SD-5963)',
+    async (command) => {
+      const apply = vi.fn(() => ({ success: true }));
+      const { superdoc, host } = makeCaretSuperdocWithPendingHost(
+        { format: { bold: apply, highlight: apply, apply } },
+        {
+          ...COLLAPSED_CARET_INFO,
+          empty: false,
+          selectionTarget: {
+            kind: 'selection',
+            coordinateSpace: 'tracked',
+            start: { kind: 'text', blockId: 'p1', offset: 2 },
+            end: { kind: 'text', blockId: 'p1', offset: 8 },
+          },
+        },
+      );
+      const ui = createSuperDocUI({ superdoc });
+      expect(ui.commands.get(command).getState()).toMatchObject({
+        enabled: false,
+        reason: 'deleted-text-formatting-unsupported',
+      });
+      expect(await ui.commands.get(command).executeAsync('#FFFF00')).toBe(false);
+      expect(apply).not.toHaveBeenCalled();
+      expect(host.setPendingInlineFormat).not.toHaveBeenCalled();
+      ui.destroy();
+    },
+  );
+
+  it.each([
+    {
+      name: 'single paragraph',
+      target: { kind: 'text', segments: [{ blockId: 'P1', range: { start: 2, end: 8 } }] },
+      selectionTarget: {
+        kind: 'selection',
+        coordinateSpace: 'tracked',
+        start: { kind: 'text', blockId: 'P1', offset: 2 },
+        end: { kind: 'text', blockId: 'P1', offset: 13 },
+      },
+    },
+    {
+      name: 'cross paragraph',
+      target: {
+        kind: 'text',
+        segments: [
+          { blockId: 'P1', range: { start: 2, end: 27 } },
+          { blockId: 'P2', range: { start: 0, end: 0 } },
+        ],
+      },
+      trackedTarget: {
+        kind: 'text',
+        segments: [
+          { blockId: 'P1', range: { start: 2, end: 27 } },
+          { blockId: 'P2', range: { start: 0, end: 11 } },
+        ],
+      },
+      selectionTarget: {
+        kind: 'selection',
+        start: { kind: 'text', blockId: 'P1', offset: 2 },
+        end: { kind: 'text', blockId: 'P2', offset: 0 },
+      },
+    },
+  ])('gates compound Clear before any writes for a mixed $name range (SD-5963)', async (selected) => {
+    const mutate = vi.fn(() => ({ success: true }));
+    const { superdoc, host } = makeCaretSuperdocWithPendingHost(
+      {
+        format: { bold: mutate, highlight: mutate, apply: mutate, paragraph: { resetDirectFormatting: mutate } },
+        styles: { paragraph: { setStyleRef: mutate } },
+        lists: { remove: mutate },
+        trackChanges: {
+          list: () => ({
+            items: [{ id: 'selected-deletion', type: 'structural', subtype: 'paragraph-mark-deletion' }],
+          }),
+        },
+      },
+      { ...COLLAPSED_CARET_INFO, ...selected, empty: false, activeChangeIds: ['selected-deletion'] },
+    );
+    const ui = createSuperDocUI({ superdoc });
+    expect(ui.commands.get('bold').getState().enabled).toBe(true);
+    expect(ui.commands.get('highlight-color').getState().enabled).toBe(true);
+    expect(ui.commands.get('clear-formatting').getState()).toMatchObject({
+      enabled: false,
+      reason: 'deleted-text-formatting-unsupported',
+    });
+    expect(await ui.commands.get('clear-formatting').executeAsync()).toBe(false);
+    expect(mutate).not.toHaveBeenCalled();
+    expect(host.clearPendingInlineFormat).not.toHaveBeenCalled();
+    ui.destroy();
+  });
+
+  it.each(['synchronous', 'promise-backed'])(
+    'Clear accepts a %s reset NO_OP after successful formatting (SD-5963)',
+    async (surface) => {
+      const noOp = { success: false, failure: { code: 'NO_OP', message: 'Paragraph formatting already clear.' } };
+      const { superdoc } = makeCaretSuperdocWithPendingHost(
+        {
+          format: {
+            apply: () => ({ success: true }),
+            paragraph: { resetDirectFormatting: () => (surface === 'synchronous' ? noOp : Promise.resolve(noOp)) },
+          },
+          styles: { paragraph: { setStyleRef: () => ({ success: true }) } },
+        },
+        SELECTION_INFO,
+      );
+      const ui = createSuperDocUI({ superdoc });
+      expect(await ui.commands.get('clear-formatting').executeAsync()).toMatchObject({ success: true });
+      ui.destroy();
+    },
+  );
+
+  it.each(['synchronous', 'promise-backed'])('Clear propagates a %s reset refusal (SD-5963)', async (surface) => {
+    const failure = { success: false, failure: { code: 'PERMISSION_DENIED', message: 'Protected paragraph.' } };
+    const { superdoc } = makeCaretSuperdocWithPendingHost(
+      {
+        format: {
+          apply: () => ({ success: true }),
+          paragraph: { resetDirectFormatting: () => (surface === 'synchronous' ? failure : Promise.resolve(failure)) },
+        },
+      },
+      SELECTION_INFO,
+    );
+    const ui = createSuperDocUI({ superdoc });
+    expect(await ui.commands.get('clear-formatting').executeAsync()).toMatchObject(failure);
+    ui.destroy();
+  });
+
+  it('allows Clear on kept selections without reading off-window review metadata (SD-5963)', async () => {
+    const mutate = vi.fn(() => ({ success: true }));
+    const list = vi.fn(() => ({ items: [{ id: 'off-window-insertion', type: 'insertion' }] }));
+    const { superdoc } = makeCaretSuperdocWithPendingHost(
+      {
+        format: { apply: mutate, paragraph: { resetDirectFormatting: mutate } },
+        trackChanges: { list },
+      },
+      { ...SELECTION_INFO, activeChangeIds: ['off-window-insertion'] },
+    );
+    Object.assign(superdoc.activeEditor, {
+      editorVersion: 2,
+      reviewWindow: { getSnapshot: () => ({ status: 'ready', trackedChangeItems: [], commentItems: [] }) },
+    });
+    const ui = createSuperDocUI({ superdoc });
+    expect(ui.commands.get('clear-formatting').getState().enabled).toBe(true);
+    expect(list).not.toHaveBeenCalled();
+    expect(await ui.commands.get('clear-formatting').executeAsync()).toMatchObject({ success: true });
+    expect(mutate).toHaveBeenCalled();
+    expect(list).not.toHaveBeenCalled();
+    ui.destroy();
+  });
+
+  it.each(['synchronous', 'promise-backed'])(
+    'Clear preflights every V2 paragraph before writes (%s, SD-5963)',
+    async (surface) => {
+      const mutate = vi.fn(() => ({ success: true }));
+      const failure = {
+        success: false,
+        failure: {
+          code: 'CAPABILITY_UNAVAILABLE',
+          message: 'Accept or reject the tracked deletion before clearing this paragraph.',
+        },
+      };
+      const reset = vi.fn((input: { target: { nodeId: string } }, options?: { dryRun?: boolean }) => {
+        if (!options?.dryRun) return mutate();
+        const value = input.target.nodeId === 'P2' ? failure : { success: true };
+        return surface === 'promise-backed' ? Promise.resolve(value) : value;
+      });
+      const { superdoc, host } = makeCaretSuperdocWithPendingHost(
+        {
+          format: { apply: mutate, paragraph: { resetDirectFormatting: reset } },
+          styles: { paragraph: { setStyleRef: mutate } },
+          lists: { remove: mutate },
+        },
+        {
+          ...SELECTION_INFO,
+          target: {
+            kind: 'text',
+            segments: [
+              { blockId: 'P1', range: { start: 1, end: 4 } },
+              { blockId: 'P2', range: { start: 0, end: 2 } },
+            ],
+          },
+          selectionTarget: {
+            kind: 'selection',
+            start: { kind: 'text', blockId: 'P1', offset: 1 },
+            end: { kind: 'text', blockId: 'P2', offset: 2 },
+          },
+        },
+      );
+      Object.assign(superdoc.activeEditor, { editorVersion: 2 });
+      const ui = createSuperDocUI({ superdoc });
+      expect(await ui.commands.get('clear-formatting').executeAsync()).toMatchObject(failure);
+      expect(mutate).not.toHaveBeenCalled();
+      expect(reset).toHaveBeenCalledWith({ target: expect.objectContaining({ nodeId: 'P1' }) }, { dryRun: true });
+      expect(reset).toHaveBeenCalledWith({ target: expect.objectContaining({ nodeId: 'P2' }) }, { dryRun: true });
+      expect(host.clearPendingInlineFormat).not.toHaveBeenCalled();
+      ui.destroy();
+    },
+  );
+
+  it('refuses a stale Clear after an asynchronous reset preflight (SD-5963)', async () => {
+    let release = () => {};
+    const preview = new Promise((resolve) => {
+      release = () => resolve({ success: true });
+    });
+    const mutate = vi.fn(() => ({ success: true }));
+    const reset = vi.fn((_input: unknown, options?: { dryRun?: boolean }) => (options?.dryRun ? preview : mutate()));
+    const { superdoc } = makeCaretSuperdocWithPendingHost(
+      {
+        format: { apply: mutate, paragraph: { resetDirectFormatting: reset } },
+      },
+      SELECTION_INFO,
+    );
+    Object.assign(superdoc.activeEditor, { editorVersion: 2 });
+    const ui = createSuperDocUI({ superdoc });
+    const pending = ui.commands.get('clear-formatting').executeAsync();
+    await vi.waitFor(() => expect(reset).toHaveBeenCalled());
+    superdoc.config.documentMode = 'viewing';
+    release();
+    expect(await pending).toBe(false);
+    expect(mutate).not.toHaveBeenCalled();
+    ui.destroy();
+  });
+
+  it('retains the registered first-party mutation route after Clear preflight (SD-5963)', async () => {
+    const fallback = vi.fn(() => ({ success: true }));
+    const { superdoc, host } = makeCaretSuperdocWithPendingHost(
+      {
+        format: { apply: fallback, paragraph: { resetDirectFormatting: fallback } },
+      },
+      SELECTION_INFO,
+    );
+    Object.assign(superdoc.activeEditor, { editorVersion: 2 });
+    const routed = vi.fn((_path: string, _args: readonly unknown[]) => Promise.resolve({ success: true }));
+    registerFirstPartyCommandMutation(superdoc, host, {
+      supports: (path) => path === 'format.apply' || path === 'format.paragraph.resetDirectFormatting',
+      run: routed,
+      runListApply: async () => false,
+    });
+    const ui = createSuperDocUI({ superdoc });
+    const result = await executeFirstPartyCommandAsync(ui, 'clear-formatting');
+    expect(routed).toHaveBeenCalledWith('format.paragraph.resetDirectFormatting', [
+      expect.anything(),
+      { dryRun: true },
+    ]);
+    expect(result).toMatchObject({ success: true });
+    expect(routed).toHaveBeenCalledWith('format.apply', [expect.anything(), expect.anything()]);
+    expect(fallback).not.toHaveBeenCalled();
+    ui.destroy();
+  });
+
+  it('allows Clear on kept text whose tracked offsets follow an earlier deletion (SD-5963)', async () => {
+    const mutate = vi.fn(() => ({ success: true }));
+    const { superdoc } = makeCaretSuperdocWithPendingHost(
+      { format: { apply: mutate, paragraph: { resetDirectFormatting: mutate } } },
+      {
+        ...COLLAPSED_CARET_INFO,
+        empty: false,
+        target: { kind: 'text', segments: [{ blockId: 'P1', range: { start: 6, end: 12 } }] },
+        selectionTarget: {
+          kind: 'selection',
+          coordinateSpace: 'tracked',
+          start: { kind: 'text', blockId: 'P1', offset: 12 },
+          end: { kind: 'text', blockId: 'P1', offset: 18 },
+        },
+      },
+    );
+    const ui = createSuperDocUI({ superdoc });
+    expect(ui.commands.get('clear-formatting').getState().enabled).toBe(true);
+    expect(await ui.commands.get('clear-formatting').executeAsync()).toMatchObject({ success: true });
+    expect(mutate).toHaveBeenCalledWith(
+      {
+        target: {
+          kind: 'selection',
+          start: { kind: 'text', blockId: 'P1', offset: 6 },
+          end: { kind: 'text', blockId: 'P1', offset: 12 },
+        },
+        inline: expect.anything(),
+      },
+      expect.objectContaining({ offsetSpace: 'kernel' }),
+    );
+    ui.destroy();
+  });
+
+  it('allows Clear across a normal paragraph mark after an unselected deletion (SD-5963)', async () => {
+    const mutate = vi.fn(() => ({ success: true }));
+    const { superdoc } = makeCaretSuperdocWithPendingHost(
+      {
+        format: { apply: mutate, paragraph: { resetDirectFormatting: mutate } },
+        trackChanges: { list: () => ({ items: [{ id: 'selected-insertion', type: 'insertion' }] }) },
+      },
+      {
+        ...COLLAPSED_CARET_INFO,
+        empty: false,
+        target: {
+          kind: 'text',
+          segments: [
+            { blockId: 'P1', range: { start: 3, end: 3 } },
+            { blockId: 'P2', range: { start: 0, end: 1 } },
+          ],
+        },
+        trackedTarget: {
+          kind: 'text',
+          segments: [
+            { blockId: 'P1', range: { start: 4, end: 4 } },
+            { blockId: 'P2', range: { start: 0, end: 1 } },
+          ],
+        },
+        selectionTarget: {
+          kind: 'selection',
+          start: { kind: 'text', blockId: 'P1', offset: 3 },
+          end: { kind: 'text', blockId: 'P2', offset: 1 },
+        },
+        activeChangeIds: ['selected-insertion'],
+      },
+    );
+    const ui = createSuperDocUI({ superdoc });
+    expect(ui.commands.get('clear-formatting').getState().enabled).toBe(true);
+    expect(await ui.commands.get('clear-formatting').executeAsync()).toMatchObject({ success: true });
+    expect(mutate).toHaveBeenCalledWith(
+      {
+        target: {
+          kind: 'selection',
+          start: { kind: 'text', blockId: 'P1', offset: 3 },
+          end: { kind: 'text', blockId: 'P2', offset: 1 },
+        },
+        inline: expect.anything(),
+      },
+      expect.objectContaining({ offsetSpace: 'kernel' }),
+    );
+    ui.destroy();
+  });
+
+  it.each([
+    {
+      name: 'untouched trailing endpoint',
+      ranges: [
+        [2, 27],
+        [0, 0],
+      ],
+      expected: ['P1', 'P2'],
+    },
+    {
+      name: 'selected empty final paragraph in Select All',
+      ranges: [
+        [0, 27],
+        [0, 0],
+      ],
+      expected: ['P1', 'P2'],
+    },
+    {
+      name: 'selected leading paragraph mark',
+      ranges: [
+        [27, 27],
+        [0, 3],
+      ],
+      expected: ['P1', 'P2'],
+    },
+    {
+      name: 'selected empty intermediate paragraph',
+      ranges: [
+        [2, 27],
+        [0, 0],
+        [0, 3],
+      ],
+      expected: ['P1', 'P2', 'P3'],
+    },
+  ])('Clear respects the $name (SD-5963)', async ({ ranges, expected }) => {
+    const reset = vi.fn((input: { target: { nodeId: string } }) => ({ success: true, target: input.target }));
+    const segments = ranges.map(([start, end], index) => ({ blockId: `P${index + 1}`, range: { start, end } }));
+    const first = segments[0];
+    const last = segments.at(-1);
+    if (!first || !last) throw new Error('Selection endpoints unavailable');
+    const { superdoc } = makeCaretSuperdocWithPendingHost(
+      { format: { apply: () => ({ success: true }), paragraph: { resetDirectFormatting: reset } } },
+      {
+        ...COLLAPSED_CARET_INFO,
+        empty: false,
+        target: { kind: 'text', segments },
+        selectionTarget: {
+          kind: 'selection',
+          start: { kind: 'text', blockId: first.blockId, offset: first.range.start },
+          end: { kind: 'text', blockId: last.blockId, offset: last.range.end },
+        },
+      },
+    );
+    const ui = createSuperDocUI({ superdoc });
+    expect(await ui.commands.get('clear-formatting').executeAsync()).toMatchObject({ success: true });
+    expect(reset.mock.calls.map(([input]) => input.target.nodeId)).toEqual(expected);
+    ui.destroy();
+  });
+
   it('bold on a collapsed caret is enabled and stores a pending mark instead of failing closed (SD-3654)', async () => {
     const { superdoc, host } = makeCaretSuperdocWithPendingHost({ format: { bold: vi.fn() } });
     const ui = createSuperDocUI({ superdoc });

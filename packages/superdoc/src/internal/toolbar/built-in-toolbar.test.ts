@@ -1829,6 +1829,32 @@ describe('BuiltInToolbar', () => {
     toolbar.destroy();
   });
 
+  it.each([
+    ['fontFamily', 'font-family'],
+    ['fontSize', 'font-size'],
+  ])('gates %s for deleted text and restores its caret behavior (SD-5963)', (name, command) => {
+    const toolbar = new BuiltInToolbar({ highContrastMode: createHighContrastMode(), superdoc: makeHost() });
+    toolbar.snapshot = {
+      ...toolbar.snapshot,
+      commands: {
+        ...toolbar.snapshot?.commands,
+        [command]: { disabled: true, reason: 'deleted-text-formatting-unsupported' },
+      },
+    };
+    toolbar.updateToolbarState();
+    expect(toolbar.getToolbarItemByName(name)?.disabled.value).toBe(true);
+    toolbar.snapshot = {
+      ...toolbar.snapshot,
+      commands: {
+        ...toolbar.snapshot?.commands,
+        [command]: { disabled: true, reason: 'range-selection-required' },
+      },
+    };
+    toolbar.updateToolbarState();
+    expect(toolbar.getToolbarItemByName(name)?.disabled.value).toBe(false);
+    toolbar.destroy();
+  });
+
   it('blanks the font-family field for a mixed (multi-font) selection', () => {
     const toolbar = new BuiltInToolbar({ highContrastMode: createHighContrastMode(), superdoc: makeHost() });
 

@@ -364,3 +364,39 @@ export function resolveInlineSelectionTarget(selection: SelectionSlice): Selecti
   }
   return fallback;
 }
+
+export function selectionHasOnlyDeletedText(selection: SelectionSlice): boolean {
+  const target = selection.target;
+  const selected = selection.selectionTarget;
+  return (
+    !selection.empty &&
+    selected?.kind === 'selection' &&
+    selected.coordinateSpace === 'tracked' &&
+    target?.kind === 'text' &&
+    target.segments.length > 0 &&
+    target.segments.every((segment) => segment.range.start === segment.range.end)
+  );
+}
+
+export function selectionTouchesDeletedText(selection: SelectionSlice): boolean {
+  const target = selection.target;
+  if (selection.empty || target?.kind !== 'text' || !Array.isArray(target.segments) || target.segments.length === 0)
+    return false;
+  const visibleLength = target.segments.reduce(
+    (length, segment) => length + Math.abs(segment.range.end - segment.range.start),
+    0,
+  );
+  const selected = selection.selectionTarget;
+  const trackedSegments = selection.trackedTarget?.segments;
+  const trackedLength =
+    (Array.isArray(trackedSegments)
+      ? trackedSegments.reduce((length, segment) => length + Math.abs(segment.range.end - segment.range.start), 0)
+      : undefined) ??
+    (selected?.coordinateSpace === 'tracked' &&
+    selected.start.kind === 'text' &&
+    selected.end.kind === 'text' &&
+    selected.start.blockId === selected.end.blockId
+      ? Math.abs(selected.end.offset - selected.start.offset)
+      : 0);
+  return trackedLength > visibleLength;
+}

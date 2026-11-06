@@ -250,7 +250,10 @@ const V1_ENABLED_ON_SELECTION_REASON = new Set([
 const V1_ENABLED_ON_EMPTY_REASON = new Set(['list', 'numberedlist']);
 
 function shouldKeepEnabledForV1ToolbarParity(name: string, commandState: CommandState | undefined): boolean {
-  if (name === 'fontFamily' || name === 'fontSize') return commandState?.reason !== 'document-readonly';
+  if (name === 'fontFamily' || name === 'fontSize')
+    return (
+      commandState?.reason !== 'document-readonly' && commandState?.reason !== 'deleted-text-formatting-unsupported'
+    );
   if (
     V1_ENABLED_ON_EMPTY_REASON.has(name) &&
     commandState?.disabled &&
@@ -310,6 +313,7 @@ export class BuiltInToolbar extends EventEmitter {
   };
 
   toolbarItems: ToolbarItem[] = [];
+  #formattingRefusalTooltips = new WeakMap<ToolbarItem, string | undefined>();
   overflowItems: ToolbarItem[] = [];
   pendingSelectionCapture: SelectionCapture | null | undefined = undefined;
   #imagePicker: ImageFilePicker | null = null;
@@ -999,6 +1003,13 @@ export class BuiltInToolbar extends EventEmitter {
     if (!commandId) return false;
 
     const commandState = this.snapshot?.commands?.[commandId];
+    if (commandState?.reason === 'deleted-text-formatting-unsupported') {
+      if (!this.#formattingRefusalTooltips.has(item)) this.#formattingRefusalTooltips.set(item, item.tooltip.value);
+      item.tooltip.value = 'Select kept text, or accept or reject the deletion before formatting.';
+    } else if (this.#formattingRefusalTooltips.has(item)) {
+      item.tooltip.value = this.#formattingRefusalTooltips.get(item);
+      this.#formattingRefusalTooltips.delete(item);
+    }
     if (
       (name === 'list' || name === 'numberedlist') &&
       item.attributes.value.ariaBusy !== Boolean(commandState?.pending)

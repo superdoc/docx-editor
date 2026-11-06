@@ -251,6 +251,8 @@ import {
   listsBlockTarget,
   paragraphTarget,
   resolveInlineSelectionTarget,
+  selectionTouchesDeletedText,
+  selectionHasOnlyDeletedText,
   selectionBlockIds,
   selectionBlockRange,
   selectionStory,
@@ -3831,6 +3833,12 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     );
   };
 
+  const inlineFormattingRefused = (descriptor: CommandDescriptor, selection: SelectionSlice): boolean => {
+    if (!descriptor.inline) return false;
+    if (selectionHasOnlyDeletedText(selection)) return true;
+    return descriptor.inline.kind === 'clear' && selectionTouchesDeletedText(selection);
+  };
+
   const computeCommandState = (
     id: string,
     doc: LooseRecord | null,
@@ -3940,6 +3948,19 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     // Routed via a public SuperDoc-instance method (zoom, document mode, ruler,
     // formatting marks). These are controls / host chrome, not document
     // mutations, so they stay enabled in viewing mode.
+    if (inlineFormattingRefused(descriptor, selection)) {
+      return normalizeCommandState(
+        {
+          enabled: false,
+          active: false,
+          supported: true,
+          reason: readonly
+            ? SUPERDOC_UI_REASONS.documentReadonly
+            : SUPERDOC_UI_REASONS.deletedTextFormattingUnsupported,
+        },
+        'builtin',
+      );
+    }
     if (descriptor.instanceRoute) {
       return computeInstanceCommandState(descriptor);
     }
@@ -7065,26 +7086,27 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     return true;
   };
 
-  const executeClearFormattingCommand = (): CommandExecutionResult => {
-    const doc = getDoc();
-    const { lockModesById } = computeActiveContentControlLockModes(
-      doc?.contentControls as LooseRecord | undefined,
-      state.selection,
-    );
-    if (contentControlLockReason(lockModesById)) return false;
+  const acceptUnchangedReset = (result: CommandExecutionResult): CommandExecutionResult =>
+    isPlainObject(result) &&
+    result.success === false &&
+    isPlainObject(result.failure) &&
+    result.failure.code === 'NO_OP'
+      ? true
+      : result;
 
+  const applyClearFormattingCommand = (doc: LooseRecord | null): CommandExecutionResult => {
     const immediateResults: CommandExecutionResult[] = [];
     const settledResults: Array<Promise<CommandExecutionResult>> = [];
 
-    const record = (result: unknown): void => {
+    const record = (result: unknown, unchangedResetIsSuccess = false): void => {
       const settled = settleOperationResult(result);
-      immediateResults.push(settled.immediate);
-      settledResults.push(settled.settled);
+      immediateResults.push(unchangedResetIsSuccess ? acceptUnchangedReset(settled.immediate) : settled.immediate);
+      settledResults.push(unchangedResetIsSuccess ? settled.settled.then(acceptUnchangedReset) : settled.settled);
     };
 
-    const run = (op: AnyFn, input: LooseRecord, options?: LooseRecord) => {
+    const run = (op: AnyFn, input: LooseRecord, unchangedResetIsSuccess = false) => {
       try {
-        record(options ? op(input, options) : op(input));
+        record(op(input), unchangedResetIsSuccess);
       } catch {
         immediateResults.push(false);
         settledResults.push(Promise.resolve(false));
@@ -7094,7 +7116,13 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     const catalog = getStyleCatalog().cache;
     const defaultStyleId = catalog?.full.defaults.paragraphStyleId ?? DEFAULT_PARAGRAPH_STYLE_ID;
 
-    const rangeTarget = resolveInlineCommandTarget(state.selection);
+    const selectedTarget = resolveInlineCommandTarget(state.selection);
+    const rangeTarget =
+      selectedTarget?.coordinateSpace === 'tracked' &&
+      !currentCellSelectionTarget() &&
+      !selectionTouchesDeletedText(state.selection)
+        ? (selectionTargetFromTextTarget(state.selection.target) ?? selectedTarget)
+        : selectedTarget;
     if (rangeTarget) {
       const inlineOp = resolveDocOperation(doc, 'format.apply');
       // One cross-block-capable format.apply call for the whole selection
@@ -7121,7 +7149,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
 
     for (const blockId of selectionBlockIds(state.selection)) {
       const target = paragraphTarget(blockId, story);
-      if (resetOp) run(resetOp, { target });
+      if (resetOp) run(resetOp, { target }, true);
       // List removal is best-effort: non-list paragraphs are rejected by the kernel with
       // 'list-not-a-list-item'. Filter failures at the settled level so that both sync
       // and promise-backed (worker) implementations cannot surface as a command failure —
@@ -7168,6 +7196,60 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       ? Promise.all(settledResults).then((results) => combineCommandResults(results))
       : null;
     return combineCommandResults(immediateResults.length ? immediateResults : [false]);
+  };
+
+  const executeClearFormattingCommand = (): CommandExecutionResult => {
+    const doc = getDoc();
+    const { lockModesById } = computeActiveContentControlLockModes(
+      doc?.contentControls as LooseRecord | undefined,
+      state.selection,
+    );
+    if (contentControlLockReason(lockModesById)) return false;
+
+    const editor = getEditor();
+    const sourceDoc = editor?.doc;
+    const reset = resolveDocOperation(doc, 'format.paragraph.resetDirectFormatting');
+    const blockIds = selectionBlockIds(state.selection);
+    if (editor?.editorVersion !== 2 || !reset || blockIds.length === 0) return applyClearFormattingCommand(doc);
+    const sourceToken = contentToken(),
+      mode = readDocumentMode(),
+      selectionToken = selectionKey(state.selection);
+    const story = selectionStoryLocator(state.selection);
+    const normalize = (result: unknown) => acceptUnchangedReset(commandResultFromOperationResult(result));
+    const checks = blockIds.map((blockId): CommandExecutionResult | Promise<CommandExecutionResult> => {
+      try {
+        const result: unknown = reset({ target: paragraphTarget(blockId, story) }, { dryRun: true });
+        return isPromiseLike(result) ? Promise.resolve(result).then(normalize, () => false) : normalize(result);
+      } catch {
+        return false;
+      }
+    });
+    const isCurrent = () =>
+      !disposed &&
+      getEditor() === editor &&
+      editor?.doc === sourceDoc &&
+      contentToken() === sourceToken &&
+      readDocumentMode() === mode &&
+      selectionKey(state.selection) === selectionToken;
+    if (!checks.some(isPromiseLike)) {
+      const result = combineCommandResults(checks.map(commandResultFromOperationResult));
+      if (!commandResultSucceeded(result)) return result;
+      return isCurrent() ? applyClearFormattingCommand(doc) : false;
+    }
+    pendingCommandSettlement = Promise.all(checks).then((results) => {
+      const result = combineCommandResults(results);
+      if (!commandResultSucceeded(result)) return result;
+      if (!isCurrent()) return false;
+      const previousSettlement = pendingCommandSettlement;
+      pendingCommandSettlement = null;
+      try {
+        const immediate = applyClearFormattingCommand(doc);
+        return pendingCommandSettlement ?? immediate;
+      } finally {
+        pendingCommandSettlement = previousSettlement;
+      }
+    });
+    return true;
   };
 
   /** Route a block-level paragraph command (`format.paragraph.*` / `styles.paragraph.*`). */
@@ -8063,6 +8145,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     const descriptor = getCommandDescriptor(id);
     // Deferred / unsupported / unknown ids fail closed and never mutate.
     if (!descriptor || descriptor.disposition !== 'routed') return false;
+    if (inlineFormattingRefused(descriptor, preparedSelection ?? state.selection)) return false;
     const normalized = descriptor.normalizePayload ? descriptor.normalizePayload(payload) : payload;
     // Routed via a public SuperDoc-instance method (zoom, document mode). These
     // are controls, not mutations, so they are not blocked in viewing mode.

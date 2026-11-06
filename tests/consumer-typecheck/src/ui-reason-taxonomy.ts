@@ -32,6 +32,8 @@ void _readonly;
 void _trackedChangeDecisionsDisabled;
 void _notReady;
 void _permissionDenied;
+const _deletedTextFormatting: SuperDocUIReason = 'deleted-text-formatting-unsupported';
+void _deletedTextFormatting;
 
 // Canonical runtime entry points still resolve from `superdoc/ui`.
 void createSuperDocUI;

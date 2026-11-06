@@ -2222,14 +2222,6 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       scheduleForegroundAsyncRetry();
     }
     const prev = asyncReads.get('selection');
-    const seedMarks =
-      Array.isArray(seed.activeMarks) && seed.activeMarks.length > 0
-        ? seed.activeMarks
-        : Array.isArray(state.selection.activeMarks)
-          ? state.selection.activeMarks
-          : [];
-    const seedCommentIds = Array.isArray(seed.activeCommentIds) ? seed.activeCommentIds : [];
-    const paintedTrackChangeId = readCollapsedHostTrackChangeId(hostSelectionSnapshot);
     const sameActiveTypingCaret = Boolean(
       foreground &&
       foreground.active > 0 &&
@@ -2241,6 +2233,14 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       typeof nextRange?.start === 'number' &&
       Math.abs(nextRange.start - previousRange.start) <= 2,
     );
+    const seedMarks =
+      Array.isArray(seed.activeMarks) && seed.activeMarks.length > 0
+        ? seed.activeMarks
+        : (sameSeedCaret || sameActiveTypingCaret) && Array.isArray(state.selection.activeMarks)
+          ? state.selection.activeMarks
+          : [];
+    const seedCommentIds = Array.isArray(seed.activeCommentIds) ? seed.activeCommentIds : [];
+    const paintedTrackChangeId = readCollapsedHostTrackChangeId(hostSelectionSnapshot);
     const mayCarryTrackedChange = paintedTrackChangeId != null || sameActiveTypingCaret;
     const carriedChangeIds = mayCarryTrackedChange
       ? state.selection.activeChangeIds.filter(

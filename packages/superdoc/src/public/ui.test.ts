@@ -14796,6 +14796,42 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
     ...extra,
   });
 
+  it('uses the clicked caret marks instead of carrying marks from the previous caret', () => {
+    let seed = { ...caretSelectionInfo('P1', 1), activeMarks: ['bold'] };
+    let publishSelection: (() => void) | null = null;
+    const host = storeCapableHost({
+      getForegroundMutationState: () => ({ active: 0, pending: 1 }),
+      readLiveSelectionSyncSnapshot: () => seed,
+      getHandles: () => ({
+        editing: {
+          selection: {
+            subscribe: (listener: () => void) => {
+              publishSelection = listener;
+              return () => {};
+            },
+          },
+        },
+      }),
+    });
+    const superdoc = makeBlockSuperdoc(
+      { selection: { current: async () => seed } },
+      { selectionInfo: null, editorExtra: { host } },
+    );
+    const ui = createSuperDocUI({ superdoc });
+    publishSelection?.();
+    expect(ui.selection.getSnapshot().activeMarks).toContain('bold');
+    seed = { ...caretSelectionInfo('P2', 2), activeMarks: [] };
+    publishSelection?.();
+    expect(ui.selection.getSnapshot().selectionTarget).toEqual(seed.selectionTarget);
+    expect(ui.selection.getSnapshot().activeMarks).toEqual([]);
+    seed = { ...caretSelectionInfo('P2', 2), activeMarks: ['bold'] };
+    publishSelection?.();
+    seed = { ...caretSelectionInfo('P2', 2), activeMarks: [] };
+    publishSelection?.();
+    expect(ui.selection.getSnapshot().activeMarks).toContain('bold');
+    ui.destroy();
+  });
+
   it('seeds a collapsed caret immediately but defers its worker validation during foreground typing', async () => {
     vi.useFakeTimers();
     let seed = caretSelectionInfo('P1', 1);

@@ -32,7 +32,7 @@ function hasOnlyKeys(value: object, keys: string[]): boolean {
 
 export function captureParagraphPaintOperations(
   props: ParagraphPaintProperties,
-  supports: (operationId: string) => boolean = () => true,
+  supports: (operationId: ParagraphPaintOperation['operationId']) => boolean = () => true,
 ): ParagraphPaintOperation[] {
   const operations: ParagraphPaintOperation[] = [];
   if (props.bidi == null) operations.push({ operationId: 'format.paragraph.clearDirection', input: {} });

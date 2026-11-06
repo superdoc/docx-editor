@@ -29,8 +29,20 @@
  * and no routed command mutates while the document is read-only / viewing.
  *
  */
+import type { OperationId } from '@superdoc/document-api';
 import { SUPERDOC_UI_REASONS, type SuperDocUIReason } from './reasons.js';
 import { isFiniteNumber } from '../../helpers/is-finite-number.js';
+
+export type InternalUiDocRoute =
+  | 'format.readEffectiveInlineUniformity'
+  | 'lists.indentRange'
+  | 'lists.outdentRange'
+  | 'lists.outdentInStory'
+  | 'lists.removeInStory';
+
+export type DocumentApiAliasRoute = 'format.strikethrough';
+
+export type UiDocRoute = OperationId | DocumentApiAliasRoute | InternalUiDocRoute;
 
 /**
  * The original v2-native command ids. These are the historically stable
@@ -259,7 +271,7 @@ export interface CommandDescriptor {
   /** Other ids that alias this command (documentation). */
   aliases?: readonly string[];
   /** Dotted path on the public Document API facade (`activeEditor.doc`). */
-  docRoute?: string;
+  docRoute?: UiDocRoute;
   /** Public SuperDoc-instance method this command calls. */
   instanceRoute?: string;
   /** Fixed argument passed to `instanceRoute` instead of the payload. */

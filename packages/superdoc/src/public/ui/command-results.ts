@@ -18,6 +18,7 @@ import {
   getCommandDescriptor,
   type CommandDescriptor,
   type TrackDecisionSpec,
+  type UiDocRoute,
 } from './commands.js';
 import { isObjectRecord, isPlainObject, isThenable } from '../../helpers/object-guards.js';
 
@@ -100,7 +101,7 @@ export function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
   return isThenable(value);
 }
 
-export function resolveDocOperation(doc: LooseRecord | null, path: string): AnyFn | null {
+export function resolveDocOperation(doc: LooseRecord | null, path: UiDocRoute): AnyFn | null {
   if (!doc) return null;
   const parts = path.split('.');
   const name = parts.pop() ?? '';

@@ -35,7 +35,7 @@ import {
 } from '../../helpers/v2-review-mutation-impact.js';
 import { isV2EditableTextMutationEvent } from '../../helpers/v2-typing-mutation-event.js';
 import { isSyntheticTrackedChangeCommentLaneItem } from '../../helpers/tracked-change-comment-lane.js';
-import { ALL_BUILT_IN_COMMAND_IDS, getCommandDescriptor, type CommandDescriptor } from './commands.js';
+import { ALL_BUILT_IN_COMMAND_IDS, getCommandDescriptor, type CommandDescriptor, type UiDocRoute } from './commands.js';
 import { SUPERDOC_UI_REASONS, type SuperDocUIReason } from './reasons.js';
 import { remoteChangeRecordsOf, remoteDocumentChange } from './document-change-records.js';
 import type { ChangeRecord } from '@superdoc/document-api';
@@ -8845,7 +8845,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
         return;
     }
 
-    const entries: Array<{ operationId: string; input: LooseRecord; options?: unknown }> = [];
+    const entries: Array<{ operationId: UiDocRoute; input: LooseRecord; options?: unknown }> = [];
     const options = editorMutationOptionsForRoute('format.apply');
     if (options?.success === false) return;
     const inlineOptions = {
@@ -8857,7 +8857,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
           : {}),
       ...(tableCellSelection ? { tableCellSelection } : {}),
     };
-    const add = (operationId: string, input: LooseRecord, entryOptions: unknown = options) => {
+    const add = (operationId: UiDocRoute, input: LooseRecord, entryOptions: unknown = options) => {
       entries.push({ operationId, input, ...(entryOptions ? { options: entryOptions } : {}) });
     };
     if (

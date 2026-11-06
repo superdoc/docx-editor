@@ -221,4 +221,77 @@ describe('SuperDoc.upgradeToCollaboration', () => {
     expect(await first).toEqual({ roomId: 'room', documentId: 'upgrade-doc' });
     expect(await same).toEqual({ roomId: 'room', documentId: 'upgrade-doc' });
   });
+
+  describe('when the instance is destroyed while the engine is attaching the room', () => {
+    const destroyedDuringUpgrade = 'SuperDoc: instance was destroyed during upgrade';
+
+    const startUpgrade = async (engineUpgrade: () => Promise<void>) => {
+      const selector = document.createElement('div');
+      document.body.append(selector);
+      const instance = new SuperDoc({ selector, telemetry: { enabled: false } });
+      instances.push(instance);
+      const source = new Blob([new Uint8Array([1, 2, 3])]);
+      const upgradeToCollaboration = vi.fn().mockImplementation(engineUpgrade);
+      const editor = { editorVersion: 2, options: { documentId: 'upgrade-doc' }, upgradeToCollaboration };
+      const configDoc = { id: 'upgrade-doc', type: DOCX, data: source };
+      const storeDoc = { ...configDoc, getEditor: () => editor, v2Collaboration: null };
+      const mutable = instance as unknown as {
+        config: { documents: unknown[] };
+        superdocStore: { documents: unknown[] };
+      };
+      mutable.config.documents = [configDoc];
+      mutable.superdocStore = { documents: [storeDoc] };
+      instance.activeEditor = editor as never;
+      const upgrade = instance.upgradeToCollaboration({
+        collaboration: { providerType: 'y-websocket', documentId: 'room', serverUrl: 'wss://example.test' },
+      } as never);
+      await vi.waitFor(() => expect(upgradeToCollaboration).toHaveBeenCalledTimes(1));
+      instance.destroy();
+      const stateAtDestroy = () => ({
+        configDoc: { ...configDoc },
+        storeDoc: { ...storeDoc },
+        isCollaborative: instance.isCollaborative,
+      });
+      return { upgrade, stateAtDestroy, expectedState: stateAtDestroy() };
+    };
+
+    const flushPendingWork = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+    it('rejects the caller and does not finalize when the engine resolves afterwards', async () => {
+      let finishUpgrade!: () => void;
+      const { upgrade, stateAtDestroy, expectedState } = await startUpgrade(
+        () =>
+          new Promise<void>((resolve) => {
+            finishUpgrade = resolve;
+          }),
+      );
+      const outcome = Promise.allSettled([upgrade]);
+      finishUpgrade();
+      expect(await outcome).toEqual([{ status: 'rejected', reason: new Error(destroyedDuringUpgrade) }]);
+      await flushPendingWork();
+      expect(stateAtDestroy()).toEqual(expectedState);
+    });
+
+    it('rejects the caller and does not roll back when the engine rejects afterwards', async () => {
+      let failUpgrade!: (error: Error) => void;
+      const { upgrade, stateAtDestroy, expectedState } = await startUpgrade(
+        () =>
+          new Promise<void>((_resolve, reject) => {
+            failUpgrade = reject;
+          }),
+      );
+      const outcome = Promise.allSettled([upgrade]);
+      failUpgrade(new Error('engine failed'));
+      expect(await outcome).toEqual([{ status: 'rejected', reason: new Error(destroyedDuringUpgrade) }]);
+      await flushPendingWork();
+      expect(stateAtDestroy()).toEqual(expectedState);
+    });
+
+    it('rejects the caller promptly when the engine never settles', async () => {
+      const { upgrade, stateAtDestroy, expectedState } = await startUpgrade(() => new Promise<void>(() => {}));
+      await expect(upgrade).rejects.toThrow(destroyedDuringUpgrade);
+      await flushPendingWork();
+      expect(stateAtDestroy()).toEqual(expectedState);
+    });
+  });
 });

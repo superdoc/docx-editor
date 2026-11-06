@@ -451,6 +451,10 @@ function deriveCollaborationConnectionKind(
   }
 }
 
+function destroyedDuringUpgradeError(): Error {
+  return new Error('SuperDoc: instance was destroyed during upgrade');
+}
+
 function isV2ActiveEditorFacade(editor: unknown): editor is V2ActiveEditorFacade {
   return Boolean(editor && typeof editor === 'object' && (editor as { editorVersion?: unknown }).editorVersion === 2);
 }
@@ -665,12 +669,11 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
   #destroyed = false;
   #diagnostics!: SuperDocDiagnostics;
 
-  #isUpgrading = false;
-  #pendingUpgrade: { target: NormalizedV2CollaborationTarget; promise: Promise<UpgradeToCollaborationResult> } | null =
-    null;
-
-  /** Aborts an in-flight upgrade (sync wait or ready wait). */
-  #abortUpgrade: (() => void) | null = null;
+  #pendingUpgrade: {
+    target: NormalizedV2CollaborationTarget;
+    promise: Promise<UpgradeToCollaborationResult>;
+    rejectOnDestroy: (error: Error) => void;
+  } | null = null;
 
   /**
    * Unsubscribe handle for the v2 presence → `awareness-update` bridge. Set
@@ -2038,41 +2041,42 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
       });
     }
     const { target } = this.#validateUpgradePrerequisites(options);
-    this.#isUpgrading = true;
-    const operation = (async (): Promise<UpgradeToCollaborationResult> => {
-      try {
-        const localSource = await this.#captureCurrentDocxSourceForUpgrade();
-        const rollback = this.#snapshotV2UpgradeState();
-        const lockSeed = this.#snapshotV2LockSeed();
-        this.#assertNotDestroyed();
-        try {
-          this.#pendingV2LockSeed = lockSeed;
-          const promotion = await this.#promoteSingleDocumentToV2Collaboration(target, localSource);
-          this.#finalizeSingleDocumentV2Collaboration(promotion, target);
-          this.#pendingV2LockSeed = null;
-          const attachedDocumentId = (this.activeEditor as ActiveEditor | null)?.options?.documentId;
-          const attachedRoomId = promotion.configDoc.v2Collaboration?.documentId;
-          if (
-            typeof attachedDocumentId !== 'string' ||
-            attachedDocumentId !== promotion.configDoc.id ||
-            typeof attachedRoomId !== 'string' ||
-            attachedRoomId !== target.documentId
-          ) {
-            throw new Error('SuperDoc: collaboration upgrade did not attach the expected room and document');
-          }
-          return { roomId: attachedRoomId, documentId: attachedDocumentId };
-        } catch (err) {
-          this.#rollbackV2UpgradeState(rollback);
-          throw err;
-        }
-      } finally {
-        this.#abortUpgrade = null;
-        this.#isUpgrading = false;
-        this.#pendingUpgrade = null;
-      }
-    })();
-    this.#pendingUpgrade = { target, promise: operation };
+    let rejectOnDestroy: (error: Error) => void = () => {};
+    const destroyed = new Promise<never>((_resolve, reject) => {
+      rejectOnDestroy = reject;
+    });
+    const operation = Promise.race([this.#runUpgrade(target), destroyed]).finally(() => {
+      this.#pendingUpgrade = null;
+    });
+    this.#pendingUpgrade = { target, promise: operation, rejectOnDestroy };
     return operation;
+  }
+
+  async #runUpgrade(target: NormalizedV2CollaborationTarget): Promise<UpgradeToCollaborationResult> {
+    const localSource = await this.#captureCurrentDocxSourceForUpgrade();
+    const rollback = this.#snapshotV2UpgradeState();
+    const lockSeed = this.#snapshotV2LockSeed();
+    this.#assertNotDestroyed();
+    try {
+      this.#pendingV2LockSeed = lockSeed;
+      const promotion = await this.#promoteSingleDocumentToV2Collaboration(target, localSource);
+      this.#finalizeSingleDocumentV2Collaboration(promotion, target);
+      this.#pendingV2LockSeed = null;
+      const attachedDocumentId = (this.activeEditor as ActiveEditor | null)?.options?.documentId;
+      const attachedRoomId = promotion.configDoc.v2Collaboration?.documentId;
+      if (
+        typeof attachedDocumentId !== 'string' ||
+        attachedDocumentId !== promotion.configDoc.id ||
+        typeof attachedRoomId !== 'string' ||
+        attachedRoomId !== target.documentId
+      ) {
+        throw new Error('SuperDoc: collaboration upgrade did not attach the expected room and document');
+      }
+      return { roomId: attachedRoomId, documentId: attachedDocumentId };
+    } catch (err) {
+      if (!this.#destroyed) this.#rollbackV2UpgradeState(rollback);
+      throw err;
+    }
   }
 
   #sameUpgradeTarget(left: NormalizedV2CollaborationTarget, right: NormalizedV2CollaborationTarget): boolean {
@@ -2162,7 +2166,7 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
    */
   #assertNotDestroyed() {
     if (this.#destroyed) {
-      throw new Error('SuperDoc: instance was destroyed during upgrade');
+      throw destroyedDuringUpgradeError();
     }
   }
 
@@ -2296,6 +2300,7 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
     this.#writeStoreDocV2Collaboration(storeDoc, v2Collaboration);
     this.isCollaborative = true;
     await editor.upgradeToCollaboration(localSource, v2Collaboration);
+    this.#assertNotDestroyed();
     configDoc.data = localSource;
     storeDoc.data = localSource;
     return { configDoc, storeDoc };
@@ -2365,9 +2370,6 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
   #validateUpgradePrerequisites(options: UpgradeToCollaborationOptions): ValidatedV2UpgradePrerequisites {
     if (this.#destroyed) {
       throw new Error('SuperDoc: cannot upgrade a destroyed instance');
-    }
-    if (this.#isUpgrading) {
-      throw new Error('SuperDoc: upgrade already in progress');
     }
     if (this.isCollaborative) {
       throw new Error('SuperDoc: instance is already collaborative');
@@ -4240,12 +4242,7 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
     this.#contentControlActiveChangeUnsub?.();
     this.#contentControlActiveChangeUnsub = null;
 
-    // Abort any in-flight upgrade (sync wait or ready wait) so it settles
-    // immediately instead of hanging for the full timeout duration.
-    if (this.#abortUpgrade) {
-      this.#abortUpgrade();
-      this.#abortUpgrade = null;
-    }
+    this.#pendingUpgrade?.rejectOnDestroy(destroyedDuringUpgradeError());
 
     // Settle all active surfaces before Vue unmount
     if (this.#surfaceManager) {

@@ -28,8 +28,9 @@ modeSelect.addEventListener('change', () => {
   superdoc.setDocumentMode(modeSelect.value as DocumentMode);
 });
 
-superdoc.on('document-mode-change', ({ documentMode }) => {
-  status.textContent = `${documentMode[0].toUpperCase()}${documentMode.slice(1)} mode.`;
+superdoc.ui.document.observe(({ ready, mode }) => {
+  if (!ready || !mode) return;
+  status.textContent = `${mode[0].toUpperCase()}${mode.slice(1)} mode.`;
 });
 
 exportButton.addEventListener('click', async () => {

@@ -36,9 +36,23 @@ const LINTABLE_SNIPPET_FILES = readdirSync(join(REPO_ROOT, DOCS_SNIPPETS), { rec
   .filter((file) => /\.(?:ts|tsx|mjs)$/.test(file))
   .sort();
 
+const EXAMPLE_NON_SOURCE_DIRECTORIES = new Set(['node_modules', 'dist', 'test', 'tests']);
+
+function exampleSourceFiles(directory) {
+  return readdirSync(join(REPO_ROOT, directory), { withFileTypes: true }).flatMap((entry) => {
+    const file = join(directory, entry.name);
+    if (entry.isDirectory()) return EXAMPLE_NON_SOURCE_DIRECTORIES.has(entry.name) ? [] : exampleSourceFiles(file);
+    if (!/\.tsx?$/.test(entry.name) || /\.(?:config|test|spec)\.|\.d\.ts$/.test(entry.name)) return [];
+    return [file];
+  });
+}
+
+const EXAMPLE_SOURCE_FILES = exampleSourceFiles('examples').sort();
+
 const REAL_FILES_THAT_MUST_BE_LINTED = {
   'SuperDoc.vue': ['packages/superdoc/src/SuperDoc.vue'],
   'every docs snippet': LINTABLE_SNIPPET_FILES,
+  'every example source file': EXAMPLE_SOURCE_FILES,
   'every CommentsLayer Vue component': COMMENTS_LAYER_FILES.filter((file) => file.endsWith('.vue')),
   'every CommentsLayer test': COMMENTS_LAYER_FILES.filter((file) => /\.test\./.test(file)),
 };

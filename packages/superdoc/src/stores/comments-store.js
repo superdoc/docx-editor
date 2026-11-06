@@ -1,3 +1,4 @@
+import { snapshotWordIdentity } from '@superdoc/common/helpers/word-identity';
 import { defineStore } from 'pinia';
 import { ref, reactive, computed, watch } from 'vue';
 import { comments_module_events } from '@superdoc/common';
@@ -1305,6 +1306,15 @@ export const useCommentsStore = defineStore('comments', () => {
       creatorId: superdocStore.user.id,
       creatorEmail: superdocStore.user.email,
       creatorName: superdocStore.user.name,
+      creatorIdentity: snapshotWordIdentity(
+        Object.prototype.hasOwnProperty.call(options, 'creatorIdentity')
+          ? options.creatorIdentity
+          : ['creatorName', 'creatorId', 'creatorEmail'].some((key) =>
+                Object.prototype.hasOwnProperty.call(options, key),
+              )
+            ? undefined
+            : superdocStore.user.wordIdentity,
+      ),
       creatorImage: superdocStore.user.image,
       commentText: currentCommentText.value,
       selection,
@@ -1557,6 +1567,8 @@ export const useCommentsStore = defineStore('comments', () => {
         trackedChangeParentId: comment.trackedChangeParentId,
         creatorId: null,
         creatorName,
+        creatorIdentity: comment.creatorIdentity,
+        wordAuthorName: comment.wordAuthorName,
         createdTime: comment.createdTime,
         creatorEmail: comment.creatorEmail,
         importedAuthor: {

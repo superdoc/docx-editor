@@ -42,6 +42,52 @@ modules: {
 
 </Note>
 
+## Word account identity on export
+
+Configure `user.wordIdentity` with an identity obtained from your account provider. New comments and replies created through `editor.doc.comments.create` or the built-in UI snapshot that pair. Export normally to write the standard Word people association.
+
+```javascript Full Example
+import { SuperDoc } from 'superdoc';
+import 'superdoc/style.css';
+
+const superdoc = new SuperDoc({
+  selector: '#editor',
+  document: yourFile,
+  user: {
+    id: 'app-user-123',
+    name: 'Alex Reviewer',
+    email: 'synthetic@example.com',
+    wordIdentity: {
+      providerId: 'AD',
+      userId: 'S::synthetic@example.com::opaque-provider-identifier',
+    },
+  },
+  onReady: async ({ superdoc }) => {
+    const editor = superdoc.activeEditor;
+    if (!editor) return;
+    const { items } = editor.doc.query.match({ select: { type: 'text', pattern: 'agreement' } });
+    const match = items[0];
+    if (match && 'target' in match) {
+      const root = editor.doc.comments.create({ target: match.target, text: 'Please review.' });
+      if (root.success) {
+        editor.doc.comments.create({ parentCommentId: root.id, text: 'Additional context.' });
+      }
+    }
+    await superdoc.export({ isFinalDoc: false, commentsType: 'external' });
+  },
+});
+```
+
+The identifiers above are synthetic. Supply the exact provider pair for your user; SuperDoc does not authenticate the asserted account or derive provider IDs from an application ID, name, or email. Both fields must be non-empty strings containing valid XML characters. New input rejects control characters, including tabs, line breaks, and DEL, so XML attribute normalization cannot change opaque IDs. Accepted strings keep their exact case and spaces. Invalid input throws `TypeError` before creating the comment or producing an export.
+
+Set `wordIdentity: null` to opt out. Without a pair, comments retain their names and private email metadata without a new account association. Replies use the replying user's snapshot. Changing the current user or editing/resolving a comment does not change its original identity. The same `User` configuration works for standalone and headless editors.
+
+Existing Word people entries, unknown providers, and extension data are preserved. When different authors share a display name, Word may show a stable label such as `Alex Reviewer [sd-1a2b3c4d]` to keep their associations separate. A new name/email-only author also receives a separate label when the name is already mapped to an imported account. Labels do not expose the provider ID. Hash collisions receive a numeric suffix. A label remains stable across repeated exports and reopening that artifact; peers with different earlier export histories may have different labels while keeping each comment's exact account association.
+
+For legacy command integrations, `addComment` and `addCommentReply` also accept `authorIdentity: { providerId, userId }` or `null`. An explicit `author`, `authorId`, or `authorEmail` override suppresses the session identity unless `authorIdentity` is also supplied. `editor.doc.comments.create` uses the configured user and takes no per-call author override. Explicit comment records passed to `editor.exportDocx({ comments })` may carry `creatorIdentity` with the same pair shape.
+
+Use a V1 build that includes `wordIdentity` support. Earlier published V1 packages do not acquire this behavior through configuration alone; check your installed release before adopting it. Package associations and visible author labels do not by themselves verify how a recipient's Microsoft directory resolves an account.
+
 ## Configuration
 
 <ParamField path="modules.comments.readOnly" type="boolean" default="false">

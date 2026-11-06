@@ -49,3 +49,12 @@ void (0 as unknown as AssertHeadingArgs);
 void (0 as unknown as AssertAppendRowsArgs);
 void (0 as unknown as AssertStructuredTableArgs);
 void (0 as unknown as AssertSearchShape);
+
+type WordCommentIdentity = NonNullable<
+  Exclude<Parameters<ExtensionCommandMap['addComment']>[0], string>
+>['authorIdentity'];
+type AssertWordCommentIdentity = ExpectTrue<
+  Equal<WordCommentIdentity, { providerId: string; userId: string } | null | undefined>
+>;
+type ReplyWordIdentity = NonNullable<Parameters<ExtensionCommandMap['addCommentReply']>[0]>['authorIdentity'];
+type AssertReplyWordIdentity = ExpectTrue<Equal<ReplyWordIdentity, WordCommentIdentity>>;

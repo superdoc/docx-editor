@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import useComment from './use-comment.js';
+import * as Y from 'yjs';
 
 describe('use-comment', () => {
   it('exposes threading metadata in getValues()', () => {
@@ -65,4 +66,23 @@ describe('use-comment', () => {
       ],
     });
   });
+});
+
+it('retains Word identity and author label through serialized collaboration and edits', () => {
+  const pair = { providerId: 'AD', userId: 'S::synthetic@example.com::opaque' };
+  const comment = useComment({ commentId: 'identity', creatorIdentity: pair, wordAuthorName: 'Alex [sd-1234]' });
+  pair.userId = 'changed';
+  const ydoc = new Y.Doc();
+  ydoc.getArray('comments').push([new Y.Map(Object.entries(comment.getValues()))]);
+  const restored = new Y.Doc();
+  Y.applyUpdate(restored, Y.encodeStateAsUpdate(ydoc));
+  const hydrated = useComment(restored.getArray('comments').toJSON()[0]);
+  ydoc.destroy();
+  restored.destroy();
+  hydrated.setText({ text: 'Updated', suppressUpdate: true });
+  expect(hydrated.getValues().creatorIdentity).toEqual({
+    providerId: 'AD',
+    userId: 'S::synthetic@example.com::opaque',
+  });
+  expect(hydrated.getValues().wordAuthorName).toBe('Alex [sd-1234]');
 });

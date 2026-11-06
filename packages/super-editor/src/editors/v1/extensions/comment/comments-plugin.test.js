@@ -2052,3 +2052,51 @@ describe('Headless mode plugin behavior', () => {
     expect(pluginState.internalColor).toBe('#bbb');
   });
 });
+
+describe('Word identity command snapshots', () => {
+  const pair = { providerId: 'AD', userId: 'S::synthetic@example.com::opaque' };
+  const env = () => {
+    const schema = createCommentSchema();
+    const result = createEditorEnvironment(
+      schema,
+      schema.node('doc', null, [schema.node('paragraph', null, [schema.text('Hello')])]),
+    );
+    result.editor.options.user.wordIdentity = { ...pair };
+    return result;
+  };
+  it.each([
+    {},
+    { author: 'Other' },
+    { authorEmail: 'other@example.com' },
+    { authorId: 'other' },
+    { authorIdentity: null },
+    { author: 'Other', authorIdentity: pair },
+  ])('resolves identity conservatively for %j', (options) => {
+    const { editor, commands, view } = env();
+    commands.addComment({ content: 'Root', ...options })({ tr: editor.state.tr, dispatch: view.dispatch, editor });
+    const expected =
+      'authorIdentity' in options ? options.authorIdentity : Object.keys(options).length ? undefined : pair;
+    expect(editor.emit.mock.calls.at(-1)[1].comment.creatorIdentity).toEqual(expected);
+    commands.addCommentReply({ parentId: 'root', content: 'Reply', ...options })({ editor });
+    expect(editor.emit.mock.calls.at(-1)[1].comment.creatorIdentity).toEqual(expected);
+    editor.options.user.wordIdentity.userId = 'changed';
+    if (expected === pair) expect(editor.emit.mock.calls[0][1].comment.creatorIdentity).toEqual(pair);
+  });
+  it.each([
+    { providerId: 'AD' },
+    { providerId: 5, userId: 'id' },
+    { providerId: ' ', userId: 'id' },
+    { providerId: 'AD', userId: 'a\nb' },
+    { providerId: 'AD', userId: '\u0000' },
+    { providerId: 'AD', userId: '\ud800' },
+  ])('rejects invalid explicit pairs before mutation: %j', (authorIdentity) => {
+    const { editor, commands, view } = env();
+    const tr = editor.state.tr;
+    expect(() =>
+      commands.addComment({ content: 'Root', authorIdentity })({ tr, dispatch: view.dispatch, editor }),
+    ).toThrow(TypeError);
+    expect(tr.steps).toHaveLength(0);
+    expect(editor.emit).not.toHaveBeenCalled();
+    expect(() => commands.addCommentReply({ parentId: 'root', authorIdentity })({ editor })).toThrow(TypeError);
+  });
+});

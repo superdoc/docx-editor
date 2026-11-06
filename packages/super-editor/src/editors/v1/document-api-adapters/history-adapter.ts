@@ -94,6 +94,8 @@ function buildCommentLifecyclePayload(record: CommentEntityRecord): Record<strin
     payload.text = record.commentText;
   }
   if (record.commentJSON !== undefined) payload.commentJSON = record.commentJSON;
+  if (record.creatorIdentity !== undefined) payload.creatorIdentity = record.creatorIdentity;
+  if (record.wordAuthorName !== undefined) payload.wordAuthorName = record.wordAuthorName;
   if (record.creatorName !== undefined) payload.creatorName = record.creatorName;
   if (record.creatorEmail !== undefined) payload.creatorEmail = record.creatorEmail;
   if (record.creatorImage !== undefined) payload.creatorImage = record.creatorImage;

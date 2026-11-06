@@ -63,6 +63,8 @@ export default function useComment(params) {
   const creatorId = ref(params.creatorId ?? null);
   const creatorEmail = ref(params.creatorEmail ?? null);
   const creatorName = ref(params.creatorName ?? null);
+  const creatorIdentity = ref(params.creatorIdentity == null ? params.creatorIdentity : { ...params.creatorIdentity });
+  const wordAuthorName = ref(params.wordAuthorName);
   const creatorImage = ref(params.creatorImage ?? null);
   const createdTime = ref(params.createdTime || Date.now());
   const importedAuthor = ref(params.importedAuthor || null);
@@ -310,6 +312,8 @@ export default function useComment(params) {
       creatorId: creatorId.value,
       creatorEmail: creatorEmail.value,
       creatorName: creatorName.value,
+      creatorIdentity: creatorIdentity.value == null ? creatorIdentity.value : { ...creatorIdentity.value },
+      wordAuthorName: wordAuthorName.value,
       creatorImage: creatorImage.value,
       createdTime: createdTime.value,
       importedAuthor: importedAuthor.value,
@@ -353,6 +357,8 @@ export default function useComment(params) {
     creatorId,
     creatorEmail,
     creatorName,
+    creatorIdentity,
+    wordAuthorName,
     creatorImage,
     createdTime,
     isInternal,

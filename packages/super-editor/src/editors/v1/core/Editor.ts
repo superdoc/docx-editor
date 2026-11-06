@@ -4406,6 +4406,11 @@ export class Editor extends EventEmitter<EditorEventMap> {
         }
       }
 
+      const peopleExport = this.converter as EditorConverterSurface & {
+        getCommentPeopleUpdatedFiles?: () => Record<string, string>;
+      };
+      Object.assign(updatedDocs, peopleExport.getCommentPeopleUpdatedFiles?.());
+
       if (isFinalDoc) {
         const filteredMetadataParts = buildFilteredMetadataXml(this, this.converter.convertedXml, { finalDoc: true });
         for (const [path, xml] of Object.entries(filteredMetadataParts)) {

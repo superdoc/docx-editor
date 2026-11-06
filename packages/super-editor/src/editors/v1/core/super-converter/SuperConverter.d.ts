@@ -52,6 +52,9 @@ export class SuperConverter {
   static setStoredSuperdocVersion(docx: unknown, version?: string): string | null;
   static extractDocumentGuid(docx: readonly { readonly name: string; readonly content: string }[]): string | null;
 
+  /** Serialized export-local people part and optional relationship overlay. */
+  getCommentPeopleUpdatedFiles(): Record<string, string>;
+
   // Internal-implementation catchall. See file header for context.
   [key: string]: any;
 }

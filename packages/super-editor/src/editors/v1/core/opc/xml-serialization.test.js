@@ -1,3 +1,4 @@
+/* @vitest-environment jsdom */
 import { describe, it, expect } from 'vitest';
 import * as xmljs from 'xml-js';
 import { serializeOpcXml } from './xml-serialization.js';
@@ -47,5 +48,76 @@ describe('serializeOpcXml', () => {
     const reparsed = parse(out);
     const a = reparsed.elements[0].elements[0];
     expect(a.attributes.href).toBe('http://x.com/?a=1&b=2&c=3');
+  });
+
+  it.each(['&', '<tag>', '"quoted"', "'quoted'", 'literal &quot; &amp; &lt; &#34;'])(
+    'preserves the exact raw attribute value %s across repeated serialization',
+    (value) => {
+      const tree = {
+        elements: [{ type: 'element', name: 'r:Root', attributes: { 'xmlns:r': 'urn:test', value } }],
+      };
+      const before = JSON.stringify(tree);
+      let current = tree;
+      for (let index = 0; index < 3; index++) {
+        const out = serializeOpcXml(current);
+        const doc = new DOMParser().parseFromString(out, 'application/xml');
+        expect(doc.querySelector('parsererror')).toBeNull();
+        expect(doc.documentElement.namespaceURI).toBe('urn:test');
+        expect(doc.documentElement.getAttribute('value')).toBe(value);
+        current = parse(out);
+      }
+      expect(JSON.stringify(tree)).toBe(before);
+    },
+  );
+
+  it('retains imported entity-looking attributes, mixed text and CDATA exactly', () => {
+    const original =
+      '<r:Root xmlns:r="urn:test" value="literal &amp;quot; &amp;amp; &quot;quote&quot; &lt;tag&gt;">before &amp;amp;<r:Child value="&amp;quot;"/>after &amp;amp; &amp;quot; &lt;tag&gt;<![CDATA[raw &amp; &quot; <tag>]]></r:Root>';
+    const expected = new DOMParser().parseFromString(original, 'application/xml');
+    const tree = parse(original);
+    const before = JSON.stringify(tree);
+    let current = tree;
+    for (let index = 0; index < 3; index++) {
+      const out = serializeOpcXml(current);
+      const doc = new DOMParser().parseFromString(out, 'application/xml');
+      expect(doc.querySelector('parsererror')).toBeNull();
+      expect(doc.documentElement.isEqualNode(expected.documentElement)).toBe(true);
+      expect(out).toContain('<![CDATA[raw &amp; &quot; <tag>]]>');
+      current = parse(out);
+    }
+    expect(JSON.stringify(tree)).toBe(before);
+  });
+
+  it('preserves literal ampersand entities in text before and after child elements', () => {
+    const original = '<Root>before &amp;amp;<Child/>after &amp;amp; &amp;quot; &lt;tag&gt;</Root>';
+    const out = serializeOpcXml(parse(original));
+    const doc = new DOMParser().parseFromString(out, 'application/xml');
+    expect(doc.querySelector('parsererror')).toBeNull();
+    expect(doc.documentElement.textContent).toBe('before &amp;after &amp; &quot; <tag>');
+  });
+
+  it.each([
+    {
+      label: 'attribute whitespace',
+      original: '<r:Root xmlns:r="urn:test" value="before&#x9;tab&#xA;line&#xD;return&#xD;&#xA;end &amp;#xD;"/>',
+    },
+    {
+      label: 'mixed text carriage returns',
+      original: '<r:Root xmlns:r="urn:test">before&#xD;return&#xD;&#xA;line<r:Child/>after&#13; &amp;#xD;</r:Root>',
+    },
+  ])('preserves imported $label through repeated XML decoding', ({ original }) => {
+    const expected = new DOMParser().parseFromString(original, 'application/xml');
+    expect(expected.querySelector('parsererror')).toBeNull();
+    const tree = parse(original);
+    const before = JSON.stringify(tree);
+    let current = tree;
+    for (let index = 0; index < 3; index++) {
+      const out = serializeOpcXml(current);
+      const doc = new DOMParser().parseFromString(out, 'application/xml');
+      expect(doc.querySelector('parsererror')).toBeNull();
+      expect(doc.documentElement.isEqualNode(expected.documentElement)).toBe(true);
+      current = parse(out);
+    }
+    expect(JSON.stringify(tree)).toBe(before);
   });
 });

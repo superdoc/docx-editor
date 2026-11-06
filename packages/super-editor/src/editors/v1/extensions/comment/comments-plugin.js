@@ -1,3 +1,4 @@
+import { resolveCommentWordIdentity } from '@superdoc/common/helpers/word-identity';
 import { Extension } from '@core/Extension.js';
 import { Plugin, PluginKey, TextSelection } from 'prosemirror-state';
 import { Decoration, DecorationSet } from 'prosemirror-view';
@@ -38,6 +39,7 @@ export const CommentsPlugin = Extension.create({
        * @param {string} [contentOrOptions.author] - Author name (defaults to user from editor config)
        * @param {string} [contentOrOptions.authorId] - Stable actor id (defaults to user from editor config)
        * @param {string} [contentOrOptions.authorEmail] - Author email (defaults to user from editor config)
+       * @param {Object|null} [contentOrOptions.authorIdentity] - Explicit opaque providerId/userId; null opts out
        * @param {string} [contentOrOptions.authorImage] - Author image URL (defaults to user from editor config)
        * @param {boolean} [contentOrOptions.isInternal=false] - Whether the comment is internal/private
        * @returns {boolean} True if the comment was added successfully, false otherwise
@@ -92,6 +94,10 @@ export const CommentsPlugin = Extension.create({
 
           // Get user defaults from editor config
           const configUser = editor.options?.user || {};
+          const creatorIdentity = resolveCommentWordIdentity(
+            typeof contentOrOptions === 'object' ? contentOrOptions : undefined,
+            configUser,
+          );
 
           // Add the comment mark to the selection
           tr.setMeta(CommentsPluginKey, { event: 'add' });
@@ -112,6 +118,7 @@ export const CommentsPlugin = Extension.create({
               commentId,
               isInternal: resolvedInternal,
               commentText: content,
+              creatorIdentity,
               creatorName: author ?? configUser.name,
               creatorId: authorId ?? configUser.id,
               creatorEmail: authorEmail ?? configUser.email,
@@ -141,6 +148,7 @@ export const CommentsPlugin = Extension.create({
        * @param {string} [options.author] - Author name (defaults to user from editor config)
        * @param {string} [options.authorId] - Stable actor id (defaults to user from editor config)
        * @param {string} [options.authorEmail] - Author email (defaults to user from editor config)
+       * @param {Object|null} [options.authorIdentity] - Explicit opaque providerId/userId; null opts out
        * @param {string} [options.authorImage] - Author image URL (defaults to user from editor config)
        * @returns {boolean} True if the reply was added successfully, false otherwise
        * @example
@@ -169,12 +177,14 @@ export const CommentsPlugin = Extension.create({
 
           const commentId = explicitCommentId ?? uuidv4();
           const configUser = editor.options?.user || {};
+          const creatorIdentity = resolveCommentWordIdentity(options, configUser);
 
           const commentPayload = normalizeCommentEventPayload({
             conversation: {
               commentId,
               parentCommentId: parentId,
               commentText: content,
+              creatorIdentity,
               creatorName: author ?? configUser.name,
               creatorId: authorId ?? configUser.id,
               creatorEmail: authorEmail ?? configUser.email,

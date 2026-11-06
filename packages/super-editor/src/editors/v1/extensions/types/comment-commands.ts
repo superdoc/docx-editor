@@ -4,6 +4,8 @@
  * @module CommentCommands
  */
 
+import type { User } from '../../core/types/EditorConfig.js';
+
 /** Options for addComment command */
 export type AddCommentOptions = {
   /** The comment content (text or HTML) */
@@ -18,6 +20,8 @@ export type AddCommentOptions = {
   authorEmail?: string;
   /** Author image URL (defaults to user from editor config) */
   authorImage?: string;
+  /** Explicit provider identity. Defaults to user.wordIdentity only without author/name/id/email overrides; null opts out. */
+  authorIdentity?: User['wordIdentity'];
   /** Whether the comment is internal/private (default: false) */
   isInternal?: boolean;
 };
@@ -161,6 +165,8 @@ export type AddCommentReplyOptions = {
   authorEmail?: string;
   /** Author image URL (defaults to user from editor config) */
   authorImage?: string;
+  /** Explicit provider identity. Defaults to user.wordIdentity only without author/name/id/email overrides; null opts out. */
+  authorIdentity?: User['wordIdentity'];
 };
 
 export interface CommentCommands {

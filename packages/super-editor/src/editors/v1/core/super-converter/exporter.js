@@ -745,8 +745,12 @@ export class DocxExporter {
     let tag = `<${name}`;
 
     for (let attr in attributes) {
-      const parsedAttrName =
+      let parsedAttrName =
         typeof attributes[attr] === 'string' ? this.#replaceSpecialCharacters(attributes[attr]) : attributes[attr];
+      if (name === 'w:comment' && attr === 'w:author' && typeof parsedAttrName === 'string') {
+        // Keep the comment-to-people key exact after XML attribute whitespace normalization.
+        parsedAttrName = parsedAttrName.replace(/\t/g, '&#x9;').replace(/\n/g, '&#xA;').replace(/\r/g, '&#xD;');
+      }
       tag += ` ${attr}="${parsedAttrName}"`;
     }
 

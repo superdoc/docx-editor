@@ -12,6 +12,7 @@ import * as Y from 'yjs';
 import type { PartsMigrationMeta, PartsCapability } from './types.js';
 import { encodeEnvelopeToYjs } from './json-crdt.js';
 import { parseXmlToJson } from '../../../core/super-converter/v2/docxHelper.js';
+import { preservePeopleWhitespace } from '../../../core/super-converter/comment-author-identity.js';
 import {
   PARTS_MAP_KEY,
   META_MAP_KEY,
@@ -179,7 +180,7 @@ function parsePartContent(entry: DocxEntry): unknown {
   if (typeof entry.content === 'string') {
     // Parse raw XML to JSON using the same xml-js path the converter uses,
     // ensuring the JSON tree shape matches converter.convertedXml exactly.
-    return parseXmlToJson(entry.content);
+    return preservePeopleWhitespace(entry.content, parseXmlToJson(entry.content));
   }
 
   throw new Error(`Part "${entry.name}" has unsupported content type: ${typeof entry.content}`);

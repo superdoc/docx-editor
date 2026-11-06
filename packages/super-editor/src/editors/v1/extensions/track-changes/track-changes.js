@@ -14,6 +14,7 @@ import {
   sliceFromText,
 } from './review-model/edit-intent.js';
 import { decideTrackedChanges, buildDecisionBubbleEvents } from './review-model/decision-engine.js';
+import { snapshotWordIdentity } from '@superdoc/common/helpers/word-identity';
 
 /**
  * @typedef {{ code: string, message: string, details?: unknown }} TrackChangesFailure
@@ -462,7 +463,9 @@ export const TrackChanges = Extension.create({
             return true;
           }
 
-          const resolvedUser = user ?? editor?.options?.user ?? {};
+          const resolvedUser = { ...(user ?? editor?.options?.user ?? {}) };
+          // Validate and snapshot an attached comment's account before the tracked edit mutates state.
+          if (comment?.trim()) resolvedUser.wordIdentity = snapshotWordIdentity(resolvedUser.wordIdentity);
 
           // Warn if user info is missing - marks will have undefined author
           if (!resolvedUser.name && !resolvedUser.email) {
@@ -856,6 +859,7 @@ const dispatchCompiledInsertTrackedChange = ({
       authorId: resolvedUser.id,
       authorEmail: resolvedUser.email,
       authorImage: resolvedUser.image,
+      authorIdentity: resolvedUser.wordIdentity,
     });
   }
 

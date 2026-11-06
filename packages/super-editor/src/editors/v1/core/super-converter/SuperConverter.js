@@ -1,3 +1,20 @@
+import {
+  captureCommentAuthorSource,
+  readCommentAuthorSourceRows,
+  hasLocalCommentAuthorSourceConflict,
+  prepareCommentAuthors,
+  commentPeopleUpdatedFiles,
+  preservePeopleWhitespace,
+} from './comment-author-identity.js';
+import { decodeYjsToEnvelope } from '../../extensions/collaboration/part-sync/json-crdt.js';
+import {
+  PARTS_MAP_KEY,
+  META_MAP_KEY,
+  META_PARTS_SCHEMA_VERSION_KEY,
+  META_PARTS_CAPABILITY_KEY,
+  META_PARTS_LAST_HYDRATED_AT_KEY,
+  META_PARTS_FALLBACK_MODE_KEY,
+} from '../../extensions/collaboration/part-sync/constants.js';
 /* global TextEncoder */
 import * as xmljs from 'xml-js';
 import { v4 as uuidv4 } from 'uuid';
@@ -225,6 +242,9 @@ class SuperConverter {
 
     this.addedMedia = {};
     this.comments = [];
+    this.commentAuthorAssignments = new Map();
+    this.commentAuthorSource = captureCommentAuthorSource({});
+    this.commentPeopleExport = undefined;
     this.footnotes = [];
     this.footnoteProperties = null;
     this.bibliographyPart = createEmptyBibliographyPart();
@@ -307,7 +327,7 @@ class SuperConverter {
 
   parseFromXml() {
     this.docx?.forEach((file) => {
-      this.convertedXml[file.name] = this.parseXmlToJson(file.content);
+      this.convertedXml[file.name] = preservePeopleWhitespace(file.content, this.parseXmlToJson(file.content));
 
       if (file.name === 'word/document.xml') {
         this.documentAttributes = this.convertedXml[file.name].elements[0]?.attributes;
@@ -325,6 +345,8 @@ class SuperConverter {
         }
       }
     }
+    this.commentAuthorAssignments = new Map();
+    this.commentAuthorSource = captureCommentAuthorSource(this.convertedXml);
     this.initialJSON = this.convertedXml['word/document.xml'];
 
     if (!this.initialJSON) this.initialJSON = this.parseXmlToJson(this.xml);
@@ -1230,6 +1252,49 @@ class SuperConverter {
     return exporter.schemaToXml(data, debug);
   }
 
+  /** Recover only an evidenced initial room source projection from the old derived cache. */
+  #initializeLegacyCommentAuthorSource(editor, comments) {
+    const ydoc = editor?.options?.ydoc;
+    const meta = ydoc?.getMap(META_MAP_KEY);
+    const capability = meta?.get(META_PARTS_CAPABILITY_KEY);
+    const envelope = ydoc && decodeYjsToEnvelope(ydoc.getMap(PARTS_MAP_KEY).get('word/comments.xml'));
+    const rows = readCommentAuthorSourceRows(envelope?.data);
+    const checkpoint = readCommentAuthorSourceRows(this.commentAuthorSourcePart);
+    const legacy = this.commentAuthorSource;
+    if (
+      !editor?._partPublisher ||
+      meta?.get(META_PARTS_SCHEMA_VERSION_KEY) !== 1 ||
+      capability?.version !== 1 ||
+      meta?.get(META_PARTS_FALLBACK_MODE_KEY) ||
+      !Number.isFinite(Date.parse(meta?.get(META_PARTS_LAST_HYDRATED_AT_KEY))) ||
+      envelope?.v !== 1 ||
+      envelope.clientId !== capability.clientId ||
+      !rows ||
+      !checkpoint ||
+      !legacy?.comments ||
+      [...rows].some(([id, name]) => legacy.comments.get(id)?.name !== name || checkpoint.get(id) !== name) ||
+      hasLocalCommentAuthorSourceConflict(rows, comments, this.commentAuthorAssignments)
+    ) {
+      throw new Error('Cannot establish comment source ownership from this legacy room state.');
+    }
+    // The room proves ID/name origin only. Current converted people remains the export authority.
+    // The convenience comments list can include local rows; only proved source IDs may corroborate snapshots.
+    const imported = (this.comments || []).filter((comment) => rows.has(String(comment.commentId)));
+    const source = captureCommentAuthorSource({ 'word/comments.xml': envelope.data }, imported);
+    for (const [id, record] of source.comments) {
+      const captured = imported.find((comment) => String(comment.commentId) === id);
+      if (captured?.creatorIdentity) {
+        source.comments.set(id, { ...record, identity: { ...captured.creatorIdentity } });
+      }
+    }
+    return source;
+  }
+
+  /** Export-only people overlay; never synchronized back into the live parts store. */
+  getCommentPeopleUpdatedFiles() {
+    return commentPeopleUpdatedFiles(this.convertedXml, this.commentPeopleExport, this.docx);
+  }
+
   async exportToDocx(
     jsonData,
     editorSchema,
@@ -1244,6 +1309,7 @@ class SuperConverter {
   ) {
     // Reset export warnings for this export cycle
     this.exportWarnings = [];
+    this.commentPeopleExport = undefined;
 
     // Filter out SYNTHETIC tracked-change projection rows - they shouldn't be
     // exported to comments.xml. `comments.list()` returns one such row per
@@ -1270,9 +1336,40 @@ class SuperConverter {
           (Array.isArray(c.elements) && c.elements.length) ||
           (typeof c.text === 'string' && c.text.length > 0),
       );
-    const exportableComments = comments.filter(
-      (c) => !isSyntheticTrackedChangeRow(c) && !(c.trackedChange && !hasCommentBody(c)),
+    const byId = new Map();
+    comments.forEach((comment) => {
+      [comment.commentId, comment.importedId].filter((id) => id != null).forEach((id) => byId.set(String(id), comment));
+    });
+    const isExcluded = (comment) => {
+      if (commentsExportType === 'clean') return true;
+      if (commentsExportType !== 'external') return false;
+      const seen = new Set();
+      let current = comment;
+      while (current && !seen.has(current)) {
+        if (current.isInternal) return true;
+        seen.add(current);
+        current = byId.get(String(current.threadingParentCommentId ?? current.parentCommentId));
+      }
+      return false;
+    };
+    const retainedComments = comments.filter(
+      (c) => !isExcluded(c) && !isSyntheticTrackedChangeRow(c) && !(c.trackedChange && !hasCommentBody(c)),
     );
+    const source =
+      this.commentAuthorSource?.version === 1
+        ? this.commentAuthorSource
+        : this.#initializeLegacyCommentAuthorSource(editor, comments);
+    const authorPlan = prepareCommentAuthors({
+      convertedXml: this.convertedXml,
+      comments: retainedComments,
+      validationComments: comments,
+      source,
+      assignments: this.commentAuthorAssignments,
+    });
+    // Validation has succeeded. Remember all local IDs, including omitted rows, before writing XML.
+    // A later export failure must not turn those generated rows into imported source on retry.
+    this.commentAuthorSource = authorPlan.source;
+    const exportableComments = authorPlan.comments;
     const commentsWithParaIds = exportableComments.map((c) => prepareCommentParaIds(c));
     const commentDefinitions = commentsWithParaIds.map((c, index) =>
       getCommentDefinition(c, index, commentsWithParaIds, editor),
@@ -1426,6 +1523,9 @@ class SuperConverter {
     // Update the numbering.xml
     this.#exportNumberingFile(params);
 
+    this.commentPeopleExport = authorPlan.part;
+    this.commentAuthorAssignments = authorPlan.assignments;
+    this.exportWarnings.push(...authorPlan.warnings);
     return xml;
   }
 

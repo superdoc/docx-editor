@@ -90,7 +90,7 @@ export const getCommentDefinition = (comment, commentId, allComments, editor) =>
 
   const attributes = {
     'w:id': String(commentId),
-    'w:author': comment.creatorName || comment.importedAuthor?.name,
+    'w:author': comment.wordAuthorName ?? comment.creatorName ?? comment.importedAuthor?.name,
     'w:date': toIsoNoFractional(comment.createdTime),
     'w:initials': getInitials(comment.creatorName),
     'w:done': isCommentResolvedInThread(comment, allComments) ? '1' : '0',

@@ -20,6 +20,10 @@ import {
   DEFAULT_STALENESS_WINDOW_MS,
 } from './constants.js';
 import { getPart } from '../../../core/parts/index.js';
+import {
+  generatedCommentAuthorRows,
+  type captureCommentAuthorSource,
+} from '../../../core/super-converter/comment-author-identity.js';
 
 // ---------------------------------------------------------------------------
 // Publisher State
@@ -71,13 +75,26 @@ function publishPart(
   operation: 'mutate' | 'create' | 'delete',
   data: unknown,
   state: PublisherState,
+  editor: Editor,
 ): void {
   if (operation === 'delete') {
     partsMap.delete(partId);
     state.lastPublishes.delete(partId);
   } else {
     const v = computeNextVersion(partsMap, partId);
-    const envelope = encodeEnvelopeToYjs({ v, clientId: ydoc.clientID, data });
+    const converter = editor.converter as typeof editor.converter & {
+      commentAuthorSource?: ReturnType<typeof captureCommentAuthorSource>;
+    };
+    const envelope = encodeEnvelopeToYjs({
+      v,
+      clientId: ydoc.clientID,
+      data,
+      ...(partId === 'word/comments.xml'
+        ? {
+            generatedCommentAuthors: generatedCommentAuthorRows(data, converter?.commentAuthorSource),
+          }
+        : {}),
+    });
     partsMap.set(partId, envelope);
     state.lastPublishes.set(partId, { v, time: Date.now() });
   }
@@ -181,7 +198,7 @@ export function createPartPublisher(
         emitOverwriteTelemetry(partsMap, part.partId, ydoc, state, stalenessWindowMs, editor);
         ydoc.transact(
           () => {
-            publishPart(partsMap, ydoc, part.partId, part.operation, data, state);
+            publishPart(partsMap, ydoc, part.partId, part.operation, data, state, editor);
           },
           { event: 'parts-update', user: (editor.options as Record<string, unknown>).user },
         );
@@ -202,7 +219,7 @@ export function createPartPublisher(
       () => {
         for (const entry of buffered) {
           const data = entry.operation === 'delete' ? undefined : getPart(editor, entry.partId);
-          publishPart(partsMap, ydoc, entry.partId, entry.operation, data ?? entry.data, state);
+          publishPart(partsMap, ydoc, entry.partId, entry.operation, data ?? entry.data, state, editor);
         }
       },
       { event: 'parts-update', user: (editor.options as Record<string, unknown>).user },

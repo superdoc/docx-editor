@@ -1,3 +1,4 @@
+import { readPeopleRelationship, PEOPLE_CONTENT_TYPE } from './super-converter/comment-author-identity.js';
 import * as xmljs from 'xml-js';
 import JSZip from 'jszip';
 import { getContentTypesFromXml, base64ToUint8Array, detectImageType } from './super-converter/helpers.js';
@@ -7,6 +8,7 @@ import { COMMENT_FILE_BASENAMES } from './super-converter/constants.js';
 import { syncPackageMetadata } from './opc/sync-package-metadata.js';
 import { reconcileDocumentRelationships, MANAGED_DOCUMENT_PARTS } from './opc/reconcile-document-relationships.js';
 import { validateEmbeddedFonts } from './opc/validate-embedded-fonts.js';
+import { serializeOpcXml } from './opc/xml-serialization.js';
 
 /** Image file extensions recognized during import and export. */
 const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'bmp', 'tiff', 'tif', 'emf', 'wmf', 'svg', 'webp']);
@@ -14,6 +16,18 @@ const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'bmp', 'tiff', 'tif', '
 /** Map file extensions to correct MIME sub-types where they differ. */
 const MIME_TYPE_FOR_EXT = { tif: 'tiff', jpg: 'jpeg', svg: 'svg+xml' };
 const CUSTOM_XML_ITEM_PROPS_CONTENT_TYPE = 'application/vnd.openxmlformats-officedocument.customXmlProperties+xml';
+const CONTENT_TYPES_NAMESPACE = 'http://schemas.openxmlformats.org/package/2006/content-types';
+
+/** Match a content-types expanded name, including namespace declarations local to a child. */
+function isContentTypesElement(element, localName, parentAttributes = {}) {
+  const [prefix, name] = element.name?.includes(':') ? element.name.split(':') : ['', element.name];
+  const declaration = prefix ? `xmlns:${prefix}` : 'xmlns';
+  return (
+    element.type === 'element' &&
+    name === localName &&
+    (element.attributes?.[declaration] ?? parentAttributes[declaration]) === CONTENT_TYPES_NAMESPACE
+  );
+}
 
 /** OOXML content types for embedded font file extensions. */
 const FONT_CONTENT_TYPES = {
@@ -395,6 +409,24 @@ class DocxZipper {
     }
 
     if (relationshipsXml) {
+      const people = readPeopleRelationship(xmljs.xml2js(relationshipsXml));
+      if (people.path && hasFile(people.path)) {
+        const manifest = xmljs.xml2js(updatedContentTypesXml, { captureSpacesBetweenElements: true });
+        const root = manifest.elements?.find((element) => isContentTypesElement(element, 'Types'));
+        const registered = root?.elements?.some(
+          (element) =>
+            isContentTypesElement(element, 'Override', root.attributes) &&
+            element.attributes?.PartName === `/${people.path}`,
+        );
+        if (root && !registered) {
+          (root.elements ??= []).push({
+            type: 'element',
+            name: root.name.replace(/Types$/, 'Override'),
+            attributes: { PartName: `/${people.path}`, ContentType: PEOPLE_CONTENT_TYPE },
+          });
+          updatedContentTypesXml = serializeOpcXml(manifest);
+        }
+      }
       try {
         const relJson = xmljs.xml2js(relationshipsXml, { compact: false });
         const relationships = relJson.elements?.find((el) => el.name === 'Relationships');

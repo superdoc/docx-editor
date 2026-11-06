@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { registerStaticInvalidationHandlers, registerHeaderFooterInvalidation } from './invalidation-handlers.js';
 import { applyPartInvalidation, clearInvalidationHandlers } from './part-invalidation-registry.js';
+import * as xmljs from 'xml-js';
+import { captureCommentAuthorSource, prepareCommentAuthors } from '../../super-converter/comment-author-identity.js';
 import type { PartChangedEvent } from '../types.js';
 
 function createMockEditor() {
@@ -43,6 +45,54 @@ describe('invalidation handlers', () => {
       // Rels handler is no-op — dispatch count should not increase
       expect(editor.view.dispatch).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it('captures only committed new source comment IDs and keeps origin after source deletion', () => {
+    const W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+    const row = (id: string, name: string) => `<w:comment w:internalId="${id}" w:author="${name}"/>`;
+    const tree = (rows: string) => xmljs.xml2js(`<w:comments xmlns:w="${W}">${rows}</w:comments>`);
+    const convertedXml: any = { 'word/comments.xml': tree(row('old', 'Old source')) };
+    const converter = { convertedXml, commentAuthorSource: captureCommentAuthorSource(convertedXml) };
+    const prepare = (comments: any[], validationComments = comments) => {
+      const result = prepareCommentAuthors({
+        convertedXml,
+        comments,
+        validationComments,
+        source: converter.commentAuthorSource,
+      });
+      converter.commentAuthorSource = result.source ?? converter.commentAuthorSource;
+      return result;
+    };
+    const local = {
+      commentId: 'local',
+      creatorName: 'Local',
+      creatorIdentity: { providerId: 'vendor', userId: 'local-account' },
+    };
+    prepare([], [local]); // Full input establishes local ownership before any generated rows can arrive.
+    const editor = { converter };
+    registerStaticInvalidationHandlers();
+    convertedXml['word/comments.xml'].elements[0].elements = tree(
+      row('old', 'Renamed source') + row('local', 'Forged source') + row('later', 'Late source'),
+    ).elements[0].elements;
+    applyPartInvalidation(editor as any, makeEvent(['word/comments.xml']));
+    let rows = prepare([
+      { commentId: 'old', creatorName: 'UI decoration' },
+      local,
+      { commentId: 'later', creatorName: 'Caller spoof' },
+    ]).comments;
+    expect(rows.map((comment: any) => comment.wordAuthorName)).toEqual(['Renamed source', 'Local', 'Late source']);
+    expect(rows[1].creatorIdentity).toEqual(local.creatorIdentity);
+    delete convertedXml['word/comments.xml'];
+    applyPartInvalidation(editor as any, {
+      ...makeEvent(['word/comments.xml']),
+      parts: [{ partId: 'word/comments.xml' as any, operation: 'delete', changedPaths: [] }],
+    });
+    rows = prepare([
+      { commentId: 'old', creatorName: 'UI decoration' },
+      { commentId: 'later', creatorName: 'Caller spoof' },
+    ]).comments;
+    expect(rows.map((comment: any) => comment.wordAuthorName)).toEqual(['Renamed source', 'Late source']);
+    expect(prepare([]).comments).toEqual([]);
   });
 
   describe('numbering invalidation', () => {

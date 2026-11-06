@@ -730,3 +730,22 @@ describe('syncCommentEntitiesFromCollaboration (SD-3214)', () => {
     });
   });
 });
+
+it('hydrates identity snapshots from collaboration, keeps them on partial updates and allows null', () => {
+  const editor = makeEditorWithConverter();
+  const pair = { providerId: 'AD', userId: 'opaque' };
+  syncCommentEntitiesFromCollaboration(editor, [
+    { commentId: 'identity', creatorIdentity: pair, wordAuthorName: 'Alex' },
+  ]);
+  pair.userId = 'changed';
+  syncCommentEntitiesFromCollaboration(editor, [{ commentId: 'identity', commentText: 'Updated' }]);
+  const store = getCommentEntityStore(editor);
+  expect(store[0].creatorIdentity).toEqual({ providerId: 'AD', userId: 'opaque' });
+  expect(store[0].wordAuthorName).toBe('Alex');
+  const removed = removeCommentEntityTree(store, 'identity');
+  stashRemovedCommentEntities(editor, removed);
+  restoreStashedCommentEntityTree(editor, 'identity');
+  expect(getCommentEntityStore(editor)[0].creatorIdentity).toEqual({ providerId: 'AD', userId: 'opaque' });
+  syncCommentEntitiesFromCollaboration(editor, [{ commentId: 'identity', creatorIdentity: null }]);
+  expect(getCommentEntityStore(editor)[0].creatorIdentity).toBeNull();
+});

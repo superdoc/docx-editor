@@ -189,6 +189,9 @@ export interface User {
    */
   email?: string | null;
 
+  /** Opaque Word provider identity for new comments. Null opts out; never inferred from id or email. */
+  wordIdentity?: { providerId: string; userId: string } | null;
+
   /** The user's photo URL */
   image?: string | null;
 

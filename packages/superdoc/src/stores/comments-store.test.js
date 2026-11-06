@@ -4486,3 +4486,26 @@ describe('comments-store', () => {
     });
   });
 });
+
+describe('Word identity session snapshots', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+  });
+  it('snapshots roots/replies from the configured user without reattributing earlier comments', async () => {
+    const { __mockSuperdoc } = await import('./superdoc-store.js');
+    const { useCommentsStore } = await import('./comments-store.js');
+    __mockSuperdoc.documents.value = [{ id: 'doc-1', type: 'docx' }];
+    __mockSuperdoc.user.wordIdentity = { providerId: 'AD', userId: 'root-account' };
+    const store = useCommentsStore();
+    const root = store.getPendingComment({ documentId: 'doc-1' });
+    __mockSuperdoc.user.wordIdentity.userId = 'reply-account';
+    const reply = store.getPendingComment({ documentId: 'doc-1', parentCommentId: root.commentId });
+    expect(root.creatorIdentity).toEqual({ providerId: 'AD', userId: 'root-account' });
+    expect(reply.creatorIdentity).toEqual({ providerId: 'AD', userId: 'reply-account' });
+    expect(store.getPendingComment({ documentId: 'doc-1', creatorIdentity: null }).creatorIdentity).toBeNull();
+    expect(
+      store.getPendingComment({ documentId: 'doc-1', creatorName: 'Other person' }).creatorIdentity,
+    ).toBeUndefined();
+    delete __mockSuperdoc.user.wordIdentity;
+  });
+});

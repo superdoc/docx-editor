@@ -16,6 +16,8 @@ export interface PartEnvelope {
   clientId: number;
   /** Full OOXML JSON tree for the part. */
   data: unknown;
+  /** Generated comment ID/name projection; absent on raw imported parts. Never serialized to OOXML. */
+  generatedCommentAuthors?: [string, string][];
 }
 
 // ---------------------------------------------------------------------------

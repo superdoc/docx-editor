@@ -1,3 +1,4 @@
+import type { User } from './EditorConfig.js';
 import type { Transaction } from 'prosemirror-state';
 import type { Editor } from '../Editor.js';
 import type { DefaultEventMap } from '../EventEmitter.js';
@@ -88,6 +89,10 @@ export interface Comment {
   creatorId?: string | null;
   /** Display name of the comment author */
   creatorName: string | null;
+  /** Snapshot of the author's explicitly asserted Word identity. */
+  creatorIdentity?: User['wordIdentity'];
+  /** Original OOXML author label retained on import. */
+  wordAuthorName?: string;
   /** Email address of the comment author */
   creatorEmail: string | null;
   /** Stable actor id of the resolver */
@@ -122,6 +127,8 @@ export interface Comment {
  * Payload for comment-related events
  */
 export interface CommentsPayload {
+  /** A created comment or partial lifecycle/replay update. */
+  comment?: Partial<Comment>;
   comments?: Comment[];
   [key: string]: unknown;
 }

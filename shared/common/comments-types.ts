@@ -6,6 +6,10 @@ export type Comment = {
   mentions: unknown[];
   creatorId?: string | null;
   creatorName: string;
+  /** Explicit Word provider identity snapshot, independent of app ownership. */
+  creatorIdentity?: { providerId: string; userId: string } | null;
+  /** Original OOXML author label, separate from the UI display name. */
+  wordAuthorName?: string;
   creatorEmail?: string;
   createdTime: number;
   importedId: string;

@@ -272,7 +272,16 @@ describe('createHistoryAdapter', () => {
     listCommentAnchorsMock.mockReturnValue([{ commentId: 'c1', importedId: 'imp-1' }]);
     reconcileCommentEntityStoreWithAnchorsMock.mockReturnValue({
       removed: [],
-      restored: [{ commentId: 'c1', importedId: 'imp-1', commentText: 'Restored root', createdTime: 123 }],
+      restored: [
+        {
+          commentId: 'c1',
+          importedId: 'imp-1',
+          commentText: 'Restored root',
+          createdTime: 123,
+          creatorIdentity: { providerId: 'AD', userId: 'history-account' },
+          wordAuthorName: 'Original label',
+        },
+      ],
     });
     const editor = makeEditor();
 
@@ -289,6 +298,8 @@ describe('createHistoryAdapter', () => {
         commentId: 'c1',
         importedId: 'imp-1',
         commentText: 'Restored root',
+        creatorIdentity: { providerId: 'AD', userId: 'history-account' },
+        wordAuthorName: 'Original label',
         text: 'Restored root',
         createdTime: 123,
       },

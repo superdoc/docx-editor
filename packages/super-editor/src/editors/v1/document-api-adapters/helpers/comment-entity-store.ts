@@ -25,6 +25,8 @@ export interface CommentEntityRecord {
   resolvedTime?: number | null;
   resolvedByEmail?: string | null;
   resolvedByName?: string | null;
+  creatorIdentity?: { providerId: string; userId: string } | null;
+  wordAuthorName?: string;
   creatorName?: string;
   creatorEmail?: string;
   creatorImage?: string;
@@ -400,6 +402,13 @@ export function syncCommentEntitiesFromCollaboration(
     if (raw.commentJSON !== undefined) patch.commentJSON = raw.commentJSON;
     if (raw.elements !== undefined) patch.elements = raw.elements;
     // Authoring metadata
+    if (raw.creatorIdentity !== undefined) {
+      patch.creatorIdentity =
+        raw.creatorIdentity === null
+          ? null
+          : { ...(raw.creatorIdentity as NonNullable<CommentEntityRecord['creatorIdentity']>) };
+    }
+    if (typeof raw.wordAuthorName === 'string') patch.wordAuthorName = raw.wordAuthorName;
     if (typeof raw.creatorName === 'string') patch.creatorName = raw.creatorName;
     if (typeof raw.creatorEmail === 'string') patch.creatorEmail = raw.creatorEmail;
     if (typeof raw.creatorImage === 'string') patch.creatorImage = raw.creatorImage;

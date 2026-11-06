@@ -1,3 +1,5 @@
+import type { User } from '../../core/types/EditorConfig.js';
+import { snapshotWordIdentity } from '@superdoc/common/helpers/word-identity';
 /**
  * Comments convenience wrappers — bridge comments operations to the plan
  * engine's revision management and execution path.
@@ -54,6 +56,7 @@ import {
   isCommentResolved,
   removeCommentEntityTree,
   restoreStashedCommentEntityTree,
+  stashRemovedCommentEntities,
   toCommentInfo,
   upsertCommentEntity,
 } from '../helpers/comment-entity-store.js';
@@ -70,11 +73,7 @@ import { BODY_STORY_KEY, buildStoryKey } from '../story-runtime/story-key.js';
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-type EditorUserIdentity = {
-  name?: string;
-  email?: string;
-  image?: string;
-};
+type EditorUserIdentity = User;
 
 type TrackedChangeCommentInfo = CommentInfo & {
   story?: StoryLocator;
@@ -825,6 +824,8 @@ function buildCommentLifecyclePayload(record: CommentEntityRecord): Record<strin
     payload.text = record.commentText;
   }
   if (record.commentJSON !== undefined) payload.commentJSON = record.commentJSON;
+  if (record.creatorIdentity !== undefined) payload.creatorIdentity = record.creatorIdentity;
+  if (record.wordAuthorName !== undefined) payload.wordAuthorName = record.wordAuthorName;
   if (record.creatorName !== undefined) payload.creatorName = record.creatorName;
   if (record.creatorEmail !== undefined) payload.creatorEmail = record.creatorEmail;
   if (record.creatorImage !== undefined) payload.creatorImage = record.creatorImage;
@@ -1089,6 +1090,7 @@ function addCommentHandler(
     return { success: false, failure: resolvedTarget.failure };
   }
 
+  const creatorIdentity = snapshotWordIdentity(editor.options?.user?.wordIdentity);
   requireEditorCommand(editor.commands?.addComment, 'comments.create (addComment)');
 
   if (!applyTextSelection(editor, resolvedTarget.value.from, resolvedTarget.value.to)) {
@@ -1121,9 +1123,11 @@ function addCommentHandler(
           commentJSON: buildCommentJsonFromText(input.text),
           parentCommentId: undefined,
           createdTime: now,
+          creatorId: user.id,
+          creatorIdentity,
           creatorName: user.name,
-          creatorEmail: user.email,
-          creatorImage: user.image,
+          creatorEmail: user.email ?? undefined,
+          creatorImage: user.image ?? undefined,
           isDone: false,
           isInternal: false,
           fileId: editor.options?.documentId,
@@ -1221,6 +1225,7 @@ function replyToCommentHandler(
   const inheritedTrackedFields =
     buildTrackedChangeEntityFieldsFromRecord(parentRecord) ??
     buildTrackedChangeEntityFields(resolveCommentTrackedChangeSnapshot(editor, parentIdentity.commentId));
+  const creatorIdentity = snapshotWordIdentity(editor.options?.user?.wordIdentity);
   const replyId = uuidv4();
   let trackedPayload: Record<string, unknown> | null = null;
 
@@ -1241,9 +1246,11 @@ function replyToCommentHandler(
           commentText: input.text,
           commentJSON: buildCommentJsonFromText(input.text),
           createdTime: now,
+          creatorId: user.id,
+          creatorIdentity,
           creatorName: user.name,
-          creatorEmail: user.email,
-          creatorImage: user.image,
+          creatorEmail: user.email ?? undefined,
+          creatorImage: user.image ?? undefined,
           isDone: false,
           isInternal: false,
           fileId: editor.options?.documentId,
@@ -1504,6 +1511,7 @@ function removeCommentHandler(editor: Editor, input: RemoveCommentInput, options
     () => {
       didRemove = removeComment({ commentId: identity.commentId, importedId: identity.importedId }) === true;
       removedRecords = removeCommentEntityTree(store, identity.commentId);
+      stashRemovedCommentEntities(editor, removedRecords);
       return didRemove || removedRecords.length > 0;
     },
     { expectedRevision: options?.expectedRevision },

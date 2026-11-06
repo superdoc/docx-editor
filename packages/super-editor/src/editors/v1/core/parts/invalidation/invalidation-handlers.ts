@@ -6,11 +6,15 @@
  * and dynamically at creation time for header/footer parts.
  */
 
+import { captureCommentAuthorSource } from '../../super-converter/comment-author-identity.js';
+import type { Doc as YDoc } from 'yjs';
 import type { Editor } from '../../Editor.js';
 import type { PartChangedEvent, PartId } from '../types.js';
 import { registerInvalidationHandler } from './part-invalidation-registry.js';
 import { readSettingsRoot, parseProtectionState } from '../../../document-api-adapters/document-settings.js';
 import { applyEffectiveEditability, getProtectionStorage } from '../../../extensions/protection/editability.js';
+import { decodeYjsToEnvelope } from '../../../extensions/collaboration/part-sync/json-crdt.js';
+import { PARTS_MAP_KEY, SOURCE_COLLAB_REMOTE_PARTS } from '../../../extensions/collaboration/part-sync/constants.js';
 
 // ---------------------------------------------------------------------------
 // word/numbering.xml
@@ -123,12 +127,35 @@ function handleSettingsInvalidation(editor: Editor, event: PartChangedEvent): vo
   });
 }
 
+/** Refresh source ownership only after a committed comments-part change, never during export. */
+function handleCommentsInvalidation(editor: Editor, event: PartChangedEvent): void {
+  const converter = editor.converter as typeof editor.converter & {
+    commentAuthorSource?: ReturnType<typeof captureCommentAuthorSource>;
+  };
+  const source = converter?.commentAuthorSource;
+  // Retained old converters initialize through the scoped export guard, not from generated XML.
+  if (source?.version !== 1) return;
+  const envelope =
+    event.source === SOURCE_COLLAB_REMOTE_PARTS
+      ? decodeYjsToEnvelope(
+          (editor.options.ydoc as YDoc | null | undefined)?.getMap(PARTS_MAP_KEY).get('word/comments.xml'),
+        )
+      : undefined;
+  converter.commentAuthorSource = captureCommentAuthorSource(
+    converter.convertedXml,
+    [],
+    source,
+    envelope?.generatedCommentAuthors,
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Registration
 // ---------------------------------------------------------------------------
 
 /** Register static invalidation handlers. Called from `initPartsRuntime`. */
 export function registerStaticInvalidationHandlers(): void {
+  registerInvalidationHandler('word/comments.xml' as PartId, handleCommentsInvalidation);
   registerInvalidationHandler('word/numbering.xml', handleNumberingInvalidation);
   registerInvalidationHandler('word/_rels/document.xml.rels', handleRelationshipsInvalidation);
   registerInvalidationHandler('word/footnotes.xml', handleNotesInvalidation);

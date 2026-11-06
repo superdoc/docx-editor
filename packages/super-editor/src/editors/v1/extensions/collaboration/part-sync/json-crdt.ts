@@ -51,6 +51,11 @@ export function encodeEnvelopeToYjs(envelope: PartEnvelope): Record<string, unkn
     v: envelope.v,
     clientId: envelope.clientId,
     data: encodeValue(envelope.data),
+    ...(envelope.generatedCommentAuthors === undefined
+      ? {}
+      : {
+          generatedCommentAuthors: encodeValue(envelope.generatedCommentAuthors),
+        }),
   };
 }
 
@@ -97,15 +102,18 @@ export function decodeYjsToEnvelope(value: unknown): PartEnvelope | null {
   let v: unknown;
   let clientId: unknown;
   let rawData: unknown;
+  let generatedCommentAuthors: unknown;
 
   if (value instanceof Y.Map) {
     v = value.get('v');
     clientId = value.get('clientId');
     rawData = value.get('data');
+    generatedCommentAuthors = value.get('generatedCommentAuthors');
   } else if (isPlainObject(value)) {
     v = value.v;
     clientId = value.clientId;
     rawData = value.data;
+    generatedCommentAuthors = value.generatedCommentAuthors;
   } else {
     return null;
   }
@@ -116,6 +124,11 @@ export function decodeYjsToEnvelope(value: unknown): PartEnvelope | null {
     v,
     clientId,
     data: decodeValue(rawData),
+    ...(generatedCommentAuthors === undefined
+      ? {}
+      : {
+          generatedCommentAuthors: decodeValue(generatedCommentAuthors) as [string, string][],
+        }),
   };
 }
 

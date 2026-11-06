@@ -1178,6 +1178,15 @@ describe('SuperDoc.vue', () => {
       comment: { commentId: 'c-1', commentText: 'Updated text' },
     });
     expect(existingComment.commentText).toBe('Updated text');
+    const creatorIdentity = { providerId: 'AD', userId: 'history-account' };
+    options.onCommentsUpdate({
+      type: 'update',
+      comment: { commentId: 'c-1', creatorIdentity, wordAuthorName: 'Original label' },
+    });
+    expect(existingComment.creatorIdentity).toEqual(creatorIdentity);
+    expect(existingComment.wordAuthorName).toBe('Original label');
+    options.onCommentsUpdate({ type: 'update', comment: { commentId: 'c-1', commentText: 'Another edit' } });
+    expect(existingComment.creatorIdentity).toEqual(creatorIdentity);
 
     options.onCommentsUpdate({
       type: 'deleted',

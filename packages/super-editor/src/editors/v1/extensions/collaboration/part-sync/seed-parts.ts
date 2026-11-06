@@ -11,6 +11,10 @@ import type { Editor } from '../../../core/Editor.js';
 import type { SessionManagedNoteIds } from '../../../core/parts/adapters/notes-part-descriptor.js';
 import type { PartsCapability } from './types.js';
 import { encodeEnvelopeToYjs } from './json-crdt.js';
+import {
+  generatedCommentAuthorRows,
+  type captureCommentAuthorSource,
+} from '../../../core/super-converter/comment-author-identity.js';
 import { clearNoteTombstonesFromMeta, publishSessionManagedNoteIds } from '../note-tombstone-sync.js';
 import {
   PARTS_MAP_KEY,
@@ -37,8 +41,10 @@ interface SeedOptions {
  * - All writes happen in a single `ydoc.transact()`.
  */
 export function seedPartsFromEditor(editor: Editor, ydoc: Y.Doc, options?: SeedOptions): void {
-  const convertedXml = (editor as unknown as { converter?: { convertedXml?: Record<string, unknown> } }).converter
-    ?.convertedXml;
+  const converter = editor.converter as typeof editor.converter & {
+    commentAuthorSource?: ReturnType<typeof captureCommentAuthorSource>;
+  };
+  const convertedXml = converter?.convertedXml;
   if (!convertedXml) return;
   const sessionManagedNoteIds = (
     editor as unknown as {
@@ -75,6 +81,11 @@ export function seedPartsFromEditor(editor: Editor, ydoc: Y.Doc, options?: SeedO
           v: 1,
           clientId: ydoc.clientID,
           data: convertedXml[key],
+          ...(key === 'word/comments.xml'
+            ? {
+                generatedCommentAuthors: generatedCommentAuthorRows(convertedXml[key], converter?.commentAuthorSource),
+              }
+            : {}),
         });
         partsMap.set(key, envelope);
       }

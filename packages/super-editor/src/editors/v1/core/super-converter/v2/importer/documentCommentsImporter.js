@@ -1,3 +1,4 @@
+import { readPeoplePart, importedWordIdentity, captureCommentAuthorSource } from '../../comment-author-identity.js';
 import { v4 as uuidv4 } from 'uuid';
 import { defaultNodeListHandler } from './docxImporter';
 import { stableHexHash } from '@core/utilities/hash.js';
@@ -28,6 +29,7 @@ export function importCommentData({ docx, editor, converter }) {
     },
   };
 
+  const people = readPeoplePart(docx).people;
   const { elements } = comments;
   if (!elements || !elements.length) return;
 
@@ -74,6 +76,8 @@ export function importCommentData({ docx, editor, converter }) {
       commentId,
       importedId,
       creatorName: authorName,
+      wordAuthorName: authorName,
+      creatorIdentity: importedWordIdentity(people, authorName),
       creatorEmail: authorEmail,
       createdTime: unixTimestampMs,
       elements: textElements,
@@ -102,6 +106,7 @@ export function importCommentData({ docx, editor, converter }) {
   });
 
   if (converter) {
+    converter.commentAuthorSource = captureCommentAuthorSource(docx, extendedComments, converter.commentAuthorSource);
     const hasOverride = extendedComments.some(
       (comment) =>
         comment.threadingStyleOverride && comment.threadingStyleOverride !== commentThreadingProfile.defaultStyle,

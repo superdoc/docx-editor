@@ -1,10 +1,35 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { SuperConverter } from './SuperConverter.js';
 import { v4 as uuidv4 } from 'uuid';
+import * as xmljs from 'xml-js';
 
 vi.mock('uuid', () => ({
   v4: vi.fn(() => 'test-uuid-1234'),
 }));
+
+describe('SuperConverter people whitespace import boundary', () => {
+  it('retains people text on any part path without changing generic XML parsing', () => {
+    const raw =
+      '<x:people xmlns:x="http://schemas.microsoft.com/office/word/2012/wordml" xmlns:v="urn:vendor">\n <x:person><v:extra xml:space="preserve"> <v:child/> </v:extra></x:person>\n</x:people>';
+    const other = '<x:people xmlns:x="urn:vendor"> <x:child/> </x:people>';
+    const docx = [
+      { name: 'word/metadata/people-custom.xml', content: raw },
+      { name: 'word/unrelated.xml', content: other },
+      {
+        name: 'word/document.xml',
+        content:
+          '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body/></w:document>',
+      },
+    ];
+    const snapshot = JSON.stringify(docx);
+    const converter = new SuperConverter({ docx });
+    expect(converter.convertedXml['word/metadata/people-custom.xml']).toEqual(
+      xmljs.xml2js(raw, { captureSpacesBetweenElements: true }),
+    );
+    expect(converter.convertedXml['word/unrelated.xml']).toEqual(converter.parseXmlToJson(other));
+    expect(JSON.stringify(docx)).toBe(snapshot);
+  });
+});
 
 describe('SuperConverter Document GUID', () => {
   let mockDocx;

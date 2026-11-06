@@ -1007,6 +1007,8 @@ const REPLAY_MUTABLE_COMMENT_FIELDS = new Set([
   'resolvedById',
   'resolvedByEmail',
   'resolvedByName',
+  'creatorIdentity',
+  'wordAuthorName',
   'importedAuthor',
   'docxCommentJSON',
 ]);
@@ -1050,7 +1052,7 @@ const applyReplayUpdateToComment = (commentModel, payload, resolvedText) => {
     if (key === 'text') return;
     if (key === 'elements') return;
     if (!REPLAY_MUTABLE_COMMENT_FIELDS.has(key)) return;
-    commentModel[key] = value;
+    commentModel[key] = key === 'creatorIdentity' && value != null ? { ...value } : value;
   });
 
   if (resolvedText !== undefined) {

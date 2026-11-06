@@ -16,34 +16,51 @@
 
 import * as xmljs from 'xml-js';
 
-// xml-js calls `attributeValueFn` with the attribute value AFTER it has already
-// pre-escaped `"` to `&quot;`. We must escape `&`, `<`, and `>` without
-// double-escaping the `&` of that pre-existing `&quot;` token.
-const QUOT_PLACEHOLDER = 'SD_OPC_QUOT';
-const QUOT_PLACEHOLDER_REGEX = /SD_OPC_QUOT/g;
-
 /**
- * Escape characters that have special meaning inside an XML attribute value.
+ * Escape the raw attribute, before xml-js's ambiguous quote pre-escaping.
  *
- * @param {string} value - the attribute value as passed by xml-js (may already contain `&quot;`)
+ * @param {string} _value - xml-js's pre-escaped value
+ * @param {string} name - attribute name
+ * @param {string} _elementName - containing element name
+ * @param {object} element - original element or declaration
  * @returns {string}
  */
-function escapeAttributeValue(value) {
-  return String(value)
-    .replace(/&quot;/g, QUOT_PLACEHOLDER)
+function escapeAttributeValue(_value, name, _elementName, element) {
+  // Literal attribute whitespace is normalized to spaces by XML readers.
+  return String(element.attributes[name])
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(QUOT_PLACEHOLDER_REGEX, '&quot;');
+    .replace(/"/g, '&quot;')
+    .replace(/\t/g, '&#x9;')
+    .replace(/\n/g, '&#xA;')
+    .replace(/\r/g, '&#xD;');
+}
+
+/**
+ * Neutralize xml-js's one-level `&amp;` desanitization of decoded text.
+ * Copy the affected nodes so imported trees and CDATA remain untouched.
+ *
+ * @param {object} node - non-compact XML node or document
+ * @returns {object}
+ */
+function preserveTextEntities(node) {
+  if (node.type === 'text') return { ...node, text: String(node.text).replace(/&/g, '&amp;') };
+  return node.elements ? { ...node, elements: node.elements.map(preserveTextEntities) } : node;
 }
 
 /**
  * Serialize an xml-js non-compact JS object to an XML string with attribute
- * values correctly XML-encoded.
+ * and text values correctly XML-encoded from their exact decoded values.
  *
  * @param {object} jsObject - xml-js non-compact tree (from `xml2js({ compact: false })`)
  * @returns {string}
  */
 export function serializeOpcXml(jsObject) {
-  return xmljs.js2xml(jsObject, { spaces: 0, attributeValueFn: escapeAttributeValue });
+  return xmljs.js2xml(preserveTextEntities(jsObject), {
+    spaces: 0,
+    attributeValueFn: escapeAttributeValue,
+    // Run after xml-js escaping so CR references survive XML line-end normalization.
+    textFn: (text) => text.replace(/\r/g, '&#xD;'),
+  });
 }

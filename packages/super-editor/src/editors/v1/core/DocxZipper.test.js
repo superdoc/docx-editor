@@ -898,3 +898,45 @@ describe('DocxZipper - comment file deletion', () => {
     expect(updatedContentTypes).not.toContain('PartName="/word/commentsExtensible.xml"');
   });
 });
+
+describe('Word people package registry', () => {
+  const types =
+    '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="xml" ContentType="application/xml"/></Types>';
+  const relationship =
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="people" Type="http://schemas.microsoft.com/office/2011/relationships/people" Target="/word/metadata/people-custom.xml"/></Relationships>';
+  const updates = {
+    'word/_rels/document.xml.rels': relationship,
+    'word/metadata/people-custom.xml': '<w15:people xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml"/>',
+  };
+  it.each(['original', 'collaborative', 'updated-docs'])(
+    'registers the actual emitted people target for %s',
+    async (route) => {
+      const zipper = new DocxZipper();
+      const base = [{ name: '[Content_Types].xml', content: types }];
+      let xml;
+      if (route === 'updated-docs') {
+        xml = await zipper.updateContentTypes({ files: base }, {}, true, updates);
+      } else {
+        const zip = new JSZip();
+        zip.file('[Content_Types].xml', types);
+        const result =
+          route === 'original'
+            ? await zipper.exportFromOriginalFile(await zip.generateAsync({ type: 'nodebuffer' }), updates, {})
+            : await zipper.exportFromCollaborativeDocx(base, updates, {}, {});
+        xml = await result.file('[Content_Types].xml').async('string');
+        expect(await result.file('word/metadata/people-custom.xml').async('string')).toBe(
+          updates['word/metadata/people-custom.xml'],
+        );
+      }
+      expect(xml.match(/PartName="\/word\/metadata\/people-custom.xml"/g)).toHaveLength(1);
+      expect(xml).toContain('application/vnd.openxmlformats-officedocument.wordprocessingml.people+xml');
+      const again = await zipper.updateContentTypes(
+        { files: [{ name: '[Content_Types].xml', content: xml }] },
+        {},
+        true,
+        updates,
+      );
+      expect(again.match(/PartName="\/word\/metadata\/people-custom.xml"/g)).toHaveLength(1);
+    },
+  );
+});

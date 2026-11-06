@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as Y from 'yjs';
+import * as xmljs from 'xml-js';
 import { isMigrationNeeded, migrateMetaDocxToParts } from './migration-from-meta-docx.js';
 import { decodeYjsToEnvelope } from './json-crdt.js';
 import { parseXmlToJson } from '../../../core/super-converter/v2/docxHelper.js';
@@ -249,6 +250,31 @@ describe('migration-from-meta-docx', () => {
       // Compare against direct parseXmlToJson — shapes must be identical
       const expected = parseXmlToJson(xml);
       expect(envelope?.data).toEqual(expected);
+    });
+
+    it.each(['p:', ''])('retains legacy raw people whitespace on dynamic paths (prefix %s)', (prefix) => {
+      const namespace = 'http://schemas.microsoft.com/office/word/2012/wordml';
+      const raw = `<${prefix}people xmlns${prefix ? ':p' : ''}="${namespace}" xmlns:v="urn:vendor">\n <${prefix}person xmlns:p="${namespace}" p:author="Old"><${prefix}presenceInfo p:providerId="vendor" p:userId="old&#9;account"/><v:extra xml:space="preserve">  <v:child/> \t <v:child/>  </v:extra></${prefix}person>\n <![CDATA[root &amp; <tag>]]><v:mixed>before&#13;<v:child/>after &amp;amp;</v:mixed>\n</${prefix}people>`;
+      const entries = [{ name: 'word/metadata/people-custom.xml', content: raw }];
+      seedMetaDocx(entries);
+      expect(migrateMetaDocxToParts(ydoc).error).toBeNull();
+      const data = decodeYjsToEnvelope(ydoc.getMap(PARTS_MAP_KEY).get(entries[0].name))?.data;
+      expect(data).toEqual(xmljs.xml2js(raw, { captureSpacesBetweenElements: true }));
+      expect(ydoc.getMap(META_MAP_KEY).get('docx')).toEqual(entries);
+    });
+
+    it('retains an authoritative people object and skips an already-current room part', () => {
+      const path = 'word/current-people.xml';
+      const raw = '<p:people xmlns:p="http://schemas.microsoft.com/office/word/2012/wordml"> <p:person/> </p:people>';
+      const tree = xmljs.xml2js(raw, { captureSpacesBetweenElements: true });
+      const entries = [{ name: path, content: tree }];
+      seedMetaDocx(entries);
+      expect(migrateMetaDocxToParts(ydoc).error).toBeNull();
+      expect(decodeYjsToEnvelope(ydoc.getMap(PARTS_MAP_KEY).get(path))?.data).toEqual(tree);
+      seedMetaDocx([{ name: path, content: raw.replace('> <', '>    <') }]);
+      expect(migrateMetaDocxToParts(ydoc).partsMigrated).toBe(0);
+      expect(decodeYjsToEnvelope(ydoc.getMap(PARTS_MAP_KEY).get(path))?.data).toEqual(tree);
+      expect(entries[0].content).toBe(tree);
     });
   });
 });

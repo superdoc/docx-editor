@@ -1,7 +1,7 @@
-import type { SelectionCapture, SelectionSlice, SelectionTarget } from './types.js';
+import type { SelectionCapture, SelectionPoint, SelectionSlice, SelectionTarget, TextTarget } from './types.js';
 import { readRecord, readRecordList, type LooseRecord } from './loose-record.js';
-import { isPlainObject } from '../../helpers/object-guards.js';
-import { isStoryLocator } from '@superdoc/document-api';
+import { isObjectRecord, isPlainObject } from '../../helpers/object-guards.js';
+import { isStoryLocator, type StoryLocator, type TextAddress, type TextSegment } from '@superdoc/document-api';
 
 export const EMPTY_SELECTION: SelectionSlice = {
   status: 'ready',
@@ -14,17 +14,33 @@ export const EMPTY_SELECTION: SelectionSlice = {
   quotedText: '',
 };
 
+export function textTargetSegments(target: TextTarget | null | undefined): readonly TextSegment[] {
+  return target && Array.isArray(target.segments) ? target.segments : [];
+}
+
+export function selectionPointWithBlockId(
+  point: SelectionPoint | null | undefined,
+): Extract<SelectionPoint, { kind: 'text' }> | undefined {
+  return isObjectRecord(point) && 'blockId' in point ? point : undefined;
+}
+
+function selectionPointBlockId(point: SelectionPoint | undefined): string | undefined {
+  const blockId = selectionPointWithBlockId(point)?.blockId;
+  return typeof blockId === 'string' ? blockId : undefined;
+}
+
+function selectionPointStory(point: SelectionPoint | undefined): StoryLocator | undefined {
+  return isObjectRecord(point) && 'story' in point ? point.story : undefined;
+}
+
 export function selectionBlockRange(selection: SelectionSlice): { startBlockId: string; endBlockId: string } | null {
-  const sel = readRecord(selection.selectionTarget) ?? null;
+  const sel = selection.selectionTarget;
   if (sel) {
-    const start = readRecord(sel.start);
-    const end = readRecord(sel.end);
-    const startBlockId = typeof start?.blockId === 'string' ? start.blockId : undefined;
-    const endBlockId = typeof end?.blockId === 'string' ? end.blockId : startBlockId;
+    const startBlockId = selectionPointBlockId(sel.start);
+    const endBlockId = selectionPointBlockId(sel.end) ?? startBlockId;
     if (startBlockId) return { startBlockId, endBlockId: endBlockId ?? startBlockId };
   }
-  const target = readRecord(selection.target) ?? null;
-  const segments = readRecordList(target?.segments);
+  const segments = textTargetSegments(selection.target);
   const first = segments[0]?.blockId;
   const last = segments[segments.length - 1]?.blockId;
   if (typeof first === 'string') {
@@ -42,13 +58,11 @@ export function selectionBlockIds(selection: SelectionSlice): string[] {
       ids.push(id);
     }
   };
-  const target = readRecord(selection.target) ?? null;
-  const segments = readRecordList(target?.segments);
-  for (const segment of segments) push(segment?.blockId);
-  const sel = readRecord(selection.selectionTarget) ?? null;
+  for (const segment of textTargetSegments(selection.target)) push(segment?.blockId);
+  const sel = selection.selectionTarget;
   if (sel) {
-    push(readRecord(sel.start)?.blockId);
-    push(readRecord(sel.end)?.blockId);
+    push(selectionPointBlockId(sel.start));
+    push(selectionPointBlockId(sel.end));
   }
   return ids;
 }
@@ -59,13 +73,18 @@ export function canProbeEverySelectedBlock(blockIds: readonly string[]): boolean
   return blockIds.length <= MAX_REACTIVE_SELECTION_BLOCK_READS;
 }
 
+export function selectionStoryLocator(selection: SelectionSlice): unknown | undefined {
+  const explicit = selection.selectionTarget;
+  const story =
+    selection.target?.story ??
+    explicit?.story ??
+    selectionPointStory(explicit?.start) ??
+    selectionPointStory(explicit?.end);
+  return story && typeof story === 'object' ? story : undefined;
+}
+
 export function selectionStory(selection: SelectionSlice): LooseRecord {
-  const target = readRecord(selection.target) ?? null;
-  const explicit = readRecord(selection.selectionTarget) ?? null;
-  const start = readRecord(explicit?.start);
-  const end = readRecord(explicit?.end);
-  const story = target?.story ?? explicit?.story ?? start?.story ?? end?.story;
-  return readRecord(story) ?? { kind: 'story', storyType: 'body' };
+  return readRecord(selectionStoryLocator(selection)) ?? { kind: 'story', storyType: 'body' };
 }
 
 export function paragraphTarget(blockId: string, story?: unknown): LooseRecord {
@@ -94,14 +113,13 @@ export function listItemTarget(blockId: string, story?: unknown): LooseRecord {
   };
 }
 
-export function selectionTextAddresses(selection: SelectionSlice): LooseRecord[] {
-  const target = readRecord(selection.target) ?? null;
-  const segments = readRecordList(target?.segments);
+export function selectionTextAddresses(selection: SelectionSlice): TextAddress[] {
+  const target = selection.target;
   const story = target?.story;
-  const addresses: LooseRecord[] = [];
-  for (const segment of segments) {
+  const addresses: TextAddress[] = [];
+  for (const segment of textTargetSegments(target)) {
     if (!segment || typeof segment.blockId !== 'string') continue;
-    const range = readRecord(segment.range);
+    const range = segment.range;
     if (!range || typeof range.start !== 'number' || typeof range.end !== 'number' || range.start === range.end) {
       continue;
     }

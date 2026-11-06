@@ -5,6 +5,9 @@ import { selectionKey } from './format-painter-helpers.js';
 import { isFiniteNumber } from '../../helpers/is-finite-number.js';
 import type { CommandDescriptor } from './commands.js';
 import { CLEAR_INLINE_FORMATTING_KEYS, INLINE_PROPERTY_BY_KEY } from '@superdoc/document-api';
+import { selectionPointWithBlockId, selectionStoryLocator, textTargetSegments } from './selection-targets.js';
+
+export { selectionStoryLocator };
 
 export type EffectiveInlineUniformityState =
   | { state: 'uniform'; value: string }
@@ -84,8 +87,6 @@ export function isProjectedInlineSelectionValueKey(value: string): value is Proj
 }
 
 export function selectionTextSegments(selection: SelectionSlice): SelectionTextSegment[] {
-  const target = readRecord(selection.target) ?? null;
-  const segments = readRecordList(target?.segments);
   const out: SelectionTextSegment[] = [];
 
   const push = (blockId: unknown, start: unknown, end: unknown): void => {
@@ -97,28 +98,19 @@ export function selectionTextSegments(selection: SelectionSlice): SelectionTextS
     });
   };
 
-  for (const segment of segments) {
-    const range = readRecord(segment?.range);
+  for (const segment of textTargetSegments(selection.target)) {
+    const range = segment?.range;
     push(segment?.blockId, range?.start, range?.end);
   }
   if (out.length > 0) return out;
 
-  const explicit = readRecord(selection.selectionTarget) ?? null;
-  const start = readRecord(explicit?.start);
-  const end = readRecord(explicit?.end);
+  const explicit = selection.selectionTarget;
+  const start = selectionPointWithBlockId(explicit?.start);
+  const end = selectionPointWithBlockId(explicit?.end);
   if (!start || !end) return out;
   if (start.blockId !== end.blockId) return out;
   push(start.blockId, start.offset, end.offset);
   return out;
-}
-
-export function selectionStoryLocator(selection: SelectionSlice): unknown | undefined {
-  const target = readRecord(selection.target) ?? null;
-  const explicit = readRecord(selection.selectionTarget) ?? null;
-  const start = readRecord(explicit?.start);
-  const end = readRecord(explicit?.end);
-  const story = target?.story ?? explicit?.story ?? start?.story ?? end?.story;
-  return story && typeof story === 'object' ? story : undefined;
 }
 
 export function selectionInlineValueStorySignature(selection: SelectionSlice): string {

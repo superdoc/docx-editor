@@ -260,6 +260,7 @@ import {
   selectionTextAddresses,
   selectionTargetFromTextTarget,
   textAddressesFromTarget,
+  textTargetSegments,
   type CellSelectionCapture,
   type TextSelectionTarget,
 } from './selection-targets.js';
@@ -2060,9 +2061,8 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
   /** True when a host sync snapshot is a resolved collapsed caret (not a range). */
   const isCollapsedCaretSnapshot = (info: SelectionInfo): boolean => {
     if (info.empty !== true) return false;
-    const target = info.selectionTarget as LooseRecord | null;
-    const start = target?.start as LooseRecord | undefined;
-    const end = target?.end as LooseRecord | undefined;
+    const start = info.selectionTarget?.start;
+    const end = info.selectionTarget?.end;
     return (
       start?.kind === 'text' &&
       end?.kind === 'text' &&
@@ -2711,8 +2711,8 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     selection: SelectionSlice,
   ): { items: ContentControlInfo[]; status: SliceStatus } => {
     const { rows, status } = computeActiveContentControlLockModes(ccApi, selection);
-    const explicitTarget = selection.selectionTarget as LooseRecord | null;
-    const selectionTarget = selection.target as LooseRecord | null;
+    const explicitTarget = selection.selectionTarget;
+    const selectionTarget = selection.target;
     let selectionAnchor: { blockId: string; offset: number; story?: unknown };
     if (explicitTarget) {
       const explicitStart = isPlainObject(explicitTarget.start) ? explicitTarget.start : undefined;
@@ -2726,22 +2726,16 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       }
       selectionAnchor = { blockId: explicitStart.blockId, offset: explicitStart.offset, story: explicitStart.story };
     } else {
-      const firstSegment =
-        selectionTarget?.kind === 'text' && Array.isArray(selectionTarget.segments)
-          ? (selectionTarget.segments[0] as LooseRecord | undefined)
-          : undefined;
-      const firstRange = firstSegment?.range as LooseRecord | undefined;
+      const firstSegment = selectionTarget?.kind === 'text' ? textTargetSegments(selectionTarget)[0] : undefined;
+      const firstRange = firstSegment?.range;
       if (typeof firstSegment?.blockId !== 'string' || typeof firstRange?.start !== 'number') {
         return retainSettledActiveContentControls([], status);
       }
       selectionAnchor = { blockId: firstSegment.blockId, offset: firstRange.start, story: selectionTarget?.story };
     }
-    const visibleSegments =
-      selectionTarget?.coordinateSpace !== 'tracked' && Array.isArray(selectionTarget?.segments)
-        ? (selectionTarget.segments as LooseRecord[])
-        : [];
+    const visibleSegments = selectionTarget?.coordinateSpace !== 'tracked' ? textTargetSegments(selectionTarget) : [];
     const visibleSegment = visibleSegments.find((segment) => segment.blockId === selectionAnchor.blockId);
-    const visibleRange = visibleSegment?.range as LooseRecord | undefined;
+    const visibleRange = visibleSegment?.range;
     const visibleStart =
       visibleSegment && typeof visibleSegment.blockId === 'string' && typeof visibleRange?.start === 'number'
         ? {
@@ -2923,8 +2917,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     if (typeof pattern !== 'string' || pattern.length === 0) return null;
     const segments = selectionTextSegments(selection);
     if (segments.length === 0 || !canProbeEverySelectedBlock(segments.map((segment) => segment.blockId))) return null;
-    const target = selection.target as LooseRecord | null;
-    const within = segments.length === 1 ? paragraphTarget(segments[0].blockId, target?.story) : undefined;
+    const within = segments.length === 1 ? paragraphTarget(segments[0].blockId, selection.target?.story) : undefined;
     return {
       select: { type: 'text', pattern, mode: 'contains', caseSensitive: true },
       ...(within ? { within } : {}),
@@ -4171,12 +4164,10 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     const linkEnd = typeof end?.offset === 'number' ? end.offset : null;
     if (linkStart == null || linkEnd == null) return false;
 
-    const target = selection.target as LooseRecord | null;
-    const segments = target && Array.isArray(target.segments) ? (target.segments as LooseRecord[]) : [];
-    for (const segment of segments) {
+    for (const segment of textTargetSegments(selection.target)) {
       const segmentBlockId = typeof segment?.blockId === 'string' ? segment.blockId : null;
       if (!segmentBlockId) continue;
-      const range = segment.range as LooseRecord | undefined;
+      const range = segment.range;
       const rangeStart = typeof range?.start === 'number' ? range.start : null;
       const rangeEnd = typeof range?.end === 'number' ? range.end : null;
       if (rangeStart == null || rangeEnd == null) continue;
@@ -6251,9 +6242,9 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     if (!selection.selectionTarget && selection.trackedTarget) {
       return { kind: 'range', coordinateSpace: 'tracked', range: selection.trackedTarget };
     }
-    const explicit = selection.selectionTarget as LooseRecord | null;
-    const start = explicit?.start as LooseRecord | undefined;
-    const end = explicit?.end as LooseRecord | undefined;
+    const explicit = selection.selectionTarget;
+    const start = explicit?.start;
+    const end = explicit?.end;
     if (start?.kind === 'text' && end?.kind === 'text' && start.blockId !== end.blockId) {
       const range = selection.trackedTarget;
       return range ? { kind: 'range', coordinateSpace: 'tracked', range } : null;
@@ -6266,14 +6257,14 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       start.blockId !== end.blockId ||
       !Number.isInteger(start.offset) ||
       !Number.isInteger(end.offset) ||
-      (start.offset as number) < 0 ||
-      (end.offset as number) < 0 ||
+      start.offset < 0 ||
+      end.offset < 0 ||
       start.offset === end.offset
     ) {
       return null;
     }
-    const rangeStart = Math.min(start.offset as number, end.offset as number);
-    const rangeEnd = Math.max(start.offset as number, end.offset as number);
+    const rangeStart = Math.min(start.offset, end.offset);
+    const rangeEnd = Math.max(start.offset, end.offset);
     const story = selectionStoryLocator(selection);
     return {
       kind: 'range',

@@ -225,7 +225,7 @@ describe('SuperDoc.upgradeToCollaboration', () => {
   describe('when the instance is destroyed during the upgrade', () => {
     const destroyedDuringUpgrade = 'SuperDoc: instance was destroyed during upgrade';
 
-    const startUpgrade = async (engineUpgrade: () => Promise<void>, pendingSave?: () => Promise<Blob>) => {
+    const mountUpgrade = (engineUpgrade: () => Promise<void>, pendingSave?: () => Promise<Blob>) => {
       const selector = document.createElement('div');
       document.body.append(selector);
       const instance = new SuperDoc({ selector, telemetry: { enabled: false } });
@@ -246,15 +246,23 @@ describe('SuperDoc.upgradeToCollaboration', () => {
       const upgrade = instance.upgradeToCollaboration({
         collaboration: { providerType: 'y-websocket', documentId: 'room', serverUrl: 'wss://example.test' },
       } as never);
-      const blockedStep = pendingSave ? save : upgradeToCollaboration;
-      await vi.waitFor(() => expect(blockedStep).toHaveBeenCalledTimes(1));
-      instance.destroy();
       const stateAtDestroy = () => ({
         configDoc: { ...configDoc },
         storeDoc: { ...storeDoc },
         keepsSourceData: configDoc.data === source && storeDoc.data === source,
         isCollaborative: instance.isCollaborative,
       });
+      return { instance, upgrade, save, upgradeToCollaboration, stateAtDestroy };
+    };
+
+    const startUpgrade = async (engineUpgrade: () => Promise<void>, pendingSave?: () => Promise<Blob>) => {
+      const { instance, upgrade, save, upgradeToCollaboration, stateAtDestroy } = mountUpgrade(
+        engineUpgrade,
+        pendingSave,
+      );
+      const blockedStep = pendingSave ? save : upgradeToCollaboration;
+      await vi.waitFor(() => expect(blockedStep).toHaveBeenCalledTimes(1));
+      instance.destroy();
       return { upgrade, upgradeToCollaboration, stateAtDestroy, expectedState: stateAtDestroy() };
     };
 
@@ -270,6 +278,26 @@ describe('SuperDoc.upgradeToCollaboration', () => {
       );
       const outcome = Promise.allSettled([upgrade]);
       finishUpgrade();
+      expect(await outcome).toEqual([{ status: 'rejected', reason: new Error(destroyedDuringUpgrade) }]);
+      await flushPendingWork();
+      expect(stateAtDestroy()).toEqual(expectedState);
+    });
+
+    it('rejects the caller and does not finalize when destroy() runs after the engine attach resolves', async () => {
+      let finishUpgrade!: () => void;
+      const attached = new Promise<void>((resolve) => {
+        finishUpgrade = resolve;
+      });
+      const { instance, upgrade, upgradeToCollaboration, stateAtDestroy } = mountUpgrade(() => attached);
+      await vi.waitFor(() => expect(upgradeToCollaboration).toHaveBeenCalledTimes(1));
+      const destroyedState = attached.then(() => {
+        instance.destroy();
+        return stateAtDestroy();
+      });
+      const outcome = Promise.allSettled([upgrade]);
+      finishUpgrade();
+      const expectedState = await destroyedState;
+      expect(expectedState.configDoc.v2Collaboration).toMatchObject({ roomMode: 'create' });
       expect(await outcome).toEqual([{ status: 'rejected', reason: new Error(destroyedDuringUpgrade) }]);
       await flushPendingWork();
       expect(stateAtDestroy()).toEqual(expectedState);

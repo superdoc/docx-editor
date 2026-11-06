@@ -2060,6 +2060,7 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
     try {
       this.#pendingV2LockSeed = lockSeed;
       const promotion = await this.#promoteSingleDocumentToV2Collaboration(target, localSource);
+      this.#assertNotDestroyed();
       this.#finalizeSingleDocumentV2Collaboration(promotion, target);
       this.#pendingV2LockSeed = null;
       const attachedDocumentId = (this.activeEditor as ActiveEditor | null)?.options?.documentId;

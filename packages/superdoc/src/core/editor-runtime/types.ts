@@ -427,6 +427,7 @@ export type EditorRuntimeUnsubscribe = () => void;
  * computeds without forcing them async in current implementation.
  */
 export interface EditorRuntimeUser {
+  commentIdentity?: { providerId: string; userId: string } | null;
   name: string;
   id?: string;
   email?: string;

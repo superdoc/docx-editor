@@ -8128,6 +8128,17 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
         authorId: { type: 'string', minLength: 1, description: 'Stable caller-owned author id.' },
         authorEmail: { type: 'string', minLength: 1, description: 'Caller-owned author email.' },
         authorImage: { type: 'string', minLength: 1, description: 'Caller-owned author image URL.' },
+        authorIdentity: {
+          anyOf: [
+            objectSchema({ providerId: { type: 'string', minLength: 1 }, userId: { type: 'string', minLength: 1 } }, [
+              'providerId',
+              'userId',
+            ]),
+            { type: 'null' },
+          ],
+          description:
+            'Explicit provider-issued comment account. Omitted author attribution inherits the configured identity; explicit author fields opt out of a configured identity unless a pair is supplied. Null explicitly opts out. Unconfigured identities keep existing name-only export behavior.',
+        },
         metadata: commentMetadataSchema,
         expectedText: {
           type: 'string',

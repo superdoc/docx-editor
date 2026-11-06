@@ -479,6 +479,7 @@ export interface V2AuthoringFacade {
  * `#assignUserColor()` after `#init`.
  */
 export interface User {
+  commentIdentity?: { providerId: string; userId: string } | null;
   /** Stable application user id. Collaborative change records report it as the actor id. */
   id?: string | null;
   name?: string | null;

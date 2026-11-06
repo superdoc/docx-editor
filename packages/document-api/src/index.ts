@@ -4345,3 +4345,5 @@ function rejectMutationPlanAuthorOptions(options: unknown): void {
     throw new DocumentApiValidationError('INVALID_INPUT', 'Put the mutation plan author in the tracked plan input.');
   }
 }
+
+export { normalizeCommentIdentity } from './comments/comment-create-attribution.js';

@@ -28,3 +28,11 @@ describe('normalizeSuperDocUser', () => {
     });
   });
 });
+
+it('validates and owns a configured comment identity', () => {
+  const commentIdentity = { providerId: 'AD', userId: 'S::ada@example.test::opaque' };
+  const normalized = normalizeSuperDocUser({ name: 'Ada', commentIdentity });
+  commentIdentity.userId = 'mutated';
+  expect(normalized.commentIdentity?.userId).toBe('S::ada@example.test::opaque');
+  expect(() => normalizeSuperDocUser({ commentIdentity: { providerId: 'AD', userId: '\u0000' } })).toThrow(TypeError);
+});

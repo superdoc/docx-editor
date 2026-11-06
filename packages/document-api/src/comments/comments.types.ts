@@ -23,6 +23,7 @@ export type CommentMetadata = Readonly<Record<string, CommentMetadataValue>>;
 
 /** Optional caller-owned identity and authorship for a newly-created comment. */
 export interface CommentCreateAttributionInput {
+  authorIdentity?: { providerId: string; userId: string } | null;
   /**
    * Durable document-scoped integration id, distinct from the Word-compatible
    * `commentId` returned by the operation. Must be unique when provided and no

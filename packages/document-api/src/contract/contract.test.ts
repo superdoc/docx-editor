@@ -1144,6 +1144,7 @@ describe('document-api contract catalog', () => {
         authorId: expect.any(Object),
         authorEmail: expect.any(Object),
         authorImage: expect.any(Object),
+        authorIdentity: expect.any(Object),
         metadata: expect.any(Object),
       }),
     );

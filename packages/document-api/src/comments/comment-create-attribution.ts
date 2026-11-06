@@ -15,6 +15,7 @@ export function normalizeCommentCreateAttribution(
     input.authorId === undefined &&
     input.authorEmail === undefined &&
     input.authorImage === undefined &&
+    input.authorIdentity === undefined &&
     input.metadata === undefined
   ) {
     return null;
@@ -39,6 +40,7 @@ export function normalizeCommentCreateAttribution(
     ...(input.authorId !== undefined ? { authorId: input.authorId } : {}),
     ...(input.authorEmail !== undefined ? { authorEmail: input.authorEmail } : {}),
     ...(input.authorImage !== undefined ? { authorImage: input.authorImage } : {}),
+    ...(input.authorIdentity !== undefined ? { authorIdentity: normalizeAuthorIdentity(input.authorIdentity) } : {}),
     ...(input.metadata !== undefined ? { metadata: normalizeCommentMetadata(input.metadata) } : {}),
   };
 }
@@ -147,4 +149,41 @@ function invalidCommentMetadata(path: string, requirement: string): DocumentApiV
   return new DocumentApiValidationError('INVALID_INPUT', `${path} is invalid: ${requirement}.`, {
     field: path,
   });
+}
+
+function normalizeAuthorIdentity(value: unknown): { providerId: string; userId: string } | null {
+  try {
+    if (value !== null && !isPlainObject(value)) throw new TypeError('Invalid comment provider identity.');
+    return normalizeCommentIdentity(value);
+  } catch (error) {
+    if (!(error instanceof TypeError)) throw error;
+    throw new DocumentApiValidationError(
+      'INVALID_INPUT',
+      'authorIdentity requires XML-safe non-empty providerId and userId strings.',
+      { field: 'authorIdentity' },
+    );
+  }
+}
+
+export function normalizeCommentIdentity(value: unknown): { providerId: string; userId: string } | null {
+  if (value === null) return null;
+  if (
+    typeof value !== 'object' ||
+    Array.isArray(value) ||
+    !('providerId' in value) ||
+    !('userId' in value) ||
+    !xmlIdentityString(value.providerId) ||
+    !xmlIdentityString(value.userId)
+  ) {
+    throw new TypeError('commentIdentity requires XML-safe non-empty providerId and userId strings.');
+  }
+  return { providerId: value.providerId, userId: value.userId };
+}
+
+function xmlIdentityString(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.trim().length > 0 &&
+    !/[^\u0009\u000A\u000D\u0020-\uD7FF\uE000-\uFFFD\u{10000}-\u{10FFFF}]/u.test(value)
+  );
 }

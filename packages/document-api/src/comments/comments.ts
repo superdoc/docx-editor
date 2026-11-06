@@ -275,6 +275,7 @@ const CREATE_COMMENT_ALLOWED_KEYS = new Set([
   'authorId',
   'authorEmail',
   'authorImage',
+  'authorIdentity',
   'metadata',
   'expectedText',
 ]);
@@ -632,6 +633,7 @@ function projectCommentCreationInput(input: CommentsCreateInput): Omit<AddCommen
     ...(input.authorId !== undefined ? { authorId: input.authorId } : {}),
     ...(input.authorEmail !== undefined ? { authorEmail: input.authorEmail } : {}),
     ...(input.authorImage !== undefined ? { authorImage: input.authorImage } : {}),
+    ...(input.authorIdentity !== undefined ? { authorIdentity: input.authorIdentity } : {}),
     ...(input.metadata !== undefined ? { metadata: input.metadata } : {}),
   };
 }

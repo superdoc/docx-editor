@@ -64,6 +64,7 @@ void directWithAuthor;
 
 const comment: OperationInput<'comments.create'> = {
   text: 'Why?',
+  authorIdentity: { providerId: 'AD', userId: 'S::ada@example.test::opaque' },
   target: { kind: 'trackedChange', trackedChangeId: 'tc-1' },
 };
 void Promise.resolve(doc.comments.create(comment)).then((receipt: OperationOutput<'comments.create'>) => receipt);
@@ -77,3 +78,14 @@ export type {
   NoOptions,
   Ids,
 };
+
+type CommentIdentityInput = Assert<
+  Equal<OperationInput<'comments.create'>['authorIdentity'], { providerId: string; userId: string } | null | undefined>
+>;
+type CommentPartialPairRejected = Assert<
+  Equal<
+    { providerId: string } extends NonNullable<OperationInput<'comments.create'>['authorIdentity']> ? true : false,
+    false
+  >
+>;
+export type { CommentIdentityInput, CommentPartialPairRejected };

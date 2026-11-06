@@ -1,4 +1,5 @@
-import type { SuperDoc, User } from 'superdoc';
+import { normalizeCommentIdentity } from '@superdoc/document-api';
+import type { SuperDoc, User, Config } from 'superdoc';
 
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
 type AssertEqual<A, B> = Equal<A, B> extends true ? true : never;
@@ -16,3 +17,25 @@ void _switched;
 void sd.setUser();
 
 void [_paramsOk, _returnOk];
+
+const _pair: AssertEqual<User['commentIdentity'], { providerId: string; userId: string } | null | undefined> = true;
+const _bound: Promise<void> = sd.setUser({
+  name: 'Ada',
+  commentIdentity: { providerId: 'AD', userId: 'S::ada@example.test::opaque' },
+});
+const _unbound: Promise<void> = sd.setUser({ name: 'Ada', commentIdentity: null });
+type PartialPairRejected = { providerId: string } extends NonNullable<User['commentIdentity']> ? false : true;
+const _partialRejected: PartialPairRejected = true;
+void [_pair, _bound, _unbound, _partialRejected];
+
+const _configured: Pick<Config, 'user'> = {
+  user: { name: 'Ada', commentIdentity: { providerId: 'AD', userId: 'opaque' } },
+};
+void _configured;
+
+const _normalizedPair: AssertEqual<
+  ReturnType<typeof normalizeCommentIdentity>,
+  NonNullable<User['commentIdentity']> | null
+> = true;
+const _normalizedIdentity: User['commentIdentity'] = normalizeCommentIdentity({ providerId: 'AD', userId: 'opaque' });
+void [_normalizedPair, _normalizedIdentity];

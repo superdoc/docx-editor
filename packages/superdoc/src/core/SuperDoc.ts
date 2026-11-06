@@ -650,6 +650,9 @@ function runtimeUserOf(user: User): EditorRuntimeUser {
   const text = (value: unknown) => (typeof value === 'string' && value ? value : undefined);
   return {
     name: text(user.name) ?? '',
+    ...(user.commentIdentity !== undefined
+      ? { commentIdentity: user.commentIdentity ? { ...user.commentIdentity } : null }
+      : {}),
     ...(text(user.id) ? { id: text(user.id) } : {}),
     ...(text(user.email) ? { email: text(user.email) } : {}),
     ...(text(user.initials) ? { initials: text(user.initials) } : {}),
@@ -1087,6 +1090,7 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
       throw new Error('SuperDoc: selector must be a valid CSS selector string or DOM element');
     }
 
+    const user = normalizeSuperDocUser(config.user);
     this.#diagnostics = createInteractionHistory(this, config, () => this.version, container);
 
     // SurfaceManager must exist before `#init` returns control to the
@@ -1107,7 +1111,7 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
     container.addEventListener('keydown', this.#handleContentControlKeyDown, true);
     container.addEventListener('click', this.#handleContentControlClick, true);
     this.#onConfig('content-control:active-change', config.onContentControlActiveChange);
-    void this.#init(config, container);
+    void this.#init({ ...config, user }, container);
     this.#contentControlEventBridgeReady = true;
     if (this.listenerCount('content-control:active-change') > 0) void this.ui;
   }
@@ -1173,8 +1177,6 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
     // is ignored and cannot select a legacy runtime.
     this.editorVersion = 2;
     this.#validateLegacyConfig();
-
-    this.config.user = normalizeSuperDocUser(this.config.user);
 
     // Enable virtualization by default for better performance on large documents.
     // Only renders visible pages (~5) instead of all pages.
@@ -2461,7 +2463,12 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
     this.#requireReady('setUser');
     const name = typeof user?.name === 'string' ? user.name.trim() : '';
     if (!name) return Promise.reject(new TypeError('SuperDoc.setUser requires a non-empty user name.'));
-    const next = normalizeSuperDocUser({ ...user, name });
+    let next: User;
+    try {
+      next = normalizeSuperDocUser({ ...user, name });
+    } catch (error) {
+      return Promise.reject(error);
+    }
     const applied = this.#userSwitch.then(() => this.#applyUser(next));
     this.#userSwitch = applied.catch(() => {});
     return applied;
@@ -2472,7 +2479,14 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
   async #applyUser(next: User): Promise<void> {
     const current = this.config.user;
     const fields = ['id', 'name', 'email', 'image', 'initials'] as const;
-    if (current && fields.every((key) => (current[key] ?? null) === (next[key] ?? null))) return;
+    if (
+      current &&
+      fields.every((key) => (current[key] ?? null) === (next[key] ?? null)) &&
+      (current.commentIdentity === undefined) === (next.commentIdentity === undefined) &&
+      (current.commentIdentity?.providerId ?? null) === (next.commentIdentity?.providerId ?? null) &&
+      (current.commentIdentity?.userId ?? null) === (next.commentIdentity?.userId ?? null)
+    )
+      return;
     const runtimes = this.#editorRuntimeRegistry.getAll();
     const results = await Promise.allSettled(runtimes.map((runtime) => runtime.setUser?.(runtimeUserOf(next))));
     const failure = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');

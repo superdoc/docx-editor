@@ -1,3 +1,4 @@
+import { normalizeCommentIdentity } from '@superdoc/document-api';
 import type { User } from '../types/index.js';
 
 /** Public compatibility identity used when a consumer omits `config.user`. */
@@ -17,5 +18,6 @@ export function normalizeSuperDocUser(user: User | null | undefined): User {
   return {
     ...DEFAULT_SUPERDOC_USER,
     ...user,
+    ...(user.commentIdentity !== undefined ? { commentIdentity: normalizeCommentIdentity(user.commentIdentity) } : {}),
   };
 }

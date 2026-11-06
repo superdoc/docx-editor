@@ -101,7 +101,7 @@
     },
     {
       "name": "user",
-      "type": "{\n  color?: string;\n  id?: null | string;\n  name?: null | string;\n  email?: null | string;\n  image?: null | string;\n  claim?: string | (ctx: UserClaimContext) => string | Promise<string>;\n}",
+      "type": "{\n  color?: string;\n  commentIdentity?: null | { providerId: string; userId: string; };\n  id?: null | string;\n  name?: null | string;\n  email?: null | string;\n  image?: null | string;\n  claim?: string | (ctx: UserClaimContext) => string | Promise<string>;\n}",
       "typeName": "AwarenessUser",
       "required": false,
       "description": "The current user of this SuperDoc. Typed as `AwarenessUser` (an extension of `User` with the optional `color` field) so consumers can pass an explicit awareness color and have the runtime honor it as an override - `SuperDoc#assignUserColor()` skips its hash-based assignment when `user.color` is already set.",
@@ -430,7 +430,7 @@
     },
     {
       "name": "lockedBy",
-      "type": "{\n  id?: null | string;\n  name?: null | string;\n  email?: null | string;\n  image?: null | string;\n  claim?: string | (ctx: UserClaimContext) => string | Promise<string>;\n}",
+      "type": "{\n  commentIdentity?: null | { providerId: string; userId: string; };\n  id?: null | string;\n  name?: null | string;\n  email?: null | string;\n  image?: null | string;\n  claim?: string | (ctx: UserClaimContext) => string | Promise<string>;\n}",
       "typeName": "User",
       "required": false,
       "description": "User associated with the initial shared lock metadata.",

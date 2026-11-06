@@ -39,6 +39,32 @@ afterEach(() => {
 });
 
 describe('SuperDoc.setUser', () => {
+  it('rejects an invalid configured account synchronously before initialization', () => {
+    const selector = document.createElement('div');
+    document.body.append(selector);
+    expect(
+      () => new SuperDoc({ selector, user: { name: 'Ada', commentIdentity: { providerId: 'AD', userId: '' } } }),
+    ).toThrow(TypeError);
+  });
+
+  it('returns a rejected promise for an invalid switched account without changing the user', async () => {
+    const { instance, setUser } = mountReady({ user: { name: 'Ada' } });
+    await expect(instance.setUser({ name: 'Bea', commentIdentity: { providerId: 'AD', userId: '' } })).rejects.toThrow(
+      TypeError,
+    );
+    expect(instance.config.user?.name).toBe('Ada');
+    expect(setUser).not.toHaveBeenCalled();
+  });
+
+  it('propagates explicit comment opt-out and return to an absent identity', async () => {
+    const { instance, setUser } = mountReady({ user: { name: 'Ada' } });
+    await instance.setUser({ name: 'Ada', commentIdentity: null });
+    expect(setUser).toHaveBeenLastCalledWith({ name: 'Ada', commentIdentity: null });
+    await instance.setUser({ name: 'Ada' });
+    expect(setUser).toHaveBeenLastCalledWith({ name: 'Ada' });
+    expect(setUser).toHaveBeenCalledTimes(2);
+  });
+
   it('switches every open document and replaces the stored user in place, clearing omitted fields', async () => {
     const { instance, setUser, storeUser } = mountReady({
       user: { name: 'Jordan Lee', email: 'jordan@example.com', image: 'jordan.png' },
@@ -101,4 +127,20 @@ describe('SuperDoc.setUser', () => {
     expect(instance.config.user?.name).toBe('Jordan Lee');
     expect(setUser.mock.calls.map(([user]) => user.name)).toEqual(['Sam Ortiz', 'Jordan Lee']);
   });
+});
+
+it('applies a pair-only change and owns the queued provider input', async () => {
+  const { instance, setUser } = mountReady({
+    user: { name: 'Ada', commentIdentity: { providerId: 'AD', userId: 'old' } },
+  });
+  const pair = { providerId: 'AD', userId: 'S::ada@example.test::new' };
+  const switched = instance.setUser({ name: 'Ada', commentIdentity: pair });
+  pair.userId = 'mutated';
+  await switched;
+  expect(setUser).toHaveBeenCalledWith({
+    name: 'Ada',
+    commentIdentity: { providerId: 'AD', userId: 'S::ada@example.test::new' },
+  });
+  await instance.setUser({ name: 'Ada', commentIdentity: null });
+  expect(setUser).toHaveBeenLastCalledWith({ name: 'Ada', commentIdentity: null });
 });

@@ -6,6 +6,8 @@ description: Read edit attribution from collaborative story updates and schedule
 
 Your Hocuspocus server can distinguish edits made through SuperDoc's built-in UI from public API calls by reading `lastEditActorType` on each story shard. An application toolbar that calls the Document API is `code`, even when a person clicks it. Count **both** values when scheduling saved versions for those edits.
 
+This signal says whether an edit came from the UI or from code, not who made it. To attribute edits to users, see [Record who changed what](/editor/collaboration/record-changes).
+
 ## Compatibility contract
 
 For SuperDoc 2.x, the following attribution contract is supported:

@@ -106,7 +106,7 @@ After applying, read the draft the same way you read the firm's document. `query
 
 - **Linked styles.** `styles.create` cannot redefine half of a linked pair. Word links Heading 1 to Heading 1 Char, so built-in headings cannot be edited through the guide yet. The catalog's `link` field names the other half. The example marks those styles read-only.
 - **Theme edits.** No operation writes the theme. The template carries the firm document's theme unchanged.
-- **Table styles.** `doc.get()` reads table styles, including conditional formatting per region. `styles.create` writes paragraph and character styles only.
+- **Table styles.** `doc.get()` reads table styles, including conditional formatting per region. `styles.create` writes paragraph and character styles only. To give a table one of Word's built-in table styles, see [Apply a Word table style](/document-api/table-styles).
 - **Headers and footers.** The template's headers and footers are adopted with the rest. Use a source document without them if drafts should keep their own.
 - **Applying again.** Applying the same template a second time adds another copy of its headers, footers, and list definitions. Apply it once per draft.
 - **Shared rooms.** `templates.apply` is not available in a shared room. Apply the template before the draft joins a room.

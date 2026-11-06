@@ -4,7 +4,7 @@ navTitle: Tools
 description: Understand the action surface a model sees, and narrow it when a workflow should not reach every operation.
 ---
 
-A preset is the tool surface a model sees: the tool definitions, the system prompt describing them, and the dispatcher that runs them. The SDK ships two.
+A preset is the tool surface a model sees: the tool definitions, the system prompt describing them, and the dispatcher that runs them. The SDK ships `core` and `legacy`, plus `full` in beta.
 
 ## The core preset
 
@@ -64,6 +64,23 @@ It remains the default when `preset` is omitted, so code written before presets 
 - A `createAgentToolkit()` call with no `preset` gets legacy, not core.
 
 Build new integrations on `core`. Use `legacy` when you already have one running on it, and see [Legacy tools](/agents/build/legacy-tools) for what it advertises and how to move.
+
+## The full preset (beta)
+
+`preset: 'full'` keeps the two core tools and adds two, so the model can reach the whole Document API:
+
+| Tool                  | Purpose                                                          |
+| --------------------- | ---------------------------------------------------------------- |
+| `superdoc_api_search` | Search the Document API and read an operation's parameters       |
+| `superdoc_api_call`   | Run one Document API operation, or several in order as one batch |
+
+```ts
+import { createAgentToolkit } from '@superdoc/sdk';
+
+const { tools, systemPrompt, dispatch } = await createAgentToolkit({ provider: 'openai', preset: 'full' });
+```
+
+Use it when a workflow needs operations the core actions do not cover, such as [Word table styles](/document-api/table-styles), page setup, or headers and footers. While it is in beta, its tools and prompt can change between releases, so pin the SDK version. If your loop dispatches only the tools it expects, add the two new ones. The Node.js and Python SDKs offer it. The MCP server does not.
 
 ## Replay a call without the model
 

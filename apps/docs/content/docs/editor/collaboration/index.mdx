@@ -32,6 +32,8 @@ Collaboration works with built-in controls, custom controls, or a mix of both. Y
 
 Your application still decides who can access the document and how it is saved. Those are server responsibilities, separate from showing another person's edits.
 
+To know who made each edit, read SuperDoc's change records and copy them to your own store. See [Record who changed what](/editor/collaboration/record-changes).
+
 ## Insert bookmark anchors
 
 In a V2 collaboration room, `doc.bookmarks.insert()` supports a text range within one paragraph of the document body, including a zero-length range for an insertion-point bookmark. Wait for `collaboration-ready` before calling it. The bookmark's start and end offsets are preserved in `bookmarks.get()` and `bookmarks.list()`, on connected peers, and when exporting and reopening the DOCX.

@@ -1,0 +1,166 @@
+---
+title: Apply a Word table style
+navTitle: Table styles
+description: Give a table one of Word's 105 built-in table styles, such as Grid Table 4 or List Table 3, from your code or from an agent.
+---
+
+SuperDoc includes Word's 105 built-in table styles, the ones in Word's **Table Design** gallery. `tables.applyPreset` gives a table one of them. In Word, the table uses that named style, and its colors follow the document's theme.
+
+Two operations do the work:
+
+- `tables.listPresets` finds a style and returns its preset ID.
+- `tables.applyPreset` applies it to a table.
+
+## Try it
+
+This Node.js script styles the first table in `pricing.docx` as **Grid Table 4 - Accent 1**. Install the [Node.js SDK](/agents/automation/node-sdk), save the script as `table-style.ts`, and put a DOCX with a table next to it:
+
+<include>../../../snippets/headless/table-style.ts</include>
+
+```bash
+npx tsx table-style.ts
+```
+
+It prints the seven Grid Table 4 presets, applies one, and prints the table's style ID, `GridTable4-Accent1`. Open `pricing.styled.docx` in Word to see the result.
+
+The same calls work in the browser editor, through `superdoc.activeEditor.doc`, and in the other SDKs:
+
+```ts
+// Browser
+const doc = superdoc.activeEditor?.doc;
+await doc?.tables.applyPreset({ nodeId, preset: 'word.list-table-3', styleOptions: { headerRow: true } });
+```
+
+```python
+# Python
+page = document.tables.list_presets({"source": "word", "query": "List Table 3"})
+document.tables.apply_preset({"nodeId": node_id, "preset": "word.list-table-3", "styleOptions": {"headerRow": True}})
+```
+
+```bash
+# CLI
+superdoc tables list-presets --query "Grid Table 4"
+superdoc tables apply-preset --node-id TABLE_ID --preset word.grid-table-4-accent-1 --style-options-json '{"headerRow":true,"bandedRows":true}'
+```
+
+In Rust, the calls are `tables().list_presets(&params)` and `tables().apply_preset(&params)` on `doc.api()`.
+
+`nodeId` identifies the table. Get it from `blocks.list({ nodeTypes: ['table'] })`, or in the browser from `superdoc.ui.tables.getContext().tableNodeId` for the table under the cursor. Read the context right before the call, not from a cached copy.
+
+## Find a style
+
+Preset IDs follow Word's style names:
+
+| Word style                                  | Preset ID                                                                            |
+| ------------------------------------------- | ------------------------------------------------------------------------------------ |
+| Table Grid                                  | `word.table-grid`                                                                    |
+| Table Grid Light                            | `word.grid-table-light`                                                              |
+| Plain Table 1 to 5                          | `word.plain-table-1` to `word.plain-table-5`                                         |
+| Grid Table 1 Light to Grid Table 7 Colorful | `word.grid-table-1-light`, `-2`, `-3`, `-4`, `-5-dark`, `-6-colorful`, `-7-colorful` |
+| List Table 1 Light to List Table 7 Colorful | `word.list-table-1-light`, `-2`, `-3`, `-4`, `-5-dark`, `-6-colorful`, `-7-colorful` |
+| Accent 1 to 6 of a Grid or List Table       | Add `-accent-1` to `-accent-6`, for example `word.grid-table-4-accent-1`             |
+
+`tables.listPresets` searches the catalog. It reads no document, so its result is the same for every file:
+
+| Input    | Meaning                                                                                                         |
+| -------- | --------------------------------------------------------------------------------------------------------------- |
+| `source` | `word` for Word's styles, `superdoc` for [SuperDoc's four presets](#superdoc-presets).                          |
+| `group`  | `plain`, `grid`, `list` or `convenience`.                                                                       |
+| `query`  | Matches IDs, names and appearance terms, such as `Grid Table 4`, `shading banded rows` or `horizontal borders`. |
+| `limit`  | 1 to 25. The default is 25.                                                                                     |
+| `offset` | Where the page starts.                                                                                          |
+
+The result has `items`, the filtered `total`, `offset` and `nextOffset`. A page can hold fewer than `limit` items, so call again with `offset: nextOffset` until `nextOffset` is `null`. Each item has `id`, `name`, `source`, `group`, `accent` (1 to 6, or `null`) and `appearance`.
+
+To list the table styles a document already contains, call `tables.getStyles` instead.
+
+## Choose a style by its look
+
+Each Word preset describes how it looks in `appearance`. This is `word.grid-table-4-accent-1`:
+
+```json
+{
+  "header": {
+    "treatment": ["shading", "bold", "borders"],
+    "fill": { "themeColor": "accent1" },
+    "textColor": { "themeColor": "background1" }
+  },
+  "bandedRows": { "effect": "shading", "fill": { "themeColor": "accent1", "tint": "33" } },
+  "borders": { "layout": "grid", "color": { "themeColor": "accent1", "tint": "99" } }
+}
+```
+
+| Field               | Values                                                                                              |
+| ------------------- | --------------------------------------------------------------------------------------------------- |
+| `header.treatment`  | Any of `shading`, `bold` and `borders`. `fill` and `textColor` give the header's colors.            |
+| `bandedRows.effect` | `none`, `shading`, `borders` or `shadingAndBorders`. `borders` adds lines between rows but no fill. |
+| `borders.layout`    | `none`, `horizontal`, `outer`, `outerAndHorizontal` or `grid`.                                      |
+| `baseFill`          | Present when the whole table has a fill.                                                            |
+
+Colors name a theme slot, not a fixed color. `accent1` is blue in Word's default theme, and can be green or any other color in a branded document. To get the real color, read `styles.getTheme()`:
+
+1. For `text1`, `background1`, `text2` and `background2`, look up `t1`, `bg1`, `t2` or `bg2` in `theme.colorSchemeMapping` to get a slot name. Without a mapping, Word uses `dk1`, `lt1`, `dk2` and `lt2`.
+2. For `accent1` to `accent6`, use the mapping's entry when there is one, otherwise the slot with the same name.
+3. Read the slot's hex value from `theme.colorScheme`.
+4. Apply `tint` (lighter, toward white) or `shade` (darker, toward black). Each is a hex byte from `00` to `FF`, as in Word's `w:themeTint` and `w:themeShade`.
+
+`appearance` covers the header, the first banded row and the main borders. A property it leaves out is inherited, not white or borderless. Direct formatting on cells and text overrides the style.
+
+## Turn table regions on and off
+
+`styleOptions` matches the checkboxes under **Table Style Options** in Word:
+
+| Flag            | Word checkbox  |
+| --------------- | -------------- |
+| `headerRow`     | Header Row     |
+| `lastRow`       | Total Row      |
+| `firstColumn`   | First Column   |
+| `lastColumn`    | Last Column    |
+| `bandedRows`    | Banded Rows    |
+| `bandedColumns` | Banded Columns |
+
+Send every flag you care about. A flag you leave out keeps its current value. If the table has no flags yet, the ones you leave out get Word's defaults, and Word's default turns First Column on.
+
+To change the flags later without applying the style again, call `tables.applyStyle({ nodeId, styleOptions })`.
+
+## What applying a style changes
+
+- SuperDoc copies Word's definition of the style into the document's `styles.xml` and points the table at it, in one edit.
+- When the document already has the same definition, SuperDoc reuses it.
+- When the document has its own, customized version of that style, SuperDoc keeps it and installs Word's version under a new ID, such as `GridTable4-Accent1-Word`. Read the ID the table uses with `tables.getProperties`.
+- Borders and shading set on the whole table are removed, so the style controls them. Formatting set on individual cells and text stays and overrides the style.
+- Applying the same preset again succeeds and changes nothing. Pass `dryRun: true` to check a call without changing the document.
+
+Unknown preset IDs fail with `INVALID_INPUT` and change nothing.
+
+## Collaboration and tracked changes
+
+In a [collaboration room](/editor/collaboration), every connected editor receives the style definition and the table change together. Undo and redo work on every peer.
+
+Word presets are direct edits. With `changeMode: 'tracked'`, the call fails with `CAPABILITY_UNAVAILABLE` and changes nothing.
+
+## SuperDoc presets
+
+`grid`, `minimal`, `striped` and `accent` are SuperDoc's own presets. They write borders, banding and header shading directly onto the table instead of applying a named Word style, so their `appearance` is `null`. `accentColor` sets the color of the `accent` preset.
+
+Word presets reject `accentColor` with `INVALID_INPUT`. For a Word style in a theme color, pick one of its `-accent-1` to `-accent-6` presets.
+
+## Let an agent apply a style
+
+Give the model a [custom action](/agents/build/custom-actions) on the `core` preset. The model names a Word style, and the action finds it and applies it:
+
+<include>../../../snippets/headless/table-style-action.ts</include>
+
+The model passes a name such as `Grid Table 4 - Accent 1`. If no style has that name, the action throws an error that lists similar names, when there are any, so the model can try again.
+
+When the request describes a look instead of naming a style, such as "a green header with banded rows", use the [full preset](/agents/build/tools#the-full-preset-beta). It can read the theme, compare `appearance`, and apply the best match.
+
+The core preset's built-in `style_table` action applies SuperDoc's `accent` look, not a Word style. The [MCP server](/agents/mcp/connect) has no action for Word table styles yet.
+
+## Limits
+
+- **Tracked changes.** A Word preset cannot be recorded as a tracked change.
+- **Built-in styles only.** The catalog holds Word's built-in styles. To apply a table style the document already defines, pass its ID from `tables.getStyles` to `tables.applyStyle`. No operation creates a new table style.
+- **Appearance.** `appearance` describes the header, the first banded row and the main borders. It does not describe the total row, the first and last columns, or banded columns.
+
+See the reference for [`tables.listPresets`](/document-api/reference/tables/list-presets), [`tables.applyPreset`](/document-api/reference/tables/apply-preset), [`tables.getProperties`](/document-api/reference/tables/get-properties), [`tables.applyStyle`](/document-api/reference/tables/apply-style), [`tables.getStyles`](/document-api/reference/tables/get-styles) and [`styles.getTheme`](/document-api/reference/styles/get-theme).

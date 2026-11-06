@@ -66,6 +66,7 @@ import { collectRemovedCommentIds } from './components/CommentsLayer/collect-rem
 import { useHighContrastMode } from './composables/use-high-contrast-mode';
 import { useSuperDocInstance } from './composables/use-superdoc-instance';
 import { useCommentSmallScreen } from './composables/use-comment-small-screen.js';
+import { useCommentSidebar } from './composables/use-comment-sidebar.js';
 import { useCompactCommentPopover } from './composables/use-compact-comment-popover.js';
 import { getVisibleThreadAnchorClientY } from './helpers/comment-focus.js';
 import { mergeCommentsConfig } from './core/config/merge-comments-config.js';
@@ -3304,7 +3305,7 @@ const shouldUseSidebarComments = computed(() => {
   if (layout !== 'auto') return true;
   return !isCompactCommentsMode.value;
 });
-const showCommentsSidebar = computed(() => {
+const sidebarEnabled = computed(() => {
   // ui-phase3-001: v2 mode is no longer a hard gate. The sidebar may render
   // once `V2DocumentEditor` has published at least one render-epoch-checked
   // geometry snapshot into `editorCommentPositions`. The v1 path is
@@ -3321,14 +3322,16 @@ const showCommentsSidebar = computed(() => {
   }
   if (!shouldRenderCommentsInViewing.value) return false;
   if (!shouldUseSidebarComments.value) return false;
-  return (
-    pendingComment.value ||
-    ((floatingComments.value.length > 0 || hasOpenTrackedChanges.value) &&
-      isReady.value &&
-      layers.value &&
-      isCommentsEnabled.value &&
-      !isCommentsListVisible.value)
+  return Boolean(
+    pendingComment.value || (isReady.value && layers.value && isCommentsEnabled.value && !isCommentsListVisible.value),
   );
+});
+const showCommentsSidebar = useCommentSidebar({
+  documentKey: computed(() => JSON.stringify(documents.value.map((document) => document.id))),
+  enabled: sidebarEnabled,
+  hasContent: computed(() =>
+    Boolean(pendingComment.value || floatingComments.value.length || hasOpenTrackedChanges.value),
+  ),
 });
 const activeCompactComment = computed(() => {
   if (showCommentsSidebar.value) return null;

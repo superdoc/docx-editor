@@ -7,6 +7,7 @@ const path = require('node:path');
 
 const { npmDistRoot: distRoot } = require('./build-output-paths.cjs');
 const { auditInternalVue } = require('./audit-internal-vue.cjs');
+const { auditEntryGzipBudgets } = require('./entry-closure-size.ts');
 const prosemirrorFingerprint = 'ProseMirror expects the CSS white-space property to be set';
 const bundledKonvaFingerprint = /Several Konva instances detected|node_modules\/(?:\.pnpm\/)?konva[@/]/;
 const esKonvaImport = /\bfrom\s*["']konva["']/;
@@ -64,6 +65,16 @@ for (const budget of [
   if (size > budget.hard) failures.push(`${budget.file} exceeds ${Math.round(budget.hard / 1024)} KB`);
   else if (size > budget.soft) console.warn(`[audit-npm-bundle] ${budget.file} is ${Math.round(size / 1024)} KB`);
 }
+
+const staticClosureGzip = auditEntryGzipBudgets(distRoot, [
+  { entry: 'superdoc.es.js', limitBytes: 553_000 },
+  { entry: 'public/ui.es.js', limitBytes: 152_000 },
+  { entry: 'public/ui-react.es.js', limitBytes: 155_000 },
+  { entry: 'public/ui-vue.es.js', limitBytes: 156_000 },
+  { entry: 'style.css', limitBytes: 23_000 },
+]);
+failures.push(...staticClosureGzip.failures);
+for (const summary of staticClosureGzip.summaries) console.log(`[audit-npm-bundle] ${summary}`);
 
 if (failures.length > 0) {
   console.error('[audit-npm-bundle] npm bundle failed:');

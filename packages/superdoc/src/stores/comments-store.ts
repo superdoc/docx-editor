@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { ref, shallowRef, reactive, computed, watch, type Ref } from 'vue';
+import { ref, shallowRef, reactive, computed, watch, toRaw, unref, type Ref } from 'vue';
 import type * as Y from 'yjs';
 import { comments_module_events, type CommentEvent } from '@superdoc/common';
 import {
@@ -164,8 +164,10 @@ type TrackedChangeIdentityCandidatesInput = {
 };
 
 type TrackedChangeBatchIdentityIndex = {
+  inUse: boolean;
   add: (comment: CommentModel) => void;
   aliasesFor: (comment: CommentModel) => string[];
+  isCurrent: () => boolean;
   work: () => Record<string, number>;
   candidates: (input?: TrackedChangeIdentityCandidatesInput) => Set<CommentModel>;
 };
@@ -220,6 +222,7 @@ type ReconcileTrackedChangesInput = {
   liveIds?: Set<string> | null;
   liveAnchorKeys?: Set<string> | null;
   hydrationGeneration?: unknown;
+  preserveDraft?: boolean;
 };
 
 type ApplyReviewWindowInput = {
@@ -309,6 +312,10 @@ export const useCommentsStore = defineStore('comments', () => {
 
   const debounceTimers: Record<string, ReturnType<typeof setTimeout>> = {};
   const trackedChangeResolutionSnapshots = new WeakMap<CommentModel, TrackedChangeResolutionSnapshot>();
+  let cachedTrackedChangeBatchIdentityIndex: {
+    documentId: string | null;
+    index: TrackedChangeBatchIdentityIndex;
+  } | null = null;
 
   const isBenchmarkCommentsDebugEnabled = () => {
     if (typeof window === 'undefined') return false;
@@ -421,6 +428,7 @@ export const useCommentsStore = defineStore('comments', () => {
   // `v2CommentsAdapter` above.
   const v2TrackedChangesAdapter = shallowRef<V2TrackedChangesAdapter | null>(null);
   const setV2TrackedChangesAdapter = (adapter: unknown) => {
+    cachedTrackedChangeBatchIdentityIndex = null;
     v2TrackedChangesAdapter.value = isV2TrackedChangesAdapter(adapter) ? adapter : null;
   };
   const getV2TrackedChangesAdapter = (
@@ -602,11 +610,13 @@ export const useCommentsStore = defineStore('comments', () => {
     params,
     broadcastChanges = true,
     trackedChangeIdentityIndex = null,
+    preserveDraft = false,
   }: {
     superdoc: CommentsStoreHost | null | undefined;
     params: V2TrackedChangeCommentParams;
     broadcastChanges?: boolean;
     trackedChangeIdentityIndex?: TrackedChangeBatchIdentityIndex | null;
+    preserveDraft?: boolean;
   }) => {
     const span = startInteractionSpan('store.trackedChanges.handleUpdate', 'store-reconciliation', {
       event: params?.event ?? null,
@@ -681,8 +691,12 @@ export const useCommentsStore = defineStore('comments', () => {
       const normalizedTrackedChangeDetailLines = normalizeTrackedChangeDetailLines(trackedChangeDetailLines);
       const normalizedTrackedChangeImagePreview = normalizeTrackedChangeImagePreview(trackedChangeImagePreview);
 
+      const hasDraft =
+        preserveDraft &&
+        (pendingComment.value !== null || currentCommentText.value !== '' || currentCommentMentions.value.length > 0);
       const comment = getPendingComment({
         documentId,
+        ...(hasDraft ? { commentText: '' } : {}),
         commentId: normalizedChangeId ?? undefined,
         trackedChange: true,
         trackedChangeText,
@@ -935,6 +949,7 @@ export const useCommentsStore = defineStore('comments', () => {
           superdoc: requireHost(superdoc, 'handleTrackedChangeUpdate'),
           comment,
           broadcastChanges,
+          preserveDraft: hasDraft,
         });
         trackedChangeIdentityIndex?.add(comment);
       } else if (event === 'update') {
@@ -1247,7 +1262,8 @@ export const useCommentsStore = defineStore('comments', () => {
     skipEditorUpdate = false,
     broadcastChanges = true,
     isHydration = false,
-  }: AddCommentInput & { isHydration?: boolean }) => {
+    preserveDraft = false,
+  }: AddCommentInput & { isHydration?: boolean; preserveDraft?: boolean }) => {
     // Imported/collaboration hydration must remain visible in a read-only
     // review surface. All user-originated store calls fail closed before the
     // document, Vue rows, or public events are mutated.
@@ -1351,14 +1367,22 @@ export const useCommentsStore = defineStore('comments', () => {
       });
     }
 
-    let parentComment = commentsList.value.find((c) => c.commentId === activeComment.value);
+    const activeId = activeComment.value;
+    const parent = toRaw(commentsList.value).find((c) => unref(c.commentId) === activeId);
+    let parentComment = parent ? reactive(parent) : undefined;
     if (!parentComment) parentComment = comment;
 
     const newComment = useComment(comment.getValues());
 
-    if (pendingComment.value) newComment.setText({ text: currentCommentText.value, suppressUpdate: true });
-    else newComment.setText({ text: comment.commentText, suppressUpdate: true });
-    newComment.selection.source = pendingComment.value?.selection?.source ?? newComment.selection.source;
+    const text = pendingComment.value && !preserveDraft ? currentCommentText.value : comment.commentText;
+    if (text === '') {
+      newComment.commentText = '';
+      newComment.mentions = [];
+    } else {
+      newComment.setText({ text, suppressUpdate: true });
+    }
+    if (!preserveDraft)
+      newComment.selection.source = pendingComment.value?.selection?.source ?? newComment.selection.source;
 
     // Set isInternal flag
     if (parentComment) {
@@ -1373,8 +1397,8 @@ export const useCommentsStore = defineStore('comments', () => {
     commentsList.value.push(newComment);
 
     // Clean up the pending comment
-    const hadPendingComment = !!pendingComment.value;
-    removePendingComment(superdoc);
+    const hadPendingComment = !preserveDraft && !!pendingComment.value;
+    if (!preserveDraft) removePendingComment(superdoc);
     // Hand off activeComment/instance to the newly created comment instead of
     // leaving it null, so the floating sidebar keeps treating this row as
     // active (viewport exemption, dialog mount, collision pinning) and never
@@ -1411,8 +1435,9 @@ export const useCommentsStore = defineStore('comments', () => {
     comment,
     skipEditorUpdate = false,
     broadcastChanges = true,
-  }: AddCommentInput) =>
-    addCommentInternal({ superdoc, comment, skipEditorUpdate, broadcastChanges, isHydration: true });
+    preserveDraft = false,
+  }: AddCommentInput & { preserveDraft?: boolean }) =>
+    addCommentInternal({ superdoc, comment, skipEditorUpdate, broadcastChanges, isHydration: true, preserveDraft });
 
   const deleteComment = ({
     commentId: commentIdToDelete,
@@ -2368,6 +2393,14 @@ export const useCommentsStore = defineStore('comments', () => {
   /** Keep one mounted review window plus rows whose interaction is still live. */
   const boundReviewPresentationRows = ({ documentId, visibleIds }: { documentId: string; visibleIds: Set<string> }) => {
     const currentRows = commentsList.value;
+    if (
+      currentRows.every((row) => {
+        if (!belongsToTrackedChangeSyncDocument(row, documentId)) return true;
+        const id = normalizeCommentId(row.commentId);
+        return Boolean(id && visibleIds.has(id));
+      })
+    )
+      return;
     const identityIdsByRow = new Map<CommentModel, Set<string>>();
     const identityIdsFor = (row: CommentModel) => {
       let ids = identityIdsByRow.get(row);
@@ -2639,6 +2672,7 @@ export const useCommentsStore = defineStore('comments', () => {
             preparedPresentation: preparedReview?.presentation ?? null,
             previousPreparedPresentation,
             pruneStale: false,
+            preserveDraft: true,
           });
           reconcileCommentsFromV2({
             superdoc,
@@ -3726,6 +3760,10 @@ export const useCommentsStore = defineStore('comments', () => {
     const byIdentityAlias = new Map<string, Set<CommentModel>>();
     const aliasesByRow = new Map<CommentModel, string[]>();
     const indexedRows = new Set<CommentModel>();
+    const indexedIdentities: { row: CommentModel; aliases: string[]; canonicalId: string | null }[] = [];
+    let building = true;
+    let reusable = true;
+    let reused = false;
     let aliasLookups = 0;
     let candidateVisits = 0;
     let rowAliasBuilds = 0;
@@ -3749,6 +3787,7 @@ export const useCommentsStore = defineStore('comments', () => {
       index.set(alias, bucket);
     };
     const add = (comment: CommentModel) => {
+      if (!building) reusable = false;
       if (!comment?.trackedChange) return;
       if (documentId && !belongsToTrackedChangeSyncDocument(comment, documentId)) return;
       indexedRows.add(comment);
@@ -3760,19 +3799,56 @@ export const useCommentsStore = defineStore('comments', () => {
       rowAliasBuilds += 1;
       aliasesByRow.set(comment, aliases);
       aliases.forEach((alias) => addAlias(byIdentityAlias, alias, comment));
+      if (building)
+        indexedIdentities.push({
+          row: comment,
+          aliases,
+          canonicalId: normalizeCommentId(comment.trackedChangeCanonicalId),
+        });
     };
     commentsList.value.forEach(add);
+    building = false;
     return {
+      inUse: false,
       add,
       aliasesFor,
-      work: () => ({
-        trackedRowsIndexed: indexedRows.size,
-        invalidatedIdMembershipChecks: 0,
-        incomingAliasLookups: aliasLookups,
-        candidateVisits,
-        rowAliasBuilds,
-        rowAliasCacheHits,
-      }),
+      isCurrent: () => {
+        if (!reusable) return false;
+        let index = 0;
+        for (const row of commentsList.value) {
+          if (!row?.trackedChange || (documentId && !belongsToTrackedChangeSyncDocument(row, documentId))) continue;
+          const previous = indexedIdentities[index++];
+          if (
+            !previous ||
+            previous.row !== row ||
+            previous.canonicalId !== normalizeCommentId(row.trackedChangeCanonicalId)
+          )
+            return false;
+          const aliases = getCommentAliasIds(row);
+          rowAliasBuilds += 1;
+          if (aliases.length !== previous.aliases.length || aliases.some((alias, i) => alias !== previous.aliases[i]))
+            return false;
+        }
+        reused = index === indexedIdentities.length;
+        return reused;
+      },
+      work: () => {
+        const result = {
+          trackedRowsIndexed: indexedRows.size,
+          invalidatedIdMembershipChecks: 0,
+          incomingAliasLookups: aliasLookups,
+          candidateVisits,
+          rowAliasBuilds,
+          rowAliasCacheHits,
+          indexReused: Number(reused),
+        };
+        aliasLookups = 0;
+        candidateVisits = 0;
+        rowAliasBuilds = 0;
+        rowAliasCacheHits = 0;
+        reused = false;
+        return result;
+      },
       candidates({ changeId, importedId, anchorKey, canonicalId, positionAliases = [] } = {}) {
         const out = new Set<CommentModel>();
         const include = (value: unknown) => {
@@ -3790,6 +3866,27 @@ export const useCommentsStore = defineStore('comments', () => {
     };
   };
 
+  const getTrackedChangeBatchIdentityIndex = (documentId: string | null) => {
+    const cached = cachedTrackedChangeBatchIdentityIndex;
+    if (cached?.documentId === documentId && !cached.index.inUse) {
+      cached.index.inUse = true;
+      let current = false;
+      try {
+        current = cached.index.isCurrent() && cachedTrackedChangeBatchIdentityIndex === cached;
+      } finally {
+        if (!current) {
+          cached.index.inUse = false;
+          if (cachedTrackedChangeBatchIdentityIndex === cached) cachedTrackedChangeBatchIdentityIndex = null;
+        }
+      }
+      if (current) return cached.index;
+    }
+    const index = createTrackedChangeBatchIdentityIndex(documentId);
+    index.inUse = true;
+    cachedTrackedChangeBatchIdentityIndex = { documentId, index };
+    return index;
+  };
+
   const reconcileTrackedChangesFromV2 = ({
     superdoc,
     adapter,
@@ -3797,6 +3894,7 @@ export const useCommentsStore = defineStore('comments', () => {
     items,
     pruneStale = true,
     preparedParams = null,
+    preserveDraft = false,
     preparedPresentation = null,
     previousPreparedPresentation = null,
     liveIds: suppliedLiveIds = null,
@@ -3820,36 +3918,38 @@ export const useCommentsStore = defineStore('comments', () => {
         const liveAnchorKeys = suppliedLiveAnchorKeys instanceof Set ? suppliedLiveAnchorKeys : new Set<string>();
         const liveIds = suppliedLiveIds instanceof Set ? suppliedLiveIds : new Set<string>();
         let appliedCount = 0;
-        const trackedChangeIdentityIndex = createTrackedChangeBatchIdentityIndex(
+        const trackedChangeIdentityIndex = getTrackedChangeBatchIdentityIndex(
           effectiveDocumentId == null ? null : String(effectiveDocumentId),
         );
         const identitySpan = startInteractionSpan('store.trackedChanges.batchIdentity', 'store-reconciliation', {
           itemCount: items.length,
         });
 
-        const paramsList = Array.isArray(preparedParams)
-          ? preparedParams
-          : items.map((item) => adapter.mapV2TrackedChangeToCommentParams(item));
-        const previousCoordinate = previousPreparedPresentation?.coordinate;
-        const coordinate = preparedPresentation?.coordinate;
-        const retainUnchangedRows =
-          !pruneStale &&
-          previousCoordinate &&
-          coordinate &&
-          coordinate.documentEpoch === preparedPresentation.epoch &&
-          coordinate.documentEpoch === previousPreparedPresentation.epoch &&
-          coordinate.documentEpoch === previousCoordinate.documentEpoch &&
-          typeof coordinate.mountId === 'string' &&
-          coordinate.mountId.length > 0 &&
-          coordinate.mountId === previousCoordinate.mountId &&
-          preparedPresentation.baseVersion === previousPreparedPresentation.version &&
-          preparedPresentation.version === preparedPresentation.baseVersion + 1 &&
-          coordinate.reviewVersion === preparedPresentation.version &&
-          previousCoordinate.reviewVersion === previousPreparedPresentation.version &&
-          Number.isSafeInteger(coordinate.commitSequence) &&
-          Number.isSafeInteger(previousCoordinate.commitSequence) &&
-          coordinate.commitSequence >= previousCoordinate.commitSequence;
+        let enteredBatch = false;
         try {
+          const paramsList = Array.isArray(preparedParams)
+            ? preparedParams
+            : items.map((item) => adapter.mapV2TrackedChangeToCommentParams(item));
+          const previousCoordinate = previousPreparedPresentation?.coordinate;
+          const coordinate = preparedPresentation?.coordinate;
+          const retainUnchangedRows =
+            !pruneStale &&
+            previousCoordinate &&
+            coordinate &&
+            coordinate.documentEpoch === preparedPresentation.epoch &&
+            coordinate.documentEpoch === previousPreparedPresentation.epoch &&
+            coordinate.documentEpoch === previousCoordinate.documentEpoch &&
+            typeof coordinate.mountId === 'string' &&
+            coordinate.mountId.length > 0 &&
+            coordinate.mountId === previousCoordinate.mountId &&
+            preparedPresentation.baseVersion === previousPreparedPresentation.version &&
+            preparedPresentation.version === preparedPresentation.baseVersion + 1 &&
+            coordinate.reviewVersion === preparedPresentation.version &&
+            previousCoordinate.reviewVersion === previousPreparedPresentation.version &&
+            Number.isSafeInteger(coordinate.commitSequence) &&
+            Number.isSafeInteger(previousCoordinate.commitSequence) &&
+            coordinate.commitSequence >= previousCoordinate.commitSequence;
+          enteredBatch = true;
           for (const params of paramsList) {
             if (!params) continue;
             let retainUnchangedRow = false;
@@ -3926,11 +4026,14 @@ export const useCommentsStore = defineStore('comments', () => {
               params,
               broadcastChanges: false,
               trackedChangeIdentityIndex,
+              preserveDraft,
             });
             appliedCount += 1;
           }
         } finally {
-          endInteractionSpan(identitySpan, trackedChangeIdentityIndex.work());
+          const work = trackedChangeIdentityIndex.work();
+          trackedChangeIdentityIndex.inUse = false;
+          if (enteredBatch) endInteractionSpan(identitySpan, work);
         }
 
         if (!effectiveDocumentId || !pruneStale) {

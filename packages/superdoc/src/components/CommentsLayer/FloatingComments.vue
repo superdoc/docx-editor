@@ -38,6 +38,7 @@ type FloatingInstance = {
   pageIndex?: number | null;
   isPrimary?: boolean;
   mount?: boolean;
+  provisional?: boolean;
 };
 
 type CommittedInstance = ReviewInstance & { comment: CommentModel; rowVersion: number };
@@ -179,6 +180,21 @@ const { activeZoom } = storeToRefs(superdocStore);
 const committedPresentation = computed(
   () => commentsStore.committedReviewPresentations?.[String(props.currentDocument?.id)] ?? null,
 );
+const committedInstanceCache = new Map<string, CommittedInstance>();
+let committedInstanceCacheOwner = '';
+const sameReviewInstance = (cached: CommittedInstance, next: ReviewInstance) => {
+  const before = Object.entries(cached).filter(([key]) => key !== 'comment' && key !== 'rowVersion');
+  const after = Object.entries(next);
+  if (before.length !== after.length) return false;
+  const previous = new Map(before);
+  return after.every(
+    ([key, value]) =>
+      previous.has(key) &&
+      (key === 'positionEntry'
+        ? JSON.stringify(previous.get(key)) === JSON.stringify(value)
+        : Object.is(previous.get(key), value)),
+  );
+};
 const committedInstances = computed(() => {
   const presentation = committedPresentation.value;
   if (!presentation) return null;
@@ -187,10 +203,31 @@ const committedInstances = computed(() => {
       .filter((row) => String(row.fileId) === String(props.currentDocument?.id))
       .map((row) => [String(row.commentId), row]),
   );
-  return presentation.instances.flatMap((instance) => {
+  const owner = `${presentation.epoch}\u0000${presentation.coordinate?.mountId ?? ''}`;
+  if (owner !== committedInstanceCacheOwner) {
+    committedInstanceCache.clear();
+    committedInstanceCacheOwner = owner;
+  }
+  const live = new Set<string>();
+  const instances = presentation.instances.flatMap((instance) => {
     const comment = instance.rowId === 'pending' ? pendingComment.value : rows.get(instance.rowId);
-    return comment ? [{ ...instance, comment, rowVersion: presentation.rowVersions[instance.rowId] ?? 0 }] : [];
+    if (!comment) return [];
+    const rowVersion = presentation.rowVersions[instance.rowId] ?? 0;
+    live.add(instance.id);
+    const cached = committedInstanceCache.get(instance.id);
+    if (
+      cached &&
+      cached.comment === comment &&
+      cached.rowVersion === rowVersion &&
+      sameReviewInstance(cached, instance)
+    )
+      return [cached];
+    const merged: CommittedInstance = { ...instance, comment, rowVersion };
+    committedInstanceCache.set(instance.id, merged);
+    return [merged];
   });
+  for (const id of committedInstanceCache.keys()) if (!live.has(id)) committedInstanceCache.delete(id);
+  return instances;
 });
 const floatingCommentInstances = computed(() => {
   if (committedInstances.value) return committedInstances.value.filter((instance) => instance.rowId !== 'pending');
@@ -771,6 +808,19 @@ const handleResize = (position: FloatingPosition) => {
     remeasureCommentKeys(allPositions.value.map((pos) => pos.id));
     scheduleDeferredRemeasure(() => allPositions.value.map((pos) => pos.id));
   });
+};
+
+const resizeHandlers = new Map<string, () => void>();
+const resizeHandlerFor = (id: string) => {
+  let handler = resizeHandlers.get(id);
+  if (!handler) {
+    handler = () => {
+      const position = allPositions.value.find((candidate) => candidate.id === id);
+      if (position) handleResize(position);
+    };
+    resizeHandlers.set(id, handler);
+  }
+  return handler;
 };
 
 const setInstantLayoutTransitionsDisabled = (disabled: boolean) => {
@@ -1362,6 +1412,8 @@ watch(allPositions, (positions) => {
     visibleIds.value = newVisible;
   }
 
+  for (const id of resizeHandlers.keys()) if (!currentIds.has(id)) resizeHandlers.delete(id);
+
   // Clean up cached heights for removed comments
   for (const id of prevPositionIds) {
     if (!currentIds.has(id)) {
@@ -1486,6 +1538,7 @@ onBeforeUnmount(() => {
           top: (pos.isOffscreenReviewCard && !committedPresentation ? pos.top - sidebarOffsetY : pos.top) + 'px',
           height: pos.height + 'px',
           transition: committedPresentation || disableInstantLayoutTransitions ? 'none' : undefined,
+          visibility: pos.instanceRef?.provisional ? 'hidden' : undefined,
         }"
         class="comment-placeholder"
       >
@@ -1494,7 +1547,7 @@ onBeforeUnmount(() => {
           v-if="shouldRenderDialog(pos)"
           :key="pos.id + commentsRenderKey"
           @ready="handleDialog"
-          @resize="handleResize(pos)"
+          :onResize="resizeHandlerFor(pos.id)"
           class="floating-comment"
           :parent="parent"
           :comment="pos.commentRef"

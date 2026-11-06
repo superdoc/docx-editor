@@ -293,6 +293,54 @@ describe('FloatingComments sidebar continuity', () => {
     }
   });
 
+  it('keeps a card packed with an estimated height hidden until its measured layout arrives', async () => {
+    const instance = (id, top, provisional) => ({
+      id,
+      rowId: id,
+      threadId: id,
+      version: 1,
+      pageIndex: 0,
+      positionKey: id,
+      positionEntry: makePosition(id, top),
+      anchorTop: top,
+      anchorBottom: top + 20,
+      top,
+      height: 110,
+      isPrimary: true,
+      isOffscreenReviewCard: false,
+      mount: true,
+      ...(provisional ? { provisional: true } : {}),
+    });
+    const publish = (version, instances) => {
+      commentsStore.committedReviewPresentations = {
+        'doc-1': {
+          epoch: 'e',
+          coordinate: { documentEpoch: 'e', mountId: 'm', commitSequence: 1, reviewVersion: version },
+          version,
+          rowVersions: { 'tc-a': 1, 'tc-b': 1 },
+          threads: {},
+          groupOrder: { open: ['tc-a', 'tc-b'], resolved: [] },
+          updateContext: () => {},
+          instances,
+        },
+      };
+    };
+    publish(1, [instance('tc-a', 10, false), instance('tc-b', 200, true)]);
+    const wrapper = await mountSidebar([
+      { id: 'tc-a', top: 10 },
+      { id: 'tc-b', top: 200 },
+    ]);
+    try {
+      expect(wrapper.find('[data-comment-id="tc-a"]').attributes('style')).not.toContain('visibility: hidden');
+      expect(wrapper.find('[data-comment-id="tc-b"]').attributes('style')).toContain('visibility: hidden');
+      publish(2, [instance('tc-a', 10, false), instance('tc-b', 200, false)]);
+      await settleLayout();
+      expect(wrapper.find('[data-comment-id="tc-b"]').attributes('style')).not.toContain('visibility: hidden');
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
   it('publishes a current committed decision anchor before the native action handler', async () => {
     const updateContext = vi.fn();
     const rows = ['a', 'b', 'c'];

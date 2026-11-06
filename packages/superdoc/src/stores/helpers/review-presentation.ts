@@ -23,6 +23,7 @@ export type ReviewInstance = {
   anchorBottom: number;
   top: number;
   height: number;
+  provisional?: boolean;
   isPrimary: boolean;
   isOffscreenReviewCard: boolean;
   mount: boolean;

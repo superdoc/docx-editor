@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vite-plus/test';
 import {
   auditEntryGzipBudgets,
   checkEntryBudget,
+  eagerRequireSpecifiers,
   gzipSize,
   measureStaticClosure,
   staticImportSpecifiers,
@@ -129,6 +130,114 @@ describe('measureStaticClosure', () => {
       files: [{ file: 'style.css', gzipBytes: gzipOf(css) }],
       gzipBytes: gzipOf(css),
     });
+  });
+});
+
+describe('eagerRequireSpecifiers', () => {
+  it('reads module-level require calls but not deferred, computed, or textual ones', () => {
+    const source = [
+      "'use strict';",
+      "const require_a = require('./chunks/a.cjs');",
+      "require('./side-effect.cjs');",
+      "const vue = require('vue');",
+      "exports.b = require('./chunks/b.cjs').b;",
+      "if (process.env.X) require('./conditional.cjs');",
+      "function load() { return require('./in-function.cjs'); }",
+      "const arrow = () => require('./in-arrow.cjs');",
+      "const lazy = () => Promise.resolve().then(() => require('./chunks/lazy.cjs'));",
+      "const object = { method() { return require('./in-method.cjs'); } };",
+      "class Loader { field = require('./in-field.cjs'); load() { return require('./in-class-method.cjs'); } }",
+      'const computed = require(name);',
+      "const snippet = `require('./template.cjs')`;",
+      "// require('./commented.cjs');",
+    ].join('\n');
+
+    expect(eagerRequireSpecifiers(source, 'entry.cjs')).toEqual([
+      './chunks/a.cjs',
+      './side-effect.cjs',
+      'vue',
+      './chunks/b.cjs',
+      './conditional.cjs',
+    ]);
+  });
+});
+
+describe('measureStaticClosure for CommonJS', () => {
+  it('counts module-level requires and leaves out deferred requires and bare packages', () => {
+    const root = seedDist({
+      'entry.cjs': [
+        "const require_a = require('./chunks/a.cjs');",
+        "const vue = require('vue');",
+        "function viewer() { return require('./chunks/viewer.cjs'); }",
+        "const arrow = () => require('./chunks/arrow.cjs');",
+        "exports.load = () => Promise.resolve().then(() => require('./chunks/lazy.cjs'));",
+      ].join('\n'),
+      'chunks/a.cjs': 'exports.a = 1;\n',
+      'chunks/viewer.cjs': 'exports.viewer = 1;\n',
+      'chunks/arrow.cjs': 'exports.arrow = 1;\n',
+      'chunks/lazy.cjs': 'exports.lazy = 1;\n'.repeat(50),
+    });
+
+    expect(closureFiles(root, 'entry.cjs')).toEqual(['chunks/a.cjs', 'entry.cjs']);
+  });
+
+  it('counts a dependency shared by two requirers once', () => {
+    const files = {
+      'entry.cjs': "require('./left.cjs');\nrequire('./right.cjs');\n",
+      'left.cjs': "const { shared } = require('./shared.cjs');\n",
+      'right.cjs': "const { shared } = require('./shared.cjs');\n",
+      'shared.cjs': 'exports.shared = 1;\n'.repeat(20),
+    };
+    const root = seedDist(files);
+
+    const size = measureStaticClosure(root, 'entry.cjs');
+
+    expect(size.files.map((file) => file.file).sort()).toEqual(['entry.cjs', 'left.cjs', 'right.cjs', 'shared.cjs']);
+    expect(size.gzipBytes).toBe(Object.values(files).reduce((total, content) => total + gzipOf(content), 0));
+  });
+
+  it('terminates on a require cycle', () => {
+    const root = seedDist({
+      'entry.cjs': "require('./a.cjs');\n",
+      'a.cjs': "require('./b.cjs');\n",
+      'b.cjs': "require('./a.cjs');\nrequire('./entry.cjs');\n",
+    });
+
+    expect(closureFiles(root, 'entry.cjs')).toEqual(['a.cjs', 'b.cjs', 'entry.cjs']);
+  });
+
+  it('fails when a required local file is missing', () => {
+    const root = seedDist({ 'public/ui.cjs': "require('../chunks/gone.cjs');\n" });
+
+    expect(() => measureStaticClosure(root, 'public/ui.cjs')).toThrow(
+      'public/ui.cjs requires ../chunks/gone.cjs, which does not exist',
+    );
+  });
+
+  it('fails when the CommonJS entry is missing', () => {
+    const root = seedDist({});
+
+    expect(() => measureStaticClosure(root, 'superdoc.cjs')).toThrow('entry superdoc.cjs does not exist');
+  });
+
+  it('reads .js files under a CommonJS package as CommonJS and under a module package as ESM', () => {
+    const root = seedDist({
+      'entry.cjs': "require('./cjs/index.js');\nrequire('./esm/index.js');\n",
+      'cjs/package.json': '{"type":"commonjs"}\n',
+      'cjs/index.js': "require('./dep.js');\n",
+      'cjs/dep.js': 'exports.dep = 1;\n',
+      'esm/package.json': '{"type":"module"}\n',
+      'esm/index.js': "import './dep.js';\nrequire('./not-followed.js');\n",
+      'esm/dep.js': 'export const dep = 1;\n',
+    });
+
+    expect(closureFiles(root, 'entry.cjs')).toEqual([
+      'cjs/dep.js',
+      'cjs/index.js',
+      'entry.cjs',
+      'esm/dep.js',
+      'esm/index.js',
+    ]);
   });
 });
 

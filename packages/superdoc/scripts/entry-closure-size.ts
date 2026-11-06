@@ -45,6 +45,46 @@ export function staticImportSpecifiers(source: string, fileName: string): string
   return specifiers;
 }
 
+export function eagerRequireSpecifiers(source: string, fileName: string): string[] {
+  const sourceFile = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, false, ts.ScriptKind.JS);
+  const specifiers: string[] = [];
+  const visit = (node: ts.Node): void => {
+    if (ts.isFunctionLike(node) || ts.isClassElement(node)) return;
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'require') {
+      const [argument] = node.arguments;
+      if (node.arguments.length === 1 && argument !== undefined && ts.isStringLiteral(argument)) {
+        specifiers.push(argument.text);
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return specifiers;
+}
+
+type ModuleKind = 'stylesheet' | 'esm' | 'commonjs';
+
+function packageTypeIsCommonJs(packageJsonPath: string): boolean {
+  const manifest: unknown = JSON.parse(readFileSync(packageJsonPath, 'utf8'));
+  return !(typeof manifest === 'object' && manifest !== null && 'type' in manifest && manifest.type === 'module');
+}
+
+function nearestPackageIsCommonJs(root: string, file: string): boolean {
+  for (let directory = path.dirname(file); ; directory = path.dirname(directory)) {
+    const packageJsonPath = path.join(directory, 'package.json');
+    if (existsSync(packageJsonPath)) return packageTypeIsCommonJs(packageJsonPath);
+    if (directory === root) return false;
+  }
+}
+
+function moduleKind(root: string, file: string): ModuleKind {
+  const extension = path.extname(file);
+  if (extension === '.css') return 'stylesheet';
+  if (extension === '.cjs') return 'commonjs';
+  if (extension === '.js' && nearestPackageIsCommonJs(root, file)) return 'commonjs';
+  return 'esm';
+}
+
 function isLocalSpecifier(specifier: string): boolean {
   return specifier.startsWith('./') || specifier.startsWith('../') || specifier.startsWith('/');
 }
@@ -74,11 +114,16 @@ export function measureStaticClosure(root: string, entry: string): ClosureSize {
   for (let current = pending.pop(); current !== undefined; current = pending.pop()) {
     const contents = readFileSync(current);
     files.push({ file: displayPath(resolvedRoot, current), gzipBytes: gzipSize(contents) });
-    if (path.extname(current) === '.css') continue;
-    for (const specifier of staticImportSpecifiers(contents.toString('utf8'), current)) {
+    const kind = moduleKind(resolvedRoot, current);
+    if (kind === 'stylesheet') continue;
+    const source = contents.toString('utf8');
+    const specifiers =
+      kind === 'commonjs' ? eagerRequireSpecifiers(source, current) : staticImportSpecifiers(source, current);
+    const verb = kind === 'commonjs' ? 'requires' : 'imports';
+    for (const specifier of specifiers) {
       if (!isLocalSpecifier(specifier)) continue;
       const target = path.resolve(path.dirname(current), specifier);
-      requireFileInRoot(resolvedRoot, target, `${displayPath(resolvedRoot, current)} imports ${specifier}, which`);
+      requireFileInRoot(resolvedRoot, target, `${displayPath(resolvedRoot, current)} ${verb} ${specifier}, which`);
       if (visited.has(target)) continue;
       visited.add(target);
       pending.push(target);

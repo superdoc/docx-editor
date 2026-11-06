@@ -1067,7 +1067,7 @@ importers:
     dependencies:
       '@superdoc/docx-engine':
         specifier: 0.28.0
-        version: 0.28.0(@hocuspocus/provider@2.15.3(y-protocols@1.0.7(yjs@13.6.30))(yjs@13.6.30))(@liveblocks/client@3.15.5(@types/json-schema@7.0.15))(@liveblocks/yjs@3.15.5(@types/json-schema@7.0.15)(yjs@13.6.30))(vue@3.5.32(typescript@5.9.3))(y-websocket@3.0.0(yjs@13.6.30))(yjs@13.6.30)
+        version: 0.28.0(@hocuspocus/provider@2.15.3(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31))(@liveblocks/client@3.15.5(@types/json-schema@7.0.15))(@liveblocks/yjs@3.15.5(@types/json-schema@7.0.15)(yjs@13.6.31))(vue@3.5.32(typescript@5.9.3))(y-websocket@3.0.0(yjs@13.6.31))(yjs@13.6.31)
       '@types/ws':
         specifier: 'catalog:'
         version: 8.18.1
@@ -1097,20 +1097,20 @@ importers:
         version: 3.5.32(typescript@5.9.3)
       y-websocket:
         specifier: ^3.0.0
-        version: 3.0.0(yjs@13.6.30)
+        version: 3.0.0(yjs@13.6.31)
       yjs:
         specifier: ^13.6.19
-        version: 13.6.30
+        version: 13.6.31
     devDependencies:
       '@hocuspocus/provider':
         specifier: ^2.13.6
-        version: 2.15.3(y-protocols@1.0.7(yjs@13.6.30))(yjs@13.6.30)
+        version: 2.15.3(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31)
       '@liveblocks/client':
         specifier: ^3.15.5
         version: 3.15.5(@types/json-schema@7.0.15)
       '@liveblocks/yjs':
         specifier: ^3.15.5
-        version: 3.15.5(@types/json-schema@7.0.15)(yjs@13.6.30)
+        version: 3.15.5(@types/json-schema@7.0.15)(yjs@13.6.31)
       '@superdoc/common':
         specifier: workspace:*
         version: link:../../shared/common
@@ -10097,10 +10097,6 @@ packages:
   yazl@2.5.1:
     resolution: {integrity: sha512-phENi2PLiHnHb6QBVot+dJnaAZ0xosj7p3fWl+znIjBDlnMI2PsZCJZ306BPTFOaHf5qdDEI8x5qFrSOBN5vrw==}
 
-  yjs@13.6.30:
-    resolution: {integrity: sha512-vv/9h42eCMC81ZHDFswuu/MKzkl/vyq1BhaNGfHyOonwlG4CJbQF4oiBBJPvfdeCt/PlVDWh7Nov9D34YY09uQ==}
-    engines: {node: '>=16.0.0', npm: '>=8.0.0'}
-
   yjs@13.6.31:
     resolution: {integrity: sha512-Eq+5BRfbeGyqGVrTJL3bEcr8gKkxPuyuoHmAwpk52fDb8kOVMrfVSTRPd6yiGgX5Fskb96qCRjzjbRjrL4YEnw==}
     engines: {node: '>=16.0.0', npm: '>=8.0.0'}
@@ -10908,18 +10904,6 @@ snapshots:
     dependencies:
       lib0: 0.2.117
 
-  '@hocuspocus/provider@2.15.3(y-protocols@1.0.7(yjs@13.6.30))(yjs@13.6.30)':
-    dependencies:
-      '@hocuspocus/common': 2.15.3
-      '@lifeomic/attempt': 3.1.0
-      lib0: 0.2.117
-      ws: 8.20.0
-      y-protocols: 1.0.7(yjs@13.6.30)
-      yjs: 13.6.30
-    transitivePeerDependencies:
-      - bufferutil
-      - utf-8-validate
-
   '@hocuspocus/provider@2.15.3(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31)':
     dependencies:
       '@hocuspocus/common': 2.15.3
@@ -10928,20 +10912,6 @@ snapshots:
       ws: 8.20.0
       y-protocols: 1.0.7(yjs@13.6.31)
       yjs: 13.6.31
-    transitivePeerDependencies:
-      - bufferutil
-      - utf-8-validate
-
-  '@hocuspocus/server@2.15.3(y-protocols@1.0.7(yjs@13.6.30))(yjs@13.6.30)':
-    dependencies:
-      '@hocuspocus/common': 2.15.3
-      async-lock: 1.4.1
-      kleur: 4.1.5
-      lib0: 0.2.117
-      uuid: 11.1.1
-      ws: 8.20.0
-      y-protocols: 1.0.7(yjs@13.6.30)
-      yjs: 13.6.30
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
@@ -11254,17 +11224,6 @@ snapshots:
   '@liveblocks/core@3.15.5(@types/json-schema@7.0.15)':
     dependencies:
       '@types/json-schema': 7.0.15
-
-  '@liveblocks/yjs@3.15.5(@types/json-schema@7.0.15)(yjs@13.6.30)':
-    dependencies:
-      '@liveblocks/client': 3.15.5(@types/json-schema@7.0.15)
-      '@liveblocks/core': 3.15.5(@types/json-schema@7.0.15)
-      '@noble/hashes': 1.8.0
-      js-base64: 3.7.8
-      y-indexeddb: 9.0.12(yjs@13.6.30)
-      yjs: 13.6.30
-    transitivePeerDependencies:
-      - '@types/json-schema'
 
   '@liveblocks/yjs@3.15.5(@types/json-schema@7.0.15)(yjs@13.6.31)':
     dependencies:
@@ -12536,16 +12495,16 @@ snapshots:
 
   '@standard-schema/spec@1.1.0': {}
 
-  '@superdoc/docx-engine@0.28.0(@hocuspocus/provider@2.15.3(y-protocols@1.0.7(yjs@13.6.30))(yjs@13.6.30))(@liveblocks/client@3.15.5(@types/json-schema@7.0.15))(@liveblocks/yjs@3.15.5(@types/json-schema@7.0.15)(yjs@13.6.30))(vue@3.5.32(typescript@5.9.3))(y-websocket@3.0.0(yjs@13.6.30))(yjs@13.6.30)':
+  '@superdoc/docx-engine@0.28.0(@hocuspocus/provider@2.15.3(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31))(@liveblocks/client@3.15.5(@types/json-schema@7.0.15))(@liveblocks/yjs@3.15.5(@types/json-schema@7.0.15)(yjs@13.6.31))(vue@3.5.32(typescript@5.9.3))(y-websocket@3.0.0(yjs@13.6.31))(yjs@13.6.31)':
     dependencies:
       vue: 3.5.32(typescript@5.9.3)
       xml-js: 1.6.11
-      yjs: 13.6.30
+      yjs: 13.6.31
     optionalDependencies:
-      '@hocuspocus/provider': 2.15.3(y-protocols@1.0.7(yjs@13.6.30))(yjs@13.6.30)
+      '@hocuspocus/provider': 2.15.3(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31)
       '@liveblocks/client': 3.15.5(@types/json-schema@7.0.15)
-      '@liveblocks/yjs': 3.15.5(@types/json-schema@7.0.15)(yjs@13.6.30)
-      y-websocket: 3.0.0(yjs@13.6.30)
+      '@liveblocks/yjs': 3.15.5(@types/json-schema@7.0.15)(yjs@13.6.31)
+      y-websocket: 3.0.0(yjs@13.6.31)
 
   '@superdoc/sdk-darwin-arm64@2.26.0':
     optional: true
@@ -20267,11 +20226,6 @@ snapshots:
 
   xtend@4.0.2: {}
 
-  y-indexeddb@9.0.12(yjs@13.6.30):
-    dependencies:
-      lib0: 0.2.117
-      yjs: 13.6.30
-
   y-indexeddb@9.0.12(yjs@13.6.31):
     dependencies:
       lib0: 0.2.117
@@ -20287,21 +20241,10 @@ snapshots:
       y-protocols: 1.0.7(yjs@13.6.31)
       yjs: 13.6.31
 
-  y-protocols@1.0.7(yjs@13.6.30):
-    dependencies:
-      lib0: 0.2.117
-      yjs: 13.6.30
-
   y-protocols@1.0.7(yjs@13.6.31):
     dependencies:
       lib0: 0.2.117
       yjs: 13.6.31
-
-  y-websocket@3.0.0(yjs@13.6.30):
-    dependencies:
-      lib0: 0.2.117
-      y-protocols: 1.0.7(yjs@13.6.30)
-      yjs: 13.6.30
 
   y-websocket@3.0.0(yjs@13.6.31):
     dependencies:
@@ -20349,10 +20292,6 @@ snapshots:
   yazl@2.5.1:
     dependencies:
       buffer-crc32: 0.2.13
-
-  yjs@13.6.30:
-    dependencies:
-      lib0: 0.2.117
 
   yjs@13.6.31:
     dependencies:

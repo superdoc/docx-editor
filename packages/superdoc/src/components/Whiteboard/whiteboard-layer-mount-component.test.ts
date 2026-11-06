@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vite-plus/test';
+import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { createPinia } from 'pinia';
 import { EventEmitter } from 'eventemitter3';
@@ -7,6 +7,8 @@ import { useSuperdocStore } from '../../stores/superdoc-store.js';
 import { normalizeUiConfig } from '../../core/config/normalize-ui-config.js';
 import { Whiteboard } from '../../core/whiteboard/Whiteboard';
 import SuperDoc from '../../SuperDoc.vue';
+
+vi.mock('../PdfViewer/PdfViewer.vue', () => ({ default: { name: 'PdfViewer', template: '<div />' } }));
 
 const mounted: VueWrapper[] = [];
 afterEach(() => {

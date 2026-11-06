@@ -10,6 +10,7 @@ import {
   EngineInputError,
   ENGINE_INPUT_IDENTITY_SCHEMA,
   ENGINE_PREPARE_COMMAND,
+  assertEngineInputIdentity,
   hashEngineTree,
   normalizeExactEngineVersion,
   observeEngineInputIdentity,
@@ -357,6 +358,62 @@ test('engine input identity falls back to a deterministic source closure without
     assert.equal(observeEngineInputIdentity({ v2Root, repoRoot }).digest, linked.digest);
     symlinkSync(tmpdir(), path.join(v2Root, 'src', 'superdoc', 'outside'));
     assert.throws(() => observeEngineInputIdentity({ v2Root, repoRoot }), /symlink escapes/u);
+  });
+});
+
+test('no-Git engine identity ignores generated boundary reports but rejects source changes', () => {
+  withTemp((repoRoot) => {
+    const v2Root = path.join(repoRoot, 'superdoc', 'v2');
+    const source = path.join(v2Root, 'src', 'superdoc', 'index.ts');
+    mkdirSync(path.dirname(source), { recursive: true });
+    writeFileSync(source, 'export const engine = true;\n');
+    const baseline = observeEngineInputIdentity({ v2Root, repoRoot });
+    const reports = path.join(v2Root, '.tmp', 'runtime-source-boundary');
+    mkdirSync(reports, { recursive: true });
+    for (const name of ['cdn', 'collaboration-upgrade', 'document-host', 'document-runtime', 'native-runtime', 'package']) {
+      writeFileSync(path.join(reports, `${name}.json`), JSON.stringify({ generated: name }));
+    }
+    assertEngineInputIdentity(baseline, observeEngineInputIdentity({ v2Root, repoRoot }));
+    writeFileSync(source, 'export const engine = false;\n');
+    assert.throws(() => assertEngineInputIdentity(baseline, observeEngineInputIdentity({ v2Root, repoRoot })), /does not match the current checkout/u);
+  });
+});
+
+test('no-Git engine identity ignores installed editing runtime outputs but rejects source changes', () => {
+  withTemp((repoRoot) => {
+    const v2Root = path.join(repoRoot, 'superdoc', 'v2');
+    const source = path.join(v2Root, 'src', 'dist-editing-runtime', 'index.ts');
+    mkdirSync(path.dirname(source), { recursive: true });
+    writeFileSync(source, 'export const engine = true;\n');
+    const baseline = observeEngineInputIdentity({ v2Root, repoRoot });
+    const compilationBaseline = observeEngineContentIdentity({ v2Root, repoRoot });
+    const output = path.join(v2Root, 'dist-editing-runtime');
+    mkdirSync(output);
+    for (const name of ['editing-runtime.js', 'editing-runtime.d.ts', 'package.json']) {
+      writeFileSync(path.join(output, name), `${name}\n`);
+    }
+    assertEngineInputIdentity(baseline, observeEngineInputIdentity({ v2Root, repoRoot }));
+    assert.equal(observeEngineContentIdentity({ v2Root, repoRoot }).digest, compilationBaseline.digest);
+    writeFileSync(source, 'export const engine = false;\n');
+    assert.throws(() => assertEngineInputIdentity(baseline, observeEngineInputIdentity({ v2Root, repoRoot })), /does not match the current checkout/u);
+    assert.notEqual(observeEngineContentIdentity({ v2Root, repoRoot }).digest, compilationBaseline.digest);
+  });
+});
+
+test('Git engine identities still hash tracked editing runtime paths', () => {
+  withTemp((repoRoot) => {
+    const v2Root = path.join(repoRoot, 'superdoc', 'v2');
+    const output = path.join(v2Root, 'dist-editing-runtime', 'owned.ts');
+    mkdirSync(path.dirname(output), { recursive: true });
+    writeFileSync(output, 'export const engine = true;\n');
+    runGit(repoRoot, 'init', '--quiet');
+    runGit(repoRoot, 'add', '.');
+    runGit(repoRoot, '-c', 'user.name=SuperDoc Test', '-c', 'user.email=superdoc-test@example.invalid', 'commit', '--quiet', '-m', 'fixture');
+    const baseline = observeEngineInputIdentity({ v2Root, repoRoot });
+    const compilationBaseline = observeEngineContentIdentity({ v2Root, repoRoot });
+    writeFileSync(output, 'export const engine = false;\n');
+    assert.notEqual(observeEngineInputIdentity({ v2Root, repoRoot }).digest, baseline.digest);
+    assert.notEqual(observeEngineContentIdentity({ v2Root, repoRoot }).digest, compilationBaseline.digest);
   });
 });
 

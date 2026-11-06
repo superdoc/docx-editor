@@ -105,6 +105,7 @@ const CONTENT_IDENTITY_EXCLUDED_DIRECTORIES = new Set([
   '.build-artifacts',
   '.cache',
   '.git',
+  '.tmp',
   '.turbo',
   '.vite',
   'artifacts',
@@ -154,6 +155,7 @@ export function hashSourceInputClosure({ root, inputPaths, label = 'source' }) {
     });
   }
   const resolvedRoot = realpathSync(requestedRoot);
+  const editingRuntimeOutput = path.join(resolvedRoot, 'superdoc', 'v2', 'dist-editing-runtime');
 
   const inputs = [];
   const filesByPath = new Map();
@@ -196,7 +198,7 @@ export function hashSourceInputClosure({ root, inputPaths, label = 'source' }) {
     for (const entry of readdirSync(directory, { withFileTypes: true })) {
       const absolute = path.join(directory, entry.name);
       if (
-        CONTENT_IDENTITY_EXCLUDED_DIRECTORIES.has(entry.name) &&
+        (CONTENT_IDENTITY_EXCLUDED_DIRECTORIES.has(entry.name) || absolute === editingRuntimeOutput) &&
         (entry.isDirectory() || entry.isSymbolicLink())
       ) {
         continue;

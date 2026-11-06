@@ -23,6 +23,7 @@ import type {
   MetadataHandle,
   SelectionHandle,
   SelectionInfo,
+  SelectionTarget,
   StylesHandle,
   StylesUpdateToMatchSelectionInput,
   ActiveParagraphStyle,
@@ -206,6 +207,19 @@ void metadata.scrollIntoView({ id: 'cite-001' });
 // ─── Selection geometry (row 746) ───────────────────────────────────
 const selection: SelectionHandle = ui.selection;
 const _selectionCurrent: AssertEqual<ReturnType<SelectionHandle['current']>, SelectionInfo | null> = true;
+const _selectionApplyAndWaitInput: AssertEqual<
+  Parameters<SelectionHandle['applyAndWait']>,
+  [target: SelectionTarget]
+> = true;
+const _selectionApplyAndWaitResult: AssertEqual<
+  ReturnType<SelectionHandle['applyAndWait']>,
+  Promise<WorkflowActionResult>
+> = true;
+void selection.applyAndWait({
+  kind: 'selection',
+  start: { kind: 'text', blockId: 'p', offset: 0 },
+  end: { kind: 'text', blockId: 'p', offset: 0 },
+});
 const _getRects: AssertEqual<ReturnType<SelectionHandle['getRects']>, readonly ViewportRect[]> = true;
 const _placeAroundContentControlInput: AssertEqual<
   Parameters<SelectionHandle['placeAroundContentControl']>,

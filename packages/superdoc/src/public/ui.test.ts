@@ -2583,6 +2583,40 @@ describe('public facade (ui)', () => {
     });
   });
 
+  it('re-applies a captured range when a later selection request is pending', () => {
+    const hostSelection = { anchor: { blockId: 'P1', blockOffset: 6 }, focus: { blockId: 'P1', blockOffset: 11 } };
+    let gate: 'open' | 'pending' = 'open';
+    const { superdoc, apply } = makeSelectionSuperdoc({ getHostSelection: () => hostSelection });
+    apply.mockImplementation(() => {
+      gate = 'pending';
+      return { ok: true };
+    });
+    Object.assign(superdoc.activeEditor.host, {
+      getHandles: () => ({
+        editing: {
+          selection: { getSnapshot: () => hostSelection, subscribe: () => () => {} },
+          selectionTargets: { apply, selectionRequestGate: () => gate },
+        },
+      }),
+    });
+    const ui = createSuperDocUI({ superdoc });
+    try {
+      const capture = ui.selection.capture();
+      expect(capture).not.toBeNull();
+      const point = { kind: 'text' as const, blockId: 'P2', offset: 0 };
+      expect(ui.selection.apply({ kind: 'selection', start: point, end: point })).toMatchObject({ ok: true });
+      expect(ui.selection.restore(capture!)).toEqual({ ok: true, success: true });
+      expect(apply).toHaveBeenCalledTimes(2);
+      expect(apply).toHaveBeenLastCalledWith({
+        kind: 'selection',
+        start: { kind: 'text', blockId: 'P1', offset: 6 },
+        end: { kind: 'text', blockId: 'P1', offset: 11 },
+      });
+    } finally {
+      ui.destroy();
+    }
+  });
+
   it.each([
     ['unchanged', 'never', 0],
     ['moved after capture', 'after', 1],
@@ -17346,6 +17380,55 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
       }
     },
   );
+
+  it.each([
+    ['pending', 'textTarget'],
+    ['blocked', 'textTarget'],
+    ['pending', 'hyperlinkTarget'],
+    ['blocked', 'hyperlinkTarget'],
+  ] as const)('link executeAsync uses its explicit target with a %s selection gate (%s)', async (gate, target) => {
+    const wrap = vi.fn(() => ({ success: true }));
+    const updateTarget = vi.fn(() => ({ success: true }));
+    const wait = vi.fn(async () => gate);
+    const superdoc = makeBlockSuperdoc(
+      {
+        selection: { current: () => null },
+        hyperlinks: { wrap, updateTarget, list: () => ({ items: [] }), patch: vi.fn(), remove: vi.fn() },
+      },
+      {
+        editorExtra: {
+          host: {
+            getHandles: () => ({
+              editing: {
+                selectionTargets: {
+                  apply: vi.fn(),
+                  selectionRequestGate: () => gate,
+                  whenSelectionRequestSettled: wait,
+                },
+              },
+            }),
+          },
+        },
+      },
+    );
+    const ui = createSuperDocUI({ superdoc });
+    try {
+      const result = await ui.commands.get('link').executeAsync(
+        target === 'textTarget'
+          ? { href: 'https://example.com', textTarget: SELECTION_TARGET }
+          : {
+              href: 'https://example.com',
+              hyperlinkTarget: { storyId: 'main:/word/document.xml', hyperlinkNodeId: 'hl:1' },
+            },
+      );
+      expect(result).toMatchObject({ success: true });
+      expect(wait).not.toHaveBeenCalled();
+      if (target === 'textTarget') expect(wrap).toHaveBeenCalled();
+      else expect(updateTarget).toHaveBeenCalled();
+    } finally {
+      ui.destroy();
+    }
+  });
 
   it.each(['settle', 'viewing', 'document', 'invalid-read'] as const)(
     'link executeAsync binds an asynchronous explicit-target lookup and its mutation (%s)',

@@ -1063,6 +1063,7 @@ export interface SelectionHandle extends SnapshotSubscribable<SelectionSlice> {
    * Fails closed with a stable reason when the host cannot honor the target.
    */
   apply(target: SelectionTarget): WorkflowActionResult;
+  applyAndWait(target: SelectionTarget): Promise<WorkflowActionResult>;
   /**
    * Place the browser caret before or after a live inline content control.
    * Placement does not edit the document or create an undo entry.

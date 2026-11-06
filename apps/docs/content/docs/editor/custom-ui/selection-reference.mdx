@@ -15,6 +15,7 @@ Use the method that matches where your interface's target comes from:
 | Preserve selected context after focus moves          | `selection.capture()` and `selection.restore()`       |
 | Read the live caret or selection                     | `selection.current()` or `selection.observe()`        |
 | Select an explicit `SelectionTarget`                 | `selection.apply(selectionTarget)`                    |
+| Select and wait until the caret is painted           | `await selection.applyAndWait(selectionTarget)`       |
 | Position UI from the live selection                  | `selection.getAnchorRect()` or `selection.getRects()` |
 | Position UI from a capture or query result           | `viewport.getRect({ target })`                        |
 | Identify supported document entities under a pointer | `viewport.entityAt({ x, y })`                         |
@@ -26,6 +27,22 @@ position. Use [Context menu](/editor/custom-ui/context-menus) for a complete poi
 `selectionTarget` is that form, and `target` is a `TextTarget` for geometry. Either works for `viewport.getRect()`, which
 allows the geometry fallback `selectionTarget ?? target`, but only `selectionTarget` is accepted by
 `apply()`. Read it directly and handle `null` rather than reusing that geometry fallback.
+
+In the browser, `selection.apply()` validates and applies the target synchronously; a missing block returns
+`{ ok: false, reason: "target-unresolved" }` and preserves the previous selection. Painting and the selection snapshot may update later. Use `applyAndWait()` when the next operation depends on the new selection. It confirms the painted selection but
+does not focus the editor; focus it before keyboard input.
+
+```ts
+const receipt = await superdoc.activeEditor.doc.create.paragraph({
+  at: { kind: 'after', target: { kind: 'block', nodeType: 'paragraph', nodeId: anchorId } },
+});
+const nodeId = receipt.paragraph?.nodeId ?? receipt.insertionPoint?.blockId;
+if (receipt.success && nodeId) {
+  const point = { kind: 'text' as const, blockId: nodeId, offset: 0 };
+  const selected = await superdoc.ui.selection.applyAndWait({ kind: 'selection', start: point, end: point });
+  if (selected.ok) superdoc.activeEditor.focus?.();
+}
+```
 
 ## Find controls intersecting selected text
 

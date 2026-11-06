@@ -8058,6 +8058,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
   };
 
   const commandSelectionIsReady = (id: string, descriptor: CommandDescriptor | null, payload: unknown): boolean => {
+    if (descriptorNeedsFreshSelection(descriptor) && selectionRequestGate() !== 'open') return false;
     const foreground = foregroundMutationState();
     // A cached painted caret can precede an already captured native range.
     // Resolve through the ordered worker reader before choosing range vs marks.
@@ -8320,6 +8321,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     firstParty: boolean,
     preparedSelection?: SelectionSlice,
   ): CommandExecutionResult => {
+    if (commandNeedsFreshSelection(id, payload) && selectionRequestGate() !== 'open') return false;
     const actionId = beginInteraction(superdoc, 'command:started', () => ({
       commandId: id,
       selection: preparedSelection ?? state.selection,
@@ -9352,7 +9354,12 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     let rawSelection: unknown;
     const needsSelection = !!reader || commandNeedsFreshSelection(id, payload);
     const needsForeground = needsSelection || (id === 'copy-format' && !customCommands.has(id));
-    const execute = () => {
+    const selectionGeneration = needsSelection ? selectionRequestGeneration() : undefined;
+    const selectionConfirmation =
+      needsSelection && selectionRequestGate() !== 'open' ? whenSelectionRequestSettled() : null;
+    const execute = async () => {
+      if (selectionConfirmation && (await selectionConfirmation) !== 'open') return false;
+      if (needsSelection && selectionGeneration !== selectionRequestGeneration()) return false;
       // Ordered reads participate in the same admitted task as their mutation.
       const prepared = reader
         ? reader.read().then(
@@ -9381,8 +9388,9 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
               const command = computeCommandState(id, getDoc(), selection, projectSelectionInlineValues(selection));
               if (!command.supported || !command.enabled) return false;
             }
-            runCommand(id, payload, context, firstParty, selection);
-            return lastCommandSettlement;
+            if (needsSelection && selectionGeneration !== selectionRequestGeneration()) return false;
+            const result = runCommand(id, payload, context, firstParty, selection);
+            return result === false ? false : lastCommandSettlement;
           })
         : (() => {
             if (requireEnabled) {
@@ -9394,8 +9402,8 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
               );
               if (!command.supported || !command.enabled) return false;
             }
-            runCommand(id, payload, context, firstParty);
-            return lastCommandSettlement;
+            const result = runCommand(id, payload, context, firstParty);
+            return result === false ? false : lastCommandSettlement;
           })();
     };
     const runForeground = hostMethod(host, 'runForegroundInteraction');
@@ -9494,6 +9502,31 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     }
     return { reason: SUPERDOC_UI_REASONS.hostCapabilityUnavailable };
   };
+  const selectionRequestGate = (): 'open' | 'pending' | 'blocked' => {
+    const resolved = getSelectionApplyHelper();
+    if (!('helper' in resolved)) return 'open';
+    const gate = hostMethod(resolved.helper, 'selectionRequestGate');
+    const state = safeCall<unknown>(() => gate?.(), 'open');
+    return state === 'pending' || state === 'blocked' ? state : 'open';
+  };
+  const selectionRequestGeneration = (): unknown => {
+    const resolved = getSelectionApplyHelper();
+    return 'helper' in resolved ? hostMethod(resolved.helper, 'selectionRequestGeneration')?.() : undefined;
+  };
+  const whenSelectionRequestSettled = async (): Promise<'open' | 'blocked'> => {
+    const resolved = getSelectionApplyHelper();
+    if (!('helper' in resolved)) return 'open';
+    const wait = hostMethod(resolved.helper, 'whenSelectionRequestSettled');
+    if (!wait) return 'open';
+    try {
+      return (await wait()) === 'open' ? 'open' : 'blocked';
+    } catch {
+      return 'blocked';
+    }
+  };
+  const refreshSelectionAfterRequest = (): void => {
+    void whenSelectionRequestSettled().then(recompute);
+  };
 
   /** Live host SelectionTarget from editable or review-safe selection handles. */
   const readHostSelectionTarget = (): SelectionTarget | null => {
@@ -9590,6 +9623,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       if (
         !hasCellTarget &&
         target.coordinateSpace === 'tracked' &&
+        selectionRequestGate() === 'open' &&
         heldHostSelection !== undefined &&
         readHostSelectionSnapshot() === heldHostSelection
       ) {
@@ -9598,7 +9632,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       const resolved = getSelectionApplyHelper();
       if (!('helper' in resolved)) return done({ ok: false, reason: resolved.reason });
       try {
-        return done(
+        const applied = done(
           normalizeHostSelectionApplyResult(
             hostMethod(resolved.helper, 'apply')?.(
               target,
@@ -9606,6 +9640,8 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
             ),
           ),
         );
+        if (applied.ok) refreshSelectionAfterRequest();
+        return applied;
       } catch {
         return done({ ok: false, reason: SUPERDOC_UI_REASONS.hostCapabilityUnavailable });
       }
@@ -9615,7 +9651,24 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       const resolved = getSelectionApplyHelper();
       if (!('helper' in resolved)) return { ok: false, reason: resolved.reason };
       try {
-        const result = hostMethod(resolved.helper, 'apply')?.(target);
+        const apply = hostMethod(resolved.helper, 'requestApply') ?? hostMethod(resolved.helper, 'apply');
+        const result = apply?.(target);
+        recompute();
+        const applied = normalizeHostSelectionApplyResult(result);
+        if (applied.ok) refreshSelectionAfterRequest();
+        return applied;
+      } catch {
+        return { ok: false, reason: SUPERDOC_UI_REASONS.hostCapabilityUnavailable };
+      }
+    },
+    applyAndWait: async (target: SelectionTarget): Promise<WorkflowActionResult> => {
+      if (!getEditor()) return { ok: false, reason: SUPERDOC_UI_REASONS.notReady };
+      const resolved = getSelectionApplyHelper();
+      if (!('helper' in resolved)) return { ok: false, reason: resolved.reason };
+      const apply = hostMethod(resolved.helper, 'applyAndWait');
+      if (!apply) return { ok: false, reason: SUPERDOC_UI_REASONS.hostCapabilityUnavailable };
+      try {
+        const result = await apply(target);
         recompute();
         return normalizeHostSelectionApplyResult(result);
       } catch {
@@ -10145,6 +10198,30 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       const commentsApi = doc?.comments as LooseRecord | undefined;
       const op = commentsApi?.create;
       if (typeof op !== 'function') return failedReceipt('comments.create is unavailable.');
+      if (selectionRequestGate() !== 'open') {
+        return (async () => {
+          const resolved = getSelectionApplyHelper();
+          const confirm = 'helper' in resolved ? hostMethod(resolved.helper, 'confirmedSelectionTarget') : null;
+          if (!confirm) return failedReceipt('Selection is not confirmed.', 'NO_SELECTION');
+          try {
+            const selected = await confirm();
+            if (
+              !isPlainObject(selected) ||
+              selected.ok !== true ||
+              selected.mode !== 'range' ||
+              !isPlainObject(selected.target)
+            ) {
+              return failedReceipt('Selection is not confirmed.', 'NO_SELECTION');
+            }
+            return await settleWorkflowReceipt(
+              op.call(commentsApi, { target: selected.target, text: input.text }),
+              failedReceipt('comments.create failed.'),
+            );
+          } catch {
+            return failedReceipt('Selection is not confirmed.', 'NO_SELECTION');
+          }
+        })();
+      }
       const snapshot = selectionSub.get();
       let target = snapshot.target ?? snapshot.selectionTarget;
       // Viewing-mode programmatic SelectionTarget applies update the host

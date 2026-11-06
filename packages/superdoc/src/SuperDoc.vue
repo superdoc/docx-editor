@@ -330,6 +330,13 @@ type V2SelectionHandle = {
 type V2SelectionTargetsHandle = {
   apply?: (target: unknown) => unknown;
   applyAndWait?: (target: unknown) => unknown;
+  confirmedSelectionTarget?: () => Promise<{
+    ok?: boolean;
+    target?: unknown;
+    mode?: string;
+    story?: unknown;
+    reason?: string;
+  }>;
 };
 type V2HostHandles = {
   editing?: { selection?: V2SelectionHandle | null; selectionTargets?: V2SelectionTargetsHandle | null } | null;
@@ -1369,32 +1376,26 @@ const onV2EditorReady = (payload: V2EditorReadyPayload | null | undefined) => {
     return { ok: true, mode: result.mode ?? 'range' };
   };
   const currentV2AuthoringMode = () => (proxy.$superdoc.config.documentMode === 'suggesting' ? 'tracked' : 'direct');
-  const readV2CurrentSelectionTarget = () => {
-    const editing = host?.getHandles?.()?.editing ?? null;
-    const selection = editing?.selection ?? null;
-    if (typeof selection?.toSelectionTarget !== 'function') {
-      return createV2AuthoringFailure(
-        'selection-target-unavailable',
-        'editing.selection.toSelectionTarget is not available',
-      );
+  const confirmedV2SelectionTarget = async () => {
+    const selectionTargets = host?.getHandles?.()?.editing?.selectionTargets;
+    if (typeof selectionTargets?.confirmedSelectionTarget !== 'function') {
+      return createV2AuthoringFailure('selection-confirmation-unavailable');
     }
-    const result = selection.toSelectionTarget();
-    if (!result || result.kind === 'rejected') {
-      const rejection = result?.rejection ?? {};
-      return createV2AuthoringFailure(
-        rejection.reason ?? rejection.code ?? 'selection-target-rejected',
-        rejection.detail,
-      );
+    try {
+      const result = await selectionTargets.confirmedSelectionTarget();
+      if (!result?.ok || !result.target) {
+        return createV2AuthoringFailure(result?.reason ?? 'selection-unconfirmed');
+      }
+      const target = result.target;
+      return {
+        ok: true,
+        target,
+        mode: result.mode,
+        story: result.story,
+      };
+    } catch (error) {
+      return createV2AuthoringFailure('selection-unconfirmed', error instanceof Error ? error.message : String(error));
     }
-    if (!result.target || typeof result.target !== 'object') {
-      return createV2AuthoringFailure('selection-target-rejected', 'selection target was not produced');
-    }
-    return {
-      ok: true,
-      target: result.target,
-      mode: result.mode ?? 'range',
-      story: result.story,
-    };
   };
   const failureFromV2Receipt = (receipt: V2Receipt, fallbackReason: string) => {
     const failure: V2ReceiptFailure | null | undefined = receipt?.failure ?? receipt;
@@ -1487,7 +1488,7 @@ const onV2EditorReady = (payload: V2EditorReadyPayload | null | undefined) => {
           'activeEditor.doc.clipboard.serializeSelection is not available',
         );
       }
-      const selected = readV2CurrentSelectionTarget();
+      const selected = await confirmedV2SelectionTarget();
       if (!selected.ok) return selected;
       let serialized;
       try {
@@ -1533,7 +1534,7 @@ const onV2EditorReady = (payload: V2EditorReadyPayload | null | undefined) => {
       let pasteTarget = target;
       let selectionMode = null;
       if (!pasteTarget) {
-        const selected = readV2CurrentSelectionTarget();
+        const selected = await confirmedV2SelectionTarget();
         if (!selected.ok) return selected;
         pasteTarget = selected.target;
         selectionMode = selected.mode;

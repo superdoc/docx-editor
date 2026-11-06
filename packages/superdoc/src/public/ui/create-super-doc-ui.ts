@@ -110,6 +110,8 @@ import type {
   ViewportEntityAddress,
   ViewportEntityHit,
   ViewportGetRectInput,
+  ViewportPositionAtInput,
+  ViewportPositionAtResult,
   MetadataHandle,
   Receipt,
   SuperDocUIFailureReceipt,
@@ -11377,6 +11379,52 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     return null;
   }
 
+  const pointInVisibleHost = (x: number, y: number): boolean => {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
+    const host = resolveVisibleHost();
+    if (!host) return false;
+    const rect = host.getBoundingClientRect();
+    return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+  };
+
+  const isPointSelectionTarget = (value: unknown): value is SelectionTarget => {
+    if (!isPlainObject(value) || value.kind !== 'selection') return false;
+    return [value.start, value.end].every(
+      (point) =>
+        isPlainObject(point) &&
+        point.kind === 'text' &&
+        typeof point.blockId === 'string' &&
+        typeof point.offset === 'number' &&
+        Number.isSafeInteger(point.offset) &&
+        point.offset >= 0,
+    );
+  };
+
+  async function positionAt(input: ViewportPositionAtInput): Promise<ViewportPositionAtResult> {
+    if (disposed) return { status: 'disposed' };
+    if (input?.signal?.aborted) return { status: 'cancelled' };
+    if (!input || typeof input.x !== 'number' || typeof input.y !== 'number' || !pointInVisibleHost(input.x, input.y))
+      return { status: 'no-target' };
+    const editor = getEditor(),
+      viewportQuery = editor?.viewportQuery,
+      token = contentToken();
+    const getTargetAtPoint = hostMethod(viewportQuery, 'getTargetAtPoint');
+    if (!getTargetAtPoint) return { status: 'unavailable' };
+    const result = await getTargetAtPoint({ clientX: input.x, clientY: input.y });
+    if (disposed) return { status: 'disposed' };
+    if (input.signal?.aborted) return { status: 'cancelled' };
+    if (editor !== getEditor() || viewportQuery !== getEditor()?.viewportQuery || token !== contentToken())
+      return { status: 'stale' };
+    if (!isPlainObject(result)) throw new Error('Viewport point query returned an invalid host result');
+    if (result.status === 'resolved') {
+      if (!isPointSelectionTarget(result.target)) throw new Error('Viewport point query returned an invalid target');
+      return { status: 'resolved', target: result.target };
+    }
+    if (result.status === 'no-target' || result.status === 'stale' || result.status === 'disposed')
+      return { status: result.status };
+    throw new Error('Viewport point query returned an invalid host result');
+  }
+
   function contextAt(input: { x: number; y: number }): ViewportContext {
     const validInput = !!input && typeof input.x === 'number' && typeof input.y === 'number';
     // A fresh object: callers reuse and mutate pointer coordinates, and the
@@ -11391,7 +11439,20 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
         return current.status === 'ready' ? current : { ...current, tableSelection: null };
       })(),
       position: null,
-      insideSelection: false,
+      insideSelection:
+        validInput && pointInVisibleHost(point.x, point.y)
+          ? safeCall(
+              () =>
+                hostMethod(
+                  getEditor()?.viewportQuery,
+                  'isPointInPaintedSelection',
+                )?.({
+                  clientX: point.x,
+                  clientY: point.y,
+                }) === true,
+              false,
+            )
+          : false,
     };
   }
 
@@ -11811,6 +11872,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     getHost: (): HTMLElement | null => resolveVisibleHost(),
     entityAt,
     contextAt,
+    positionAt,
     scrollIntoView: async (input: ScrollIntoViewInput): Promise<ScrollIntoViewOutput> => {
       const rawTarget = input?.target;
       if (!rawTarget) return { success: false };

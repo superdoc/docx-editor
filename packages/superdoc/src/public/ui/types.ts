@@ -1017,6 +1017,16 @@ export interface ViewportGetRectsResult {
   results: readonly ViewportRectResult[];
 }
 
+export interface ViewportPositionAtInput {
+  x: number;
+  y: number;
+  signal?: AbortSignal;
+}
+
+export type ViewportPositionAtResult =
+  | { status: 'resolved'; target: SelectionTarget }
+  | { status: 'no-target' | 'stale' | 'cancelled' | 'disposed' | 'unavailable' };
+
 /** Result of `ui.viewport.getRect`. */
 export interface ViewportRectResult {
   /** Whether the target resolved to any painted geometry. */
@@ -1444,6 +1454,7 @@ export interface ViewportHandle {
   getRect(input: ViewportGetRectInput): ViewportRectResult;
   /** At most 5000 targets, yielding every 32. Never forces unpainted pages to render. */
   getRects(input: ViewportGetRectsInput): Promise<ViewportGetRectsResult>;
+  positionAt(input: ViewportPositionAtInput): Promise<ViewportPositionAtResult>;
   /**
    * Subscribe to geometry invalidation after selection, zoom, scroll, resize,
    * layout, or repaint changes. The callback is coalesced to one per frame.

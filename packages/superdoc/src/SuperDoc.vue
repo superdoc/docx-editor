@@ -421,6 +421,7 @@ type V2EditorReadyPayload = {
   commentsAdapter?: unknown;
   trackedChangesAdapter?: unknown;
   contextMenu?: unknown;
+  viewportQuery?: unknown;
   documentApi?: V2DocumentApi | null;
   documentMutationReadiness?: { whenPainted?: (receipt: unknown) => unknown } | null;
   documentApiUnavailableReason?: string | null;
@@ -1248,6 +1249,7 @@ const onV2EditorReady = (payload: V2EditorReadyPayload | null | undefined) => {
     commentsAdapter,
     trackedChangesAdapter,
     contextMenu,
+    viewportQuery,
     documentApi,
     documentMutationReadiness,
     documentApiUnavailableReason,
@@ -1629,6 +1631,7 @@ const onV2EditorReady = (payload: V2EditorReadyPayload | null | undefined) => {
     // boot failed.
     v2TrackedChanges: trackedChangesAdapter ?? null,
     contextMenu: contextMenu ?? null,
+    viewportQuery: viewportQuery ?? null,
     // ui-phase4-001: v2 page metrics + zoom runtime. Always present in v2
     // mode (null only if the v2 editor host boot failed). Consumers:
     //   - SuperDoc.vue's `activeZoom` watcher calls `pageMetrics.setZoom`

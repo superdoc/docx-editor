@@ -222,17 +222,18 @@ describe('SuperDoc.upgradeToCollaboration', () => {
     expect(await same).toEqual({ roomId: 'room', documentId: 'upgrade-doc' });
   });
 
-  describe('when the instance is destroyed while the engine is attaching the room', () => {
+  describe('when the instance is destroyed during the upgrade', () => {
     const destroyedDuringUpgrade = 'SuperDoc: instance was destroyed during upgrade';
 
-    const startUpgrade = async (engineUpgrade: () => Promise<void>) => {
+    const startUpgrade = async (engineUpgrade: () => Promise<void>, pendingSave?: () => Promise<Blob>) => {
       const selector = document.createElement('div');
       document.body.append(selector);
       const instance = new SuperDoc({ selector, telemetry: { enabled: false } });
       instances.push(instance);
       const source = new Blob([new Uint8Array([1, 2, 3])]);
       const upgradeToCollaboration = vi.fn().mockImplementation(engineUpgrade);
-      const editor = { editorVersion: 2, options: { documentId: 'upgrade-doc' }, upgradeToCollaboration };
+      const save = vi.fn().mockImplementation(pendingSave ?? (async () => source));
+      const editor = { editorVersion: 2, options: { documentId: 'upgrade-doc' }, upgradeToCollaboration, save };
       const configDoc = { id: 'upgrade-doc', type: DOCX, data: source };
       const storeDoc = { ...configDoc, getEditor: () => editor, v2Collaboration: null };
       const mutable = instance as unknown as {
@@ -245,14 +246,16 @@ describe('SuperDoc.upgradeToCollaboration', () => {
       const upgrade = instance.upgradeToCollaboration({
         collaboration: { providerType: 'y-websocket', documentId: 'room', serverUrl: 'wss://example.test' },
       } as never);
-      await vi.waitFor(() => expect(upgradeToCollaboration).toHaveBeenCalledTimes(1));
+      const blockedStep = pendingSave ? save : upgradeToCollaboration;
+      await vi.waitFor(() => expect(blockedStep).toHaveBeenCalledTimes(1));
       instance.destroy();
       const stateAtDestroy = () => ({
         configDoc: { ...configDoc },
         storeDoc: { ...storeDoc },
+        keepsSourceData: configDoc.data === source && storeDoc.data === source,
         isCollaborative: instance.isCollaborative,
       });
-      return { upgrade, stateAtDestroy, expectedState: stateAtDestroy() };
+      return { upgrade, upgradeToCollaboration, stateAtDestroy, expectedState: stateAtDestroy() };
     };
 
     const flushPendingWork = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -291,6 +294,56 @@ describe('SuperDoc.upgradeToCollaboration', () => {
       const { upgrade, stateAtDestroy, expectedState } = await startUpgrade(() => new Promise<void>(() => {}));
       await expect(upgrade).rejects.toThrow(destroyedDuringUpgrade);
       await flushPendingWork();
+      expect(stateAtDestroy()).toEqual(expectedState);
+    });
+
+    const attachRoom = () => Promise.resolve();
+    const savedDocx = () => new Blob([new Uint8Array([4, 5, 6])]);
+
+    it('rejects the caller and never attaches the room when the DOCX save resolves afterwards', async () => {
+      let finishSave!: (saved: Blob) => void;
+      const { upgrade, upgradeToCollaboration, stateAtDestroy, expectedState } = await startUpgrade(
+        attachRoom,
+        () =>
+          new Promise<Blob>((resolve) => {
+            finishSave = resolve;
+          }),
+      );
+      const outcome = Promise.allSettled([upgrade]);
+      finishSave(savedDocx());
+      expect(await outcome).toEqual([{ status: 'rejected', reason: new Error(destroyedDuringUpgrade) }]);
+      await flushPendingWork();
+      expect(upgradeToCollaboration).not.toHaveBeenCalled();
+      expect(stateAtDestroy()).toEqual(expectedState);
+    });
+
+    it('rejects the caller and never attaches the room when the DOCX save rejects afterwards', async () => {
+      let failSave!: (error: Error) => void;
+      const { upgrade, upgradeToCollaboration, stateAtDestroy, expectedState } = await startUpgrade(
+        attachRoom,
+        () =>
+          new Promise<Blob>((_resolve, reject) => {
+            failSave = reject;
+          }),
+      );
+      const outcome = Promise.allSettled([upgrade]);
+      failSave(new Error('save failed'));
+      expect(await outcome).toEqual([{ status: 'rejected', reason: new Error(destroyedDuringUpgrade) }]);
+      await flushPendingWork();
+      expect(upgradeToCollaboration).not.toHaveBeenCalled();
+      expect(stateAtDestroy()).toEqual(expectedState);
+    });
+
+    it('rejects the caller promptly and never attaches the room when the DOCX save never settles', async () => {
+      const { upgrade, upgradeToCollaboration, stateAtDestroy, expectedState } = await startUpgrade(
+        attachRoom,
+        () => new Promise<Blob>(() => {}),
+      );
+      expect(await Promise.allSettled([upgrade])).toEqual([
+        { status: 'rejected', reason: new Error(destroyedDuringUpgrade) },
+      ]);
+      await flushPendingWork();
+      expect(upgradeToCollaboration).not.toHaveBeenCalled();
       expect(stateAtDestroy()).toEqual(expectedState);
     });
   });

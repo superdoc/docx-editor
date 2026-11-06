@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type SubmitEvent } from 'react';
 import { SuperDocEditor } from '@superdoc/react';
 import type { UIConfig } from 'superdoc';
 import type { SelectionCapture } from 'superdoc/ui';
@@ -227,7 +227,7 @@ function SelectionPromptEditor() {
     setStatus('The composer kept the captured text as context.');
   }
 
-  async function submitPrompt(event: FormEvent<HTMLFormElement>) {
+  async function submitPrompt(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     const currentCapture = capture;
     const question = prompt.trim();

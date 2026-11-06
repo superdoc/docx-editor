@@ -1,4 +1,22 @@
 import { defineConfig } from 'vite-plus';
+import type { OxlintOverride } from 'vite-plus/lint';
+
+const snippetsKeepOnContentControlClickUntilTheDocsEmbedRuntimeHasUiContentControlsOnClick: OxlintOverride = {
+  files: [
+    'apps/docs/snippets/editor/built-in-content-controls.ts',
+    'apps/docs/snippets/editor/react-built-in-content-controls.tsx',
+  ],
+  rules: {
+    'typescript/no-deprecated': [
+      'error',
+      {
+        allow: [
+          { from: 'file', name: 'onContentControlClick', path: '../../packages/superdoc/src/core/types/index.ts' },
+        ],
+      },
+    ],
+  },
+};
 
 // AIDEV-NOTE: This root config exists only to hold the `fmt` and `staged`
 // blocks: `vp fmt` and `vp check` read Oxfmt settings from `fmt`, and
@@ -115,6 +133,11 @@ export default defineConfig({
         rules: { 'unicorn/no-thenable': 'off' },
       },
       {
+        files: ['apps/docs/snippets/**'],
+        rules: { 'typescript/no-deprecated': 'error' },
+      },
+      snippetsKeepOnContentControlClickUntilTheDocsEmbedRuntimeHasUiContentControlsOnClick,
+      {
         files: ['**/*.test.*'],
         rules: {
           'typescript/ban-ts-comment': [
@@ -152,6 +175,7 @@ export default defineConfig({
       '**/test/**',
       '**/__tests__/**',
       'apps/docs/**',
+      '!apps/docs/snippets/**',
       'examples/**',
       '**/examples/**',
       'e2e-tests/**',

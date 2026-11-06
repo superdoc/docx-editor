@@ -15,3 +15,5 @@ const superdoc = new SuperDoc({
     },
   },
 });
+
+window.addEventListener('beforeunload', () => superdoc.destroy());

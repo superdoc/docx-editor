@@ -29,8 +29,16 @@ const COMMENTS_LAYER_FILES = readdirSync(join(REPO_ROOT, COMMENTS_LAYER), { recu
   .map((file) => join(COMMENTS_LAYER, String(file)))
   .sort();
 
+const DOCS_SNIPPETS = 'apps/docs/snippets';
+
+const LINTABLE_SNIPPET_FILES = readdirSync(join(REPO_ROOT, DOCS_SNIPPETS), { recursive: true })
+  .map((file) => join(DOCS_SNIPPETS, String(file)))
+  .filter((file) => /\.(?:ts|tsx|mjs)$/.test(file))
+  .sort();
+
 const REAL_FILES_THAT_MUST_BE_LINTED = {
   'SuperDoc.vue': ['packages/superdoc/src/SuperDoc.vue'],
+  'every docs snippet': LINTABLE_SNIPPET_FILES,
   'every CommentsLayer Vue component': COMMENTS_LAYER_FILES.filter((file) => file.endsWith('.vue')),
   'every CommentsLayer test': COMMENTS_LAYER_FILES.filter((file) => /\.test\./.test(file)),
 };
@@ -135,4 +143,19 @@ test('vp lint rejects @ts-ignore and @ts-nocheck in a superdoc test file', () =>
 
 test('vp lint rejects a described @ts-expect-error in a superdoc source file', () => {
   assertLintRejects('packages/superdoc/src/core', 'probe.ts', DESCRIBED_EXPECT_ERROR, 'ban-ts-comment');
+});
+
+const SNIPPET_WITH_DEPRECATED_CONFIG_KEY =
+  "import { SuperDoc } from 'superdoc';\n\n" +
+  "export const superdoc = new SuperDoc({ selector: '#editor', onEditorDestroy: () => {} });\n";
+
+const SNIPPET_WITHOUT_DEPRECATED_API =
+  "import { SuperDoc } from 'superdoc';\n\n" + "export const superdoc = new SuperDoc({ selector: '#editor' });\n";
+
+test('vp lint rejects a deprecated SuperDoc config key in a docs snippet', () => {
+  assertLintRejects(`${DOCS_SNIPPETS}/editor`, 'probe.ts', SNIPPET_WITH_DEPRECATED_CONFIG_KEY, 'no-deprecated');
+});
+
+test('vp lint accepts a docs snippet that uses no deprecated API', () => {
+  assertLintAccepts(`${DOCS_SNIPPETS}/editor`, 'probe.ts', SNIPPET_WITHOUT_DEPRECATED_API);
 });

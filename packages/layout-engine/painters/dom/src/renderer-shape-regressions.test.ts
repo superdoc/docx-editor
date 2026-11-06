@@ -1,6 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vite-plus/test';
 import { createTestPainter as createDomPainter } from './_test-utils.js';
-import type { DrawingGeometry, FlowBlock, Layout, Measure, SolidFillWithAlpha } from '@superdoc/contracts';
+import type {
+  DrawingGeometry,
+  FlowBlock,
+  Layout,
+  Measure,
+  SolidFillWithAlpha,
+  VectorShapeStyle,
+} from '@superdoc/contracts';
 
 type DrawingFlowBlock = Extract<FlowBlock, { kind: 'drawing' }>;
 
@@ -120,6 +127,88 @@ describe('DomPainter shape regressions', () => {
     );
   });
 
+  const groupFillCases: { name: string; fill?: VectorShapeStyle['fillColor']; expected: string; opacity?: string }[] = [
+    { name: 'omitted fill', expected: 'none' },
+    { name: 'explicit noFill', fill: null, expected: 'none' },
+    { name: 'solid blue', fill: '#A6E1FF', expected: '#A6E1FF' },
+    { name: 'solid black', fill: '#000000', expected: '#000000' },
+    {
+      name: 'alpha fill',
+      fill: { type: 'solidWithAlpha', color: '#22C55E', alpha: 0.4 },
+      expected: '#22C55E',
+      opacity: '0.4',
+    },
+    {
+      name: 'gradient fill',
+      fill: {
+        type: 'gradient',
+        gradientType: 'linear',
+        angle: 0,
+        stops: [
+          { position: 0, color: '#A6E1FF' },
+          { position: 1, color: '#FFFFFF' },
+        ],
+      },
+      expected: 'url(',
+    },
+  ];
+
+  describe.each(['preset', 'custom'])('SD-3806 grouped %s geometry', (geometryKind) => {
+    it.each(groupFillCases)('preserves $name alongside a filled sibling and label', ({ fill, expected, opacity }) => {
+      const customPath = 'M 0 0 L 100 0 L 100 50 L 0 50 Z';
+      const drawingBlock: DrawingFlowBlock = {
+        kind: 'drawing',
+        id: 'outline-group',
+        drawingKind: 'shapeGroup',
+        geometry: { width: 240, height: 120 },
+        groupTransform: { width: 240, height: 120, childWidth: 120, childHeight: 60 },
+        shapes: [
+          {
+            shapeType: 'vectorShape',
+            attrs: {
+              x: 20,
+              y: 10,
+              width: 200,
+              height: 100,
+              rotation: 15,
+              flipH: true,
+              kind: 'rect',
+              ...(geometryKind === 'custom' ? { customGeometry: { paths: [{ d: customPath, w: 100, h: 50 }] } } : {}),
+              ...(fill !== undefined ? { fillColor: fill } : {}),
+              strokeColor: '#225588',
+              strokeWidth: 2,
+              textContent: { parts: [{ text: 'Some text here' }] },
+            },
+          },
+          {
+            shapeType: 'vectorShape',
+            attrs: { x: 0, y: 0, width: 12, height: 12, kind: 'rect', fillColor: '#A6E1FF' },
+          },
+        ],
+      };
+      const { blocks, measures, layout } = createDrawingFixtures(drawingBlock);
+      createDomPainter({ blocks, measures }).paint(layout, mount);
+
+      const children = mount.querySelectorAll<HTMLElement>('.superdoc-shape-group__child');
+      expect(children).toHaveLength(2);
+      const shape = children[0];
+      const path = shape?.querySelector('svg path');
+      expect(path?.getAttribute('fill')).toContain(expected);
+      expect(path?.getAttribute('stroke')).toBe('#225588');
+      expect(path?.getAttribute('stroke-width')).toBe('2');
+      expect(path?.getAttribute('fill-opacity')).toBe(opacity ?? null);
+      expect(shape?.textContent).toContain('Some text here');
+      expect(shape?.style.left).toBe('20px');
+      expect(shape?.style.top).toBe('10px');
+      expect(shape?.style.width).toBe('200px');
+      expect(shape?.style.height).toBe('100px');
+      expect(shape?.style.transform).toBe('rotate(15deg) scaleX(-1)');
+      expect(children[1]?.querySelector('svg path')?.getAttribute('fill')).toBe('#A6E1FF');
+      if (geometryKind === 'custom') expect(path?.getAttribute('d')).toBe(customPath);
+      if (expected === 'url(') expect(shape?.querySelectorAll('linearGradient stop')).toHaveLength(2);
+    });
+  });
+
   it('prefers custom geometry paths over preset lookups when both are present', () => {
     const geometry: DrawingGeometry = { width: 120, height: 120, rotation: 0, flipH: false, flipV: false };
     const customPath = 'M 0 100 L 50 0 L 100 100 Z';
@@ -146,13 +235,16 @@ describe('DomPainter shape regressions', () => {
     expect(renderedPath).toBeTruthy();
   });
 
-  it('clips a stretched picture fill through the authored preset geometry', () => {
+  it.each(['preset', 'custom'])('clips a stretched picture fill through %s geometry', (geometryKind) => {
     const geometry: DrawingGeometry = { width: 230, height: 230, rotation: 0, flipH: false, flipV: false };
     const drawingBlock: DrawingFlowBlock = {
       kind: 'drawing',
       id: 'sd-658-picture-filled-ellipse',
       drawingKind: 'vectorShape',
       geometry,
+      ...(geometryKind === 'custom'
+        ? { customGeometry: { paths: [{ d: 'M 0 0 L 100 0 L 100 100 L 0 100 Z', w: 100, h: 100 }] } }
+        : {}),
       shapeKind: 'ellipse',
       imageFill: {
         src: 'data:image/jpeg;base64,DOCTOR',

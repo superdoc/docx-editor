@@ -5101,11 +5101,9 @@ export class DomPainter {
       // For preset shapes, we need to pass string colors only
       // Gradients and alpha will be applied after SVG is created
       // null means explicitly "no fill" (from <a:noFill/> or fillRef idx="0"), so use 'none'.
-      // For textboxShape, undefined also means no visible fill/stroke; the preset library defaults
-      // to black paths, which turns missing VML/DrawingML presentation into a filled rectangle.
       let fillColor: string | undefined;
       const isTextboxShape = block.drawingKind === 'textboxShape';
-      if (block.fillColor === null || (isTextboxShape && block.fillColor === undefined)) {
+      if (block.fillColor === null || (block.fillColor === undefined && !block.imageFill)) {
         fillColor = 'none';
       } else if (typeof block.fillColor === 'string') {
         fillColor = block.fillColor;
@@ -5175,12 +5173,10 @@ export class DomPainter {
     if (!custGeom?.paths?.length) return null;
 
     let fillColor: string;
-    if (block.fillColor === null) {
+    if (block.fillColor === null || (block.fillColor === undefined && !block.imageFill)) {
       fillColor = 'none';
     } else if (typeof block.fillColor === 'string') {
       fillColor = block.fillColor;
-    } else if (block.drawingKind === 'textboxShape') {
-      fillColor = 'none';
     } else {
       // Gradient / solidWithAlpha: use a placeholder fill so that downstream
       // applyGradientToSVG / applyAlphaToSVG (which skip fill="none") can

@@ -311,7 +311,7 @@ describe('review window store performance and equivalence', () => {
     expect(parser).not.toHaveBeenCalled();
   });
 
-  it('clears inherited mentions for empty text and still parses nonempty mentions', () => {
+  it('clears inherited mentions for empty text and still parses nonempty mentions', async () => {
     const fixture = createFixture();
     const parser = vi.spyOn(DOMParser.prototype, 'parseFromString');
     const empty = useComment({
@@ -320,7 +320,11 @@ describe('review window store performance and equivalence', () => {
       commentText: '',
       mentions: [{ name: 'Old', email: 'old@example.com' }],
     });
-    fixture.store.addHydratedComment({ superdoc: fixture.superdoc as never, comment: empty, broadcastChanges: false });
+    await fixture.store.addHydratedComment({
+      superdoc: fixture.superdoc as never,
+      comment: empty,
+      broadcastChanges: false,
+    });
     expect(fixture.store.commentsList[0].mentions).toEqual([]);
     expect(parser).not.toHaveBeenCalled();
 
@@ -329,7 +333,7 @@ describe('review window store performance and equivalence', () => {
       fileId: 'doc-1',
       commentText: '<span data-type="mention" name="New" email="new@example.com">New</span>',
     });
-    fixture.store.addHydratedComment({
+    await fixture.store.addHydratedComment({
       superdoc: fixture.superdoc as never,
       comment: mentioned,
       broadcastChanges: false,

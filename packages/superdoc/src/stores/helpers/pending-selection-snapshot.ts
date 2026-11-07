@@ -1,10 +1,10 @@
 import { DOCUMENT_EDITOR_SELECTION_SOURCE } from '../../helpers/selection-source.js';
 
-export type PendingSelectionHost =
+export type PendingSelectionHost<Snapshot = unknown> =
   | {
       activeEditor?: {
         options?: { documentId?: unknown } | null;
-        doc?: { selection?: { current?: () => unknown } | null } | null;
+        doc?: { selection?: { current?: () => Snapshot | PromiseLike<Snapshot> } | null } | null;
       } | null;
     }
   | null
@@ -12,16 +12,16 @@ export type PendingSelectionHost =
 
 export type PendingActiveSelection = { source?: unknown; documentId?: unknown } | null | undefined;
 
-const isThenable = (value: unknown): value is PromiseLike<unknown> =>
+const isThenable = <Snapshot>(value: Snapshot | PromiseLike<Snapshot>): value is PromiseLike<Snapshot> =>
   (typeof value === 'object' || typeof value === 'function') &&
   value !== null &&
   'then' in value &&
   typeof value.then === 'function';
 
-export const getPendingSelectionSnapshot = (
-  superdoc: PendingSelectionHost,
+export const getPendingSelectionSnapshot = <Snapshot>(
+  superdoc: PendingSelectionHost<Snapshot>,
   activeSelection: PendingActiveSelection,
-): unknown => {
+): Snapshot | Promise<Snapshot | null> | null => {
   if (activeSelection?.source !== DOCUMENT_EDITOR_SELECTION_SOURCE) return null;
 
   const selectionDocumentId = activeSelection?.documentId ?? null;
@@ -30,7 +30,7 @@ export const getPendingSelectionSnapshot = (
     return null;
   }
 
-  let currentSelection: (() => unknown) | undefined;
+  let currentSelection: (() => Snapshot | PromiseLike<Snapshot>) | undefined;
   try {
     currentSelection = superdoc?.activeEditor?.doc?.selection?.current;
   } catch {

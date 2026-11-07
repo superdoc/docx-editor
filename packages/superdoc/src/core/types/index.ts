@@ -16,7 +16,7 @@ import type { DiagnosticsConfig } from './diagnostics.js';
 import type { Doc as YDoc } from 'yjs';
 import type { HocuspocusProviderWebsocket } from '@hocuspocus/provider';
 import type { Ref, ComputedRef } from 'vue';
-import type { HyperlinkTarget } from '@superdoc/document-api';
+import type { HyperlinkTarget, SelectionInfo } from '@superdoc/document-api';
 
 import type {
   DocumentFontOption,
@@ -940,10 +940,6 @@ export interface ProofingProvider {
   check: (request: ProofingCheckRequest) => Promise<ProofingCheckResult>;
   suggest?: (request: ProofingSuggestRequest) => Promise<ProofingSuggestResult>;
   dispose?: () => Promise<void> | void;
-}
-
-export interface SelectionInfo {
-  [key: string]: unknown;
 }
 
 /**

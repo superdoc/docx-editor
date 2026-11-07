@@ -28,7 +28,7 @@ import type {
   SuperDocCommentsUpdatePayload,
   User,
 } from '../core/types/index.js';
-import { isStoryLocator } from '@superdoc/document-api';
+import { isStoryLocator, type SelectionInfo } from '@superdoc/document-api';
 import { isPlainObject, isThenable } from '../helpers/object-guards.js';
 import { DOCUMENT_EDITOR_SELECTION_SOURCE } from '../helpers/selection-source.js';
 import { buildFloatingCommentInstances } from './helpers/floating-comment-instances.js';
@@ -1045,7 +1045,7 @@ export const useCommentsStore = defineStore('comments', () => {
     const editor = superdoc?.activeEditor;
     const v2Adapter = getV2CommentsAdapter(superdoc);
     const ownsRequest = () => pendingCommentRequest === request;
-    const emitPending = (snapshot: unknown) => {
+    const emitPending = (snapshot: SelectionInfo | null) => {
       if (!ownsRequest()) return;
       superdoc.emit('comments-update', {
         type: COMMENT_EVENTS.PENDING,
@@ -1062,7 +1062,7 @@ export const useCommentsStore = defineStore('comments', () => {
       if (cap && cap.canWrite === false) return { ok: false, reason: cap.reason };
       return Promise.resolve(
         v2Adapter.captureCurrentSelection?.({
-          beforeReady: (snapshot: unknown) => {
+          beforeReady: (snapshot: SelectionInfo) => {
             if (superdoc?.activeEditor === editor && getV2CommentsAdapter(superdoc) === v2Adapter)
               emitPending(snapshot);
           },

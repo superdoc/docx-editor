@@ -1,9 +1,11 @@
-import type { Config, SuperDoc, SuperDocCommentsUpdatePayload } from 'superdoc';
+import type { Config, SelectionInfo, SuperDoc, SuperDocCommentsUpdatePayload } from 'superdoc';
 
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
 type AssertEqual<A, B> = Equal<A, B> extends true ? true : never;
 type Change = NonNullable<SuperDocCommentsUpdatePayload['changes']>[number];
 type Comment = NonNullable<SuperDocCommentsUpdatePayload['comment']>;
+type PendingSelection = NonNullable<SuperDocCommentsUpdatePayload['pendingSelection']>;
+type CommentCapture = Parameters<SuperDoc['ui']['comments']['createFromCapture']>[0];
 
 const _callbackParam: AssertEqual<
   Parameters<NonNullable<Config['onCommentsUpdate']>>[0],
@@ -21,6 +23,8 @@ const _changeCommentId: AssertEqual<Change['commentId'], string | undefined> = t
 const _changeFileId: AssertEqual<Change['fileId'], string | null | undefined> = true;
 const _changeValue: AssertEqual<Change['value'], string | boolean | null | undefined> = true;
 const _changePreviousValue: AssertEqual<Change['previousValue'], boolean | undefined> = true;
+const _pendingSelection: AssertEqual<PendingSelection, SelectionInfo> = true;
+const _pendingSelectionCapture: AssertEqual<PendingSelection extends CommentCapture ? true : false, true> = true;
 
 const config = {
   selector: '#editor',
@@ -105,6 +109,9 @@ declare const superdoc: SuperDoc;
 superdoc.on('comments-update', (payload) => {
   const exact: AssertEqual<typeof payload, SuperDocCommentsUpdatePayload> = true;
   void exact;
+  if (payload.type === 'pending' && payload.pendingSelection) {
+    superdoc.ui.comments.createFromCapture(payload.pendingSelection, { text: 'Needs review' });
+  }
 });
 
 void [
@@ -121,6 +128,8 @@ void [
   _changeFileId,
   _changeValue,
   _changePreviousValue,
+  _pendingSelection,
+  _pendingSelectionCapture,
   config,
   legacyConsumer,
   legacyStrictReads,

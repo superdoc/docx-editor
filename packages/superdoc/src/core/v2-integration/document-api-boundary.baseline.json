@@ -27,7 +27,7 @@
   "public/ui/create-super-doc-ui.ts": {
     "host": 61,
     "handles": 16,
-    "editCommands": 13,
+    "editCommands": 11,
     "reviewBridge": 21,
     "firstParty": 45
   },

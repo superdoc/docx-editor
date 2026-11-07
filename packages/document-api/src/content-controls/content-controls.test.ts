@@ -247,6 +247,22 @@ describe('wrap validates kind', () => {
       /'block' or 'inline'/,
     );
   });
+
+  it('rejects a controlType outside the content-control type set', () => {
+    const input = { kind: 'inline', target: validTarget, controlType: 'bogus' };
+    expect(() => Reflect.apply(executeContentControlsWrap, undefined, [stubAdapter(), input])).toThrow(
+      /contentControls.wrap controlType must be one of/,
+    );
+  });
+
+  it('passes a declared controlType to the adapter', () => {
+    const adapter = stubAdapter();
+    executeContentControlsWrap(adapter, { kind: 'inline', target: validTarget, controlType: 'dropDownList' });
+    expect(adapter.wrap).toHaveBeenCalledWith(
+      { kind: 'inline', target: validTarget, controlType: 'dropDownList' },
+      undefined,
+    );
+  });
 });
 
 describe('unwrap validates target', () => {

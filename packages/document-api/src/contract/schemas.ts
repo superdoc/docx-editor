@@ -4279,6 +4279,7 @@ function buildContentControlSchemas(): Record<ContentControlOperationId, Operati
       input: objectSchema(
         {
           kind: { enum: ['block', 'inline'] },
+          controlType: { type: 'string' },
           target: contentControlTargetSchema,
           tag: { type: 'string' },
           alias: { type: 'string' },

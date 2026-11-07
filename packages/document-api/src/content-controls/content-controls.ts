@@ -461,6 +461,13 @@ export function executeContentControlsWrap(
   validateCCInput(input, 'contentControls.wrap');
   requireNodeKind(input.kind, 'kind', 'contentControls.wrap');
   validateCCTarget(input.target, 'contentControls.wrap');
+  if (input.controlType !== undefined && !VALID_CC_TYPES.has(input.controlType)) {
+    throw new DocumentApiValidationError(
+      'INVALID_INPUT',
+      `contentControls.wrap controlType must be one of: ${[...VALID_CC_TYPES].join(', ')}.`,
+      { field: 'controlType', value: input.controlType },
+    );
+  }
   return adapter.wrap(input, options);
 }
 

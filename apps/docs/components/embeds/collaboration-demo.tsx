@@ -5,7 +5,7 @@ import type { SuperDocAwarenessUpdatePayload } from 'superdoc';
 import { CollapsibleEditorPreview } from './collapsible-editor-preview';
 import { EditorDemoViewControls } from './editor-demo-view-controls';
 import { CollaborationOverview } from './collaboration-overview';
-import { createRuntimeEditor, loadRuntime, type SuperDocInstance } from './superdoc-runtime';
+import { loadRuntime, type SuperDocInstance } from './superdoc-runtime';
 
 type DemoState = 'idle' | 'loading' | 'ready' | 'error';
 class DemoAccessDenied extends Error {}
@@ -157,7 +157,7 @@ export function CollaborationDemo({ presence = false, access = false }: { presen
             const fail = () => finish(true);
             cancelPending.current = fail;
             try {
-              const instance = createRuntimeEditor(ctor, {
+              const instance = new ctor({
                 selector: mount,
                 contained: true,
                 document: {

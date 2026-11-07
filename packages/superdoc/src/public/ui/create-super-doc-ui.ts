@@ -50,10 +50,6 @@ import type {
   CommentsSlice,
   ContextMenuItem,
   ContentControlInfo,
-  ContentControlClickPayload,
-  ContentControlFocusResult,
-  ContentControlHighlightResult,
-  ContentControlsHandle,
   BookmarksHandle,
   BookmarkAddress,
   ContentControlsSlice,
@@ -210,12 +206,10 @@ import {
   entityRowMatchesRequest,
   isHostGeometryTarget,
   layoutStoryDatasetToStoryLocator,
-  readContentControlRequestId,
   readEntityId,
   readEntityRequestStory,
   readEntityStory,
   readEntityTarget,
-  readSelectionTarget,
   readTrackedChangeNavigationTarget,
   storyKeyToStoryLocator,
   storyLocatorSignature,
@@ -272,7 +266,8 @@ import {
   normalizeDocumentFontOptions,
   normalizePickerFontOptions,
 } from './font-options.js';
-import { HOST_EVENTS, isContentControlClickPayload } from './host-events.js';
+import { HOST_EVENTS } from './host-events.js';
+import { createContentControlsHandle } from './content-controls-handle.js';
 
 type FirstPartyCommandMutation = {
   selectionReader?: {
@@ -372,15 +367,6 @@ function projectTrackChangesItem(item: unknown): TrackChangesItem | null {
   const change = isPlainObject(item.change) ? item.change : item;
   const projected: Record<string, unknown> = { ...item, id: item.id ?? change.id, change };
   return projected as unknown as TrackChangesItem;
-}
-
-function collapseSelectionTargetToCaret(target: unknown): SelectionTarget | null {
-  if (!target || typeof target !== 'object') return null;
-  const record = target as LooseRecord;
-  if (record.kind !== 'selection') return target as SelectionTarget;
-  const start = record.start;
-  if (!start || typeof start !== 'object') return null;
-  return { ...record, end: start } as SelectionTarget;
 }
 
 export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
@@ -1359,14 +1345,6 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       }
       scheduleAsyncRefresh();
     };
-  };
-
-  /**
-   * Demand-driven route for the content-controls catalog (panel / API use).
-   * Explicit demand bypasses both active-loading and post-complete idle holds.
-   */
-  const ensureContentControlsCatalog = (_reason: 'panel' | 'api'): void => {
-    demandHeavyDocRead('contentControls');
   };
 
   /** Demand-driven route for an explicitly consumed tracked-change list. */
@@ -10852,180 +10830,28 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
         });
   };
 
-  const contentControlsSub = sliceHandle((s) => s.contentControls);
-  const findContentControl = (id: string): ContentControlInfo | null => {
-    const items = contentControlsSub.get().items;
-    return items.find((item) => item?.id === id) ?? null;
-  };
-
-  // While a panel observes the catalog, renew demand on every content revision
-  // the way the comments and tracked-change directories do. The passive slice
-  // only records demand for the revision it was attached at, so a mounted
-  // panel would otherwise serve a stale catalog until the idle release.
-  const contentControlsDirectorySub = select((s) => {
-    if (directoryLeaseCounts.contentControls > 0) demandHeavyDocRead('contentControls');
-    return s.contentControls;
-  });
-  const contentControlsSnap = directorySnapshotHandle(
-    contentControlsSub,
-    contentControlsDirectorySub,
-    'contentControls',
-  );
-  const contentControlsGet = ((input?: { id: string }): ContentControlsSlice | ContentControlInfo | null => {
-    if (input === undefined) return contentControlsSnap.get();
-    const id = readContentControlRequestId(input);
-    return id ? findContentControl(id) : null;
-  }) as ContentControlsHandle['get'];
-  // Internal subscription for the core active-change bridge. It reads the
-  // passive slice and never takes the directory lease, so merely enabling
-  // `onContentControlActiveChange` cannot renew catalog demand on every typing
-  // revision and bypass the heavy-read idle gate.
-  const contentControlsPassiveSnap = snapshotHandle(contentControlsSub);
-  let contentControlHighlightGeneration = 0;
-  let contentControlHighlightHost: LooseRecord | null = null;
-  const clearContentControlHighlight = (): void => {
-    contentControlHighlightGeneration += 1;
-    const host = contentControlHighlightHost ?? getHost();
-    contentControlHighlightHost = null;
-    safeCall(() => (host?.clearContentControlHighlight as AnyFn | undefined)?.call(host), undefined);
-  };
-  documentResetHooks.push(clearContentControlHighlight);
-  const contentControlClickListeners = new Set<(payload: ContentControlClickPayload) => void>();
-  const attachContentControlClick = (): void => {
-    const on = hostMethod(superdoc, 'on');
-    if (!on) return;
-    const handler = (payload: unknown): void => {
-      if (!isContentControlClickPayload(payload)) return;
-      for (const listener of Array.from(contentControlClickListeners)) safeCall(() => listener(payload), undefined);
-    };
-    on('content-control:click', handler);
-    detachers.push(() => {
-      hostMethod(superdoc, 'off')?.('content-control:click', handler);
-    });
-  };
-  attachContentControlClick();
-  const contentControls: ContentControlsHandle = {
+  const {
+    handle: contentControls,
     clearHighlight: clearContentControlHighlight,
-    highlight: async (input): Promise<ContentControlHighlightResult> => {
-      const id = readContentControlRequestId(input);
-      if (!id) return { success: false, reason: 'invalid-id' };
-      const host = getHost();
-      const editor = getEditor();
-      const controls = getDoc()?.contentControls as LooseRecord | undefined;
-      if (
-        disposed ||
-        !host ||
-        typeof host.highlightContentControl !== 'function' ||
-        typeof controls?.list !== 'function'
-      ) {
-        return { success: false, reason: 'not-ready' };
-      }
-      const request = ++contentControlHighlightGeneration;
-      contentControlHighlightHost = host;
-      safeCall(() => (host.cancelContentControlHighlightRequest as AnyFn | undefined)?.call(host), undefined);
-      const cancelled = () => disposed || request !== contentControlHighlightGeneration || editor !== getEditor();
-      try {
-        const catalog = await (controls.list as AnyFn).call(controls);
-        if (cancelled()) return { success: false, reason: 'cancelled' };
-        const items = isPlainObject(catalog) ? (catalog.items as ContentControlInfo[] | undefined) : undefined;
-        const control = items?.find((item) => item.id === id);
-        if (!control) return { success: false, reason: 'not-found' };
-        const target = readSelectionTarget(control);
-        if (!target || control.isEmpty) return { success: false, reason: 'not-reachable' };
-        const success = await (host.highlightContentControl as AnyFn).call(host, id, target);
-        if (cancelled()) return { success: false, reason: 'cancelled' };
-        return success ? { success: true } : { success: false, reason: 'not-reachable' };
-      } catch {
-        return { success: false, reason: cancelled() ? 'cancelled' : 'not-reachable' };
-      }
-    },
-    // The read helpers below are explicit consumer demand for the catalog:
-    // during source loading they stay best-effort over the (pending/stale)
-    // passive slice, but flag the demand so the coordinator issues the real
-    // `contentControls.list` read instead of deferring it to source-complete.
-    get: ((input?: { id: string }) => {
-      if (input !== undefined) ensureContentControlsCatalog('api');
-      return contentControlsGet(input as never);
-    }) as ContentControlsHandle['get'],
-    getSnapshot: contentControlsSnap.getSnapshot,
-    subscribe: contentControlsSnap.subscribe,
-    observe: contentControlsSnap.observe,
-    observeActivePath: contentControlsPassiveSnap.observe,
-    onClick: (listener) => {
-      if (disposed) return () => {};
-      contentControlClickListeners.add(listener);
-      return () => contentControlClickListeners.delete(listener);
-    },
-    list: () => {
-      ensureContentControlsCatalog('api');
-      return contentControlsSub.get().items;
-    },
-    getById: (id) => {
-      ensureContentControlsCatalog('api');
-      return findContentControl(id);
-    },
-    getRect: (input): ViewportRectResult => {
-      const id = readContentControlRequestId(input);
-      if (!id) return rectFailure('unresolved');
-      ensureContentControlsCatalog('panel');
-      const control = findContentControl(id);
-      if (!control) return rectFailure('unresolved');
-      const target = readSelectionTarget(control);
-      if (!target) return rectFailure('unavailable');
-      return viewport.getRect({ target: target as ViewportGetRectInput['target'] });
-    },
-    scrollIntoView: async (input): Promise<ScrollIntoViewOutput> => {
-      const id = readContentControlRequestId(input);
-      if (!id) return { success: false };
-      ensureContentControlsCatalog('panel');
-      const control = findContentControl(id);
-      if (!control) return { success: false };
-      const target = readSelectionTarget(control);
-      if (!target) return { success: false };
-      const result = await scrollTargetIntoView(target, { block: input.block, behavior: input.behavior });
-      return { success: result.ok };
-    },
-    focus: async (input): Promise<ContentControlFocusResult> => {
-      const id = readContentControlRequestId(input);
-      if (!id) return { success: false, reason: 'invalid-id' };
-      if (!getEditor()) return { success: false, reason: 'not-ready' };
-      ensureContentControlsCatalog('panel');
-      const control = findContentControl(id);
-      if (!control) return { success: false, reason: 'not-found' };
-      // The control exists but has no resolvable anchor - it can't be
-      // scrolled to, the same failure mode as a routable scroll that fails,
-      // not "no such control" (which `findContentControl` already covers).
-      const target = readSelectionTarget(control);
-      if (!target) return { success: false, reason: 'not-reachable' };
-      const result = await scrollTargetIntoView(target, { block: input.block, behavior: input.behavior });
-      if (!result.ok) return { success: false, reason: 'not-reachable' };
-      // Place a collapsed caret through the same selection-application surface
-      // as `ui.selection.apply` after scrolling; virtualized targets may not be
-      // mounted until the scroll completes.
-      const caretTarget = collapseSelectionTargetToCaret(target);
-      if (!caretTarget) return { success: false, reason: 'not-reachable' };
-      const applyResult = selection.apply(caretTarget);
-      if (!applyResult.ok && applyResult.reason !== SUPERDOC_UI_REASONS.hostCapabilityUnavailable) {
-        return { success: false, reason: 'not-reachable' };
-      }
-      const editor = getEditor(),
-        host = getHost();
-      const readiness = editor?.documentMutationReadiness as LooseRecord | undefined;
-      if (typeof readiness?.whenPainted === 'function') {
-        try {
-          await readiness.whenPainted.call(readiness);
-        } catch {
-          return { success: false, reason: 'not-reachable' };
-        }
-        if (getEditor() !== editor || getHost() !== host) return { success: false, reason: 'not-ready' };
-      }
-      const mounted = hostMethod(host, 'getMountedHandle')?.();
-      const focusHandle = isPlainObject(mounted) ? mounted.focus : undefined;
-      hostMethod(focusHandle, 'focus')?.({ preventScroll: true });
-      activateContentControlChrome(id);
-      return { success: true };
-    },
-  };
+    clearClickListeners: clearContentControlClickListeners,
+  } = createContentControlsHandle({
+    superdoc,
+    select: sliceHandle,
+    snapshotHandle,
+    leasedDirectorySnapshot: (passive, directory) => directorySnapshotHandle(passive, directory, 'contentControls'),
+    directoryLeaseHeld: () => directoryLeaseCounts.contentControls > 0,
+    demandCatalog: () => demandHeavyDocRead('contentControls'),
+    isDisposed: () => disposed,
+    currentEditor: getEditor,
+    currentHost: getHost,
+    documentContentControls: () => getDoc()?.contentControls,
+    rectOf: (target) => viewport.getRect({ target }),
+    scrollIntoView: scrollTargetIntoView,
+    applySelection: (target) => selection.apply(target),
+    activateChrome: activateContentControlChrome,
+    onDocumentReset: (hook) => documentResetHooks.push(hook),
+    onDestroy: (detach) => detachers.push(detach),
+  });
 
   const fontsSub = sliceHandle((s) => s.fonts);
   const fontsSnap = snapshotHandle(fontsSub);
@@ -13247,7 +13073,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     painterCommandDoc = null;
     painterModeListeners.clear();
     documentChangeListeners.clear();
-    contentControlClickListeners.clear();
+    clearContentControlClickListeners();
     // In-flight search work outlives this call the same way a painter capture
     // does; moving the token is what stops its continuation from publishing.
     searchRequestGeneration += 1;

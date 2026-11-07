@@ -4044,7 +4044,7 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
       const result = await activeEditor.replaceFile(replacementSource);
       const state = result && typeof result === 'object' ? (result as { state?: unknown }).state : null;
       const confirmed = state === null || state === 'review-ready' || state === 'editing-ready';
-      if (confirmed) {
+      if (confirmed && !this.#destroyed) {
         this.#replaceActiveDocumentData(activeEditor, replacementSource);
         this.emit('document-replaced', { editor: activeEditor, host: (activeEditor as { host?: unknown })?.host });
       }

@@ -1519,7 +1519,8 @@ export const OPERATION_DEFINITIONS = {
   },
   'sections.setPageSetup': {
     memberPath: 'sections.setPageSetup',
-    description: 'Set page size/orientation properties for a section.',
+    description:
+      'Set page size/orientation properties for a section. Changing orientation writes only the page size: width and height swap so the long side matches the orientation, unless width or height is given. Page margins stay as they are; to change them with the orientation, call sections.setPageMargins.',
     expectedResult:
       'Returns a SectionMutationResult receipt; reports NO_OP if page size and orientation already match the requested values.',
     requiresDocumentContext: true,

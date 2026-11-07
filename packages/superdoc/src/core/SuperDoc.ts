@@ -2494,7 +2494,7 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
     const results = await Promise.allSettled(runtimes.map((runtime) => runtime.setUser?.(runtimeUserOf(next))));
     const failure = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
     if (failure) {
-      if (current) {
+      if (current && !this.#destroyed) {
         await Promise.allSettled(
           runtimes
             .filter((_, index) => results[index]!.status === 'fulfilled')
@@ -2503,6 +2503,7 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
       }
       throw failure.reason;
     }
+    if (this.#destroyed) return;
     const target = this.config.user ?? (this.config.user = {} as User);
     for (const key of Object.keys(target)) delete target[key];
     Object.assign(target, next);

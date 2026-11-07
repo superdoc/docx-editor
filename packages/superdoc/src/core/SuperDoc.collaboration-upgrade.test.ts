@@ -225,16 +225,18 @@ describe('SuperDoc.upgradeToCollaboration', () => {
   describe('when the instance is destroyed during the upgrade', () => {
     const destroyedDuringUpgrade = 'SuperDoc: instance was destroyed during upgrade';
 
+    const savedDocx = () => new Blob([new Uint8Array([4, 5, 6])]);
+
     const mountUpgrade = (engineUpgrade: () => Promise<void>, pendingSave?: () => Promise<Blob>) => {
       const selector = document.createElement('div');
       document.body.append(selector);
       const instance = new SuperDoc({ selector, telemetry: { enabled: false } });
       instances.push(instance);
-      const source = new Blob([new Uint8Array([1, 2, 3])]);
+      const originalDocx = new Blob([new Uint8Array([1, 2, 3])]);
       const upgradeToCollaboration = vi.fn().mockImplementation(engineUpgrade);
-      const save = vi.fn().mockImplementation(pendingSave ?? (async () => source));
+      const save = vi.fn().mockImplementation(pendingSave ?? (async () => savedDocx()));
       const editor = { editorVersion: 2, options: { documentId: 'upgrade-doc' }, upgradeToCollaboration, save };
-      const configDoc = { id: 'upgrade-doc', type: DOCX, data: source };
+      const configDoc = { id: 'upgrade-doc', type: DOCX, data: originalDocx };
       const storeDoc = { ...configDoc, getEditor: () => editor, v2Collaboration: null };
       const mutable = instance as unknown as {
         config: { documents: unknown[] };
@@ -249,7 +251,7 @@ describe('SuperDoc.upgradeToCollaboration', () => {
       const stateAtDestroy = () => ({
         configDoc: { ...configDoc },
         storeDoc: { ...storeDoc },
-        keepsSourceData: configDoc.data === source && storeDoc.data === source,
+        keepsOriginalData: configDoc.data === originalDocx && storeDoc.data === originalDocx,
         isCollaborative: instance.isCollaborative,
       });
       return { instance, upgrade, save, upgradeToCollaboration, stateAtDestroy };
@@ -326,7 +328,6 @@ describe('SuperDoc.upgradeToCollaboration', () => {
     });
 
     const attachRoom = () => Promise.resolve();
-    const savedDocx = () => new Blob([new Uint8Array([4, 5, 6])]);
 
     it('rejects the caller and never attaches the room when the DOCX save resolves afterwards', async () => {
       let finishSave!: (saved: Blob) => void;

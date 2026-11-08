@@ -692,4 +692,180 @@ describe('url-validation', () => {
       expect(isRelativeUrl('   ')).toBe(false);
     });
   });
+
+  describe('protocol policy', () => {
+    it('allows exactly the default protocols without configuration', () => {
+      expect([...buildAllowedProtocols()].sort()).toEqual(['http', 'https', 'mailto', 'sms', 'tel']);
+      expect(sanitizeHref('sms:+15551234')?.protocol).toBe('sms');
+      expect(sanitizeHref('tel:+15551234')?.protocol).toBe('tel');
+      expect(sanitizeHref('irc://irc.example.com/channel')).toBeNull();
+    });
+
+    it('lets optionalProtocols opt in only to ftp, sftp and irc', () => {
+      expect(UrlValidationConstants.OPTIONAL_PROTOCOLS).toEqual(['ftp', 'sftp', 'irc']);
+      expect(sanitizeHref('irc://irc.example.com/channel', { optionalProtocols: ['irc'] })?.protocol).toBe('irc');
+      expect(sanitizeHref('gopher://example.com', { optionalProtocols: ['gopher'] })).toBeNull();
+    });
+
+    it('rejects every always-blocked protocol even when allowedProtocols lists it', () => {
+      const allowEverything = { allowedProtocols: UrlValidationConstants.BLOCKED_PROTOCOLS };
+      const blockedUrls = [
+        'javascript:alert(1)',
+        'data:text/html,x',
+        'vbscript:msgbox(1)',
+        'file:///etc/passwd',
+        'ssh://host.example.com',
+        'ws://socket.example.com',
+        'wss://socket.example.com',
+      ];
+      expect(UrlValidationConstants.BLOCKED_PROTOCOLS).toEqual([
+        'javascript',
+        'data',
+        'vbscript',
+        'file',
+        'ssh',
+        'ws',
+        'wss',
+      ]);
+      for (const url of blockedUrls) {
+        expect(sanitizeHref(url, allowEverything)).toBeNull();
+      }
+    });
+
+    it('matches schemes case-insensitively', () => {
+      expect(sanitizeHref('JaVaScRiPt:alert(1)', { allowedProtocols: ['javascript'] })).toBeNull();
+      expect(sanitizeHref('HTTPS://example.com')).toEqual({
+        href: 'HTTPS://example.com',
+        protocol: 'https',
+        isExternal: true,
+      });
+    });
+
+    it('lets blockedProtocols remove an allowed protocol, in any case', () => {
+      expect(sanitizeHref('https://example.com', { blockedProtocols: ['https'] })).toBeNull();
+      expect(sanitizeHref('mailto:a@example.com', { blockedProtocols: ['MAILTO'] })).toBeNull();
+      expect(sanitizeHref('http://example.com', { blockedProtocols: ['https'] })).not.toBeNull();
+    });
+
+    it('marks only http and https links as external', () => {
+      expect(sanitizeHref('http://example.com')?.isExternal).toBe(true);
+      expect(sanitizeHref('https://example.com')?.isExternal).toBe(true);
+      expect(sanitizeHref('mailto:a@example.com')?.isExternal).toBe(false);
+      expect(sanitizeHref('ftp://example.com', { optionalProtocols: ['ftp'] })?.isExternal).toBe(false);
+    });
+
+    it('rejects non-string input', () => {
+      expect(sanitizeHref(null)).toBeNull();
+      expect(sanitizeHref(undefined)).toBeNull();
+    });
+  });
+
+  describe('redirect blocklist matching', () => {
+    it('matches hostnames exactly, not as suffixes', () => {
+      const config = { redirectBlocklist: ['evil.com'] };
+      expect(sanitizeHref('https://sub.evil.com', config)).not.toBeNull();
+      expect(sanitizeHref('https://notevil.com', config)).not.toBeNull();
+      expect(sanitizeHref('https://evil.com/page', config)).toBeNull();
+    });
+
+    it('treats an entry with :// as a URL prefix rather than a hostname', () => {
+      const config = { redirectBlocklist: ['https://ads.example.com/track'] };
+      expect(sanitizeHref('https://ads.example.com/track/123', config)).toBeNull();
+      expect(sanitizeHref('https://ads.example.com/other', config)).not.toBeNull();
+      expect(sanitizeHref('http://ads.example.com/track', config)).not.toBeNull();
+    });
+  });
+
+  describe('relative paths in a browser page', () => {
+    const origin = 'https://localhost:3000';
+
+    beforeEach(() => {
+      globalThis.window = { location: { origin, href: `${origin}/docs/intro` } };
+    });
+
+    afterEach(() => {
+      delete globalThis.window;
+    });
+
+    it('rejects a backslash path that the URL parser resolves to another origin', () => {
+      expect(sanitizeHref('/\\evil.com/x')).toBeNull();
+      expect(sanitizeHref('\\\\evil.com\\x')).toBeNull();
+    });
+
+    it('rejects a www. host without a scheme instead of resolving it as a path', () => {
+      expect(sanitizeHref('www.example.com')).toBeNull();
+      expect(sanitizeHref('WWW.example.com/page')).toBeNull();
+    });
+
+    it('rejects protocol-relative URLs even when they point at the page origin', () => {
+      expect(sanitizeHref('//localhost:3000/docs')).toBeNull();
+    });
+  });
+
+  describe('homograph warning conditions', () => {
+    let warnSpy;
+    let savedEnv;
+
+    beforeEach(() => {
+      warnSpy = spyOn(console, 'warn').mockImplementation();
+      savedEnv = { NODE_ENV: process.env.NODE_ENV, DEBUG_HYPERLINKS: process.env.DEBUG_HYPERLINKS };
+    });
+
+    afterEach(() => {
+      warnSpy.mockRestore();
+      process.env.NODE_ENV = savedEnv.NODE_ENV;
+      if (savedEnv.DEBUG_HYPERLINKS === undefined) delete process.env.DEBUG_HYPERLINKS;
+      else process.env.DEBUG_HYPERLINKS = savedEnv.DEBUG_HYPERLINKS;
+    });
+
+    it('stays silent in production unless DEBUG_HYPERLINKS is true', () => {
+      process.env.NODE_ENV = 'production';
+      delete process.env.DEBUG_HYPERLINKS;
+      expect(sanitizeHref('https://раypal.com')).not.toBeNull();
+      expect(warnSpy).not.toHaveBeenCalled();
+
+      process.env.DEBUG_HYPERLINKS = 'true';
+      sanitizeHref('https://раypal.com');
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('reports only the hostname, ending at the first /, ? or #', () => {
+      process.env.NODE_ENV = 'development';
+      for (const url of ['https://раypal.com/a?b#c', 'https://раypal.com?b#c', 'https://раypal.com#c']) {
+        warnSpy.mockClear();
+        sanitizeHref(url);
+        expect(warnSpy).toHaveBeenCalledWith(
+          '[URL Validation] Potential homograph attack detected in hostname: раypal.com',
+        );
+      }
+    });
+
+    it('reports the hostname as typed, cut to 50 characters', () => {
+      process.env.NODE_ENV = 'development';
+      const hostname = 'а'.repeat(60) + '.com';
+      sanitizeHref(`https://${hostname}/path?q=1`);
+      expect(warnSpy).toHaveBeenCalledWith(
+        `[URL Validation] Potential homograph attack detected in hostname: ${hostname.slice(0, 50)}`,
+      );
+    });
+  });
+
+  describe('image data URL payload rules', () => {
+    it('rejects an image data URL without a payload separator', () => {
+      expect(isValidImageDataUrl('data:image/svg+xml')).toBe(false);
+      expect(isValidImageDataUrl('data:image/png;base64')).toBe(false);
+    });
+
+    it('accepts a percent-encoded payload only for SVG', () => {
+      expect(isValidImageDataUrl('data:image/svg+xml,%3Csvg%2F%3E')).toBe(true);
+      expect(isValidImageDataUrl('data:image/png,%3Csvg%2F%3E')).toBe(false);
+      expect(isValidImageDataUrl('data:image/gif,GIF89a')).toBe(false);
+    });
+
+    it('accepts a base64 payload for every supported image MIME type', () => {
+      for (const mimeType of IMAGE_DATA_URL_MIME_TYPES) {
+        expect(isValidImageDataUrl(`data:${mimeType};base64,YWJjZA==`)).toBe(true);
+      }
+    });
+  });
 });

@@ -35,6 +35,7 @@ import {
   buildLayoutSourceIdentity,
   resolveAnchoredGraphicY,
   tableCellAlignmentOffset,
+  PARTIAL_ROW_RENDERS_TO_CELL_END,
 } from '@superdoc/contracts';
 import type { ResolvePhysicalFamily } from '@superdoc/font-system';
 import type { MinimalWordLayout } from '@superdoc/common/list-marker-utils';
@@ -1029,7 +1030,7 @@ export function* renderTableCellWork(deps: TableCellRenderDependencies): RenderW
 
     // Determine global line range to render
     const globalFromLine = fromLine ?? 0;
-    const globalToLine = toLine === -1 || toLine === undefined ? totalLines : toLine;
+    const globalToLine = toLine === PARTIAL_ROW_RENDERS_TO_CELL_END || toLine === undefined ? totalLines : toLine;
 
     const effectiveCellWidth = cellWidth ?? cellMeasure.width;
     const contentWidthPx = verticalText?.inlineSize ?? Math.max(0, effectiveCellWidth - paddingLeft - paddingRight);

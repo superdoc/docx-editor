@@ -1,0 +1,1 @@
+export const PARTIAL_ROW_RENDERS_TO_CELL_END = -1;

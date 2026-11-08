@@ -25,7 +25,6 @@ import { beginInteraction, recordInteraction } from '../../internal/diagnostics/
 
 import { shallowEqual } from './equality.js';
 import { createWatermarkController } from './watermark-controller.js';
-import { buildStyleMatchPatch, STYLE_MATCH_READ_KEYS } from './style-match-patch.js';
 import { captureParagraphPaintOperations } from './format-painter-paragraph.js';
 import { sdRunPropsToInlineRunPatch, selectionKey } from './format-painter-helpers.js';
 import {
@@ -83,14 +82,6 @@ import type {
   SuperDocUIOptions,
   SuperDocUIScope,
   SuperDocUIState,
-  StylesHandle,
-  StylesSlice,
-  StylesUpdateToMatchSelectionInput,
-  ActiveParagraphStyle,
-  StyleCatalogItem,
-  StyleCatalogDiagnostic,
-  StylesGetCatalogInput,
-  StylesGetCatalogResult,
   TablesHandle,
   TableContextInfo,
   ToolbarHandle,
@@ -128,7 +119,7 @@ import { getParagraphInlineDirection } from '@superdoc/contracts';
 import { isPlainObject } from '../../helpers/object-guards.js';
 import { isFiniteNumber } from '../../helpers/is-finite-number.js';
 import type { SurfaceHandle } from '../../core/types/index.js';
-import { type FormatReadSelectionResult, type TextSegment } from '@superdoc/document-api';
+import { type TextSegment } from '@superdoc/document-api';
 import type { AnyFn, LooseRecord } from './loose-record.js';
 import {
   CLEAR_INLINE_PATCH,
@@ -266,6 +257,7 @@ import {
 import { HOST_EVENTS } from './host-events.js';
 import { createContentControlsHandle } from './content-controls-handle.js';
 import { createSearchHandle } from './search-handle.js';
+import { createStyleReads, createStylesHandle, documentDefaultParagraphStyleId } from './styles-handle.js';
 
 type FirstPartyCommandMutation = {
   selectionReader?: {
@@ -853,20 +845,6 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     if (options?.invalidateQueuedNavigation !== false) {
       queuedTrackChangeNavigationInvalidation += 1;
     }
-  };
-
-  // -- style-catalogue shape ------------------------------------------------
-  // Compiling the style catalogue (`doc.styles.getCatalog`) recompiles a
-  // WordStyleModel from package bytes, so we do NOT recompile on every caret
-  // move. The async read coordinator caches it by content revision (editor +
-  // document-mutation revision), NOT by selection, so a caret move serves the
-  // cached catalogue while a document mutation re-fetches it. The active
-  // paragraph style is read per selected block (also coordinator-cached) so it
-  // stays correct as the selection moves.
-  type StyleCatalogCache = {
-    full: StylesGetCatalogResult;
-    quickGallery: readonly StyleCatalogItem[];
-    byId: Map<string, StyleCatalogItem>;
   };
 
   // -- state store ----------------------------------------------------------
@@ -4247,7 +4225,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       if (signature && cached?.selectionSignature === signature) return cached.value;
     }
     if (descriptor.id === 'linked-style') {
-      const { style: active } = computeActiveParagraphStyle(selection, getStyleCatalog().cache);
+      const { style: active } = styleReads.activeParagraphStyle(selection);
       if (!active.styleId || active.mixed) return undefined;
       return { styleId: active.styleId, styleName: active.styleName };
     }
@@ -4948,218 +4926,13 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     return [...new Set([...ALL_BUILT_IN_COMMAND_IDS, ...customCommands.keys()])];
   };
 
-  // -- styles ---------------------------------------------------------------
-  // The Document API default paragraph style id when the catalogue omits one.
-  const DEFAULT_PARAGRAPH_STYLE_ID = 'Normal';
-
-  const EMPTY_STYLES_SLICE: StylesSlice = {
-    ready: false,
-    status: 'ready',
-    catalogRevision: null,
-    quickGallery: [],
-    activeParagraphStyleId: null,
-    activeParagraphStyleName: null,
-    mixedSelection: false,
-    sourceStatus: null,
-    diagnostics: [],
-  };
-
-  const styleCatalogReadKey = (input?: StylesGetCatalogInput): string =>
-    `styles:catalog:${JSON.stringify(input ?? {})}`;
-
-  /**
-   * Read the public Document API style catalogue (`doc.styles.getCatalog`)
-   * through the async read coordinator. A promise-returning browser read
-   * settles into the cache (keyed by content revision) instead of collapsing
-   * the catalogue to `null`. `value` is `null` when the styles surface is
-   * unreachable (worker-backed `doc` is null or the operation is missing); the
-   * accompanying {@link SliceStatus} reports pending/stale/ready.
-   */
-  const readStyleCatalogLive = (
-    input?: StylesGetCatalogInput,
-  ): { value: StylesGetCatalogResult | null; status: SliceStatus } => {
-    const doc = getDoc();
-    const stylesApi = doc?.styles as LooseRecord | undefined;
-    if (!stylesApi || typeof stylesApi.getCatalog !== 'function') return { value: null, status: 'ready' };
-    return readAsync<StylesGetCatalogResult>(
-      styleCatalogReadKey(input),
-      contentToken(),
-      () => (stylesApi.getCatalog as AnyFn)(input),
-      (raw) => (raw && typeof raw === 'object' ? (raw as StylesGetCatalogResult) : null),
-    );
-  };
-
-  /** Resolve the catalogue (coordinator-cached by content revision) plus its readiness. */
-  const getStyleCatalog = (): { cache: StyleCatalogCache | null; status: SliceStatus } => {
-    const full = readStyleCatalogLive({ includePreview: true });
-    if (!full.value) return { cache: null, status: full.status };
-    // The authoritative quick-gallery ordering (including the v1-style
-    // alphabetical fallback for documents without `qFormat` metadata) only
-    // comes from the `quickGallery` view; deriving it by filtering `styles`
-    // would miss that fallback. Fall back to the visibility flag only if the
-    // dedicated view read fails.
-    const quickResult = readStyleCatalogLive({ view: 'quickGallery', includePreview: true });
-    const quickGallery: readonly StyleCatalogItem[] = quickResult.value
-      ? quickResult.value.items
-      : full.value.styles.filter((item) => item.visibility.quickGallery);
-    const byId = new Map<string, StyleCatalogItem>();
-    for (const item of full.value.styles) byId.set(item.id, item);
-    return {
-      cache: { full: full.value, quickGallery, byId },
-      status: combineStatus(full.status, quickResult.status),
-    };
-  };
-
-  /**
-   * Read one block's paragraph `styleRef` through the public `getNodeById`
-   * read. `ok` distinguishes a successful read (styleRef may be null when the
-   * paragraph has no explicit style) from an unavailable read (no operation, a
-   * promise in worker mode, or a missing node) so active-style resolution can
-   * fail closed precisely.
-   */
-  const readBlockStyleRef = (
-    doc: LooseRecord | null,
-    blockId: string,
-    story: LooseRecord,
-  ): { ok: boolean; styleRef: string | null; status: SliceStatus } => {
-    const { value: result, status } = readNodeById(doc, blockId, story);
-    if (!result) return { ok: false, styleRef: null, status };
-    const node = result.node;
-    if (!node || typeof node !== 'object') return { ok: false, styleRef: null, status };
-    const kind = (node as LooseRecord).kind;
-    const payload = typeof kind === 'string' ? ((node as LooseRecord)[kind] as LooseRecord | undefined) : undefined;
-    const raw = payload && typeof payload === 'object' ? payload.styleRef : undefined;
-    const styleRef = typeof raw === 'string' && raw.length > 0 ? raw : null;
-    return { ok: true, styleRef, status };
-  };
-
-  /**
-   * Resolve the active paragraph style from the current selection. Handles the
-   * uniform, default (no explicit style → document default paragraph style),
-   * and mixed cases, and fails closed with diagnostics when block reads are
-   * unavailable.
-   */
-  const computeActiveParagraphStyle = (
-    selection: SelectionSlice,
-    catalog: StyleCatalogCache | null,
-  ): { style: ActiveParagraphStyle; status: SliceStatus } => {
-    const diagnostics: StyleCatalogDiagnostic[] = [];
-    const doc = getDoc();
-    if (!doc) {
-      diagnostics.push({
-        severity: 'warning',
-        code: 'active-style-unavailable',
-        message: 'Active paragraph style is unavailable: the Document API is not reachable.',
-      });
-      return { style: { styleId: null, styleName: null, mixed: false, diagnostics }, status: 'ready' };
-    }
-    const blockIds = selectionBlockIds(selection);
-    if (blockIds.length === 0) {
-      diagnostics.push({
-        severity: 'info',
-        code: 'active-style-no-selection',
-        message: 'No paragraph block is resolvable from the current selection; active paragraph style is unavailable.',
-      });
-      return { style: { styleId: null, styleName: null, mixed: false, diagnostics }, status: 'ready' };
-    }
-    if (!canProbeEverySelectedBlock(blockIds)) {
-      diagnostics.push({
-        severity: 'info',
-        code: 'active-style-selection-too-large',
-        message: 'Active paragraph style is unavailable for a large multi-paragraph selection.',
-      });
-      return { style: { styleId: null, styleName: null, mixed: false, diagnostics }, status: 'ready' };
-    }
-    const defaultId = catalog?.full.defaults.paragraphStyleId ?? (catalog ? DEFAULT_PARAGRAPH_STYLE_ID : null);
-    const resolvedIds = new Set<string>();
-    let resolved = 0;
-    let blockReadFailures = 0;
-    let defaultReadFailures = 0;
-    let readStatus: SliceStatus = 'ready';
-    const story = selectionStory(selection);
-    for (const blockId of blockIds) {
-      const read = readBlockStyleRef(doc, blockId, story);
-      readStatus = combineStatus(readStatus, read.status);
-      if (!read.ok) {
-        blockReadFailures += 1;
-        continue;
-      }
-      if (!read.styleRef && !defaultId) {
-        defaultReadFailures += 1;
-        continue;
-      }
-      const styleId = read.styleRef ?? defaultId;
-      if (!styleId) {
-        defaultReadFailures += 1;
-        continue;
-      }
-      resolved += 1;
-      // No explicit style → the document default paragraph style (usually Normal).
-      resolvedIds.add(styleId);
-    }
-    if (resolved === 0) {
-      const onlyDefaultUnavailable = defaultReadFailures > 0 && blockReadFailures === 0;
-      diagnostics.push({
-        severity: 'warning',
-        code: onlyDefaultUnavailable ? 'active-style-default-unavailable' : 'active-style-read-failed',
-        message: onlyDefaultUnavailable
-          ? 'Selected paragraphs have no explicit style and the style catalogue is unavailable, so the document default cannot be resolved.'
-          : 'Could not read the paragraph style of any selected block; active paragraph style is unavailable.',
-      });
-      return { style: { styleId: null, styleName: null, mixed: false, diagnostics }, status: readStatus };
-    }
-    const unresolved = blockReadFailures + defaultReadFailures;
-    if (unresolved > 0) {
-      diagnostics.push({
-        severity: 'warning',
-        code: 'active-style-partial',
-        message: `Active paragraph style resolved from ${resolved} of ${resolved + unresolved} selected blocks; ${unresolved} could not be read, so the active style is unavailable.`,
-      });
-      return { style: { styleId: null, styleName: null, mixed: false, diagnostics }, status: readStatus };
-    }
-    if (resolvedIds.size > 1) {
-      return { style: { styleId: null, styleName: null, mixed: true, diagnostics }, status: readStatus };
-    }
-    const styleId = [...resolvedIds][0];
-    const styleName = catalog?.byId.get(styleId)?.name ?? null;
-    return { style: { styleId, styleName, mixed: false, diagnostics }, status: readStatus };
-  };
-
-  const computeStyles = (selection: SelectionSlice): StylesSlice => {
-    if (!getEditor()) return EMPTY_STYLES_SLICE;
-    const { cache: catalog, status: catalogStatus } = getStyleCatalog();
-    const { style: active, status: activeStatus } = computeActiveParagraphStyle(selection, catalog);
-    let diagnostics: readonly StyleCatalogDiagnostic[];
-    if (catalog) {
-      // Reuse the (stable) catalogue diagnostics reference when the active-style
-      // read added none, so selection-only recomputes don't churn the slice.
-      diagnostics =
-        active.diagnostics.length === 0
-          ? catalog.full.diagnostics
-          : [...catalog.full.diagnostics, ...active.diagnostics];
-    } else {
-      diagnostics = [
-        {
-          severity: 'warning',
-          code: 'catalog-unavailable',
-          message:
-            'The style catalogue is unavailable: the Document API styles surface is not reachable (e.g. viewing mode or a worker-backed editor).',
-        },
-        ...active.diagnostics,
-      ];
-    }
-    return {
-      ready: true,
-      status: combineStatus(catalogStatus, activeStatus, selection.status),
-      catalogRevision: catalog?.full.revision ?? null,
-      quickGallery: catalog?.quickGallery ?? [],
-      activeParagraphStyleId: active.styleId,
-      activeParagraphStyleName: active.styleName,
-      mixedSelection: active.mixed,
-      sourceStatus: catalog?.full.sourceStatus ?? null,
-      diagnostics,
-    };
-  };
+  const styleReads = createStyleReads({
+    hasEditor: () => getEditor() !== null,
+    getDoc,
+    contentToken,
+    readAsync,
+    readNodeById,
+  });
 
   const computeStateSnapshot = (reason: string): SuperDocUIState => {
     const { sink } = readUiBenchRuntime();
@@ -5216,7 +4989,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       zoom: measure('zoom', computeZoom),
       history: measure('history', computeHistory),
       fonts: measure('fonts', computeFonts),
-      styles: measure('styles', () => computeStyles(selection)),
+      styles: measure('styles', () => styleReads.computeSlice(selection)),
     };
     if (sink) {
       const completedAtMs = uiBenchNowMs();
@@ -7082,8 +6855,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       }
     };
 
-    const catalog = getStyleCatalog().cache;
-    const defaultStyleId = catalog?.full.defaults.paragraphStyleId ?? DEFAULT_PARAGRAPH_STYLE_ID;
+    const defaultStyleId = documentDefaultParagraphStyleId(styleReads.catalog().cache);
 
     const selectedTarget = resolveInlineCommandTarget(state.selection);
     const rangeTarget =
@@ -11913,131 +11685,21 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
   });
   scheduleActiveSearchRefresh = scheduleSearchRefresh;
 
-  const updateStyleToMatchSelection = (input?: StylesUpdateToMatchSelectionInput): WorkflowReceipt => {
-    const mode = readDocumentMode();
-    if (mode === 'viewing') return failedReceipt('The document is read-only.', 'DOCUMENT_READONLY');
-    if (mode === 'suggesting') {
-      return failedReceipt('A style definition cannot be changed as a tracked suggestion.', 'PRECONDITION_FAILED');
-    }
-    const sourceToken = contentToken();
-    const readPositionKey = (): string | null => {
-      const snapshot = readHostSelectionSnapshot() as LooseRecord | null;
-      if (!snapshot) return null;
-      return JSON.stringify({
-        story: snapshot.story,
-        tableCells: snapshot.tableCells,
-        points: ['anchor', 'focus'].map((side) => {
-          const point = snapshot[side] as LooseRecord | undefined;
-          return point
-            ? [
-                point.blockId,
-                point.blockOffset,
-                point.trackedBlockOffset,
-                point.story,
-                point.inlineAffinity,
-                point.outsideContentControl,
-                point.visualCaret,
-              ]
-            : null;
-        }),
-      });
-    };
-    const requestedPosition = readPositionKey();
-    const stale = failedReceipt('The selection or document changed while reading its style.', 'REVISION_MISMATCH');
-    return readSelectionInfoFresh().then((selection) => {
-      const selectionToken = selectionKey(selection);
-      const isCurrent = (): boolean =>
-        !disposed &&
-        contentToken() === sourceToken &&
-        readPositionKey() === requestedPosition &&
-        selectionKey(state.selection) === selectionToken &&
-        readDocumentMode() === mode;
-      if (!isCurrent()) return stale;
-      const active = computeActiveParagraphStyle(selection, getStyleCatalog().cache).style;
-      const story = storyLocatorSignature(selectionStory(selection));
-      const keys = [
-        styleCatalogReadKey({ includePreview: true }),
-        ...selectionBlockIds(selection).map((id) => `node:${story}:${id}`),
-      ];
-      const unreadable = failedReceipt('The selection formatting could not be read.', 'PRECONDITION_FAILED');
-      const run = (active: ActiveParagraphStyle): WorkflowReceipt => {
-        const unavailable = keys.some((key) => {
-          const entry = asyncReads.get(key);
-          return entry && (!entry.hasSettled || entry.token !== sourceToken || entry.failedToken === sourceToken);
-        });
-        if (unavailable) return unreadable;
-        const styleId = input?.styleId ?? active.styleId;
-        if (!styleId) {
-          return failedReceipt(
-            'Choose a style to update: the selection does not have a single paragraph style.',
-            'INVALID_TARGET',
-          );
-        }
-        const doc = getDoc();
-        const readSelection = resolveDocOperation(doc, 'format.readSelection');
-        const apply = resolveDocOperation(doc, 'styles.apply');
-        if (!readSelection || !apply) return failedReceipt('Updating a style to match the selection is unavailable.');
-        let reads: [unknown, unknown];
-        try {
-          reads = [
-            readSelection({ selection: 'current', keys: STYLE_MATCH_READ_KEYS, view: 'effective' }),
-            readSelection({ selection: 'current', keys: STYLE_MATCH_READ_KEYS, view: 'direct' }),
-          ];
-        } catch {
-          return unreadable;
-        }
-        return Promise.all(reads).then(
-          ([effective, direct]) => {
-            if (!isCurrent()) return stale;
-            const patch = buildStyleMatchPatch(
-              effective as FormatReadSelectionResult,
-              direct as FormatReadSelectionResult,
-              {
-                selectionUsesStyle: !active.mixed && active.styleId === styleId,
-              },
-            );
-            if (Object.keys(patch).length === 0)
-              return failedReceipt('The selection already matches the style.', 'NO_OP');
-            const fallback = failedReceipt('Updating the style failed.');
-            return safeCall<WorkflowReceipt>(
-              () =>
-                settleWorkflowReceipt(apply({ target: { scope: 'style', styleId, channel: 'run' }, patch }), fallback),
-              fallback,
-            );
-          },
-          () => unreadable,
-        );
-      };
-      const pending = keys.flatMap((key) => {
-        const entry = asyncReads.get(key);
-        return entry?.inflightToken === sourceToken && entry.settled ? [entry.settled] : [];
-      });
-      if (pending.length === 0) return run(active);
-      return Promise.all(pending).then(() => {
-        if (!isCurrent()) return stale;
-        return run(computeActiveParagraphStyle(selection, getStyleCatalog().cache).style);
-      });
-    });
-  };
-
-  // -- styles (read-only catalogue + active paragraph style) ----------------
-  const stylesSub = sliceHandle((s) => s.styles);
-  const stylesSnap = snapshotHandle(stylesSub);
-  const styles: StylesHandle = {
-    get: stylesSnap.get,
-    getSnapshot: stylesSnap.getSnapshot,
-    subscribe: stylesSnap.subscribe,
-    observe: stylesSnap.observe,
-    getCatalog: (options?: StylesGetCatalogInput): StylesGetCatalogResult | null => {
-      demandHeavyDocRead(styleCatalogReadKey(options));
-      return readStyleCatalogLive(options).value;
-    },
-    getQuickGallery: (): readonly StyleCatalogItem[] => stylesSub.get().quickGallery,
-    getActiveParagraphStyle: (): ActiveParagraphStyle =>
-      computeActiveParagraphStyle(state.selection, getStyleCatalog().cache).style,
-    updateToMatchSelection: (input?: StylesUpdateToMatchSelectionInput): WorkflowReceipt =>
-      updateStyleToMatchSelection(input),
-  };
+  const styles = createStylesHandle({
+    reads: styleReads,
+    select: sliceHandle,
+    snapshotHandle,
+    currentSelection: () => state.selection,
+    isDisposed: () => disposed,
+    getDoc,
+    contentToken,
+    demandHeavyDocRead,
+    readAsyncEntry: (key) => asyncReads.get(key),
+    readDocumentMode,
+    readHostSelectionSnapshot,
+    readSelectionInfoFresh: () => readSelectionInfoFresh(),
+    settleWorkflowReceipt,
+  });
 
   const openWatermarkSurface = hostMethod(superdoc, 'openSurface');
   const watermark = createWatermarkController({

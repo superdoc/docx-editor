@@ -56,8 +56,6 @@
  *   pnpm run check:public-boundary
  */
 
-// The namespace as well as the two helpers this file calls: `CWD_ANCHORED_CALLEES`
-// reads the module's own export names rather than repeating them by hand.
 import * as nodeFs from 'node:fs';
 const { existsSync, readFileSync, readlinkSync } = nodeFs;
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
@@ -66,45 +64,20 @@ import { execFileSync } from 'node:child_process';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
-/**
- * Surfaces that must work from a bare public clone. A path here cannot depend
- * on anything above the repository root.
- *
- * Runtime modules and build config are intentionally absent: see the scope note
- * above. Widening this list is a policy change, not a fix for a failing check.
- */
-const SCANNED_PATTERNS = [
+const COLOCATED_TEST_IN_ANY_LANGUAGE = /\.(?:test|spec)\.[A-Za-z0-9]+$/;
+
+const PUBLIC_CLONE_SURFACES = [
   /(?:^|\/)__tests__\//,
   /(?:^|\/)tests?\//,
   /(?:^|\/)fixtures?\//,
-  // Any extension, not only the JavaScript family. The directory patterns above
-  // never cared what language a test was written in, and these did, so a
-  // colocated `client.test.py` or `client.test.sh` was not read at all. What is
-  // readable is already decided by `SCANNED_EXTENSIONS` in `isScanned`, so this
-  // cannot pull in a `.docx` fixture that happens to be named `.test.docx`.
-  /\.(?:test|spec)\.[A-Za-z0-9]+$/,
+  COLOCATED_TEST_IN_ANY_LANGUAGE,
   /(?:^|\/)examples\//,
 ];
 
-/**
- * Text formats where a relative path is meaningful. Binaries cannot carry one.
- *
- * Not only the JavaScript family. The scanned surfaces also hold Python and shell
- * tests, PHP and HTML fixtures, and `.cts`/`.mts` consumer tests, and every one of
- * those was skipped before its contents were read, so a private dependency in a
- * `.py` fixture passed the gate. A path literal in any of them breaks a public
- * clone the same way.
- *
- * `.svg` is here for the same reason: it is XML, not a binary, and the scanned
- * surfaces track 14 of them. An `<image href="../../labs/private.png">` in a demo
- * asset is a private dependency a public clone cannot satisfy, and skipping the
- * format by extension meant the required job never opened one.
- *
- * `.code-workspace` is JSON, and its `folders[].path` entries are paths by
- * definition: the one tracked in the word-addin demo points at the directories
- * the editor opens, so an escaping value there leaves the demo unusable from a
- * public clone.
- */
+function isInPublicCloneSurface(file) {
+  return PUBLIC_CLONE_SURFACES.some((pattern) => pattern.test(file));
+}
+
 const SCANNED_EXTENSIONS = new Set([
   '.cjs',
   '.code-workspace',
@@ -131,67 +104,48 @@ const SCANNED_EXTENSIONS = new Set([
   '.yml',
 ]);
 
-/**
- * Comment syntax per scanned extension, so prose about a path is not read as a
- * dependency on one.
- *
- * Applying the JavaScript grammar everywhere was wrong in both directions. A plain
- * `https://` in Markdown swallowed the rest of its line, and a `#` comment in a
- * Python, shell, or YAML test failed the gate for mentioning an old path. Each
- * language gets its own, and a format with no comment syntax gets none.
- *
- * A format gets every comment form it really has, not only its most common one.
- * PHP treats `#` as a line comment as well as `//`, and a `.vue` file is two
- * languages at once, so its template needs `<!-- -->` alongside the script
- * block's `//`. Listing one form per format failed the gate for a valid comment
- * written in the other. PHP 8 attributes are the stated cost of `#`: `#[Foo]`
- * reads as a comment, which can only hide a path, never invent one.
- *
- * `lines` open a comment that ends at the newline; `blocks` are `[open, close]`
- * pairs. Markdown and JSON are absent on purpose: neither has comments, and
- * Markdown's `<!-- -->` is rare enough in a path-bearing fixture that treating it
- * as prose would be the riskier default.
- */
+function basenameOf(file) {
+  return file.slice(file.lastIndexOf('/') + 1);
+}
+
+function extensionAfterNonLeadingDot(basename) {
+  const dot = basename.lastIndexOf('.');
+  return dot > 0 ? basename.slice(dot) : '';
+}
+
+function shebangLineOf(contents) {
+  if (!contents?.startsWith('#!')) return undefined;
+  return contents.slice(0, contents.indexOf('\n') + 1 || contents.length);
+}
+
 const JS_COMMENTS = { lines: ['//'], blocks: [['/*', '*/']] };
 const HASH_COMMENTS = { lines: ['#'] };
-/**
- * `#` opens a comment only where a word does not already run into it.
- *
- * True of shell and YAML, and of neither Python nor PHP nor a Makefile, where
- * `x=1# note` really is a comment. Applying the rule everywhere made `x=1#
- * '../../labs/private.docx'` read as code and failed the unconditional job on a
- * line that carries only comment text. It exists for shell's `${#value}`
- * parameter-length expansion, whose `#` blanked the rest of its line and hid an
- * escaping argument after it, so it is spelled out per grammar rather than
- * pressed onto every `#` format.
- */
 const BOUNDED_HASH_COMMENTS = { lines: ['#'], hashNeedsBoundary: true };
 const SGML_COMMENTS = { blocks: [['<!--', '-->']] };
+const CSS_COMMENTS = { blocks: [['/*', '*/']] };
+const VUE_SCRIPT_AND_TEMPLATE_COMMENTS = {
+  lines: ['//'],
+  blocks: [
+    ['/*', '*/'],
+    ['<!--', '-->'],
+  ],
+};
+const PHP_COMMENTS = { lines: ['//', '#'], blocks: [['/*', '*/']] };
+const MAKE_COMMENTS_WITH_SHELL_RECIPES = { lines: ['#'], hashNeedsBoundaryInRecipes: true };
 
 const COMMENT_GRAMMARS = new Map([
   ['.cjs', JS_COMMENTS],
   ['.cts', JS_COMMENTS],
-  ['.css', { blocks: [['/*', '*/']] }],
+  ['.css', CSS_COMMENTS],
   ['.js', JS_COMMENTS],
   ['.jsx', JS_COMMENTS],
   ['.mjs', JS_COMMENTS],
   ['.mts', JS_COMMENTS],
   ['.ts', JS_COMMENTS],
   ['.tsx', JS_COMMENTS],
-  // Script block plus template: JavaScript comments and SGML comments both apply.
-  [
-    '.vue',
-    {
-      lines: ['//'],
-      blocks: [
-        ['/*', '*/'],
-        ['<!--', '-->'],
-      ],
-    },
-  ],
-  ['.php', { lines: ['//', '#'], blocks: [['/*', '*/']] }],
+  ['.vue', VUE_SCRIPT_AND_TEMPLATE_COMMENTS],
+  ['.php', PHP_COMMENTS],
   ['.py', HASH_COMMENTS],
-  // Shell and YAML both require a boundary before `#`; Python and PHP do not.
   ['.sh', BOUNDED_HASH_COMMENTS],
   ['.yaml', BOUNDED_HASH_COMMENTS],
   ['.yml', BOUNDED_HASH_COMMENTS],
@@ -200,84 +154,25 @@ const COMMENT_GRAMMARS = new Map([
   ['.xml', SGML_COMMENTS],
 ]);
 
-/**
- * The comment grammar for a file, by extension or by basename.
- *
- * The extensionless build inputs are all `#`-commented, so a `# see
- * ../../labs/old.mk` in one is prose about a path rather than a dependency on
- * it, the same way it is in a shell or YAML test.
- *
- * A Makefile carries `hashNeedsBoundaryInRecipes` because it is two languages:
- * its own lines take `#` unconditionally, while a recipe line — one starting with
- * a TAB — is handed to the shell, where `$${#value}` is the parameter-length
- * expansion rather than a comment. Treating a recipe's `#` as a Make comment
- * blanked the rest of that line and hid an escaping `cat` argument after it.
- */
 const BASENAME_COMMENT_GRAMMARS = new Map([
   ['Dockerfile', HASH_COMMENTS],
   ['Containerfile', HASH_COMMENTS],
-  ['Makefile', { lines: ['#'], hashNeedsBoundaryInRecipes: true }],
-  ['Justfile', { lines: ['#'], hashNeedsBoundaryInRecipes: true }],
+  ['Makefile', MAKE_COMMENTS_WITH_SHELL_RECIPES],
+  ['Justfile', MAKE_COMMENTS_WITH_SHELL_RECIPES],
   ['Procfile', HASH_COMMENTS],
 ]);
 
-/**
- * Calls whose string argument is a URL route rather than a filesystem path.
- *
- * A machine-shaped literal is otherwise always a private dependency, which is
- * why `/home/alice/x.docx` is reported wherever it sits. The exception is a
- * server route: `app.get('/home/alice/profile', handler)` names a URL, and the
- * scanned surfaces can hold example servers, so the unconditional job would
- * fail on one even though nothing touches the filesystem.
- *
- * Narrow on purpose. Requiring a path-taking context instead would have been the
- * bigger change and the wrong one: it drops a hardcoded `/home/...` assigned to
- * a variable, which is the shape this guard most wants to catch.
- */
 const ROUTE_REGISTERING_CALLEES = new Set(['get', 'post', 'put', 'patch', 'delete', 'head', 'options', 'all', 'use']);
 
-/**
- * Receivers whose `.get(...)` registers a route rather than reading a key.
- *
- * The callee name alone is far too weak: of the route-shaped calls in the scanned
- * surfaces, most are Maps and caches — `rooms.get`, `metadata.get`,
- * `tokenCache.get`, `pending.get`. Exempting every one of those would wave a
- * machine path through wherever it was handed to a lookup.
- */
 const ROUTER_RECEIVERS = new Set(['app', 'router', 'server', 'api', 'fastify', 'express']);
 
-/**
- * Whether a candidate sits inside a `file:` URL.
- *
- * `file:///home/alice/x.docx` is a machine path whatever receives it.
- */
+const BROWSER_GLOBAL_RECEIVERS = new Set(['globalThis', 'window', 'self']);
+
 function isFileUrl(text, offset) {
   return text.slice(Math.max(0, offset - 8), offset).endsWith('file://');
 }
 
-/**
- * Callees whose first argument is a URL the browser resolves against the origin.
- *
- * `fetch('/home/alice/profile')` requests a route and opens no file on the host,
- * but a leading `/home/` is otherwise a machine path wherever it sits, so the
- * required job rejected a demo doing exactly that. This is the call-shaped
- * counterpart to the markup attributes and CSS `url()` above.
- *
- * Only the machine-rooted question, like those: a traversal handed to `fetch`
- * is still resolved and still reported, and `isFileUrl` still wins, because
- * `fetch('file:///home/alice/x')` names a path in any context.
- */
-const URL_ARGUMENT_CALLEES = new Set(['fetch']);
-
-/** Whether a candidate is the first argument of a call that takes a URL. */
-function isUrlArgument(text, context, offset) {
-  const paren = context?.openParens?.at(-1);
-  if (paren === undefined) return false;
-  const { name, receiver } = calleeBefore(text, paren);
-  // A bare `fetch(...)` or `globalThis.fetch(...)`, not some object's own
-  // `.fetch(...)`, which need not be the browser's.
-  if (!URL_ARGUMENT_CALLEES.has(name)) return false;
-  if (receiver !== '' && !['globalThis', 'window', 'self'].includes(receiver.split('.').pop())) return false;
+function isFirstArgumentOf(text, paren, offset) {
   return (
     text
       .slice(paren + 1, offset)
@@ -286,116 +181,63 @@ function isUrlArgument(text, context, offset) {
   );
 }
 
-/**
- * Whether a candidate is the path of a `new URL(...)` whose base is an http(s)
- * origin.
- *
- * `new URL('/home/alice/profile', 'https://example.com')` names a route on that
- * origin and touches no file, but a leading `/home/` is otherwise a machine
- * path, so the required job rejected a demo doing exactly that.
- *
- * The base has to be a literal with an http or https scheme. `file:` is not
- * matched, so `new URL('/home/alice/x', 'file:///tmp/')` is still a path, and a
- * base this cannot read leaves the candidate exactly where it was.
- */
+function lastSegmentOf(receiver) {
+  return receiver.split('.').pop();
+}
+
+const URL_ARGUMENT_CALLEES = new Set(['fetch']);
+
+function isBrowserFetchCall({ name, receiver }) {
+  return URL_ARGUMENT_CALLEES.has(name) && (receiver === '' || BROWSER_GLOBAL_RECEIVERS.has(lastSegmentOf(receiver)));
+}
+
+function isUrlArgument(text, context, offset) {
+  const paren = context?.openParens?.at(-1);
+  if (paren === undefined) return false;
+  return isBrowserFetchCall(calleeBefore(text, paren)) && isFirstArgumentOf(text, paren, offset);
+}
+
+const HTTP_ORIGIN_LITERAL = /^(['"`])https?:\/\//i;
+
 function isOriginRelativeUrl(text, context, offset) {
   const paren = context?.openParens?.at(-1);
   if (paren === undefined) return false;
   if (calleeBefore(text, paren).name !== 'URL') return false;
-  if (
-    text
-      .slice(paren + 1, offset)
-      .replace(/['"`]\s*$/, '')
-      .trim() !== ''
-  ) {
-    return false;
-  }
-  return /^(['"`])https?:\/\//i.test(currentArgument(completeArgumentList(text, paren)).trim());
+  if (!isFirstArgumentOf(text, paren, offset)) return false;
+  return HTTP_ORIGIN_LITERAL.test(currentArgument(completeArgumentList(text, paren)).trim());
 }
 
-/** Whether a candidate is the first argument of a route registration. */
+function isRouterRegistration({ name, receiver }) {
+  return ROUTER_RECEIVERS.has(lastSegmentOf(receiver)) && ROUTE_REGISTERING_CALLEES.has(name);
+}
+
 function isRouteLiteral(text, context, offset) {
   const paren = context?.openParens?.at(-1);
   if (paren === undefined) return false;
-  const { name, receiver } = calleeBefore(text, paren);
-  // A bare `get(...)` is not a route, and neither is `cache.get(...)`: the
-  // receiver has to name a router.
-  if (!ROUTER_RECEIVERS.has(receiver.split('.').pop()) || !ROUTE_REGISTERING_CALLEES.has(name)) return false;
-  // And only the first argument is the route. Without this the exemption covered
-  // every argument of any `.get(...)`, so a machine path handed to a second
-  // parameter, or to a non-routing `cache.get`, was waved through. Only the
-  // opening quote may sit between the candidate and the `(`.
+  return isRouterRegistration(calleeBefore(text, paren)) && isFirstArgumentOf(text, paren, offset);
+}
+
+const URL_ATTRIBUTES = new Set(['href', 'src', 'action', 'srcset', 'poster', 'data', 'formaction', 'cite', 'ping']);
+
+const OPEN_QUOTED_ATTRIBUTE_VALUE = /([A-Za-z][A-Za-z0-9-]*)\s*=\s*(?:"[^"]*|'[^']*)$/;
+const ATTRIBUTE_NAME_BEFORE_VALUE = /([A-Za-z][A-Za-z0-9-]*)\s*=\s*['"]?\s*$/;
+
+function isUrlAttributeName(name) {
+  return name !== undefined && URL_ATTRIBUTES.has(name.toLowerCase());
+}
+
+function isUrlAttributeValue(text, offset) {
+  if (!isInsideTag(text, offset)) return false;
+  const tagPrefix = text.slice(text.lastIndexOf('<', offset), offset);
+  const valuePrefix = text.slice(Math.max(0, offset - 32), offset);
   return (
-    text
-      .slice(paren + 1, offset)
-      .replace(/['"`]\s*$/, '')
-      .trim() === ''
+    isUrlAttributeName(OPEN_QUOTED_ATTRIBUTE_VALUE.exec(tagPrefix)?.[1]) ||
+    isUrlAttributeName(ATTRIBUTE_NAME_BEFORE_VALUE.exec(valuePrefix)?.[1])
   );
 }
 
-/**
- * Markup attributes whose value is a URL rather than a filesystem path.
- *
- * A machine-rooted literal is otherwise a private dependency wherever it sits,
- * and `isRouteLiteral` is the one exception — but it reads the enclosing call,
- * and markup has none. So `<a href="/home/alice/profile">` in a tracked demo was
- * rejected even though the browser resolves it against the origin and touches no
- * file. That is a false positive on a required job.
- *
- * Only the machine-rooted question is answered here. A traversal in an `href` is
- * still resolved and still reported, because `../../../../labs/x` breaks a public
- * clone whether a browser or a bundler follows it. And `isFileUrl` still wins:
- * `href="file:///home/alice/x"` names a path in any context.
- */
-const URL_ATTRIBUTES = new Set(['href', 'src', 'action', 'srcset', 'poster', 'data', 'formaction', 'cite', 'ping']);
-
-/** Whether a candidate is the value of a markup attribute that carries a URL. */
-function isUrlAttributeValue(text, offset) {
-  if (!isInsideTag(text, offset)) return false;
-  const tagStart = text.lastIndexOf('<', offset);
-  const attributePrefix = text.slice(tagStart, offset);
-  const quotedMatch = /([A-Za-z][A-Za-z0-9-]*)\s*=\s*(?:"[^"]*|'[^']*)$/.exec(attributePrefix);
-  if (quotedMatch && URL_ATTRIBUTES.has(quotedMatch[1].toLowerCase())) return true;
-  // `<a href="` — the attribute name, `=`, and the opening quote, which the
-  // candidate's own offset sits just past.
-  const before = text.slice(Math.max(0, offset - 32), offset);
-  const match = /([A-Za-z][A-Za-z0-9-]*)\s*=\s*['"]?\s*$/.exec(before);
-  if (!match || !URL_ATTRIBUTES.has(match[1].toLowerCase())) return false;
-  // And it has to be a real attribute. The name-and-equals shape alone is also
-  // `const src = '/home/alice/x'`, `SRC=/home/alice/x` in an env template, and
-  // `src=/home/alice/x` in a shell script — so without this the exemption waved
-  // a machine path through in every one of those, which is the direction that
-  // hides a private dependency rather than merely annoying CI.
-  return true;
-}
-
-/**
- * Markup that can embed a stylesheet, as opposed to being one.
- *
- * These formats also embed JavaScript, so `url(` in one of them is only a
- * stylesheet reference where a stylesheet really is. A `<script>` block calling
- * a function named `url` is ordinary code, and exempting it on the token alone
- * would let `url('/home/alice/private.png')` through a scanned `.vue` demo —
- * the fail-open direction, which is the one that hides a private dependency.
- */
 const STYLESHEET_HOST_LANGUAGES = new Set(['.html', '.svg', '.vue']);
 
-/**
- * Whether a candidate is the value of a CSS `url()`, which the browser resolves
- * against the origin exactly like the markup attributes above.
- *
- * `background-image: url('/home/assets/hero.png')` was rejected while
- * `<img src="/home/assets/hero.png">` was not, because only the attribute form
- * had an exemption. Both name a route on the site and touch no file.
- *
- * A `.css` file is a stylesheet throughout. In markup the offset has to sit in
- * a real stylesheet region: inside a `<style>` element, or inside a `style`
- * attribute value.
- *
- * As with the attributes, this answers only the machine-rooted question. A
- * traversal inside `url()` is still resolved and still reported: `url(../../labs/x)`
- * breaks a public clone whichever syntax carries it.
- */
 function isCssUrlValue(text, offset, language) {
   const isStylesheet = language === '.css';
   if (!isStylesheet && !STYLESHEET_HOST_LANGUAGES.has(language)) return false;
@@ -403,47 +245,42 @@ function isCssUrlValue(text, offset, language) {
   return isStylesheet || isInStyleElement(text, offset) || isStyleAttributeValue(text, offset);
 }
 
-/** Whether an offset sits inside an open `<style>` element. */
+const STYLE_ELEMENT_NAME_END = /^<style[\s/>]/;
+
 function isInStyleElement(text, offset) {
   const open = text.lastIndexOf('<style', offset);
-  // `<styles>` is a different element, so the name has to end where `style` does.
-  if (open === -1 || !/^<style[\s/>]/.test(text.slice(open, open + 7))) return false;
+  if (open === -1 || !STYLE_ELEMENT_NAME_END.test(text.slice(open, open + 7))) return false;
   const tagEnd = text.indexOf('>', open);
   if (tagEnd === -1 || tagEnd >= offset) return false;
   const close = text.indexOf('</style', tagEnd);
   return close === -1 || close > offset;
 }
 
-/** Whether an offset sits inside a `style` attribute value. */
 function isStyleAttributeValue(text, offset) {
   if (!isInsideTag(text, offset)) return false;
-  const attributePrefix = text.slice(text.lastIndexOf('<', offset), offset);
-  const match = /([A-Za-z][A-Za-z0-9-]*)\s*=\s*(?:"[^"]*|'[^']*)$/.exec(attributePrefix);
-  return match?.[1].toLowerCase() === 'style';
+  const tagPrefix = text.slice(text.lastIndexOf('<', offset), offset);
+  return OPEN_QUOTED_ATTRIBUTE_VALUE.exec(tagPrefix)?.[1].toLowerCase() === 'style';
 }
 
-/**
- * Whether an offset sits inside an open `<...>` tag.
- *
- * True when the nearest `<` before it comes after the nearest `>`, so the tag it
- * opened has not been closed yet. A tag may span lines, which is why this looks
- * back through the text rather than at the current line.
- *
- * The `<` must be followed by a tag name. Otherwise `if (a < b) {}` earlier in a
- * JavaScript file, or a TypeScript generic, would put everything after it
- * "inside a tag" and restore the same hole one step further out.
- */
+const TAG_NAME_AFTER_LESS_THAN = /^<\/?[A-Za-z][A-Za-z0-9:._-]*[\s/>]/;
+
 function isInsideTag(text, offset) {
   const open = text.lastIndexOf('<', offset);
   if (open === -1 || open < text.lastIndexOf('>', offset)) return false;
-  return /^<\/?[A-Za-z][A-Za-z0-9:._-]*[\s/>]/.test(text.slice(open, open + 40));
+  return TAG_NAME_AFTER_LESS_THAN.test(text.slice(open, open + 40));
 }
 
-/**
- * Interpreters named in a shebang, mapped to the extension whose grammar they
- * share. An extensionless entrypoint gets its comment syntax from the program
- * that runs it: `#!/usr/bin/env php` in `artisan` means PHP comments, not none.
- */
+function isUrlRatherThanPath(text, context, offset, language) {
+  if (isFileUrl(text, offset)) return false;
+  return (
+    isRouteLiteral(text, context, offset) ||
+    isUrlAttributeValue(text, offset) ||
+    isCssUrlValue(text, offset, language) ||
+    isUrlArgument(text, context, offset) ||
+    isOriginRelativeUrl(text, context, offset)
+  );
+}
+
 const SHEBANG_GRAMMARS = [
   [/\b(?:php)\b/, '.php'],
   [/\b(?:ba|z|k|da)?sh\b/, '.sh'],
@@ -451,51 +288,29 @@ const SHEBANG_GRAMMARS = [
   [/\b(?:node|bun|deno)\b/, '.js'],
 ];
 
-/**
- * The extension whose language this file is written in, taking a shebang into
- * account when there is no extension to read.
- *
- * The same question `commentGrammarFor` answers, but the answer is needed as a
- * language rather than as a grammar: shell, Python and YAML share one grammar
- * object, so grammar identity cannot tell them apart.
- */
-function languageExtensionFor(file, contents) {
-  const basename = file.slice(file.lastIndexOf('/') + 1);
-  if (basename.lastIndexOf('.') > 0) return basename.slice(basename.lastIndexOf('.'));
-  if (!contents?.startsWith('#!')) return '';
-  const shebang = contents.slice(0, contents.indexOf('\n') + 1 || contents.length);
-  return (SHEBANG_GRAMMARS.find(([pattern]) => pattern.test(shebang)) ?? [])[1] ?? '';
+function shebangLanguageOf(contents) {
+  const shebang = shebangLineOf(contents);
+  if (shebang === undefined) return undefined;
+  return SHEBANG_GRAMMARS.find(([pattern]) => pattern.test(shebang))?.[1];
 }
 
-/**
- * Environment templates, matched on the whole name rather than an extension.
- *
- * `.env.example` reads as an extension of `.example`, so the allowlist skipped
- * it, and a leading-dot `.env` has no extension at all. Both carry paths by
- * design: an example server's `.env.example` can set
- * `GOOGLE_APPLICATION_CREDENTIALS`, and pointing that at a private sibling would
- * leave the exported demo depending on a file a public clone does not have.
- *
- * The whole `.env*` family, since the suffix is a local convention —
- * `.env.example`, `.env.local`, `.env.test` and a bare `.env` are all the same
- * format. Shell-style, so the `#` comment grammar applies.
- */
+function languageExtensionFor(file, contents) {
+  const extension = extensionAfterNonLeadingDot(basenameOf(file));
+  if (extension !== '') return extension;
+  return shebangLanguageOf(contents) ?? '';
+}
+
 const ENVIRONMENT_TEMPLATE = /^\.env(?:\.[A-Za-z0-9_-]+)*$/;
 
 function commentGrammarFor(file, contents) {
-  const basename = file.slice(file.lastIndexOf('/') + 1);
-  const dot = basename.lastIndexOf('.');
-  // Before the extension test: `.env.example` would otherwise read as `.example`,
-  // and a bare `.env` has no extension at all. The format is shell-style, so a
-  // `# see ../../labs/old.json` in one is prose about a path.
+  const basename = basenameOf(file);
   if (ENVIRONMENT_TEMPLATE.test(basename)) return BOUNDED_HASH_COMMENTS;
-  if (dot > 0) return COMMENT_GRAMMARS.get(basename.slice(dot));
+  const extension = extensionAfterNonLeadingDot(basename);
+  if (extension !== '') return COMMENT_GRAMMARS.get(extension);
   const named = BASENAME_COMMENT_GRAMMARS.get(basename);
   if (named) return named;
-  if (!contents?.startsWith('#!')) return undefined;
-  const shebang = contents.slice(0, contents.indexOf('\n') + 1 || contents.length);
-  const match = SHEBANG_GRAMMARS.find(([pattern]) => pattern.test(shebang));
-  return match ? COMMENT_GRAMMARS.get(match[1]) : undefined;
+  const language = shebangLanguageOf(contents);
+  return language === undefined ? undefined : COMMENT_GRAMMARS.get(language);
 }
 
 /**
@@ -670,13 +485,6 @@ const EXEMPT_PATHS = new Map([
   ],
 ]);
 
-/**
- * Path-shaped strings in quotes, or after an `=`/`:`/`(`. Deliberately narrow so
- * prose naming a directory does not qualify.
- *
- * The leading `..` is required: this guard is about escaping upward, and an
- * in-repo relative path is not its business.
- */
 /**
  * Absolute literals that name somebody's machine: `/home/alice/…`, `/Users/bob/…`,
  * `C:\Users\…`. Those cannot resolve in any other clone, so they are always a
@@ -951,36 +759,24 @@ function listTrackedFiles() {
     .filter(Boolean);
 }
 
-/**
- * Text formats with no extension to match on, keyed by basename.
- *
- * A build input is a runnable surface: an example's `Makefile` and
- * its `server/Dockerfile` are both tracked, and an `include ../../labs/x.mk` or
- * an escaping `COPY` source in either breaks a public clone the same way an
- * import does. The extension allowlist skipped them before their contents were
- * read, so the required job reported clean on a real escape.
- *
- * An extensionless file carrying a shebang is scanned too, without being named
- * here: `examples/getting-started/laravel/artisan` is a tracked PHP entrypoint,
- * and an escaping `require` in it was invisible while the same line in a `.php`
- * file was rejected. Reading the first two bytes decides that for any such
- * entrypoint rather than growing this list one name at a time.
- */
-const SCANNED_BASENAMES = new Set(['Dockerfile', 'Makefile', 'Containerfile', 'Justfile', 'Procfile']);
+const SCANNED_BASENAMES = new Set(BASENAME_COMMENT_GRAMMARS.keys());
+
+function isScannedByName(basename) {
+  return (
+    SCANNED_EXTENSIONS.has(extensionAfterNonLeadingDot(basename)) ||
+    SCANNED_BASENAMES.has(basename) ||
+    ENVIRONMENT_TEMPLATE.test(basename)
+  );
+}
+
+function isExtensionlessScript(basename, contents) {
+  return extensionAfterNonLeadingDot(basename) === '' && shebangLineOf(contents) !== undefined;
+}
 
 function isScanned(file, contents) {
-  const basename = file.slice(file.lastIndexOf('/') + 1);
-  const dot = basename.lastIndexOf('.');
-  // A leading dot is not an extension separator: `.nvmrc` has no extension.
-  const extension = dot > 0 ? basename.slice(dot) : '';
-  const named =
-    SCANNED_EXTENSIONS.has(extension) || SCANNED_BASENAMES.has(basename) || ENVIRONMENT_TEMPLATE.test(basename);
-  // `contents` is absent on the first pass, which decides what is worth reading.
-  // A shebang is only consulted for a file with no extension at all, so this
-  // never reopens the question for a `.docx` or a `.png`.
-  const executable = extension === '' && contents !== undefined && contents.startsWith('#!');
-  if (!named && !executable) return false;
-  return SCANNED_PATTERNS.some((pattern) => pattern.test(file));
+  const basename = basenameOf(file);
+  if (!isScannedByName(basename) && !isExtensionlessScript(basename, contents)) return false;
+  return isInPublicCloneSurface(file);
 }
 
 /**
@@ -1615,13 +1411,6 @@ function isArrayJoin(text, parenIndex) {
 }
 
 /**
- * Whether this one candidate is anchored at the process working directory.
- *
- * Decided per candidate rather than per statement, from the call that encloses
- * it: what came before it in that call's arguments, and which function it is
- * being passed to.
- */
-/**
  * The current argument's text, from the last top-level comma of the enclosing
  * call rather than from its `(`.
  *
@@ -1673,12 +1462,6 @@ function completeArgumentList(text, openParen) {
   return text.slice(openParen + 1);
 }
 
-/**
- * The same text with JavaScript comments blanked to spaces.
- *
- * Length-preserving, so an offset taken from the result still points at the
- * right character of the original.
- */
 /**
  * The same text with the two regex-literal shapes that confuse the scanner
  * blanked to spaces.
@@ -2034,20 +1817,6 @@ function composedLiteralPath(text) {
   return segments.join('/');
 }
 
-/**
- * Resolve a candidate against its file's directory and report whether it lands
- * outside the root. Comparing resolved paths rather than counting `../` keeps
- * `packages/a/../b` correctly inside.
- *
- * Every form this scans is directory-relative, including the two that look like
- * exceptions. `new URL('../x', import.meta.url)` resolves per RFC 3986, which
- * drops the base's last segment — the filename — before applying `../`, and
- * `path.resolve(__dirname, '../x')` is directory-relative by construction. An
- * earlier version treated both as file-relative and so consumed one extra `..`,
- * turning real escapes into passes: from `examples/__tests__/a.spec.ts`, a
- * `../../../labs/private.docx` was reported clean. Verified against Node before
- * removing the special case.
- */
 /**
  * Languages where every relative literal is resolved from the process working
  * directory, whatever encloses it.
@@ -2639,49 +2408,37 @@ function resolveCandidate(fromFile, rawCandidate, cwdRelative) {
   return attempts.find((attempt) => attempt.escapes) ?? attempts[0];
 }
 
-/**
- * Symlinks tracked in a scanned surface, as `path -> target`.
- *
- * A symlink carries its path in the link itself rather than in any file it could
- * be read from, and `readFileSync` follows it: a target inside the private parent
- * was scanned for *its* contents under the link's name, and a dangling one landed
- * in the read's `catch` and was skipped. Either way the required job reported
- * clean on a fixture a public clone cannot resolve, so the target is read with
- * `readlink` and resolved before anything is opened.
- *
- * Every tracked symlink in a scanned surface, whatever its name. Extension
- * decides whether a file's *contents* are worth reading; a link to `fixture.docx`
- * escapes just as completely as a link to `fixture.ts`.
- */
+const GIT_SYMLINK_MODE = '120000 ';
+
+function trackedSymlinkPath(lsFilesStageEntry) {
+  const tab = lsFilesStageEntry.indexOf('\t');
+  if (tab === -1 || !lsFilesStageEntry.startsWith(GIT_SYMLINK_MODE)) return undefined;
+  return lsFilesStageEntry.slice(tab + 1);
+}
+
+function readLinkTargetIfStillALink(file) {
+  try {
+    return readlinkSync(resolve(REPO_ROOT, file));
+  } catch {
+    return undefined;
+  }
+}
+
 function listTrackedSymlinks() {
   return execFileSync('git', ['ls-files', '-sz'], { cwd: REPO_ROOT, maxBuffer: 64 * 1024 * 1024 })
     .toString('utf8')
     .split('\0')
     .filter(Boolean)
     .flatMap((entry) => {
-      // `<mode> <sha> <stage>\t<path>`; 120000 is git's mode for a symlink.
-      const tab = entry.indexOf('\t');
-      if (tab === -1 || !entry.startsWith('120000 ')) return [];
-      const file = entry.slice(tab + 1);
-      if (!SCANNED_PATTERNS.some((pattern) => pattern.test(file))) return [];
-      try {
-        return [{ file, target: readlinkSync(resolve(REPO_ROOT, file)) }];
-      } catch {
-        return []; // Removed mid-run, or checked out as a plain file on a platform without links.
-      }
+      const file = trackedSymlinkPath(entry);
+      if (file === undefined || !isInPublicCloneSurface(file)) return [];
+      const target = readLinkTargetIfStillALink(file);
+      return target === undefined ? [] : [{ file, target }];
     });
 }
 
-/**
- * Whether a path is worth opening to look for a shebang.
- *
- * Only a file with no extension at all, inside a scanned surface. Everything
- * else is decided by name, so no binary is ever read.
- */
 function mightBeExecutableScript(file) {
-  const basename = file.slice(file.lastIndexOf('/') + 1);
-  if (basename.lastIndexOf('.') > 0) return false;
-  return SCANNED_PATTERNS.some((pattern) => pattern.test(file));
+  return extensionAfterNonLeadingDot(basenameOf(file)) === '' && isInPublicCloneSurface(file);
 }
 
 const findings = [];
@@ -2699,89 +2456,85 @@ for (const { file, target } of listTrackedSymlinks()) {
   });
 }
 
-for (const file of listTrackedFiles()) {
-  // Two passes: the first rules out anything whose name settles it, so a `.docx`
-  // or a `.png` is never read. Only a path with no extension survives to be
-  // opened and re-tested for a shebang.
-  if (!isScanned(file) && !mightBeExecutableScript(file)) continue;
-  const exemption = EXEMPT_PATHS.get(file);
-
-  let contents;
+function readTrackedFileIfStillPresent(file) {
   try {
-    contents = readFileSync(resolve(REPO_ROOT, file), 'utf8');
+    return readFileSync(resolve(REPO_ROOT, file), 'utf8');
   } catch {
-    continue; // Unreadable or removed mid-run; nothing to assert about it.
+    return undefined;
   }
-  if (!isScanned(file, contents)) continue;
+}
 
-  // Candidates are collected over the whole file rather than line by line, so a
-  // call that a formatter split across lines still reads as one argument list.
-  const candidates = [
-    ...[...contents.matchAll(RELATIVE_PATH_PATTERN)].map((match) => ({
-      candidate: match[1],
-      offset: match.index + match[0].indexOf(match[1]),
-    })),
-    // A machine path is only a machine path where something reads it. A web
-    // example's `app.get('/home/alice/profile', handler)` is a route, and the
-    // unconditional job failed on it even though nothing touches the filesystem.
-    // So `/home` and `/Users` count inside a `file:` URL, which can only be a
-    // path, or where a path-taking call receives them. A drive letter needs no
-    // such test: `C:\Users\...` is a path in any context.
+function matchedGroupAt(match) {
+  return { candidate: match[1], offset: match.index + match[0].indexOf(match[1]) };
+}
+
+function pathCandidatesIn(contents) {
+  return [
+    ...[...contents.matchAll(RELATIVE_PATH_PATTERN)].map(matchedGroupAt),
     ...[...contents.matchAll(ABSOLUTE_PATH_PATTERN)].map((match) => ({
-      candidate: match[1],
-      offset: match.index + match[0].indexOf(match[1]),
+      ...matchedGroupAt(match),
       machineRooted: match[1].startsWith('/'),
     })),
-    // A composed traversal is reported at its first fragment, so the enclosing
-    // call, and therefore the base, is the one those fragments sit in.
     ...[...contents.matchAll(COMPOSED_TRAVERSAL_PATTERN)].map((match) => ({
+      ...matchedGroupAt(match),
       candidate: joinComposedTraversal(match[1]),
-      offset: match.index + match[0].indexOf(match[1]),
       composed: true,
     })),
   ];
+}
 
-  // `//` and `/* */` are comments in JS and TS, not in Markdown or YAML. Applying
-  // the JS rule everywhere meant a plain `https://` in a Markdown line switched
-  // the scanner into comment mode and skipped an escaping link later on that same
-  // line. Vue is included: its script block is JS.
-  //
-  // Regex literals carrying an escaped `//` are blanked first. `const r = /\/\//`
-  // holds the two characters that open a line comment, so the scanner switched to
-  // comment mode at the regex and marked everything after it on that line as
-  // prose -- a real escape written after one passed the gate. Nine tracked files
-  // contain such a regex, so this is reachable rather than theoretical.
-  //
-  // Blanked rather than tokenized. Telling a regex from division needs an
-  // operand-position heuristic, and an earlier attempt at one broke on comments
-  // whose text contains a slash: a scanner that guesses wrong about JavaScript
-  // syntax fails in both directions, and the under-report is the one that matters.
-  // Blanking only the escaped-slash form is narrow enough to reason about, and it
-  // cannot hide a path, because a path cannot appear inside `\/\/`.
-  // The language decides both comment grammar and string interpolation rules.
+function lineStartOffsets(contents) {
+  const lineStarts = [0];
+  for (let i = 0; i < contents.length; i += 1) {
+    if (contents[i] === '\n') lineStarts.push(i + 1);
+  }
+  return lineStarts;
+}
+
+function lineNumberAt(lineStarts, offset) {
+  const line = lineStarts.findIndex((start) => start > offset);
+  return line === -1 ? lineStarts.length : line;
+}
+
+function findingSnippet(contents, lineStarts, line, offset, candidate) {
+  return contents
+    .slice(lineStarts[line - 1], offset + candidate.length + 40)
+    .split('\n')[0]
+    .trim()
+    .slice(0, 110);
+}
+
+function isComposedTraversalNobodyJoins({ composed }, cwdRelative, contents, context) {
+  return Boolean(composed) && !cwdRelative && !composesPath(contents, context);
+}
+
+function isShellPayloadData(contents, offset, dataHeredocs) {
+  return (
+    isPrintedShellArgument(contents, offset) ||
+    isHereStringOperand(contents, offset) ||
+    isInDataHeredoc(dataHeredocs, offset, contents)
+  );
+}
+
+function findingsInFile(file, contents) {
+  const exemption = EXEMPT_PATHS.get(file);
+  const candidates = pathCandidatesIn(contents);
   const language = languageExtensionFor(file, contents);
   const contexts = describeCallContexts(
     withoutEscapedSlashRegexes(contents),
     candidates.map((entry) => entry.offset),
     { grammar: commentGrammarFor(file, contents), language },
   );
-  const lineStarts = [0];
-  for (let i = 0; i < contents.length; i += 1) {
-    if (contents[i] === '\n') lineStarts.push(i + 1);
-  }
-  // The filesystem names that only anchor in this file's language, so a generic
-  // `remove` or `copy` in a JavaScript test is not read as Python's.
+  const lineStarts = lineStartOffsets(contents);
   const languageCallees = LANGUAGE_CWD_ANCHORED_CALLEES.get(language);
-  // Whole-file state, so it is found once rather than once per candidate.
-  const dataHeredocs = isCwdRelativeLanguage(file, contents) ? shellDataHeredocRanges(contents) : [];
+  const shellCwd = isCwdRelativeLanguage(file, contents);
+  const dataHeredocs = shellCwd ? shellDataHeredocRanges(contents) : [];
+  const fileFindings = [];
 
-  for (const { candidate, offset, composed, machineRooted } of candidates) {
+  for (const entry of candidates) {
+    const { candidate, offset, machineRooted } = entry;
     const context = contexts.get(offset);
-    // A path inside a comment is prose about a path, not a dependency on one.
     if (context?.inComment) continue;
-    // A path whose leading segments are thrown away before anything receives it
-    // cannot reach outside: `readFileSync(path.basename('../../../../labs/x'))`
-    // reads `<cwd>/x`, wherever the traversal pointed.
     if (discardsLeadingSegments(contents, context, offset, candidate)) continue;
     const { cwdRelative, prefix, isData } = isCwdAnchored(
       contents,
@@ -2791,44 +2544,10 @@ for (const file of listTrackedFiles()) {
       language,
       languageCallees,
     );
-    // The data argument of a write API is file contents, not a path the call
-    // opens. `writeFileSync('snapshot.txt', '../../labs/x')` touches only
-    // `snapshot.txt`, so the traversal reaches nothing.
     if (isData) continue;
-    // A machine-shaped literal is a private dependency wherever it sits, with two
-    // exceptions: a server route names a URL, not a path, and so does a markup
-    // attribute like `href`, which has no enclosing call to read. A `file:` URL is
-    // always a path, so it overrides both.
-    if (
-      machineRooted &&
-      !isFileUrl(contents, offset) &&
-      (isRouteLiteral(contents, context, offset) ||
-        isUrlAttributeValue(contents, offset) ||
-        isCssUrlValue(contents, offset, language) ||
-        isUrlArgument(contents, context, offset) ||
-        isOriginRelativeUrl(contents, context, offset))
-    ) {
-      continue;
-    }
-    // Separate `'..'` arguments are one traversal only where something joins them
-    // into a path. Anywhere else they are just strings that happen to read as one.
-    //
-    // A cwd-anchored call counts as well as a composer: `readdirSync('..')` from a
-    // root-launched test reads the repository's parent, and a filesystem call is
-    // not in PATH_COMPOSING_CALLEES because it does not join its arguments. Asking
-    // only about composition discarded that escape before it was ever resolved.
-    if (composed && !cwdRelative && !composesPath(contents, context)) continue;
-    const shellCwd = isCwdRelativeLanguage(file, contents);
-    // A shell string that is only printed is test data, not a dependency. The
-    // language rule has no callee to consult, so without this every
-    // traversal-shaped literal in a script read as a filesystem access.
-    if (shellCwd && !cwdRelative && isPrintedShellArgument(contents, offset)) continue;
-    if (shellCwd && !cwdRelative && isHereStringOperand(contents, offset)) continue;
-    // The same rule one level up: a heredoc body handed to a command that copies
-    // it out is the payload being written, not a path the script opens.
-    if (shellCwd && !cwdRelative && isInDataHeredoc(dataHeredocs, offset, contents)) continue;
-    // A PHP include statement has no parentheses, so no callee to read; its
-    // traversal-prefixed form bypasses `include_path` and resolves from the cwd.
+    if (machineRooted && isUrlRatherThanPath(contents, context, offset, language)) continue;
+    if (isComposedTraversalNobodyJoins(entry, cwdRelative, contents, context)) continue;
+    if (shellCwd && !cwdRelative && isShellPayloadData(contents, offset, dataHeredocs)) continue;
     const phpInclude = language === '.php' && isPhpIncludeTarget(contents, offset, candidate);
     const { resolved, escapes } = resolveCandidate(
       file,
@@ -2836,25 +2555,24 @@ for (const file of listTrackedFiles()) {
       cwdRelative || shellCwd || phpInclude,
     );
     if (!escapes) continue;
-    // Exempt only the candidate this entry approves, so an unrelated escape
-    // added to the same file later is still reported.
     if (exemption?.allow.test(candidate)) continue;
-    let line = lineStarts.findIndex((start) => start > offset);
-    line = line === -1 ? lineStarts.length : line;
-    findings.push({
+    const line = lineNumberAt(lineStarts, offset);
+    fileFindings.push({
       file,
       line,
       candidate,
-      // Distinguishes a live private dependency from a merely stale path.
-      // Both fail; the fixes differ.
       existsLocally: existsSync(resolved),
-      text: contents
-        .slice(lineStarts[line - 1], offset + candidate.length + 40)
-        .split('\n')[0]
-        .trim()
-        .slice(0, 110),
+      text: findingSnippet(contents, lineStarts, line, offset, candidate),
     });
   }
+  return fileFindings;
+}
+
+for (const file of listTrackedFiles()) {
+  if (!isScanned(file) && !mightBeExecutableScript(file)) continue;
+  const contents = readTrackedFileIfStillPresent(file);
+  if (contents === undefined || !isScanned(file, contents)) continue;
+  for (const finding of findingsInFile(file, contents)) findings.push(finding);
 }
 
 if (findings.length === 0) {

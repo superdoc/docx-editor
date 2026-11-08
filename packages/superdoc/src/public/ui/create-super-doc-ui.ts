@@ -220,7 +220,8 @@ import {
 } from './tracked-change-ids.js';
 import { emitUiBenchTiming, readUiBenchRuntime, uiBenchNowMs } from './ui-bench-timing.js';
 import { createAsyncReadCache, type AsyncReadEntry } from './async-read-cache.js';
-import { COMMENTS_CATALOG_PART_URIS, combineStatus, isHeavyDocReadKey } from './heavy-read-policy.js';
+import { COMMENTS_CATALOG_PART_URIS, combineStatus } from './heavy-read-policy.js';
+import { createHeavyReadGate, HEAVY_READ_IDLE_POLL_MS, type DirectoryFamily } from './heavy-read-gate.js';
 import {
   EMPTY_SELECTION,
   canProbeEverySelectedBlock,
@@ -1213,221 +1214,29 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
   const FOREGROUND_ASYNC_RETRY_MS = 120;
   const COLD_ASYNC_READ_START_DELAY_MS = 180;
 
-  // -- heavy-read policy (source-loading deferral) ----------------------------
-  // While the host reports the document source as ACTIVELY LOADING, passive
-  // slice recompute must not cold-start catalog-scale worker reads: the
-  // measured during-load typing cliff was the cold `contentControls.list`
-  // full-document parse blocking keystroke receipts in the shared kernel
-  // worker. Policy semantics per key while loading: no settled value ->
-  // `pending` without issuing the read; settled value (any token) -> served
-  // as `stale` without cold-starting a refresh. Explicit demand
-  // (`demandHeavyDocRead`) bypasses the gate for one content revision so a
-  // user-opened panel can still opt into the full read. On source-complete /
-  // terminal, one recompute is scheduled INPUT-IDLE-GATED so the deferred
-  // reads cannot stampede into the first keystrokes after completion (the
-  // migrated-cliff failure mode pinned by the W0 red run).
-  //
-  // Audited exclusions: `selection` must stay live for caret correctness;
-  // `lists:*`, `node:*`, `query:*`, `metadata:resolve:*` are block/selection
-  // scoped reads command states depend on, not full-document catalogs.
-  // The policy table itself (`HEAVY_DOC_READ_POLICY`) lives at module scope so
-  // the table-driven tests consume the SAME list this gate matches against.
-
-  /** Tri-state host source-load phase derived from the loading snapshot seam. */
-  const hostSourceLoadPhase = (): 'loading' | 'complete' | 'unknown' => {
-    const host = getHost();
-    const read = host?.getDocumentLoadingSnapshot;
-    if (typeof read !== 'function') return 'unknown';
-    const snapshot = safeCall<LooseRecord | null>(() => read.call(host) as LooseRecord, null);
-    const stage = snapshot?.sourceStage;
-    // `bootstrap-ready` means the model/API opened while the remainder of
-    // the source can still be loading. Passive catalog reads must stay behind
-    // that boundary: issuing them here can force a collaboration package
-    // projection, advance the package revision, and invalidate the main
-    // loader's in-flight coverage. The host completion watch transitions to a
-    // terminal source stage even for small resident documents.
-    if (stage === 'opening' || stage === 'bootstrap-ready' || stage === 'source-loading') return 'loading';
-    if (stage === 'source-complete' || stage === 'source-failed' || stage === 'source-cancelled') {
-      return 'complete';
-    }
-    // Absent or unknown host state: preserve compatibility for hosts without
-    // the source-loading lifecycle seam.
-    return 'unknown';
-  };
-
-  // Explicit demand: key -> content token it was demanded under. Valid for one
-  // content revision so an open panel's demand survives coordinator retries
-  // but does not silently pin the key hot forever.
-  const demandedHeavyReads = new Map<string, string>();
-  // A tracked-change directory may settle while progressive source loading is
-  // still exposing only a prefix. Keep that prefix available as stale data,
-  // then refresh it once when the host announces source completion. The v2
-  // adapter supplies the completeness proof; passive review-window reads never
-  // enter this map and therefore remain page-bounded.
-  const incompleteTrackChangesDirectoryReadTokens = new Map<string, string>();
-  const postSourceCompletionRefreshTokens = new Map<string, string>();
-  let sourceCompletionObservedToken: string | null = null;
-  type DirectoryFamily = 'comments' | 'trackChanges' | 'contentControls';
-  const directoryLeaseCounts: Record<DirectoryFamily, number> = {
-    comments: 0,
-    trackChanges: 0,
-    contentControls: 0,
-  };
-  const demandHeavyDocRead = (key: string): void => {
-    const token = contentToken();
-    if (demandedHeavyReads.get(key) === token) return;
-    demandedHeavyReads.set(key, token);
-    scheduleAsyncRefresh();
-  };
-  const commentsCatalogMayHaveRows = (): boolean => {
-    const entry = asyncReads.get('comments');
-    if (!entry?.hasSettled) return entry?.inflightToken != null;
-    return Array.isArray(entry.value) && entry.value.length > 0;
-  };
-  const heavyReadDemandActive = (key: string, token: string): boolean => demandedHeavyReads.get(key) === token;
-
-  const refreshIncompleteTrackChangesDirectories = (): void => {
-    const token = contentToken();
-    let invalidated = false;
-    for (const [key, incompleteToken] of incompleteTrackChangesDirectoryReadTokens) {
-      if (incompleteToken !== token) {
-        incompleteTrackChangesDirectoryReadTokens.delete(key);
-        continue;
-      }
-      if (postSourceCompletionRefreshTokens.get(key) === token) continue;
-      const entry = asyncReads.get(key);
-      if (!entry?.hasSettled || entry.token !== token || entry.inflightToken != null) continue;
-      // Retain the partial value while making it stale for this token. The next
-      // directory recompute starts one revision-fenced read and continues to
-      // serve these rows until that read settles.
-      asyncReads.set(key, { ...entry, token: null, inflightToken: null });
-      postSourceCompletionRefreshTokens.set(key, token);
-      invalidated = true;
-    }
-    if (invalidated) scheduleAsyncRefresh();
-  };
-
-  const acquireDirectoryLease = (family: DirectoryFamily): (() => void) => {
-    directoryLeaseCounts[family] += 1;
-
-    demandHeavyDocRead(family);
-    let released = false;
-    return () => {
-      if (released) return;
-      released = true;
-      directoryLeaseCounts[family] = Math.max(0, directoryLeaseCounts[family] - 1);
-      if (directoryLeaseCounts[family] === 0 && demandedHeavyReads.get(family) === contentToken()) {
-        demandedHeavyReads.delete(family);
-      }
-      scheduleAsyncRefresh();
-    };
-  };
-
-  /** Demand-driven route for an explicitly consumed tracked-change list. */
-  const ensureTrackChangesCatalog = (): void => {
-    const entry = asyncReads.get('trackChanges');
-    // Explicit demand is a cold-start escape hatch, not permission to rerun a
-    // full-document catalog on every typing revision. Once a value has settled
-    // (or the first demand is already in flight), serve it stale while the
-    // normal input-idle policy owns refreshes.
-    if (entry?.hasSettled || entry?.inflightToken != null) return;
-    demandHeavyDocRead('trackChanges');
-  };
-
-  /** Demand-driven route for an explicitly consumed comments list. */
-  const ensureCommentsCatalog = (): void => {
-    const entry = asyncReads.get('comments');
-    // Match tracked changes: explicit public consumption can cold-start the
-    // authoritative catalog, but after it settles we let the normal source /
-    // typing-idle policy decide when a fresh content-token read is safe.
-    if (entry?.hasSettled || entry?.inflightToken != null) return;
-    demandHeavyDocRead('comments');
-  };
-
-  // Source-complete recompute, input-idle-gated. Catalog reads share the
-  // kernel worker with mutations and some documents make one read take
-  // seconds, so elapsed wall time is never permission to start one during a
-  // live typing burst. Stale catalog state remains available until real idle.
-  const HEAVY_READ_IDLE_MS = 6500;
-  const HEAVY_READ_IDLE_POLL_MS = 250;
-  let lastEditableMutationAtMs = 0;
-  /**
-   * Last burst-class mutation: a local typing command or a remote apply whose
-   * originating operation is unavailable. Drives the steady-phase heavy-read
-   * hold while one-off local programmatic mutations keep refreshing promptly.
-   */
-  let lastTypingMutationAtMs = 0;
-  /**
-   * True from the first deferred heavy read until the input-idle release runs.
-   * Held reads stay deferred even after source-complete so a typing-driven
-   * recompute cannot bypass the idle gate.
-   */
-  let heavyReadsHeldUntilIdle = false;
-  let heavyReadCompletionRecomputeTimer: ReturnType<typeof setTimeout> | null = null;
-  const scheduleHeavyReadCompletionRecompute = (): void => {
-    if (disposed || heavyReadCompletionRecomputeTimer) return;
-    const attempt = (): void => {
-      heavyReadCompletionRecomputeTimer = null;
-      if (disposed) return;
-      const idleForMs = Date.now() - lastEditableMutationAtMs;
-      const busy = foregroundMutationActive() || idleForMs < HEAVY_READ_IDLE_MS;
-      if (busy) {
-        heavyReadCompletionRecomputeTimer = setTimeout(attempt, HEAVY_READ_IDLE_POLL_MS);
-        return;
-      }
-      heavyReadsHeldUntilIdle = false;
-      recompute();
-    };
-    heavyReadCompletionRecomputeTimer = setTimeout(attempt, 0);
-  };
-
-  // One loading-snapshot subscription per host so deferred heavy reads are
-  // re-attempted exactly when loading reaches a terminal stage.
-  let sourceLoadingSubscriptionHost: LooseRecord | null = null;
-  let detachSourceLoading: (() => void) | null = null;
-  const armSourceLoadCompletionRecompute = (): void => {
-    const host = getHost();
-    if (!host || sourceLoadingSubscriptionHost === host) return;
-    if (detachSourceLoading) {
-      detachSourceLoading();
-      detachSourceLoading = null;
-    }
-    sourceLoadingSubscriptionHost = host;
-    const subscribe = host.subscribeDocumentLoading;
-    if (typeof subscribe !== 'function') {
-      // No subscription seam: fall back to the retry timer so deferred reads
-      // still re-check the phase instead of staying pending forever.
-      sourceLoadingSubscriptionHost = null;
-      scheduleForegroundAsyncRetry(HEAVY_READ_IDLE_MS);
-      return;
-    }
-    try {
-      const handleLoadingSnapshot = (snapshot: LooseRecord | null | undefined): void => {
-        const stage = snapshot?.sourceStage;
-        if (stage === 'source-complete' || stage === 'source-failed' || stage === 'source-cancelled') {
-          sourceCompletionObservedToken = contentToken();
-          refreshIncompleteTrackChangesDirectories();
-          // Opening the editing surface is not proof that the user will stay
-          // idle. Give the first interaction the same quiet window as an edit
-          // before starting any deferred catalog-scale worker read.
-          lastEditableMutationAtMs = Math.max(lastEditableMutationAtMs, Date.now());
-          scheduleHeavyReadCompletionRecompute();
-        }
-      };
-      // Subscribe before the confirming read. The loading subscription is not
-      // replaying, so checking first leaves a gap in which source-complete can
-      // land permanently unseen and keep every deferred catalog cold.
-      const off = (subscribe as AnyFn).call(host, handleLoadingSnapshot);
-      if (typeof off === 'function') detachSourceLoading = off as () => void;
-      const read = host.getDocumentLoadingSnapshot;
-      if (typeof read === 'function') {
-        handleLoadingSnapshot(safeCall<LooseRecord | null>(() => read.call(host) as LooseRecord, null));
-      }
-    } catch {
-      sourceLoadingSubscriptionHost = null;
-      scheduleForegroundAsyncRetry(HEAVY_READ_IDLE_MS);
-    }
-  };
+  const heavyReadGate = createHeavyReadGate({
+    isDisposed: () => disposed,
+    currentHost: getHost,
+    contentToken,
+    readAsyncEntry: (key) => asyncReads.get(key),
+    replaceAsyncEntry: (key, entry) => {
+      asyncReads.set(key, entry);
+    },
+    scheduleAsyncRefresh,
+    recompute: () => recompute(),
+    foregroundMutationActive: () => foregroundMutationActive(),
+    scheduleForegroundAsyncRetry: (delayMs) => scheduleForegroundAsyncRetry(delayMs),
+  });
+  const {
+    directoryLeaseCounts,
+    incompleteTrackChangesDirectoryReadTokens,
+    holdsHeavyRead,
+    typingIsRecent,
+    demandHeavyDocRead,
+    acquireDirectoryLease,
+    ensureTrackChangesCatalog,
+    ensureCommentsCatalog,
+  } = heavyReadGate;
 
   const foregroundMutationState = (): { active: number; pending: number } | null => {
     const host = getEditor()?.host as LooseRecord | undefined;
@@ -1658,21 +1467,6 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
   const holdsTypedCaretSelection = (key: string): boolean =>
     key === 'selection' && typedCaretValidationHeld && typingIsRecent();
 
-  const holdsHeavyRead = (key: string, token: string): boolean => {
-    if (!isHeavyDocReadKey(key) || heavyReadDemandActive(key, token)) return false;
-    if (hostSourceLoadPhase() === 'loading') {
-      heavyReadsHeldUntilIdle = true;
-      armSourceLoadCompletionRecompute();
-      return true;
-    }
-    if (heavyReadsHeldUntilIdle || typingIsRecent()) {
-      heavyReadsHeldUntilIdle = true;
-      scheduleHeavyReadCompletionRecompute();
-      return true;
-    }
-    return false;
-  };
-
   const waitingForFailureRetry = (
     entry: AsyncReadEntry | undefined,
     token: string,
@@ -1727,8 +1521,6 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     pendingSelectionSeedValidationToken = next.pendingToken;
   };
 
-  const typingIsRecent = (): boolean => Date.now() - lastTypingMutationAtMs < HEAVY_READ_IDLE_MS;
-
   const selectionScopedAsyncReadKeys = (selection: SelectionSlice): ReadonlySet<string> => {
     const signature = selectionSignature(selection);
     const effectiveUniformityKey = effectiveInlineUniformityCacheKey(selection);
@@ -1769,16 +1561,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     pendingSelectionSeedValidationToken = null;
     typedCaretValidationHeld = false;
     coldAsyncReadDeferrals.clear();
-    demandedHeavyReads.clear();
-    incompleteTrackChangesDirectoryReadTokens.clear();
-    postSourceCompletionRefreshTokens.clear();
-    sourceCompletionObservedToken = null;
-    heavyReadsHeldUntilIdle = false;
-    // The loading-snapshot subscription belongs to the previous editor's host;
-    // re-arm lazily against the new host on the next deferred heavy read.
-    if (detachSourceLoading) detachSourceLoading();
-    detachSourceLoading = null;
-    sourceLoadingSubscriptionHost = null;
+    heavyReadGate.resetForEditor();
     clearPostDecisionTrackChanges();
     allTrackedChangesResolvedToken = null;
   };
@@ -1786,9 +1569,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
   /** Bump the document-mutation revision so content reads re-fetch on the next compute. */
   const invalidateDocumentContent = (): void => {
     documentMutationRevision += 1;
-    incompleteTrackChangesDirectoryReadTokens.clear();
-    postSourceCompletionRefreshTokens.clear();
-    sourceCompletionObservedToken = null;
+    heavyReadGate.invalidateSourceCoverage();
     clearPostDecisionTrackChanges();
   };
 
@@ -2332,24 +2113,11 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       },
       (raw) => {
         const result = raw && typeof raw === 'object' ? (raw as LooseRecord) : null;
-        if (result?.complete === false || result?.sourceCoverageComplete === false) {
-          incompleteTrackChangesDirectoryReadTokens.set(key, token);
-          armSourceLoadCompletionRecompute();
-          // Source completion can race the promise settlement: the event may
-          // arrive after the adapter captured an incomplete result but before
-          // this normalizer publishes it. Defer the refresh check until after
-          // issueAsyncRead stores the partial entry, and cap it at one attempt
-          // per content token.
-          if (sourceCompletionObservedToken === token || hostSourceLoadPhase() === 'complete') {
-            const refresh = (): void => {
-              if (!disposed) refreshIncompleteTrackChangesDirectories();
-            };
-            if (typeof queueMicrotask === 'function') queueMicrotask(refresh);
-            else void Promise.resolve().then(refresh);
-          }
-        } else if (incompleteTrackChangesDirectoryReadTokens.get(key) === token) {
-          incompleteTrackChangesDirectoryReadTokens.delete(key);
-        }
+        heavyReadGate.noteTrackChangesDirectoryRead(
+          key,
+          token,
+          result?.complete === false || result?.sourceCoverageComplete === false ? 'partial' : 'complete',
+        );
         return result && Array.isArray(result.items) ? (result.items as LooseRecord[]) : [];
       },
     );
@@ -5574,14 +5342,11 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
           settleUiReviewMutation((event.reviewMutation as LooseRecord).token);
         }
         if (type === 'source:complete' || type === 'source:signals-complete') {
-          sourceCompletionObservedToken = contentToken();
-          refreshIncompleteTrackChangesDirectories();
+          heavyReadGate.noteSourceComplete();
           return;
         }
         if (isStandaloneDocumentMutation || type === 'mutation:committed' || type === 'collaboration:remote-changed') {
-          // Input-idle signal for the source-complete heavy-read recompute:
-          // local commits and remote applies both count as recent activity.
-          lastEditableMutationAtMs = Date.now();
+          heavyReadGate.noteEditableActivity();
         }
         if (
           isStandaloneDocumentMutation ||
@@ -5623,7 +5388,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
             // part-only review updates (for example comments.xml) to refresh
             // promptly. Preserve the immediate recompute below for lightweight
             // selection/block state such as paragraph alignment.
-            lastTypingMutationAtMs = Date.now();
+            heavyReadGate.noteTypingBurst();
           }
           if (type === 'mutation:committed' && isTypingBurst) {
             scheduleTypingDocumentContentInvalidation();
@@ -5654,12 +5419,12 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
             type === 'collaboration:remote-changed' &&
             Array.isArray(event.changedStoryIds) &&
             event.changedStoryIds.length > 0 &&
-            commentsCatalogMayHaveRows();
+            heavyReadGate.commentsCatalogMayHaveRows();
           if (remoteCommentsPartChanged && !isTypingBurst) {
             // A part-only review update still advances the shared content
             // token. Hold passive catalogs behind the normal idle gate while
             // the demanded comments read below refreshes immediately.
-            heavyReadsHeldUntilIdle = true;
+            heavyReadGate.holdHeavyReadsUntilIdle();
           }
           invalidateDocumentContent();
           if (remoteCommentsPartChanged && !isTypingBurst) {
@@ -5671,8 +5436,8 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
             // update is not a typing burst and remains prompt.
             demandHeavyDocRead('comments');
           } else if (loadedCommentAnchorsMayHaveChanged) {
-            heavyReadsHeldUntilIdle = true;
-            scheduleHeavyReadCompletionRecompute();
+            heavyReadGate.holdHeavyReadsUntilIdle();
+            heavyReadGate.scheduleHeavyReadCompletionRecompute();
           }
           recompute();
         }
@@ -11766,20 +11531,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       clearTimeout(typingContentInvalidationTimer);
       typingContentInvalidationTimer = null;
     }
-    if (heavyReadCompletionRecomputeTimer) {
-      clearTimeout(heavyReadCompletionRecomputeTimer);
-      heavyReadCompletionRecomputeTimer = null;
-    }
-    if (detachSourceLoading) detachSourceLoading();
-    detachSourceLoading = null;
-    sourceLoadingSubscriptionHost = null;
-    for (const family of Object.keys(directoryLeaseCounts) as DirectoryFamily[]) {
-      directoryLeaseCounts[family] = 0;
-    }
-    demandedHeavyReads.clear();
-    incompleteTrackChangesDirectoryReadTokens.clear();
-    postSourceCompletionRefreshTokens.clear();
-    sourceCompletionObservedToken = null;
+    heavyReadGate.dispose();
     coldAsyncReadDeferrals.clear();
     for (const detach of detachers.splice(0)) detach();
     if (detachHostSelection) detachHostSelection();

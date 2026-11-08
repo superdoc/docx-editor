@@ -1520,7 +1520,7 @@ export const OPERATION_DEFINITIONS = {
   'sections.setPageSetup': {
     memberPath: 'sections.setPageSetup',
     description:
-      'Set page size/orientation properties for a section. Changing orientation writes only the page size: width and height swap so the long side matches the orientation, unless width or height is given. Page margins stay as they are; to change them with the orientation, call sections.setPageMargins.',
+      'Set page size/orientation properties for a section. Changing orientation writes only the page size: width and height swap so the long side matches the orientation, unless width or height is given. Page margins stay as they are; to change them with the orientation, call sections.setPageMargins. Portrait is written without an orient attribute, as Word does. No named paper sizes are defined, so a paperSize other than the paper code the section already has (as sections.get reports it) is rejected with INVALID_INPUT; set width and height instead.',
     expectedResult:
       'Returns a SectionMutationResult receipt; reports NO_OP if page size and orientation already match the requested values.',
     requiresDocumentContext: true,

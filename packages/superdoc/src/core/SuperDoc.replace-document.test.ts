@@ -25,10 +25,12 @@ const mountReplace = () => {
   const instance = new SuperDoc({ selector, telemetry: { enabled: false } });
   instances.push(instance);
   let settleHost: (result: unknown) => void = () => {};
+  let failHost: (error: Error) => void = () => {};
   const replaceFile = vi.fn(
     () =>
-      new Promise((resolve) => {
+      new Promise((resolve, reject) => {
         settleHost = resolve;
+        failHost = reject;
       }),
   );
   const editor = { editorVersion: 2, options: { documentId: 'replace-doc' }, replaceFile };
@@ -46,17 +48,20 @@ const mountReplace = () => {
   Reflect.set(instance, 'app', { unmount: vi.fn(), config: { globalProperties: {} } });
   Object.defineProperty(instance, 'activeEditor', { value: editor, configurable: true, writable: true });
   const snapshotState = () => ({ configDoc: { ...configDoc }, storeDoc: { ...storeDoc } });
-  return { instance, replaceFile, settleHost: (result: unknown) => settleHost(result), snapshotState };
+  return {
+    instance,
+    replaceFile,
+    settleHost: (result: unknown) => settleHost(result),
+    failHost: (error: Error) => failHost(error),
+    snapshotState,
+  };
 };
 
 describe('SuperDoc.replaceDocument', () => {
   describe('when the instance is destroyed while the host replaces the file', () => {
-    it.each([
-      ['replaceDocument', { ok: true }],
-      ['replaceFile', { state: 'editing-ready' }],
-    ] as const)(
-      '%s leaves the destroyed instance unchanged when the host confirms afterwards',
-      async (method, result) => {
+    it.each(['replaceDocument', 'replaceFile'] as const)(
+      '%s rejects and leaves the destroyed instance unchanged when the host confirms afterwards',
+      async (method) => {
         const { instance, replaceFile, settleHost, snapshotState } = mountReplace();
         const emit = vi.spyOn(instance, 'emit');
         const replacement = new Blob([new Uint8Array([7, 8, 9])]);
@@ -67,11 +72,27 @@ describe('SuperDoc.replaceDocument', () => {
         const expectedState = snapshotState();
         settleHost({ state: 'editing-ready' });
 
-        expect(await pending).toEqual(result);
+        await expect(pending).rejects.toThrow(new Error('SuperDoc: instance was destroyed during replace'));
         expect(snapshotState()).toEqual(expectedState);
         expect(snapshotState().configDoc.data).not.toBe(replacement);
         expect(snapshotState().configDoc.v2Collaboration).toEqual(createRoom);
         expect(emit).not.toHaveBeenCalledWith('document-replaced', expect.anything());
+      },
+    );
+
+    it.each(['replaceDocument', 'replaceFile'] as const)(
+      '%s rejects with the destroyed error when the host rejects afterwards',
+      async (method) => {
+        const { instance, replaceFile, failHost, snapshotState } = mountReplace();
+
+        const pending = instance[method](new Blob([new Uint8Array([7, 8, 9])]));
+        await vi.waitFor(() => expect(replaceFile).toHaveBeenCalledTimes(1));
+        instance.destroy();
+        const expectedState = snapshotState();
+        failHost(new Error('host failed'));
+
+        await expect(pending).rejects.toThrow(new Error('SuperDoc: instance was destroyed during replace'));
+        expect(snapshotState()).toEqual(expectedState);
       },
     );
   });

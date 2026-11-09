@@ -92,11 +92,7 @@ import type {
   TrackChangesItem,
   TrackChangesSlice,
   ViewportContext,
-  ViewportEntityAddress,
-  ViewportEntityHit,
   ViewportGetRectInput,
-  ViewportPositionAtInput,
-  ViewportPositionAtResult,
   MetadataHandle,
   Receipt,
   SuperDocUIFailureReceipt,
@@ -114,7 +110,7 @@ import type {
   HistoryHandle,
   HistorySlice,
 } from './types.js';
-import { collectDecorationProvidersFromChain, collectEntityHitsFromChain } from './entity-at.js';
+import { collectDecorationProvidersFromChain } from './entity-at.js';
 
 import { getParagraphInlineDirection } from '@superdoc/contracts';
 import { isPlainObject } from '../../helpers/object-guards.js';
@@ -194,13 +190,11 @@ import {
 import {
   entityRowMatchesRequest,
   isHostGeometryTarget,
-  layoutStoryDatasetToStoryLocator,
   readEntityId,
   readEntityRequestStory,
   readEntityStory,
   readEntityTarget,
   readTrackedChangeNavigationTarget,
-  storyKeyToStoryLocator,
   storyLocatorSignature,
 } from './entity-rows.js';
 import {
@@ -211,7 +205,6 @@ import {
   buildStoryScopedTrackedChangeIdContext,
   buildTrackedChangeIdContext,
   isNonCollapsedHostSelection,
-  isTextboxStory,
   readCollapsedHostTrackChangeId,
   resolveActiveCommentId,
   resolveSelectionActiveChangeId,
@@ -260,6 +253,7 @@ import { HOST_EVENTS } from './host-events.js';
 import { createContentControlsHandle } from './content-controls-handle.js';
 import { createSearchHandle } from './search-handle.js';
 import { createDocumentPolicy } from './document-policy.js';
+import { createViewportPointQueries } from './viewport-point-queries.js';
 import { createStyleReads, createStylesHandle, documentDefaultParagraphStyleId } from './styles-handle.js';
 
 type FirstPartyCommandMutation = {
@@ -400,6 +394,17 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     const editor = superdoc?.activeEditor;
     return editor && typeof editor === 'object' ? (editor as LooseRecord) : null;
   };
+
+  const { resolveVisibleHost, pointHitElements, entityAt, positionAt, contextAt } = createViewportPointQueries({
+    superdoc,
+    getEditor,
+    isDisposed: () => disposed,
+    contentToken: () => contentToken(),
+    computeSelection: () => computeSelection(),
+    readPublicTrackChangeItems: () => trackChangesSub.get().items,
+    readAllStoryTrackChanges: () => readAllStoryTrackChanges(),
+    decorationOwnerForProvider: (providerId) => decorationOwnerForProvider(providerId),
+  });
 
   const contextMenu: ContextMenuHandle = {
     open: (): WorkflowActionResult => {
@@ -10495,315 +10500,6 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
           };
     },
   };
-
-  // Resolve THIS controller's visible host element: the editor mount container
-  // when the host exposes one, else the SuperDoc root element. Scopes point
-  // hit-testing (and geometry) to this instance so a page with two mounted
-  // SuperDocs never cross-reads the other's painted DOM. Returns null when no
-  // DOM host exists (pre-mount / post-destroy / SSR). Mirrors viewport.getHost.
-  const resolveVisibleHost = (): HTMLElement | null => {
-    if (typeof HTMLElement === 'undefined') return null;
-    const mountContainer = (getEditor()?.mount as LooseRecord | undefined)?.container;
-    if (mountContainer instanceof HTMLElement) return mountContainer;
-    const root = superdoc?.element;
-    if (root instanceof HTMLElement) return root;
-    return null;
-  };
-
-  // Point hit-test. The painter stamps `data-track-change-id` (and, when
-  // present, `data-comment-ids` / `data-sdt-*`) on each painted run; reading
-  // them back is what consumers were doing imperatively from
-  // `event.target.closest(...)` in contextmenu handlers. Centralizing the
-  // lookup here keeps the painter's attribute names an implementation detail
-  // and surfaces a typed `ViewportEntityHit[]` consumers can switch on.
-  const pointHitElements = (
-    x: unknown,
-    y: unknown,
-  ): { container: HTMLElement; elements: Element[]; x: number; y: number } | null => {
-    if (!isFiniteNumber(x) || !isFiniteNumber(y)) return null;
-    // The DOM `document` is reached through `globalThis.document` because the
-    // local `document: DocumentHandle` shadows it for type-checking. Guard SSR /
-    // non-browser stubs explicitly so the call doesn't throw without a DOM.
-    const dom = (globalThis as { document?: Document }).document;
-    if (!dom || typeof dom.elementFromPoint !== 'function') return null;
-    // Scope the lookup to THIS controller's visible host (mount container, else
-    // the SuperDoc root) so a page with two mounted instances never cross-reads
-    // the other's painted DOM. Null host (pre-mount / post-destroy / SSR) -> [].
-    const container = resolveVisibleHost();
-    if (!container) return null;
-    const startEl = dom.elementFromPoint(x, y);
-    if (!startEl || !container.contains(startEl)) return null;
-
-    // Primary start elements to walk: the `elementFromPoint` hit plus any stacked
-    // hittable carriers `elementsFromPoint` reports inside the host. All scoped to
-    // the host and de-duped. Every extra DOM probe is guarded so a non-browser /
-    // stub env fails closed to the single primary element (existing behavior).
-    const primaryEls: Element[] = [startEl];
-    const addPrimaryEl = (el: Element | null | undefined): void => {
-      if (el && container.contains(el) && !primaryEls.includes(el)) primaryEls.push(el);
-    };
-    const elementsFromPoint = (
-      dom as {
-        elementsFromPoint?: (x: number, y: number) => Element[];
-      }
-    ).elementsFromPoint;
-    if (typeof elementsFromPoint === 'function') {
-      let stacked: Element[] = [];
-      try {
-        stacked = elementsFromPoint.call(dom, x, y) ?? [];
-      } catch {
-        stacked = [];
-      }
-      for (const el of stacked) addPrimaryEl(el);
-    }
-    return { container, elements: primaryEls, x, y };
-  };
-
-  const pointEntityHits = (x: unknown, y: unknown): readonly ViewportEntityHit[] => {
-    const point = pointHitElements(x, y);
-    if (!point) return [];
-    const { container, elements: primaryEls } = point;
-    // Pointer-inert markers (e.g. list-marker glyphs with `pointer-events:none`)
-    // are skipped by BOTH elementFromPoint and elementsFromPoint, yet they carry
-    // the tracked-change dataset, so find them geometrically: any
-    // `[data-track-change-marker]` in a primary start element's subtree whose box
-    // contains the point. Guarded rect reads fail closed to no extra hit.
-    const markerEls: Element[] = [];
-    const addMarkerEl = (el: Element | null | undefined): void => {
-      if (el && container.contains(el) && !markerEls.includes(el) && !primaryEls.includes(el)) {
-        markerEls.push(el);
-      }
-    };
-    const pointInRect = (el: Element): boolean => {
-      const getRect = (el as { getBoundingClientRect?: () => DOMRect }).getBoundingClientRect;
-      if (typeof getRect !== 'function') return false;
-      let rect: DOMRect;
-      try {
-        rect = getRect.call(el);
-      } catch {
-        return false;
-      }
-      return (
-        rect != null && point.x >= rect.left && point.x <= rect.right && point.y >= rect.top && point.y <= rect.bottom
-      );
-    };
-    for (const el of primaryEls) {
-      const queryAll = (
-        el as {
-          querySelectorAll?: (selector: string) => ArrayLike<Element>;
-        }
-      ).querySelectorAll;
-      if (typeof queryAll !== 'function') continue;
-      let markers: ArrayLike<Element>;
-      try {
-        markers = queryAll.call(el, '[data-track-change-marker]');
-      } catch {
-        continue;
-      }
-      for (let i = 0; i < markers.length; i += 1) {
-        if (pointInRect(markers[i])) addMarkerEl(markers[i]);
-      }
-    }
-    // Marker carriers are pointer-inert DESCENDANTS of the primary element they
-    // were found under, so they are deeper / more specific and must be walked
-    // BEFORE the primary chain: walking up from a marker yields its tracked change
-    // FIRST, then the outer comment / content-control, which the `${type}:${id}`
-    // de-dupe below keeps — so `hits[0]` stays the marker's tracked change even
-    // when the marker sits inside a commented / SDT block. Reverse to deepest-
-    // first among markers: `querySelectorAll` yields document order (an ancestor
-    // always precedes its descendants), so reversing walks a nested marker before
-    // its ancestor marker. With no markers found, `startEls` collapses to the
-    // primary list, so the non-marker path's ordering is unchanged.
-    markerEls.reverse();
-    const startEls: Element[] = [...markerEls, ...primaryEls];
-
-    // Walk each start element's chain (bounded to the host so app-wrapper data-*
-    // above it never leaks) and merge, innermost-first; the validation loop's
-    // `${type}:${id}` de-dupe below keeps the first occurrence of each entity.
-    const rawHits = collectEntityHitsFromChain(startEls[0], container);
-    for (let i = 1; i < startEls.length; i += 1) {
-      for (const hit of collectEntityHitsFromChain(startEls[i], container)) rawHits.push(hit);
-    }
-    if (rawHits.length === 0) return rawHits;
-
-    // Map each painted tracked-change id to the public TrackChangesItem id it
-    // belongs to. The painter usually stamps the public id directly, but for a
-    // replacement (or before a change's annotation is threaded into the
-    // projection) a run can carry a source-level alias (`imported:<w:id>`); the
-    // id context reconciles both to the canonical id so a click on the deleted
-    // side of a replacement resolves the SAME item as the inserted side (and as
-    // the sidebar card). Ids that resolve to no current item drop (stale /
-    // already-decided). Comment and content-control hits pass through (deduped)
-    // — they carry their own public ids.
-    const items = trackChangesSub.get().items;
-    const idContext = buildTrackedChangeIdContext(items);
-    // Lazily-read internal all-story items, consulted only when a hit carries a
-    // (non-body) story. `undefined` until first read; the items / `null` after.
-    // The SAME read `getAt` resolves against, matched with the SAME id+story
-    // matcher, so `entityAt` and `getAt` agree on story hits.
-    let allStoryItems: readonly TrackChangesItem[] | null | undefined;
-    const seen = new Set<string>();
-    const hits: ViewportEntityHit[] = [];
-    for (const hit of rawHits) {
-      if (hit.type === 'decoration') {
-        const owner = decorationOwnerForProvider(hit.id);
-        if (!owner) continue;
-        const key = `decoration:${owner.id}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        hits.push({ type: 'decoration', id: owner.id });
-        continue;
-      }
-      if (hit.type !== 'trackedChange') {
-        const layoutStory = hit.type === 'contentControl' ? layoutStoryDatasetToStoryLocator(hit.story) : undefined;
-        const story =
-          hit.type === 'contentControl'
-            ? isTextboxStory(layoutStory)
-              ? layoutStory
-              : (storyKeyToStoryLocator(hit.storyKey) ?? layoutStory)
-            : undefined;
-        const key = `${hit.type}:${hit.id}:${JSON.stringify(story ?? null)}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        if (hit.type === 'contentControl') {
-          const { storyKey: _storyKey, story: _paintedStory, ...publicHit } = hit;
-          hits.push(story ? { ...publicHit, story } : publicHit);
-        } else {
-          hits.push(hit);
-        }
-        continue;
-      }
-      // The DOM walk attaches the raw painted story strings; map them to the
-      // public StoryLocator shape so id+story matching can disambiguate a
-      // tracked-change id repeated across stories. PREFER the run/marker
-      // `data-story-key` (carries the real footnote/endnote/header-footer story)
-      // over the layout-story (which falls back to `body` for note bands).
-      // Absent / body / unknown stays story-less (id-only matching).
-      const story = storyKeyToStoryLocator(hit.storyKey) ?? layoutStoryDatasetToStoryLocator(hit.story);
-      let publicId: string | null;
-      if (story) {
-        // Story-scoped change: reconcile + validate against the fresh all-story
-        // items with the SAME id+story matcher `getAt` uses. Fail closed (drop)
-        // while the validation read is unsettled (`null`).
-        // Reconcile the alias within THIS story's rows so a `w:id` reused across
-        // stories can't resolve to another story's public id (then get dropped).
-        if (allStoryItems === undefined) {
-          allStoryItems = readAllStoryTrackChanges();
-        }
-        if (!allStoryItems) continue;
-        publicId = buildStoryScopedTrackedChangeIdContext(allStoryItems, story).toPublicId(hit.id);
-        if (!publicId || !allStoryItems.some((item) => entityRowMatchesRequest(item, publicId!, story))) {
-          continue;
-        }
-      } else {
-        // A story-less painted change reconciles against the public feed.
-        publicId = idContext.toPublicId(hit.id);
-        if (!publicId) continue;
-      }
-      const key = `trackedChange:${publicId}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      hits.push(story ? { type: 'trackedChange', id: publicId, story } : { type: 'trackedChange', id: publicId });
-    }
-    return hits;
-  };
-
-  function entityAt(x: number, y: number): ViewportEntityAddress | null;
-  function entityAt(input: { x: number; y: number }): readonly ViewportEntityHit[];
-  function entityAt(
-    xOrInput: number | { x: number; y: number },
-    _y?: number,
-  ): ViewportEntityAddress | readonly ViewportEntityHit[] | null {
-    // Object form is the v1-compatible path: the painted entity hits under the
-    // point. `typeof null === 'object'`, so a null/garbage object-form arg lands
-    // here too; optional-chain the property read so it fails closed to `[]` (via
-    // `pointEntityHits`' non-number guard) instead of throwing on `.x` / `.y`.
-    if (typeof xOrInput === 'object') return pointEntityHits(xOrInput?.x, xOrInput?.y);
-    // Number form: every current entity hit (comment / trackedChange /
-    // contentControl) maps to an entity address `viewport.getRect` cannot
-    // resolve — getRect supports only text/selection targets and fails closed
-    // otherwise — so returning one would hand back an address that never
-    // resolves to a rect. Return null instead of an unresolvable address. Full
-    // entity-address geometry (number form + getRect) is a deliberate follow-up.
-    return null;
-  }
-
-  const pointInVisibleHost = (x: number, y: number): boolean => {
-    if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
-    const host = resolveVisibleHost();
-    if (!host) return false;
-    const rect = host.getBoundingClientRect();
-    return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
-  };
-
-  const isPointSelectionTarget = (value: unknown): value is SelectionTarget => {
-    if (!isPlainObject(value) || value.kind !== 'selection') return false;
-    return [value.start, value.end].every(
-      (point) =>
-        isPlainObject(point) &&
-        point.kind === 'text' &&
-        typeof point.blockId === 'string' &&
-        typeof point.offset === 'number' &&
-        Number.isSafeInteger(point.offset) &&
-        point.offset >= 0,
-    );
-  };
-
-  async function positionAt(input: ViewportPositionAtInput): Promise<ViewportPositionAtResult> {
-    if (disposed) return { status: 'disposed' };
-    if (input?.signal?.aborted) return { status: 'cancelled' };
-    if (!input || typeof input.x !== 'number' || typeof input.y !== 'number' || !pointInVisibleHost(input.x, input.y))
-      return { status: 'no-target' };
-    const editor = getEditor(),
-      viewportQuery = editor?.viewportQuery,
-      token = contentToken();
-    const getTargetAtPoint = hostMethod(viewportQuery, 'getTargetAtPoint');
-    if (!getTargetAtPoint) return { status: 'unavailable' };
-    const result = await getTargetAtPoint({ clientX: input.x, clientY: input.y });
-    if (disposed) return { status: 'disposed' };
-    if (input.signal?.aborted) return { status: 'cancelled' };
-    if (editor !== getEditor() || viewportQuery !== getEditor()?.viewportQuery || token !== contentToken())
-      return { status: 'stale' };
-    if (!isPlainObject(result)) throw new Error('Viewport point query returned an invalid host result');
-    if (result.status === 'resolved') {
-      if (!isPointSelectionTarget(result.target)) throw new Error('Viewport point query returned an invalid target');
-      return { status: 'resolved', target: result.target };
-    }
-    if (result.status === 'no-target' || result.status === 'stale' || result.status === 'disposed')
-      return { status: result.status };
-    throw new Error('Viewport point query returned an invalid host result');
-  }
-
-  function contextAt(input: { x: number; y: number }): ViewportContext {
-    const validInput = !!input && typeof input.x === 'number' && typeof input.y === 'number';
-    // A fresh object: callers reuse and mutate pointer coordinates, and the
-    // returned point must keep describing the hits that were resolved.
-    const point = validInput ? { x: input.x, y: input.y } : { x: 0, y: 0 };
-
-    return {
-      point,
-      entities: validInput ? entityAt(point) : [],
-      selection: (() => {
-        const current = computeSelection();
-        return current.status === 'ready' ? current : { ...current, tableSelection: null };
-      })(),
-      position: null,
-      insideSelection:
-        validInput && pointInVisibleHost(point.x, point.y)
-          ? safeCall(
-              () =>
-                hostMethod(
-                  getEditor()?.viewportQuery,
-                  'isPointInPaintedSelection',
-                )?.({
-                  clientX: point.x,
-                  clientY: point.y,
-                }) === true,
-              false,
-            )
-          : false,
-    };
-  }
 
   /**
    * One live `viewport.observe()` subscription. `detach` releases the geometry

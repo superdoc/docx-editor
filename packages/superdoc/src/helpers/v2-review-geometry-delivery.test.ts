@@ -29,6 +29,21 @@ describe('review geometry delivery', () => {
     expect(deliver).toHaveBeenCalledTimes(4);
   });
 
+  it('restores cleared positions when a newer generation repeats the same geometry', () => {
+    const positions = new Set<string>();
+    const deliver = vi.fn(() => positions.add('current-anchor'));
+    const delivery = createReviewGeometryDelivery(deliver);
+    const current = stage('a');
+    const first = { ...packet(), generation: 1 };
+    expect(delivery.notify('a', first, current)).toBe(true);
+    positions.clear();
+    expect(delivery.notify('a', first, current)).toBe(false);
+    expect(delivery.notify('a', { ...first, generation: 2 }, current)).toBe(true);
+    expect(positions.has('current-anchor')).toBe(true);
+    expect(delivery.notify('a', first, current)).toBe(false);
+    expect(deliver).toHaveBeenCalledTimes(2);
+  });
+
   it('replays the latest viewport packet after recollection without accepting synchronous feedback', () => {
     const current = stage('a');
     const value = packet();

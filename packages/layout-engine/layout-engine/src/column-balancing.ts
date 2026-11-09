@@ -14,7 +14,9 @@ import {
   hasGenuinelyUnequalExplicitColumnWidths,
 } from '@superdoc/contracts';
 import type { BaseDirection } from '@superdoc/contracts';
+import { getBalancingHeight, recordedColumnIndex, setRecordedColumnIndex } from './balancing-fragment.js';
 import { splitDominantTableAtRowBoundary } from './dominant-table-split.js';
+import { breaksIntoNextColumn, splitParagraphIntoNextColumn, splittableLineHeights } from './paragraph-line-split.js';
 
 // ============================================================================
 // Types and Interfaces
@@ -545,91 +547,6 @@ export interface MeasureData {
   totalHeight?: number;
 }
 
-/**
- * Calculates the height of a fragment using measure data.
- *
- * For paragraph fragments, sums line heights from the measure data.
- * For images, drawings, and tables, uses the pre-computed height.
- *
- * @param fragment - The fragment to calculate height for
- * @param measureMap - Map of block IDs to their measure data
- * @returns Height in pixels, or 0 if height cannot be determined
- */
-function getFragmentHeight(fragment: BalancingFragment, measureMap: Map<string, MeasureData>): number {
-  if (fragment.kind === 'para') {
-    // A fragment remeasured for a narrower column carries its own lines; the resolve
-    // stage renders (and sizes) from THAT array, so balancing must agree with it.
-    if (fragment.lines && fragment.lines.length > 0) {
-      return fragment.lines.reduce((sum, l) => sum + (l.lineHeight ?? 0), 0);
-    }
-    const measure = measureMap.get(fragment.blockId);
-    if (!measure || measure.kind !== 'paragraph' || !measure.lines) {
-      return 0;
-    }
-    // Sum line heights for the fragment's line range
-    let sum = 0;
-    const fromLine = fragment.fromLine ?? 0;
-    const toLine = fragment.toLine ?? measure.lines.length;
-    for (let i = fromLine; i < toLine; i++) {
-      sum += measure.lines[i]?.lineHeight ?? 0;
-    }
-    return sum;
-  }
-
-  // For non-paragraph content, prefer the layout-engine-assigned fragment.height,
-  // then fall back to the measure's height field. TableMeasure stores totalHeight
-  // (not `height`), so consult that as the final fallback for table fragments —
-  // otherwise a fragment with height=0 (e.g. a layout that allocated zero height
-  // for a header-less table) silently disappears from balancing math and the
-  // balancer over-packs other blocks into column 0.
-  if (fragment.kind === 'image' || fragment.kind === 'drawing' || fragment.kind === 'table') {
-    if (typeof fragment.height === 'number' && fragment.height > 0) {
-      return fragment.height;
-    }
-    const measure = measureMap.get(fragment.blockId);
-    if (measure) {
-      if (typeof measure.height === 'number' && measure.height > 0) {
-        return measure.height;
-      }
-      if (fragment.kind === 'table' && typeof measure.totalHeight === 'number') {
-        return measure.totalHeight;
-      }
-    }
-    if (typeof fragment.height === 'number') {
-      return fragment.height;
-    }
-  }
-
-  return 0;
-}
-
-/**
- * Return the fragment height that the column balancer should use.
- *
- * Differs from `getFragmentHeight` for one case: an empty sectPr-marker
- * paragraph. In OOXML a paragraph that exists solely to carry `<w:sectPr>`
- * is invisible to Word's renderer, so it must take no vertical space in the
- * balanced layout (ECMA-376 §17.18.77). The pm-adapter stamps these
- * paragraphs with `attrs.sectPrMarker === true` (paragraph.ts), and the
- * caller threads the resulting block-id set through here.
- *
- * Earlier versions of this function tried to detect markers from line
- * geometry (`line.width === 0`), but a regular blank paragraph also
- * measures with width 0 and DOES occupy line height — collapsing those to
- * 0 caused the next paragraph to overlap the blank line. The metadata-based
- * gate is the only safe signal.
- */
-function getBalancingHeight(
-  fragment: BalancingFragment,
-  measureMap: Map<string, MeasureData>,
-  sectPrMarkerBlockIds?: Set<string>,
-): number {
-  if (fragment.kind === 'para' && sectPrMarkerBlockIds && sectPrMarkerBlockIds.has(fragment.blockId)) {
-    return 0;
-  }
-  return getFragmentHeight(fragment, measureMap);
-}
-
 // ============================================================================
 // Section-scoped balancing
 // ============================================================================
@@ -703,7 +620,7 @@ function fragmentColumnIndex(
   geometry: ReturnType<typeof getColumnGeometry>,
   originX: number,
 ): number {
-  const recorded = (fragment as BalancingFragment & { columnIndex?: number }).columnIndex;
+  const recorded = recordedColumnIndex(fragment);
   if (typeof recorded === 'number' && Number.isInteger(recorded) && recorded >= 0 && recorded < geometry.length) {
     return recorded;
   }
@@ -734,12 +651,6 @@ function fragmentColumnIndex(
     }
   }
   return bestIndex ?? getColumnAtX(geometry, fragment.x, originX);
-}
-
-function setRecordedColumnIndex(fragment: BalancingFragment, columnIndex: number): void {
-  if ('columnIndex' in fragment) {
-    (fragment as BalancingFragment & { columnIndex: number }).columnIndex = columnIndex;
-  }
 }
 
 /**
@@ -820,41 +731,8 @@ export function balanceSectionOnPage(args: BalanceSectionOnPageArgs): { maxY: nu
     return a.y - b.y;
   });
 
-  // Treat each fragment as its own block for binary-search balancing. Grouping
-  // by y (as balancePageColumns does) would collapse fragments from different
-  // source columns that happen to share a y coordinate into a single row and
-  // re-stack them at one position — producing overlap.
-  //
-  // Use `getBalancingHeight` so empty sectPr-marker paragraphs contribute 0
-  // to their column's cursor — matching Word's behavior of not rendering a
-  // blank line for such markers.
-  //
-  // SD-3359: multi-line paragraphs additionally expose their per-line heights so
-  // the balancer can SPLIT a paragraph that straddles the column boundary (Word
-  // flows content line-by-line when balancing a continuous section, ECMA-376
-  // §17.18.77 — atomic assignment leaves the columns lumpy whenever one
-  // paragraph is large relative to the section). sectPr markers, `w:keepLines`
-  // paragraphs, non-paragraph fragments, and single-line paragraphs stay atomic.
-  const lineHeightsFor = (f: BalancingFragment): number[] | undefined => {
-    if (f.kind !== 'para') return undefined;
-    if (args.sectPrMarkerBlockIds?.has(f.blockId)) return undefined;
-    if (args.keepLinesBlockIds?.has(f.blockId)) return undefined;
-    // A remeasured fragment renders its own `lines` (resolveParagraph ignores
-    // fromLine/toLine then), so break points must be computed against that array.
-    if (f.lines && f.lines.length > 0) {
-      if (f.lines.length <= 1) return undefined;
-      return f.lines.map((l) => l.lineHeight);
-    }
-    const measure = args.measureMap.get(f.blockId);
-    if (!measure || measure.kind !== 'paragraph' || !Array.isArray(measure.lines)) return undefined;
-    const fromLine = f.fromLine ?? 0;
-    const toLine = f.toLine ?? measure.lines.length;
-    if (toLine - fromLine <= 1) return undefined;
-    return measure.lines.slice(fromLine, toLine).map((l) => l.lineHeight);
-  };
-
   const contentBlocks: BalancingBlock[] = ordered.map((f, i) => {
-    const lineHeights = lineHeightsFor(f);
+    const lineHeights = splittableLineHeights(f, args);
     return {
       blockId: `${f.blockId}#${i}`,
       measuredHeight: getBalancingHeight(f, args.measureMap, args.sectPrMarkerBlockIds),
@@ -898,46 +776,17 @@ export function balanceSectionOnPage(args: BalanceSectionOnPageArgs): { maxY: nu
     f.x = columnX(col);
     f.y = colCursors[col];
     f.width = columnWidth;
-    // SD-3359: apply a line-boundary split chosen by the balancer. The first
-    // half keeps the leading lines in this column; a cloned second half carries
-    // the remaining lines to the top of the next column — the same
-    // fromLine/toLine + continuation-flag surgery pagination uses when a
-    // paragraph splits across pages. The simulation assigns the block to the
-    // column of its FIRST half and flows the remainder into the next column,
-    // so the cursors advance by the split heights it computed.
-    const bp = result.blockBreakPoints?.get(block.blockId);
-    if (bp && bp.heightAfterBreak > 0 && col < columnCount - 1) {
-      const fromLine = f.fromLine ?? 0;
-      const splitLine = fromLine + bp.breakAfterLine + 1;
-      const measureLineCount = args.measureMap.get(f.blockId)?.lines?.length ?? splitLine;
-      const originalToLine = f.toLine ?? measureLineCount;
-      const originalContinuesOnNext = (f as { continuesOnNext?: boolean }).continuesOnNext ?? false;
-      const secondHalf = {
-        ...f,
-        fromLine: splitLine,
-        toLine: originalToLine,
-        x: columnX(col + 1),
-        y: colCursors[col + 1],
-        width: columnWidth,
-        continuesFromPrev: true,
-        continuesOnNext: originalContinuesOnNext,
-      } as BalancingFragment;
-      setRecordedColumnIndex(secondHalf, col + 1);
-      // Remeasured fragments render their own `lines` wholesale (fromLine/toLine are
-      // ignored by the resolve stage then), so the halves must each carry ONLY their
-      // slice or both columns render the entire paragraph.
-      if (f.lines && f.lines.length > 0) {
-        secondHalf.lines = f.lines.slice(bp.breakAfterLine + 1);
-        f.lines = f.lines.slice(0, bp.breakAfterLine + 1);
-      }
-      f.toLine = splitLine;
-      (f as { continuesOnNext?: boolean }).continuesOnNext = true;
-      colCursors[col] += bp.heightBeforeBreak;
-      colCursors[col + 1] += bp.heightAfterBreak;
-      // Insert right after the first half so document order is preserved for
-      // any later consumer that walks the page fragments.
-      const fragIdx = fragments.indexOf(f);
-      if (fragIdx >= 0) fragments.splice(fragIdx + 1, 0, secondHalf);
+    const breakPoint = result.blockBreakPoints?.get(block.blockId);
+    if (breaksIntoNextColumn(breakPoint, col, columnCount)) {
+      splitParagraphIntoNextColumn({
+        fragment: f,
+        fragments,
+        breakAfterLine: breakPoint.breakAfterLine,
+        measureMap: args.measureMap,
+        next: { columnIndex: col + 1, x: columnX(col + 1), y: colCursors[col + 1], width: columnWidth },
+      });
+      colCursors[col] += breakPoint.heightBeforeBreak;
+      colCursors[col + 1] += breakPoint.heightAfterBreak;
       if (colCursors[col] > maxY) maxY = colCursors[col];
       if (colCursors[col + 1] > maxY) maxY = colCursors[col + 1];
       continue;

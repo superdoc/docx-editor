@@ -68,6 +68,7 @@ import type {
   SelectionHandle,
   SelectionSlice,
   SliceStatus,
+  ReviewAnalysisProgress,
   SelectorFn,
   SelectionCapture,
   SelectionRestoreResult,
@@ -472,6 +473,14 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     const status = snapshot?.status;
     return status === 'ready' || status === 'stale' ? status : 'pending';
   };
+  const reviewWindowAnalysis = (snapshot: LooseRecord | null): ReviewAnalysisProgress | null => {
+    const analysis = snapshot?.analysis;
+    if (!isPlainObject(analysis)) return null;
+    const done = analysis.done;
+    const total = analysis.total;
+    if (typeof done !== 'number' || typeof total !== 'number' || total <= 0) return null;
+    return { done, total, stage: typeof analysis.stage === 'string' ? analysis.stage : null };
+  };
 
   /** Read the live v2 editor host (inline mode only), when exposed. */
   const getHost = (): LooseRecord | null => {
@@ -486,6 +495,8 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
    * change, so an identical object means the selection has not moved since.
    */
   const selectionHostSnapshots = new WeakMap<object, object>();
+  const reviewWarmingSelections = new WeakSet<SelectionSlice>();
+  const selectionInfoReviewWarming = (info: SelectionInfo): boolean => Reflect.get(info, 'reviewWarming') === true;
   let wholeTableParagraphSeed: {
     editor: LooseRecord;
     host: LooseRecord;
@@ -863,7 +874,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     recomputeWhenRetryDue: () => recompute(),
   });
   const asyncReads = asyncReadCache.entries;
-  const coldAsyncReadDeferrals = new Set<string>();
+  const coldAsyncReadDeferrals = new Map<string, 'armed' | 'released'>();
   let lastEffectiveInlineReadKey: string | null = null;
   let pendingEffectiveInlineRead: {
     key: string;
@@ -1277,6 +1288,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       if (validationToken === selectionReadToken()) {
         issueAsyncRead('selection', validationToken, selectionCurrentRun, normalizeSelectionInfo);
       }
+      releaseColdAsyncReads();
       recompute();
     }, delayMs);
   };
@@ -1284,10 +1296,13 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
   const shouldDeferColdAsyncRead = (key: string, token: string): boolean => {
     if (!foregroundMutationState()) return false;
     const deferralKey = `${key}\u0000${token}`;
-    if (coldAsyncReadDeferrals.has(deferralKey)) return false;
-    coldAsyncReadDeferrals.add(deferralKey);
+    if (coldAsyncReadDeferrals.get(deferralKey) === 'released') return false;
+    coldAsyncReadDeferrals.set(deferralKey, 'armed');
     scheduleForegroundAsyncRetry(COLD_ASYNC_READ_START_DELAY_MS);
     return true;
+  };
+  const releaseColdAsyncReads = (): void => {
+    for (const key of coldAsyncReadDeferrals.keys()) coldAsyncReadDeferrals.set(key, 'released');
   };
 
   /**
@@ -1536,7 +1551,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     clearAsyncReadKeys(
       (key) => SELECTION_SCOPED_ASYNC_READ_PREFIXES.some((prefix) => key.startsWith(prefix)) && !retained.has(key),
     );
-    for (const key of coldAsyncReadDeferrals) {
+    for (const key of [...coldAsyncReadDeferrals.keys()]) {
       const readKey = key.split('\u0000', 1)[0]!;
       if (SELECTION_SCOPED_ASYNC_READ_PREFIXES.some((prefix) => readKey.startsWith(prefix)) && !retained.has(readKey)) {
         coldAsyncReadDeferrals.delete(key);
@@ -1742,6 +1757,9 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
   const selectionSliceFromInfo = (info: SelectionInfo | null, status: SliceStatus): SelectionSlice => {
     if (!info) return { ...EMPTY_SELECTION, status };
     const slice = buildSelectionSlice(info, status);
+    if (selectionInfoReviewWarming(info) && !slice.empty && slice.activeChangeIds.length === 0) {
+      reviewWarmingSelections.add(slice);
+    }
     const hostSelection = selectionHostSnapshots.get(info);
     if (hostSelection) selectionHostSnapshots.set(slice, hostSelection);
     return slice;
@@ -2294,6 +2312,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     return {
       status: combineStatus(listStatus, selection.status),
       listStatus,
+      analysis: reviewWindowAnalysis(getV2ReviewWindowSnapshot()),
       items,
       total: items.length,
       activeId,
@@ -3385,6 +3404,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     }
     if (disabledReason) return disabledReason;
     if (command.scope !== 'all' && selection.activeChangeIds.length === 0) {
+      if (reviewWarmingSelections.has(selection)) return undefined;
       return SUPERDOC_UI_REASONS.selectionRequired;
     }
     if (command.scope !== 'all') {
@@ -5795,6 +5815,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
 
   function readBodyTrackChangeForDecision(activeId: string, story: unknown): TrackChangesItem | undefined {
     if (storyLocatorSignature(story) !== storyLocatorSignature(null)) return undefined;
+    if (getEditor()?.editorVersion === 2) return undefined;
     const trackChanges = getDoc()?.trackChanges as LooseRecord | undefined;
     const list = trackChanges?.list;
     if (typeof list !== 'function') return undefined;
@@ -5946,6 +5967,9 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     command: { kind: 'accept' | 'reject'; scope: 'id' | 'all' },
     payload: unknown,
   ): CommandExecutionResult {
+    if (command.scope === 'id' && payload == null && reviewWarmingSelections.has(state.selection)) {
+      return settleCommandExecution(decideSelectionAfterReviewWarmup(command));
+    }
     if (command.scope === 'id' && payload == null) {
       const plan = planSelectionTrackDecision(state.selection);
       switch (plan?.kind) {
@@ -5963,6 +5987,44 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     const resolved = resolveTrackDecisionTarget(command, payload);
     if (!resolved) return false;
     return executeTrackDecisionTarget(command.kind, resolved.target, resolved.changeId, resolved.story);
+  }
+
+  async function decideSelectionAfterReviewWarmup(command: {
+    kind: 'accept' | 'reject';
+    scope: 'id' | 'all';
+  }): Promise<CommandExecutionResult> {
+    const list = hostMethod(getDoc()?.trackChanges, 'list');
+    if (list) await list({ in: 'all', limit: 1, offset: 0 });
+    const current = hostMethod(getDoc()?.selection, 'current');
+    if (!current) return false;
+    const info = normalizeSelectionInfo(
+      await current({
+        includeText: true,
+        ...(getEditor()?.editorVersion === 2 ? { offsetSpace: 'selection' } : {}),
+      }),
+    );
+    if (!info || selectionInfoReviewWarming(info)) return false;
+    const plan = planSelectionTrackDecision(buildSelectionSlice(info, 'ready'));
+    const settledResult = (result: CommandExecutionResult): Promise<CommandExecutionResult> =>
+      result === false ? Promise.resolve(false) : lastCommandSettlement;
+    switch (plan?.kind) {
+      case undefined:
+      case 'blocked':
+      case 'unavailable':
+        return false;
+      case 'ids':
+        return settledResult(
+          executeTrackDecisionTarget(command.kind, { kind: 'ids', ids: plan.ids }, null, undefined, plan.ids),
+        );
+      case 'range':
+        return settledResult(
+          executeTrackDecisionTarget(command.kind, plan.target, plan.changeId, plan.story, plan.permissionIds),
+        );
+      case 'id':
+        return settledResult(
+          executeTrackDecision(command.kind, plan.story ? { id: plan.id, story: plan.story } : plan.id),
+        );
+    }
   }
 
   const hasInactiveTextSelection = (): boolean => {

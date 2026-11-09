@@ -367,6 +367,7 @@ export const useCommentsStore = defineStore('comments', () => {
   const isCommentsListVisible = ref(false);
   const isReviewDirectoryActive = ref(false);
   const isReviewDirectoryLoading = ref(false);
+  const reviewAnalysisProgress = ref<{ done: number; total: number; stage: string | null } | null>(null);
   const editorCommentIds = ref<string[]>([]);
   const editorCommentPositions = ref<CommentPositions>({});
   const isCommentHighlighted = ref(false);
@@ -4264,6 +4265,7 @@ export const useCommentsStore = defineStore('comments', () => {
     isCommentsListVisible,
     isReviewDirectoryActive,
     isReviewDirectoryLoading,
+    reviewAnalysisProgress,
     generalCommentIds,
     editorCommentIds,
     commentsParentElement,

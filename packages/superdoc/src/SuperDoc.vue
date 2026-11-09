@@ -2848,6 +2848,9 @@ const editorOptions = (doc: ShellDocument) => {
     onFontsResolved: onFontsResolvedFn,
     // Painter plan P7 §1: page-count seam (layout-end; v2 vertical only).
     onPageCountKnown: proxy.$superdoc.config.onPageCountKnown ?? null,
+    onReviewAnalysisProgress: (progress: { state: string; done: number; total: number; stage: string | null }) => {
+      v2ReviewWindowController.noteAnalysisProgress?.(progress);
+    },
     onReviewWindowCommitted: (payload) => {
       v2ReviewWindowController.onCommittedPagePaint?.({ ...payload, documentId: doc.id });
       if (payload.reviewGeometry && Array.isArray(payload.pageIndices)) {

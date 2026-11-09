@@ -85,6 +85,7 @@ interface V2ReviewWindowDiagnostics {
 }
 
 interface V2ReviewWindowController {
+  noteAnalysisProgress?(progress: { state: string; done: number; total: number; stage: string | null } | null): void;
   setContext(context: V2ReviewWindowContext | null): void;
   onCommittedPagePaint?(commit: V2CommittedPageWindow): void;
   refreshCommittedWindow(reason?: string): void;

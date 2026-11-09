@@ -110,6 +110,16 @@ describe('createHeavyReadGate', () => {
     expect(ctx.gate.hostSourceLoadPhase()).toBe('unknown');
   });
 
+  it('keeps a surface that is still opening or preparing in the loading phase unless it failed', () => {
+    const ctx = setup();
+    for (const phase of ['opening', 'preparing']) {
+      ctx.setHost({ getDocumentLoadingSnapshot: () => ({ sourceStage: 'source-complete', phase }) });
+      expect(ctx.gate.hostSourceLoadPhase()).toBe('loading');
+      ctx.setHost({ getDocumentLoadingSnapshot: () => ({ sourceStage: 'source-failed', phase, terminal: 'failed' }) });
+      expect(ctx.gate.hostSourceLoadPhase()).toBe('complete');
+    }
+  });
+
   it('never holds non-heavy keys', () => {
     const ctx = setup();
     ctx.setHost(loadingHost('source-loading').host);

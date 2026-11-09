@@ -15,10 +15,17 @@ export type TrackChangesDirectoryCoverage = 'complete' | 'partial';
 const SOURCE_STAGES_STILL_LOADING: ReadonlySet<unknown> = new Set(['opening', 'bootstrap-ready', 'source-loading']);
 const SOURCE_STAGES_TERMINAL: ReadonlySet<unknown> = new Set(['source-complete', 'source-failed', 'source-cancelled']);
 
+function snapshotField(snapshot: unknown, field: string): unknown {
+  return snapshot === null || snapshot === undefined ? undefined : Reflect.get(Object(snapshot), field, snapshot);
+}
+
 function sourceStageOf(snapshot: unknown): unknown {
-  return snapshot === null || snapshot === undefined
-    ? undefined
-    : Reflect.get(Object(snapshot), 'sourceStage', snapshot);
+  return snapshotField(snapshot, 'sourceStage');
+}
+
+function surfaceStillOpening(snapshot: unknown): boolean {
+  const phase = snapshotField(snapshot, 'phase');
+  return (phase === 'opening' || phase === 'preparing') && snapshotField(snapshot, 'terminal') !== 'failed';
 }
 
 export interface HeavyReadGateDeps {
@@ -76,7 +83,9 @@ export function createHeavyReadGate(deps: HeavyReadGateDeps): HeavyReadGate {
     const host = deps.currentHost();
     const read = host?.getDocumentLoadingSnapshot;
     if (typeof read !== 'function') return 'unknown';
-    const stage = sourceStageOf(safeCall<unknown>((): unknown => read.call(host), null));
+    const snapshot = safeCall<unknown>((): unknown => read.call(host), null);
+    if (surfaceStillOpening(snapshot)) return 'loading';
+    const stage = sourceStageOf(snapshot);
     if (SOURCE_STAGES_STILL_LOADING.has(stage)) return 'loading';
     if (SOURCE_STAGES_TERMINAL.has(stage)) return 'complete';
     return 'unknown';
@@ -179,7 +188,8 @@ export function createHeavyReadGate(deps: HeavyReadGateDeps): HeavyReadGate {
     }
     try {
       const handleLoadingSnapshot = (snapshot: unknown): void => {
-        if (!SOURCE_STAGES_TERMINAL.has(sourceStageOf(snapshot))) return;
+        if (!SOURCE_STAGES_TERMINAL.has(sourceStageOf(snapshot)) && snapshotField(snapshot, 'phase') !== 'hidden')
+          return;
         noteSourceComplete();
         lastEditableActivityAtMs = Math.max(lastEditableActivityAtMs, Date.now());
         scheduleHeavyReadCompletionRecompute();

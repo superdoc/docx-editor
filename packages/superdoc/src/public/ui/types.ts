@@ -797,6 +797,7 @@ export interface TrackChangesSlice {
   status: SliceStatus;
   /** Readiness of the tracked-change list alone, independent of selection. */
   listStatus: SliceStatus;
+  analysis?: ReviewAnalysisProgress | null;
   /** All tracked changes currently loaded. */
   items: readonly TrackChangesItem[];
   /** Total tracked-change count. */
@@ -805,6 +806,12 @@ export interface TrackChangesSlice {
   activeId: string | null;
   /** Distinct authors across the loaded changes. */
   authors: readonly string[];
+}
+
+export interface ReviewAnalysisProgress {
+  done: number;
+  total: number;
+  stage: string | null;
 }
 
 /** Content-controls slice. */

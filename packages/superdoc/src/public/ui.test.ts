@@ -1063,6 +1063,72 @@ describe('public facade (ui)', () => {
   it.each([
     ['accept', BUILT_IN_COMMAND_IDS.acceptChange],
     ['reject', BUILT_IN_COMMAND_IDS.rejectChange],
+  ] as const)('waits for review warm-up and decides the selected ids for %s via %s', async (decision, commandId) => {
+    const story = { kind: 'story', storyType: 'body' } as const;
+    const selectionTarget = {
+      kind: 'selection',
+      story,
+      start: { kind: 'text', blockId: '57130001', offset: 0, story },
+      end: { kind: 'text', blockId: '57130002', offset: 9, story },
+    };
+    let warm = false;
+    let finishWarmup = (): void => {};
+    const warmed = new Promise<void>((resolve) => {
+      finishWarmup = resolve;
+    });
+    const decide = vi.fn(() => ({ success: true }));
+    const ui = createSuperDocUI({
+      superdoc: {
+        activeEditor: {
+          doc: {
+            comments: { list: () => ({ items: [] }) },
+            selection: {
+              current: () => ({
+                empty: false,
+                target: { kind: 'text', story, segments: [{ blockId: '57130001', range: { start: 0, end: 4 } }] },
+                selectionTarget,
+                activeMarks: [],
+                activeCommentIds: [],
+                text: 'Lead\nnew moved',
+                ...(warm
+                  ? { activeChangeIds: ['tc-ins', 'tc-move'], trackedChangesWhollySelected: true }
+                  : { activeChangeIds: [], reviewWarming: true }),
+              }),
+            },
+            trackChanges: {
+              list: async () => {
+                await warmed;
+                warm = true;
+                return {
+                  items: [
+                    { id: 'tc-ins', type: 'insertion', grouping: 'standalone' },
+                    { id: 'tc-move', type: 'move' },
+                  ],
+                };
+              },
+              decide,
+            },
+          },
+        },
+        config: { documentMode: 'editing' },
+        on: vi.fn(),
+        off: vi.fn(),
+      },
+    });
+    expect(ui.commands.get(commandId).getState()).toMatchObject({ enabled: true });
+    const executed = ui.toolbar.execute(commandId);
+    await Promise.resolve();
+    expect(decide).not.toHaveBeenCalled();
+    finishWarmup();
+    expect(await executed).toBe(true);
+    await vi.waitFor(() =>
+      expect(decide).toHaveBeenCalledExactlyOnceWith({ decision, target: { kind: 'ids', ids: ['tc-ins', 'tc-move'] } }),
+    );
+  });
+
+  it.each([
+    ['accept', BUILT_IN_COMMAND_IDS.acceptChange],
+    ['reject', BUILT_IN_COMMAND_IDS.rejectChange],
   ] as const)(
     'decides a fully selected cross-block change by id without a tracked target for %s via %s',
     async (decision, commandId) => {

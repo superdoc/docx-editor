@@ -281,9 +281,11 @@ function isUrlRatherThanPath(text, context, offset, language) {
   );
 }
 
+const SHELL_SHEBANG = /\b(?:ba|z|k|da)?sh\b/;
+
 const SHEBANG_GRAMMARS = [
   [/\b(?:php)\b/, '.php'],
-  [/\b(?:ba|z|k|da)?sh\b/, '.sh'],
+  [SHELL_SHEBANG, '.sh'],
   [/\bpython[\d.]*\b/, '.py'],
   [/\b(?:node|bun|deno)\b/, '.js'],
 ];
@@ -544,22 +546,8 @@ const RELATIVE_PATH_PATTERN = /(?:^|[[\s'"`(=,:])((?:\.{1,2}[/\\]|[A-Za-z0-9_@.-
  */
 const COMPOSED_TRAVERSAL_PATTERN = /((?:['"`]\.\.['"`]\s*,\s*)*['"`]\.\.['"`](?:\s*,\s*['"`][^'"`]*['"`])?)/g;
 
-/**
- * Calls that join their separate arguments into a single path.
- *
- * Separate `'..'` arguments are one traversal only when something composes them.
- * `expect(parts).toEqual(['..', '..', 'literal'])` is expected data, and reading
- * it as `../../literal` failed the unconditional boundary job on an array that
- * never touches the filesystem.
- *
- * `relative` is deliberately absent even though it is a path API: it compares two
- * endpoints rather than joining them. `path.relative('..', '..')` returns `''`,
- * but reading it as a composer turned those two literals into `../..` and failed
- * the gate on a shallow file that never escapes.
- */
 const PATH_COMPOSING_CALLEES = new Set(['join', 'normalize', 'resolve']);
 
-/** The joined path a composed traversal is equivalent to. */
 function joinComposedTraversal(fragment) {
   return [...fragment.matchAll(/['"`]([^'"`]*)['"`]/g)]
     .map((match) => match[1])
@@ -567,26 +555,6 @@ function joinComposedTraversal(fragment) {
     .join('/');
 }
 
-/**
- * Callables on `node:fs` whose first argument is a path, plus the `node:path`
- * composers. `resolve('../x')` and `readFileSync('../x')` are decided by whoever
- * launched the process, not by the file the call sits in.
- *
- * The filesystem half is read from the module rather than typed out. A
- * hand-kept list is the wrong shape for this: it reached 30 names with
- * `unlinkSync` missing, so a root-launched `unlinkSync('../labs/private.docx')`
- * was resolved from the source directory and reported clean. Reading the module
- * cannot fall behind Node, and a name added in a later release is covered the
- * day it lands.
- *
- * Two kinds of export are excluded because they are not path-taking calls: an
- * API whose first argument is a file descriptor, and a class or other
- * non-function export, which the capitalized-name test drops.
- *
- * Only consulted when the candidate is the call's first argument. With an
- * explicit base in front of it, as in `resolve(__dirname, '../x')`, the base
- * wins and the path is directory-relative.
- */
 const FD_FIRST_ARGUMENT = new Set([
   'close',
   'closeSync',
@@ -614,140 +582,105 @@ const FD_FIRST_ARGUMENT = new Set([
   'writevSync',
 ]);
 
+const CLASS_EXPORT_NAME = /^[A-Z]/;
+
+function isPathTakingFsExport(name) {
+  return typeof nodeFs[name] === 'function' && !CLASS_EXPORT_NAME.test(name) && !FD_FIRST_ARGUMENT.has(name);
+}
+
+const NODE_PATH_COMPOSERS = ['join', 'resolve'];
+
+const PATH_BUILTINS_SHARED_BY_PYTHON_AND_NODE = ['Path', 'open'];
+
 const CWD_ANCHORED_CALLEES = new Set([
-  ...Object.keys(nodeFs).filter(
-    (name) => typeof nodeFs[name] === 'function' && !/^[A-Z]/.test(name) && !FD_FIRST_ARGUMENT.has(name),
-  ),
-  // `node:path` composers. `join` and `resolve` build a path from a bare
-  // relative argument the same way, and `resolve` is the form most escapes take.
-  'join',
-  'resolve',
-  // Python, because the scanned surfaces hold Python tests and examples and a
-  // relative path there resolves from the process working directory too.
-  // `Path('../labs/x')` was read as file-relative, which from a nested test
-  // stayed inside and reported a real escape clean. `open` is Node's as well,
-  // and means the same thing in both.
-  'Path',
-  'open',
+  ...Object.keys(nodeFs).filter(isPathTakingFsExport),
+  ...NODE_PATH_COMPOSERS,
+  ...PATH_BUILTINS_SHARED_BY_PYTHON_AND_NODE,
 ]);
 
-/**
- * Filesystem callees that belong to one language, keyed by the extensions that
- * language is written in.
- *
- * Kept out of the set above because these names are generic. `remove`, `move`,
- * `copy` and `walk` are ordinary method names in JavaScript, and anchoring them
- * everywhere failed the required job on a `cache.remove('../labs/x')` that never
- * touches the filesystem. Scoping them by extension keeps the escape they were
- * added for — `os.remove(...)` in a Python test resolved from the source
- * directory rather than the cwd — without inventing one in another language.
- *
- * A shebang-only entrypoint gets the same treatment through
- * `shebangExtensionFor`, so an extensionless `#!/usr/bin/env python3` script is
- * read as Python here too.
- */
+const PYTHON_OS_AND_SHUTIL_CALLEES = [
+  'chdir',
+  'copy',
+  'copy2',
+  'copyfile',
+  'copytree',
+  'getsize',
+  'isdir',
+  'isfile',
+  'listdir',
+  'makedirs',
+  'move',
+  'remove',
+  'replace',
+  'removedirs',
+  'rmtree',
+  'walk',
+];
+
+const PYTHON_CWD_RESOLVING_CALLEES = ['abspath', 'realpath', 'expanduser'];
+
+const PHP_FILESYSTEM_FUNCTIONS = [
+  'file_get_contents',
+  'file_put_contents',
+  'chdir',
+  'fopen',
+  'file_exists',
+  'is_dir',
+  'is_file',
+  'is_readable',
+  'is_writable',
+  'is_link',
+  'scandir',
+  'glob',
+  'unlink',
+  'mkdir',
+  'rmdir',
+  'realpath',
+  'readfile',
+  'file',
+  'parse_ini_file',
+  'copy',
+  'rename',
+  'touch',
+];
+
+const PHP_ALGORITHM_FIRST_FILE_FUNCTIONS = ['hash_file', 'hash_hmac_file'];
+
+const PHP_DIGEST_AND_STAT_FUNCTIONS = [
+  'md5_file',
+  'sha1_file',
+  'filemtime',
+  'fileatime',
+  'filectime',
+  'filetype',
+  'fileperms',
+  'fileowner',
+  'filegroup',
+  'fileinode',
+  'filesize',
+  'is_executable',
+  'disk_free_space',
+  'disk_total_space',
+];
+
+const PHP_SPL_FILE_CLASSES = [
+  'SplFileObject',
+  'SplFileInfo',
+  'DirectoryIterator',
+  'RecursiveDirectoryIterator',
+  'FilesystemIterator',
+  'GlobIterator',
+];
+
 const LANGUAGE_CWD_ANCHORED_CALLEES = new Map([
-  [
-    '.py',
-    new Set([
-      // The rest of Python's standard filesystem surface, which resolves from the
-      // working directory the same way. Only `Path` and `open` were listed, so
-      // `os.remove('../labs/private.docx')` and `shutil.copy(...)` were resolved
-      // from the source directory and a real escape stayed inside.
-      'chdir',
-      'copy',
-      'copy2',
-      'copyfile',
-      'copytree',
-      'getsize',
-      'isdir',
-      'isfile',
-      'listdir',
-      'makedirs',
-      'move',
-      'remove',
-      'replace',
-      'removedirs',
-      'rmtree',
-      'walk',
-      // `os.path.abspath` and `realpath` are not filesystem reads, but they do
-      // resolve against the process working directory, which is the question this
-      // set answers. Neither was listed and neither is a pass-through, so the
-      // scanner stopped at the inner call and read the literal from the source
-      // directory, while Python computes it from the cwd and the outer `open`
-      // reaches outside. `expanduser` is here for the same reason: it produces an
-      // absolute path from the environment rather than from the file.
-      'abspath',
-      'realpath',
-      'expanduser',
-    ]),
-  ],
+  ['.py', new Set([...PYTHON_OS_AND_SHUTIL_CALLEES, ...PYTHON_CWD_RESOLVING_CALLEES])],
   [
     '.php',
     new Set([
-      // PHP's filesystem surface, for the same reason. PHP resolves a relative
-      // path from the process working directory, and `examples.yml` launches
-      // the Laravel example from its own root, so a `file_get_contents(
-      // '../../../../labs/private.docx')` in `routes/web.php` really does reach
-      // the private parent while the guard resolved it from the deeper `routes/`
-      // directory and reported clean.
-      'file_get_contents',
-      'file_put_contents',
-      'chdir',
-      'fopen',
-      'file_exists',
-      'is_dir',
-      'is_file',
-      'is_readable',
-      'is_writable',
-      'is_link',
-      // Algorithm-first, so the path is the second argument. Their position is
-      // in `LANGUAGE_PATH_ARGUMENT_POSITION`; without it the leading algorithm
-      // name would be composed into the path as a directory segment.
-      'hash_file',
-      'hash_hmac_file',
-      // The digest and stat family, which take the path first and open it the
-      // same way. Listed as a family rather than one name at a time: they were
-      // all missing together, and a set that covers `filesize` but not
-      // `filemtime` reads as deliberate when it is not. `stat`, `lstat`,
-      // `readlink` and `opendir` are absent here because they are already
-      // anchored by the shared Node names.
-      // The SPL file classes, whose constructor takes the path. Added as a
-      // family for the same reason as the digest functions below: they were all
-      // missing together, and a set that anchors `fopen` but not
-      // `new SplFileObject` reads as a decision when it is an omission.
-      'SplFileObject',
-      'SplFileInfo',
-      'DirectoryIterator',
-      'RecursiveDirectoryIterator',
-      'FilesystemIterator',
-      'GlobIterator',
-      'md5_file',
-      'sha1_file',
-      'filemtime',
-      'fileatime',
-      'filectime',
-      'filetype',
-      'fileperms',
-      'fileowner',
-      'filegroup',
-      'fileinode',
-      'is_executable',
-      'disk_free_space',
-      'disk_total_space',
-      'scandir',
-      'glob',
-      'unlink',
-      'mkdir',
-      'rmdir',
-      'filesize',
-      'realpath',
-      'readfile',
-      'file',
-      'parse_ini_file',
-      'copy',
-      'rename',
-      'touch',
+      ...PHP_FILESYSTEM_FUNCTIONS,
+      ...PHP_ALGORITHM_FIRST_FILE_FUNCTIONS,
+      ...PHP_DIGEST_AND_STAT_FUNCTIONS,
+      ...PHP_SPL_FILE_CLASSES,
     ]),
   ],
 ]);
@@ -1008,15 +941,6 @@ function describeCallContexts(text, offsets, { grammar, language } = {}) {
   return contexts;
 }
 
-/**
- * APIs whose arguments are each a path in their own right, rather than a base
- * followed by segments to append.
- *
- * `copyFileSync('/tmp/a.docx', '../labs/b.docx')` resolves its destination at the
- * cwd regardless of the source, so an absolute first argument says nothing about
- * the second. Treating every earlier argument as a possible base let the
- * destination be checked from the source file's directory and pass.
- */
 const INDEPENDENT_PATH_ARGUMENTS = new Set([
   'copyFile',
   'copyFileSync',
@@ -1028,13 +952,6 @@ const INDEPENDENT_PATH_ARGUMENTS = new Set([
   'renameSync',
   'symlink',
   'symlinkSync',
-  // Python's two-path APIs, which behave the same way: `shutil.copy('source.docx',
-  // '../labs/private.docx')` resolves its destination from the cwd regardless of
-  // the source. Only the first argument was anchored, so the destination was
-  // composed with `source.docx` and one level of the traversal was swallowed --
-  // `open('../labs/x')` was reported while the same path as a copy destination
-  // was not. `rename` is shared with Node; `replace` is Python's `os.replace`;
-  // the remaining names are `shutil` APIs with no Node counterpart above.
   'copy',
   'copy2',
   'copyfile',
@@ -1045,20 +962,6 @@ const INDEPENDENT_PATH_ARGUMENTS = new Set([
 
 const PYTHON_PATH_ARGUMENT_NAMES = new Set(['file', 'path', 'src', 'dst']);
 
-/**
- * Filesystem APIs that take a path first and *data* second.
- *
- * Only the first argument is a path. `writeFileSync('snapshot.txt',
- * '../../labs/private.docx')` writes that traversal as file contents and opens
- * nothing but `snapshot.txt`, yet the cwd rule anchored the second argument too
- * and failed the required job on a generated fixture.
- *
- * Named rather than inferred. There is no way to tell a path parameter from a
- * data one by shape, and guessing the wrong way here hides a real escape, so the
- * list is the Node write APIs plus PHP's equivalent and nothing else.
- * `appendFile` and `file_put_contents` have the same shape; `copyFileSync` does
- * not, and stays above, because its second argument really is a path.
- */
 const DATA_AFTER_PATH_CALLEES = new Set([
   'writeFile',
   'writeFileSync',
@@ -1067,17 +970,8 @@ const DATA_AFTER_PATH_CALLEES = new Set([
   'file_put_contents',
 ]);
 
-/**
- * The called name before an argument list's `(`, the receiver it was called on,
- * and where the whole qualified name begins.
- *
- * The receiver matters. Stripping it made `require.resolve('../x')` look like
- * `path.resolve`, and those anchor differently: `require.resolve` resolves from
- * the calling module, so an in-repository path was reported as an escape.
- *
- * `start` is where the expression begins, which is where an enclosing call's
- * argument list stops when this call is looked through.
- */
+const STATIC_COMPUTED_MEMBER = /\[\s*(['"`])([A-Za-z0-9_$]+)\1\s*\]$/;
+
 function calleeBefore(text, parenIndex) {
   let end = parenIndex;
   while (end > 0 && /\s/.test(text[end - 1])) end -= 1;
@@ -1085,13 +979,7 @@ function calleeBefore(text, parenIndex) {
     end -= 2;
     while (end > 0 && /\s/.test(text[end - 1])) end -= 1;
   }
-  // A statically computed member reads as the name it spells: `fs['readFileSync']`
-  // is `readFileSync`. Consuming only identifier and dot characters returned no
-  // name at all, so the call anchored nothing and a root-launched escape written
-  // that way was resolved from the source directory and reported clean. All three
-  // quote characters, since a backtick with no interpolation is just as static:
-  // ``fs[`readFileSync`]`` is the same call.
-  const computed = /\[\s*(['"`])([A-Za-z0-9_$]+)\1\s*\]$/.exec(text.slice(0, end));
+  const computed = STATIC_COMPUTED_MEMBER.exec(text.slice(0, end));
   if (computed) {
     const receiverEnd = end - computed[0].length;
     let receiverStart = receiverEnd;
@@ -1105,65 +993,21 @@ function calleeBefore(text, parenIndex) {
   return { name: qualified.slice(dot + 1), receiver: dot === -1 ? '' : qualified.slice(0, dot), start };
 }
 
-/**
- * Pure rewrites of a path string. They neither resolve nor anchor: they hand the
- * argument back in a different spelling.
- *
- * So whether the path escapes is decided by whoever receives the result, not by
- * the transformer. `path.normalize('../labs/private.docx')` returns
- * `../labs/private.docx` unchanged, and in
- * `readFileSync(path.normalize('../labs/private.docx'))` the outer call anchors it
- * at the process cwd.
- *
- * `dirname` counts: it shortens the path but keeps the traversal, so
- * `readFileSync(path.dirname('../../../labs/private.docx'))` still reads
- * `../../../labs`. Stopping at it made the scanner judge the literal
- * file-relative, which from a nested test stayed inside and reported that escape
- * clean.
- */
 const PASS_THROUGH_PATH_CALLEES = new Set(['dirname', 'normalize', 'toNamespacedPath']);
 
-/**
- * Calls that discard every leading segment, so their result cannot escape.
- *
- * `path.basename('../../../../labs/private.docx')` is `private.docx`, and an
- * outer `readFileSync` around it reads `<cwd>/private.docx` — inside the
- * repository, wherever the traversal pointed. Leaving these out of the
- * pass-through set was not enough: the candidate was still judged as the
- * original literal, so the required job failed on a line that reaches nothing
- * outside. Python's `os.path.basename` and the `.name` of a `Path` mean the same.
- *
- * Discarded rather than rewritten to the last segment. The remaining basename is
- * a bare filename with no traversal left in it, so there is nothing for the
- * resolver to decide, and rewriting would only invent a candidate the file does
- * not contain.
- */
 const PATH_DISCARDING_CALLEES = new Set(['basename', 'stem']);
 
-/**
- * The call that decides this candidate's base, looking through any pass-through
- * transformer around it, plus where that call's argument list stops.
- *
- * Reading only the innermost call let a transformer hide the anchor: because
- * `normalize` is not a path-taking API, `readFileSync(normalize('../labs/x'))`
- * fell through to file-relative resolution and a root-launched escape was
- * reported clean. Unwrapping stops at the first call that is not a pass-through,
- * so `resolve(__dirname, normalize('../x'))` still takes its base from `resolve`.
- */
 function enclosingCall(text, context, offset) {
   const parens = context.openParens;
   let argumentEnd = offset;
   for (let i = parens.length - 1; i >= 0; i -= 1) {
     const { name, start } = calleeBefore(text, parens[i]);
     if (i === 0 || !PASS_THROUGH_PATH_CALLEES.has(name)) return { openParen: parens[i], argumentEnd };
-    // The transformer's own name is not one of the outer call's arguments, so the
-    // argument list has to stop where the transformer's expression begins.
     argumentEnd = start;
   }
   return { openParen: -1, argumentEnd };
 }
 
-/** Whether the innermost call around a candidate joins its arguments into a path. */
 function composesPath(text, context) {
   const paren = context?.openParens?.at(-1);
   if (paren === undefined) return false;
@@ -1171,78 +1015,24 @@ function composesPath(text, context) {
   return PATH_COMPOSING_CALLEES.has(calleeBefore(text, paren).name);
 }
 
-/**
- * Whether the innermost call around a candidate throws its leading segments away.
- *
- * The innermost only: `readFileSync(path.basename('../x'))` reaches nothing
- * outside, while `path.basename(resolve('../x'))` is a different expression whose
- * inner `resolve` really does anchor the traversal.
- *
- * `.name` on a `Path` is Python's spelling of the same thing and takes no
- * argument, so it is matched on the text after the literal rather than as a
- * callee: `open(Path('../../../../labs/x').name)`.
- */
+const PATH_NAME_PROPERTY_AFTER_LITERAL = /^['"`]\s*\)\s*\.\s*name\b/;
+
 function discardsLeadingSegments(text, context, offset, candidate) {
   const paren = context?.openParens?.at(-1);
   if (paren !== undefined && PATH_DISCARDING_CALLEES.has(calleeBefore(text, paren).name)) return true;
-  // The literal's own closing quote, then `)` and `.name`, with nothing between.
-  return /^['"`]\s*\)\s*\.\s*name\b/.test(text.slice(offset + candidate.length));
+  return PATH_NAME_PROPERTY_AFTER_LITERAL.test(text.slice(offset + candidate.length));
 }
 
-/**
- * Receivers whose `resolve` is not `path.resolve`.
- *
- * `require.resolve` and `import.meta.resolve` resolve from the calling module.
- * They share a name with `path.resolve` and mean the opposite thing.
- *
- * `Promise.resolve` shares the name and touches nothing at all, so
- * `Promise.resolve('../labs/private.docx')` was anchored at the cwd and failed
- * the gate on expected data that never reaches the filesystem. That is a false
- * positive on a required job, which is the worse direction here.
- */
 const MODULE_RELATIVE_RECEIVERS = new Set(['require', 'import.meta', 'Promise']);
 
-/**
- * Callees that hand their arguments to a separate process.
- *
- * Whatever the child does with a path operand, it resolves it from the working
- * directory it inherits, so these anchor at the cwd wherever the literal sits in
- * the call.
- */
 const CHILD_PROCESS_CALLEES = new Set(['exec', 'execSync', 'execFile', 'execFileSync', 'spawn', 'spawnSync', 'fork']);
 
-/**
- * The child-process callees that pass their arguments straight to the program,
- * with no shell in between.
- *
- * Only these can have a data-only exemption. `exec` and `execSync` take a
- * command line a shell interprets, so `echo hi > ../labs/x` opens that path even
- * though the command word only prints; deciding that needs the redirection
- * analysis the shell scanner already does, and guessing from the program name
- * would be a hole. They stay anchored.
- */
 const ARGV_CHILD_PROCESS_CALLEES = new Set(['execFile', 'execFileSync', 'spawn', 'spawnSync', 'fork']);
 
-/**
- * Whether a spawned program only prints the arguments it is handed.
- *
- * `execFileSync('echo', ['../labs/x'])` writes that text to stdout and opens
- * nothing, which is the same reading the shell scanner already gives a bare
- * `echo`. Without this, anchoring every literal in a spawning call rejected a
- * fixture generating path-shaped expected output.
- *
- * A `shell` option takes the exemption away. With one, the argv form does go
- * through a shell, and `['ok', '>', '../labs/x']` creates that path even though
- * the program only prints. Any mention of the option cancels it, not only a
- * literal `true`: the value may be a variable or a platform test, and a scanner
- * that cannot read it should not be the one deciding the call is safe.
- */
 const OUTPUT_ONLY_PROGRAMS = /^(['"`])(?:echo|printf)\1$/;
 
-/** A `shell` option in a child-process call, whatever its value. */
 const SHELL_OPTION = /\bshell\s*:/;
 
-/** The first argument of a call, which for a child process names the program. */
 function firstArgument(argumentList) {
   let depth = 0;
   let quote = null;
@@ -1261,81 +1051,20 @@ function firstArgument(argumentList) {
   return argumentList;
 }
 
-/**
- * Receivers that make a shared callee name mean something other than the
- * filesystem.
- *
- * `open` is on `node:fs` and is Python's builtin, so it is in the shared set. It
- * is also `window.open`, which navigates to a URL and touches no file, and
- * anchoring by name alone failed the required job on a web test that only opens
- * a page. The same names are the browser's on `globalThis` and `self`.
- *
- * Keyed by receiver rather than by callee, so `fs.open` and a bare `open(...)`
- * are unaffected. A bare call cannot be disambiguated without following imports,
- * which this file deliberately does not do, and a bare `open` is far more likely
- * to be the filesystem one.
- */
 const NON_FILESYSTEM_RECEIVERS = new Map([
   ['window', new Set(['open'])],
   ['globalThis', new Set(['open'])],
   ['self', new Set(['open'])],
 ]);
 
-/**
- * The mirror of the map above: a callee that only names the filesystem when it
- * is called on a particular receiver, and resolves from the process cwd there.
- *
- * `apps/cli` runs its tests under `bun test`, so `Bun.file('../labs/x')` in a
- * root-launched test really does read the private sibling, and by name alone
- * `file` anchored nothing. Keying on the receiver is what makes it safe to add:
- * a bare `file(...)` or some other object's `.file(...)` is untouched.
- *
- * `Bun.write` is here too, and needs the companion map below: its first argument
- * is the destination path, its second is the data. Keying that by callee name
- * would have changed what every unrelated `write(...)` in the tree means, which
- * is why both halves are receiver-aware rather than only this one.
- */
 const FILESYSTEM_RECEIVER_CALLEES = new Map([['Bun', new Set(['file', 'write'])]]);
 
-/**
- * The receiver-aware half of `DATA_AFTER_PATH_CALLEES`: past the first argument
- * these write the value rather than opening it.
- *
- * `Bun.write('out.txt', '../labs/x')` creates `out.txt` holding that text and
- * reaches nothing, so without this the destination rule above would report the
- * payload as an escape.
- */
 const DATA_AFTER_PATH_RECEIVER_CALLEES = new Map([['Bun', new Set(['write'])]]);
 
-/**
- * Receivers that make `writeFile` the module-level `fs` function, whose first
- * argument is the path it opens.
- *
- * On anything else the same name is `FileHandle.writeFile`, which writes through
- * a handle that is already open and takes the data first. A fixture writing
- * path-shaped expected content with `handle.writeFile('../labs/x')` opens nothing
- * and was failing the required job.
- */
 const FS_MODULE_RECEIVERS = new Set(['fs', 'fsp', 'fsPromises', 'promises', 'nodeFs']);
 
-/** The `FileHandle` methods that share a name with a path-first `fs` function. */
 const HANDLE_DATA_METHODS = new Set(['writeFile', 'appendFile']);
 
-/**
- * Whether this call is the `FileHandle` method rather than the `fs` function.
- *
- * Both conditions are needed, and the argument count is the one that keeps this
- * from opening a hole. A receiver alone would take `myFs.writeFile('../labs/x',
- * data)` out of scope on the strength of an unrecognized name, which is the
- * fail-open direction. What the argument list looks like is the other half.
- *
- * The handle form is `writeFile(data)` or `writeFile(data, options)`, where the
- * options are an encoding name or a bag. `fs.writeFile(path, data)` also has two
- * arguments, so the second one has to be read: only an encoding or an object
- * literal means the handle form, and anything else stays a path. Writing the
- * four characters `utf8` to a path is not a call anyone makes, which is what
- * makes that safe to key on.
- */
 const HANDLE_WRITE_OPTIONS =
   /^(?:\{[\s\S]*\}$|(['"`])(?:utf-?8|ascii|base64url|base64|binary|hex|latin1|ucs-?2|utf-?16le)\1$)/i;
 
@@ -1349,14 +1078,6 @@ function isHandleDataArgument(text, openParen, name, receiver) {
   return HANDLE_WRITE_OPTIONS.test(currentArgument(argumentList).trim());
 }
 
-/**
- * Callees whose path is not their first argument, by language and position.
- *
- * `hash_file('sha256', '../labs/x')` names an algorithm first, and the general
- * rule reads every earlier relative literal as a leading path segment, so the
- * traversal would have been resolved as `sha256/../labs/x`. Naming the position
- * is what keeps the algorithm out of the path.
- */
 const LANGUAGE_PATH_ARGUMENT_POSITION = new Map([
   [
     '.php',
@@ -1367,7 +1088,6 @@ const LANGUAGE_PATH_ARGUMENT_POSITION = new Map([
   ],
 ]);
 
-/** How many arguments precede the candidate in its own call. */
 function argumentPosition(precedingArguments) {
   let depth = 0;
   let quote = null;
@@ -1387,21 +1107,6 @@ function argumentPosition(precedingArguments) {
   return commas;
 }
 
-/**
- * Whether a `join` at this position is `Array.prototype.join` rather than
- * `path.join`.
- *
- * They share a name and mean opposite things: `path.join` builds a path from its
- * arguments, while `['x', 'y'].join('../labs/private.docx')` uses the argument as
- * a separator and touches nothing. Anchoring by name alone failed the required
- * job on the second, which is a false positive on a gate that blocks merges.
- *
- * Decided structurally, on the receiver: a literal array or the result of a call
- * ends in `]` or `)`, and neither can be the `path` module. Narrow on purpose.
- * `segments.join('../x')` stays anchored, because a bare identifier could name
- * either an array or a `path` alias, and guessing from the name would trade this
- * false positive for a missed escape.
- */
 function isArrayJoin(text, parenIndex) {
   const { name, start } = calleeBefore(text, parenIndex);
   if (name !== 'join') return false;
@@ -1410,19 +1115,6 @@ function isArrayJoin(text, parenIndex) {
   return before > 0 && (text[before - 1] === ']' || text[before - 1] === ')');
 }
 
-/**
- * The current argument's text, from the last top-level comma of the enclosing
- * call rather than from its `(`.
- *
- * Everything before that comma belongs to a different argument. Reading the whole
- * list let a `process.cwd()` nested in an earlier argument supply a base for a
- * later one: in `copyFileSync(resolve(process.cwd(), 'fixtures/a.docx'),
- * '../labs/private.docx')` the destination is its own path, resolved at the cwd,
- * but it was prefixed with `fixtures/a.docx` and reported clean.
- *
- * Depth-aware, and skips string literals, so a comma inside a nested call or
- * inside a quoted path does not split the argument.
- */
 function currentArgument(argumentList) {
   let depth = 0;
   let quote = null;
@@ -1575,16 +1267,6 @@ function withoutEscapedSlashRegexes(text) {
     .replace(BRACED_REGEX, (match) => ' '.repeat(match.length));
 }
 
-/**
- * The same text with JavaScript comments blanked to spaces, skipping quoted
- * runs so a slash inside a string is not read as syntax.
- *
- * A path segment may legally contain `//`. Blanking by pattern alone, a `//` in
- * `resolve('fixtures//foo', '../../../labs/x')` opened a line comment that ran to
- * the end of the line, which took the cwd base away with it and resolved a real
- * escape from the source directory instead. Length-preserving, so every offset
- * still points at the same character.
- */
 function withoutComments(text) {
   let out = '';
   let quote = null;
@@ -1624,8 +1306,11 @@ function withoutComments(text) {
   return out;
 }
 
+const PYTHON_CWD_EXPRESSION = /(?:Path\.cwd|os\.getcwd)\s*\(\s*\)/;
+const NODE_CWD_EXPRESSION = /process\.cwd\s*\(\s*\)/;
+
 function cwdAnchorFrom(text, language) {
-  const pattern = language === '.py' ? /(?:Path\.cwd|os\.getcwd)\s*\(\s*\)/ : /process\.cwd\s*\(\s*\)/;
+  const pattern = language === '.py' ? PYTHON_CWD_EXPRESSION : NODE_CWD_EXPRESSION;
   const match = pattern.exec(text);
   if (!match) return null;
   const segments = [...text.slice(match.index + match[0].length).matchAll(/['"`]([^'"`]*)['"`]/g)]
@@ -1634,219 +1319,136 @@ function cwdAnchorFrom(text, language) {
   return { cwdRelative: true, prefix: segments.join('/') || undefined };
 }
 
-function isCwdAnchored(text, offset, candidate, context, language, languageCallees) {
-  if (!context || context.inComment) return { cwdRelative: false };
-  const { openParen, argumentEnd } = enclosingCall(text, context, offset);
-  if (openParen === -1) return { cwdRelative: false };
-  const argumentList = text.slice(openParen + 1, argumentEnd);
-  const { name: callee } = calleeBefore(text, openParen);
-  // For a `join`/`resolve`-style call the earlier arguments ARE the base, so the
-  // whole list is read. For a multi-path API they are a different path entirely,
-  // so only the current argument counts: in `copyFileSync(resolve(process.cwd(),
-  // 'fixtures/a.docx'), '../labs/private.docx')` the destination is resolved at the
-  // cwd on its own, and reading the whole list prefixed it with `fixtures/a.docx`
-  // and reported it clean.
-  // Comments are blanked before anything reads this text. A `process.cwd()`
-  // inside one is prose about the base, not the base: `resolve(__dirname, /* not
-  // process.cwd() */ '../../b/x')` was read as cwd-anchored, which resolved a
-  // valid in-repository path from the wrong place and reported it missing.
-  //
-  // Blanked to spaces rather than removed, so every offset in this slice still
-  // lines up with the text it came from. Both JavaScript forms only: this runs
-  // on an argument list, and the formats with other comment syntax do not have
-  // one.
-  const precedingArguments = withoutComments(
-    INDEPENDENT_PATH_ARGUMENTS.has(callee) ? currentArgument(argumentList) : argumentList,
-  );
-  // An explicit cwd expression earlier in this argument list is the base.
-  // Relative literals after it are path segments too: `resolve(process.cwd(),
-  // 'a', '../b')` is `<root>/b`.
-  const precedingCwd = cwdAnchorFrom(precedingArguments, language);
-  if (precedingCwd) return precedingCwd;
-  const { name, receiver } = calleeBefore(text, openParen);
-  if (name === 'URL') {
-    const allArguments = completeArgumentList(text, openParen);
-    const candidateStart = offset - openParen - 1;
-    const afterCandidate = allArguments.slice(candidateStart + candidate.length);
-    const followingBase = /^(['"`])\s*,([\s\S]*)$/.exec(afterCandidate)?.[2];
-    const baseCwd = followingBase ? cwdAnchorFrom(withoutComments(followingBase), language) : null;
-    if (baseCwd) return baseCwd;
-  }
-  // `require.resolve('../x')` and `import.meta.resolve` resolve from the calling
-  // module, not the cwd, despite sharing a name with `path.resolve`.
-  if (name === 'resolve' && MODULE_RELATIVE_RECEIVERS.has(receiver)) return { cwdRelative: false };
-  // `window.open('../x')` navigates to a URL; only the receiver tells it apart
-  // from the filesystem `open` that shares its name.
-  if (NON_FILESYSTEM_RECEIVERS.get(receiver)?.has(name)) return { cwdRelative: false };
-  // A child process inherits the cwd, so every path operand handed to one
-  // resolves there rather than from the file that spawned it. The operand is
-  // usually inside an array — `execFileSync('cat', ['../labs/x'])` — which put it
-  // past the first argument, where the general rule fell back to file-relative
-  // resolution and reported a read of the private sibling as clean.
-  if (CHILD_PROCESS_CALLEES.has(name)) {
-    const program = firstArgument(completeArgumentList(text, openParen)).trim();
-    const argumentList = completeArgumentList(text, openParen);
-    if (
-      ARGV_CHILD_PROCESS_CALLEES.has(name) &&
-      OUTPUT_ONLY_PROGRAMS.test(program) &&
-      !SHELL_OPTION.test(argumentList)
-    ) {
-      return { cwdRelative: false, isData: true };
-    }
-    return { cwdRelative: true };
-  }
-  // `[...].join('../x')` uses its argument as a separator, not as a path segment.
-  if (isArrayJoin(text, openParen)) return { cwdRelative: false };
-  // A dotted variant anchors wherever the function it hangs off does.
-  // `realpathSync.native('../x')` reads its callee name as `native`, which is in
-  // no set, so the path fell back to file-relative resolution and a
-  // root-launched escape was reported clean. The receiver's last segment is the
-  // function that decides, and it is only consulted when the name itself is not
-  // a known callee, so `path.resolve` still resolves as `resolve`.
-  //
-  // `languageCallees` holds the names that only anchor in this file's language,
-  // so a generic `cache.remove(...)` in a JavaScript test is not read as Python's
-  // `os.remove`.
+const NOT_CWD_ANCHORED = Object.freeze({ cwdRelative: false });
+const CWD_ANCHORED = Object.freeze({ cwdRelative: true });
+const DATA_NOT_PATH = Object.freeze({ cwdRelative: false, isData: true });
+
+function cwdBaseAfterUrlCandidate(text, openParen, offset, candidate, language) {
+  const allArguments = completeArgumentList(text, openParen);
+  const candidateStart = offset - openParen - 1;
+  const afterCandidate = allArguments.slice(candidateStart + candidate.length);
+  const followingBase = /^(['"`])\s*,([\s\S]*)$/.exec(afterCandidate)?.[2];
+  return followingBase ? cwdAnchorFrom(withoutComments(followingBase), language) : null;
+}
+
+function isModuleRelativeResolve({ name, receiver }) {
+  return name === 'resolve' && MODULE_RELATIVE_RECEIVERS.has(receiver);
+}
+
+function isNonFilesystemReceiverCall({ name, receiver }) {
+  return Boolean(NON_FILESYSTEM_RECEIVERS.get(receiver)?.has(name));
+}
+
+function isSpawnedOutputOnlyProgram(text, openParen, name) {
+  const argumentList = completeArgumentList(text, openParen);
+  const program = firstArgument(argumentList).trim();
+  return ARGV_CHILD_PROCESS_CALLEES.has(name) && OUTPUT_ONLY_PROGRAMS.test(program) && !SHELL_OPTION.test(argumentList);
+}
+
+function isCwdAnchoringCallee({ name, receiver }, languageCallees) {
   const anchors = (candidateName) =>
     CWD_ANCHORED_CALLEES.has(candidateName) ||
     Boolean(languageCallees?.has(candidateName)) ||
     Boolean(FILESYSTEM_RECEIVER_CALLEES.get(receiver)?.has(candidateName));
-  const anchoringName = anchors(name) ? name : receiver.split('.').pop();
-  if (!anchors(anchoringName)) return { cwdRelative: false };
-  // Only the opening quote separates the candidate from `(`, so it is the first
-  // argument: no base was passed, and a path-taking API anchors it at the cwd.
-  // Python also lets that parameter be named, as in `open(file='../x')`.
-  //
-  // A pass-through template tag is allowed to sit in between. `String.raw` has no
-  // parentheses of its own, so it stayed in the preceding text and the candidate
-  // read as a later argument, which sent `readFileSync(String.raw`../labs/x`)`
-  // back to file-relative resolution. It hands the literal back unchanged, so it
-  // decides nothing about the base.
-  const withoutTag = precedingArguments.replace(/['"`]\s*$/, '').replace(/(?:^|[\s(,])String\.raw\s*$/, '');
-  const beforeCandidate = withoutTag.trim();
-  // Python names the path parameter, and a named argument does not have to come
-  // first: `open(mode='r', file='../labs/x')` opens the same file as
-  // `open('../labs/x')`. Reading the whole preceding text meant only the
-  // keyword-first spelling anchored, so the reordered one resolved from the
-  // source directory and a root-launched escape read as clean. Only the
-  // candidate's own argument answers which parameter it is.
-  const namedArgument = language === '.py' ? currentArgument(beforeCandidate).trim() : beforeCandidate;
-  const keyword = /^([A-Za-z_][A-Za-z0-9_]*)\s*=$/.exec(namedArgument)?.[1];
-  const isFirstArgument =
-    beforeCandidate === '' || (language === '.py' && keyword !== undefined && PYTHON_PATH_ARGUMENT_NAMES.has(keyword));
-  // A named position replaces the first-argument question entirely: the earlier
-  // arguments are not path segments, so neither the composing fallback below nor
-  // the first-argument rule applies to them.
+  return anchors(name) || anchors(lastSegmentOf(receiver));
+}
+
+const PASS_THROUGH_TEMPLATE_TAG = /(?:^|[\s(,])String\.raw\s*$/;
+const PYTHON_KEYWORD_ARGUMENT = /^([A-Za-z_][A-Za-z0-9_]*)\s*=$/;
+
+function isPythonPathKeyword(beforeCandidate) {
+  const keyword = PYTHON_KEYWORD_ARGUMENT.exec(currentArgument(beforeCandidate).trim())?.[1];
+  return keyword !== undefined && PYTHON_PATH_ARGUMENT_NAMES.has(keyword);
+}
+
+function isFirstPathArgument(precedingArguments, language) {
+  const beforeCandidate = precedingArguments.replace(/['"`]\s*$/, '').replace(PASS_THROUGH_TEMPLATE_TAG, '').trim();
+  return beforeCandidate === '' || (language === '.py' && isPythonPathKeyword(beforeCandidate));
+}
+
+const SYMLINK_CALLEES = new Set(['symlink', 'symlinkSync']);
+
+function symlinkTargetDirectory(text, offset, candidate) {
+  const afterTarget = text.slice(offset + candidate.length);
+  const secondArgument = /^(['"`])\s*,\s*([\s\S]*)$/.exec(afterTarget)?.[2] ?? '';
+  const destination = /^(['"`])([^'"`]*)\1/.exec(secondArgument)?.[2] ?? composedLiteralPath(secondArgument);
+  return destination === undefined ? undefined : dirname(destination.replaceAll('\\', '/'));
+}
+
+function isDataAfterPath({ name, receiver }) {
+  return DATA_AFTER_PATH_CALLEES.has(name) || Boolean(DATA_AFTER_PATH_RECEIVER_CALLEES.get(receiver)?.has(name));
+}
+
+function isRootedLiteral(literal) {
+  return literal.startsWith('/') || /^[A-Za-z]:[\\/]/.test(literal);
+}
+
+function anchorFromEarlierLiterals(precedingArguments) {
+  const earlier = precedingArguments.replace(/,\s*['"`]\s*$/, '');
+  const literals = [...earlier.matchAll(/['"`]([^'"`]*)['"`]/g)].map((match) => match[1]);
+  const isBareArgumentList = /^[\s,'"`]*$/.test(earlier.replace(/['"`][^'"`]*['"`]/g, ''));
+  if (!isBareArgumentList || literals.length === 0 || literals.some(isRootedLiteral)) {
+    return { cwdRelative: false, prefix: literals.filter(Boolean).join('/') };
+  }
+  return { cwdRelative: true, prefix: literals.join('/') };
+}
+
+function isCwdAnchored(text, offset, candidate, context, language, languageCallees) {
+  if (!context || context.inComment) return NOT_CWD_ANCHORED;
+  const { openParen, argumentEnd } = enclosingCall(text, context, offset);
+  if (openParen === -1) return NOT_CWD_ANCHORED;
+  const argumentList = text.slice(openParen + 1, argumentEnd);
+  const callee = calleeBefore(text, openParen);
+  const { name, receiver } = callee;
+  const precedingArguments = withoutComments(
+    INDEPENDENT_PATH_ARGUMENTS.has(name) ? currentArgument(argumentList) : argumentList,
+  );
+  const precedingCwd = cwdAnchorFrom(precedingArguments, language);
+  if (precedingCwd) return precedingCwd;
+  if (name === 'URL') {
+    const baseCwd = cwdBaseAfterUrlCandidate(text, openParen, offset, candidate, language);
+    if (baseCwd) return baseCwd;
+  }
+  if (isModuleRelativeResolve(callee)) return NOT_CWD_ANCHORED;
+  if (isNonFilesystemReceiverCall(callee)) return NOT_CWD_ANCHORED;
+  if (CHILD_PROCESS_CALLEES.has(name)) {
+    return isSpawnedOutputOnlyProgram(text, openParen, name) ? DATA_NOT_PATH : CWD_ANCHORED;
+  }
+  if (isArrayJoin(text, openParen)) return NOT_CWD_ANCHORED;
+  if (!isCwdAnchoringCallee(callee, languageCallees)) return NOT_CWD_ANCHORED;
+  const isFirstArgument = isFirstPathArgument(precedingArguments, language);
   const pathPosition = LANGUAGE_PATH_ARGUMENT_POSITION.get(language)?.get(name);
   if (pathPosition !== undefined) {
     return { cwdRelative: argumentPosition(precedingArguments) === pathPosition };
   }
-  if (isFirstArgument && isHandleDataArgument(text, openParen, name, receiver)) {
-    return { cwdRelative: false, isData: true };
+  if (isFirstArgument && isHandleDataArgument(text, openParen, name, receiver)) return DATA_NOT_PATH;
+  if (isFirstArgument && SYMLINK_CALLEES.has(name)) {
+    const targetDirectory = symlinkTargetDirectory(text, offset, candidate);
+    if (targetDirectory !== undefined) return { cwdRelative: true, prefix: targetDirectory };
   }
-  if (isFirstArgument && (name === 'symlink' || name === 'symlinkSync')) {
-    // A relative symlink target is stored verbatim and interpreted from the
-    // destination's directory, not from the process cwd like the destination.
-    const afterTarget = text.slice(offset + candidate.length);
-    const secondArgument = /^(['"`])\s*,\s*([\s\S]*)$/.exec(afterTarget)?.[2] ?? '';
-    const destination = /^(['"`])([^'"`]*)\1/.exec(secondArgument)?.[2] ?? composedLiteralPath(secondArgument);
-    if (destination !== undefined) {
-      return { cwdRelative: true, prefix: dirname(destination.replaceAll('\\', '/')) };
-    }
-  }
-  if (isFirstArgument) return { cwdRelative: true };
-  // Past the first argument of a write API, this is the data being written, not
-  // a path the call opens. Reported as such so the candidate is dropped entirely
-  // rather than merely resolved from somewhere else.
-  if (DATA_AFTER_PATH_CALLEES.has(name) || DATA_AFTER_PATH_RECEIVER_CALLEES.get(receiver)?.has(name)) {
-    return { cwdRelative: false, isData: true };
-  }
-  // A second source or destination path is its own path, not a suffix appended
-  // to the first, so what preceded it does not supply a base.
-  if (INDEPENDENT_PATH_ARGUMENTS.has(name)) return { cwdRelative: true };
-  // Every preceding argument is itself relative, so no absolute base was ever
-  // supplied and the whole call still anchors at the cwd:
-  // `resolve('fixtures', '../../private/x')` is cwd-relative even though the
-  // candidate is second. Requiring the first position missed that entirely.
-  const earlier = precedingArguments.replace(/,\s*['"`]\s*$/, '');
-  const literals = [...earlier.matchAll(/['"`]([^'"`]*)['"`]/g)].map((match) => match[1]);
-  const isBareArgumentList = /^[\s,'"`]*$/.test(earlier.replace(/['"`][^'"`]*['"`]/g, ''));
-  if (
-    !isBareArgumentList ||
-    literals.length === 0 ||
-    !literals.every((literal) => !literal.startsWith('/') && !/^[A-Za-z]:[\\/]/.test(literal))
-  ) {
-    // Not cwd-anchored, because something other than a relative literal supplied
-    // the base. The relative literals between that base and the candidate are
-    // still part of the path though: `resolve(__dirname, '..', '../../x')`
-    // composes both, and dropping the `'..'` resolved one level too low and
-    // reported an escape as clean. `__dirname`-style bases are directory-relative,
-    // which is what the file base already models.
-    return { cwdRelative: false, prefix: literals.filter(Boolean).join('/') };
-  }
-  // The earlier segments are part of the path, not just evidence about its base.
-  // `resolve('fixtures', '../shared/x.docx')` from the root is
-  // `<root>/shared/x.docx`, which is inside; dropping `fixtures` and resolving
-  // only `../shared/x.docx` put it one level too high and failed a valid path.
-  return { cwdRelative: true, prefix: literals.join('/') };
+  if (isFirstArgument) return CWD_ANCHORED;
+  if (isDataAfterPath(callee)) return DATA_NOT_PATH;
+  if (INDEPENDENT_PATH_ARGUMENTS.has(name)) return CWD_ANCHORED;
+  return anchorFromEarlierLiterals(precedingArguments);
 }
 
-/**
- * The value of a `join`/`resolve` call whose arguments are all string literals,
- * or `undefined` when anything in it is not statically known.
- *
- * A symlink destination is commonly composed rather than written out:
- * `symlinkSync('../shared/data.docx', join('fixtures', 'link.docx'))` is a valid
- * in-repository link, and reading only the literal form left the target resolved
- * from the cwd, one directory too high, which failed the required job on it.
- *
- * Deliberately all-or-nothing. A single non-literal argument means the composed
- * value is not knowable here, and guessing at a prefix would move the target to
- * a directory the call never names. Returning `undefined` leaves the caller on
- * the path it already took.
- */
 function composedLiteralPath(text) {
   const call = /^(?:[A-Za-z_$][\w$]*\s*\.\s*)?(?:join|resolve)\s*\(([^()]*)\)/.exec(text);
   if (!call) return undefined;
   const literal = /(['"`])([^'"`]*)\1/g;
   const segments = [...call[1].matchAll(literal)].map((match) => match[2]);
   if (segments.length === 0) return undefined;
-  // Nothing may sit between the literals but separators, so a variable or a
-  // nested call is not silently dropped from the composed value.
   if (call[1].replace(literal, '').trim().replace(/,/g, '').trim() !== '') return undefined;
   return segments.join('/');
 }
 
-/**
- * Languages where every relative literal is resolved from the process working
- * directory, whatever encloses it.
- *
- * A shell script has no callee to consult: `cat '../../labs/private.docx'` hands
- * the argument straight to a command, and the shell resolves it from wherever the
- * script was launched. Reading it from the script's own directory turned a real
- * escape into an in-repository path — from `packages/a/tests/` that literal reads
- * as `packages/labs/...`, which exists nowhere and looked clean.
- *
- * Only shell. Python is handled through `Path` and `open` in
- * `CWD_ANCHORED_CALLEES`, because a bare Python string is not a path until
- * something opens it, and the JavaScript family is directory-relative by module
- * semantics.
- *
- * Decided by the shebang when there is no extension, not by the grammar object:
- * shell, Python, and YAML all share `HASH_COMMENTS`, so grammar identity cannot
- * tell them apart. Keying on `.sh` alone meant an extensionless `#!/bin/sh`
- * entrypoint was scanned and read with shell comments, then resolved from its own
- * directory anyway — the one place where the two halves of shebang support
- * disagreed.
- */
 const CWD_RELATIVE_LANGUAGES = new Set(['.sh']);
-const CWD_RELATIVE_SHEBANG = /\b(?:ba|z|k|da)?sh\b/;
 
 function isCwdRelativeLanguage(file, contents) {
-  const basename = file.slice(file.lastIndexOf('/') + 1);
-  if (basename.lastIndexOf('.') > 0) return CWD_RELATIVE_LANGUAGES.has(file.slice(file.lastIndexOf('.')));
-  if (!contents?.startsWith('#!')) return false;
-  return CWD_RELATIVE_SHEBANG.test(contents.slice(0, contents.indexOf('\n') + 1 || contents.length));
+  const extension = extensionAfterNonLeadingDot(basenameOf(file));
+  if (extension !== '') return CWD_RELATIVE_LANGUAGES.has(extension);
+  const shebang = shebangLineOf(contents);
+  return shebang !== undefined && SHELL_SHEBANG.test(shebang);
 }
 
 /**

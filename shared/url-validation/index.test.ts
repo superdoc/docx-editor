@@ -776,6 +776,62 @@ describe('url-validation', () => {
     });
   });
 
+  describe('URL-prefix blocklist against the parsed address of a scheme:// link', () => {
+    const config = { redirectBlocklist: ['https://ads.example.com/track'] };
+
+    it.each([
+      ['zero-width space', '​'],
+      ['soft hyphen', '­'],
+      ['word joiner', '⁠'],
+      ['variation selector-16', '️'],
+      ['Mongolian free variation selector', '᠋'],
+      ['shorthand format letter overlap', '\u{1bca0}'],
+      ['variation selector-17', '\u{e0100}'],
+    ])('rejects a host hiding a %s, which the host parser drops', (_name, character) => {
+      expect(sanitizeHref(`https://ads.exa${character}mple.com/track/1`, config)).toBeNull();
+    });
+
+    it.each([
+      ['a percent-encoded host letter', 'https://ads.%65xample.com/track/1'],
+      ['fullwidth host letters', 'https://ａｄｓ.example.com/track/1'],
+      ['a dot-dot path segment', 'https://ads.example.com/a/../track/1'],
+      ['a dot path segment', 'https://ads.example.com/./track/1'],
+      ['the default port', 'https://ads.example.com:443/track/1'],
+      ['two backslashes after the scheme', 'https:\\\\ads.example.com\\track/1'],
+      ['a slash then a backslash after the scheme', 'https:/\\ads.example.com/track/1'],
+      ['a backslash then a slash after the scheme', 'https:\\/ads.example.com/track/1'],
+    ])('rejects %s that the parser normalizes to the blocked address', (_name, href) => {
+      expect(sanitizeHref(href, config)).toBeNull();
+    });
+
+    it('keeps accepting an address the parser does not normalize to the blocked one', () => {
+      expect(sanitizeHref('https://ads.example.com/other', config)?.href).toBe('https://ads.example.com/other');
+      expect(sanitizeHref('https://ads.example.com:8443/track/1', config)?.href).toBe(
+        'https://ads.example.com:8443/track/1',
+      );
+    });
+
+    it('leaves a link whose destination depends on a base URL to the written-string check', () => {
+      expect(sanitizeHref('https:ads.example.com/track/1', config)?.href).toBe('https:ads.example.com/track/1');
+      expect(sanitizeHref('https:/ads.example.com/track/1', config)?.href).toBe('https:/ads.example.com/track/1');
+    });
+
+    it('returns the link as written, not the parsed address', () => {
+      expect(sanitizeHref('https://Example.com/a/../b')?.href).toBe('https://Example.com/a/../b');
+    });
+  });
+
+  describe('leading C0 control before a scheme', () => {
+    it.each([
+      ['NUL', '\u0000'],
+      ['SOH', '\u0001'],
+      ['unit separator', '\u001f'],
+    ])('keeps rejecting a dangerous scheme behind a leading %s', (_name, character) => {
+      expect(sanitizeHref(`${character}javascript:alert(1)`)).toBeNull();
+      expect(sanitizeHref(`${character}data:text/html,x`)).toBeNull();
+    });
+  });
+
   describe('ASCII tab or newline inside an absolute URL', () => {
     const asciiTabOrNewline = [
       ['tab', '\t'],

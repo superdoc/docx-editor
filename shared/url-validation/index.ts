@@ -129,6 +129,8 @@ const ASCII_TAB_OR_NEWLINE_PATTERN = /[\t\n\r]/;
 
 const SCHEME_PREFIX_PATTERN = /^[a-z][a-z0-9+.-]*:/i;
 
+const SCHEME_WITH_AUTHORITY_PATTERN = /^[a-z][a-z0-9+.-]*:[\\/]{2}/i;
+
 const LEADING_SCHEME_PATTERN = /^([a-z0-9+.-]+):/i;
 
 const WWW_PREFIX_PATTERN = /^www\./i;
@@ -211,7 +213,7 @@ function isProtocolAllowed(
   return allowedProtocols.has(scheme);
 }
 
-function isBlockedByRedirectList(normalizedHref: string, parsed: URL, blocklist: Blocklist): boolean {
+function isBlockedByRedirectList(comparedHrefs: readonly string[], parsed: URL, blocklist: Blocklist): boolean {
   const { hosts, urls } = blocklist;
 
   const hostname = parsed.hostname ? parsed.hostname.toLowerCase() : '';
@@ -220,9 +222,9 @@ function isBlockedByRedirectList(normalizedHref: string, parsed: URL, blocklist:
   }
 
   if (urls.size > 0) {
-    const hrefLower = normalizedHref.toLowerCase();
+    const hrefsLower = comparedHrefs.map((href) => href.toLowerCase());
     for (const blockedUrl of urls) {
-      if (hrefLower.startsWith(blockedUrl)) {
+      if (hrefsLower.some((href) => href.startsWith(blockedUrl))) {
         return true;
       }
     }
@@ -230,6 +232,9 @@ function isBlockedByRedirectList(normalizedHref: string, parsed: URL, blocklist:
 
   return false;
 }
+
+const baseIndependentHrefs = (trimmed: string, parsed: URL): string[] =>
+  SCHEME_WITH_AUTHORITY_PATTERN.test(trimmed) ? [trimmed, parsed.href] : [trimmed];
 
 const isHostWithoutScheme = (trimmed: string): boolean => trimmed.startsWith('//') || WWW_PREFIX_PATTERN.test(trimmed);
 
@@ -262,7 +267,7 @@ function sanitizeRelativePath(pathString: string, blocklist: Blocklist): AnchorL
     return null;
   }
 
-  if (isBlockedByRedirectList(resolved.href, resolved, blocklist)) {
+  if (isBlockedByRedirectList([resolved.href], resolved, blocklist)) {
     return null;
   }
 
@@ -352,7 +357,7 @@ export function sanitizeHref(raw: string | null | undefined, config: SanitizerCo
     return null;
   }
 
-  if (isBlockedByRedirectList(trimmed, parsed, blocklist)) {
+  if (isBlockedByRedirectList(baseIndependentHrefs(trimmed, parsed), parsed, blocklist)) {
     return null;
   }
 

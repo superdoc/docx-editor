@@ -4,8 +4,12 @@ import {
   emptyElementPattern,
   inspectDocx,
   isEncryptedDocx,
+  isGenericContentTypeName,
+  isStandardsNamespace,
+  organizationReceivers,
   pairedElementPattern,
   readZipEntries,
+  relationshipTargetProblem,
   writeZipEntries,
 } from '../lib/docx-privacy.mjs';
 import { sanitizeDocxBuffer } from '../sanitize-docx.mjs';
@@ -1506,5 +1510,324 @@ describe('parser hardening', () => {
     // catches that and records the archive as unreadable, which is the whole
     // point: a corrupt archive must never come back with no findings.
     expect(() => inspectDocx(corrupted)).toThrow();
+  });
+});
+
+describe('named privacy rules', () => {
+  const identityValues = (source) => inspectDocx(source).identities.map((identity) => `${identity.kind}|${identity.value}`);
+  const withRelationshipParts = (parts) =>
+    writeZipEntries(new Map([['[Content_Types].xml', Buffer.from('<Types/>')], ...Object.entries(parts).map(([name, xml]) => [name, Buffer.from(xml)])]));
+
+  it('treats each schema host and each RFC 2606 reserved host as a standards namespace, and nothing near them', () => {
+    for (const host of [
+      'schemas.microsoft.com',
+      'schemas.openxmlformats.org',
+      'purl.org',
+      'www.w3.org',
+      'w3.org',
+      'dublincore.org',
+      'example.com',
+      'example.org',
+      'example.net',
+    ]) {
+      expect(isStandardsNamespace(`https://${host}/schema`), host).toBe(true);
+      expect(isStandardsNamespace(`https://${host.toUpperCase()}/schema`), host).toBe(true);
+    }
+    for (const host of ['sub.purl.org', 'w3.org.evil', 'example.co', 'acme.example', 'schemas.microsoft.net']) {
+      expect(isStandardsNamespace(`https://${host}/schema`), host).toBe(false);
+    }
+    expect(isStandardsNamespace('not a url')).toBe(false);
+  });
+
+  it('reads each Word default content-type name, including an empty one, as generic', () => {
+    for (const value of ['document', 'doc', 'item', '', '  ']) {
+      expect(isGenericContentTypeName(value), JSON.stringify(value)).toBe(true);
+    }
+    for (const value of ['documents', 'items', 'Acme']) {
+      expect(isGenericContentTypeName(value), value).toBe(false);
+    }
+    const empty = makeDocx({ customXml: { 'itemProps1.xml': '<r ma:contentTypeName=""/>' } });
+    expect(inspectDocx(empty).taxonomy).toEqual([]);
+  });
+
+  it('skips receivers shipped as Microsoft or System assemblies and reports the rest', () => {
+    const receivers = (name) => `<Receivers><Receiver><Assembly>${name}</Assembly></Receiver></Receivers>`;
+    expect(organizationReceivers(receivers('Microsoft.SharePoint, V=1'))).toEqual([]);
+    expect(organizationReceivers(receivers('System.Web, V=1'))).toEqual([]);
+    expect(organizationReceivers(receivers('Systematic.Receivers, V=1'))).toEqual([
+      { tag: 'Assembly', value: 'Systematic.Receivers, V=1' },
+    ]);
+    expect(organizationReceivers('<Receivers><Receiver><Class>Acme.Handler</Class></Receiver></Receivers>')).toEqual([
+      { tag: 'Class', value: 'Acme.Handler' },
+    ]);
+    expect(organizationReceivers('<Receivers><Receiver><Name>Acme.Handler</Name></Receiver></Receivers>')).toEqual([]);
+  });
+
+  it('reports a document-management reference number in visible text under each system prefix', () => {
+    for (const reference of ['DMS-21251548', 'NRPORTBL 4471', 'IMANAGE_123456', 'EDOCS99887', 'dms-21251548']) {
+      const source = makeDocx({ footer: `<w:ftr><w:p><w:r><w:t>Ref ${reference}</w:t></w:r></w:p></w:ftr>` });
+      const expected = reference === 'dms-21251548' ? [] : [`word/footer2.xml: ${reference}`];
+      expect(inspectDocx(source).bodyStamps, reference).toEqual(expected);
+    }
+    const tooShort = makeDocx({ footer: '<w:ftr><w:p><w:r><w:t>DMS-123</w:t></w:r></w:p></w:ftr>' });
+    expect(inspectDocx(tooShort).bodyStamps).toEqual([]);
+  });
+
+  it('reports a stamp that both visible-text readings find once', () => {
+    const source = makeDocx({ footer: '<w:ftr><w:p><w:r><w:t>ACME-FILE VERSION 1.0a</w:t></w:r></w:p></w:ftr>' });
+    expect(inspectDocx(source).bodyStamps).toEqual(['word/footer2.xml: ACME-FILE VERSION 1.0a']);
+  });
+
+  it('reads only the parts a reader sees for stamps', () => {
+    const stamp = '<w:x><w:p><w:r><w:t>ACME-FILE VERSION 1.0a</w:t></w:r></w:p></w:x>';
+    for (const part of [
+      'document.xml',
+      'document2.xml',
+      'header1.xml',
+      'footer3.xml',
+      'footnotes.xml',
+      'endnotes.xml',
+      'comments.xml',
+      'commentsExtended.xml',
+      'commentsIds.xml',
+    ]) {
+      expect(inspectDocx(makeDocx({ parts: { [part]: stamp } })).bodyStamps, part).toHaveLength(1);
+    }
+    for (const part of ['settings.xml', 'styles.xml', 'glossary/document.xml']) {
+      expect(inspectDocx(makeDocx({ parts: { [part]: stamp } })).bodyStamps, part).toEqual([]);
+    }
+  });
+
+  it('ignores each tool bookkeeping property and reports every other custom property', () => {
+    const property = (name) => `<property name="${name}"><vt:lpwstr>v</vt:lpwstr></property>`;
+    const tools = ['SuperdocVersion', 'DocumentGuid', 'Created', 'Producer', 'LastSaved', 'AppVersion'];
+    const custom = `<Properties>${[...tools, 'Creator', 'Reviewer'].map(property).join('')}</Properties>`;
+    expect(identityValues(makeDocx({ custom }))).toEqual(['custom-property|Creator=v', 'custom-property|Reviewer=v']);
+  });
+
+  it('classifies each document-management property name by its name alone', () => {
+    const managed = [
+      '_dlc_DocId',
+      'ContentTypeId',
+      'eDOCSAuthor',
+      'iManageWorkspace',
+      'NRPortblLibrary',
+      'ClientID',
+      'MatterID',
+      'db_contract_ref',
+      'Firm-Document-ID',
+      'clientid',
+    ];
+    const ordinary = ['ClientIDs', 'XContentTypeId', 'MatterIDx', 'Document-ID-Copy'];
+    const property = (name) => `<property name="${name}"><vt:lpwstr></vt:lpwstr></property>`;
+    const custom = `<Properties>${[...managed, ...ordinary].map(property).join('')}</Properties>`;
+    expect(identityValues(makeDocx({ custom }))).toEqual([
+      ...managed.map((name) => `dms-property|${name}`),
+      ...ordinary.map((name) => `custom-property|${name}`),
+    ]);
+  });
+
+  it('reports every core and app identity field, in property order', () => {
+    const core =
+      '<cp:coreProperties><dc:description>D</dc:description><cp:keywords>K</cp:keywords><dc:subject>S</dc:subject>' +
+      '<dc:title>T</dc:title><cp:lastModifiedBy>L</cp:lastModifiedBy><dc:creator>C</dc:creator></cp:coreProperties>';
+    const app = '<Properties><Manager>M</Manager><Company>Co</Company></Properties>';
+    expect(identityValues(makeDocx({ core, app }))).toEqual([
+      'dc:creator|C',
+      'cp:lastModifiedBy|L',
+      'dc:title|T',
+      'dc:subject|S',
+      'cp:keywords|K',
+      'dc:description|D',
+      'Company|Co',
+      'Manager|M',
+    ]);
+  });
+
+  it('reads every HyperlinkBase, so an approved one cannot mask a later one', () => {
+    const app =
+      '<Properties><HyperlinkBase>https://superdoc.dev/</HyperlinkBase><HyperlinkBase>https://client.example/m</HyperlinkBase></Properties>';
+    expect(identityValues(makeDocx({ app }))).toEqual([
+      'HyperlinkBase|unreviewed external target https://client.example/m',
+    ]);
+  });
+
+  it('reports reviewer author, initials and account id per part, in that order', () => {
+    const document = '<w:document><w15:p w:userId="U" w:initials="I" w:author="A"/></w:document>';
+    expect(identityValues(makeDocx({ document }))).toEqual(['w:author|A', 'w:initials|I', 'w15:userId|U']);
+  });
+
+  it('names each private or local network host as such', () => {
+    for (const host of [
+      'localhost',
+      '[::1]',
+      'printer.local',
+      'wiki.internal',
+      'intranet',
+      '127.0.0.1',
+      '10.1.2.3',
+      '192.168.0.1',
+      '172.16.0.1',
+      '172.31.255.255',
+      '169.254.1.1',
+      '0.0.0.0',
+    ]) {
+      expect(relationshipTargetProblem(`http://${host}/x`), host).toBe('private or local network target');
+    }
+    for (const host of ['172.15.0.1', '172.32.0.1', '11.0.0.1']) {
+      expect(relationshipTargetProblem(`http://${host}/x`), host).toBe('unreviewed external target');
+    }
+  });
+
+  it('gives the reason each unpublishable target fails', () => {
+    expect(relationshipTargetProblem('')).toBeNull();
+    expect(relationshipTargetProblem('  ')).toBeNull();
+    expect(relationshipTargetProblem(undefined)).toBeNull();
+    expect(relationshipTargetProblem('\\\\server\\share\\a.docx')).toBe('unparseable external target');
+    expect(relationshipTargetProblem('https://u:p@client.example/')).toBe('credentials in an external target');
+    expect(relationshipTargetProblem('MAILTO:a@client.example')).toBe('email target');
+    expect(relationshipTargetProblem('file:///T:/a.docx')).toBe('file target');
+    expect(relationshipTargetProblem('ftp://client.example/a')).toBe('ftp target');
+    expect(relationshipTargetProblem('https://client.example/a#b')).toBe('external target carrying query or fragment');
+    expect(relationshipTargetProblem('https://client.example/a')).toBe('unreviewed external target');
+  });
+
+  it('approves only exact reviewed targets and encyclopedia articles', () => {
+    expect(relationshipTargetProblem(' https://superdoc.dev/ ')).toBeNull();
+    expect(relationshipTargetProblem('https://superdoc.dev')).toBe('unreviewed external target');
+    expect(relationshipTargetProblem('https://en.wikipedia.org/wiki/Ada_Lovelace_(1815)')).toBeNull();
+    expect(relationshipTargetProblem('https://en.wikipedia.org/wiki/A/B')).toBe('unreviewed external target');
+    expect(relationshipTargetProblem('http://en.wikipedia.org/wiki/Ada')).toBe('unreviewed external target');
+  });
+
+  it('approves an RFC 2606 reserved host only after every other check passes', () => {
+    for (const target of ['https://example.com/a', 'http://docs.example.org/a', 'https://EXAMPLE.NET/']) {
+      expect(relationshipTargetProblem(target), target).toBeNull();
+    }
+    expect(relationshipTargetProblem('https://u:p@example.com/')).toBe('credentials in an external target');
+    expect(relationshipTargetProblem('ftp://example.com/a')).toBe('ftp target');
+    expect(relationshipTargetProblem('mailto:a@example.com')).toBe('email target');
+    expect(relationshipTargetProblem('https://example.com/?client=acme')).toBe(
+      'external target carrying query or fragment',
+    );
+    expect(relationshipTargetProblem('https://example.com.client.test/')).toBe('unreviewed external target');
+  });
+
+  it('reads external relationships in every relationships part, whatever the case of the target mode', () => {
+    const rel = (mode) =>
+      `<Relationships><Relationship Id="r1" Target="https://client.example/m" TargetMode="${mode}"/></Relationships>`;
+    const source = withRelationshipParts({
+      'word/_rels/footer1.xml.rels': rel('external'),
+      'customXml/_rels/item1.xml.rels': rel('EXTERNAL'),
+      'word/_rels/document.xml.rels': rel('Internal'),
+      'word/rels/document.xml.rels': rel('External'),
+      'word/_rels/nested/document.xml.rels': rel('External'),
+    });
+    expect(inspectDocx(source).relationships).toEqual([
+      'word/_rels/footer1.xml.rels: unreviewed external target https://client.example/m',
+      'customXml/_rels/item1.xml.rels: unreviewed external target https://client.example/m',
+    ]);
+  });
+
+  it('reads identities from every word part but taxonomy only from custom XML store parts', () => {
+    const source = withRelationshipParts({
+      'word/glossary/document.xml': '<w:x w:author="Glossary Person"/>',
+      'docProps/other.xml': '<w:x w:author="Not Read"/>',
+      'customXml/item12.xml': '<r ma:contentTypeName="Acme A"/>',
+      'customXml/itemProps3.xml': '<r ma:contentTypeName="Acme B"/>',
+      'customXml/notes.xml': '<r ma:contentTypeName="Acme C"/>',
+      'word/item1.xml': '<r ma:contentTypeName="Acme D"/>',
+    });
+    const report = inspectDocx(source);
+    expect(report.identities).toEqual([{ kind: 'w:author', value: 'Glossary Person' }]);
+    expect(report.taxonomy).toEqual([
+      'customXml/item12.xml: contentTypeName="Acme A"',
+      'customXml/itemProps3.xml: contentTypeName="Acme B"',
+    ]);
+  });
+
+  it('reports each custom XML finding in its own format, naming a receiver without its assembly version', () => {
+    const item =
+      '<r ma:contentTypeName="Acme Matter"><Receivers><Receiver><Assembly>Acme.Receivers, Version=1.0, Culture=neutral</Assembly></Receiver></Receivers>' +
+      '<ref>https://client.example/schema</ref></r>';
+    expect(inspectDocx(makeDocx({ customXml: { 'item1.xml': item } })).taxonomy).toEqual([
+      'customXml/item1.xml: contentTypeName="Acme Matter"',
+      'customXml/item1.xml: <Assembly>Acme.Receivers',
+      'customXml/item1.xml: external URL https://client.example/schema',
+    ]);
+  });
+
+  it('reads a contentTypeName with or without a namespace prefix, in document order', () => {
+    const source = makeDocx({
+      customXml: {
+        'itemProps1.xml': '<r contentTypeName="Acme First"/><r x:contentTypeName="Acme Second" ma:contentTypeName="Acme Third"/>',
+      },
+    });
+    expect(inspectDocx(source).taxonomy).toEqual([
+      'customXml/itemProps1.xml: contentTypeName="Acme First"',
+      'customXml/itemProps1.xml: contentTypeName="Acme Second"',
+      'customXml/itemProps1.xml: contentTypeName="Acme Third"',
+    ]);
+    expect(readZipEntries(sanitizeDocxBuffer(makeDocx({ customXml: { 'item1.xml': '<root/>', 'itemProps1.xml': '<r contentTypeName="Acme"/>' } })).buffer).has('customXml/itemProps1.xml')).toBe(false);
+  });
+
+  it('does not read a contentTypeName written inside an XML comment', () => {
+    const source = makeDocx({
+      customXml: { 'item1.xml': '<root/>', 'itemProps1.xml': '<r><!-- contentTypeName="Acme Matter" --></r>' },
+    });
+    expect(inspectDocx(source).taxonomy).toEqual([]);
+    expect(readZipEntries(sanitizeDocxBuffer(source).buffer).has('customXml/itemProps1.xml')).toBe(true);
+  });
+
+  it('still reports a reviewed relationship target found inside custom XML', () => {
+    const source = makeDocx({ customXml: { 'item1.xml': '<r ref="https://superdoc.dev/"/>' } });
+    expect(inspectDocx(source).taxonomy).toEqual(['customXml/item1.xml: external URL https://superdoc.dev/']);
+  });
+
+  it('approves only plain encyclopedia article paths', () => {
+    expect(relationshipTargetProblem('https://en.wikipedia.org/wiki/Special:Export')).toBe('unreviewed external target');
+    expect(relationshipTargetProblem('https://en.wikipedia.org/wiki/Ada?client=acme')).toBe(
+      'external target carrying query or fragment',
+    );
+  });
+
+  it('blanks an XML comment in place, so it never joins the text around it into an element', () => {
+    const core = '<cp:coreProperties><dc:crea<!---->tor>Jane Doe</dc:crea<!---->tor></cp:coreProperties>';
+    expect(inspectDocx(makeDocx({ core })).identities).toEqual([]);
+  });
+
+  it('does not report a value that only appears inside an XML comment', () => {
+    const core = '<cp:coreProperties><!-- <dc:creator>Former Author</dc:creator> --></cp:coreProperties>';
+    expect(inspectDocx(makeDocx({ core })).identities).toEqual([]);
+  });
+
+  it('reads a visible part only at its own path under word/', () => {
+    const stamp = '<w:x><w:p><w:r><w:t>ACME-FILE VERSION 1.0a</w:t></w:r></w:p></w:x>';
+    const source = withRelationshipParts({ 'archive/word/footer1.xml': stamp, 'word/footer1.xml.bak': stamp });
+    expect(inspectDocx(source).bodyStamps).toEqual([]);
+  });
+
+  it('reads a relationship as external only when its target mode is exactly External', () => {
+    for (const mode of ['NotExternal', 'External2', 'External ']) {
+      const source = withRelationshipParts({
+        'word/_rels/document.xml.rels': `<Relationships><Relationship Id="r1" Target="https://client.example/m" TargetMode="${mode}"/></Relationships>`,
+      });
+      expect(inspectDocx(source).relationships, mode).toEqual([]);
+    }
+  });
+
+  it('reads a document as encrypted only when it carries the whole OLE signature', () => {
+    const magic = [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1];
+    expect(isEncryptedDocx(Buffer.from(magic))).toBe(true);
+    expect(isEncryptedDocx(Buffer.from(magic.slice(0, 7)))).toBe(false);
+    expect(isEncryptedDocx(Buffer.from([...magic.slice(0, 7), 0x00, 0x00]))).toBe(false);
+    expect(isEncryptedDocx(Buffer.from([0xd0, ...magic.slice(1).map(() => 0)]))).toBe(false);
+  });
+
+  it('matches an empty element in both its self-closing and explicit-end spellings', () => {
+    const pattern = emptyElementPattern('Relationship');
+    expect('<Relationship a="1"/>'.match(pattern)).toHaveLength(1);
+    expect('<p:Relationship a="1" ></p:Relationship >'.match(pattern)).toHaveLength(1);
+    expect('<Relationship a="1">text</Relationship>'.match(pattern)).toBeNull();
   });
 });

@@ -259,6 +259,7 @@ import {
 import { HOST_EVENTS } from './host-events.js';
 import { createContentControlsHandle } from './content-controls-handle.js';
 import { createSearchHandle } from './search-handle.js';
+import { createDocumentPolicy } from './document-policy.js';
 import { createStyleReads, createStylesHandle, documentDefaultParagraphStyleId } from './styles-handle.js';
 
 type FirstPartyCommandMutation = {
@@ -1667,89 +1668,14 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     insertText,
   });
 
-  const normalizeDocumentMode = (value: unknown): SuperDocUIState['documentMode'] => {
-    return value === 'editing' || value === 'suggesting' || value === 'viewing' ? value : null;
-  };
-
-  const readDocumentMode = (): SuperDocUIState['documentMode'] => {
-    const editor = getEditor();
-    const superdocRecord = superdoc && typeof superdoc === 'object' ? (superdoc as LooseRecord) : null;
-    const fromConfig = normalizeDocumentMode((superdocRecord?.config as LooseRecord | undefined)?.documentMode);
-    // The public config wins while a mode change is settling. Avoid building
-    // a complete runtime capability snapshot merely to read that same mode.
-    if (fromConfig) return fromConfig;
-    const getActiveRuntime = hostMethod(superdocRecord, 'getActiveRuntime');
-    const runtimeSnapshot = safeCall<unknown>(
-      getActiveRuntime ? () => hostMethod(getActiveRuntime(), 'getSnapshot')?.() ?? null : undefined,
-      null,
-    );
-    const fromRuntime = normalizeDocumentMode(
-      isPlainObject(runtimeSnapshot) ? runtimeSnapshot.documentMode : undefined,
-    );
-    const fromOptions = normalizeDocumentMode((editor?.options as LooseRecord | undefined)?.documentMode);
-
-    return fromRuntime ?? fromOptions;
-  };
-
-  const documentIsReadOnly = (): boolean => {
-    if (readDocumentMode() === 'viewing') return true;
-    const connection = safeCall<unknown>(() => hostMethod(superdoc, 'getCollaborationConnectionState')?.(), null);
-    return isPlainObject(connection) && connection.state === 'failed';
-  };
-
-  const commentsAreReadOnly = (): boolean => {
-    const superdocRecord = superdoc && typeof superdoc === 'object' ? (superdoc as LooseRecord) : null;
-    // Interaction policy outlives the built-in comment UI. With `ui: false` or
-    // `ui: { comments: false }` there is no `modules.comments` block left to
-    // carry it — the field is `false` — so reading only the legacy block makes
-    // the guard fail open for exactly the custom UI the policy exists for.
-    const resolved = (superdocRecord?.interactionConfig as LooseRecord | undefined)?.comments as
-      | LooseRecord
-      | undefined;
-    if (resolved && typeof resolved.readOnly === 'boolean') return resolved.readOnly === true;
-    const modules = (superdocRecord?.config as LooseRecord | undefined)?.modules as LooseRecord | undefined;
-    const comments = modules?.comments;
-    return !!comments && typeof comments === 'object' && (comments as LooseRecord).readOnly === true;
-  };
-
-  const trackedChangeDecisionDisabledReason = (): SuperDocUIReason | undefined => {
-    if (documentIsReadOnly()) return SUPERDOC_UI_REASONS.documentReadonly;
-
-    const superdocRecord = superdoc && typeof superdoc === 'object' ? (superdoc as LooseRecord) : null;
-    const trackedChanges = (superdocRecord?.interactionConfig as LooseRecord | undefined)?.trackedChanges as
-      | LooseRecord
-      | undefined;
-    if (trackedChanges && typeof trackedChanges.allowDecisions === 'boolean') {
-      return trackedChanges.allowDecisions ? undefined : SUPERDOC_UI_REASONS.trackedChangeDecisionsDisabled;
-    }
-
-    // Older SuperDoc hosts exposed only the dual-purpose comments.readOnly
-    // field. Keep that fallback for callers constructing the UI controller
-    // around an existing v2 host.
-    return commentsAreReadOnly() ? SUPERDOC_UI_REASONS.documentReadonly : undefined;
-  };
-
-  /**
-   * Whether the resolved comment policy forbids resolve and reopen actions.
-   * Read the resolved policy first, then fall back to the legacy block.
-   */
-  const resolveIsForbidden = (): boolean => {
-    const superdocRecord = superdoc && typeof superdoc === 'object' ? (superdoc as LooseRecord) : null;
-    const resolved = (superdocRecord?.interactionConfig as LooseRecord | undefined)?.comments as
-      | LooseRecord
-      | undefined;
-    if (resolved && typeof resolved.allowResolve === 'boolean') return resolved.allowResolve === false;
-    const modules = (superdocRecord?.config as LooseRecord | undefined)?.modules as LooseRecord | undefined;
-    const comments = modules?.comments;
-    return !!comments && typeof comments === 'object' && (comments as LooseRecord).allowResolve === false;
-  };
-
-  // Document viewing keeps the body immutable. Comment writes follow
-  // `interaction.comments.readOnly` (and the legacy modules.comments flag), so
-  // a customer can keep selection-backed comments writable while the document
-  // stays in viewing mode (SD-4470).
-  const commentMutationsAreReadOnly = (): boolean => commentsAreReadOnly();
-  const trackedChangeDecisionsAreDisabled = (): boolean => trackedChangeDecisionDisabledReason() != null;
+  const {
+    readDocumentMode,
+    documentIsReadOnly,
+    commentMutationsAreReadOnly,
+    resolveIsForbidden,
+    trackedChangeDecisionDisabledReason,
+    trackedChangeDecisionsAreDisabled,
+  } = createDocumentPolicy({ superdoc, getEditor });
 
   const normalizeSelectionInfo = (raw: unknown): SelectionInfo | null =>
     raw && typeof raw === 'object' ? (raw as SelectionInfo) : null;

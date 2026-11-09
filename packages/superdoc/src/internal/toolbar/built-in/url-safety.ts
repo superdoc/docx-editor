@@ -12,6 +12,7 @@
 const SAFE_SCHEME = /^(https?|mailto|tel):/i;
 const DANGEROUS_SCHEME = /^(javascript|data|vbscript):/i;
 const HAS_SCHEME = /^[a-z][a-z0-9+.-]*:/i;
+const ASCII_TAB_OR_NEWLINE = /[\t\n\r]/;
 
 /**
  * Validate and normalize an href. Returns `{ href }` for safe values, or `null`.
@@ -20,6 +21,7 @@ export function sanitizeHref(value: unknown): { href: string } | null {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
   if (!trimmed) return null;
+  if (ASCII_TAB_OR_NEWLINE.test(trimmed)) return null;
 
   // In-document anchors are always safe.
   if (trimmed.startsWith('#')) return { href: trimmed };

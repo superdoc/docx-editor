@@ -776,6 +776,48 @@ describe('url-validation', () => {
     });
   });
 
+  describe('ASCII tab or newline inside an absolute URL', () => {
+    const asciiTabOrNewline = [
+      ['tab', '\t'],
+      ['LF', '\n'],
+      ['CR', '\r'],
+    ] as const;
+
+    it.each(asciiTabOrNewline)('rejects a %s in the scheme, host or path', (_name, character) => {
+      expect(sanitizeHref(`ht${character}tps://example.com/`)).toBeNull();
+      expect(sanitizeHref(`java${character}script:alert(1)`)).toBeNull();
+      expect(sanitizeHref(`https:${character}//example.com/`)).toBeNull();
+      expect(sanitizeHref(`https://exa${character}mple.com/`)).toBeNull();
+      expect(sanitizeHref(`https://example.com/pa${character}th`)).toBeNull();
+      expect(sanitizeHref(`https://example.com/?q=a${character}b`)).toBeNull();
+      expect(sanitizeHref(`mailto:user@exa${character}mple.com`)).toBeNull();
+    });
+
+    it.each(asciiTabOrNewline)('does not let a %s slip a URL past a URL-prefix blocklist entry', (_name, character) => {
+      const config = { redirectBlocklist: ['https://ads.example.com/track'] };
+      expect(sanitizeHref(`https://ads.exa${character}mple.com/track/1`, config)).toBeNull();
+      expect(sanitizeHref(`https://ads.example.com/tr${character}ack/1`, config)).toBeNull();
+    });
+
+    it.each(asciiTabOrNewline)('keeps rejecting a hostname-blocked host with a %s inside it', (_name, character) => {
+      expect(
+        sanitizeHref(`https://blo${character}cked.example/`, { redirectBlocklist: ['blocked.example'] }),
+      ).toBeNull();
+    });
+
+    it('still accepts an absolute URL whose only tab or newline is leading or trailing whitespace', () => {
+      expect(sanitizeHref('\t\r\nhttps://example.com/path\r\n\t')).toEqual({
+        href: 'https://example.com/path',
+        protocol: 'https',
+        isExternal: true,
+      });
+    });
+
+    it('still accepts percent-encoded tab and newline', () => {
+      expect(sanitizeHref('https://example.com/a%09b%0Ac%0Dd')?.href).toBe('https://example.com/a%09b%0Ac%0Dd');
+    });
+  });
+
   describe('relative paths in a browser page', () => {
     const origin = 'https://localhost:3000';
 

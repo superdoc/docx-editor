@@ -125,6 +125,8 @@ const SAFE_ANCHOR_NAME_PATTERN = /^[A-Za-z0-9._=-]+$/;
 
 const CONTROL_OR_INVISIBLE_CHARACTER_PATTERN = /[\x00-\x1f\x7f\u200b-\u200f\u2028\u2029\ufeff]/;
 
+const ASCII_TAB_OR_NEWLINE_PATTERN = /[\t\n\r]/;
+
 const SCHEME_PREFIX_PATTERN = /^[a-z][a-z0-9+.-]*:/i;
 
 const LEADING_SCHEME_PATTERN = /^([a-z0-9+.-]+):/i;
@@ -301,6 +303,10 @@ export function sanitizeHref(raw: string | null | undefined, config: SanitizerCo
   if (typeof raw !== 'string') return null;
   const trimmed = raw.trim();
   if (!trimmed) return null;
+
+  if (ASCII_TAB_OR_NEWLINE_PATTERN.test(trimmed)) {
+    return null;
+  }
 
   const maxLength = typeof config.maxLength === 'number' ? config.maxLength : DEFAULT_MAX_LENGTH;
   if (trimmed.length > maxLength) {

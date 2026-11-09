@@ -1,3 +1,9 @@
+import { spawnSync } from 'node:child_process';
+import { cpSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import { describe, expect, it } from 'vite-plus/test';
 
 import {
@@ -10,6 +16,7 @@ import {
   pairedElementPattern,
   readZipEntries,
   relationshipTargetProblem,
+  SYNTHETIC_IDENTITIES,
   writeZipEntries,
 } from '../lib/docx-privacy.mjs';
 import { sanitizeDocxBuffer } from '../sanitize-docx.mjs';
@@ -983,6 +990,8 @@ describe('external relationship targets', () => {
   // Reviewed and approved: exactly what the published fixtures carry today.
   const approved = [
     'https://superdoc.dev/',
+    'https://docs.superdoc.dev/',
+    'https://docs.superdoc.dev/solutions/esign/introduction',
     'https://www.harbourshare.com/',
     'http://www.betterbuildingspartnership.co.uk/working-groups/green-leases/green-lease-toolkit/',
     'https://en.wikipedia.org/wiki/Oscar_Wilde',
@@ -999,6 +1008,14 @@ describe('external relationship targets', () => {
     // Approved host, but not an encyclopedia article.
     'https://en.wikipedia.org/wiki/Special:Export?pages=x',
     'https://superdoc.dev/?matter=4471',
+    'https://docs.superdoc.dev.evil.example/',
+    'https://docs-superdoc.dev/',
+    'https://evil.docs.superdoc.dev/',
+    'https://docs.superdoc.dev/clients/acme-corp',
+    'https://docs.superdoc.dev/solutions/esign/introduction/acme-corp',
+    'https://docs.superdoc.dev/?matter=4471',
+    'https://docs.superdoc.dev/#matter-4471',
+    'https://user:pass@docs.superdoc.dev/',
     'https://user:pass@example.org/x',
     'mailto:partner@clientfirm.com',
     'file:///T:/firmwide/matter.docx',
@@ -1873,5 +1890,79 @@ describe('named privacy rules', () => {
     expect('<Relationship a="1"/>'.match(pattern)).toHaveLength(1);
     expect('<p:Relationship a="1" ></p:Relationship >'.match(pattern)).toHaveLength(1);
     expect('<Relationship a="1">text</Relationship>'.match(pattern)).toBeNull();
+  });
+});
+
+describe('approved synthetic identities', () => {
+  it('approves exactly the reviewed synthetic names, roles, and tool names', () => {
+    expect([...SYNTHETIC_IDENTITIES].sort()).toEqual(
+      [
+        'SuperDoc',
+        'SuperDoc Test User',
+        'ST',
+        'S::reviewer@example.com::00000000-0000-0000-0000-000000000000',
+        'SuperDoc Legal Team',
+        'Reviewer',
+        'Author',
+        'Editor',
+        'Guide',
+        'Alex Rivera',
+        'Morgan Lee',
+        'Default SuperDoc user',
+        'python-docx',
+        'docx',
+        'Word',
+        'Microsoft Word',
+      ].sort(),
+    );
+  });
+
+  it('approves every identity the sanitizer writes, so a cleaned fixture passes the gate', () => {
+    const sanitized = sanitizeDocxBuffer(
+      makeDocx({
+        core: CORE_WITH_PERSON,
+        parts: {
+          'comments.xml': '<w:comments><w:comment w:id="1" w:author="Real Person" w:initials="RP"/></w:comments>',
+          'people.xml':
+            '<w15:people><w15:person w15:author="Real Person"><w15:presenceInfo w15:providerId="AD" w15:userId="S::person@customer.example::1234"/></w15:person></w15:people>',
+        },
+      }),
+    ).buffer;
+    const values = inspectDocx(sanitized).identities.map(({ value }) => value);
+    expect(values).toEqual(expect.arrayContaining(['SuperDoc Test User', 'ST', 'S::reviewer@example.com::00000000-0000-0000-0000-000000000000']));
+    expect(values.filter((value) => !SYNTHETIC_IDENTITIES.has(value))).toEqual([]);
+  });
+
+  it('matches names exactly, so a variant spelling stays unreviewed', () => {
+    for (const variant of ['alex rivera', 'Alex Rivera Jr', 'guide', 'Default SuperDoc User']) {
+      expect(SYNTHETIC_IDENTITIES.has(variant)).toBe(false);
+    }
+  });
+});
+
+describe('check-docx-privacy.mjs as a command', () => {
+  const scripts = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+  it('runs and fails on a dirty fixture when invoked through a symlinked path', () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), 'docx-privacy-gate-'));
+    try {
+      const checkout = path.join(root, 'checkout');
+      mkdirSync(path.join(checkout, 'scripts/lib'), { recursive: true });
+      cpSync(path.join(scripts, 'check-docx-privacy.mjs'), path.join(checkout, 'scripts/check-docx-privacy.mjs'));
+      cpSync(path.join(scripts, 'lib/docx-privacy.mjs'), path.join(checkout, 'scripts/lib/docx-privacy.mjs'));
+      writeFileSync(path.join(checkout, 'fixture.docx'), makeDocx({ core: CORE_WITH_PERSON }));
+      for (const args of [['init', '-q'], ['add', '.']]) {
+        expect(spawnSync('git', args, { cwd: checkout }).status).toBe(0);
+      }
+      const link = path.join(root, 'link');
+      symlinkSync(checkout, link);
+
+      const gate = spawnSync(process.execPath, [path.join(link, 'scripts/check-docx-privacy.mjs')], { encoding: 'utf8' });
+
+      expect(gate.status).toBe(1);
+      expect(gate.stderr).toContain('DOCX privacy gate FAILED: 1 of 1 fixtures');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });

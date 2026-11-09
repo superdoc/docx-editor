@@ -22,7 +22,7 @@
  *   node scripts/check-docx-privacy.mjs
  *   pnpm run check:docx-privacy
  *
- * To approve a new synthetic identity, add it to SYNTHETIC_IDENTITIES below.
+ * To approve a new synthetic identity, add it to SYNTHETIC_IDENTITIES in lib/docx-privacy.mjs.
  * To sanitize an offending fixture in place, use scripts/sanitize-docx.mjs.
  */
 
@@ -32,32 +32,9 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { inspectDocx } from './lib/docx-privacy.mjs';
+import { SYNTHETIC_IDENTITIES, inspectDocx } from './lib/docx-privacy.mjs';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-
-/**
- * Identities a fixture is allowed to declare. Keep this list short: each entry
- * is a promise that the name belongs to no real person.
- */
-const SYNTHETIC_IDENTITIES = new Set([
-  'SuperDoc',
-  'SuperDoc Test User',
-  // What sanitize-docx.mjs writes into `*:initials`. The two lists have to
-  // agree, or the gate reports fixtures the sanitizer just cleaned.
-  'ST',
-  // Structured people-catalog identity written by sanitize-docx.mjs. The
-  // example.com address is reserved and the zero UUID identifies no account.
-  'S::reviewer@example.com::00000000-0000-0000-0000-000000000000',
-  'SuperDoc Legal Team',
-  'Reviewer',
-  'Author',
-  'Editor',
-  'python-docx',
-  'docx',
-  'Word',
-  'Microsoft Word',
-]);
 
 /**
  * Encrypted fixtures whose decrypted contents were inspected and found clean.

@@ -568,8 +568,29 @@ export function visibleTextReadings(xml) {
   return { joined: nodes.join(''), spaced: nodes.join(' ') };
 }
 
+export const SYNTHETIC_IDENTITIES = new Set([
+  'SuperDoc',
+  'SuperDoc Test User',
+  'ST',
+  'S::reviewer@example.com::00000000-0000-0000-0000-000000000000',
+  'SuperDoc Legal Team',
+  'Reviewer',
+  'Author',
+  'Editor',
+  'Guide',
+  'Alex Rivera',
+  'Morgan Lee',
+  'Default SuperDoc user',
+  'python-docx',
+  'docx',
+  'Word',
+  'Microsoft Word',
+]);
+
 const APPROVED_RELATIONSHIP_TARGETS = new Set([
   'https://superdoc.dev/',
+  'https://docs.superdoc.dev/',
+  'https://docs.superdoc.dev/solutions/esign/introduction',
   'https://www.harbourshare.com/',
   'http://www.betterbuildingspartnership.co.uk/working-groups/green-leases/green-lease-toolkit/',
 ]);

@@ -42,12 +42,24 @@ function countRoutes(source: string): Record<string, number> {
   return counts;
 }
 
+function routeTotals(counts: Counts): Record<string, number> {
+  const totals: Record<string, number> = {};
+  for (const routes of Object.values(counts)) {
+    for (const [route, count] of Object.entries(routes)) totals[route] = (totals[route] ?? 0) + count;
+  }
+  return totals;
+}
+
 function findIncreases(before: Counts, after: Counts): string[] {
-  return Object.entries(after).flatMap(([file, routes]) =>
-    Object.entries(routes)
-      .filter(([route, count]) => count > (before[file]?.[route] ?? 0))
-      .map(([route, count]) => `${file} ${route}: ${before[file]?.[route] ?? 0} -> ${count}`),
-  );
+  const beforeTotals = routeTotals(before);
+  return Object.entries(routeTotals(after))
+    .filter(([route, total]) => total > (beforeTotals[route] ?? 0))
+    .map(([route, total]) => {
+      const raisedFiles = Object.entries(after)
+        .filter(([file, routes]) => (routes[route] ?? 0) > (before[file]?.[route] ?? 0))
+        .map(([file, routes]) => `${file} ${before[file]?.[route] ?? 0} -> ${routes[route]}`);
+      return `${route}: ${beforeTotals[route] ?? 0} -> ${total} (${raisedFiles.join(', ')})`;
+    });
 }
 
 function recordLowerCounts(baselinePath: string, current: Counts): void {
@@ -84,15 +96,22 @@ function inventory(): Counts {
 }
 
 describe('Document API boundary', () => {
-  it('lets an update lower counts but not raise them', () => {
+  it('lets an update lower route totals or move a count between files, but not raise a total', () => {
     const baselinePath = join(mkdtempSync(join(tmpdir(), 'document-api-boundary-')), 'baseline.json');
-    const recorded = `${JSON.stringify({ 'a.ts': { host: 1 } }, null, 2)}\n`;
+    const recorded = `${JSON.stringify({ 'a.ts': { host: 2 } }, null, 2)}\n`;
     writeFileSync(baselinePath, recorded);
 
+    expect(() => recordLowerCounts(baselinePath, { 'a.ts': { host: 3 } })).toThrow(/host: 2 -> 3 \(a\.ts 2 -> 3\)/);
+    expect(() => recordLowerCounts(baselinePath, { 'a.ts': { handles: 1 } })).toThrow(
+      /handles: 0 -> 1 \(a\.ts 0 -> 1\)/,
+    );
     expect(() => recordLowerCounts(baselinePath, { 'a.ts': { host: 2 }, 'b.ts': { host: 1 } })).toThrow(
-      /a\.ts host: 1 -> 2\nb\.ts host: 0 -> 1/,
+      /host: 2 -> 3 \(b\.ts 0 -> 1\)/,
     );
     expect(readFileSync(baselinePath, 'utf8')).toBe(recorded);
+
+    recordLowerCounts(baselinePath, { 'a.ts': { host: 1 }, 'b.ts': { host: 1 } });
+    expect(JSON.parse(readFileSync(baselinePath, 'utf8'))).toEqual({ 'a.ts': { host: 1 }, 'b.ts': { host: 1 } });
 
     recordLowerCounts(baselinePath, {});
     expect(JSON.parse(readFileSync(baselinePath, 'utf8'))).toEqual({});

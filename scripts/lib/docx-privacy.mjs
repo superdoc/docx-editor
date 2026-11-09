@@ -625,7 +625,7 @@ const APP_PROPERTIES_PART = 'docProps/app.xml';
 const CUSTOM_PROPERTIES_PART = 'docProps/custom.xml';
 const ANY_WORD_XML_PART = /^word\/.*\.xml$/i;
 const CUSTOM_XML_STORE_PART = /^customXml\/item(?:Props)?\d*\.xml$/i;
-const RELATIONSHIPS_PART = /(?:^|\/)_rels\/[^/]+\.rels$/i;
+export const RELATIONSHIPS_PART = /(?:^|\/)_rels\/[^/]*\.rels$/i;
 
 const CORE_IDENTITY_TAGS = ['dc:creator', 'cp:lastModifiedBy', 'dc:title', 'dc:subject', 'cp:keywords', 'dc:description'];
 const APP_IDENTITY_TAGS = ['Company', 'Manager'];

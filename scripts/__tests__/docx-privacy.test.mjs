@@ -1042,6 +1042,50 @@ describe('external relationship targets', () => {
   });
 });
 
+describe('package relationships', () => {
+  const OFFICE_DOCUMENT =
+    '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>';
+  const withPackageRelationship = (relationship) =>
+    writeZipEntries(
+      new Map([
+        ['[Content_Types].xml', Buffer.from('<Types/>')],
+        ['word/document.xml', Buffer.from('<w:document/>')],
+        [
+          '_rels/.rels',
+          Buffer.from(
+            `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${OFFICE_DOCUMENT}${relationship}</Relationships>`,
+          ),
+        ],
+      ]),
+    );
+  const externalThumbnail = (target) =>
+    `<Relationship Id="rId9" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/thumbnail" Target="${target}" TargetMode="External"/>`;
+
+  it('reports an unreviewed external target in the package relationships part', () => {
+    const report = inspectDocx(withPackageRelationship(externalThumbnail('https://client.example/matter/123')));
+    expect(report.relationships).toEqual(['_rels/.rels: unreviewed external target https://client.example/matter/123']);
+  });
+
+  it('retargets it and keeps the main document relationship', () => {
+    const cleaned = sanitizeDocxBuffer(withPackageRelationship(externalThumbnail('https://client.example/matter/123')));
+    expect(cleaned.changed).toBe(true);
+    expect(inspectDocx(cleaned.buffer).relationships).toEqual([]);
+    const rels = readZipEntries(cleaned.buffer).get('_rels/.rels').toString();
+    expect(rels).toContain(OFFICE_DOCUMENT);
+    expect(rels).toContain('Id="rId9"');
+    expect(rels).toContain('Target="https://example.com/"');
+    expect(rels).not.toContain('client.example');
+  });
+
+  it('leaves internal package relationships and reviewed targets alone', () => {
+    for (const relationship of ['', externalThumbnail('https://superdoc.dev/')]) {
+      const source = withPackageRelationship(relationship);
+      expect(inspectDocx(source).relationships).toEqual([]);
+      expect(sanitizeDocxBuffer(source).changed).toBe(false);
+    }
+  });
+});
+
 describe('gate and sanitizer agree, and neither destroys ordinary content', () => {
   const store = (item) =>
     writeZipEntries(

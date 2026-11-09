@@ -51,6 +51,7 @@ import {
   isReportableCustomProperty,
   organizationReceivers,
   relationshipTargetProblem,
+  RELATIONSHIPS_PART,
   TEXT_ELEMENTS,
   VISIBLE_TEXT_PARTS,
   pairedElementPattern,
@@ -223,7 +224,7 @@ export function sanitizeDocxBuffer(buffer) {
 function retargetExternalRelationships(entries) {
   let changed = false;
   for (const [name, content] of entries) {
-    if (!/(?:^|\/)_rels\/[^/]+\.rels$/i.test(name)) continue;
+    if (!RELATIONSHIPS_PART.test(name)) continue;
     const original = decodeXmlPart(content);
     const updated = original.replace(emptyElementPattern('Relationship'), (element) => {
       // Delimiters located in the raw element and only the value decoded, as in

@@ -36,7 +36,6 @@ import type {
   ParagraphLineRegion,
 } from '@superdoc/contracts';
 import {
-  buildLayoutSourceIdentityForFragment,
   normalizeColumnLayout,
   getFragmentZIndex,
   getColumnGeometry,
@@ -51,8 +50,6 @@ import {
   createHeaderFooterResolutionIndex,
   selectHeaderFooterVariantForPage,
   isPagePositionedParagraphFrame,
-  isPagePositionedFloatingTable,
-  resolveFooterPageFrameOriginY,
   collectSectionBoundaryFillerBlockIdsSteps,
   isInvisibleSectionBoundaryMarkerBlock,
 } from '@superdoc/contracts';
@@ -97,7 +94,11 @@ import {
   isPageRelativeAnchor,
 } from './anchors.js';
 import { clampPageRelativeFloatingTableY } from './floating-table-anchor.js';
-import { normalizeFragmentsForRegion } from './normalize-header-footer-fragments.js';
+import {
+  collectNonFlowPagePositionedParagraphFrameIds,
+  computeFragmentBottom,
+  finalizeHeaderFooterLayout,
+} from './header-footer-layout.js';
 import { createPaginator, isPaginationEarlyStop, type PageState, type ConstraintBoundary } from './paginator.js';
 import { formatPageNumber } from './pageNumbering.js';
 import { shouldSuppressOwnSpacing, computeFragmentPmRange, findLineIndexForRunOrdinal } from './layout-utils.js';
@@ -5110,52 +5111,6 @@ function clonePlain<T>(value: T): T {
   }
 }
 
-/**
- * Compute the bottom edge (y + height) of a fragment for bounds tracking.
- */
-function computeFragmentBottom(fragment: Fragment, block: FlowBlock, measure: Measure): number {
-  let bottom = fragment.y;
-
-  if (fragment.kind === 'para' && measure?.kind === 'paragraph') {
-    let sum = 0;
-    for (let li = fragment.fromLine; li < fragment.toLine; li += 1) {
-      sum += measure.lines[li]?.lineHeight ?? 0;
-    }
-    bottom += sum;
-    const spacingAfter = (block as ParagraphBlock)?.attrs?.spacing?.after;
-    if (spacingAfter && fragment.toLine === measure.lines.length) {
-      bottom += Math.max(0, Number(spacingAfter));
-    }
-  } else if (fragment.kind === 'image') {
-    bottom +=
-      typeof fragment.height === 'number' ? fragment.height : ((measure as ImageMeasure | undefined)?.height ?? 0);
-  } else if (fragment.kind === 'drawing') {
-    bottom +=
-      typeof fragment.height === 'number' ? fragment.height : ((measure as DrawingMeasure | undefined)?.height ?? 0);
-  } else if (fragment.kind === 'table') {
-    // TableFragment carries its own height (a required field) and hasHeight() already
-    // classifies tables as height-bearing; without this branch a header/footer story
-    // containing a table drops the table height from layout.height, so the region
-    // never grows to fit the table and the body is not pushed below it (the table
-    // overflows into the body — SD-1581).
-    bottom += typeof fragment.height === 'number' ? fragment.height : 0;
-  } else if (fragment.kind === 'list-item') {
-    const listMeasure = measure as ListMeasure | undefined;
-    if (listMeasure) {
-      const item = listMeasure.items.find((it) => it.itemId === fragment.itemId);
-      if (item?.paragraph) {
-        let sum = 0;
-        for (let li = fragment.fromLine; li < fragment.toLine; li += 1) {
-          sum += item.paragraph.lines[li]?.lineHeight ?? 0;
-        }
-        bottom += sum;
-      }
-    }
-  }
-
-  return bottom;
-}
-
 function maxFlowAffectingFloatingTableBottom(
   page: Page,
   blockById: ReadonlyMap<string, FlowBlock>,
@@ -5173,234 +5128,6 @@ function maxFlowAffectingFloatingTableBottom(
     maxBottom = Math.max(maxBottom, bottom);
   }
   return maxBottom;
-}
-
-type VerticalBand = {
-  start: number;
-  end: number;
-};
-
-function rangesIntersect(startA: number, endA: number, startB: number, endB: number): boolean {
-  return endA > startB && startA < endB;
-}
-
-function getPageRelativeMeasurementBand(
-  kind: 'header' | 'footer' | undefined,
-  constraints: HeaderFooterConstraints,
-): VerticalBand | null {
-  if (!kind || !constraints.margins) {
-    return null;
-  }
-
-  const bandSize = kind === 'header' ? constraints.margins.top : constraints.margins.bottom;
-  if (!Number.isFinite(bandSize) || bandSize == null || bandSize <= 0) {
-    return null;
-  }
-
-  return {
-    start: 0,
-    end: bandSize,
-  };
-}
-
-function collectNonFlowPagePositionedParagraphFrameIds(
-  blocks: FlowBlock[],
-  measures: Measure[],
-  kind: 'header' | 'footer' | undefined,
-  constraints: HeaderFooterConstraints,
-): Set<string> {
-  // Keep this footprint calculation aligned with computeFragmentBottom and
-  // shouldExcludeFromMeasurement so flow and measurement use the same band test.
-  const ids = new Set<string>();
-  const measurementBand = getPageRelativeMeasurementBand(kind, constraints);
-  const pageHeight = constraints.pageHeight;
-  if (!kind || typeof pageHeight !== 'number' || !Number.isFinite(pageHeight)) {
-    return ids;
-  }
-
-  const regionOrigin = kind === 'footer' ? resolveFooterPageFrameOriginY(pageHeight, constraints.margins?.bottom) : 0;
-
-  for (let index = 0; index < blocks.length; index += 1) {
-    const block = blocks[index];
-    const measure = measures[index];
-    if (block.kind !== 'paragraph' || measure?.kind !== 'paragraph') continue;
-
-    const frame = block.attrs?.frame;
-    if (!isPagePositionedParagraphFrame(frame)) continue;
-    if (frame.wrap === 'none') {
-      ids.add(block.id);
-      continue;
-    }
-    if (!measurementBand) continue;
-
-    const frameTop = frame.y - regionOrigin;
-    const lineHeight = measure.lines.reduce((total, line) => total + (line.lineHeight ?? 0), 0);
-    const spacingAfter = Math.max(0, Number(block.attrs?.spacing?.after ?? 0));
-    const frameBottom = frameTop + lineHeight + spacingAfter;
-    if (!rangesIntersect(frameTop, frameBottom, measurementBand.start, measurementBand.end)) {
-      ids.add(block.id);
-    }
-  }
-
-  return ids;
-}
-
-function isHeaderFooterAbsoluteOverlay(
-  block: ImageBlock | DrawingBlock,
-  kind: 'header' | 'footer' | undefined,
-  fragment: Fragment,
-  fragmentBottom: number,
-  canvasHeight: number,
-  constraints: HeaderFooterConstraints,
-): boolean {
-  if (!kind) return false;
-  if (block.anchor?.isAnchored !== true) return false;
-  if (block.wrap?.type !== 'None') return false;
-
-  if (fragment.y < 0 || fragmentBottom > canvasHeight) {
-    return true;
-  }
-
-  const fragmentHeight =
-    'height' in fragment && typeof fragment.height === 'number' ? fragment.height : fragmentBottom - fragment.y;
-  const fragmentWidth = 'width' in fragment && typeof fragment.width === 'number' ? fragment.width : 0;
-  const heightCoversCanvas = Number.isFinite(fragmentHeight) && fragmentHeight >= canvasHeight;
-  const widthCoversCanvas =
-    Number.isFinite(constraints.width) && constraints.width > 0 && fragmentWidth >= constraints.width;
-
-  return heightCoversCanvas && widthCoversCanvas;
-}
-
-/**
- * Determine whether a fragment should be excluded from measurement (pagination) bounds.
- *
- * Excluded fragments:
- * 1. behindDoc anchored fragments — purely decorative z-order, per OOXML spec.
- * 2. Page-relative anchored fragments whose local Y range [y, y+h] does not
- *    intersect [0, canvasHeight] — they are out-of-band and should not inflate
- *    the measurement used by body pagination.
- * 3. Page-relative header/footer overlays that do not intersect the region's
- *    reserved margin band — they should still render, but must not reserve
- *    body space like true header/footer content.
- * 4. Header/footer anchored overlays with wrap=None that either extend
- *    outside the measurement canvas or cover it entirely. `wrap=None` is
- *    OOXML's "absolute overlay, no flow exclusion zone", so by definition
- *    such fragments must not reserve body space.
- */
-function shouldExcludeFromMeasurement(
-  fragment: Fragment,
-  block: FlowBlock,
-  fragmentBottom: number,
-  canvasHeight: number,
-  kind: 'header' | 'footer' | undefined,
-  constraints: HeaderFooterConstraints,
-): boolean {
-  if (
-    kind === 'footer' &&
-    fragment.kind === 'table' &&
-    fragment.isAnchored === true &&
-    isPagePositionedFloatingTable(block)
-  ) {
-    return true;
-  }
-
-  const pageAnchoredParagraphFrame =
-    fragment.kind === 'para' && block.kind === 'paragraph' && isPagePositionedParagraphFrame(block.attrs?.frame);
-
-  if (pageAnchoredParagraphFrame) {
-    if (kind && block.attrs?.frame?.wrap === 'none') return true;
-
-    const measurementBand = getPageRelativeMeasurementBand(kind, constraints);
-    return (
-      measurementBand != null &&
-      !rangesIntersect(fragment.y, fragmentBottom, measurementBand.start, measurementBand.end)
-    );
-  }
-
-  const isAnchoredFragment =
-    (fragment.kind === 'image' || fragment.kind === 'drawing') &&
-    (fragment as { isAnchored?: boolean }).isAnchored === true;
-
-  if (!isAnchoredFragment) return false;
-
-  if (block.kind !== 'image' && block.kind !== 'drawing') {
-    throw new Error(
-      `Type mismatch: fragment kind is ${fragment.kind} but block kind is ${block.kind} for block ${block.id}`,
-    );
-  }
-
-  const anchoredBlock = block as ImageBlock | DrawingBlock;
-
-  // Header/footer fragment widths already describe the rotated paint bounds.
-  // Page-relative X stays in page coordinates; other anchors are story-local.
-  // A side decoration must remain painted without reserving body height.
-  const pageRelativeX = anchoredBlock.anchor?.hRelativeFrom === 'page';
-  const knownHorizontalGeometry =
-    !pageRelativeX ||
-    (typeof constraints.pageWidth === 'number' && Number.isFinite(constraints.pageWidth) && constraints.pageWidth > 0);
-  const wrap = anchoredBlock.wrap;
-  const horizontalWrap = wrap?.type === 'Square' || wrap?.type === 'Tight' || wrap?.type === 'Through';
-  const bothSides = wrap?.wrapText == null || wrap.wrapText === 'bothSides';
-  const distLeft = wrap?.distLeft ?? 0;
-  const distRight = wrap?.distRight ?? 0;
-  if (
-    kind &&
-    horizontalWrap &&
-    bothSides &&
-    knownHorizontalGeometry &&
-    Number.isFinite(constraints.width) &&
-    constraints.width > 0 &&
-    Number.isFinite(distLeft) &&
-    Number.isFinite(distRight) &&
-    distLeft >= 0 &&
-    distRight >= 0
-  ) {
-    const bandLeft = pageRelativeX ? (constraints.margins?.left ?? 0) : 0;
-    const width = 'width' in fragment ? fragment.width : undefined;
-    if (
-      Number.isFinite(bandLeft) &&
-      Number.isFinite(fragment.x) &&
-      typeof width === 'number' &&
-      Number.isFinite(width) &&
-      width > 0 &&
-      Number.isFinite(fragment.x - distLeft) &&
-      Number.isFinite(fragment.x + width + distRight) &&
-      !rangesIntersect(fragment.x - distLeft, fragment.x + width + distRight, bandLeft, bandLeft + constraints.width)
-    ) {
-      return true;
-    }
-  }
-
-  // behindDoc fragments never affect measurement
-  if (anchoredBlock.anchor?.behindDoc) return true;
-
-  // Header/footer drawings with wrap=None are absolute overlays. Word keeps
-  // the story origin stable when their height changes; the carrier paragraph,
-  // not the overlay bounds, owns the decoration's measurement height.
-  if (kind && anchoredBlock.wrap?.type === 'None') return true;
-
-  if (isHeaderFooterAbsoluteOverlay(anchoredBlock, kind, fragment, fragmentBottom, canvasHeight, constraints)) {
-    return true;
-  }
-
-  // Page-relative anchored fragments that sit entirely outside the measurement band
-  // should not inflate pagination height.
-  if (isPageRelativeAnchor(anchoredBlock)) {
-    const fragmentTop = fragment.y;
-    // Exclude if the fragment range [top, bottom] does not intersect [0, canvasHeight]
-    if (fragmentBottom <= 0 || fragmentTop >= canvasHeight) {
-      return true;
-    }
-  }
-
-  if (anchoredBlock.anchor?.vRelativeFrom === 'page') {
-    const measurementBand = getPageRelativeMeasurementBand(kind, constraints);
-    if (measurementBand && !rangesIntersect(fragment.y, fragmentBottom, measurementBand.start, measurementBand.end)) {
-      return true;
-    }
-  }
-
-  return false;
 }
 
 /**
@@ -5476,9 +5203,6 @@ function prepareHeaderFooterLayout(
   if (!Number.isFinite(width) || width <= 0) {
     throw new Error('layoutHeaderFooter: width must be positive');
   }
-  // If height is zero or negative (e.g., edge-to-edge layouts with no margin space),
-  // return an empty layout instead of crashing. This handles documents with zero margins
-  // or unusual margin configurations gracefully.
   if (!Number.isFinite(height) || height <= 0) {
     return { empty: true, height: 0, options: {} };
   }
@@ -5502,11 +5226,7 @@ function prepareHeaderFooterLayout(
       ? { pagePositionedTableFitHeight: constraints.pageHeight }
       : {}),
   };
-  const renderDiagnosticOwner = (
-    constraints as HeaderFooterConstraints & {
-      [V2_RENDER_DIAGNOSTIC_PAGINATION_OWNER]?: V2RenderDiagnosticPaginationOwner;
-    }
-  )[V2_RENDER_DIAGNOSTIC_PAGINATION_OWNER];
+  const renderDiagnosticOwner: unknown = Reflect.get(constraints, V2_RENDER_DIAGNOSTIC_PAGINATION_OWNER);
   if (renderDiagnosticOwner) {
     Object.defineProperty(options, V2_RENDER_DIAGNOSTIC_PAGINATION_OWNER, {
       configurable: true,
@@ -5520,101 +5240,6 @@ function prepareHeaderFooterLayout(
     options,
   };
 }
-
-function finalizeHeaderFooterLayout(
-  layout: Layout,
-  blocks: FlowBlock[],
-  measures: Measure[],
-  constraints: HeaderFooterConstraints,
-  height: number,
-  kind: 'header' | 'footer' | undefined,
-): HeaderFooterLayout {
-  // Post-normalize anchored fragment Y positions for header/footer stories.
-  //
-  // The inner layoutDocument() uses the body content height as its page height,
-  // but page/margin-relative anchors need real region geometry to avoid carrying
-  // synthetic body-canvas coordinates into header/footer measurement.
-  if (kind && constraints.pageHeight != null) {
-    normalizeFragmentsForRegion(layout.pages, blocks, measures, kind, constraints);
-  }
-
-  const story = kind ? { kind } : undefined;
-  if (story) {
-    for (const page of layout.pages) {
-      page.fragments = page.fragments.map((fragment) => ({
-        ...fragment,
-        layoutSourceIdentity: buildLayoutSourceIdentityForFragment(fragment, story),
-      }));
-    }
-  }
-
-  // Compute bounds using an index map to avoid building multiple Maps
-  const idToIndex = new Map<string, number>();
-  for (let i = 0; i < blocks.length; i += 1) {
-    idToIndex.set(blocks[i].id, i);
-  }
-
-  // Track separate bounds for measurement (pagination) and rendering (overlay shift).
-  // Measurement bounds exclude behindDoc and out-of-band page-relative anchored fragments.
-  // Render bounds include all visible fragments.
-  let measureMinY = 0;
-  let measureMaxY = 0;
-  let renderMinY = 0;
-  let renderMaxY = 0;
-  const pageBounds = layout.pages.map(() => ({
-    measureMinY: 0,
-    measureMaxY: 0,
-    renderMinY: 0,
-    renderMaxY: 0,
-  }));
-
-  for (let pageIndex = 0; pageIndex < layout.pages.length; pageIndex += 1) {
-    const page = layout.pages[pageIndex];
-    const bounds = pageBounds[pageIndex];
-    for (const fragment of page.fragments) {
-      const idx = idToIndex.get(fragment.blockId);
-      if (idx == null) continue;
-      const block = blocks[idx];
-      const measure = measures[idx];
-
-      const bottom = computeFragmentBottom(fragment, block, measure);
-
-      // Track render bounds for all fragments (used by overlay shift in SessionManager)
-      if (fragment.y < renderMinY) renderMinY = fragment.y;
-      if (bottom > renderMaxY) renderMaxY = bottom;
-      if (fragment.y < bounds.renderMinY) bounds.renderMinY = fragment.y;
-      if (bottom > bounds.renderMaxY) bounds.renderMaxY = bottom;
-
-      // Determine whether this fragment should be excluded from measurement (pagination) bounds
-      if (shouldExcludeFromMeasurement(fragment, block, bottom, height, kind, constraints)) continue;
-
-      if (fragment.y < measureMinY) measureMinY = fragment.y;
-      if (bottom > measureMaxY) measureMaxY = bottom;
-      if (fragment.y < bounds.measureMinY) bounds.measureMinY = fragment.y;
-      if (bottom > bounds.measureMaxY) bounds.measureMaxY = bottom;
-    }
-  }
-
-  return {
-    height: measureMaxY - measureMinY,
-    minY: renderMinY,
-    maxY: renderMaxY,
-    renderHeight: renderMaxY - renderMinY,
-    pages: layout.pages.map((page, pageIndex) => {
-      const bounds = pageBounds[pageIndex];
-      return {
-        number: page.number,
-        fragments: page.fragments,
-        measurementHeight: bounds.measureMaxY - bounds.measureMinY,
-        minY: bounds.renderMinY,
-        maxY: bounds.renderMaxY,
-        renderHeight: bounds.renderMaxY - bounds.renderMinY,
-      };
-    }),
-  };
-}
-
-// moved layouters and PM helpers to dedicated modules
 
 /**
  * Normalize and validate column layout configuration, computing individual column widths.

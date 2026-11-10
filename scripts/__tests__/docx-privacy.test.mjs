@@ -3,6 +3,7 @@ import { cpSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } fr
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { crc32 } from 'node:zlib';
 
 import { describe, expect, it } from 'vite-plus/test';
 
@@ -17,6 +18,7 @@ import {
   readZipEntries,
   relationshipTargetProblem,
   SYNTHETIC_IDENTITIES,
+  docxPrivacyFindings,
   writeZipEntries,
 } from '../lib/docx-privacy.mjs';
 import { sanitizeDocxBuffer } from '../sanitize-docx.mjs';
@@ -485,6 +487,21 @@ describe('gate and sanitizer stay in step on namespace aliases', () => {
     }
     expect(() => inspectDocx(patched)).toThrow(/[Uu]nsupported compression method/);
   });
+  it('refuses an archive whose part is encrypted', () => {
+    const source = makeDocx({ core: CORE_WITH_PERSON });
+    for (const [signature, flagsOffset] of [
+      [0x04034b50, 6],
+      [0x02014b50, 8],
+    ]) {
+      const patched = Buffer.from(source);
+      for (let index = 0; index + 4 <= patched.length; index += 1) {
+        if (patched.readUInt32LE(index) === signature) {
+          patched.writeUInt16LE(patched.readUInt16LE(index + flagsOffset) | 1, index + flagsOffset);
+        }
+      }
+      expect(() => inspectDocx(patched)).toThrow(/Encrypted archive entry/);
+    }
+  });
   it('rewrites the node that matched, not the first identical one', () => {
     // Searching for a node's own XML finds the first copy in the part, which is
     // a different node whenever a document repeats a run.
@@ -525,12 +542,14 @@ describe('gate and sanitizer stay in step on namespace aliases', () => {
       const local = Buffer.alloc(30);
       local.writeUInt32LE(0x04034b50, 0);
       local.writeUInt16LE(20, 4);
+      local.writeUInt32LE(crc32(data), 14);
       local.writeUInt32LE(data.length, 18);
       local.writeUInt32LE(data.length, 22);
       local.writeUInt16LE(name.length, 26);
       const central = Buffer.alloc(46);
       central.writeUInt32LE(0x02014b50, 0);
       central.writeUInt16LE(20, 6);
+      central.writeUInt32LE(crc32(data), 16);
       central.writeUInt32LE(data.length, 20);
       central.writeUInt32LE(data.length, 24);
       central.writeUInt16LE(name.length, 28);
@@ -1793,7 +1812,6 @@ describe('named privacy rules', () => {
   it('reads identities from every word part but taxonomy only from custom XML store parts', () => {
     const source = withRelationshipParts({
       'word/glossary/document.xml': '<w:x w:author="Glossary Person"/>',
-      'docProps/other.xml': '<w:x w:author="Not Read"/>',
       'customXml/item12.xml': '<r ma:contentTypeName="Acme A"/>',
       'customXml/itemProps3.xml': '<r ma:contentTypeName="Acme B"/>',
       'customXml/notes.xml': '<r ma:contentTypeName="Acme C"/>',
@@ -1805,6 +1823,11 @@ describe('named privacy rules', () => {
       'customXml/item12.xml: contentTypeName="Acme A"',
       'customXml/itemProps3.xml: contentTypeName="Acme B"',
     ]);
+  });
+
+  it('refuses reviewer identities in a part outside word/', () => {
+    const source = withRelationshipParts({ 'annotations/comments.xml': '<w:comment w:author="Real Person" w:initials="RP"/>' });
+    expect(() => inspectDocx(source)).toThrow(/carries reviewer identities outside word\//);
   });
 
   it('reports each custom XML finding in its own format, naming a receiver without its assembly version', () => {
@@ -1885,6 +1908,50 @@ describe('named privacy rules', () => {
     expect(isEncryptedDocx(Buffer.from([0xd0, ...magic.slice(1).map(() => 0)]))).toBe(false);
   });
 
+  it('reads an OLE file as an encrypted package when it holds any encryption marker, in any case', () => {
+    const ole = (streams) => {
+      const header = Buffer.alloc(512);
+      Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]).copy(header);
+      header.writeUInt16LE(9, 30);
+      header.writeUInt32LE(1, 44);
+      header.writeUInt32LE(1, 48);
+      header.writeUInt32LE(0xfffffffe, 68);
+      header.fill(0xff, 76);
+      header.writeUInt32LE(0, 76);
+      const fat = Buffer.alloc(512, 0xff);
+      fat.writeUInt32LE(0xfffffffd, 0);
+      fat.writeUInt32LE(0xfffffffe, 4);
+      const directory = Buffer.alloc(512);
+      ['Root Entry', ...streams].forEach((name, index) => {
+        directory.write(name, index * 128, 'utf16le');
+        directory.writeUInt16LE((name.length + 1) * 2, index * 128 + 64);
+        directory[index * 128 + 66] = index === 0 ? 5 : 2;
+      });
+      return Buffer.concat([header, fat, directory]);
+    };
+    for (const markers of [
+      ['EncryptionInfo', 'EncryptedPackage'],
+      ['EncryptionInfo'],
+      ['EncryptedPackage'],
+      ['\u0006DataSpaces'],
+      ['\u0006DataSpaces', 'EncryptedPackage', '\u0005SummaryInformation'],
+      ['encryptioninfo', 'encryptedpackage'],
+      ['eNcRyPtEdPaCkAgE'],
+      ['\u0006dataspaces'],
+    ]) {
+      expect(isEncryptedDocx(ole(markers)), markers.join()).toBe(true);
+    }
+    for (const ordinary of [
+      ['\u0001Ole', '\u0001CompObj', '\u0001Ole10Native'],
+      ['Workbook', '\u0001CompObj', '\u0005SummaryInformation'],
+      ['\u0001Ole', '\u0001CompObj', 'Equation Native'],
+      ['EncryptedPackages', 'DataSpaces'],
+    ]) {
+      expect(isEncryptedDocx(ole(ordinary)), ordinary.join()).toBe(false);
+    }
+    expect(() => inspectDocx(ole(['WordDocument', '\u0001CompObj']))).toThrow(/Not a ZIP archive/);
+  });
+
   it('matches an empty element in both its self-closing and explicit-end spellings', () => {
     const pattern = emptyElementPattern('Relationship');
     expect('<Relationship a="1"/>'.match(pattern)).toHaveLength(1);
@@ -1963,6 +2030,148 @@ describe('check-docx-privacy.mjs as a command', () => {
       expect(gate.stderr).toContain('DOCX privacy gate FAILED: 1 of 1 fixtures');
     } finally {
       rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('docxPrivacyFindings', () => {
+  it('reports an unapproved identity and passes an approved one', () => {
+    expect(docxPrivacyFindings('a.docx', makeDocx({ core: CORE_WITH_PERSON }))).toEqual([
+      { kind: 'dc:creator', detail: 'Real Person' },
+      { kind: 'cp:lastModifiedBy', detail: 'Someone Else' },
+    ]);
+    const synthetic = CORE_WITH_PERSON.replace('Real Person', 'Alex Rivera').replace('Someone Else', 'SuperDoc');
+    expect(docxPrivacyFindings('a.docx', makeDocx({ core: synthetic }))).toEqual([]);
+  });
+
+  it('fails a Word owner file and an archive it cannot read', () => {
+    expect(docxPrivacyFindings('dir/~$contract.docx', makeDocx()).map((finding) => finding.kind)).toEqual([
+      'word-lock-file',
+    ]);
+    expect(docxPrivacyFindings('a.docx', Buffer.from('not a zip')).map((finding) => finding.kind)).toEqual([
+      'unreadable',
+    ]);
+  });
+});
+
+describe('archive entries are read only when they are whole', () => {
+  const corrupt = (mutate) => {
+    const patched = Buffer.from(makeDocx({ core: CORE_WITH_PERSON }));
+    const end = patched.length - 22;
+    let directory = patched.readUInt32LE(end + 16);
+    for (let entry = 0; entry < patched.readUInt16LE(end + 10); entry += 1) {
+      const nameLength = patched.readUInt16LE(directory + 28);
+      if (patched.toString('utf8', directory + 46, directory + 46 + nameLength) === 'docProps/core.xml') {
+        mutate(patched, directory, patched.readUInt32LE(directory + 42));
+      }
+      directory += 46 + nameLength + patched.readUInt16LE(directory + 30) + patched.readUInt16LE(directory + 32);
+    }
+    return patched;
+  };
+
+  it('refuses an entry whose local extra field runs past the end', () => {
+    const patched = corrupt((bytes, central, local) => bytes.writeUInt16LE(0xffff, local + 28));
+    expect(() => inspectDocx(patched)).toThrow(/runs past the end/);
+  });
+
+  it('refuses an entry whose central record points away from a local header', () => {
+    const patched = corrupt((bytes, central, local) => bytes.writeUInt32LE(local + 1, central + 42));
+    expect(() => inspectDocx(patched)).toThrow(/no local header/);
+  });
+
+  it('refuses an entry whose central name differs from its local name', () => {
+    const patched = corrupt((bytes, central) => bytes.write('miscProps', central + 46, 'utf8'));
+    expect(() => inspectDocx(patched)).toThrow(/different name in its local header/);
+  });
+
+  it('refuses an entry whose bytes do not match its declared checksum', () => {
+    const patched = corrupt((bytes, central) => bytes.writeUInt32LE(bytes.readUInt32LE(central + 16) ^ 1, central + 16));
+    expect(() => inspectDocx(patched)).toThrow(/declared size and checksum/);
+  });
+});
+
+describe('identity parts cannot be hidden from the reader', () => {
+  const withEntries = (pairs) => writeZipEntries(new Map(pairs.map(([name, content]) => [name, Buffer.from(content)])));
+  const CORE_NAMESPACES =
+    'xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/"';
+
+  it('refuses a document whose core properties live outside docProps/core.xml', () => {
+    const moved = withEntries([
+      ['[Content_Types].xml', '<Types/>'],
+      [
+        '_rels/.rels',
+        '<Relationships><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="metadata/identity.xml"/></Relationships>',
+      ],
+      ['metadata/identity.xml', `<cp:coreProperties ${CORE_NAMESPACES}><dc:creator>Real Person</dc:creator></cp:coreProperties>`],
+    ]);
+    expect(() => inspectDocx(moved)).toThrow(/stored outside docProps\/core\.xml/);
+  });
+
+  it('accepts property relationships that point where Word puts them', () => {
+    const standard = withEntries([
+      ['[Content_Types].xml', '<Types/>'],
+      [
+        '_rels/.rels',
+        '<Relationships><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="/docProps/app.xml"/></Relationships>',
+      ],
+      ['docProps/core.xml', `<cp:coreProperties ${CORE_NAMESPACES}><dc:creator>Real Person</dc:creator></cp:coreProperties>`],
+    ]);
+    expect(inspectDocx(standard).identities).toContainEqual({ kind: 'dc:creator', value: 'Real Person' });
+  });
+
+  it('refuses a part whose element or attribute names are not ASCII', () => {
+    const prefixed = (core) => withEntries([['[Content_Types].xml', '<Types/>'], ['docProps/core.xml', core]]);
+    const element = '<cp:coreProperties xmlns:\u4f5c\u8005="http://purl.org/dc/elements/1.1/"><\u4f5c\u8005:creator>Real Person</\u4f5c\u8005:creator></cp:coreProperties>';
+    expect(() => inspectDocx(prefixed(element))).toThrow(/XML name outside ASCII/);
+    const attribute = makeDocx({ document: '<w:document><w:ins \u4f5c:author="Real Person"/></w:document>' });
+    expect(() => inspectDocx(attribute)).toThrow(/XML name outside ASCII/);
+  });
+
+  it('reads non-ASCII text, attribute values, and comments as content', () => {
+    const document =
+      '<w:document><!-- <\u4f5c:x> --><w:p><w:r><w:t w:val="caf\u00e9 > x">A\u00e7\u00e3o \u2014 \u4f5c\u8005 = 1</w:t></w:r></w:p></w:document>';
+    expect(() => inspectDocx(makeDocx({ document }))).not.toThrow();
+  });
+});
+
+describe('XML the reader cannot see through is refused', () => {
+  const coreWith = (core) => writeZipEntries(new Map([
+    ['[Content_Types].xml', Buffer.from('<Types/>')],
+    ['docProps/core.xml', Buffer.isBuffer(core) ? core : Buffer.from(core)],
+  ]));
+
+  it('refuses a DOCTYPE, an entity, or an attribute-list default', () => {
+    for (const declaration of [
+      '<!DOCTYPE cp:coreProperties [<!ENTITY who "&#60;dc:creator&#62;Real Person&#60;/dc:creator&#62;">]>',
+      '<!DOCTYPE w:document [<!ATTLIST w:ins w:author CDATA "Real Person">]>',
+    ]) {
+      const source = coreWith(`<?xml version="1.0"?>${declaration}<cp:coreProperties/>`);
+      expect(() => inspectDocx(source)).toThrow(/declares a DOCTYPE or entity/);
+    }
+  });
+
+  it('still reads comments and CDATA as ordinary content', () => {
+    const source = coreWith(`<cp:coreProperties ${'xmlns:dc="http://purl.org/dc/elements/1.1/"'}><!-- <!DOCTYPE x> --><dc:title><![CDATA[x]]></dc:title></cp:coreProperties>`);
+    expect(() => inspectDocx(source)).not.toThrow();
+  });
+
+  it('refuses a relationship written with an end tag it cannot parse', () => {
+    const source = writeZipEntries(new Map([
+      ['[Content_Types].xml', Buffer.from('<Types/>')],
+      [
+        '_rels/.rels',
+        Buffer.from('<Relationships><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="metadata/core.xml"><!--x--></Relationship></Relationships>'),
+      ],
+      ['metadata/core.xml', Buffer.from(CORE_WITH_PERSON)],
+    ]));
+    expect(() => inspectDocx(source)).toThrow(/relationship this reader cannot parse/);
+  });
+
+  it('refuses a UTF-16 part that does not begin with its markup', () => {
+    const utf16 = (text) => Buffer.from(text, 'utf16le');
+    const swap = (buffer) => Buffer.from(buffer).swap16();
+    for (const encoded of [utf16(`  ${CORE_WITH_PERSON}`), swap(utf16(`  ${CORE_WITH_PERSON}`))]) {
+      expect(() => inspectDocx(coreWith(encoded))).toThrow(/not in an encoding this reader understands/);
     }
   });
 });

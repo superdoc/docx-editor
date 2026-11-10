@@ -9,12 +9,15 @@
  * (rewrite).
  */
 
+import { createHash } from 'node:crypto';
 import { deflateRawSync, inflateRawSync } from 'node:zlib';
 
 const EOCD_SIGNATURE = 0x06054b50;
 const CENTRAL_SIGNATURE = 0x02014b50;
 const STORED = 0;
 const DEFLATED = 8;
+const ENCRYPTED_ENTRY_FLAG = 0x0001;
+const LOCAL_SIGNATURE = 0x04034b50;
 
 /**
  * An XML part as text, honouring its byte-order mark.
@@ -72,6 +75,10 @@ export function encodeXmlPart(text) {
 }
 
 export function readZipEntries(buffer) {
+  return readZipArchive(buffer).entries;
+}
+
+export function readZipArchive(buffer) {
   const eocdOffset = findEndOfCentralDirectory(buffer);
   if (eocdOffset < 0) {
     throw new Error('Not a ZIP archive (no end-of-central-directory record).');
@@ -79,6 +86,7 @@ export function readZipEntries(buffer) {
   const entryCount = buffer.readUInt16LE(eocdOffset + 10);
   let offset = buffer.readUInt32LE(eocdOffset + 16);
   const entries = new Map();
+  const storedDataSpans = [];
 
   for (let index = 0; index < entryCount; index += 1) {
     // Throw rather than break. Returning the entries parsed so far would make a
@@ -91,31 +99,48 @@ export function readZipEntries(buffer) {
     if (buffer.readUInt32LE(offset) !== CENTRAL_SIGNATURE) {
       throw new Error(`central directory entry ${index} has no central-directory signature`);
     }
+    const flags = buffer.readUInt16LE(offset + 8);
     const method = buffer.readUInt16LE(offset + 10);
     const compressedSize = buffer.readUInt32LE(offset + 20);
+    const uncompressedSize = buffer.readUInt32LE(offset + 24);
     const nameLength = buffer.readUInt16LE(offset + 28);
     const extraLength = buffer.readUInt16LE(offset + 30);
     const commentLength = buffer.readUInt16LE(offset + 32);
     const localOffset = buffer.readUInt32LE(offset + 42);
     const name = buffer.toString('utf8', offset + 46, offset + 46 + nameLength);
-
-    // The local header repeats the name/extra lengths, and its extra field can
-    // differ in length from the central one, so read them from the local record.
-    const localNameLength = buffer.readUInt16LE(localOffset + 26);
-    const localExtraLength = buffer.readUInt16LE(localOffset + 28);
-    const dataStart = localOffset + 30 + localNameLength + localExtraLength;
-    const raw = buffer.subarray(dataStart, dataStart + compressedSize);
-
     if (entries.has(name)) {
       // A later member silently replaces an earlier one, so a real core.xml
       // followed by a clean copy inspects as clean while the archive still
       // publishes both. Word never writes duplicates; refuse the archive.
       throw new Error(`Duplicate archive entry: ${name}.`);
     }
-    if (method === STORED) {
-      entries.set(name, Buffer.from(raw));
-    } else if (method === DEFLATED) {
-      entries.set(name, inflateRawSync(raw));
+    if (localOffset + 30 > buffer.length || buffer.readUInt32LE(localOffset) !== LOCAL_SIGNATURE) {
+      throw new Error(`Archive entry ${name} has no local header.`);
+    }
+
+    // The local header repeats the name/extra lengths, and its extra field can
+    // differ in length from the central one, so read them from the local record.
+    if ((flags | buffer.readUInt16LE(localOffset + 6)) & ENCRYPTED_ENTRY_FLAG) {
+      throw new Error(`Encrypted archive entry: ${name}.`);
+    }
+    const localNameLength = buffer.readUInt16LE(localOffset + 26);
+    const localExtraLength = buffer.readUInt16LE(localOffset + 28);
+    if (buffer.toString('utf8', localOffset + 30, localOffset + 30 + localNameLength) !== name) {
+      throw new Error(`Archive entry ${name} has a different name in its local header.`);
+    }
+    const dataStart = localOffset + 30 + localNameLength + localExtraLength;
+    if (dataStart + compressedSize > buffer.length) {
+      throw new Error(`Archive entry ${name} runs past the end of the archive.`);
+    }
+    const raw = buffer.subarray(dataStart, dataStart + compressedSize);
+
+    if (method === STORED || method === DEFLATED) {
+      const content = method === STORED ? Buffer.from(raw) : inflateRawSync(raw);
+      if (content.length !== uncompressedSize || crc32(content) !== buffer.readUInt32LE(offset + 16)) {
+        throw new Error(`Archive entry ${name} does not match its declared size and checksum.`);
+      }
+      entries.set(name, content);
+      if (method === STORED) storedDataSpans.push({ start: dataStart, end: dataStart + compressedSize });
     } else {
       // Dropping the entry would make an uninspectable part look like an absent
       // one, and the gate would call the fixture clean. Refuse the archive.
@@ -131,7 +156,7 @@ export function readZipEntries(buffer) {
     throw new Error(`central directory advertises ${entryCount} entries but yielded ${entries.size}`);
   }
 
-  return entries;
+  return { entries, storedDataSpans };
 }
 
 /**
@@ -457,12 +482,71 @@ function startTagAttributeValues(xml, attribute) {
 }
 
 const OLE_COMPOUND_FILE_MAGIC = Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]);
+const OLE_HEADER_LENGTH = 512;
+const OLE_HEADER_FAT_SECTOR_SLOTS = 109;
+const OLE_END_OF_CHAIN = 0xfffffffe;
+const OLE_FREE_SECTOR = 0xffffffff;
+const OLE_DIRECTORY_ENTRY_LENGTH = 128;
+const OLE_EMPTY_DIRECTORY_ENTRY = 0;
+const ENCRYPTED_PACKAGE_MARKERS = new Set(['ENCRYPTIONINFO', 'ENCRYPTEDPACKAGE', '\u0006DATASPACES']);
 
-export function isEncryptedDocx(buffer) {
+export function isOleCompoundFile(buffer) {
   return (
     buffer.length >= OLE_COMPOUND_FILE_MAGIC.length &&
     buffer.subarray(0, OLE_COMPOUND_FILE_MAGIC.length).equals(OLE_COMPOUND_FILE_MAGIC)
   );
+}
+
+export function oleDirectoryNames(buffer) {
+  if (!isOleCompoundFile(buffer) || buffer.length < OLE_HEADER_LENGTH) return null;
+  const sectorShift = buffer.readUInt16LE(30);
+  if (sectorShift !== 9 && sectorShift !== 12) return null;
+  const sectorSize = 2 ** sectorShift;
+  const sectorStart = (sector) => (sector + 1) * sectorSize;
+  const sectorIsWhole = (sector) => sectorStart(sector) + sectorSize <= buffer.length;
+  const fatSectorCount = buffer.readUInt32LE(44);
+
+  const fatSectors = [];
+  for (let slot = 0; slot < OLE_HEADER_FAT_SECTOR_SLOTS && fatSectors.length < fatSectorCount; slot += 1) {
+    fatSectors.push(buffer.readUInt32LE(76 + slot * 4));
+  }
+  const difatSeen = new Set();
+  for (let difat = buffer.readUInt32LE(68); fatSectors.length < fatSectorCount; ) {
+    if (difat === OLE_END_OF_CHAIN || difatSeen.has(difat) || !sectorIsWhole(difat)) return null;
+    difatSeen.add(difat);
+    for (let slot = 0; slot < sectorSize / 4 - 1 && fatSectors.length < fatSectorCount; slot += 1) {
+      fatSectors.push(buffer.readUInt32LE(sectorStart(difat) + slot * 4));
+    }
+    difat = buffer.readUInt32LE(sectorStart(difat) + sectorSize - 4);
+  }
+  if (fatSectors.some((sector) => sector === OLE_FREE_SECTOR || !sectorIsWhole(sector))) return null;
+
+  const entriesPerFatSector = sectorSize / 4;
+  const nextSector = (sector) => {
+    const fatSector = fatSectors[Math.floor(sector / entriesPerFatSector)];
+    return fatSector === undefined ? null : buffer.readUInt32LE(sectorStart(fatSector) + (sector % entriesPerFatSector) * 4);
+  };
+
+  const names = [];
+  const directorySeen = new Set();
+  for (let sector = buffer.readUInt32LE(48); sector !== OLE_END_OF_CHAIN; sector = nextSector(sector)) {
+    if (sector === null || directorySeen.has(sector) || !sectorIsWhole(sector)) return null;
+    directorySeen.add(sector);
+    for (let entry = 0; entry < sectorSize / OLE_DIRECTORY_ENTRY_LENGTH; entry += 1) {
+      const start = sectorStart(sector) + entry * OLE_DIRECTORY_ENTRY_LENGTH;
+      if (buffer[start + 66] === OLE_EMPTY_DIRECTORY_ENTRY) continue;
+      const nameLength = buffer.readUInt16LE(start + 64);
+      if (nameLength < 2 || nameLength > 64 || nameLength % 2 !== 0) return null;
+      names.push(buffer.toString('utf16le', start, start + nameLength - 2));
+    }
+  }
+  return names;
+}
+
+export function isEncryptedDocx(buffer) {
+  if (!isOleCompoundFile(buffer)) return false;
+  const names = oleDirectoryNames(buffer);
+  return names === null || names.some((name) => ENCRYPTED_PACKAGE_MARKERS.has(name.toUpperCase()));
 }
 
 const XML_NAMED_ENTITIES = new Map([
@@ -645,6 +729,42 @@ const CORE_PROPERTIES_PART = 'docProps/core.xml';
 const APP_PROPERTIES_PART = 'docProps/app.xml';
 const CUSTOM_PROPERTIES_PART = 'docProps/custom.xml';
 const ANY_WORD_XML_PART = /^word\/.*\.xml$/i;
+const XML_PART = /\.(?:xml|rels)$/i;
+const MARKUP_TAG = /<\/?[^\s>/!?](?:[^>"']|"[^"]*"|'[^']*')*>/g;
+const QUOTED_VALUE = /"[^"]*"|'[^']*'/g;
+const NON_ASCII = /[^\x00-\x7f]/;
+
+function usesNonAsciiXmlName(xml) {
+  return [...blankXmlCommentsKeepingOffsets(xml).matchAll(MARKUP_TAG)]
+    .some((tag) => NON_ASCII.test(tag[0].replace(QUOTED_VALUE, '""')));
+}
+
+const MARKUP_DECLARATION = /<!(?!--|\[CDATA\[)/;
+const ANY_RELATIONSHIP_START = /<(?:[A-Za-z_][\w.-]*:)?Relationship[\s/>]/g;
+
+function xmlPartProblem(name, raw) {
+  const xml = decodeXmlPart(raw);
+  if (xml.includes('\u0000')) return 'is not in an encoding this reader understands';
+  if (MARKUP_DECLARATION.test(blankXmlCommentsKeepingOffsets(xml))) return 'declares a DOCTYPE or entity';
+  if (usesNonAsciiXmlName(xml)) return 'uses an XML name outside ASCII';
+  if (RELATIONSHIPS_PART.test(name)) {
+    const starts = blankXmlCommentsKeepingOffsets(xml).match(ANY_RELATIONSHIP_START)?.length ?? 0;
+    const empty = [...blankXmlCommentsKeepingOffsets(xml).matchAll(emptyElementPattern('Relationship'))]
+      .filter((element) => !/>\s*<\//.test(element[0])).length;
+    if (starts !== empty) return 'has a relationship this reader cannot parse';
+  }
+  if (!/^word\//i.test(name) && REVIEWER_IDENTITY_ATTRIBUTES.some(({ attribute }) =>
+    new RegExp(`\\s${attribute}\\s*=`).test(blankXmlCommentsKeepingOffsets(xml)))) {
+    return 'carries reviewer identities outside word/';
+  }
+  return null;
+}
+const PACKAGE_RELATIONSHIPS_PART = '_rels/.rels';
+const PROPERTY_PART_FOR_TYPE = new Map([
+  ['core-properties', CORE_PROPERTIES_PART],
+  ['extended-properties', APP_PROPERTIES_PART],
+  ['custom-properties', CUSTOM_PROPERTIES_PART],
+]);
 const CUSTOM_XML_STORE_PART = /^customXml\/item(?:Props)?\d*\.xml$/i;
 export const RELATIONSHIPS_PART = /(?:^|\/)_rels\/[^/]*\.rels$/i;
 
@@ -758,6 +878,16 @@ export function inspectDocx(buffer) {
   }
   const entries = readZipEntries(buffer);
   const read = (name) => (entries.has(name) ? decodeXmlPart(entries.get(name)) : '');
+  for (const [name, content] of entries) {
+    const problem = XML_PART.test(name) ? xmlPartProblem(name, content) : null;
+    if (problem) throw new Error(`Part ${name} ${problem}.`);
+  }
+  for (const element of read(PACKAGE_RELATIONSHIPS_PART).matchAll(emptyElementPattern('Relationship'))) {
+    const expected = PROPERTY_PART_FOR_TYPE.get(attributeValueOf(element[0], 'Type').split('/').pop());
+    if (expected && attributeValueOf(element[0], 'Target').replace(/^\//, '') !== expected) {
+      throw new Error(`Package properties are stored outside ${expected}.`);
+    }
+  }
 
   const identities = [];
   addPropertyIdentities(identities, {
@@ -774,4 +904,49 @@ export function inspectDocx(buffer) {
     relationships: unpublishableRelationships(entries),
     encrypted: false,
   };
+}
+
+const REVIEWED_EXCEPTIONS = new Map([]);
+
+const isWordOwnerFile = (relativePath) => relativePath.split('/').at(-1).startsWith('~$');
+
+function isApprovedIdentity(value) {
+  const trimmed = String(value ?? '').trim();
+  return !trimmed || SYNTHETIC_IDENTITIES.has(trimmed);
+}
+
+export function docxPrivacyFindings(relativePath, bytes) {
+  if (isWordOwnerFile(relativePath)) {
+    return [
+      {
+        kind: 'word-lock-file',
+        detail: 'Word owner file (~$*.docx) carries the editor name and must not be committed.',
+      },
+    ];
+  }
+
+  const digest = createHash('sha256').update(bytes).digest('hex');
+  if (REVIEWED_EXCEPTIONS.has(digest)) return [];
+
+  let report;
+  try {
+    report = inspectDocx(bytes);
+  } catch (error) {
+    return [{ kind: 'unreadable', detail: error.message }];
+  }
+
+  const findings = [];
+  for (const { kind, value } of report.identities) {
+    if (!isApprovedIdentity(value)) findings.push({ kind, detail: value });
+  }
+  for (const detail of report.taxonomy) findings.push({ kind: 'customXml-taxonomy', detail });
+  for (const detail of report.bodyStamps) findings.push({ kind: 'document-stamp', detail });
+  for (const detail of report.relationships) findings.push({ kind: 'external-relationship', detail });
+  if (report.encrypted) {
+    findings.push({
+      kind: 'encrypted',
+      detail: 'contents cannot be inspected; decrypt and review, or record a REVIEWED_EXCEPTIONS entry',
+    });
+  }
+  return findings;
 }

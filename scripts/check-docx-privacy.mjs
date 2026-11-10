@@ -27,31 +27,13 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { SYNTHETIC_IDENTITIES, inspectDocx } from './lib/docx-privacy.mjs';
+import { docxPrivacyFindings } from './lib/docx-privacy.mjs';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-
-/**
- * Encrypted fixtures whose decrypted contents were inspected and found clean.
- *
- * An encrypted document is opaque to this gate, and encryption is not privacy
- * when the password lives in the test suite beside it. So the exception is not
- * "trust the ciphertext" — it records that somebody decrypted the file, read
- * the plaintext, and confirmed it carries no identity.
- *
- * Keyed by SHA-256 rather than by path: a path-only exception would keep
- * approving the file after its bytes change, which is exactly when it needs
- * looking at again. Replacing an exempted fixture fails the gate until someone
- * repeats the inspection and records the new hash.
- *
- * @type {Map<string, {path: string, reason: string}>}
- */
-const REVIEWED_EXCEPTIONS = new Map([]);
 
 function listTrackedDocx() {
   // `:(icase)` because git pathspecs are case-sensitive by default: a fixture
@@ -65,45 +47,14 @@ function listTrackedDocx() {
   return out.split('\0').filter(Boolean);
 }
 
-/**
- * Word writes a `~$name.docx` owner file next to an open document containing
- * the editor's name. It is never a fixture, so treat any tracked one as a
- * mistake rather than trying to inspect it.
- */
-function isWordLockFile(relativePath) {
-  return path.basename(relativePath).startsWith('~$');
-}
-
-function isApproved(value) {
-  const trimmed = String(value ?? '').trim();
-  if (!trimmed) return true;
-  return SYNTHETIC_IDENTITIES.has(trimmed);
-}
-
 function main() {
   const files = listTrackedDocx();
   const failures = [];
 
   for (const relativePath of files) {
-    const absolutePath = path.join(REPO_ROOT, relativePath);
-
-    if (isWordLockFile(relativePath)) {
-      failures.push({
-        file: relativePath,
-        findings: [
-          {
-            kind: 'word-lock-file',
-            detail: 'Word owner file (~$*.docx) carries the editor name and must not be committed.',
-          },
-        ],
-      });
-      continue;
-    }
-
-    let report;
     let bytes;
     try {
-      bytes = readFileSync(absolutePath);
+      bytes = readFileSync(path.join(REPO_ROOT, relativePath));
     } catch (error) {
       failures.push({
         file: relativePath,
@@ -112,42 +63,7 @@ function main() {
       continue;
     }
 
-    const digest = createHash('sha256').update(bytes).digest('hex');
-    if (REVIEWED_EXCEPTIONS.has(digest)) continue;
-
-    try {
-      report = inspectDocx(bytes);
-    } catch (error) {
-      failures.push({
-        file: relativePath,
-        findings: [{ kind: 'unreadable', detail: error.message }],
-      });
-      continue;
-    }
-
-    const findings = [];
-    for (const { kind, value } of report.identities) {
-      if (!isApproved(value)) {
-        findings.push({ kind, detail: value });
-      }
-    }
-    for (const detail of report.taxonomy) {
-      findings.push({ kind: 'customXml-taxonomy', detail });
-    }
-    for (const detail of report.bodyStamps) {
-      findings.push({ kind: 'document-stamp', detail });
-    }
-    for (const detail of report.relationships ?? []) {
-      findings.push({ kind: 'external-relationship', detail });
-    }
-    if (report.encrypted) {
-      // Ciphertext hides whatever metadata the plaintext carries, so a clean
-      // report here proves nothing. Require an explicit reviewed decision.
-      findings.push({
-        kind: 'encrypted',
-        detail: 'contents cannot be inspected; decrypt and review, or record a REVIEWED_EXCEPTIONS entry',
-      });
-    }
+    const findings = docxPrivacyFindings(relativePath, bytes);
     if (findings.length > 0) {
       failures.push({ file: relativePath, findings });
     }
@@ -173,8 +89,8 @@ function main() {
       '  2. Replace the fixture with a synthetic equivalent.',
       '  3. Move an externally sourced document out of the public tree.',
       '',
-      'Only add a REVIEWED_EXCEPTIONS entry when the metadata is provably synthetic',
-      'or cleared for redistribution, and record why.',
+      'Only add a REVIEWED_EXCEPTIONS entry (lib/docx-privacy.mjs) when the metadata is',
+      'provably synthetic or cleared for redistribution, and record why.',
     ].join('\n'),
   );
   return 1;

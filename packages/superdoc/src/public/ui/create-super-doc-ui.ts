@@ -1252,7 +1252,6 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     demandHeavyDocRead,
     acquireDirectoryLease,
     ensureTrackChangesCatalog,
-    ensureCommentsCatalog,
   } = heavyReadGate;
 
   const foregroundMutationState = (): { active: number; pending: number } | null => {
@@ -1499,6 +1498,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     token: string,
     run: () => unknown,
     normalize: (raw: unknown) => T | null,
+    immediate = false,
   ): { value: T | null; status: SliceStatus } => {
     const serve = (
       entry: AsyncReadEntry | null | undefined,
@@ -1511,8 +1511,8 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       scheduleForegroundAsyncRetry(HEAVY_READ_IDLE_POLL_MS);
       return serve(entry, 'stale');
     }
-    if (holdsHeavyRead(key, token)) return serve(entry, 'stale');
-    if (foregroundMutationActive()) {
+    if (!immediate && holdsHeavyRead(key, token)) return serve(entry, 'stale');
+    if (!immediate && foregroundMutationActive()) {
       scheduleForegroundAsyncRetry();
       return serve(entry, 'stale');
     }
@@ -1521,7 +1521,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       return serve(entry, 'stale');
     }
     if (!entry && key.startsWith('effInline:') && shouldDeferEffectiveInlineRead(key)) return serve(entry, 'pending');
-    if (!entry && shouldDeferColdAsyncRead(key, token)) return serve(entry, 'pending');
+    if (!immediate && !entry && shouldDeferColdAsyncRead(key, token)) return serve(entry, 'pending');
     if (!entry || entry.inflightToken !== token) {
       const completed = issueAsyncRead(key, token, run, normalize);
       if (completed) return serve(completed, 'ready');
@@ -1685,9 +1685,14 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
   const normalizeSelectionInfo = (raw: unknown): SelectionInfo | null =>
     raw && typeof raw === 'object' ? (raw as SelectionInfo) : null;
 
+  const selectionContentLocks = new WeakMap<SelectionSlice, boolean>();
+
   const selectionSliceFromInfo = (info: SelectionInfo | null, status: SliceStatus): SelectionSlice => {
     if (!info) return { ...EMPTY_SELECTION, status };
     const slice = buildSelectionSlice(info, status);
+    if (isPlainObject(info) && typeof info.contentControlLocked === 'boolean') {
+      selectionContentLocks.set(slice, info.contentControlLocked);
+    }
     if (selectionInfoReviewWarming(info) && !slice.empty && slice.activeChangeIds.length === 0) {
       reviewWarmingSelections.add(slice);
     }
@@ -2033,7 +2038,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     return lastWindowComments.real;
   };
 
-  const readCommentsDirectory = () => {
+  const readCommentsDirectory = (immediate = false) => {
     const doc = getDoc();
     const listComments = hostMethod(doc?.comments, 'list');
     return readAsync<CommentInfo[]>(
@@ -2044,6 +2049,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
         const items: unknown = isPlainObject(raw) ? raw.items : undefined;
         return Array.isArray(items) ? realComments(items) : [];
       },
+      immediate,
     );
   };
 
@@ -2378,6 +2384,16 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
         lockModesById.set(row.id, typeof row.lockMode === 'string' ? row.lockMode : 'unlocked');
     }
     return { lockModesById, rows, status };
+  };
+
+  const computeSelectionContentControlLockModes = (
+    ccApi: LooseRecord | undefined,
+    selection: SelectionSlice,
+  ): { lockModesById: ReadonlyMap<string, string> } => {
+    const locked = selectionContentLocks.get(selection);
+    return locked === undefined
+      ? computeActiveContentControlLockModes(ccApi, selection)
+      : { lockModesById: new Map(locked ? [['selection', 'contentLocked']] : []) };
   };
 
   const computeActiveContentControls = (
@@ -3266,7 +3282,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       frozenProjectedValuesKey = `${selectionKey(selection)}:${contentToken()}`;
     }
     const ccApi = doc?.contentControls as LooseRecord | undefined;
-    const { lockModesById } = computeActiveContentControlLockModes(ccApi, selection);
+    const { lockModesById } = computeSelectionContentControlLockModes(ccApi, selection);
     const states: Record<string, CommandState> = {};
     const previous = state?.toolbar.commands;
     for (const id of allCommandIds()) {
@@ -6699,7 +6715,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
 
   const executeClearFormattingCommand = (): CommandExecutionResult => {
     const doc = getDoc();
-    const { lockModesById } = computeActiveContentControlLockModes(
+    const { lockModesById } = computeSelectionContentControlLockModes(
       doc?.contentControls as LooseRecord | undefined,
       state.selection,
     );
@@ -7683,21 +7699,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       const selection = preparedSelection ?? state.selection;
       // Word parity (SD-3274): mirrors the read-only guard above — fail closed
       // rather than let a style change silently no-op against locked content.
-      //
-      // NOTE: this intentionally does NOT fail closed on `status === 'pending'`.
-      // A prior attempt did, reasoning that a never-settled read carries zero
-      // information about a possible lock — but `readAsync`'s cold-read path
-      // deliberately defers the FIRST read for any new selection by
-      // `COLD_ASYNC_READ_START_DELAY_MS` (180ms) before even issuing the
-      // underlying `listInRange` call (stampede protection), so `pending` is
-      // not a rare sub-millisecond race — it is the *guaranteed* status for a
-      // brief but real window on every fresh selection. Failing closed on it
-      // silently broke ordinary formatting (bold/font/format-painter) on
-      // plain documents with no content controls at all, confirmed by
-      // `format-painter.spec.ts` CI failures. Accept the narrower, purely
-      // theoretical race this reverts (a mutation landing on a locked SDT
-      // during that same cold-read window) as a known limitation instead.
-      const { lockModesById } = computeActiveContentControlLockModes(
+      const { lockModesById } = computeSelectionContentControlLockModes(
         doc?.contentControls as LooseRecord | undefined,
         selection,
       );
@@ -8304,7 +8306,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     const ownerMode = readDocumentMode();
 
     const targetSelection = selectionSliceFromInfo(selection, 'ready');
-    const { lockModesById } = computeActiveContentControlLockModes(
+    const { lockModesById } = computeSelectionContentControlLockModes(
       doc.contentControls as LooseRecord | undefined,
       targetSelection,
     );
@@ -8526,7 +8528,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       readDocumentMode() === 'viewing'
     )
       return;
-    const currentLocks = computeActiveContentControlLockModes(
+    const currentLocks = computeSelectionContentControlLockModes(
       doc.contentControls as LooseRecord | undefined,
       targetSelection,
     );
@@ -9656,9 +9658,20 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     subscribe: commentsSnap.subscribe,
     observe: commentsSnap.observe,
     list: (query?: unknown): readonly CommentInfo[] => {
-      ensureCommentsCatalog();
-      const directory = readCommentsDirectory();
-      return filterCommentsSnapshot(directory.value ?? commentsSub.get().items, query);
+      const commentsApi = getDoc()?.comments;
+      const readRecords = hostMethod(commentsApi, 'readCommittedItems');
+      const records: unknown = readRecords ? safeCall<unknown>(readRecords, undefined) : undefined;
+      const committed = Array.isArray(records) ? realComments(records) : null;
+      const directory = committed === null ? readCommentsDirectory(true) : null;
+      const cached = asyncReads.get('comments')?.value;
+      const derivedItems = directory?.value ?? (Array.isArray(cached) ? realComments(cached) : commentsSub.get().items);
+      const derived = new Map(derivedItems.map((item) => [readEntityId(item), item]));
+      return filterCommentsSnapshot(
+        committed?.map((item) => ({ ...derived.get(readEntityId(item)), ...item })) ??
+          directory?.value ??
+          commentsSub.get().items,
+        query,
+      );
     },
     getById: (commentId: string): CommentInfo | null => {
       const fromSnapshot = commentsSub.get().items.find((item) => readEntityId(item) === commentId) ?? null;

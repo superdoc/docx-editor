@@ -70,6 +70,7 @@ function makeHarness(
     transitionToCompleteDuringSubscribe?: boolean;
     contentControlsList?: () => unknown;
     commentsList?: () => unknown;
+    committedComments?: () => unknown;
     initialCommentIds?: string[];
     selectionCurrent?: () => unknown;
     syncSelection?: () => unknown;
@@ -134,7 +135,7 @@ function makeHarness(
       node: { kind: 'paragraph', paragraph: { props: { alignment: paragraphAlignment } } },
     }),
     format: { paragraph: { setAlignment: vi.fn() } },
-    comments: { list: commentsList },
+    comments: { list: commentsList, readCommittedItems: () => options.committedComments?.() },
     trackChanges: { list: trackChangesList },
     contentControls: { list: ccList, listInRange: ccListInRange },
     // `wrap` makes the routed `link` command resolvable so its active-state
@@ -490,6 +491,98 @@ describe('public ui — heavy-read policy during source loading (table-driven ov
 });
 
 describe('public ui — heavy-read policy behavior details', () => {
+  it('uses committed selection locks immediately while the content-control catalog is held', () => {
+    vi.useFakeTimers();
+    let locked = true;
+    const selection = () => ({
+      empty: false,
+      target: SELECTION_TARGET,
+      selectionTarget: SELECTION_SELECTION_TARGET,
+      activeMarks: [],
+      activeCommentIds: [],
+      activeChangeIds: [],
+      contentControlLocked: locked,
+    });
+    const harness = makeHarness('opening', { syncSelection: selection, selectionCurrent: selection });
+    try {
+      harness.emitSelection({ anchor: { blockId: 'P1', blockOffset: 0 }, focus: { blockId: 'P3', blockOffset: 5 } });
+      expect(harness.ui.commands.get('clear-formatting').getState()).toMatchObject({
+        enabled: false,
+        reason: 'content-control-locked',
+      });
+      expect(harness.countFor('contentControls:inRange:')).toBe(0);
+      locked = false;
+      harness.emitSelection({ anchor: { blockId: 'P1', blockOffset: 0 }, focus: { blockId: 'P3', blockOffset: 5 } });
+      expect(harness.ui.commands.get('clear-formatting').getState()).toMatchObject({ enabled: true });
+      expect(harness.countFor('contentControls:inRange:')).toBe(0);
+    } finally {
+      harness.ui.destroy();
+    }
+  });
+
+  it('reads committed comments on explicit list calls without a lease or idle wait', () => {
+    vi.useFakeTimers();
+    const harness = makeHarness('opening');
+    try {
+      expect(harness.ui.comments.list().map((item) => item.id)).toEqual(['c-1']);
+      harness.setComments(['c-1', 'c-2']);
+      harness.emitMutation();
+      harness.setForeground({ active: 1, pending: 0 });
+      expect(harness.ui.comments.list().map((item) => item.id)).toEqual(['c-1', 'c-2']);
+      expect(harness.countFor('contentControls')).toBe(0);
+    } finally {
+      harness.ui.destroy();
+    }
+  });
+
+  it('serves committed comment records while derived reads stay gated', () => {
+    vi.useFakeTimers();
+    let items = [{ id: 'c-1', text: 'First', status: 'open' }];
+    const harness = makeHarness('opening', { committedComments: () => items });
+    try {
+      expect(harness.ui.comments.list()).toEqual(items);
+      items = [...items, { id: 'c-2', text: 'Second', status: 'open' }];
+      harness.emitMutation();
+      expect(harness.ui.comments.list()).toEqual(items);
+      items = items.slice(0, 1);
+      harness.emitMutation();
+      expect(harness.ui.comments.list()).toEqual(items);
+      expect(harness.countFor('comments')).toBe(0);
+    } finally {
+      harness.ui.destroy();
+    }
+  });
+
+  it('keeps explicit comment records current when a derived directory is already cached', () => {
+    vi.useFakeTimers();
+    let items = [{ id: 'c-1', text: 'First', status: 'open' }];
+    const harness = makeHarness('source-complete', { committedComments: () => items });
+    try {
+      expect(harness.ui.comments.list()).toMatchObject(items);
+      items = [{ id: 'c-2', text: 'Second', status: 'resolved' }];
+      expect(harness.ui.comments.list()).toMatchObject(items);
+      expect(harness.ui.comments.list({ includeResolved: false })).toEqual([]);
+      items = [];
+      expect(harness.ui.comments.list()).toEqual([]);
+    } finally {
+      harness.ui.destroy();
+    }
+  });
+
+  it('never starts a derived comment catalog from record reads after the cold delay', () => {
+    vi.useFakeTimers();
+    const items = [{ id: 'c-1', text: 'First', status: 'open' }];
+    const harness = makeHarness('source-complete', { committedComments: () => items, reviewWindowItems: () => [] });
+    try {
+      expect(harness.ui.comments.list()).toMatchObject(items);
+      vi.advanceTimersByTime(10000);
+      expect(harness.ui.comments.list()).toMatchObject(items);
+      expect(harness.countFor('comments')).toBe(0);
+    } finally {
+      harness.ui.destroy();
+    }
+  });
+
   it('confirms terminal loading state after attaching a non-replaying subscription', async () => {
     vi.useFakeTimers();
     const harness = makeHarness('source-loading', {

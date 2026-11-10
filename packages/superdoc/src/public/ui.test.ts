@@ -38,6 +38,13 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+async function nextAnimationFrame(): Promise<void> {
+  for (let index = 0; index < 4; index += 1) await Promise.resolve();
+  if (vi.isFakeTimers()) vi.advanceTimersToNextFrame();
+  else await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  for (let index = 0; index < 4; index += 1) await Promise.resolve();
+}
+
 /**
  * Smoke test for the public facade ui entry (SD-3183).
  * Three runtime re-exports cover the entry. Declaration-side validation
@@ -2311,6 +2318,57 @@ describe('public facade (ui)', () => {
     expect(patch).toHaveBeenNthCalledWith(2, { commentId: 'c1', status: 'active' });
   });
 
+  it.each([false, true])(
+    'refreshes explicit comment status changes while passive catalogs wait for idle with async=%s',
+    async (asyncPatch) => {
+      vi.useFakeTimers();
+      let stage = 'source-loading';
+      let status = 'open';
+      const loading = new Set<(snapshot: unknown) => void>();
+      const list = vi.fn(() => ({ items: [{ id: 'c1', text: 'note', status }] }));
+      const receipt = { success: true };
+      const superdoc = {
+        activeEditor: {
+          host: {
+            getDocumentLoadingSnapshot: () => ({ sourceStage: stage }),
+            subscribeDocumentLoading: (listener: (snapshot: unknown) => void) => {
+              loading.add(listener);
+              return () => loading.delete(listener);
+            },
+          },
+          doc: {
+            comments: {
+              list,
+              patch: (input: { status: string }) => {
+                status = input.status === 'resolved' ? 'resolved' : 'open';
+                return asyncPatch ? Promise.resolve(receipt) : receipt;
+              },
+            },
+            selection: { current: () => null },
+            trackChanges: { list: () => ({ items: [] }) },
+          },
+        },
+        config: { documentMode: 'editing' },
+        on: vi.fn(),
+        off: vi.fn(),
+      };
+      const ui = createSuperDocUI({ superdoc });
+      try {
+        expect(ui.comments.list()[0]?.status).toBe('open');
+        stage = 'source-complete';
+        for (const listener of loading) listener({ sourceStage: stage });
+        await vi.advanceTimersByTimeAsync(0);
+        expect(await ui.comments.resolve('c1')).toBe(receipt);
+        expect(ui.comments.list()[0]?.status).toBe('resolved');
+        expect(await ui.comments.reopen('c1')).toBe(receipt);
+        expect(ui.comments.list()[0]?.status).toBe('open');
+        expect(list).toHaveBeenCalledTimes(3);
+      } finally {
+        ui.destroy();
+      }
+    },
+  );
+
   // cui-selection-040: the selection slice + geometry read truthfully from the
   // v2 live-selection source.
   const TARGET = { kind: 'text', segments: [{ blockId: 'P1', range: { start: 6, end: 11 } }] } as const;
@@ -4205,8 +4263,6 @@ describe('public ui — viewport + metadata geometry', () => {
     // The read lands and the adapter republishes; no lifecycle event fires.
     resolvedRead = true;
     notify!();
-    // The recompute is coalesced into a microtask so an adapter emission that
-    // shares a gesture with a selection change does not recompute twice.
     await Promise.resolve();
 
     expect(ui.commands.get('undo').getState().reason).toBe(SUPERDOC_UI_REASONS.historyEmpty);
@@ -4291,6 +4347,82 @@ describe('public ui — viewport + metadata geometry', () => {
     expect(toolbarEmissions, 'unchanged toolbar facts must not emit').toBe(0);
     stopRecomputes();
     stopToolbar();
+    ui.destroy();
+  });
+
+  it('coalesces background publishes into one frame recompute and keeps edit-command updates in the same task', async () => {
+    const editCommandListeners = new Set<() => void>();
+    const windowListeners = new Set<() => void>();
+    const handlers = new Map<string, Set<(payload?: unknown) => void>>();
+    const superdoc = {
+      activeEditor: {
+        editorVersion: 2,
+        doc: {
+          comments: { list: () => ({ items: [] }) },
+          selection: { current: () => null },
+          trackChanges: { list: () => ({ items: [] }) },
+          history: { undo: vi.fn(), redo: vi.fn() },
+        },
+        editCommands: {
+          subscribe: (listener: () => void) => {
+            editCommandListeners.add(listener);
+            return () => editCommandListeners.delete(listener);
+          },
+          getSnapshot: () => ({ commands: {} }),
+        },
+        reviewWindow: {
+          getSnapshot: () => ({ status: 'ready', trackedChangeItems: [], commentItems: [] }),
+          subscribe: (listener: () => void) => {
+            windowListeners.add(listener);
+            return () => windowListeners.delete(listener);
+          },
+        },
+      },
+      config: { documentMode: 'editing' },
+      on: (event: string, handler: (payload?: unknown) => void) => {
+        const set = handlers.get(event) ?? new Set();
+        set.add(handler);
+        handlers.set(event, set);
+      },
+      off: (event: string, handler: (payload?: unknown) => void) => {
+        handlers.get(event)?.delete(handler);
+      },
+    };
+    const ui = createSuperDocUI({ superdoc });
+    await nextAnimationFrame();
+    expect(editCommandListeners.size).toBe(1);
+    expect(windowListeners.size).toBe(1);
+    let recomputes = 0;
+    const stop = ui
+      .select(
+        (state) => state,
+        () => false,
+      )
+      .subscribe(() => {
+        recomputes += 1;
+      });
+
+    for (const listener of windowListeners) listener();
+    for (const handler of handlers.get('viewport-change') ?? []) handler({});
+    for (const listener of windowListeners) listener();
+    for (let index = 0; index < 8; index += 1) await Promise.resolve();
+    expect(recomputes, 'no synchronous recompute inside the burst task').toBe(0);
+
+    await nextAnimationFrame();
+    expect(recomputes, 'the burst publishes once in the next frame').toBe(1);
+
+    await nextAnimationFrame();
+    expect(recomputes, 'nothing is left queued after the frame').toBe(1);
+
+    for (const listener of windowListeners) listener();
+    for (const listener of editCommandListeners) listener();
+    for (const listener of editCommandListeners) listener();
+    for (let index = 0; index < 8; index += 1) await Promise.resolve();
+    expect(recomputes, 'edit-command emissions recompute once in the same task').toBe(2);
+
+    await nextAnimationFrame();
+    expect(recomputes, 'the same-task recompute supersedes the queued frame recompute').toBe(2);
+    stop();
     ui.destroy();
   });
 
@@ -14932,6 +15064,94 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
     ...extra,
   });
 
+  it('reads text ranges asynchronously without building the full live selection synchronously', async () => {
+    const snapshot = { anchor: { blockId: 'P1', blockOffset: 0 }, focus: { blockId: 'P1', blockOffset: 5 } };
+    const selection = {
+      ...caretSelectionInfo('P1', 0),
+      empty: false,
+      selectionTarget: {
+        kind: 'selection',
+        start: { kind: 'text', blockId: 'P1', offset: 0 },
+        end: { kind: 'text', blockId: 'P1', offset: 5 },
+      },
+      activeChangeIds: ['range-change'],
+    };
+    let publish: ((snapshot: unknown) => void) | null = null;
+    const read = vi.fn(() => selection);
+    const host = storeCapableHost({
+      readLiveSelectionSyncSnapshot: read,
+      readAppliedSelectionPresentation: () => ({ selection: { ...selection, tableSelection: null } }),
+      getHandles: () => ({
+        editing: {
+          selection: {
+            getSnapshot: () => snapshot,
+            subscribe: (listener: (snapshot: unknown) => void) => {
+              publish = listener;
+              return () => {};
+            },
+          },
+        },
+      }),
+    });
+    const superdoc = makeBlockSuperdoc(
+      { selection: { current: async () => selection } },
+      { selectionInfo: null, editorExtra: { host } },
+    );
+    const ui = createSuperDocUI({ superdoc });
+    try {
+      read.mockClear();
+      publish?.(snapshot);
+      expect(read).not.toHaveBeenCalled();
+      await vi.waitFor(() => expect(ui.selection.getSnapshot().activeChangeIds).toEqual(['range-change']));
+    } finally {
+      ui.destroy();
+    }
+  });
+
+  it.each([false, true])(
+    'reads range formatting through the Document API presentation when available=%s',
+    async (authoritative) => {
+      const snapshot = { anchor: { blockId: 'P1', blockOffset: 0 }, focus: { blockId: 'P1', blockOffset: 5 } };
+      const selection = {
+        ...caretSelectionInfo('P1', 0),
+        empty: false,
+        target: { kind: 'text', segments: [{ blockId: 'P1', range: { start: 0, end: 5 } }] },
+        selectionTarget: {
+          kind: 'selection',
+          start: { kind: 'text', blockId: 'P1', offset: 0 },
+          end: { kind: 'text', blockId: 'P1', offset: 5 },
+        },
+        text: 'Range',
+      };
+      const query = vi.fn(async () => ({ items: [] }));
+      const presentation = () => ({
+        selection,
+        inlineStyle: { fontFamily: 'Arial', fontSize: '11', color: '#000000', highlight: '#FFFF00' },
+      });
+      const host = storeCapableHost({
+        readAppliedSelectionPresentation: authoritative ? () => null : presentation,
+        getHandles: () => ({ editing: { selection: { getSnapshot: () => snapshot, subscribe: () => () => {} } } }),
+      });
+      const superdoc = makeBlockSuperdoc(
+        {
+          selection: { current: async () => selection, ...(authoritative ? { readPresentation: presentation } : {}) },
+          query: { match: query },
+          format: { fontFamily: vi.fn(), fontSize: vi.fn() },
+        },
+        { selectionInfo: selection, editorExtra: { host } },
+      );
+      const ui = createSuperDocUI({ superdoc });
+      try {
+        await vi.waitFor(() => expect(ui.commands.get('font-family').getState().value).toBe('Arial'));
+        expect(ui.commands.get('font-size').getState().value).toBe('11');
+        if (authoritative) expect(query).not.toHaveBeenCalled();
+        else expect(query).toHaveBeenCalled();
+      } finally {
+        ui.destroy();
+      }
+    },
+  );
+
   it('uses the clicked caret marks instead of carrying marks from the previous caret', () => {
     let seed = { ...caretSelectionInfo('P1', 1), activeMarks: ['bold'] };
     let publishSelection: (() => void) | null = null;
@@ -21138,6 +21358,7 @@ describe('public ui — async browser reads (read coordinator)', () => {
       trackedChangeItems: [{ id: 'tc-deep', type: 'delete', author: 'Grace' }],
     };
     for (const listener of listeners) listener();
+    await nextAnimationFrame();
 
     expect(ui.comments.getSnapshot().items.map((item) => item.id)).toEqual(['comment-deep']);
     expect(ui.trackChanges.getSnapshot().items.map((item) => item.id)).toEqual(['tc-deep']);
@@ -21847,6 +22068,7 @@ describe('public ui — async browser reads (read coordinator)', () => {
       trackedChangeItems: [{ id: 'tc-restored', type: 'delete' }],
     };
     for (const listener of windowListeners) listener();
+    await nextAnimationFrame();
 
     expect(ui.comments.getSnapshot().items.map((item) => item.id)).toEqual(['comment-deep']);
     expect(ui.trackChanges.getSnapshot().items.map((item) => item.id)).toEqual(['tc-restored']);

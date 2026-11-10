@@ -7,7 +7,7 @@ import {
   type SDRunProps,
 } from '@superdoc/document-api';
 import { readViewportBatch } from './viewport-batch.js';
-import { readBuiltInTrackedChangePermissionDecision } from '../../core/collaboration/permissions.js';
+import { readBuiltInTrackedChangePermissionPolicy } from '../../core/collaboration/permissions.js';
 import { beginInteraction, recordInteraction } from '../../internal/diagnostics/interaction-history.js';
 /**
  * v2-native `createSuperDocUI` controller.
@@ -355,6 +355,8 @@ function projectTrackChangesItem(item: unknown): TrackChangesItem | null {
   const projected: Record<string, unknown> = { ...item, id: item.id ?? change.id, change };
   return projected as unknown as TrackChangesItem;
 }
+
+const FRAME_RECOMPUTE_FALLBACK_MS = 100;
 
 export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
   const superdoc = options.superdoc as unknown as LooseRecord;
@@ -874,9 +876,45 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
   // forward declaration; it is only read at command-execution time.
   let controllerRef: SuperDocUI | null = null;
 
+  let frameRecompute: { cancel: () => void } | null = null;
+  const cancelFrameRecompute = (): void => {
+    frameRecompute?.cancel();
+    frameRecompute = null;
+  };
+  const requestFrameRecompute = (reason: string): void => {
+    if (disposed || frameRecompute) return;
+    const requestFrame = globalThis.requestAnimationFrame;
+    const cancelFrame = globalThis.cancelAnimationFrame;
+    let frame: number | null = null;
+    const run = (): void => {
+      if (frameRecompute !== scheduled) return;
+      recompute(reason);
+    };
+    const fallback = setTimeout(run, FRAME_RECOMPUTE_FALLBACK_MS);
+    const scheduled = {
+      cancel: () => {
+        clearTimeout(fallback);
+        if (frame !== null && typeof cancelFrame === 'function') cancelFrame(frame);
+      },
+    };
+    frameRecompute = scheduled;
+    if (typeof requestFrame === 'function') frame = requestFrame(run);
+  };
+  let microtaskRecomputeQueued = false;
+  const requestMicrotaskRecompute = (reason: string): void => {
+    if (disposed || microtaskRecomputeQueued) return;
+    microtaskRecomputeQueued = true;
+    const run = (): void => {
+      if (!microtaskRecomputeQueued || disposed) return;
+      recompute(reason);
+    };
+    if (typeof queueMicrotask === 'function') queueMicrotask(run);
+    else void Promise.resolve().then(run);
+  };
+
   const asyncReadCache = createAsyncReadCache({
     isDisposed: () => disposed,
-    recomputeAfterSettle: () => recompute('async-read-settled'),
+    recomputeAfterSettle: () => requestMicrotaskRecompute('async-read-settled'),
     recomputeWhenRetryDue: () => recompute(),
   });
   const asyncReads = asyncReadCache.entries;
@@ -1856,19 +1894,32 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
   ): void => {
     const host = getHost();
     const foreground = foregroundMutationState();
-    if (isNonCollapsedHostSelection(hostSelectionSnapshot) && readHostSelectionSnapshot() === hostSelectionSnapshot) {
-      const seed = normalizeSelectionInfo(safeCall(() => hostMethod(host, 'readLiveSelectionSyncSnapshot')?.(), null));
-      if (
-        seed &&
-        !seed.selectionTarget &&
-        captureWholeTableParagraphSeed(host, seed, hostSelectionSnapshot as object)
-      ) {
-        seedAsyncRead('selection', asyncReads.get('selection')?.token ?? null, seed);
+    const currentSelection =
+      hostSelectionSnapshot ?? (wholeTableSelectionChanged ? undefined : readHostSelectionSnapshot());
+    if (isNonCollapsedHostSelection(currentSelection) && readHostSelectionSnapshot() === currentSelection) {
+      const presentation = safeCall<unknown>(
+        () => hostMethod(host, 'readAppliedSelectionPresentation')?.({ tableOnly: true }),
+        null,
+      );
+      const applied = normalizeSelectionInfo(isPlainObject(presentation) ? presentation.selection : null);
+      if (applied?.tableSelection?.kind === 'tableCells' && applied.tableSelection.type === 'table') {
+        const seed = normalizeSelectionInfo(
+          safeCall(() => hostMethod(host, 'readLiveSelectionSyncSnapshot')?.(), null),
+        );
+        if (
+          seed &&
+          !seed.selectionTarget &&
+          captureWholeTableParagraphSeed(host, seed, isPlainObject(currentSelection) ? currentSelection : null)
+        ) {
+          seedAsyncRead('selection', asyncReads.get('selection')?.token ?? null, seed);
+        }
       }
     }
-    if (isNonCollapsedHostSelection(hostSelectionSnapshot) && !(foreground && foreground.active > 0)) {
-      setSelectionValidation({ held: false, pendingToken: null });
-      issueAsyncRead('selection', selectionReadToken(), selectionCurrentRun, normalizeSelectionInfo);
+    if (isNonCollapsedHostSelection(currentSelection)) {
+      if (!(foreground && foreground.active > 0)) {
+        setSelectionValidation({ held: false, pendingToken: null });
+        issueAsyncRead('selection', selectionReadToken(), selectionCurrentRun, normalizeSelectionInfo);
+      }
       return;
     }
     const read = host?.readLiveSelectionSyncSnapshot;
@@ -2636,10 +2687,11 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
    * projected value; the layout has already resolved them for painting.
    */
   const appliedSelectionPresentation = (selection: SelectionSlice): LooseRecord | null => {
-    const host = getHost(),
-      read = host?.readAppliedSelectionPresentation;
-    if (typeof read !== 'function') return null;
-    const value = safeCall<LooseRecord | null>(() => read.call(host), null);
+    const read =
+      hostMethod(getDoc()?.selection, 'readPresentation') ?? hostMethod(getHost(), 'readAppliedSelectionPresentation');
+    if (!read) return null;
+    const raw = safeCall<unknown>(read, null);
+    const value = isPlainObject(raw) ? raw : null;
     const info = normalizeSelectionInfo(value?.selection);
     return value && info && selectionSignature(selectionSliceFromInfo(info, 'ready')) === selectionSignature(selection)
       ? value
@@ -3150,12 +3202,17 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
   const projectSelectionInlineValuesWithStatus = (
     selection: SelectionSlice,
     effectiveInput = effectiveInlineUniformityInput(selection),
-  ): ProjectedInlineValuesRead =>
-    completeProjectedInlineValues(
+  ): ProjectedInlineValuesRead => {
+    if (!selection.empty && hostMethod(getDoc()?.selection, 'readPresentation')) {
+      if (!appliedSelectionPresentation(selection)) return { values: {}, effectiveUniformityStatus: 'pending' };
+      return completeProjectedInlineValues(selection, {}, effectiveInput);
+    }
+    return completeProjectedInlineValues(
       selection,
       projectInlineValuesFromQueryItem(resolveSelectionTextQueryItem(selection), selection),
       effectiveInput,
     );
+  };
 
   const projectSelectionInlineValues = (
     selection: SelectionSlice,
@@ -3219,6 +3276,8 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
    * so readAsync always finds an existing cache entry — this is a status-only lookup.
    */
   const selectionQueryStatus = (selection: SelectionSlice): SliceStatus => {
+    if (!selection.empty && hostMethod(getDoc()?.selection, 'readPresentation'))
+      return appliedSelectionPresentation(selection) ? 'ready' : 'pending';
     const doc = getDoc();
     const queryMatch = hostMethod(doc?.query, 'match');
     if (!queryMatch) return 'ready';
@@ -3361,12 +3420,34 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     return undefined;
   };
 
-  const findTrackChangeForPermission = (id: string): TrackChangeInfo | null => {
+  const firstRowsById = <T>(rows: readonly T[] | null | undefined): Map<unknown, T> => {
+    const byId = new Map<unknown, T>();
+    for (const row of rows ?? []) {
+      const id = readEntityId(row);
+      if (!byId.has(id)) byId.set(id, row);
+    }
+    return byId;
+  };
+  const permissionCurrentRowsById = new WeakMap<readonly TrackChangesItem[], Map<unknown, TrackChangesItem>>();
+  const permissionDirectoryRowsById = new WeakMap<readonly unknown[], Map<unknown, unknown>>();
+  const rowsByIdForRevision = <T>(
+    cache: WeakMap<readonly T[], Map<unknown, T>>,
+    rows: readonly T[] | null | undefined,
+  ): Map<unknown, T> => {
+    if (!rows) return new Map();
+    const cached = cache.get(rows);
+    if (cached) return cached;
+    const byId = firstRowsById(rows);
+    cache.set(rows, byId);
+    return byId;
+  };
+
+  const trackChangePermissionLookup = (): ((id: string) => TrackChangeInfo | null) => {
     syncCoordinatorEditor();
+    let current: Map<unknown, TrackChangesItem> | null = null;
     let items: readonly unknown[] | null;
     if (hasV2ReviewWindowFeed()) {
-      const current = readAllStoryTrackChanges()?.find((item) => readEntityId(item) === id);
-      if (current) return trackChangesItemPayload(current);
+      current = rowsByIdForRevision(permissionCurrentRowsById, readAllStoryTrackChanges());
       // An explicit directory consumer may know an off-window author while
       // its catalog refreshes. Passive permission checks must not start I/O.
       const directory = asyncReads.get('trackChanges');
@@ -3376,9 +3457,14 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       // change OWN to OTHER and incorrectly enable a denied decision.
       items = readTrackChangesDirectory('trackChanges:all').value;
     }
-    const row = items?.find((item) => readEntityId(item) === id);
-    const projected = projectTrackChangesItem(row);
-    return projected ? trackChangesItemPayload(projected) : null;
+    let rows: Map<unknown, unknown> | null = null;
+    return (id) => {
+      const found = current?.get(id);
+      if (found) return trackChangesItemPayload(found);
+      rows ??= rowsByIdForRevision(permissionDirectoryRowsById, items);
+      const projected = projectTrackChangesItem(rows.get(id));
+      return projected ? trackChangesItemPayload(projected) : null;
+    };
   };
 
   const trackedChangeDecisionPermissionReason = (
@@ -3391,6 +3477,27 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       superdoc.config && typeof superdoc.config === 'object'
         ? ((superdoc.config as LooseRecord).user as LooseRecord | null)
         : null;
+    const builtInPolicy = readBuiltInTrackedChangePermissionPolicy(superdoc, canPerform);
+    const builtInDecisions = builtInPolicy
+      ? {
+          ownAllowed: builtInPolicy(kind === 'accept' ? 'RESOLVE_OWN' : 'REJECT_OWN'),
+          otherAllowed: builtInPolicy(kind === 'accept' ? 'RESOLVE_OTHER' : 'REJECT_OTHER'),
+        }
+      : null;
+    if (builtInDecisions && builtInDecisions.ownAllowed === builtInDecisions.otherAllowed) {
+      return builtInDecisions.ownAllowed ? undefined : SUPERDOC_UI_REASONS.permissionDenied;
+    }
+    const findTrackChangeForPermission = trackChangePermissionLookup();
+    if (builtInDecisions) {
+      const { ownAllowed, otherAllowed } = builtInDecisions;
+      for (const id of ids) {
+        const trackedChange = findTrackChangeForPermission(id);
+        if (!trackedChange) return SUPERDOC_UI_REASONS.permissionDenied;
+        const allowed = trackedChangeOwnedByCurrentUser(trackedChange, currentUser) ? ownAllowed : otherAllowed;
+        if (!allowed) return SUPERDOC_UI_REASONS.permissionDenied;
+      }
+      return undefined;
+    }
     for (const id of ids) {
       const trackedChange = findTrackChangeForPermission(id);
       const isOwn = trackedChange ? trackedChangeOwnedByCurrentUser(trackedChange, currentUser) : false;
@@ -3405,13 +3512,11 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
         let allowed: unknown;
         try {
           const permissionChange = trackedChange ?? { id };
-          allowed =
-            readBuiltInTrackedChangePermissionDecision(superdoc, canPerform, candidate, permissionChange) ??
-            canPerform.call(superdoc, {
-              permission: candidate,
-              trackedChange: permissionChange,
-              comment: null,
-            });
+          allowed = canPerform.call(superdoc, {
+            permission: candidate,
+            trackedChange: permissionChange,
+            comment: null,
+          });
         } catch {
           return trackedChange ? undefined : SUPERDOC_UI_REASONS.permissionDenied;
         }
@@ -4779,31 +4884,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
   let currentV2ReviewWindowSource: LooseRecord | null = null;
   let detachV2ReviewWindow: (() => void) | null = null;
 
-  // The adapter subscribes to the same host selection surface this controller
-  // does and republishes on every caret move, so a direct `recompute()` here
-  // would double the work per keystroke. Coalescing to a microtask collapses the
-  // adapter's emission into the selection-driven recompute that is already
-  // queued for the same gesture, while still guaranteeing a recompute for an
-  // adapter-only emission such as the history read settling.
-  let editCommandsRecomputeQueued = false;
-  const requestEditCommandsRecompute = (): void => {
-    if (disposed || editCommandsRecomputeQueued) return;
-    editCommandsRecomputeQueued = true;
-    const run = (): void => {
-      // A recompute may already have run for this gesture — the selection
-      // subscription recomputes synchronously — and clears the flag when it
-      // does. Nothing left to do in that case.
-      if (!editCommandsRecomputeQueued) return;
-      editCommandsRecomputeQueued = false;
-      if (disposed) return;
-      recompute();
-    };
-    // Same fallback as `scheduleAsyncRefresh`: `queueMicrotask` is absent in
-    // some runtimes, and throwing here would strand the flag set and stop every
-    // later emission from scheduling anything.
-    if (typeof queueMicrotask === 'function') queueMicrotask(run);
-    else void Promise.resolve().then(run);
-  };
+  const requestEditCommandsRecompute = (): void => requestMicrotaskRecompute('edit-commands');
 
   const syncEditCommandsSubscription = (): void => {
     const next = getEditCommands();
@@ -4832,7 +4913,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     currentV2ReviewWindowSource = next;
     if (!next || typeof next.subscribe !== 'function') return;
     try {
-      const unsubscribe = next.subscribe(() => recompute());
+      const unsubscribe = next.subscribe(() => requestFrameRecompute('review-window'));
       if (typeof unsubscribe === 'function') detachV2ReviewWindow = unsubscribe;
     } catch {
       currentV2ReviewWindowSource = null;
@@ -5416,6 +5497,8 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
   };
 
   const recompute = (reason = 'unspecified'): void => {
+    cancelFrameRecompute();
+    microtaskRecomputeQueued = false;
     if (disposed) return;
     for (const request of pendingListRequests) {
       if (request.editor !== getEditor() || request.doc !== getEditor()?.doc) request.cancel('owner-changed');
@@ -5423,11 +5506,6 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     }
     const { sink } = readUiBenchRuntime();
     const startedAtMs = sink ? uiBenchNowMs() : 0;
-    // Any recompute satisfies a queued edit-command refresh, whatever triggered
-    // it. A caret move fires the host selection subscription (which recomputes
-    // synchronously) AND the adapter's own republish; without this, the queued
-    // microtask would run a second full computation for the same gesture.
-    editCommandsRecomputeQueued = false;
     syncCoordinatorEditor();
     syncHostSelectionSubscription();
     syncEditCommandsSubscription();
@@ -5573,7 +5651,9 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
                   recompute();
                   runDocumentModeChangeHooks();
                 }
-              : () => recompute();
+              : event === 'viewport-change'
+                ? () => requestFrameRecompute('viewport-change')
+                : () => recompute();
       try {
         source.on(event, handler);
         detachers.push(() => {
@@ -6349,10 +6429,11 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
   const settleWorkflowReceipt = (
     receipt: unknown,
     fallback = failedReceipt('Document API operation failed.'),
+    refreshComments = false,
   ): WorkflowReceipt => {
     if (isPromiseLike(receipt)) {
       return Promise.resolve(receipt).then(
-        (resolved) => settleWorkflowReceipt(resolved, fallback),
+        (resolved) => settleWorkflowReceipt(resolved, fallback, refreshComments),
         () => fallback,
       );
     }
@@ -6361,6 +6442,10 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     // insert, …): invalidate content reads so dependent slices re-fetch.
     invalidateDocumentContent();
     if (isSuccessfulReceipt(normalizedReceipt)) {
+      if (refreshComments) {
+        const catalog = asyncReads.get('comments');
+        if (catalog?.hasSettled || catalog?.inflightToken != null) demandHeavyDocRead('comments');
+      }
       const readiness = getEditor()?.documentMutationReadiness as LooseRecord | undefined;
       if (typeof readiness?.whenPainted === 'function') {
         void finalizeCommandSettlement(awaitMutationReadiness(normalizedReceipt));
@@ -9612,7 +9697,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     if (typeof op !== 'function') return failedReceipt('comments.patch is unavailable.');
     const fallback = failedReceipt('comments.patch failed.');
     return safeCall<WorkflowReceipt>(
-      () => settleWorkflowReceipt(op.call(commentsApi, { commentId, status }), fallback),
+      () => settleWorkflowReceipt(op.call(commentsApi, { commentId, status }), fallback, true),
       fallback,
     );
   }
@@ -11215,6 +11300,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     detachDecorationPointer?.();
     decorationListeners.clear();
     disposed = true;
+    cancelFrameRecompute();
     stopSearchRefresh();
     releaseSharedUiTrackedChangesCatalog(uiTrackedChangesCatalogHost, uiTrackedChangesCatalogState);
     if (foregroundAsyncRetryTimer) {

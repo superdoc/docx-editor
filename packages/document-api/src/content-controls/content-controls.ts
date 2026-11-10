@@ -5,7 +5,7 @@
  * before calling the adapter. The adapter is implemented by the engine layer.
  */
 
-import type { MutationOptions } from '../write/write.js';
+import { validateContentWriteHistoryOptions, type MutationOptions } from '../write/write.js';
 import { DocumentApiValidationError } from '../errors.js';
 import { isInteger } from '../validation-primitives.js';
 import { isRecord } from '../object-guards.js';
@@ -613,6 +613,7 @@ export function executeContentControlsReplaceContent(
   input: ContentControlsReplaceContentInput,
   options?: MutationOptions,
 ): ContentControlMutationResult {
+  validateContentWriteHistoryOptions('contentControls.replaceContent', input, options);
   validateCCInput(input, 'contentControls.replaceContent');
   validateCCTarget(input.target, 'contentControls.replaceContent');
   validateContentPayload(input, 'contentControls.replaceContent');
@@ -805,6 +806,7 @@ export function executeContentControlsTextSetValue(
   input: ContentControlsTextSetValueInput,
   options?: MutationOptions,
 ): ContentControlMutationResult {
+  validateContentWriteHistoryOptions('contentControls.text.setValue', input, options);
   validateCCInput(input, 'contentControls.text.setValue');
   validateCCTarget(input.target, 'contentControls.text.setValue');
   if (typeof input.value !== 'string') {
@@ -1086,6 +1088,7 @@ export function executeCreateContentControl(
   input: CreateContentControlInput,
   options?: MutationOptions,
 ): ContentControlMutationResult {
+  validateContentWriteHistoryOptions('create.contentControl', input, options);
   validateCCInput(input, 'create.contentControl');
   requireNodeKind(input.kind, 'kind', 'create.contentControl');
   if (input.controlType !== undefined && !VALID_CC_TYPES.has(input.controlType as string)) {

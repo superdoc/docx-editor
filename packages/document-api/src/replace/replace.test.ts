@@ -34,6 +34,50 @@ const blockTarget = { kind: 'block' as const, nodeType: 'paragraph' as const, no
 const bodyTarget = { kind: 'story' as const, storyType: 'body' as const };
 const fragment = [{ kind: 'paragraph' as const, paragraph: { inlines: [] } }];
 
+describe('replace history options', () => {
+  for (const input of [
+    { target: selectionTarget, text: 'Synced' },
+    { target: blockTarget, content: fragment },
+    { target: bodyTarget, text: 'Synced' },
+  ]) {
+    for (const dryRun of [false, true]) {
+      for (const value of [false, null, 0, 1, 'false', {}, []]) {
+        it(`rejects ${JSON.stringify(value)} for ${input.target.kind} dryRun=${dryRun} before either adapter`, () => {
+          const selection = selectionAdapter(),
+            write = writeAdapter();
+          let error: unknown;
+          try {
+            Reflect.apply(executeReplace, undefined, [selection, write, input, { addToHistory: value, dryRun }]);
+          } catch (caught) {
+            error = caught;
+          }
+          expect(error).toMatchObject({
+            code: value === false ? 'CAPABILITY_UNAVAILABLE' : 'INVALID_INPUT',
+            details: { operation: 'replace', field: 'addToHistory' },
+          });
+          expect(selection.execute).not.toHaveBeenCalled();
+          expect(write.replaceStructured).not.toHaveBeenCalled();
+        });
+      }
+    }
+    for (const { name, options } of [
+      { name: 'omitted options', options: undefined },
+      { name: 'empty options', options: {} },
+      { name: 'undefined addToHistory', options: { addToHistory: undefined } },
+      { name: 'true addToHistory', options: { addToHistory: true } },
+    ]) {
+      it(`preserves ${input.target.kind} dispatch with ${name}`, () => {
+        const selection = selectionAdapter(),
+          write = writeAdapter();
+        Reflect.apply(executeReplace, undefined, [selection, write, input, options]);
+        expect(input.target.kind === 'selection' ? selection.execute : write.replaceStructured).toHaveBeenCalledTimes(
+          1,
+        );
+      });
+    }
+  }
+});
+
 describe('executeReplace input union', () => {
   it('forwards an intended-text guard with an explicit selection before mutation', () => {
     const selection = selectionAdapter();

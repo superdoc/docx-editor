@@ -464,6 +464,7 @@ import type {
   TextMutationOptions,
   WriteAdapter,
 } from './write/write.js';
+import { HISTORY_EXCLUSION_UNSUPPORTED_OPERATIONS, validateContentWriteHistoryOptions } from './write/write.js';
 import { assertOperationCanStart, type OperationCancellation } from './write/operation-cancellation.js';
 import type { SelectionMutationAdapter } from './selection-mutation.js';
 import {
@@ -1226,6 +1227,7 @@ export type {
   TextMutationOptions,
 } from './write/write.js';
 export type { OperationCancellation, OperationCancellationCode } from './write/operation-cancellation.js';
+export { HISTORY_EXCLUSION_UNSUPPORTED_OPERATIONS, validateContentWriteHistoryOptions } from './write/write.js';
 export {
   OperationCancellationError,
   assertOperationCanStart,
@@ -2624,6 +2626,9 @@ function installCapabilityPreflight(api: DocumentApi, adapter: CapabilitiesAdapt
     if (typeof execute !== 'function') continue;
 
     parent[member] = function capabilityGuardedOperation(input: unknown, options?: unknown): unknown {
+      if (HISTORY_EXCLUSION_UNSUPPORTED_OPERATIONS.has(operationId)) {
+        validateContentWriteHistoryOptions(operationId, input, options);
+      }
       const resolution = adapter.resolve!({ operationId, input, options });
       assertCapabilityDecision(operationId, 'available', resolution.available);
       if (options && typeof options === 'object') {

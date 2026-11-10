@@ -153,6 +153,13 @@ created for this open request. Per-open token authentication is not supported fo
 
 To initialize a new room from a DOCX, set `roomMode: 'create'` for one worker. Later SDK sessions and editors use `roomMode: 'join'`. If multiple backend workers can start the same document, [coordinate room creation](/editor/collaboration/coordinate-room-creation) in your backend and collaboration server before calling `create`.
 
+## Reject stale writes from other hosts
+
+`expectedRevision` checks one session by default.
+When several backend workers or browsers write to the same Hocuspocus room, set `expectedRevisionScope: 'room'` and run the write admission extension on the server.
+A write that started from a revision another host has already changed then fails with `REVISION_MISMATCH` instead of merging.
+See [Reject stale writes across hosts](/editor/collaboration/reject-stale-writes) for the server setup and the `REVISION_UNVERIFIED` reasons.
+
 ## Close a Liveblocks collaboration session
 
 In a Liveblocks room, `close()` waits until Liveblocks confirms it has every change from the session, then leaves

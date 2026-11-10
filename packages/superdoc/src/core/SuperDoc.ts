@@ -2284,6 +2284,7 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
         ...(target.params ? { params: target.params } : {}),
         ...(target.token ? { token: target.token } : {}),
         ...(target.retry !== undefined ? { retry: target.retry } : {}),
+        ...(target.expectedRevisionScope ? { expectedRevisionScope: target.expectedRevisionScope } : {}),
       };
     }
     return {

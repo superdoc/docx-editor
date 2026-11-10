@@ -1,0 +1,124 @@
+---
+title: Reject stale writes across hosts
+navTitle: Reject stale writes
+description: Make expectedRevision a room-wide check, so concurrent writers from different hosts cannot merge two replacements into one value.
+---
+
+`expectedRevision` normally guards one session.
+A write fails with `REVISION_MISMATCH` when that session has seen a newer revision than the one you read.
+Two hosts that read the same revision before either write lands both pass that check, and the room merges both edits.
+Replacing a value of `100` with `200` from one host and `300` from another can then leave `200300` in the document.
+
+Set `expectedRevisionScope: 'room'` to check the revision against the whole room instead.
+The collaboration server then admits guarded writes one at a time.
+At most one of two writes that started from the same revision commits.
+The other fails with `REVISION_MISMATCH`, as it would in a single session, so your existing retry handling applies.
+
+## How a room-scoped write runs
+
+1. The session asks the server for the room's write lease.
+2. When the lease is granted, the session has received every edit the server applied before it.
+3. The session checks `expectedRevision` against that state, then applies the write or rejects it.
+4. The session waits until the server acknowledges that it applied every update of the write, then releases the lease.
+5. The session reports success only after the server confirms the release.
+
+The next writer is admitted only after that release, so it always sees the previous guarded write, even when a `beforeHandleMessage` hook on your server delays updates.
+
+While a lease is held, the server delays document updates from other connections, including typing in a browser, until the lease ends.
+Those updates are not lost.
+They apply in order after the guarded write, and they make any later stale guarded write fail.
+
+Any committed edit invalidates a guarded write that read an older revision, even an edit in an unrelated part of the document.
+Writes without `expectedRevision`, such as typing, are never rejected.
+
+## Run the extension on your server
+
+Room-scoped writes need Hocuspocus with the write admission extension from `@superdoc/sdk`:
+
+```ts
+import { Server } from '@hocuspocus/server';
+import { createWriteAdmissionExtension } from '@superdoc/sdk';
+
+const server = new Server({
+  port: 1234,
+  extensions: [createWriteAdmissionExtension()],
+});
+
+await server.listen();
+```
+
+The extension keeps lease state in the server process.
+Run one server process per room, or route every connection for a room to the same process.
+Several processes that share a room through a pub/sub extension each keep their own lease and cannot reject each other's stale writes.
+
+A lease ends when the writer confirms its write, disconnects, or holds it longer than `leaseTimeoutMs` (10,000 by default).
+Writes that the server applies itself, for example through a direct connection, do not wait for a lease.
+
+## Turn it on for each writer
+
+In the Node SDK, set the scope on the collaboration settings for `open`:
+
+```ts
+const doc = await client.open({
+  collaboration: {
+    providerType: 'hocuspocus',
+    url: 'wss://collab.example.com',
+    documentId: 'contract-42',
+    expectedRevisionScope: 'room',
+  },
+});
+```
+
+In the browser editor, set it in the document's `collaboration` settings:
+
+```ts
+const superdoc = new SuperDoc({
+  selector: '#editor',
+  document: {
+    url: '/contract.docx',
+    collaboration: {
+      providerType: 'hocuspocus',
+      serverUrl: 'wss://collab.example.com',
+      documentId: 'contract-42',
+      expectedRevisionScope: 'room',
+    },
+  },
+});
+```
+
+Every writer that guards its writes should use `'room'`.
+A writer left at the default `'session'` still checks only its own session, so its writes can merge with a room-scoped write.
+
+## Handle the result
+
+| Result                | Meaning                                                                   | What to do                                             |
+| --------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------ |
+| Success               | The write committed and the server confirmed it.                          | Continue.                                              |
+| `REVISION_MISMATCH`   | Another edit landed after your read. Nothing from this write was applied. | Read the document again, rebuild the write, and retry. |
+| `REVISION_UNVERIFIED` | The room could not confirm the write. `details.reason` says why.          | See the reasons below.                                 |
+
+`details.reason` for `REVISION_UNVERIFIED`:
+
+| Reason             | Meaning                                                                                                   |
+| ------------------ | --------------------------------------------------------------------------------------------------------- |
+| `disconnected`     | The session was not connected and synced. Nothing was applied.                                            |
+| `not-acknowledged` | The server did not answer. It is not running the extension, or it is unreachable. Nothing was applied.    |
+| `not-granted`      | The lease was not granted in time. Nothing was applied.                                                   |
+| `denied`           | The server refused the lease, for example on a read-only connection. Nothing was applied.                 |
+| `transport`        | The lease request could not be sent, or the provider cannot confirm applied updates. Nothing was applied. |
+| `expired`          | The lease expired before the server confirmed the write. The write may still reach the room.              |
+| `not-released`     | The write was made, but the server did not confirm it applied the write and ended the lease in time.      |
+
+For the first five reasons, retry after the connection recovers.
+For `expired` and `not-released`, read the document again before retrying, because the write may have committed.
+
+The room check and [atomic plans](/document-api/mutation-plans) are separate guarantees.
+`atomic: true` decides whether all steps of one plan apply together.
+`expectedRevisionScope: 'room'` decides whether the plan may apply at all.
+A rejected atomic plan applies none of its steps.
+
+## Limits
+
+- Room scope is available for Hocuspocus. y-websocket and Liveblocks have no server hook for the lease.
+- Typing and other writes from other connections wait while a lease is held, usually for two network round trips and the time the write takes.
+- A lease that expires while a slow writer is still sending its update cannot stop that update. The writer gets `REVISION_UNVERIFIED` with reason `expired`. Keep `leaseTimeoutMs` longer than your slowest guarded write.

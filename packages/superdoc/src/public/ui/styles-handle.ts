@@ -368,12 +368,13 @@ export function createStylesHandle(deps: StylesHandleDeps): StylesHandle {
         selectionKey(deps.currentSelection()) === selectionToken &&
         deps.readDocumentMode() === mode;
       if (!isCurrent()) return stale;
-      const active = reads.activeParagraphStyle(selection).style;
       const story = storyLocatorSignature(selectionStory(selection));
       const keys = [
         styleCatalogReadKey({ includePreview: true }),
         ...selectionBlockIds(selection).map((id) => `node:${story}:${id}`),
       ];
+      for (const key of keys) deps.demandHeavyDocRead(key);
+      const active = reads.activeParagraphStyle(selection).style;
       const unreadable = failedReceipt('The selection formatting could not be read.', 'PRECONDITION_FAILED');
       const run = (active: ActiveParagraphStyle): WorkflowReceipt => {
         const unavailable = keys.some((key) => {

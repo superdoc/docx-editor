@@ -4362,7 +4362,7 @@ const whiteboardInteractive = computed(() => whiteboardEnabled.value);
     <div ref="rightSidebarRef" class="superdoc__right-sidebar right-sidebar" v-if="showCommentsSidebar">
       <div class="floating-comments">
         <FloatingComments
-          v-if="hasInitializedLocations && (floatingComments.length > 0 || pendingComment)"
+          v-if="hasInitializedLocations"
           v-for="doc in documentsWithConverations"
           :parent="layers!"
           :current-document="doc"

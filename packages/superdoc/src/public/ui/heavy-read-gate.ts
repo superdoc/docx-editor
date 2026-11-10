@@ -140,9 +140,11 @@ export function createHeavyReadGate(deps: HeavyReadGateDeps): HeavyReadGate {
     };
   };
 
-  const demandCatalogUntilFirstRead = (key: DirectoryFamily): void => {
+  const demandCurrentCatalog = (key: DirectoryFamily): void => {
     const entry = deps.readAsyncEntry(key);
-    if (entry?.hasSettled || entry?.inflightToken != null) return;
+    const token = deps.contentToken();
+    if ((entry?.hasSettled && entry.token === token) || entry?.inflightToken === token) return;
+    if ((entry?.hasSettled || entry?.inflightToken != null) && typingIsRecent()) return;
     demandHeavyDocRead(key);
   };
 
@@ -284,8 +286,8 @@ export function createHeavyReadGate(deps: HeavyReadGateDeps): HeavyReadGate {
     typingIsRecent,
     demandHeavyDocRead,
     acquireDirectoryLease,
-    ensureTrackChangesCatalog: () => demandCatalogUntilFirstRead('trackChanges'),
-    ensureCommentsCatalog: () => demandCatalogUntilFirstRead('comments'),
+    ensureTrackChangesCatalog: () => demandCurrentCatalog('trackChanges'),
+    ensureCommentsCatalog: () => demandCurrentCatalog('comments'),
     commentsCatalogMayHaveRows,
     noteTrackChangesDirectoryRead,
     noteSourceComplete,

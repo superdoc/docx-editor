@@ -663,6 +663,33 @@ describe('CommentDialog', () => {
       },
     );
 
+    it.each(['same thread', 'different thread', 'different file'])(
+      'completes a reconciled edit only for the %s',
+      async (replacement) => {
+        const pending = deferred();
+        vi.spyOn(commentsStore, 'editCommentV2').mockReturnValue(pending.promise);
+        const { root, wrapper, start } = prepare();
+        try {
+          await start(root);
+          commentsStore.currentCommentText = 'Saved text';
+          await wrapper.find('button.reply-btn-primary').trigger('click');
+          const refreshed = useComment({
+            commentId: replacement === 'different thread' ? 'another-root' : root.commentId,
+            fileId: replacement === 'different file' ? 'doc-2' : root.fileId,
+            commentText: 'Saved text',
+          });
+          expect(refreshed).not.toBe(root);
+          await wrapper.setProps({ comment: refreshed });
+          pending.resolve({ ok: true });
+          await flushPromises();
+          expect(commentsStore.editingCommentId).toBe(replacement === 'same thread' ? null : root.commentId);
+          expect(commentsStore.currentCommentText).toBe(replacement === 'same thread' ? '' : 'Saved text');
+        } finally {
+          wrapper.unmount();
+        }
+      },
+    );
+
     it('keeps a later submission of the same edit when an earlier submission completes', async () => {
       const first = deferred();
       const second = deferred();

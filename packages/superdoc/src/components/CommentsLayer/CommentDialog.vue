@@ -1505,7 +1505,8 @@ const handleCommentUpdate = async (comment: CommentModel) => {
     if (session?.owner === editSessionOwner) session.submission = submission;
     const editorOwner = captureCommentEditorOwner();
     const documentId = editorOwner.adapter.documentId;
-    const thread = props.comment;
+    const threadId = props.comment.commentId;
+    const fileId = props.comment.fileId;
     const draft = currentCommentText.value;
     const outcome = await commentsStore.editCommentV2({
       superdoc: proxy.$superdoc,
@@ -1518,7 +1519,8 @@ const handleCommentUpdate = async (comment: CommentModel) => {
       session.submission !== submission ||
       !editorOwner.isCurrent() ||
       editorOwner.adapter.documentId !== documentId ||
-      props.comment !== thread ||
+      props.comment.commentId !== threadId ||
+      props.comment.fileId !== fileId ||
       editingCommentId.value !== comment.commentId ||
       currentCommentText.value !== draft
     )

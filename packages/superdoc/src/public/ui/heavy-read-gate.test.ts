@@ -239,16 +239,50 @@ describe('createHeavyReadGate', () => {
     expect(ctx.gate.holdsHeavyRead('comments', 'tok-1')).toBe(true);
   });
 
-  it('demands a catalog only until its first read starts or settles', () => {
+  it('reuses a catalog read already started or settled for the current revision', () => {
     const ctx = setup();
-    ctx.entries.set('trackChanges', { token: null, value: null, hasSettled: false, inflightToken: 'tok-0' });
+    ctx.entries.set('trackChanges', { token: null, value: null, hasSettled: false, inflightToken: 'tok-1' });
     ctx.gate.ensureTrackChangesCatalog();
     expect(ctx.deps.scheduleAsyncRefresh).not.toHaveBeenCalled();
-    ctx.entries.set('comments', settled('tok-0', []));
+    ctx.entries.set('comments', settled('tok-1', []));
     ctx.gate.ensureCommentsCatalog();
     expect(ctx.deps.scheduleAsyncRefresh).not.toHaveBeenCalled();
     ctx.entries.delete('comments');
     ctx.gate.ensureCommentsCatalog();
+    expect(ctx.deps.scheduleAsyncRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['settled', 'inflight'] as const)(
+    'explicit comments demand refreshes a %s catalog from an older revision',
+    (state) => {
+      const ctx = setup();
+      ctx.setHost(loadingHost('source-loading').host);
+      ctx.entries.set(
+        'comments',
+        state === 'settled'
+          ? settled('tok-0', [{ id: 'old' }])
+          : { token: null, value: null, hasSettled: false, inflightToken: 'tok-0' },
+      );
+      expect(ctx.gate.holdsHeavyRead('comments', 'tok-1')).toBe(true);
+      ctx.gate.ensureCommentsCatalog();
+      expect(ctx.gate.holdsHeavyRead('comments', 'tok-1')).toBe(false);
+      expect(ctx.deps.scheduleAsyncRefresh).toHaveBeenCalledTimes(1);
+      ctx.gate.ensureCommentsCatalog();
+      expect(ctx.deps.scheduleAsyncRefresh).toHaveBeenCalledTimes(1);
+      expect(ctx.gate.holdsHeavyRead('trackChanges', 'tok-1')).toBe(true);
+    },
+  );
+
+  it('keeps an older comments catalog behind the typing hold until input is idle', () => {
+    const ctx = setup();
+    ctx.entries.set('comments', settled('tok-0', [{ id: 'old' }]));
+    ctx.gate.noteTypingBurst();
+    ctx.gate.ensureCommentsCatalog();
+    expect(ctx.gate.holdsHeavyRead('comments', 'tok-1')).toBe(true);
+    expect(ctx.deps.scheduleAsyncRefresh).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(HEAVY_READ_IDLE_MS);
+    ctx.gate.ensureCommentsCatalog();
+    expect(ctx.gate.holdsHeavyRead('comments', 'tok-1')).toBe(false);
     expect(ctx.deps.scheduleAsyncRefresh).toHaveBeenCalledTimes(1);
   });
 

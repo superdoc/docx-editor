@@ -66,14 +66,16 @@ function setupReads(
   const doc: LooseRecord = { styles: stylesApi };
   const readKeys: string[] = [];
   const readTokens: string[] = [];
-  const readNodeById = vi.fn((_doc: LooseRecord | null, blockId: string) => {
-    if (!(blockId in blocks)) return { value: null, status: 'ready' as const };
-    const styleRef = blocks[blockId];
-    return {
-      value: { node: { kind: 'paragraph', paragraph: styleRef ? { styleRef } : {} } },
-      status: 'ready' as const,
-    };
-  });
+  const readNodeById = vi.fn(
+    (_doc: LooseRecord | null, blockId: string): ReturnType<StyleReadsDeps['readNodeById']> => {
+      if (!(blockId in blocks)) return { value: null, status: 'ready' as const };
+      const styleRef = blocks[blockId];
+      return {
+        value: { node: { kind: 'paragraph', paragraph: styleRef ? { styleRef } : {} } },
+        status: 'ready' as const,
+      };
+    },
+  );
   const deps: StyleReadsDeps = {
     hasEditor: () => options.noEditor !== true,
     getDoc: () => (options.noDoc ? null : doc),
@@ -303,6 +305,22 @@ describe('styles handle', () => {
     expect(handle.getCatalog({ view: 'quickGallery' })?.revision).toBe('rev-1');
     expect(demandHeavyDocRead).toHaveBeenCalledWith(styleCatalogReadKey({ view: 'quickGallery' }));
     expect(order).toEqual(['demand', 'read']);
+  });
+
+  it('demands current catalog and paragraph facts before resolving a style mutation', async () => {
+    const { handle, demandHeavyDocRead, reads, apply } = setupHandle();
+    const demanded = new Set<string>();
+    demandHeavyDocRead.mockImplementation((key: string) => demanded.add(key));
+    reads.readNodeById.mockImplementation(() => ({
+      value: demanded.has('node:story:body:P1')
+        ? { node: { kind: 'paragraph', paragraph: { styleRef: 'Heading1' } } }
+        : null,
+      status: demanded.has('node:story:body:P1') ? 'ready' : 'pending',
+    }));
+    expect(await handle.updateToMatchSelection()).toEqual({ success: true });
+    expect(demanded).toContain(styleCatalogReadKey({ includePreview: true }));
+    expect(demanded).toContain('node:story:body:P1');
+    expect(apply).toHaveBeenCalledTimes(1);
   });
 
   it('reads the active style from the selection current at call time', () => {

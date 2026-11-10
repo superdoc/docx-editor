@@ -11142,7 +11142,10 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     isDisposed: () => disposed,
     getDoc,
     contentToken,
-    demandHeavyDocRead,
+    demandHeavyDocRead: (key) => {
+      coldAsyncReadDeferrals.set(`${key}\u0000${contentToken()}`, 'released');
+      demandHeavyDocRead(key);
+    },
     readAsyncEntry: (key) => asyncReads.get(key),
     readDocumentMode,
     readHostSelectionSnapshot,

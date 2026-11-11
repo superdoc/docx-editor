@@ -101,6 +101,15 @@ The display and the review decision are separate:
 Viewing mode stays read-only in all three cases. Use the [document modes demo](/editor/document-modes#choose-how-tracked-changes-appear)
 to compare them. A clean-looking final view is not an accepted document.
 
+Wherever revision marks are shown, a thin line in the left margin marks each paragraph that contains a change, as in
+Word. Set `--sd-tracked-changes-change-bar-color` to restyle it, or to `transparent` to hide it:
+
+```css
+.superdoc {
+  --sd-tracked-changes-change-bar-color: transparent;
+}
+```
+
 ## Control review decisions
 
 Use [Control a document review workflow](/editor/review-workflow) to let contributors propose without deciding,

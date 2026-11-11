@@ -4677,7 +4677,12 @@ const anchoredMetadataAttachMutation = refMutationSchemas(
 const anchoredMetadataMutation = refMutationSchemas({ id: { type: 'string', minLength: 1 } }, ['id']);
 // --- Footnote schemas ---
 const footnoteAddressSchema: JsonSchema = objectSchema(
-  { kind: { const: 'entity' }, entityType: { const: 'footnote' }, noteId: { type: 'string' } },
+  {
+    kind: { const: 'entity' },
+    entityType: { const: 'footnote' },
+    noteId: { type: 'string' },
+    noteType: { enum: ['footnote', 'endnote'] },
+  },
   ['kind', 'entityType', 'noteId'],
 );
 const footnoteConfigScopeSchema: JsonSchema = {

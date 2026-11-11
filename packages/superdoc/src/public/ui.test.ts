@@ -7752,6 +7752,20 @@ describe('public ui — viewport.scrollIntoView parity', () => {
     });
   });
 
+  it('forwards an API-returned footnote address without a tracked-change lookup', async () => {
+    const scrollTargetIntoView = vi.fn(async () => ({ success: true }));
+    const { superdoc } = makeWorkflowSuperdoc({ host: { scrollTargetIntoView } });
+    const ui = createSuperDocUI({ superdoc });
+    const address = { kind: 'entity', entityType: 'footnote', noteId: '1' } as const;
+
+    expect(await ui.viewport.scrollIntoView({ target: address, behavior: 'instant' })).toEqual({ success: true });
+    expect(scrollTargetIntoView).toHaveBeenCalledExactlyOnceWith({
+      target: address,
+      block: 'center',
+      behavior: 'instant',
+    });
+  });
+
   it('scrolls a comment entity into view', async () => {
     const scrollTargetIntoView = vi.fn(async () => ({ success: true }));
     const { superdoc } = makeWorkflowSuperdoc({

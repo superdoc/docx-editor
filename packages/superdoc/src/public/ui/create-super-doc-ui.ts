@@ -11020,11 +11020,13 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       const rawTarget = input?.target;
       if (!rawTarget) return { success: false };
 
-      // Resolve the input target into the segment-shaped text target the host
-      // scroll surface consumes, then route through the shared helper so this
-      // fails closed identically to the per-entity `scrollTo` methods.
       let target: unknown | null = null;
-      if (rawTarget.kind === 'entity') {
+      if (rawTarget.kind === 'entity' && rawTarget.entityType === 'footnote') {
+        target = rawTarget;
+      } else if (rawTarget.kind === 'entity') {
+        // Resolve the input target into the segment-shaped text target the host
+        // scroll surface consumes, then route through the shared helper so this
+        // fails closed identically to the per-entity `scrollTo` methods.
         // Comment / tracked-change id — resolve to its stored target exactly as
         // `comments.scrollTo` / `trackChanges.scrollTo` do.
         const namespace = rawTarget.entityType === 'comment' ? 'comments' : 'trackChanges';

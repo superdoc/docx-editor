@@ -11,6 +11,7 @@ export interface FootnoteAddress {
   kind: 'entity';
   entityType: 'footnote';
   noteId: string;
+  noteType?: 'footnote' | 'endnote';
 }
 
 // ---------------------------------------------------------------------------

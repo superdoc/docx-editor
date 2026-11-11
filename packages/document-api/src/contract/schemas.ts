@@ -4964,6 +4964,28 @@ const diffApplyEligibilitySchema: JsonSchema = objectSchema(
   },
   ['direct', 'tracked'],
 );
+const diffDisplaySideSchema: JsonSchema = {
+  oneOf: [objectSchema({ text: { type: 'string' }, target: textAddressSchema }, ['text', 'target']), { type: 'null' }],
+};
+const diffDisplaySchema: JsonSchema = objectSchema(
+  {
+    changes: arraySchema(
+      objectSchema(
+        {
+          id: { type: 'string' },
+          kind: { enum: ['insert', 'delete', 'replace', 'format', 'move'] },
+          before: diffDisplaySideSchema,
+          after: diffDisplaySideSchema,
+          targetAnchor: { oneOf: [textAddressSchema, { type: 'null' }] },
+          ordinal: { type: 'number' },
+        },
+        ['id', 'kind', 'before', 'after', 'targetAnchor', 'ordinal'],
+      ),
+    ),
+    unrenderedFamilies: arraySchema({ type: 'string' }),
+  },
+  ['changes', 'unrenderedFamilies'],
+);
 const diffPayloadSchema: JsonSchema = objectSchema(
   {
     version: { type: 'string', enum: ['sd-diff-payload/v1', 'sd-diff-payload/v2'] },
@@ -4973,6 +4995,7 @@ const diffPayloadSchema: JsonSchema = objectSchema(
     coverage: diffCoverageSchema,
     summary: diffSummarySchema,
     applyEligibility: diffApplyEligibilitySchema,
+    display: diffDisplaySchema,
     partChanges: arraySchema(
       objectSchema(
         {
@@ -11782,9 +11805,14 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
     output: diffSnapshotSchema,
   },
   'diff.compare': {
-    input: objectSchema({ targetSnapshot: diffSnapshotSchema, styleChangeMode: { enum: ['direct', 'tracked'] } }, [
-      'targetSnapshot',
-    ]),
+    input: objectSchema(
+      {
+        targetSnapshot: diffSnapshotSchema,
+        includeDisplay: { type: 'boolean' },
+        styleChangeMode: { enum: ['direct', 'tracked'] },
+      },
+      ['targetSnapshot'],
+    ),
     output: diffPayloadSchema,
   },
   'diff.apply': {

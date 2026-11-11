@@ -945,6 +945,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     return `e${id}`;
   };
   let documentMutationRevision = 0;
+  let remoteCommentsRevision = 0;
   // Explicit custom-UI list/navigation consumers share one paged directory
   // transport. Legacy hosts without the committed-window feed also use this
   // coordinator as their compatibility presentation source. A foreground
@@ -1099,6 +1100,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
 
   /** Token shared by document-content reads (editor identity + mutation revision). */
   const contentToken = (): string => `${editorIdentityId(getEditor())}|m${documentMutationRevision}`;
+  const commentsDirectoryToken = (): string => `${contentToken()}|r${remoteCommentsRevision}`;
 
   const clearPostDecisionTrackChanges = (): void => {
     postDecisionTrackChangesToken = null;
@@ -1537,6 +1539,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     run: () => unknown,
     normalize: (raw: unknown) => T | null,
     immediate = false,
+    gateToken = token,
   ): { value: T | null; status: SliceStatus } => {
     const serve = (
       entry: AsyncReadEntry | null | undefined,
@@ -1549,7 +1552,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       scheduleForegroundAsyncRetry(HEAVY_READ_IDLE_POLL_MS);
       return serve(entry, 'stale');
     }
-    if (!immediate && holdsHeavyRead(key, token)) return serve(entry, 'stale');
+    if (!immediate && holdsHeavyRead(key, gateToken)) return serve(entry, 'stale');
     if (!immediate && foregroundMutationActive()) {
       scheduleForegroundAsyncRetry();
       return serve(entry, 'stale');
@@ -1559,7 +1562,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       return serve(entry, 'stale');
     }
     if (!entry && key.startsWith('effInline:') && shouldDeferEffectiveInlineRead(key)) return serve(entry, 'pending');
-    if (!immediate && !entry && shouldDeferColdAsyncRead(key, token)) return serve(entry, 'pending');
+    if (!immediate && !entry && shouldDeferColdAsyncRead(key, gateToken)) return serve(entry, 'pending');
     if (!entry || entry.inflightToken !== token) {
       const completed = issueAsyncRead(key, token, run, normalize);
       if (completed) return serve(completed, 'ready');
@@ -2094,13 +2097,14 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     const listComments = hostMethod(doc?.comments, 'list');
     return readAsync<CommentInfo[]>(
       'comments',
-      contentToken(),
+      commentsDirectoryToken(),
       () => (listComments ? listComments() : undefined),
       (raw) => {
         const items: unknown = isPlainObject(raw) ? raw.items : undefined;
         return Array.isArray(items) ? realComments(items) : [];
       },
       immediate,
+      contentToken(),
     );
   };
 
@@ -2143,7 +2147,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     const activeIds = selection.activeCommentIds;
     const directory = asyncReads.get('comments');
     const directoryItems =
-      directory?.token === contentToken() && directory.hasSettled && Array.isArray(directory.value)
+      directory?.token === commentsDirectoryToken() && directory.hasSettled && Array.isArray(directory.value)
         ? directory.value
         : null;
     // An open document-wide consumer may focus an off-window row. Preserve it
@@ -5324,6 +5328,12 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
         'subscribe',
       )?.((event: LooseRecord) => {
         const type = event?.type;
+        if (type === 'collaboration:remote-comments-changed') {
+          remoteCommentsRevision += 1;
+          if (asyncReads.has('comments')) demandHeavyDocRead('comments');
+          recompute('remote-comments');
+          return;
+        }
         if (host) publishDocumentChange(host, event);
         const isStandaloneDocumentMutation = type === 'document:mutated' && event.hasCommitEvent !== true;
         if (
@@ -9911,7 +9921,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       const snapshot = commentsSub.get();
       const directory = asyncReads.get('comments');
       const directoryItems =
-        directory?.token === contentToken() && directory.hasSettled && Array.isArray(directory.value)
+        directory?.token === commentsDirectoryToken() && directory.hasSettled && Array.isArray(directory.value)
           ? (directory.value as CommentInfo[])
           : null;
       const items = directoryItems ?? snapshot.items;

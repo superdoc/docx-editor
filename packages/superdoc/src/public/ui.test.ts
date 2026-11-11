@@ -21964,6 +21964,90 @@ describe('public ui — async browser reads (read coordinator)', () => {
     ui.destroy();
   });
 
+  it('SD-8074 C3 regression guard observer-dedup: unchanged window publications preserve a settled directory', async () => {
+    const snapshot = {
+      status: 'ready',
+      routeId: 'window-1',
+      commentItems: [{ id: 'c-1', text: 'Unchanged' }],
+      trackedChangeItems: [],
+    };
+    const listeners = new Set<() => void>();
+    const list = vi.fn(async () => ({ items: snapshot.commentItems }));
+    const { superdoc } = makeAsyncSuperdoc({ comments: list });
+    Object.assign(superdoc.activeEditor, {
+      editorVersion: 2,
+      reviewWindow: {
+        getSnapshot: () => snapshot,
+        subscribe: (listener: () => void) => {
+          listeners.add(listener);
+          return () => listeners.delete(listener);
+        },
+      },
+    });
+    const ui = createSuperDocUI({ superdoc });
+    const observer = vi.fn();
+    const stop = ui.comments.observe(observer);
+    try {
+      await flush();
+      expect(observer.mock.lastCall?.[0]).toMatchObject({ status: 'ready', items: snapshot.commentItems });
+      const emissions = observer.mock.calls.length;
+      const reads = list.mock.calls.length;
+      expect(reads).toBeGreaterThan(0);
+      for (let publication = 0; publication < 10; publication += 1) {
+        for (const listener of listeners) listener();
+        await nextAnimationFrame();
+      }
+      expect(observer).toHaveBeenCalledTimes(emissions);
+      expect(list).toHaveBeenCalledTimes(reads);
+    } finally {
+      stop();
+      ui.destroy();
+    }
+  });
+
+  it('SD-8074 C1 C2 race: a comments read in flight when a remote comment change arrives does not settle stale text', async () => {
+    const hostEvents: Array<(event: Record<string, unknown>) => void> = [];
+    const settleRead: Array<(text: string) => void> = [];
+    const list = vi.fn(
+      () =>
+        new Promise<{ items: Array<{ id: string; text: string }> }>((resolve) => {
+          settleRead.push((text) => resolve({ items: [{ id: 'c-1', text }] }));
+        }),
+    );
+    const { superdoc } = makeAsyncSuperdoc({ comments: list, hostEvents });
+    Object.assign(superdoc.activeEditor, {
+      editorVersion: 2,
+      reviewWindow: {
+        getSnapshot: () => ({ status: 'ready', routeId: 'window-1', commentItems: [], trackedChangeItems: [] }),
+        subscribe: () => () => undefined,
+      },
+    });
+    const ui = createSuperDocUI({ superdoc });
+    const existing = vi.fn();
+    const attachedLater = vi.fn();
+    const stops = [ui.comments.observe(existing)];
+    try {
+      await flush();
+      expect(settleRead).toHaveLength(1);
+      for (const listener of [...hostEvents]) listener({ type: 'collaboration:remote-comments-changed' });
+      await flush();
+      expect(settleRead).toHaveLength(2);
+      settleRead[0]?.('Original');
+      await flush();
+      settleRead[1]?.('Edited');
+      await flush();
+      stops.push(ui.comments.observe(attachedLater));
+      await flush();
+      const edited = { status: 'ready', items: [{ id: 'c-1', text: 'Edited' }] };
+      expect(existing.mock.lastCall?.[0]).toMatchObject(edited);
+      expect(attachedLater.mock.lastCall?.[0]).toMatchObject(edited);
+      expect(list).toHaveBeenCalledTimes(2);
+    } finally {
+      for (const stop of stops) stop();
+      ui.destroy();
+    }
+  });
+
   it('re-filters comments when a host refreshes the same review-window rows in place', async () => {
     const rows: Record<string, unknown>[] = [
       { id: 'c-1', commentId: 'c-1', text: 'First' },

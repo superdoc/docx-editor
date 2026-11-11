@@ -1949,6 +1949,10 @@ const handleDocumentSelectionChange = () => {
   scheduleV2DomSelectionSync();
 };
 
+watch(pendingComment, (next, previous) => {
+  if (previous && !next && proxy.$superdoc?.config?.documentMode === 'viewing') scheduleV2DomSelectionSync();
+});
+
 const onV2SelectionChanged = ({
   hasRangeSelection,
   snapshot,

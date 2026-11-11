@@ -3398,14 +3398,15 @@ export const OPERATION_DEFINITIONS = {
   // -------------------------------------------------------------------------
   'tables.convertFromText': {
     memberPath: 'tables.convertFromText',
-    description: 'Convert a text range into a table.',
+    description:
+      'Convert consecutive paragraphs from a starting block, or exactly the whole paragraphs in a selection, into a table. Selection endpoints must be at paragraph boundaries.',
     expectedResult: 'Returns a TableMutationResult receipt confirming text was converted into a table.',
     requiresDocumentContext: true,
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
       trackedSupport: 'never',
-      possibleFailureCodes: ['INVALID_TARGET'],
+      possibleFailureCodes: ['INVALID_TARGET', 'TARGET_NOT_FOUND', 'PRECONDITION_FAILED'],
       throws: T_NOT_FOUND_COMMAND,
     }),
     referenceDocPath: 'tables/convert-from-text.mdx',

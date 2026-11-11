@@ -9135,7 +9135,7 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
   'tables.convertFromText': {
     input: {
       ...objectSchema({
-        target: blockNodeAddressSchema,
+        target: { oneOf: [blockNodeAddressSchema, selectionTargetSchema] },
         nodeId: { type: 'string' },
         delimiter: {
           oneOf: [

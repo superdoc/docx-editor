@@ -2,6 +2,7 @@ import type { AdapterMutationFailure } from '../types/adapter-result.js';
 import type { DiscoveryOutput } from '../types/discovery.js';
 import type { TextTarget } from '../types/address.js';
 import type { SDFragment } from '../types/fragment.js';
+import type { InlineNodeAddress } from '../types/base.js';
 
 // ---------------------------------------------------------------------------
 // Address
@@ -104,6 +105,7 @@ export interface FootnoteInfo {
   noteId: string;
   displayNumber: string;
   content: string;
+  references?: InlineNodeAddress[];
 }
 
 export interface FootnoteDomain {
@@ -112,6 +114,7 @@ export interface FootnoteDomain {
   noteId: string;
   displayNumber: string;
   content: string;
+  references?: InlineNodeAddress[];
 }
 
 // ---------------------------------------------------------------------------

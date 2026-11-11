@@ -6189,7 +6189,8 @@ export const OPERATION_DEFINITIONS = {
   'footnotes.list': {
     memberPath: 'footnotes.list',
     description: 'List all footnotes and endnotes in the document.',
-    expectedResult: 'Returns a FootnotesListResult containing discovered footnotes with address and domain data.',
+    expectedResult:
+      'Returns a FootnotesListResult containing notes with address, content, and inline body reference addresses in references. V2 returns an empty references array for an unreferenced note.',
     requiresDocumentContext: true,
     metadata: readOperation({
       idempotency: 'idempotent',
@@ -6201,7 +6202,8 @@ export const OPERATION_DEFINITIONS = {
   'footnotes.get': {
     memberPath: 'footnotes.get',
     description: 'Get detailed information about a specific footnote or endnote.',
-    expectedResult: "Returns a FootnoteInfo object with the note's type, display number, and content.",
+    expectedResult:
+      "Returns a FootnoteInfo object with the note's type, display number, content, and inline body reference addresses in references. V2 returns an empty references array for an unreferenced note.",
     requiresDocumentContext: true,
     metadata: readOperation({
       throws: T_NOT_FOUND_CAPABLE,

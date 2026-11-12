@@ -164,7 +164,7 @@ if (preview.valid) await doc.mutations.apply(plan);
 
 Review plans support direct edits in the body story. Concrete point/range targets refer to the starting revision; every relocation must precede every decision. Decisions identify whole text revisions through `id` or `ids`. Preview validates the complete sequence without changing document bytes, revision, or history. Apply publishes the complete result once and creates one Undo entry; a failed step leaves the original document intact.
 
-Review plans cannot mix core text/format/structural steps. Comment creation, comment metadata changes, Custom XML writes, structural revisions and secondary stories are unsupported. The selected destination must survive every decision. Preview reports unsupported combinations explicitly; do not invent a fallback destination after failure. `plan.execute` remains stepwise and retains earlier successful edits when a later entry fails.
+Review plans cannot mix core text/format/structural steps. Comment creation, comment metadata changes, Custom XML writes, structural revisions and secondary stories are unsupported. The selected destination must survive every decision. Preview reports unsupported combinations explicitly; do not invent a fallback destination after failure. `plan.execute` without `atomic: true` remains stepwise and retains earlier successful edits when a later entry fails.
 
 A grouped revision can include paragraph marks or other structural carriers even when its public type is `deletion`. Such groups are unsupported by review plans and are rejected before publication. Repeated exact revision IDs are counted and decided once.
 
@@ -348,10 +348,89 @@ const result = await doc.plan.execute({
 if (result.failure) throw new Error(result.failure.message);
 ```
 
-The atomic route prepares on detached document bytes and commits the supported result once to the active session. It preserves existing history and gives the whole batch one Undo unit. Preparation or commit failure leaves the active document and history unchanged. It is bounded to 1,000 entries in one existing body, header or footer story. Cross-story batches and operations that change the package graph are refused unchanged.
+The atomic route prepares in an isolated copy of the document and commits its changes once to the active session. It preserves existing history and gives the whole batch one Undo unit. A failed entry discards the entire plan, preserving content, selection, revision, and both history stacks. A concurrent document change rejects the staged proposal. Plans accept at most 1,000 entries; mixed plans also require a ready document with at most 1,000 body paragraphs and a source package at most 2 MB. Empty plans and plans that make no changes add no history.
 
-Local plans support content-control creation, unwrap, deletion, property patching, lock changes and content replacement; plain text insertion/replacement/deletion; inline formatting; and existing `mutations.apply` operations. Each operation retains its own support boundaries. For example, tracked lock changes, inline retagging/deletion and replacement of a newly tracked inline insertion may be refused. Atomic execution does not make an unsupported tracked representation valid: it discards the complete prepared proposal on refusal.
+Supported entries include content-control creation, content replacement, type and property changes, lock changes, adjacent insertion, unwrap and deletion; image creation; text insertion/replacement/deletion; paragraph and inline formatting; paragraph style references; list insertion; tracked-change decisions; comment patches; and existing `mutations.apply` operations. Each operation keeps its own validation, protection, author, and tracking rules. A refused entry discards the complete proposal.
 
-Shared rooms support direct control/formatting batches within one story when the batch preserves document identities. Structural creation/deletion, tracked atomic proposals and cross-story shared batches are refused unchanged. A shared batch is one backend commit and one local Undo unit; peer history remains local to each peer.
+The same transaction path works in collaborative rooms. Peers receive the completed group together, including new image media, control identities, and numbering. Undo and Redo act on the author’s local group and preserve unrelated peer edits. Peer history remains local to each peer.
 
 `captureAs` and capture references may connect entries **inside** an atomic plan. Atomic captures do not persist across calls and `captureReturns` is unavailable, because preparation can produce revision-bound handles. Read fresh results after a successful commit. Failure expectations and per-entry history exclusion are also unavailable in this route. Hosts without atomic support refuse the opt-in before executing entries.
+
+Create a table control and fill it using a local capture:
+
+```ts
+const point = { kind: 'text', blockId: paragraphId, offset: 0 } as const;
+const result = await doc.plan.execute({
+  atomic: true,
+  entries: [
+    {
+      operationId: 'create.contentControl',
+      captureAs: 'table',
+      input: {
+        kind: 'block',
+        controlType: 'richText',
+        content: '',
+        tag: 'synthetic-table',
+        alias: 'Synthetic table',
+        at: { kind: 'selection', start: point, end: point },
+      },
+    },
+    {
+      operationId: 'contentControls.replaceContent',
+      input: {
+        target: { kind: 'capture-ref', captureKey: 'table', path: 'contentControl' },
+        format: 'html',
+        content: '<table><tr><td><p>Filled value</p></td></tr></table>',
+      },
+    },
+  ],
+});
+if (result.failure) throw new Error(result.failure.message);
+```
+
+To group a drawing with its label, put `create.image` and `insert` entries in one atomic plan. Use explicit paragraph targets and public visible-text offsets. An inserted image does not advance the visible-text offset: insert an adjacent numeral at the same public text offset as the image. To accept a suggestion and wrap its figure labels, put `trackChanges.decide` before the corresponding `create.contentControl` entries. A separate API call after the plan creates a separate Undo action.
+
+For nested `mutations.apply` alignment across a paragraph containing a locked inline control, compose the lock change and restoration inside the same atomic plan. Read the control’s original lock mode first, capture the paragraph target after the value write, and restore that lock mode before commit:
+
+```ts
+const result = await doc.plan.execute({
+  atomic: true,
+  entries: [
+    {
+      operationId: 'contentControls.setLockMode',
+      input: { target: controlTarget, lockMode: 'unlocked' },
+    },
+    {
+      operationId: 'contentControls.selectByTag',
+      captureAs: 'fresh',
+      input: { tag },
+    },
+    {
+      operationId: 'mutations.apply',
+      input: {
+        atomic: true,
+        changeMode: 'direct',
+        steps: [
+          {
+            id: 'align',
+            op: 'format.apply',
+            where: {
+              by: 'block',
+              nodeType: 'paragraph',
+              nodeId: { kind: 'capture-ref', captureKey: 'fresh', path: 'items.0.selectionTarget.start.blockId' },
+            },
+            args: { alignment: 'right' },
+          },
+        ],
+      },
+    },
+    {
+      operationId: 'contentControls.setLockMode',
+      input: { target: controlTarget, lockMode: originalLockMode },
+    },
+  ],
+});
+if (result.failure) throw new Error(result.failure.message);
+```
+
+Numeric value writes and native indentation or tab-stop operations can join this plan. Preparation keeps the temporary lock change isolated from the active document and peers. A failure preserves the original content and lock; one Undo restores the complete pre-plan state. A bare nested text-range formatting request still respects locked inline content.

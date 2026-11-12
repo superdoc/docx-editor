@@ -154,6 +154,44 @@ describe('resolveV2CollaborationTarget', () => {
     }
   });
 
+  it('carries a room-scoped expectedRevision only for Hocuspocus', () => {
+    const room = resolveV2CollaborationTarget({
+      collaboration: {
+        providerType: 'hocuspocus',
+        documentId: 'room',
+        serverUrl: 'wss://collab.example.test',
+        expectedRevisionScope: 'room',
+      },
+    });
+    expect(room).toMatchObject({ ok: true, target: { providerFamily: 'hocuspocus', expectedRevisionScope: 'room' } });
+    const unset = resolveV2CollaborationTarget({
+      collaboration: { providerType: 'hocuspocus', documentId: 'room', serverUrl: 'wss://collab.example.test' },
+    });
+    expect(unset.ok && unset.target).not.toHaveProperty('expectedRevisionScope');
+    const session = resolveV2CollaborationTarget({
+      collaboration: { documentId: 'room', serverUrl: 'wss://collab.example.test', expectedRevisionScope: 'session' },
+    });
+    expect(session).toMatchObject({
+      ok: true,
+      target: { providerFamily: 'y-websocket', expectedRevisionScope: 'session' },
+    });
+    for (const [providerType, expectedRevisionScope] of [
+      ['y-websocket', 'room'],
+      ['hocuspocus', 'global'],
+      ['hocuspocus', true],
+    ]) {
+      const result = resolveV2CollaborationTarget({
+        collaboration: {
+          providerType,
+          documentId: 'room',
+          serverUrl: 'wss://collab.example.test',
+          expectedRevisionScope,
+        },
+      });
+      expect(result).toMatchObject({ ok: false, reason: 'invalid-expected-revision-scope' });
+    }
+  });
+
   it('rejects unknown room modes instead of coercing them to join or create', () => {
     const result = resolveV2CollaborationTarget({
       v2Collaboration: {

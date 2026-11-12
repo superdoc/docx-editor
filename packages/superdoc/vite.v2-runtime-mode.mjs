@@ -109,6 +109,7 @@ export function buildSourceModeAliases({ v2Root, layoutEngineRoot }) {
     { find: '@superdoc/editor-core/search', replacement: path.resolve(v2Root, 'editor-core/src/search/index.ts') },
     { find: /^@superdoc\/editor-core$/, replacement: path.resolve(v2Root, 'editor-core/src/browser.ts') },
     { find: /^@superdoc\/document-compare$/, replacement: path.resolve(v2Root, 'document-compare/src/index.ts') },
+    { find: /^@superdoc\/document-compare\/xml-part-decoder$/, replacement: path.resolve(v2Root, 'document-compare/src/xml-part-decoder.ts') },
     // collaboration-v2
     { find: '@superdoc/collaboration-v2/legacy', replacement: path.resolve(v2Root, 'collaboration-v2/src/legacy/index.ts') },
     { find: '@superdoc/collaboration-v2/projection/session-controller', replacement: path.resolve(v2Root, 'collaboration-v2/src/projection/session-controller.ts') },

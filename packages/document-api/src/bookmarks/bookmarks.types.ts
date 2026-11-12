@@ -43,7 +43,7 @@ export interface BookmarkGetInput {
 
 export interface BookmarkInsertInput {
   /**
-   * Visible bookmark creation name: starts with a Unicode letter, followed by
+   * Bookmark creation name: starts with a Unicode letter or underscore, followed by
    * letters, nonspacing/spacing combining marks, decimal digits or underscores.
    * At most 40 UTF-16 code units; invalid names return INVALID_PAYLOAD without
    * mutation. Names are not normalized or truncated. Imported names are unaffected.

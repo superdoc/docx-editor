@@ -80,14 +80,15 @@ Do not treat the absence of an exception as success. Read `receipt.success` befo
 
 Use the code to select a bounded recovery path:
 
-| Code family                                                                | Meaning                                             | Action                                                                    |
-| -------------------------------------------------------------------------- | --------------------------------------------------- | ------------------------------------------------------------------------- |
-| `REVISION_MISMATCH`, `STALE_REVISION`, `ADDRESS_STALE`, `TARGET_NOT_FOUND` | The document or target changed                      | Re-query current state, review the new match, and retry once              |
-| `NO_OP`                                                                    | The request would not change the document           | Stop and verify whether the desired state already exists                  |
-| `CAPABILITY_UNAVAILABLE`, `CAPABILITY_UNSUPPORTED`                         | The current runtime cannot perform the request      | Change the mode, operation, or runtime; do not retry unchanged            |
-| `PERMISSION_DENIED`                                                        | Document policy prevents the mutation               | Keep the document unchanged and resolve authorization or protection first |
-| `INVALID_INPUT`, `INVALID_TARGET`                                          | The request shape or target is invalid              | Fix the request; do not retry the same payload                            |
-| `INTERNAL_ERROR`                                                           | The runtime could not complete the operation safely | Record the code and context, then stop the workflow                       |
+| Code family                                                                | Meaning                                             | Action                                                                                      |
+| -------------------------------------------------------------------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `REVISION_MISMATCH`, `STALE_REVISION`, `ADDRESS_STALE`, `TARGET_NOT_FOUND` | The document or target changed                      | Re-query current state, review the new match, and retry once                                |
+| `NO_OP`                                                                    | The request would not change the document           | Stop and verify whether the desired state already exists                                    |
+| `REVISION_UNVERIFIED`                                                      | A room-scoped revision check could not be confirmed | Read `details.reason`; see [Reject stale writes](/editor/collaboration/reject-stale-writes) |
+| `CAPABILITY_UNAVAILABLE`, `CAPABILITY_UNSUPPORTED`                         | The current runtime cannot perform the request      | Change the mode, operation, or runtime; do not retry unchanged                              |
+| `PERMISSION_DENIED`                                                        | Document policy prevents the mutation               | Keep the document unchanged and resolve authorization or protection first                   |
+| `INVALID_INPUT`, `INVALID_TARGET`                                          | The request shape or target is invalid              | Fix the request; do not retry the same payload                                              |
+| `INTERNAL_ERROR`                                                           | The runtime could not complete the operation safely | Record the code and context, then stop the workflow                                         |
 
 Not every operation can return every code. Use the generated operation reference when implementing operation-specific recovery.
 

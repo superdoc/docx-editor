@@ -7,6 +7,7 @@
  */
 
 import type { SelectionTarget, SelectionPoint, TextAddress, TextTarget, EntityAddress } from '../types/address.js';
+import type { FootnoteAddress } from '../footnotes/footnotes.types.js';
 import type { BlockNodeType } from '../types/base.js';
 import type { StoryLocator } from '../types/story.types.js';
 
@@ -143,7 +144,7 @@ export interface ScrollIntoViewInput {
    * - {@link EntityAddress}: reference to a comment or tracked change by id
    *   (e.g. `{ kind: 'entity', entityType: 'trackedChange', entityId: 'tc_123' }`)
    */
-  target: TextAddress | TextTarget | EntityAddress;
+  target: TextAddress | TextTarget | EntityAddress | FootnoteAddress;
   /** Alignment within the viewport. Defaults to `'center'`. */
   block?: 'start' | 'center' | 'end' | 'nearest';
   /**

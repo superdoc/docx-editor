@@ -663,6 +663,33 @@ describe('CommentDialog', () => {
       },
     );
 
+    it.each(['same thread', 'different thread', 'different file'])(
+      'completes a reconciled edit only for the %s',
+      async (replacement) => {
+        const pending = deferred();
+        vi.spyOn(commentsStore, 'editCommentV2').mockReturnValue(pending.promise);
+        const { root, wrapper, start } = prepare();
+        try {
+          await start(root);
+          commentsStore.currentCommentText = 'Saved text';
+          await wrapper.find('button.reply-btn-primary').trigger('click');
+          const refreshed = useComment({
+            commentId: replacement === 'different thread' ? 'another-root' : root.commentId,
+            fileId: replacement === 'different file' ? 'doc-2' : root.fileId,
+            commentText: 'Saved text',
+          });
+          expect(refreshed).not.toBe(root);
+          await wrapper.setProps({ comment: refreshed });
+          pending.resolve({ ok: true });
+          await flushPromises();
+          expect(commentsStore.editingCommentId).toBe(replacement === 'same thread' ? null : root.commentId);
+          expect(commentsStore.currentCommentText).toBe(replacement === 'same thread' ? '' : 'Saved text');
+        } finally {
+          wrapper.unmount();
+        }
+      },
+    );
+
     it('keeps a later submission of the same edit when an earlier submission completes', async () => {
       const first = deferred();
       const second = deferred();
@@ -747,6 +774,71 @@ describe('CommentDialog', () => {
     } finally {
       wrapper.unmount();
     }
+  });
+
+  describe.each([
+    ['resolve', 'onTrackedChangeBubbleAccept'],
+    ['reject', 'onTrackedChangeBubbleReject'],
+  ])('v2 tracked-change %s lifecycle', (eventName, callbackName) => {
+    it.each([
+      'row removed',
+      'app removed',
+      'app replaced',
+      'editor closed',
+      'editor replaced',
+      'owner changed before receipt',
+    ])('restores focus only for the original live owner: %s', async (transition) => {
+      superdocStub.activeEditor.editorVersion = 2;
+      superdocStub.activeEditor.v2TrackedChanges = {
+        getCapabilityState: vi.fn(() => ({ canDecide: true })),
+      };
+      const originalEditor = superdocStub.activeEditor;
+      const replacementApp = { ...superdocStub, focus: vi.fn() };
+      const comment = useComment({
+        commentId: `tc-lifecycle-${eventName}`,
+        fileId: 'doc-1',
+        commentText: '',
+        trackedChange: true,
+      });
+      commentsStore.commentsList = [comment];
+      const wrapper = mountDialog(comment);
+      const globalProperties = wrapper.vm.$.appContext.config.globalProperties;
+      const transitionOwner = () => {
+        if (transition === 'row removed') wrapper.unmount();
+        if (transition === 'app removed') delete globalProperties.$superdoc;
+        if (transition === 'app replaced') globalProperties.$superdoc = replacementApp;
+        if (transition === 'editor closed') superdocStub.activeEditor = null;
+        if (transition === 'editor replaced' || transition === 'owner changed before receipt') {
+          superdocStub.activeEditor = { ...originalEditor };
+        }
+      };
+      const customHandler = vi.fn(() => {
+        if (transition !== 'owner changed before receipt') transitionOwner();
+      });
+      superdocStub.config[callbackName] = customHandler;
+      vi.spyOn(commentsStore, 'decideTrackedChangeFromSidebar').mockImplementation(async () => {
+        if (transition === 'owner changed before receipt') transitionOwner();
+        return { ok: true, success: true };
+      });
+      const setActiveComment = vi.spyOn(commentsStore, 'setActiveComment').mockImplementation(() => {});
+      try {
+        wrapper.findComponent({ name: 'CommentHeader' }).vm.$emit(eventName);
+        await flushPromises();
+        if (transition === 'row removed') {
+          expect(superdocStub.focus).toHaveBeenCalledExactlyOnceWith({ preventScroll: true });
+          expect(setActiveComment).toHaveBeenCalledExactlyOnceWith(superdocStub, null);
+        } else {
+          expect(superdocStub.focus).not.toHaveBeenCalled();
+          expect(setActiveComment).not.toHaveBeenCalled();
+        }
+        expect(replacementApp.focus).not.toHaveBeenCalled();
+        if (transition === 'owner changed before receipt') expect(customHandler).not.toHaveBeenCalled();
+        else expect(customHandler).toHaveBeenCalledExactlyOnceWith(comment, originalEditor);
+      } finally {
+        globalProperties.$superdoc = superdocStub;
+        if (transition !== 'row removed') wrapper.unmount();
+      }
+    });
   });
 
   it('keeps focus unchanged when the v2 tracked-change decision is rejected', async () => {

@@ -28,7 +28,7 @@ import type {
   SuperDocCommentsUpdatePayload,
   User,
 } from '../core/types/index.js';
-import { isStoryLocator } from '@superdoc/document-api';
+import { isStoryLocator, type SelectionInfo } from '@superdoc/document-api';
 import { isPlainObject, isThenable } from '../helpers/object-guards.js';
 import { DOCUMENT_EDITOR_SELECTION_SOURCE } from '../helpers/selection-source.js';
 import { buildFloatingCommentInstances } from './helpers/floating-comment-instances.js';
@@ -206,6 +206,7 @@ type ReconcileCommentsInput = {
   documentId?: CommentId | null;
   items?: readonly unknown[] | null;
   preparedInputs?: CommentInputParams[] | null;
+  completeThreadRoots?: ReadonlySet<string>;
   pruneStale?: boolean;
   hydrationGeneration?: unknown;
 };
@@ -367,6 +368,7 @@ export const useCommentsStore = defineStore('comments', () => {
   const isCommentsListVisible = ref(false);
   const isReviewDirectoryActive = ref(false);
   const isReviewDirectoryLoading = ref(false);
+  const reviewAnalysisProgress = ref<{ done: number; total: number; stage: string | null } | null>(null);
   const editorCommentIds = ref<string[]>([]);
   const editorCommentPositions = ref<CommentPositions>({});
   const isCommentHighlighted = ref(false);
@@ -1045,7 +1047,7 @@ export const useCommentsStore = defineStore('comments', () => {
     const editor = superdoc?.activeEditor;
     const v2Adapter = getV2CommentsAdapter(superdoc);
     const ownsRequest = () => pendingCommentRequest === request;
-    const emitPending = (snapshot: unknown) => {
+    const emitPending = (snapshot: SelectionInfo | null) => {
       if (!ownsRequest()) return;
       superdoc.emit('comments-update', {
         type: COMMENT_EVENTS.PENDING,
@@ -1062,7 +1064,7 @@ export const useCommentsStore = defineStore('comments', () => {
       if (cap && cap.canWrite === false) return { ok: false, reason: cap.reason };
       return Promise.resolve(
         v2Adapter.captureCurrentSelection?.({
-          beforeReady: (snapshot: unknown) => {
+          beforeReady: (snapshot: SelectionInfo) => {
             if (superdoc?.activeEditor === editor && getV2CommentsAdapter(superdoc) === v2Adapter)
               emitPending(snapshot);
           },
@@ -2680,6 +2682,15 @@ export const useCommentsStore = defineStore('comments', () => {
             documentId: normalizedDocumentId,
             items: effectiveCommentItems,
             preparedInputs,
+            completeThreadRoots:
+              preparedReview && !unresolvedCommentIds?.length
+                ? new Set(
+                    preparedInputs
+                      .filter((input) => input.parentCommentId == null)
+                      .map((input) => normalizeCommentId(input.commentId))
+                      .filter(isPresent),
+                  )
+                : undefined,
             pruneStale: false,
           });
           boundReviewPresentationRows({
@@ -2701,6 +2712,7 @@ export const useCommentsStore = defineStore('comments', () => {
     documentId,
     items,
     preparedInputs = null,
+    completeThreadRoots,
     pruneStale = true,
     hydrationGeneration,
   }: ReconcileCommentsInput = {}): ReconcileResult =>
@@ -2838,6 +2850,25 @@ export const useCommentsStore = defineStore('comments', () => {
           return comment.commentId != null;
         };
 
+        const parentByCommentId = new Map<string, string>();
+        if (completeThreadRoots?.size) {
+          for (const row of commentsList.value) {
+            if (!isRealCommentFamilyRow(row) || !belongsToReconciledDocument(row)) continue;
+            const parentId = normalizeCommentId(row.parentCommentId);
+            if (parentId) parentByCommentId.set(String(row.commentId), parentId);
+          }
+        }
+        const belongsToCompleteThread = (row: CommentModel) => {
+          let parentId = normalizeCommentId(row.parentCommentId);
+          const seen = new Set<string>();
+          while (parentId && !seen.has(parentId)) {
+            if (completeThreadRoots?.has(parentId)) return true;
+            seen.add(parentId);
+            parentId = parentByCommentId.get(parentId) ?? null;
+          }
+          return false;
+        };
+
         const applyUpdate = (existing: CommentModel, input: V2CommentInput) => {
           existing.commentText = input.commentText ?? existing.commentText;
           existing.mentions = Array.isArray(input.mentions) ? input.mentions : [];
@@ -2901,7 +2932,7 @@ export const useCommentsStore = defineStore('comments', () => {
           }
           // A visible-window merge is deliberately non-destructive. Only an
           // authoritative full catalog may remove rows that are absent.
-          if (!input && !pruneStale) nextList.push(existing);
+          if (!input && !pruneStale && !belongsToCompleteThread(existing)) nextList.push(existing);
         }
 
         for (const [cid, input] of incomingByCommentId.entries()) {
@@ -4264,6 +4295,7 @@ export const useCommentsStore = defineStore('comments', () => {
     isCommentsListVisible,
     isReviewDirectoryActive,
     isReviewDirectoryLoading,
+    reviewAnalysisProgress,
     generalCommentIds,
     editorCommentIds,
     commentsParentElement,

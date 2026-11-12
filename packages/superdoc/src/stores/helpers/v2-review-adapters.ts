@@ -1,3 +1,4 @@
+import type { SelectionInfo } from '@superdoc/document-api';
 import type { CommentInputParams } from '../../components/CommentsLayer/comment-params.js';
 import { isPlainObject } from '../../helpers/object-guards.js';
 import type { StoryLocator } from '../../core/types/index.js';
@@ -52,7 +53,7 @@ export interface V2CommentsAdapter {
   mapV2CommentToUseCommentInput(item: unknown, options: V2CommentInputOptions): CommentInputParams | null;
   getCapabilityState?(command?: string | null): V2CommentsCapabilityState | null | undefined;
   captureCurrentSelection?(options?: {
-    beforeReady?: (snapshot: unknown) => void | Promise<void>;
+    beforeReady?: (snapshot: SelectionInfo) => void | Promise<void>;
   }): Promise<V2CommentSelectionCapture>;
   isPendingCommentCreation?(commentId: string | undefined): boolean;
   seedReviewCatalog?(

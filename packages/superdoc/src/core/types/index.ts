@@ -16,7 +16,7 @@ import type { DiagnosticsConfig } from './diagnostics.js';
 import type { Doc as YDoc } from 'yjs';
 import type { HocuspocusProviderWebsocket } from '@hocuspocus/provider';
 import type { Ref, ComputedRef } from 'vue';
-import type { HyperlinkTarget } from '@superdoc/document-api';
+import type { HyperlinkTarget, SelectionInfo } from '@superdoc/document-api';
 
 import type {
   DocumentFontOption,
@@ -710,6 +710,14 @@ export interface V2HocuspocusCollaborationConfig {
   syncTimeoutMs?: number;
   /** Explicit room operation. Defaults to `'join'`; `'create'` never joins an existing room. */
   roomMode?: 'join' | 'create';
+  /**
+   * Where writes that carry `expectedRevision` are checked. `'session'` (default) compares this
+   * editor's own revision. `'room'` makes the Hocuspocus server admit them one at a time, so a stale
+   * write from any browser or SDK host fails with `REVISION_MISMATCH`. The server must run
+   * `createWriteAdmissionExtension()` from `@superdoc/sdk`; without it those writes fail with
+   * `REVISION_UNVERIFIED`.
+   */
+  expectedRevisionScope?: 'session' | 'room';
 }
 
 /**
@@ -940,10 +948,6 @@ export interface ProofingProvider {
   check: (request: ProofingCheckRequest) => Promise<ProofingCheckResult>;
   suggest?: (request: ProofingSuggestRequest) => Promise<ProofingSuggestResult>;
   dispose?: () => Promise<void> | void;
-}
-
-export interface SelectionInfo {
-  [key: string]: unknown;
 }
 
 /**

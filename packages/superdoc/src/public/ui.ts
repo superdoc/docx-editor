@@ -144,6 +144,8 @@ export type {
   ViewportGetRectTarget,
   ViewportGetRectsInput,
   ViewportGetRectsResult,
+  ViewportPositionAtInput,
+  ViewportPositionAtResult,
   ViewportRectResult,
   // Re-surfaced public Document API shapes. `BrowserDocumentApi` is what the
   // controller hands back on `CustomCommandContext.doc`, so a consumer writing

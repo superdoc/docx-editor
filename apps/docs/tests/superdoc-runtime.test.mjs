@@ -1,43 +1,25 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-test('runtime embeds load their assets before configuring every cross-origin worker', async (context) => {
+function installRuntimePage(context, { failScriptAttempts = 0 } = {}) {
   const originalWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
   const originalDocument = Object.getOwnPropertyDescriptor(globalThis, 'document');
   const originalFetch = Object.getOwnPropertyDescriptor(globalThis, 'fetch');
-  const originalCreateObjectUrl = Object.getOwnPropertyDescriptor(URL, 'createObjectURL');
-  const originalRevokeObjectUrl = Object.getOwnPropertyDescriptor(URL, 'revokeObjectURL');
 
   context.after(() => {
     restore(globalThis, 'window', originalWindow);
     restore(globalThis, 'document', originalDocument);
     restore(globalThis, 'fetch', originalFetch);
-    restore(URL, 'createObjectURL', originalCreateObjectUrl);
-    restore(URL, 'revokeObjectURL', originalRevokeObjectUrl);
   });
 
-  const runtimeWindow = {};
-  const removedElements = [];
-  const revokedUrls = [];
-  let fetchCount = 0;
-  let scriptAttempt = 0;
-  let workerAttempt = 0;
+  const page = { window: {}, appended: [], removed: [], fetchCount: 0, scriptAttempts: 0 };
 
-  Object.defineProperty(globalThis, 'window', { configurable: true, value: runtimeWindow });
+  Object.defineProperty(globalThis, 'window', { configurable: true, value: page.window });
   Object.defineProperty(globalThis, 'fetch', {
     configurable: true,
     value: async () => {
-      fetchCount += 1;
-      return {
-        ok: true,
-        json: async () => ({
-          files: [
-            { path: 'assets/browser-worker-entry-test.js' },
-            { path: 'assets/collaboration-worker-entry-test.js' },
-            { path: 'assets/review-index-worker-entry-test.js' },
-          ],
-        }),
-      };
+      page.fetchCount += 1;
+      throw new Error('The runtime loader must not fetch anything.');
     },
   });
   Object.defineProperty(globalThis, 'document', {
@@ -54,189 +36,68 @@ test('runtime embeds load their assets before configuring every cross-origin wor
             listeners.get(type)?.();
           },
           remove() {
-            removedElements.push(tagName);
+            page.removed.push(tagName);
           },
         };
       },
       head: {
         append(element) {
+          page.appended.push(element.tagName);
           if (element.tagName === 'LINK') {
             queueMicrotask(() => element.dispatch('load'));
             return;
           }
 
-          scriptAttempt += 1;
-          if (scriptAttempt === 1) {
-            queueMicrotask(() => element.dispatch('error'));
+          page.scriptAttempts += 1;
+          if (page.scriptAttempts <= failScriptAttempts) {
+            setTimeout(() => element.dispatch('error'), 0);
             return;
           }
 
-          runtimeWindow.SuperDoc = class SuperDoc {
-            constructor(config) {
-              runtimeWindow.lastConfig = config;
-            }
-          };
-          queueMicrotask(() => element.dispatch('load'));
+          page.window.SuperDoc = class SuperDoc {};
+          setTimeout(() => element.dispatch('load'), 0);
         },
       },
     },
   });
-  Object.defineProperty(URL, 'createObjectURL', {
-    configurable: true,
-    value() {
-      workerAttempt += 1;
-      return `blob:worker-${workerAttempt}`;
-    },
-  });
-  Object.defineProperty(URL, 'revokeObjectURL', {
-    configurable: true,
-    value(url) {
-      revokedUrls.push(url);
-    },
-  });
 
-  const { createRuntimeEditor, getRuntimeWorkerUrls, loadRuntime } =
-    await import('../components/embeds/superdoc-runtime.ts');
+  return page;
+}
+
+test('a failed runtime script is removed and the next load retries it without fetching an engine manifest', async (context) => {
+  const page = installRuntimePage(context, { failScriptAttempts: 1 });
+  const { loadRuntime } = await import('../components/embeds/superdoc-runtime.ts?retry');
 
   await assert.rejects(loadRuntime(), /Could not load script/u);
-  assert.equal(runtimeWindow.SuperDoc, undefined);
-  assert.equal(runtimeWindow.__SUPERDOC_V2_BROWSER_WORKER_URL__, undefined);
-  assert.equal(fetchCount, 0);
-  assert.equal(workerAttempt, 0);
-  assert.deepEqual(revokedUrls, []);
-  assert.deepEqual(removedElements.sort(), ['link', 'script']);
+  assert.equal(page.window.SuperDoc, undefined);
+  assert.deepEqual(page.removed.sort(), ['link', 'script']);
 
   const constructor = await loadRuntime();
-  assert.equal(constructor, runtimeWindow.SuperDoc);
-  assert.equal(fetchCount, 1);
-  assert.equal(runtimeWindow.__SUPERDOC_V2_BROWSER_WORKER_URL__, 'blob:worker-1');
-  assert.deepEqual(getRuntimeWorkerUrls(), {
-    document: 'blob:worker-1',
-    collaboration: 'blob:worker-2',
-    reviewIndex: 'blob:worker-3',
-  });
-
-  createRuntimeEditor(constructor, { selector: '#editor' });
-  assert.deepEqual(runtimeWindow.lastConfig.workerUrls, getRuntimeWorkerUrls());
+  assert.equal(constructor, page.window.SuperDoc);
+  assert.equal(page.scriptAttempts, 2);
+  assert.equal(page.fetchCount, 0);
 });
 
-test('a partial worker configuration is released before retrying', async (context) => {
-  const originalWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
-  const originalFetch = Object.getOwnPropertyDescriptor(globalThis, 'fetch');
-  const originalCreateObjectUrl = Object.getOwnPropertyDescriptor(URL, 'createObjectURL');
-  const originalRevokeObjectUrl = Object.getOwnPropertyDescriptor(URL, 'revokeObjectURL');
+test('concurrent embeds share one runtime load', async (context) => {
+  const page = installRuntimePage(context);
+  const { loadRuntime } = await import('../components/embeds/superdoc-runtime.ts?concurrent');
 
-  context.after(() => {
-    restore(globalThis, 'window', originalWindow);
-    restore(globalThis, 'fetch', originalFetch);
-    restore(URL, 'createObjectURL', originalCreateObjectUrl);
-    restore(URL, 'revokeObjectURL', originalRevokeObjectUrl);
-  });
-
-  const runtimeWindow = { SuperDoc: class SuperDoc {} };
-  const revokedUrls = [];
-  let fetchAttempt = 0;
-  let objectUrlCount = 0;
-
-  Object.defineProperty(globalThis, 'window', { configurable: true, value: runtimeWindow });
-  Object.defineProperty(globalThis, 'fetch', {
-    configurable: true,
-    value: async () => {
-      fetchAttempt += 1;
-      return {
-        ok: true,
-        json: async () => ({
-          files:
-            fetchAttempt === 1
-              ? [{ path: 'assets/browser-worker-entry-test.js' }]
-              : [
-                  { path: 'assets/browser-worker-entry-test.js' },
-                  { path: 'assets/collaboration-worker-entry-test.js' },
-                  { path: 'assets/review-index-worker-entry-test.js' },
-                ],
-        }),
-      };
-    },
-  });
-  Object.defineProperty(URL, 'createObjectURL', {
-    configurable: true,
-    value() {
-      objectUrlCount += 1;
-      return `blob:retry-worker-${objectUrlCount}`;
-    },
-  });
-  Object.defineProperty(URL, 'revokeObjectURL', {
-    configurable: true,
-    value(url) {
-      revokedUrls.push(url);
-    },
-  });
-
-  const { getRuntimeWorkerUrls, loadRuntime } =
-    await import('../components/embeds/superdoc-runtime.ts?worker-retry');
-
-  await assert.rejects(loadRuntime(), /collaboration worker/u);
-  assert.equal(runtimeWindow.__SUPERDOC_V2_BROWSER_WORKER_URL__, undefined);
-  assert.deepEqual(revokedUrls, ['blob:retry-worker-1']);
-
-  await loadRuntime();
-  assert.deepEqual(getRuntimeWorkerUrls(), {
-    document: 'blob:retry-worker-2',
-    collaboration: 'blob:retry-worker-3',
-    reviewIndex: 'blob:retry-worker-4',
-  });
-});
-
-test('concurrent embeds share one in-flight worker configuration', async (context) => {
-  const originalWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
-  const originalFetch = Object.getOwnPropertyDescriptor(globalThis, 'fetch');
-  const originalCreateObjectUrl = Object.getOwnPropertyDescriptor(URL, 'createObjectURL');
-  const originalRevokeObjectUrl = Object.getOwnPropertyDescriptor(URL, 'revokeObjectURL');
-
-  context.after(() => {
-    restore(globalThis, 'window', originalWindow);
-    restore(globalThis, 'fetch', originalFetch);
-    restore(URL, 'createObjectURL', originalCreateObjectUrl);
-    restore(URL, 'revokeObjectURL', originalRevokeObjectUrl);
-  });
-
-  const runtimeWindow = { SuperDoc: class SuperDoc {} };
-  let fetchCount = 0;
-  let objectUrlCount = 0;
-  Object.defineProperty(globalThis, 'window', { configurable: true, value: runtimeWindow });
-  Object.defineProperty(globalThis, 'fetch', {
-    configurable: true,
-    value: async () => {
-      fetchCount += 1;
-      await new Promise((resolve) => setTimeout(resolve, 0));
-      return {
-        ok: true,
-        json: async () => ({
-          files: [
-            { path: 'assets/browser-worker-entry-test.js' },
-            { path: 'assets/collaboration-worker-entry-test.js' },
-            { path: 'assets/review-index-worker-entry-test.js' },
-          ],
-        }),
-      };
-    },
-  });
-  Object.defineProperty(URL, 'createObjectURL', {
-    configurable: true,
-    value() {
-      objectUrlCount += 1;
-      return `blob:concurrent-worker-${objectUrlCount}`;
-    },
-  });
-  Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value() {} });
-
-  const { loadRuntime } = await import('../components/embeds/superdoc-runtime.ts?concurrent-workers');
   const [first, second] = await Promise.all([loadRuntime(), loadRuntime()]);
 
-  assert.equal(first, runtimeWindow.SuperDoc);
-  assert.equal(second, runtimeWindow.SuperDoc);
-  assert.equal(fetchCount, 1);
-  assert.equal(objectUrlCount, 3);
+  assert.equal(first, page.window.SuperDoc);
+  assert.equal(second, page.window.SuperDoc);
+  assert.deepEqual(page.appended, ['LINK', 'SCRIPT']);
+  assert.equal(page.fetchCount, 0);
+});
+
+test('a runtime already on the page is reused without loading assets', async (context) => {
+  const page = installRuntimePage(context);
+  page.window.SuperDoc = class SuperDoc {};
+  const { loadRuntime } = await import('../components/embeds/superdoc-runtime.ts?existing');
+
+  assert.equal(await loadRuntime(), page.window.SuperDoc);
+  assert.deepEqual(page.appended, []);
+  assert.equal(page.fetchCount, 0);
 });
 
 function restore(target, property, descriptor) {

@@ -6,7 +6,7 @@ import type { ZoomSlice } from 'superdoc/ui';
 import { CollapsibleEditorPreview } from './collapsible-editor-preview';
 import { EditorDemoViewControls } from './editor-demo-view-controls';
 import { EDITOR_DEMO_FIT_WIDTH_PADDING, fitRuntimeEditorToWidth } from './editor-demo-zoom';
-import { createRuntimeEditor, loadRuntime, type SuperDocInstance } from './superdoc-runtime';
+import { loadRuntime, type SuperDocInstance } from './superdoc-runtime';
 
 const DEMO_DOCUMENT = '/fixtures/getting-started.docx';
 const NARROW_DEMO_WIDTH = 520;
@@ -104,7 +104,7 @@ export function SurfaceLifecycleDemo() {
         toolbar: { container: toolbarContainer, responsiveTo: 'container' },
       } satisfies UIConfig;
 
-      const instance = createRuntimeEditor(SuperDocCtor, {
+      const instance = new SuperDocCtor({
         selector: mountRef.current,
         document: DEMO_DOCUMENT,
         documentMode: 'editing',

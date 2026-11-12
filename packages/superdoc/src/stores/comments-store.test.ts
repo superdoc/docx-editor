@@ -4387,6 +4387,108 @@ describe('comments-store committed review-window apply', () => {
     expect(rows.map((row) => row.trackedChangeStory)).toEqual(expect.arrayContaining([bodyStory, headerStory]));
   });
 
+  function publishCommentThread(rows, overrides = {}) {
+    return apply({
+      commentItems: rows.map((row) => ({
+        commentId: row.commentId,
+        parentCommentId: row.parentCommentId,
+        text: row.commentText,
+      })),
+      trackedChangeItems: [],
+      preparedReview: {
+        comments: rows,
+        trackedChanges: [],
+        presentation: {
+          ...trackedPublication([], 1),
+          rowVersions: Object.fromEntries(rows.map((row) => [row.commentId, 1])),
+          groupOrder: { open: ['root'], resolved: [] },
+        },
+      },
+      ...overrides,
+    });
+  }
+
+  it.each(['root', 'deleted-reply'])(
+    'removes a deleted reply from a committed thread while %s is active (SD-8075)',
+    (activeId) => {
+      const root = useComment({ commentId: 'root', fileId: 'doc-1', commentText: 'Parent thread' });
+      const sibling = useComment({
+        commentId: 'sibling',
+        parentCommentId: 'root',
+        fileId: 'doc-1',
+        commentText: 'Surviving reply',
+      });
+      const deleted = useComment({
+        commentId: 'deleted-reply',
+        parentCommentId: 'root',
+        fileId: 'doc-1',
+        commentText: 'Deleted reply',
+      });
+      const other = useComment({
+        commentId: 'foreign',
+        parentCommentId: 'root',
+        fileId: 'doc-2',
+        commentText: 'Other document',
+      });
+      const descendant = useComment({
+        commentId: 'deleted-child',
+        parentCommentId: 'deleted-reply',
+        fileId: 'doc-1',
+        commentText: 'Deleted descendant',
+      });
+      store.commentsList = [root, deleted, sibling, descendant, other];
+      store.activeComment = activeId;
+
+      expect(publishCommentThread([root.getValues(), sibling.getValues()]).ok).toBe(true);
+
+      expect(store.commentsList.map((row) => row.commentId)).toEqual(['root', 'sibling', 'foreign']);
+      expect(store.commentsList[0]).toBe(root);
+      expect(store.commentsList[1]).toBe(sibling);
+      expect(root.commentText).toBe('Parent thread');
+      expect(sibling.commentText).toBe('Surviving reply');
+      expect(store.activeComment).toBe(activeId === 'root' ? 'root' : null);
+    },
+  );
+
+  it('keeps omitted replies when a partial window has no prepared thread (SD-8075)', () => {
+    const root = useComment({ commentId: 'comment-1', fileId: 'doc-1', commentText: 'Parent thread' });
+    const reply = useComment({
+      commentId: 'reply',
+      parentCommentId: 'comment-1',
+      fileId: 'doc-1',
+      commentText: 'Keep partial reply',
+    });
+    store.commentsList = [root, reply];
+
+    expect(apply().ok).toBe(true);
+    expect(store.commentsList.map((row) => row.commentId)).toEqual(expect.arrayContaining(['comment-1', 'reply']));
+  });
+
+  it('preserves pending replies and unresolved thread members (SD-8075)', () => {
+    const root = useComment({ commentId: 'root', fileId: 'doc-1', commentText: 'Parent thread' });
+    const reply = useComment({
+      commentId: 'unresolved',
+      parentCommentId: 'root',
+      fileId: 'doc-1',
+      commentText: 'Keep unresolved',
+    });
+    const pending = useComment({
+      commentId: 'pending',
+      parentCommentId: 'root',
+      fileId: 'doc-1',
+      commentText: 'Draft',
+    });
+    store.pendingComment = pending;
+    store.commentsList = [root, reply, pending];
+
+    expect(publishCommentThread([root.getValues()], { unresolvedCommentIds: ['unresolved'] }).ok).toBe(true);
+    expect(store.commentsList.map((row) => row.commentId)).toEqual(['root', 'unresolved', 'pending']);
+
+    expect(publishCommentThread([root.getValues()]).ok).toBe(true);
+    expect(store.commentsList.map((row) => row.commentId)).toEqual(['root', 'pending']);
+    expect(store.pendingComment.commentText).toBe('Draft');
+  });
+
   it('bounds rows to the committed window while retaining an active pin and other documents', () => {
     store.commentsList = [
       makeTrackedChangeRow({ commentId: 'tc-offscreen' }),

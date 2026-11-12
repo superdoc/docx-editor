@@ -1,4 +1,5 @@
 import type { TablePresetId } from '../tables/table-style-presets.js';
+import type { SelectionTarget } from './address.js';
 import type {
   BlockNodeAddress,
   TableAddress,
@@ -190,7 +191,7 @@ export type CreateTableResult = CreateTableSuccessResult | TableMutationFailure;
 export type ConvertFromTextDelimiter = 'tab' | 'comma' | 'paragraph' | { custom: string };
 
 export interface TablesConvertFromTextInput {
-  target?: BlockNodeAddress;
+  target?: BlockNodeAddress | SelectionTarget;
   nodeId?: string;
   delimiter?: ConvertFromTextDelimiter;
   columns?: number;

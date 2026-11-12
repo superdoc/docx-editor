@@ -57,6 +57,11 @@ describe('footnotes validation', () => {
           target: { kind: 'entity', entityType: 'bookmark', noteId: 'fn-1' } as any,
         }),
       ).toThrow(DocumentApiValidationError);
+      const input = { target: { ...validTarget, noteType: 'other' } };
+      expect(() => Reflect.apply(executeFootnotesGet, undefined, [adapter, input])).toThrow(
+        /noteType 'footnote' or 'endnote'/,
+      );
+      expect(adapter.get).not.toHaveBeenCalled();
     });
 
     it('throws INVALID_TARGET when noteId is not a string', () => {

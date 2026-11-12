@@ -1519,7 +1519,8 @@ export const OPERATION_DEFINITIONS = {
   },
   'sections.setPageSetup': {
     memberPath: 'sections.setPageSetup',
-    description: 'Set page size/orientation properties for a section.',
+    description:
+      'Set page size/orientation properties for a section. Changing orientation writes only the page size: width and height swap so the long side matches the orientation, unless width or height is given. Page margins stay as they are; to change them with the orientation, call sections.setPageMargins. Portrait is written without an orient attribute, as Word does. No named paper sizes are defined, so a paperSize other than the paper code the section already has (as sections.get reports it) is rejected with INVALID_INPUT; set width and height instead.',
     expectedResult:
       'Returns a SectionMutationResult receipt; reports NO_OP if page size and orientation already match the requested values.',
     requiresDocumentContext: true,
@@ -3397,14 +3398,15 @@ export const OPERATION_DEFINITIONS = {
   // -------------------------------------------------------------------------
   'tables.convertFromText': {
     memberPath: 'tables.convertFromText',
-    description: 'Convert a text range into a table.',
+    description:
+      'Convert consecutive paragraphs from a starting block, or exactly the whole paragraphs in a selection, into a table. Selection endpoints must be at paragraph boundaries.',
     expectedResult: 'Returns a TableMutationResult receipt confirming text was converted into a table.',
     requiresDocumentContext: true,
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
       trackedSupport: 'never',
-      possibleFailureCodes: ['INVALID_TARGET'],
+      possibleFailureCodes: ['INVALID_TARGET', 'TARGET_NOT_FOUND', 'PRECONDITION_FAILED'],
       throws: T_NOT_FOUND_COMMAND,
     }),
     referenceDocPath: 'tables/convert-from-text.mdx',
@@ -6187,7 +6189,8 @@ export const OPERATION_DEFINITIONS = {
   'footnotes.list': {
     memberPath: 'footnotes.list',
     description: 'List all footnotes and endnotes in the document.',
-    expectedResult: 'Returns a FootnotesListResult containing discovered footnotes with address and domain data.',
+    expectedResult:
+      'Returns a FootnotesListResult containing notes with address, content, and inline body reference addresses in references. V2 returns an empty references array for an unreferenced note.',
     requiresDocumentContext: true,
     metadata: readOperation({
       idempotency: 'idempotent',
@@ -6199,7 +6202,8 @@ export const OPERATION_DEFINITIONS = {
   'footnotes.get': {
     memberPath: 'footnotes.get',
     description: 'Get detailed information about a specific footnote or endnote.',
-    expectedResult: "Returns a FootnoteInfo object with the note's type, display number, and content.",
+    expectedResult:
+      "Returns a FootnoteInfo object with the note's type, display number, content, and inline body reference addresses in references. V2 returns an empty references array for an unreferenced note.",
     requiresDocumentContext: true,
     metadata: readOperation({
       throws: T_NOT_FOUND_CAPABLE,

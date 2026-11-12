@@ -73,13 +73,13 @@ export function executeBookmarksInsert(
   if (!input.name || typeof input.name !== 'string') {
     throw new DocumentApiValidationError('INVALID_INPUT', 'bookmarks.insert requires a non-empty name string.');
   }
-  if (input.name.length > 40 || !/^\p{L}/u.test(input.name) || /[^\p{L}\p{Mn}\p{Mc}\p{Nd}_]/u.test(input.name)) {
+  if (input.name.length > 40 || !/^[\p{L}_]/u.test(input.name) || /[^\p{L}\p{Mn}\p{Mc}\p{Nd}_]/u.test(input.name)) {
     return {
       success: false,
       failure: {
         code: 'INVALID_PAYLOAD',
         message:
-          'Bookmark names must start with a letter, contain only letters, combining marks, decimal digits or underscores, and be at most 40 UTF-16 code units long.',
+          'Bookmark names must start with a letter or underscore, contain only letters, combining marks, decimal digits or underscores, and be at most 40 UTF-16 code units long.',
       },
     };
   }

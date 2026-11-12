@@ -34,6 +34,7 @@ type CommentsListStoreRefs = {
   reviewDirectoryList: Ref<CommentModel[]>;
   isReviewDirectoryActive: Ref<boolean>;
   isReviewDirectoryLoading: Ref<boolean>;
+  reviewAnalysisProgress: Ref<{ done: number; total: number; stage: string | null } | null>;
 };
 
 type NavigationRequest = { index: number; key: string };
@@ -64,7 +65,13 @@ const {
   reviewDirectoryList,
   isReviewDirectoryActive,
   isReviewDirectoryLoading,
+  reviewAnalysisProgress,
 }: CommentsListStoreRefs = storeToRefs(piniaCommentsStore);
+const reviewAnalysisLabel = computed(() => {
+  const progress = reviewAnalysisProgress.value;
+  if (!isReviewDirectoryActive.value || !isReviewDirectoryLoading.value || !progress) return null;
+  return `Analysing changes… ${Math.min(progress.done, progress.total)} of ${progress.total}`;
+});
 const groupedComments = computed(() =>
   isReviewDirectoryActive.value ? commentsStore.getGroupedReviewDirectory : commentsStore.getGroupedComments,
 );
@@ -235,6 +242,9 @@ onBeforeUnmount(() => {
     role="list"
     :aria-busy="isReviewDirectoryActive && isReviewDirectoryLoading ? 'true' : 'false'"
   >
+    <div v-if="reviewAnalysisLabel" class="review-analysis" role="status" data-testid="review-analysis-progress">
+      {{ reviewAnalysisLabel }}
+    </div>
     <div v-if="showMainComments">
       <ReviewDirectoryListItem
         v-for="(item, index) in parentCommentDisplayItems"
@@ -276,5 +286,10 @@ onBeforeUnmount(() => {
   font-weight: 600;
   margin-bottom: 5px;
   color: #333;
+}
+.review-analysis {
+  font-size: 13px;
+  color: #666;
+  padding: 8px 0;
 }
 </style>

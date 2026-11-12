@@ -6,7 +6,7 @@
  * and must not be inspected by consumers.
  */
 
-import type { TrackedChangeAddress } from '../types/address.js';
+import type { TextAddress, TrackedChangeAddress } from '../types/address.js';
 import type { StoryLocator } from '../types/story.types.js';
 import type { TrackChangeNavigationTarget } from '../types/track-changes.types.js';
 
@@ -105,8 +105,23 @@ export interface DiffPayload {
   applyEligibility?: DiffApplyEligibility;
   /** Exhaustive changed OPC parts from the two source-complete snapshots. */
   partChanges?: DiffPartChange[];
+  display?: DiffDisplay;
   /** Opaque engine-owned diff data. Do not inspect or modify. */
   payload: Record<string, unknown>;
+}
+
+export interface DiffDisplayChange {
+  id: string;
+  kind: 'insert' | 'delete' | 'replace' | 'format' | 'move';
+  before: { text: string; target: TextAddress } | null;
+  after: { text: string; target: TextAddress } | null;
+  targetAnchor: TextAddress | null;
+  ordinal: number;
+}
+
+export interface DiffDisplay {
+  changes: DiffDisplayChange[];
+  unrenderedFamilies: string[];
 }
 
 export interface DiffPartChange {
@@ -154,6 +169,7 @@ export interface DiffApplyResult {
 /** Input for `diff.compare`. */
 export interface DiffCompareInput {
   targetSnapshot: DiffSnapshot;
+  includeDisplay?: boolean;
   /** Directly adopt definitions, or review references to separate proposed styles. */
   styleChangeMode?: 'direct' | 'tracked';
 }

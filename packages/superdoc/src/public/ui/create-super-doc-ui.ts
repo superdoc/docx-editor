@@ -7,7 +7,7 @@ import {
   type SDRunProps,
 } from '@superdoc/document-api';
 import { readViewportBatch } from './viewport-batch.js';
-import { readBuiltInTrackedChangePermissionDecision } from '../../core/collaboration/permissions.js';
+import { readBuiltInTrackedChangePermissionPolicy } from '../../core/collaboration/permissions.js';
 import { beginInteraction, recordInteraction } from '../../internal/diagnostics/interaction-history.js';
 /**
  * v2-native `createSuperDocUI` controller.
@@ -25,7 +25,6 @@ import { beginInteraction, recordInteraction } from '../../internal/diagnostics/
 
 import { shallowEqual } from './equality.js';
 import { createWatermarkController } from './watermark-controller.js';
-import { buildStyleMatchPatch, STYLE_MATCH_READ_KEYS } from './style-match-patch.js';
 import { captureParagraphPaintOperations } from './format-painter-paragraph.js';
 import { sdRunPropsToInlineRunPatch, selectionKey } from './format-painter-helpers.js';
 import {
@@ -50,10 +49,6 @@ import type {
   CommentsSlice,
   ContextMenuItem,
   ContentControlInfo,
-  ContentControlClickPayload,
-  ContentControlFocusResult,
-  ContentControlHighlightResult,
-  ContentControlsHandle,
   BookmarksHandle,
   BookmarkAddress,
   ContentControlsSlice,
@@ -73,6 +68,7 @@ import type {
   SelectionHandle,
   SelectionSlice,
   SliceStatus,
+  ReviewAnalysisProgress,
   SelectorFn,
   SelectionCapture,
   SelectionRestoreResult,
@@ -87,17 +83,6 @@ import type {
   SuperDocUIOptions,
   SuperDocUIScope,
   SuperDocUIState,
-  SearchController,
-  SearchQueryOptions,
-  SearchSnapshot,
-  StylesHandle,
-  StylesSlice,
-  StylesUpdateToMatchSelectionInput,
-  ActiveParagraphStyle,
-  StyleCatalogItem,
-  StyleCatalogDiagnostic,
-  StylesGetCatalogInput,
-  StylesGetCatalogResult,
   TablesHandle,
   TableContextInfo,
   ToolbarHandle,
@@ -110,6 +95,8 @@ import type {
   ViewportEntityAddress,
   ViewportEntityHit,
   ViewportGetRectInput,
+  ViewportPositionAtInput,
+  ViewportPositionAtResult,
   MetadataHandle,
   Receipt,
   SuperDocUIFailureReceipt,
@@ -133,7 +120,7 @@ import { getParagraphInlineDirection } from '@superdoc/contracts';
 import { isPlainObject } from '../../helpers/object-guards.js';
 import { isFiniteNumber } from '../../helpers/is-finite-number.js';
 import type { SurfaceHandle } from '../../core/types/index.js';
-import { type FormatReadSelectionResult, type TextSegment } from '@superdoc/document-api';
+import { type TextSegment } from '@superdoc/document-api';
 import type { AnyFn, LooseRecord } from './loose-record.js';
 import {
   CLEAR_INLINE_PATCH,
@@ -208,12 +195,10 @@ import {
   entityRowMatchesRequest,
   isHostGeometryTarget,
   layoutStoryDatasetToStoryLocator,
-  readContentControlRequestId,
   readEntityId,
   readEntityRequestStory,
   readEntityStory,
   readEntityTarget,
-  readSelectionTarget,
   readTrackedChangeNavigationTarget,
   storyKeyToStoryLocator,
   storyLocatorSignature,
@@ -236,7 +221,8 @@ import {
 } from './tracked-change-ids.js';
 import { emitUiBenchTiming, readUiBenchRuntime, uiBenchNowMs } from './ui-bench-timing.js';
 import { createAsyncReadCache, type AsyncReadEntry } from './async-read-cache.js';
-import { COMMENTS_CATALOG_PART_URIS, combineStatus, isHeavyDocReadKey } from './heavy-read-policy.js';
+import { COMMENTS_CATALOG_PART_URIS, combineStatus } from './heavy-read-policy.js';
+import { createHeavyReadGate, HEAVY_READ_IDLE_POLL_MS, type DirectoryFamily } from './heavy-read-gate.js';
 import {
   EMPTY_SELECTION,
   canProbeEverySelectedBlock,
@@ -270,7 +256,10 @@ import {
   normalizeDocumentFontOptions,
   normalizePickerFontOptions,
 } from './font-options.js';
-import { HOST_EVENTS, isContentControlClickPayload } from './host-events.js';
+import { HOST_EVENTS } from './host-events.js';
+import { createContentControlsHandle } from './content-controls-handle.js';
+import { createSearchHandle } from './search-handle.js';
+import { createStyleReads, createStylesHandle, documentDefaultParagraphStyleId } from './styles-handle.js';
 
 type FirstPartyCommandMutation = {
   selectionReader?: {
@@ -372,14 +361,7 @@ function projectTrackChangesItem(item: unknown): TrackChangesItem | null {
   return projected as unknown as TrackChangesItem;
 }
 
-function collapseSelectionTargetToCaret(target: unknown): SelectionTarget | null {
-  if (!target || typeof target !== 'object') return null;
-  const record = target as LooseRecord;
-  if (record.kind !== 'selection') return target as SelectionTarget;
-  const start = record.start;
-  if (!start || typeof start !== 'object') return null;
-  return { ...record, end: start } as SelectionTarget;
-}
+const FRAME_RECOMPUTE_FALLBACK_MS = 100;
 
 export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
   const superdoc = options.superdoc as unknown as LooseRecord;
@@ -493,6 +475,14 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     const status = snapshot?.status;
     return status === 'ready' || status === 'stale' ? status : 'pending';
   };
+  const reviewWindowAnalysis = (snapshot: LooseRecord | null): ReviewAnalysisProgress | null => {
+    const analysis = snapshot?.analysis;
+    if (!isPlainObject(analysis)) return null;
+    const done = analysis.done;
+    const total = analysis.total;
+    if (typeof done !== 'number' || typeof total !== 'number' || total <= 0) return null;
+    return { done, total, stage: typeof analysis.stage === 'string' ? analysis.stage : null };
+  };
 
   /** Read the live v2 editor host (inline mode only), when exposed. */
   const getHost = (): LooseRecord | null => {
@@ -507,6 +497,8 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
    * change, so an identical object means the selection has not moved since.
    */
   const selectionHostSnapshots = new WeakMap<object, object>();
+  const reviewWarmingSelections = new WeakSet<SelectionSlice>();
+  const selectionInfoReviewWarming = (info: SelectionInfo): boolean => Reflect.get(info, 'reviewWarming') === true;
   let wholeTableParagraphSeed: {
     editor: LooseRecord;
     host: LooseRecord;
@@ -869,20 +861,6 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     }
   };
 
-  // -- style-catalogue shape ------------------------------------------------
-  // Compiling the style catalogue (`doc.styles.getCatalog`) recompiles a
-  // WordStyleModel from package bytes, so we do NOT recompile on every caret
-  // move. The async read coordinator caches it by content revision (editor +
-  // document-mutation revision), NOT by selection, so a caret move serves the
-  // cached catalogue while a document mutation re-fetches it. The active
-  // paragraph style is read per selected block (also coordinator-cached) so it
-  // stays correct as the selection moves.
-  type StyleCatalogCache = {
-    full: StylesGetCatalogResult;
-    quickGallery: readonly StyleCatalogItem[];
-    byId: Map<string, StyleCatalogItem>;
-  };
-
   // -- state store ----------------------------------------------------------
   const listeners = new Set<(state: SuperDocUIState) => void>();
   let state!: SuperDocUIState;
@@ -892,13 +870,49 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
   // forward declaration; it is only read at command-execution time.
   let controllerRef: SuperDocUI | null = null;
 
+  let frameRecompute: { cancel: () => void } | null = null;
+  const cancelFrameRecompute = (): void => {
+    frameRecompute?.cancel();
+    frameRecompute = null;
+  };
+  const requestFrameRecompute = (reason: string): void => {
+    if (disposed || frameRecompute) return;
+    const requestFrame = globalThis.requestAnimationFrame;
+    const cancelFrame = globalThis.cancelAnimationFrame;
+    let frame: number | null = null;
+    const run = (): void => {
+      if (frameRecompute !== scheduled) return;
+      recompute(reason);
+    };
+    const fallback = setTimeout(run, FRAME_RECOMPUTE_FALLBACK_MS);
+    const scheduled = {
+      cancel: () => {
+        clearTimeout(fallback);
+        if (frame !== null && typeof cancelFrame === 'function') cancelFrame(frame);
+      },
+    };
+    frameRecompute = scheduled;
+    if (typeof requestFrame === 'function') frame = requestFrame(run);
+  };
+  let microtaskRecomputeQueued = false;
+  const requestMicrotaskRecompute = (reason: string): void => {
+    if (disposed || microtaskRecomputeQueued) return;
+    microtaskRecomputeQueued = true;
+    const run = (): void => {
+      if (!microtaskRecomputeQueued || disposed) return;
+      recompute(reason);
+    };
+    if (typeof queueMicrotask === 'function') queueMicrotask(run);
+    else void Promise.resolve().then(run);
+  };
+
   const asyncReadCache = createAsyncReadCache({
     isDisposed: () => disposed,
-    recomputeAfterSettle: () => recompute('async-read-settled'),
+    recomputeAfterSettle: () => requestMicrotaskRecompute('async-read-settled'),
     recomputeWhenRetryDue: () => recompute(),
   });
   const asyncReads = asyncReadCache.entries;
-  const coldAsyncReadDeferrals = new Set<string>();
+  const coldAsyncReadDeferrals = new Map<string, 'armed' | 'released'>();
   let lastEffectiveInlineReadKey: string | null = null;
   let pendingEffectiveInlineRead: {
     key: string;
@@ -925,6 +939,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     return `e${id}`;
   };
   let documentMutationRevision = 0;
+  let remoteCommentsRevision = 0;
   // Explicit custom-UI list/navigation consumers share one paged directory
   // transport. Legacy hosts without the committed-window feed also use this
   // coordinator as their compatibility presentation source. A foreground
@@ -1079,6 +1094,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
 
   /** Token shared by document-content reads (editor identity + mutation revision). */
   const contentToken = (): string => `${editorIdentityId(getEditor())}|m${documentMutationRevision}`;
+  const commentsDirectoryToken = (): string => `${contentToken()}|r${remoteCommentsRevision}`;
 
   const clearPostDecisionTrackChanges = (): void => {
     postDecisionTrackChangesToken = null;
@@ -1249,229 +1265,28 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
   const FOREGROUND_ASYNC_RETRY_MS = 120;
   const COLD_ASYNC_READ_START_DELAY_MS = 180;
 
-  // -- heavy-read policy (source-loading deferral) ----------------------------
-  // While the host reports the document source as ACTIVELY LOADING, passive
-  // slice recompute must not cold-start catalog-scale worker reads: the
-  // measured during-load typing cliff was the cold `contentControls.list`
-  // full-document parse blocking keystroke receipts in the shared kernel
-  // worker. Policy semantics per key while loading: no settled value ->
-  // `pending` without issuing the read; settled value (any token) -> served
-  // as `stale` without cold-starting a refresh. Explicit demand
-  // (`demandHeavyDocRead`) bypasses the gate for one content revision so a
-  // user-opened panel can still opt into the full read. On source-complete /
-  // terminal, one recompute is scheduled INPUT-IDLE-GATED so the deferred
-  // reads cannot stampede into the first keystrokes after completion (the
-  // migrated-cliff failure mode pinned by the W0 red run).
-  //
-  // Audited exclusions: `selection` must stay live for caret correctness;
-  // `lists:*`, `node:*`, `query:*`, `metadata:resolve:*` are block/selection
-  // scoped reads command states depend on, not full-document catalogs.
-  // The policy table itself (`HEAVY_DOC_READ_POLICY`) lives at module scope so
-  // the table-driven tests consume the SAME list this gate matches against.
-
-  /** Tri-state host source-load phase derived from the loading snapshot seam. */
-  const hostSourceLoadPhase = (): 'loading' | 'complete' | 'unknown' => {
-    const host = getHost();
-    const read = host?.getDocumentLoadingSnapshot;
-    if (typeof read !== 'function') return 'unknown';
-    const snapshot = safeCall<LooseRecord | null>(() => read.call(host) as LooseRecord, null);
-    const stage = snapshot?.sourceStage;
-    // `bootstrap-ready` means the model/API opened while the remainder of
-    // the source can still be loading. Passive catalog reads must stay behind
-    // that boundary: issuing them here can force a collaboration package
-    // projection, advance the package revision, and invalidate the main
-    // loader's in-flight coverage. The host completion watch transitions to a
-    // terminal source stage even for small resident documents.
-    if (stage === 'opening' || stage === 'bootstrap-ready' || stage === 'source-loading') return 'loading';
-    if (stage === 'source-complete' || stage === 'source-failed' || stage === 'source-cancelled') {
-      return 'complete';
-    }
-    // Absent or unknown host state: preserve compatibility for hosts without
-    // the source-loading lifecycle seam.
-    return 'unknown';
-  };
-
-  // Explicit demand: key -> content token it was demanded under. Valid for one
-  // content revision so an open panel's demand survives coordinator retries
-  // but does not silently pin the key hot forever.
-  const demandedHeavyReads = new Map<string, string>();
-  // A tracked-change directory may settle while progressive source loading is
-  // still exposing only a prefix. Keep that prefix available as stale data,
-  // then refresh it once when the host announces source completion. The v2
-  // adapter supplies the completeness proof; passive review-window reads never
-  // enter this map and therefore remain page-bounded.
-  const incompleteTrackChangesDirectoryReadTokens = new Map<string, string>();
-  const postSourceCompletionRefreshTokens = new Map<string, string>();
-  let sourceCompletionObservedToken: string | null = null;
-  type DirectoryFamily = 'comments' | 'trackChanges' | 'contentControls';
-  const directoryLeaseCounts: Record<DirectoryFamily, number> = {
-    comments: 0,
-    trackChanges: 0,
-    contentControls: 0,
-  };
-  const demandHeavyDocRead = (key: string): void => {
-    const token = contentToken();
-    if (demandedHeavyReads.get(key) === token) return;
-    demandedHeavyReads.set(key, token);
-    scheduleAsyncRefresh();
-  };
-  const commentsCatalogMayHaveRows = (): boolean => {
-    const entry = asyncReads.get('comments');
-    if (!entry?.hasSettled) return entry?.inflightToken != null;
-    return Array.isArray(entry.value) && entry.value.length > 0;
-  };
-  const heavyReadDemandActive = (key: string, token: string): boolean => demandedHeavyReads.get(key) === token;
-
-  const refreshIncompleteTrackChangesDirectories = (): void => {
-    const token = contentToken();
-    let invalidated = false;
-    for (const [key, incompleteToken] of incompleteTrackChangesDirectoryReadTokens) {
-      if (incompleteToken !== token) {
-        incompleteTrackChangesDirectoryReadTokens.delete(key);
-        continue;
-      }
-      if (postSourceCompletionRefreshTokens.get(key) === token) continue;
-      const entry = asyncReads.get(key);
-      if (!entry?.hasSettled || entry.token !== token || entry.inflightToken != null) continue;
-      // Retain the partial value while making it stale for this token. The next
-      // directory recompute starts one revision-fenced read and continues to
-      // serve these rows until that read settles.
-      asyncReads.set(key, { ...entry, token: null, inflightToken: null });
-      postSourceCompletionRefreshTokens.set(key, token);
-      invalidated = true;
-    }
-    if (invalidated) scheduleAsyncRefresh();
-  };
-
-  const acquireDirectoryLease = (family: DirectoryFamily): (() => void) => {
-    directoryLeaseCounts[family] += 1;
-
-    demandHeavyDocRead(family);
-    let released = false;
-    return () => {
-      if (released) return;
-      released = true;
-      directoryLeaseCounts[family] = Math.max(0, directoryLeaseCounts[family] - 1);
-      if (directoryLeaseCounts[family] === 0 && demandedHeavyReads.get(family) === contentToken()) {
-        demandedHeavyReads.delete(family);
-      }
-      scheduleAsyncRefresh();
-    };
-  };
-
-  /**
-   * Demand-driven route for the content-controls catalog (panel / API use).
-   * Explicit demand bypasses both active-loading and post-complete idle holds.
-   */
-  const ensureContentControlsCatalog = (_reason: 'panel' | 'api'): void => {
-    demandHeavyDocRead('contentControls');
-  };
-
-  /** Demand-driven route for an explicitly consumed tracked-change list. */
-  const ensureTrackChangesCatalog = (): void => {
-    const entry = asyncReads.get('trackChanges');
-    // Explicit demand is a cold-start escape hatch, not permission to rerun a
-    // full-document catalog on every typing revision. Once a value has settled
-    // (or the first demand is already in flight), serve it stale while the
-    // normal input-idle policy owns refreshes.
-    if (entry?.hasSettled || entry?.inflightToken != null) return;
-    demandHeavyDocRead('trackChanges');
-  };
-
-  /** Demand-driven route for an explicitly consumed comments list. */
-  const ensureCommentsCatalog = (): void => {
-    const entry = asyncReads.get('comments');
-    // Match tracked changes: explicit public consumption can cold-start the
-    // authoritative catalog, but after it settles we let the normal source /
-    // typing-idle policy decide when a fresh content-token read is safe.
-    if (entry?.hasSettled || entry?.inflightToken != null) return;
-    demandHeavyDocRead('comments');
-  };
-
-  // Source-complete recompute, input-idle-gated. Catalog reads share the
-  // kernel worker with mutations and some documents make one read take
-  // seconds, so elapsed wall time is never permission to start one during a
-  // live typing burst. Stale catalog state remains available until real idle.
-  const HEAVY_READ_IDLE_MS = 6500;
-  const HEAVY_READ_IDLE_POLL_MS = 250;
-  let lastEditableMutationAtMs = 0;
-  /**
-   * Last burst-class mutation: a local typing command or a remote apply whose
-   * originating operation is unavailable. Drives the steady-phase heavy-read
-   * hold while one-off local programmatic mutations keep refreshing promptly.
-   */
-  let lastTypingMutationAtMs = 0;
-  /**
-   * True from the first deferred heavy read until the input-idle release runs.
-   * Held reads stay deferred even after source-complete so a typing-driven
-   * recompute cannot bypass the idle gate.
-   */
-  let heavyReadsHeldUntilIdle = false;
-  let heavyReadCompletionRecomputeTimer: ReturnType<typeof setTimeout> | null = null;
-  const scheduleHeavyReadCompletionRecompute = (): void => {
-    if (disposed || heavyReadCompletionRecomputeTimer) return;
-    const attempt = (): void => {
-      heavyReadCompletionRecomputeTimer = null;
-      if (disposed) return;
-      const idleForMs = Date.now() - lastEditableMutationAtMs;
-      const busy = foregroundMutationActive() || idleForMs < HEAVY_READ_IDLE_MS;
-      if (busy) {
-        heavyReadCompletionRecomputeTimer = setTimeout(attempt, HEAVY_READ_IDLE_POLL_MS);
-        return;
-      }
-      heavyReadsHeldUntilIdle = false;
-      recompute();
-    };
-    heavyReadCompletionRecomputeTimer = setTimeout(attempt, 0);
-  };
-
-  // One loading-snapshot subscription per host so deferred heavy reads are
-  // re-attempted exactly when loading reaches a terminal stage.
-  let sourceLoadingSubscriptionHost: LooseRecord | null = null;
-  let detachSourceLoading: (() => void) | null = null;
-  const armSourceLoadCompletionRecompute = (): void => {
-    const host = getHost();
-    if (!host || sourceLoadingSubscriptionHost === host) return;
-    if (detachSourceLoading) {
-      detachSourceLoading();
-      detachSourceLoading = null;
-    }
-    sourceLoadingSubscriptionHost = host;
-    const subscribe = host.subscribeDocumentLoading;
-    if (typeof subscribe !== 'function') {
-      // No subscription seam: fall back to the retry timer so deferred reads
-      // still re-check the phase instead of staying pending forever.
-      sourceLoadingSubscriptionHost = null;
-      scheduleForegroundAsyncRetry(HEAVY_READ_IDLE_MS);
-      return;
-    }
-    try {
-      const handleLoadingSnapshot = (snapshot: LooseRecord | null | undefined): void => {
-        const stage = snapshot?.sourceStage;
-        if (stage === 'source-complete' || stage === 'source-failed' || stage === 'source-cancelled') {
-          sourceCompletionObservedToken = contentToken();
-          refreshIncompleteTrackChangesDirectories();
-          // Opening the editing surface is not proof that the user will stay
-          // idle. Give the first interaction the same quiet window as an edit
-          // before starting any deferred catalog-scale worker read.
-          lastEditableMutationAtMs = Math.max(lastEditableMutationAtMs, Date.now());
-          scheduleHeavyReadCompletionRecompute();
-        }
-      };
-      // Subscribe before the confirming read. The loading subscription is not
-      // replaying, so checking first leaves a gap in which source-complete can
-      // land permanently unseen and keep every deferred catalog cold.
-      const off = (subscribe as AnyFn).call(host, handleLoadingSnapshot);
-      if (typeof off === 'function') detachSourceLoading = off as () => void;
-      const read = host.getDocumentLoadingSnapshot;
-      if (typeof read === 'function') {
-        handleLoadingSnapshot(safeCall<LooseRecord | null>(() => read.call(host) as LooseRecord, null));
-      }
-    } catch {
-      sourceLoadingSubscriptionHost = null;
-      scheduleForegroundAsyncRetry(HEAVY_READ_IDLE_MS);
-    }
-  };
+  const heavyReadGate = createHeavyReadGate({
+    isDisposed: () => disposed,
+    currentHost: getHost,
+    contentToken,
+    readAsyncEntry: (key) => asyncReads.get(key),
+    replaceAsyncEntry: (key, entry) => {
+      asyncReads.set(key, entry);
+    },
+    scheduleAsyncRefresh,
+    recompute: () => recompute(),
+    foregroundMutationActive: () => foregroundMutationActive(),
+    scheduleForegroundAsyncRetry: (delayMs) => scheduleForegroundAsyncRetry(delayMs),
+  });
+  const {
+    directoryLeaseCounts,
+    incompleteTrackChangesDirectoryReadTokens,
+    holdsHeavyRead,
+    typingIsRecent,
+    demandHeavyDocRead,
+    acquireDirectoryLease,
+    ensureTrackChangesCatalog,
+  } = heavyReadGate;
 
   const foregroundMutationState = (): { active: number; pending: number } | null => {
     const host = getEditor()?.host as LooseRecord | undefined;
@@ -1512,6 +1327,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       if (validationToken === selectionReadToken()) {
         issueAsyncRead('selection', validationToken, selectionCurrentRun, normalizeSelectionInfo);
       }
+      releaseColdAsyncReads();
       recompute();
     }, delayMs);
   };
@@ -1519,10 +1335,13 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
   const shouldDeferColdAsyncRead = (key: string, token: string): boolean => {
     if (!foregroundMutationState()) return false;
     const deferralKey = `${key}\u0000${token}`;
-    if (coldAsyncReadDeferrals.has(deferralKey)) return false;
-    coldAsyncReadDeferrals.add(deferralKey);
+    if (coldAsyncReadDeferrals.get(deferralKey) === 'released') return false;
+    coldAsyncReadDeferrals.set(deferralKey, 'armed');
     scheduleForegroundAsyncRetry(COLD_ASYNC_READ_START_DELAY_MS);
     return true;
+  };
+  const releaseColdAsyncReads = (): void => {
+    for (const key of coldAsyncReadDeferrals.keys()) coldAsyncReadDeferrals.set(key, 'released');
   };
 
   /**
@@ -1702,21 +1521,6 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
   const holdsTypedCaretSelection = (key: string): boolean =>
     key === 'selection' && typedCaretValidationHeld && typingIsRecent();
 
-  const holdsHeavyRead = (key: string, token: string): boolean => {
-    if (!isHeavyDocReadKey(key) || heavyReadDemandActive(key, token)) return false;
-    if (hostSourceLoadPhase() === 'loading') {
-      heavyReadsHeldUntilIdle = true;
-      armSourceLoadCompletionRecompute();
-      return true;
-    }
-    if (heavyReadsHeldUntilIdle || typingIsRecent()) {
-      heavyReadsHeldUntilIdle = true;
-      scheduleHeavyReadCompletionRecompute();
-      return true;
-    }
-    return false;
-  };
-
   const waitingForFailureRetry = (
     entry: AsyncReadEntry | undefined,
     token: string,
@@ -1728,6 +1532,8 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     token: string,
     run: () => unknown,
     normalize: (raw: unknown) => T | null,
+    immediate = false,
+    gateToken = token,
   ): { value: T | null; status: SliceStatus } => {
     const serve = (
       entry: AsyncReadEntry | null | undefined,
@@ -1740,8 +1546,8 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       scheduleForegroundAsyncRetry(HEAVY_READ_IDLE_POLL_MS);
       return serve(entry, 'stale');
     }
-    if (holdsHeavyRead(key, token)) return serve(entry, 'stale');
-    if (foregroundMutationActive()) {
+    if (!immediate && holdsHeavyRead(key, gateToken)) return serve(entry, 'stale');
+    if (!immediate && foregroundMutationActive()) {
       scheduleForegroundAsyncRetry();
       return serve(entry, 'stale');
     }
@@ -1750,7 +1556,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       return serve(entry, 'stale');
     }
     if (!entry && key.startsWith('effInline:') && shouldDeferEffectiveInlineRead(key)) return serve(entry, 'pending');
-    if (!entry && shouldDeferColdAsyncRead(key, token)) return serve(entry, 'pending');
+    if (!immediate && !entry && shouldDeferColdAsyncRead(key, gateToken)) return serve(entry, 'pending');
     if (!entry || entry.inflightToken !== token) {
       const completed = issueAsyncRead(key, token, run, normalize);
       if (completed) return serve(completed, 'ready');
@@ -1771,8 +1577,6 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     pendingSelectionSeedValidationToken = next.pendingToken;
   };
 
-  const typingIsRecent = (): boolean => Date.now() - lastTypingMutationAtMs < HEAVY_READ_IDLE_MS;
-
   const selectionScopedAsyncReadKeys = (selection: SelectionSlice): ReadonlySet<string> => {
     const signature = selectionSignature(selection);
     const effectiveUniformityKey = effectiveInlineUniformityCacheKey(selection);
@@ -1788,7 +1592,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     clearAsyncReadKeys(
       (key) => SELECTION_SCOPED_ASYNC_READ_PREFIXES.some((prefix) => key.startsWith(prefix)) && !retained.has(key),
     );
-    for (const key of coldAsyncReadDeferrals) {
+    for (const key of [...coldAsyncReadDeferrals.keys()]) {
       const readKey = key.split('\u0000', 1)[0]!;
       if (SELECTION_SCOPED_ASYNC_READ_PREFIXES.some((prefix) => readKey.startsWith(prefix)) && !retained.has(readKey)) {
         coldAsyncReadDeferrals.delete(key);
@@ -1813,16 +1617,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     pendingSelectionSeedValidationToken = null;
     typedCaretValidationHeld = false;
     coldAsyncReadDeferrals.clear();
-    demandedHeavyReads.clear();
-    incompleteTrackChangesDirectoryReadTokens.clear();
-    postSourceCompletionRefreshTokens.clear();
-    sourceCompletionObservedToken = null;
-    heavyReadsHeldUntilIdle = false;
-    // The loading-snapshot subscription belongs to the previous editor's host;
-    // re-arm lazily against the new host on the next deferred heavy read.
-    if (detachSourceLoading) detachSourceLoading();
-    detachSourceLoading = null;
-    sourceLoadingSubscriptionHost = null;
+    heavyReadGate.resetForEditor();
     clearPostDecisionTrackChanges();
     allTrackedChangesResolvedToken = null;
   };
@@ -1830,9 +1625,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
   /** Bump the document-mutation revision so content reads re-fetch on the next compute. */
   const invalidateDocumentContent = (): void => {
     documentMutationRevision += 1;
-    incompleteTrackChangesDirectoryReadTokens.clear();
-    postSourceCompletionRefreshTokens.clear();
-    sourceCompletionObservedToken = null;
+    heavyReadGate.invalidateSourceCoverage();
     clearPostDecisionTrackChanges();
   };
 
@@ -2002,9 +1795,17 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
   const normalizeSelectionInfo = (raw: unknown): SelectionInfo | null =>
     raw && typeof raw === 'object' ? (raw as SelectionInfo) : null;
 
+  const selectionContentLocks = new WeakMap<SelectionSlice, boolean>();
+
   const selectionSliceFromInfo = (info: SelectionInfo | null, status: SliceStatus): SelectionSlice => {
     if (!info) return { ...EMPTY_SELECTION, status };
     const slice = buildSelectionSlice(info, status);
+    if (isPlainObject(info) && typeof info.contentControlLocked === 'boolean') {
+      selectionContentLocks.set(slice, info.contentControlLocked);
+    }
+    if (selectionInfoReviewWarming(info) && !slice.empty && slice.activeChangeIds.length === 0) {
+      reviewWarmingSelections.add(slice);
+    }
     const hostSelection = selectionHostSnapshots.get(info);
     if (hostSelection) selectionHostSnapshots.set(slice, hostSelection);
     return slice;
@@ -2165,19 +1966,32 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
   ): void => {
     const host = getHost();
     const foreground = foregroundMutationState();
-    if (isNonCollapsedHostSelection(hostSelectionSnapshot) && readHostSelectionSnapshot() === hostSelectionSnapshot) {
-      const seed = normalizeSelectionInfo(safeCall(() => hostMethod(host, 'readLiveSelectionSyncSnapshot')?.(), null));
-      if (
-        seed &&
-        !seed.selectionTarget &&
-        captureWholeTableParagraphSeed(host, seed, hostSelectionSnapshot as object)
-      ) {
-        seedAsyncRead('selection', asyncReads.get('selection')?.token ?? null, seed);
+    const currentSelection =
+      hostSelectionSnapshot ?? (wholeTableSelectionChanged ? undefined : readHostSelectionSnapshot());
+    if (isNonCollapsedHostSelection(currentSelection) && readHostSelectionSnapshot() === currentSelection) {
+      const presentation = safeCall<unknown>(
+        () => hostMethod(host, 'readAppliedSelectionPresentation')?.({ tableOnly: true }),
+        null,
+      );
+      const applied = normalizeSelectionInfo(isPlainObject(presentation) ? presentation.selection : null);
+      if (applied?.tableSelection?.kind === 'tableCells' && applied.tableSelection.type === 'table') {
+        const seed = normalizeSelectionInfo(
+          safeCall(() => hostMethod(host, 'readLiveSelectionSyncSnapshot')?.(), null),
+        );
+        if (
+          seed &&
+          !seed.selectionTarget &&
+          captureWholeTableParagraphSeed(host, seed, isPlainObject(currentSelection) ? currentSelection : null)
+        ) {
+          seedAsyncRead('selection', asyncReads.get('selection')?.token ?? null, seed);
+        }
       }
     }
-    if (isNonCollapsedHostSelection(hostSelectionSnapshot) && !(foreground && foreground.active > 0)) {
-      setSelectionValidation({ held: false, pendingToken: null });
-      issueAsyncRead('selection', selectionReadToken(), selectionCurrentRun, normalizeSelectionInfo);
+    if (isNonCollapsedHostSelection(currentSelection)) {
+      if (!(foreground && foreground.active > 0)) {
+        setSelectionValidation({ held: false, pendingToken: null });
+        issueAsyncRead('selection', selectionReadToken(), selectionCurrentRun, normalizeSelectionInfo);
+      }
       return;
     }
     const read = host?.readLiveSelectionSyncSnapshot;
@@ -2347,17 +2161,19 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     return lastWindowComments.real;
   };
 
-  const readCommentsDirectory = () => {
+  const readCommentsDirectory = (immediate = false) => {
     const doc = getDoc();
     const listComments = hostMethod(doc?.comments, 'list');
     return readAsync<CommentInfo[]>(
       'comments',
-      contentToken(),
+      commentsDirectoryToken(),
       () => (listComments ? listComments() : undefined),
       (raw) => {
         const items: unknown = isPlainObject(raw) ? raw.items : undefined;
         return Array.isArray(items) ? realComments(items) : [];
       },
+      immediate,
+      contentToken(),
     );
   };
 
@@ -2376,24 +2192,11 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       },
       (raw) => {
         const result = raw && typeof raw === 'object' ? (raw as LooseRecord) : null;
-        if (result?.complete === false || result?.sourceCoverageComplete === false) {
-          incompleteTrackChangesDirectoryReadTokens.set(key, token);
-          armSourceLoadCompletionRecompute();
-          // Source completion can race the promise settlement: the event may
-          // arrive after the adapter captured an incomplete result but before
-          // this normalizer publishes it. Defer the refresh check until after
-          // issueAsyncRead stores the partial entry, and cap it at one attempt
-          // per content token.
-          if (sourceCompletionObservedToken === token || hostSourceLoadPhase() === 'complete') {
-            const refresh = (): void => {
-              if (!disposed) refreshIncompleteTrackChangesDirectories();
-            };
-            if (typeof queueMicrotask === 'function') queueMicrotask(refresh);
-            else void Promise.resolve().then(refresh);
-          }
-        } else if (incompleteTrackChangesDirectoryReadTokens.get(key) === token) {
-          incompleteTrackChangesDirectoryReadTokens.delete(key);
-        }
+        heavyReadGate.noteTrackChangesDirectoryRead(
+          key,
+          token,
+          result?.complete === false || result?.sourceCoverageComplete === false ? 'partial' : 'complete',
+        );
         return result && Array.isArray(result.items) ? (result.items as LooseRecord[]) : [];
       },
     );
@@ -2413,7 +2216,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     const activeIds = selection.activeCommentIds;
     const directory = asyncReads.get('comments');
     const directoryItems =
-      directory?.token === contentToken() && directory.hasSettled && Array.isArray(directory.value)
+      directory?.token === commentsDirectoryToken() && directory.hasSettled && Array.isArray(directory.value)
         ? directory.value
         : null;
     // An open document-wide consumer may focus an off-window row. Preserve it
@@ -2570,6 +2373,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     return {
       status: combineStatus(listStatus, selection.status),
       listStatus,
+      analysis: reviewWindowAnalysis(getV2ReviewWindowSnapshot()),
       items,
       total: items.length,
       activeId,
@@ -2704,6 +2508,16 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
         lockModesById.set(row.id, typeof row.lockMode === 'string' ? row.lockMode : 'unlocked');
     }
     return { lockModesById, rows, status };
+  };
+
+  const computeSelectionContentControlLockModes = (
+    ccApi: LooseRecord | undefined,
+    selection: SelectionSlice,
+  ): { lockModesById: ReadonlyMap<string, string> } => {
+    const locked = selectionContentLocks.get(selection);
+    return locked === undefined
+      ? computeActiveContentControlLockModes(ccApi, selection)
+      : { lockModesById: new Map(locked ? [['selection', 'contentLocked']] : []) };
   };
 
   const computeActiveContentControls = (
@@ -2946,10 +2760,11 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
    * projected value; the layout has already resolved them for painting.
    */
   const appliedSelectionPresentation = (selection: SelectionSlice): LooseRecord | null => {
-    const host = getHost(),
-      read = host?.readAppliedSelectionPresentation;
-    if (typeof read !== 'function') return null;
-    const value = safeCall<LooseRecord | null>(() => read.call(host), null);
+    const read =
+      hostMethod(getDoc()?.selection, 'readPresentation') ?? hostMethod(getHost(), 'readAppliedSelectionPresentation');
+    if (!read) return null;
+    const raw = safeCall<unknown>(read, null);
+    const value = isPlainObject(raw) ? raw : null;
     const info = normalizeSelectionInfo(value?.selection);
     return value && info && selectionSignature(selectionSliceFromInfo(info, 'ready')) === selectionSignature(selection)
       ? value
@@ -3460,12 +3275,17 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
   const projectSelectionInlineValuesWithStatus = (
     selection: SelectionSlice,
     effectiveInput = effectiveInlineUniformityInput(selection),
-  ): ProjectedInlineValuesRead =>
-    completeProjectedInlineValues(
+  ): ProjectedInlineValuesRead => {
+    if (!selection.empty && hostMethod(getDoc()?.selection, 'readPresentation')) {
+      if (!appliedSelectionPresentation(selection)) return { values: {}, effectiveUniformityStatus: 'pending' };
+      return completeProjectedInlineValues(selection, {}, effectiveInput);
+    }
+    return completeProjectedInlineValues(
       selection,
       projectInlineValuesFromQueryItem(resolveSelectionTextQueryItem(selection), selection),
       effectiveInput,
     );
+  };
 
   const projectSelectionInlineValues = (
     selection: SelectionSlice,
@@ -3529,6 +3349,8 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
    * so readAsync always finds an existing cache entry — this is a status-only lookup.
    */
   const selectionQueryStatus = (selection: SelectionSlice): SliceStatus => {
+    if (!selection.empty && hostMethod(getDoc()?.selection, 'readPresentation'))
+      return appliedSelectionPresentation(selection) ? 'ready' : 'pending';
     const doc = getDoc();
     const queryMatch = hostMethod(doc?.query, 'match');
     if (!queryMatch) return 'ready';
@@ -3592,7 +3414,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       frozenProjectedValuesKey = `${selectionKey(selection)}:${contentToken()}`;
     }
     const ccApi = doc?.contentControls as LooseRecord | undefined;
-    const { lockModesById } = computeActiveContentControlLockModes(ccApi, selection);
+    const { lockModesById } = computeSelectionContentControlLockModes(ccApi, selection);
     const states: Record<string, CommandState> = {};
     const previous = state?.toolbar.commands;
     for (const id of allCommandIds()) {
@@ -3661,6 +3483,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     }
     if (disabledReason) return disabledReason;
     if (command.scope !== 'all' && selection.activeChangeIds.length === 0) {
+      if (reviewWarmingSelections.has(selection)) return undefined;
       return SUPERDOC_UI_REASONS.selectionRequired;
     }
     if (command.scope !== 'all') {
@@ -3670,12 +3493,34 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     return undefined;
   };
 
-  const findTrackChangeForPermission = (id: string): TrackChangeInfo | null => {
+  const firstRowsById = <T>(rows: readonly T[] | null | undefined): Map<unknown, T> => {
+    const byId = new Map<unknown, T>();
+    for (const row of rows ?? []) {
+      const id = readEntityId(row);
+      if (!byId.has(id)) byId.set(id, row);
+    }
+    return byId;
+  };
+  const permissionCurrentRowsById = new WeakMap<readonly TrackChangesItem[], Map<unknown, TrackChangesItem>>();
+  const permissionDirectoryRowsById = new WeakMap<readonly unknown[], Map<unknown, unknown>>();
+  const rowsByIdForRevision = <T>(
+    cache: WeakMap<readonly T[], Map<unknown, T>>,
+    rows: readonly T[] | null | undefined,
+  ): Map<unknown, T> => {
+    if (!rows) return new Map();
+    const cached = cache.get(rows);
+    if (cached) return cached;
+    const byId = firstRowsById(rows);
+    cache.set(rows, byId);
+    return byId;
+  };
+
+  const trackChangePermissionLookup = (): ((id: string) => TrackChangeInfo | null) => {
     syncCoordinatorEditor();
+    let current: Map<unknown, TrackChangesItem> | null = null;
     let items: readonly unknown[] | null;
     if (hasV2ReviewWindowFeed()) {
-      const current = readAllStoryTrackChanges()?.find((item) => readEntityId(item) === id);
-      if (current) return trackChangesItemPayload(current);
+      current = rowsByIdForRevision(permissionCurrentRowsById, readAllStoryTrackChanges());
       // An explicit directory consumer may know an off-window author while
       // its catalog refreshes. Passive permission checks must not start I/O.
       const directory = asyncReads.get('trackChanges');
@@ -3685,9 +3530,14 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       // change OWN to OTHER and incorrectly enable a denied decision.
       items = readTrackChangesDirectory('trackChanges:all').value;
     }
-    const row = items?.find((item) => readEntityId(item) === id);
-    const projected = projectTrackChangesItem(row);
-    return projected ? trackChangesItemPayload(projected) : null;
+    let rows: Map<unknown, unknown> | null = null;
+    return (id) => {
+      const found = current?.get(id);
+      if (found) return trackChangesItemPayload(found);
+      rows ??= rowsByIdForRevision(permissionDirectoryRowsById, items);
+      const projected = projectTrackChangesItem(rows.get(id));
+      return projected ? trackChangesItemPayload(projected) : null;
+    };
   };
 
   const trackedChangeDecisionPermissionReason = (
@@ -3700,6 +3550,27 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       superdoc.config && typeof superdoc.config === 'object'
         ? ((superdoc.config as LooseRecord).user as LooseRecord | null)
         : null;
+    const builtInPolicy = readBuiltInTrackedChangePermissionPolicy(superdoc, canPerform);
+    const builtInDecisions = builtInPolicy
+      ? {
+          ownAllowed: builtInPolicy(kind === 'accept' ? 'RESOLVE_OWN' : 'REJECT_OWN'),
+          otherAllowed: builtInPolicy(kind === 'accept' ? 'RESOLVE_OTHER' : 'REJECT_OTHER'),
+        }
+      : null;
+    if (builtInDecisions && builtInDecisions.ownAllowed === builtInDecisions.otherAllowed) {
+      return builtInDecisions.ownAllowed ? undefined : SUPERDOC_UI_REASONS.permissionDenied;
+    }
+    const findTrackChangeForPermission = trackChangePermissionLookup();
+    if (builtInDecisions) {
+      const { ownAllowed, otherAllowed } = builtInDecisions;
+      for (const id of ids) {
+        const trackedChange = findTrackChangeForPermission(id);
+        if (!trackedChange) return SUPERDOC_UI_REASONS.permissionDenied;
+        const allowed = trackedChangeOwnedByCurrentUser(trackedChange, currentUser) ? ownAllowed : otherAllowed;
+        if (!allowed) return SUPERDOC_UI_REASONS.permissionDenied;
+      }
+      return undefined;
+    }
     for (const id of ids) {
       const trackedChange = findTrackChangeForPermission(id);
       const isOwn = trackedChange ? trackedChangeOwnedByCurrentUser(trackedChange, currentUser) : false;
@@ -3714,13 +3585,11 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
         let allowed: unknown;
         try {
           const permissionChange = trackedChange ?? { id };
-          allowed =
-            readBuiltInTrackedChangePermissionDecision(superdoc, canPerform, candidate, permissionChange) ??
-            canPerform.call(superdoc, {
-              permission: candidate,
-              trackedChange: permissionChange,
-              comment: null,
-            });
+          allowed = canPerform.call(superdoc, {
+            permission: candidate,
+            trackedChange: permissionChange,
+            comment: null,
+          });
         } catch {
           return trackedChange ? undefined : SUPERDOC_UI_REASONS.permissionDenied;
         }
@@ -4269,7 +4138,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       if (signature && cached?.selectionSignature === signature) return cached.value;
     }
     if (descriptor.id === 'linked-style') {
-      const { style: active } = computeActiveParagraphStyle(selection, getStyleCatalog().cache);
+      const { style: active } = styleReads.activeParagraphStyle(selection);
       if (!active.styleId || active.mixed) return undefined;
       return { styleId: active.styleId, styleName: active.styleName };
     }
@@ -4970,218 +4839,13 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     return [...new Set([...ALL_BUILT_IN_COMMAND_IDS, ...customCommands.keys()])];
   };
 
-  // -- styles ---------------------------------------------------------------
-  // The Document API default paragraph style id when the catalogue omits one.
-  const DEFAULT_PARAGRAPH_STYLE_ID = 'Normal';
-
-  const EMPTY_STYLES_SLICE: StylesSlice = {
-    ready: false,
-    status: 'ready',
-    catalogRevision: null,
-    quickGallery: [],
-    activeParagraphStyleId: null,
-    activeParagraphStyleName: null,
-    mixedSelection: false,
-    sourceStatus: null,
-    diagnostics: [],
-  };
-
-  const styleCatalogReadKey = (input?: StylesGetCatalogInput): string =>
-    `styles:catalog:${JSON.stringify(input ?? {})}`;
-
-  /**
-   * Read the public Document API style catalogue (`doc.styles.getCatalog`)
-   * through the async read coordinator. A promise-returning browser read
-   * settles into the cache (keyed by content revision) instead of collapsing
-   * the catalogue to `null`. `value` is `null` when the styles surface is
-   * unreachable (worker-backed `doc` is null or the operation is missing); the
-   * accompanying {@link SliceStatus} reports pending/stale/ready.
-   */
-  const readStyleCatalogLive = (
-    input?: StylesGetCatalogInput,
-  ): { value: StylesGetCatalogResult | null; status: SliceStatus } => {
-    const doc = getDoc();
-    const stylesApi = doc?.styles as LooseRecord | undefined;
-    if (!stylesApi || typeof stylesApi.getCatalog !== 'function') return { value: null, status: 'ready' };
-    return readAsync<StylesGetCatalogResult>(
-      styleCatalogReadKey(input),
-      contentToken(),
-      () => (stylesApi.getCatalog as AnyFn)(input),
-      (raw) => (raw && typeof raw === 'object' ? (raw as StylesGetCatalogResult) : null),
-    );
-  };
-
-  /** Resolve the catalogue (coordinator-cached by content revision) plus its readiness. */
-  const getStyleCatalog = (): { cache: StyleCatalogCache | null; status: SliceStatus } => {
-    const full = readStyleCatalogLive({ includePreview: true });
-    if (!full.value) return { cache: null, status: full.status };
-    // The authoritative quick-gallery ordering (including the v1-style
-    // alphabetical fallback for documents without `qFormat` metadata) only
-    // comes from the `quickGallery` view; deriving it by filtering `styles`
-    // would miss that fallback. Fall back to the visibility flag only if the
-    // dedicated view read fails.
-    const quickResult = readStyleCatalogLive({ view: 'quickGallery', includePreview: true });
-    const quickGallery: readonly StyleCatalogItem[] = quickResult.value
-      ? quickResult.value.items
-      : full.value.styles.filter((item) => item.visibility.quickGallery);
-    const byId = new Map<string, StyleCatalogItem>();
-    for (const item of full.value.styles) byId.set(item.id, item);
-    return {
-      cache: { full: full.value, quickGallery, byId },
-      status: combineStatus(full.status, quickResult.status),
-    };
-  };
-
-  /**
-   * Read one block's paragraph `styleRef` through the public `getNodeById`
-   * read. `ok` distinguishes a successful read (styleRef may be null when the
-   * paragraph has no explicit style) from an unavailable read (no operation, a
-   * promise in worker mode, or a missing node) so active-style resolution can
-   * fail closed precisely.
-   */
-  const readBlockStyleRef = (
-    doc: LooseRecord | null,
-    blockId: string,
-    story: LooseRecord,
-  ): { ok: boolean; styleRef: string | null; status: SliceStatus } => {
-    const { value: result, status } = readNodeById(doc, blockId, story);
-    if (!result) return { ok: false, styleRef: null, status };
-    const node = result.node;
-    if (!node || typeof node !== 'object') return { ok: false, styleRef: null, status };
-    const kind = (node as LooseRecord).kind;
-    const payload = typeof kind === 'string' ? ((node as LooseRecord)[kind] as LooseRecord | undefined) : undefined;
-    const raw = payload && typeof payload === 'object' ? payload.styleRef : undefined;
-    const styleRef = typeof raw === 'string' && raw.length > 0 ? raw : null;
-    return { ok: true, styleRef, status };
-  };
-
-  /**
-   * Resolve the active paragraph style from the current selection. Handles the
-   * uniform, default (no explicit style → document default paragraph style),
-   * and mixed cases, and fails closed with diagnostics when block reads are
-   * unavailable.
-   */
-  const computeActiveParagraphStyle = (
-    selection: SelectionSlice,
-    catalog: StyleCatalogCache | null,
-  ): { style: ActiveParagraphStyle; status: SliceStatus } => {
-    const diagnostics: StyleCatalogDiagnostic[] = [];
-    const doc = getDoc();
-    if (!doc) {
-      diagnostics.push({
-        severity: 'warning',
-        code: 'active-style-unavailable',
-        message: 'Active paragraph style is unavailable: the Document API is not reachable.',
-      });
-      return { style: { styleId: null, styleName: null, mixed: false, diagnostics }, status: 'ready' };
-    }
-    const blockIds = selectionBlockIds(selection);
-    if (blockIds.length === 0) {
-      diagnostics.push({
-        severity: 'info',
-        code: 'active-style-no-selection',
-        message: 'No paragraph block is resolvable from the current selection; active paragraph style is unavailable.',
-      });
-      return { style: { styleId: null, styleName: null, mixed: false, diagnostics }, status: 'ready' };
-    }
-    if (!canProbeEverySelectedBlock(blockIds)) {
-      diagnostics.push({
-        severity: 'info',
-        code: 'active-style-selection-too-large',
-        message: 'Active paragraph style is unavailable for a large multi-paragraph selection.',
-      });
-      return { style: { styleId: null, styleName: null, mixed: false, diagnostics }, status: 'ready' };
-    }
-    const defaultId = catalog?.full.defaults.paragraphStyleId ?? (catalog ? DEFAULT_PARAGRAPH_STYLE_ID : null);
-    const resolvedIds = new Set<string>();
-    let resolved = 0;
-    let blockReadFailures = 0;
-    let defaultReadFailures = 0;
-    let readStatus: SliceStatus = 'ready';
-    const story = selectionStory(selection);
-    for (const blockId of blockIds) {
-      const read = readBlockStyleRef(doc, blockId, story);
-      readStatus = combineStatus(readStatus, read.status);
-      if (!read.ok) {
-        blockReadFailures += 1;
-        continue;
-      }
-      if (!read.styleRef && !defaultId) {
-        defaultReadFailures += 1;
-        continue;
-      }
-      const styleId = read.styleRef ?? defaultId;
-      if (!styleId) {
-        defaultReadFailures += 1;
-        continue;
-      }
-      resolved += 1;
-      // No explicit style → the document default paragraph style (usually Normal).
-      resolvedIds.add(styleId);
-    }
-    if (resolved === 0) {
-      const onlyDefaultUnavailable = defaultReadFailures > 0 && blockReadFailures === 0;
-      diagnostics.push({
-        severity: 'warning',
-        code: onlyDefaultUnavailable ? 'active-style-default-unavailable' : 'active-style-read-failed',
-        message: onlyDefaultUnavailable
-          ? 'Selected paragraphs have no explicit style and the style catalogue is unavailable, so the document default cannot be resolved.'
-          : 'Could not read the paragraph style of any selected block; active paragraph style is unavailable.',
-      });
-      return { style: { styleId: null, styleName: null, mixed: false, diagnostics }, status: readStatus };
-    }
-    const unresolved = blockReadFailures + defaultReadFailures;
-    if (unresolved > 0) {
-      diagnostics.push({
-        severity: 'warning',
-        code: 'active-style-partial',
-        message: `Active paragraph style resolved from ${resolved} of ${resolved + unresolved} selected blocks; ${unresolved} could not be read, so the active style is unavailable.`,
-      });
-      return { style: { styleId: null, styleName: null, mixed: false, diagnostics }, status: readStatus };
-    }
-    if (resolvedIds.size > 1) {
-      return { style: { styleId: null, styleName: null, mixed: true, diagnostics }, status: readStatus };
-    }
-    const styleId = [...resolvedIds][0];
-    const styleName = catalog?.byId.get(styleId)?.name ?? null;
-    return { style: { styleId, styleName, mixed: false, diagnostics }, status: readStatus };
-  };
-
-  const computeStyles = (selection: SelectionSlice): StylesSlice => {
-    if (!getEditor()) return EMPTY_STYLES_SLICE;
-    const { cache: catalog, status: catalogStatus } = getStyleCatalog();
-    const { style: active, status: activeStatus } = computeActiveParagraphStyle(selection, catalog);
-    let diagnostics: readonly StyleCatalogDiagnostic[];
-    if (catalog) {
-      // Reuse the (stable) catalogue diagnostics reference when the active-style
-      // read added none, so selection-only recomputes don't churn the slice.
-      diagnostics =
-        active.diagnostics.length === 0
-          ? catalog.full.diagnostics
-          : [...catalog.full.diagnostics, ...active.diagnostics];
-    } else {
-      diagnostics = [
-        {
-          severity: 'warning',
-          code: 'catalog-unavailable',
-          message:
-            'The style catalogue is unavailable: the Document API styles surface is not reachable (e.g. viewing mode or a worker-backed editor).',
-        },
-        ...active.diagnostics,
-      ];
-    }
-    return {
-      ready: true,
-      status: combineStatus(catalogStatus, activeStatus, selection.status),
-      catalogRevision: catalog?.full.revision ?? null,
-      quickGallery: catalog?.quickGallery ?? [],
-      activeParagraphStyleId: active.styleId,
-      activeParagraphStyleName: active.styleName,
-      mixedSelection: active.mixed,
-      sourceStatus: catalog?.full.sourceStatus ?? null,
-      diagnostics,
-    };
-  };
+  const styleReads = createStyleReads({
+    hasEditor: () => getEditor() !== null,
+    getDoc,
+    contentToken,
+    readAsync,
+    readNodeById,
+  });
 
   const computeStateSnapshot = (reason: string): SuperDocUIState => {
     const { sink } = readUiBenchRuntime();
@@ -5238,7 +4902,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       zoom: measure('zoom', computeZoom),
       history: measure('history', computeHistory),
       fonts: measure('fonts', computeFonts),
-      styles: measure('styles', () => computeStyles(selection)),
+      styles: measure('styles', () => styleReads.computeSlice(selection)),
     };
     if (sink) {
       const completedAtMs = uiBenchNowMs();
@@ -5293,31 +4957,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
   let currentV2ReviewWindowSource: LooseRecord | null = null;
   let detachV2ReviewWindow: (() => void) | null = null;
 
-  // The adapter subscribes to the same host selection surface this controller
-  // does and republishes on every caret move, so a direct `recompute()` here
-  // would double the work per keystroke. Coalescing to a microtask collapses the
-  // adapter's emission into the selection-driven recompute that is already
-  // queued for the same gesture, while still guaranteeing a recompute for an
-  // adapter-only emission such as the history read settling.
-  let editCommandsRecomputeQueued = false;
-  const requestEditCommandsRecompute = (): void => {
-    if (disposed || editCommandsRecomputeQueued) return;
-    editCommandsRecomputeQueued = true;
-    const run = (): void => {
-      // A recompute may already have run for this gesture — the selection
-      // subscription recomputes synchronously — and clears the flag when it
-      // does. Nothing left to do in that case.
-      if (!editCommandsRecomputeQueued) return;
-      editCommandsRecomputeQueued = false;
-      if (disposed) return;
-      recompute();
-    };
-    // Same fallback as `scheduleAsyncRefresh`: `queueMicrotask` is absent in
-    // some runtimes, and throwing here would strand the flag set and stop every
-    // later emission from scheduling anything.
-    if (typeof queueMicrotask === 'function') queueMicrotask(run);
-    else void Promise.resolve().then(run);
-  };
+  const requestEditCommandsRecompute = (): void => requestMicrotaskRecompute('edit-commands');
 
   const syncEditCommandsSubscription = (): void => {
     const next = getEditCommands();
@@ -5346,7 +4986,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     currentV2ReviewWindowSource = next;
     if (!next || typeof next.subscribe !== 'function') return;
     try {
-      const unsubscribe = next.subscribe(() => recompute());
+      const unsubscribe = next.subscribe(() => requestFrameRecompute('review-window'));
       if (typeof unsubscribe === 'function') detachV2ReviewWindow = unsubscribe;
     } catch {
       currentV2ReviewWindowSource = null;
@@ -5757,6 +5397,12 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
         'subscribe',
       )?.((event: LooseRecord) => {
         const type = event?.type;
+        if (type === 'collaboration:remote-comments-changed') {
+          remoteCommentsRevision += 1;
+          if (asyncReads.has('comments')) demandHeavyDocRead('comments');
+          recompute('remote-comments');
+          return;
+        }
         if (host) publishDocumentChange(host, event);
         const isStandaloneDocumentMutation = type === 'document:mutated' && event.hasCommitEvent !== true;
         if (
@@ -5823,14 +5469,11 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
           settleUiReviewMutation((event.reviewMutation as LooseRecord).token);
         }
         if (type === 'source:complete' || type === 'source:signals-complete') {
-          sourceCompletionObservedToken = contentToken();
-          refreshIncompleteTrackChangesDirectories();
+          heavyReadGate.noteSourceComplete();
           return;
         }
         if (isStandaloneDocumentMutation || type === 'mutation:committed' || type === 'collaboration:remote-changed') {
-          // Input-idle signal for the source-complete heavy-read recompute:
-          // local commits and remote applies both count as recent activity.
-          lastEditableMutationAtMs = Date.now();
+          heavyReadGate.noteEditableActivity();
         }
         if (
           isStandaloneDocumentMutation ||
@@ -5872,7 +5515,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
             // part-only review updates (for example comments.xml) to refresh
             // promptly. Preserve the immediate recompute below for lightweight
             // selection/block state such as paragraph alignment.
-            lastTypingMutationAtMs = Date.now();
+            heavyReadGate.noteTypingBurst();
           }
           if (type === 'mutation:committed' && isTypingBurst) {
             scheduleTypingDocumentContentInvalidation();
@@ -5903,12 +5546,12 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
             type === 'collaboration:remote-changed' &&
             Array.isArray(event.changedStoryIds) &&
             event.changedStoryIds.length > 0 &&
-            commentsCatalogMayHaveRows();
+            heavyReadGate.commentsCatalogMayHaveRows();
           if (remoteCommentsPartChanged && !isTypingBurst) {
             // A part-only review update still advances the shared content
             // token. Hold passive catalogs behind the normal idle gate while
             // the demanded comments read below refreshes immediately.
-            heavyReadsHeldUntilIdle = true;
+            heavyReadGate.holdHeavyReadsUntilIdle();
           }
           invalidateDocumentContent();
           if (remoteCommentsPartChanged && !isTypingBurst) {
@@ -5920,8 +5563,8 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
             // update is not a typing burst and remains prompt.
             demandHeavyDocRead('comments');
           } else if (loadedCommentAnchorsMayHaveChanged) {
-            heavyReadsHeldUntilIdle = true;
-            scheduleHeavyReadCompletionRecompute();
+            heavyReadGate.holdHeavyReadsUntilIdle();
+            heavyReadGate.scheduleHeavyReadCompletionRecompute();
           }
           recompute();
         }
@@ -5933,6 +5576,8 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
   };
 
   const recompute = (reason = 'unspecified'): void => {
+    cancelFrameRecompute();
+    microtaskRecomputeQueued = false;
     if (disposed) return;
     for (const request of pendingListRequests) {
       if (request.editor !== getEditor() || request.doc !== getEditor()?.doc) request.cancel('owner-changed');
@@ -5940,11 +5585,6 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     }
     const { sink } = readUiBenchRuntime();
     const startedAtMs = sink ? uiBenchNowMs() : 0;
-    // Any recompute satisfies a queued edit-command refresh, whatever triggered
-    // it. A caret move fires the host selection subscription (which recomputes
-    // synchronously) AND the adapter's own republish; without this, the queued
-    // microtask would run a second full computation for the same gesture.
-    editCommandsRecomputeQueued = false;
     syncCoordinatorEditor();
     syncHostSelectionSubscription();
     syncEditCommandsSubscription();
@@ -6090,7 +5730,9 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
                   recompute();
                   runDocumentModeChangeHooks();
                 }
-              : () => recompute();
+              : event === 'viewport-change'
+                ? () => requestFrameRecompute('viewport-change')
+                : () => recompute();
       try {
         source.on(event, handler);
         detachers.push(() => {
@@ -6279,6 +5921,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
 
   function readBodyTrackChangeForDecision(activeId: string, story: unknown): TrackChangesItem | undefined {
     if (storyLocatorSignature(story) !== storyLocatorSignature(null)) return undefined;
+    if (getEditor()?.editorVersion === 2) return undefined;
     const trackChanges = getDoc()?.trackChanges as LooseRecord | undefined;
     const list = trackChanges?.list;
     if (typeof list !== 'function') return undefined;
@@ -6430,6 +6073,9 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     command: { kind: 'accept' | 'reject'; scope: 'id' | 'all' },
     payload: unknown,
   ): CommandExecutionResult {
+    if (command.scope === 'id' && payload == null && reviewWarmingSelections.has(state.selection)) {
+      return settleCommandExecution(decideSelectionAfterReviewWarmup(command));
+    }
     if (command.scope === 'id' && payload == null) {
       const plan = planSelectionTrackDecision(state.selection);
       switch (plan?.kind) {
@@ -6447,6 +6093,44 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     const resolved = resolveTrackDecisionTarget(command, payload);
     if (!resolved) return false;
     return executeTrackDecisionTarget(command.kind, resolved.target, resolved.changeId, resolved.story);
+  }
+
+  async function decideSelectionAfterReviewWarmup(command: {
+    kind: 'accept' | 'reject';
+    scope: 'id' | 'all';
+  }): Promise<CommandExecutionResult> {
+    const list = hostMethod(getDoc()?.trackChanges, 'list');
+    if (list) await list({ in: 'all', limit: 1, offset: 0 });
+    const current = hostMethod(getDoc()?.selection, 'current');
+    if (!current) return false;
+    const info = normalizeSelectionInfo(
+      await current({
+        includeText: true,
+        ...(getEditor()?.editorVersion === 2 ? { offsetSpace: 'selection' } : {}),
+      }),
+    );
+    if (!info || selectionInfoReviewWarming(info)) return false;
+    const plan = planSelectionTrackDecision(buildSelectionSlice(info, 'ready'));
+    const settledResult = (result: CommandExecutionResult): Promise<CommandExecutionResult> =>
+      result === false ? Promise.resolve(false) : lastCommandSettlement;
+    switch (plan?.kind) {
+      case undefined:
+      case 'blocked':
+      case 'unavailable':
+        return false;
+      case 'ids':
+        return settledResult(
+          executeTrackDecisionTarget(command.kind, { kind: 'ids', ids: plan.ids }, null, undefined, plan.ids),
+        );
+      case 'range':
+        return settledResult(
+          executeTrackDecisionTarget(command.kind, plan.target, plan.changeId, plan.story, plan.permissionIds),
+        );
+      case 'id':
+        return settledResult(
+          executeTrackDecision(command.kind, plan.story ? { id: plan.id, story: plan.story } : plan.id),
+        );
+    }
   }
 
   const hasInactiveTextSelection = (): boolean => {
@@ -6824,10 +6508,11 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
   const settleWorkflowReceipt = (
     receipt: unknown,
     fallback = failedReceipt('Document API operation failed.'),
+    refreshComments = false,
   ): WorkflowReceipt => {
     if (isPromiseLike(receipt)) {
       return Promise.resolve(receipt).then(
-        (resolved) => settleWorkflowReceipt(resolved, fallback),
+        (resolved) => settleWorkflowReceipt(resolved, fallback, refreshComments),
         () => fallback,
       );
     }
@@ -6836,6 +6521,10 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     // insert, …): invalidate content reads so dependent slices re-fetch.
     invalidateDocumentContent();
     if (isSuccessfulReceipt(normalizedReceipt)) {
+      if (refreshComments) {
+        const catalog = asyncReads.get('comments');
+        if (catalog?.hasSettled || catalog?.inflightToken != null) demandHeavyDocRead('comments');
+      }
       const readiness = getEditor()?.documentMutationReadiness as LooseRecord | undefined;
       if (typeof readiness?.whenPainted === 'function') {
         void finalizeCommandSettlement(awaitMutationReadiness(normalizedReceipt));
@@ -7104,8 +6793,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       }
     };
 
-    const catalog = getStyleCatalog().cache;
-    const defaultStyleId = catalog?.full.defaults.paragraphStyleId ?? DEFAULT_PARAGRAPH_STYLE_ID;
+    const defaultStyleId = documentDefaultParagraphStyleId(styleReads.catalog().cache);
 
     const selectedTarget = resolveInlineCommandTarget(state.selection);
     const rangeTarget =
@@ -7191,7 +6879,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
 
   const executeClearFormattingCommand = (): CommandExecutionResult => {
     const doc = getDoc();
-    const { lockModesById } = computeActiveContentControlLockModes(
+    const { lockModesById } = computeSelectionContentControlLockModes(
       doc?.contentControls as LooseRecord | undefined,
       state.selection,
     );
@@ -8175,21 +7863,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       const selection = preparedSelection ?? state.selection;
       // Word parity (SD-3274): mirrors the read-only guard above — fail closed
       // rather than let a style change silently no-op against locked content.
-      //
-      // NOTE: this intentionally does NOT fail closed on `status === 'pending'`.
-      // A prior attempt did, reasoning that a never-settled read carries zero
-      // information about a possible lock — but `readAsync`'s cold-read path
-      // deliberately defers the FIRST read for any new selection by
-      // `COLD_ASYNC_READ_START_DELAY_MS` (180ms) before even issuing the
-      // underlying `listInRange` call (stampede protection), so `pending` is
-      // not a rare sub-millisecond race — it is the *guaranteed* status for a
-      // brief but real window on every fresh selection. Failing closed on it
-      // silently broke ordinary formatting (bold/font/format-painter) on
-      // plain documents with no content controls at all, confirmed by
-      // `format-painter.spec.ts` CI failures. Accept the narrower, purely
-      // theoretical race this reverts (a mutation landing on a locked SDT
-      // during that same cold-read window) as a known limitation instead.
-      const { lockModesById } = computeActiveContentControlLockModes(
+      const { lockModesById } = computeSelectionContentControlLockModes(
         doc?.contentControls as LooseRecord | undefined,
         selection,
       );
@@ -8796,7 +8470,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     const ownerMode = readDocumentMode();
 
     const targetSelection = selectionSliceFromInfo(selection, 'ready');
-    const { lockModesById } = computeActiveContentControlLockModes(
+    const { lockModesById } = computeSelectionContentControlLockModes(
       doc.contentControls as LooseRecord | undefined,
       targetSelection,
     );
@@ -9018,7 +8692,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       readDocumentMode() === 'viewing'
     )
       return;
-    const currentLocks = computeActiveContentControlLockModes(
+    const currentLocks = computeSelectionContentControlLockModes(
       doc.contentControls as LooseRecord | undefined,
       targetSelection,
     );
@@ -10102,7 +9776,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     if (typeof op !== 'function') return failedReceipt('comments.patch is unavailable.');
     const fallback = failedReceipt('comments.patch failed.');
     return safeCall<WorkflowReceipt>(
-      () => settleWorkflowReceipt(op.call(commentsApi, { commentId, status }), fallback),
+      () => settleWorkflowReceipt(op.call(commentsApi, { commentId, status }), fallback, true),
       fallback,
     );
   }
@@ -10148,9 +9822,20 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     subscribe: commentsSnap.subscribe,
     observe: commentsSnap.observe,
     list: (query?: unknown): readonly CommentInfo[] => {
-      ensureCommentsCatalog();
-      const directory = readCommentsDirectory();
-      return filterCommentsSnapshot(directory.value ?? commentsSub.get().items, query);
+      const commentsApi = getDoc()?.comments;
+      const readRecords = hostMethod(commentsApi, 'readCommittedItems');
+      const records: unknown = readRecords ? safeCall<unknown>(readRecords, undefined) : undefined;
+      const committed = Array.isArray(records) ? realComments(records) : null;
+      const directory = committed === null ? readCommentsDirectory(true) : null;
+      const cached = asyncReads.get('comments')?.value;
+      const derivedItems = directory?.value ?? (Array.isArray(cached) ? realComments(cached) : commentsSub.get().items);
+      const derived = new Map(derivedItems.map((item) => [readEntityId(item), item]));
+      return filterCommentsSnapshot(
+        committed?.map((item) => ({ ...derived.get(readEntityId(item)), ...item })) ??
+          directory?.value ??
+          commentsSub.get().items,
+        query,
+      );
     },
     getById: (commentId: string): CommentInfo | null => {
       const fromSnapshot = commentsSub.get().items.find((item) => readEntityId(item) === commentId) ?? null;
@@ -10305,7 +9990,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       const snapshot = commentsSub.get();
       const directory = asyncReads.get('comments');
       const directoryItems =
-        directory?.token === contentToken() && directory.hasSettled && Array.isArray(directory.value)
+        directory?.token === commentsDirectoryToken() && directory.hasSettled && Array.isArray(directory.value)
           ? (directory.value as CommentInfo[])
           : null;
       const items = directoryItems ?? snapshot.items;
@@ -10850,180 +10535,28 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
         });
   };
 
-  const contentControlsSub = sliceHandle((s) => s.contentControls);
-  const findContentControl = (id: string): ContentControlInfo | null => {
-    const items = contentControlsSub.get().items;
-    return items.find((item) => item?.id === id) ?? null;
-  };
-
-  // While a panel observes the catalog, renew demand on every content revision
-  // the way the comments and tracked-change directories do. The passive slice
-  // only records demand for the revision it was attached at, so a mounted
-  // panel would otherwise serve a stale catalog until the idle release.
-  const contentControlsDirectorySub = select((s) => {
-    if (directoryLeaseCounts.contentControls > 0) demandHeavyDocRead('contentControls');
-    return s.contentControls;
-  });
-  const contentControlsSnap = directorySnapshotHandle(
-    contentControlsSub,
-    contentControlsDirectorySub,
-    'contentControls',
-  );
-  const contentControlsGet = ((input?: { id: string }): ContentControlsSlice | ContentControlInfo | null => {
-    if (input === undefined) return contentControlsSnap.get();
-    const id = readContentControlRequestId(input);
-    return id ? findContentControl(id) : null;
-  }) as ContentControlsHandle['get'];
-  // Internal subscription for the core active-change bridge. It reads the
-  // passive slice and never takes the directory lease, so merely enabling
-  // `onContentControlActiveChange` cannot renew catalog demand on every typing
-  // revision and bypass the heavy-read idle gate.
-  const contentControlsPassiveSnap = snapshotHandle(contentControlsSub);
-  let contentControlHighlightGeneration = 0;
-  let contentControlHighlightHost: LooseRecord | null = null;
-  const clearContentControlHighlight = (): void => {
-    contentControlHighlightGeneration += 1;
-    const host = contentControlHighlightHost ?? getHost();
-    contentControlHighlightHost = null;
-    safeCall(() => (host?.clearContentControlHighlight as AnyFn | undefined)?.call(host), undefined);
-  };
-  documentResetHooks.push(clearContentControlHighlight);
-  const contentControlClickListeners = new Set<(payload: ContentControlClickPayload) => void>();
-  const attachContentControlClick = (): void => {
-    const on = hostMethod(superdoc, 'on');
-    if (!on) return;
-    const handler = (payload: unknown): void => {
-      if (!isContentControlClickPayload(payload)) return;
-      for (const listener of Array.from(contentControlClickListeners)) safeCall(() => listener(payload), undefined);
-    };
-    on('content-control:click', handler);
-    detachers.push(() => {
-      hostMethod(superdoc, 'off')?.('content-control:click', handler);
-    });
-  };
-  attachContentControlClick();
-  const contentControls: ContentControlsHandle = {
+  const {
+    handle: contentControls,
     clearHighlight: clearContentControlHighlight,
-    highlight: async (input): Promise<ContentControlHighlightResult> => {
-      const id = readContentControlRequestId(input);
-      if (!id) return { success: false, reason: 'invalid-id' };
-      const host = getHost();
-      const editor = getEditor();
-      const controls = getDoc()?.contentControls as LooseRecord | undefined;
-      if (
-        disposed ||
-        !host ||
-        typeof host.highlightContentControl !== 'function' ||
-        typeof controls?.list !== 'function'
-      ) {
-        return { success: false, reason: 'not-ready' };
-      }
-      const request = ++contentControlHighlightGeneration;
-      contentControlHighlightHost = host;
-      safeCall(() => (host.cancelContentControlHighlightRequest as AnyFn | undefined)?.call(host), undefined);
-      const cancelled = () => disposed || request !== contentControlHighlightGeneration || editor !== getEditor();
-      try {
-        const catalog = await (controls.list as AnyFn).call(controls);
-        if (cancelled()) return { success: false, reason: 'cancelled' };
-        const items = isPlainObject(catalog) ? (catalog.items as ContentControlInfo[] | undefined) : undefined;
-        const control = items?.find((item) => item.id === id);
-        if (!control) return { success: false, reason: 'not-found' };
-        const target = readSelectionTarget(control);
-        if (!target || control.isEmpty) return { success: false, reason: 'not-reachable' };
-        const success = await (host.highlightContentControl as AnyFn).call(host, id, target);
-        if (cancelled()) return { success: false, reason: 'cancelled' };
-        return success ? { success: true } : { success: false, reason: 'not-reachable' };
-      } catch {
-        return { success: false, reason: cancelled() ? 'cancelled' : 'not-reachable' };
-      }
-    },
-    // The read helpers below are explicit consumer demand for the catalog:
-    // during source loading they stay best-effort over the (pending/stale)
-    // passive slice, but flag the demand so the coordinator issues the real
-    // `contentControls.list` read instead of deferring it to source-complete.
-    get: ((input?: { id: string }) => {
-      if (input !== undefined) ensureContentControlsCatalog('api');
-      return contentControlsGet(input as never);
-    }) as ContentControlsHandle['get'],
-    getSnapshot: contentControlsSnap.getSnapshot,
-    subscribe: contentControlsSnap.subscribe,
-    observe: contentControlsSnap.observe,
-    observeActivePath: contentControlsPassiveSnap.observe,
-    onClick: (listener) => {
-      if (disposed) return () => {};
-      contentControlClickListeners.add(listener);
-      return () => contentControlClickListeners.delete(listener);
-    },
-    list: () => {
-      ensureContentControlsCatalog('api');
-      return contentControlsSub.get().items;
-    },
-    getById: (id) => {
-      ensureContentControlsCatalog('api');
-      return findContentControl(id);
-    },
-    getRect: (input): ViewportRectResult => {
-      const id = readContentControlRequestId(input);
-      if (!id) return rectFailure('unresolved');
-      ensureContentControlsCatalog('panel');
-      const control = findContentControl(id);
-      if (!control) return rectFailure('unresolved');
-      const target = readSelectionTarget(control);
-      if (!target) return rectFailure('unavailable');
-      return viewport.getRect({ target: target as ViewportGetRectInput['target'] });
-    },
-    scrollIntoView: async (input): Promise<ScrollIntoViewOutput> => {
-      const id = readContentControlRequestId(input);
-      if (!id) return { success: false };
-      ensureContentControlsCatalog('panel');
-      const control = findContentControl(id);
-      if (!control) return { success: false };
-      const target = readSelectionTarget(control);
-      if (!target) return { success: false };
-      const result = await scrollTargetIntoView(target, { block: input.block, behavior: input.behavior });
-      return { success: result.ok };
-    },
-    focus: async (input): Promise<ContentControlFocusResult> => {
-      const id = readContentControlRequestId(input);
-      if (!id) return { success: false, reason: 'invalid-id' };
-      if (!getEditor()) return { success: false, reason: 'not-ready' };
-      ensureContentControlsCatalog('panel');
-      const control = findContentControl(id);
-      if (!control) return { success: false, reason: 'not-found' };
-      // The control exists but has no resolvable anchor - it can't be
-      // scrolled to, the same failure mode as a routable scroll that fails,
-      // not "no such control" (which `findContentControl` already covers).
-      const target = readSelectionTarget(control);
-      if (!target) return { success: false, reason: 'not-reachable' };
-      const result = await scrollTargetIntoView(target, { block: input.block, behavior: input.behavior });
-      if (!result.ok) return { success: false, reason: 'not-reachable' };
-      // Place a collapsed caret through the same selection-application surface
-      // as `ui.selection.apply` after scrolling; virtualized targets may not be
-      // mounted until the scroll completes.
-      const caretTarget = collapseSelectionTargetToCaret(target);
-      if (!caretTarget) return { success: false, reason: 'not-reachable' };
-      const applyResult = selection.apply(caretTarget);
-      if (!applyResult.ok && applyResult.reason !== SUPERDOC_UI_REASONS.hostCapabilityUnavailable) {
-        return { success: false, reason: 'not-reachable' };
-      }
-      const editor = getEditor(),
-        host = getHost();
-      const readiness = editor?.documentMutationReadiness as LooseRecord | undefined;
-      if (typeof readiness?.whenPainted === 'function') {
-        try {
-          await readiness.whenPainted.call(readiness);
-        } catch {
-          return { success: false, reason: 'not-reachable' };
-        }
-        if (getEditor() !== editor || getHost() !== host) return { success: false, reason: 'not-ready' };
-      }
-      const mounted = hostMethod(host, 'getMountedHandle')?.();
-      const focusHandle = isPlainObject(mounted) ? mounted.focus : undefined;
-      hostMethod(focusHandle, 'focus')?.({ preventScroll: true });
-      activateContentControlChrome(id);
-      return { success: true };
-    },
-  };
+    clearClickListeners: clearContentControlClickListeners,
+  } = createContentControlsHandle({
+    superdoc,
+    select: sliceHandle,
+    snapshotHandle,
+    leasedDirectorySnapshot: (passive, directory) => directorySnapshotHandle(passive, directory, 'contentControls'),
+    directoryLeaseHeld: () => directoryLeaseCounts.contentControls > 0,
+    demandCatalog: () => demandHeavyDocRead('contentControls'),
+    isDisposed: () => disposed,
+    currentEditor: getEditor,
+    currentHost: getHost,
+    documentContentControls: () => getDoc()?.contentControls,
+    rectOf: (target) => viewport.getRect({ target }),
+    scrollIntoView: scrollTargetIntoView,
+    applySelection: (target) => selection.apply(target),
+    activateChrome: activateContentControlChrome,
+    onDocumentReset: (hook) => documentResetHooks.push(hook),
+    onDestroy: (detach) => detachers.push(detach),
+  });
 
   const fontsSub = sliceHandle((s) => s.fonts);
   const fontsSnap = snapshotHandle(fontsSub);
@@ -11377,6 +10910,52 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     return null;
   }
 
+  const pointInVisibleHost = (x: number, y: number): boolean => {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
+    const host = resolveVisibleHost();
+    if (!host) return false;
+    const rect = host.getBoundingClientRect();
+    return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+  };
+
+  const isPointSelectionTarget = (value: unknown): value is SelectionTarget => {
+    if (!isPlainObject(value) || value.kind !== 'selection') return false;
+    return [value.start, value.end].every(
+      (point) =>
+        isPlainObject(point) &&
+        point.kind === 'text' &&
+        typeof point.blockId === 'string' &&
+        typeof point.offset === 'number' &&
+        Number.isSafeInteger(point.offset) &&
+        point.offset >= 0,
+    );
+  };
+
+  async function positionAt(input: ViewportPositionAtInput): Promise<ViewportPositionAtResult> {
+    if (disposed) return { status: 'disposed' };
+    if (input?.signal?.aborted) return { status: 'cancelled' };
+    if (!input || typeof input.x !== 'number' || typeof input.y !== 'number' || !pointInVisibleHost(input.x, input.y))
+      return { status: 'no-target' };
+    const editor = getEditor(),
+      viewportQuery = editor?.viewportQuery,
+      token = contentToken();
+    const getTargetAtPoint = hostMethod(viewportQuery, 'getTargetAtPoint');
+    if (!getTargetAtPoint) return { status: 'unavailable' };
+    const result = await getTargetAtPoint({ clientX: input.x, clientY: input.y });
+    if (disposed) return { status: 'disposed' };
+    if (input.signal?.aborted) return { status: 'cancelled' };
+    if (editor !== getEditor() || viewportQuery !== getEditor()?.viewportQuery || token !== contentToken())
+      return { status: 'stale' };
+    if (!isPlainObject(result)) throw new Error('Viewport point query returned an invalid host result');
+    if (result.status === 'resolved') {
+      if (!isPointSelectionTarget(result.target)) throw new Error('Viewport point query returned an invalid target');
+      return { status: 'resolved', target: result.target };
+    }
+    if (result.status === 'no-target' || result.status === 'stale' || result.status === 'disposed')
+      return { status: result.status };
+    throw new Error('Viewport point query returned an invalid host result');
+  }
+
   function contextAt(input: { x: number; y: number }): ViewportContext {
     const validInput = !!input && typeof input.x === 'number' && typeof input.y === 'number';
     // A fresh object: callers reuse and mutate pointer coordinates, and the
@@ -11391,7 +10970,20 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
         return current.status === 'ready' ? current : { ...current, tableSelection: null };
       })(),
       position: null,
-      insideSelection: false,
+      insideSelection:
+        validInput && pointInVisibleHost(point.x, point.y)
+          ? safeCall(
+              () =>
+                hostMethod(
+                  getEditor()?.viewportQuery,
+                  'isPointInPaintedSelection',
+                )?.({
+                  clientX: point.x,
+                  clientY: point.y,
+                }) === true,
+              false,
+            )
+          : false,
     };
   }
 
@@ -11811,15 +11403,18 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     getHost: (): HTMLElement | null => resolveVisibleHost(),
     entityAt,
     contextAt,
+    positionAt,
     scrollIntoView: async (input: ScrollIntoViewInput): Promise<ScrollIntoViewOutput> => {
       const rawTarget = input?.target;
       if (!rawTarget) return { success: false };
 
-      // Resolve the input target into the segment-shaped text target the host
-      // scroll surface consumes, then route through the shared helper so this
-      // fails closed identically to the per-entity `scrollTo` methods.
       let target: unknown | null = null;
-      if (rawTarget.kind === 'entity') {
+      if (rawTarget.kind === 'entity' && rawTarget.entityType === 'footnote') {
+        target = rawTarget;
+      } else if (rawTarget.kind === 'entity') {
+        // Resolve the input target into the segment-shaped text target the host
+        // scroll surface consumes, then route through the shared helper so this
+        // fails closed identically to the per-entity `scrollTo` methods.
         // Comment / tracked-change id — resolve to its stored target exactly as
         // `comments.scrollTo` / `trackChanges.scrollTo` do.
         const namespace = rawTarget.entityType === 'comment' ? 'comments' : 'trackChanges';
@@ -11844,7 +11439,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
             kind: 'text',
             segments,
             ...(asTarget.coordinateSpace ? { coordinateSpace: asTarget.coordinateSpace } : {}),
-            ...(story ? { story } : {}),
+            story: story ?? { kind: 'story', storyType: 'body' },
           };
         }
       }
@@ -12010,1061 +11605,41 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     isInTable: (): boolean => resolveTableContext() != null,
   };
 
-  // -- search (shared search/find facade) -----------------------------------
-  // Routes through the single V2 host search session (`host.search`), which
-  // owns query, navigation, reveal, and replace. `replace` / `replaceAll`
-  // mutate the document and fail closed in viewing/read-only mode. When the
-  // host exposes no search facade the whole surface is `available: false` /
-  // `search-unavailable` and never fabricates matches. Both the built-in
-  // toolbar and custom UIs read/drive it.
-  const SEARCH_UNAVAILABLE_SLICE: SearchSnapshot = {
-    query: '',
-    total: 0,
-    activeIndex: -1,
-    open: false,
-    available: false,
-    caseSensitive: false,
-    includeTrackedDeletions: false,
-    includeDeletedText: false,
-    regex: false,
-    canReplace: false,
-    canReplaceAll: false,
-    reason: SUPERDOC_UI_REASONS.searchUnavailable,
-  };
-  let searchState: SearchSnapshot = { ...SEARCH_UNAVAILABLE_SLICE };
-  const searchListeners = new Set<(slice: SearchSnapshot) => void>();
-
-  const getHostSearch = (): Record<string, unknown> | null => {
-    const search = getHost()?.search;
-    return isPlainObject(search) ? search : null;
-  };
-  const getEditCommandSearch = (): Record<string, unknown> | null => {
-    const editCommands = getEditCommands();
-    const search = editCommands?.search;
-    return isPlainObject(search) ? search : null;
-  };
-  const searchIsAvailable = (): boolean => {
-    const search = getHostSearch();
-    if (search && typeof search.setSession === 'function') return true;
-    const editSearch = getEditCommandSearch();
-    return editSearch !== null && typeof editSearch.query === 'function' && typeof editSearch.getState === 'function';
-  };
-  const emitSearch = (): void => {
-    for (const listener of [...searchListeners]) {
-      try {
-        listener(searchState);
-      } catch {
-        /* a search listener failure must not break the controller */
-      }
-    }
-  };
-  const setSearchState = (patch: Partial<SearchSnapshot>): SearchSnapshot => {
-    searchState = { ...searchState, ...patch };
-    const includeTrackedDeletions = patch.includeTrackedDeletions ?? patch.includeDeletedText;
-    if (includeTrackedDeletions !== undefined) {
-      searchState.includeTrackedDeletions = includeTrackedDeletions;
-      searchState.includeDeletedText = includeTrackedDeletions;
-    }
-    emitSearch();
-    return searchState;
-  };
-  // Monotonic token for async fallback queries: a query result that resolves
-  // after a newer find() call (or after close()) is stale and must not be
-  // applied over the newer session's state.
-  let searchRequestGeneration = 0;
-  // The worker-backed fallback answers `find()` asynchronously. While a request
-  // is outstanding the shell's `getState()` still describes the previous
-  // session, which may share the query and differ only in options. Nothing
-  // from the shell is trusted until the request that matches this generation
-  // settles; snapshots report no matches in the interim.
-  let pendingFallbackGeneration: number | null = null;
-  // A completed fallback remains reusable only until the document, editor or
-  // query changes. The shell's snapshot alone cannot prove those boundaries.
-  let completedFallbackSearch: Record<string, unknown> | null = null;
-
-  /**
-   * How to tear down the session that is currently open, captured when it was
-   * opened.
-   *
-   * A closure rather than a reference to the facade, because the two search
-   * paths are released differently: a host session ends with `host.clear()`,
-   * while the worker-backed fallback ends by querying the empty string through
-   * `editCommands.search`. Both bind to the editor that owned them, and by the
-   * time an active-editor change reaches us `activeEditor` already points at the
-   * replacement, so neither is reachable by looking it up again. Capturing the
-   * teardown keeps the two paths from drifting apart: whichever one opens a
-   * session is the one that says how to close it.
-   */
-  let releaseActiveSearchSession: (() => void) | null = null;
-  let releaseRefreshShellSearch: (() => void) | null = null;
-
-  const cancelRefreshShellSearch = (): void => {
-    const release = releaseRefreshShellSearch;
-    releaseRefreshShellSearch = null;
-    if (release) safeCall<unknown>(() => release(), null);
-  };
-
-  /** Release whatever session is open, then forget it. */
-  const releaseSearchSession = (): void => {
-    const release = releaseActiveSearchSession;
-    releaseActiveSearchSession = null;
-    if (!release) return;
-    safeCall<unknown>(() => {
-      release();
-      return null;
-    }, null);
-  };
-
-  /**
-   * Drop everything the previous active editor owned.
-   *
-   * Three separate hazards. An in-flight async query still holds a generation
-   * that is current, so without bumping the token it would resolve and publish
-   * the old document's matches into the new one. The slice itself describes a
-   * document that is gone: leaving it in place reports a total and an active
-   * match for content nobody is looking at any more. And the previous host still
-   * holds the session it painted, so without clearing it the old document keeps
-   * its highlights and switching back shows a closed slice over a host that
-   * still has matches.
-   *
-   * This closes the session rather than re-running the query against the
-   * replacement document. Re-running is a plausible product choice and arguably
-   * the nicer one, but it is a feature decision, not the correctness fix, so it
-   * is deliberately not made here.
-   */
-  const resetSearchForActiveEditorChange = (): void => {
-    completedFallbackSearch = null;
-    searchRequestGeneration += 1;
-    pendingFallbackGeneration = null;
-    shellFallbackOutstanding = false;
-    cancelRefreshShellSearch();
-    releaseSearchSession();
-    const available = searchIsAvailable();
-    searchState = {
-      ...SEARCH_UNAVAILABLE_SLICE,
-      available,
-      reason: available ? undefined : SUPERDOC_UI_REASONS.searchUnavailable,
-    };
-    emitSearch();
-  };
-
-  documentResetHooks.push(resetSearchForActiveEditorChange);
-  // `canReplace` / `canReplaceAll` come from the host's live document mode.
-  // Search publishes through `searchListeners`, not the aggregate listener set,
-  // so a mode flip would otherwise leave subscribers on the previous capability
-  // until the next search call.
-  documentModeChangeHooks.push(() => {
-    if (pendingFallbackGeneration === searchRequestGeneration) return;
-    const before = searchState;
-    const after = syncSearchStateFromHost();
-    if (
-      after.canReplace !== before.canReplace ||
-      after.canReplaceAll !== before.canReplaceAll ||
-      after.available !== before.available ||
-      after.reason !== before.reason
-    ) {
-      emitSearch();
-    }
+  const {
+    handle: search,
+    scheduleRefresh: scheduleSearchRefresh,
+    stopRefresh: stopSearchRefresh,
+    clearListeners: clearSearchListeners,
+    invalidateInFlightRequests: invalidateInFlightSearchRequests,
+  } = createSearchHandle({
+    hostSearch: () => getHost()?.search,
+    editCommandSearch: () => getEditCommands()?.search,
+    editCommandState: readEditCommandStateEntry,
+    snapshotHandle,
+    isDisposed: () => disposed,
+    onDocumentReset: (hook) => documentResetHooks.push(hook),
+    onDocumentModeChange: (hook) => documentModeChangeHooks.push(hook),
   });
-  const readSearchQueryError = (record: LooseRecord | null): boolean => {
-    if (!record) return false;
-    const queryError = record.queryError;
-    if (queryError && typeof queryError === 'object' && (queryError as LooseRecord).code === 'invalid-pattern') {
-      return true;
-    }
-    // Shell command outcomes report an invalid pattern as a typed rejection.
-    const rejection = record.rejection;
-    return (
-      record.status === 'rejected' &&
-      Boolean(rejection) &&
-      typeof rejection === 'object' &&
-      (rejection as LooseRecord).code === 'invalid-pattern'
-    );
-  };
-  const normalizeHostSearchResult = (
-    result: unknown,
-    fallbackCanReplace = false,
-    fallbackCanReplaceAll = fallbackCanReplace,
-  ): {
-    query?: string;
-    total: number;
-    activeIndex: number;
-    canReplace: boolean;
-    canReplaceAll: boolean;
-    caseSensitive?: boolean;
-    includeDeletedText?: boolean;
-    regex?: boolean;
-    invalidPattern?: boolean;
-  } | null => {
-    const record = result && typeof result === 'object' ? (result as LooseRecord) : null;
-    if (!record) return null;
-    const matches = Array.isArray(record.matches) ? record.matches : [];
-    const total = isFiniteNumber(record.total) ? record.total : matches.length;
-    const activeIndex =
-      typeof record.activeMatchIndex === 'number'
-        ? record.activeMatchIndex
-        : typeof record.activeIndex === 'number'
-          ? record.activeIndex
-          : -1;
-    const canReplace = record.canReplace === true || fallbackCanReplace;
-    return {
-      ...(typeof record.query === 'string' ? { query: record.query } : {}),
-      total,
-      activeIndex,
-      canReplace,
-      // Replace all is an action, not a mode: the host reports `canReplace`
-      // from document mutability alone, so an empty session must not advertise
-      // it. A truncated session cannot enumerate every match, so replacing all
-      // of them is refused even though the active match still can be.
-      canReplaceAll:
-        canReplace && total > 0 && record.truncated !== true && (record.canReplace === true || fallbackCanReplaceAll),
-      ...(typeof record.caseSensitive === 'boolean' ? { caseSensitive: record.caseSensitive } : {}),
-      ...(typeof record.includeDeletedText === 'boolean' ? { includeDeletedText: record.includeDeletedText } : {}),
-      ...(record.regex === true ? { regex: true } : {}),
-      ...(readSearchQueryError(record) ? { invalidPattern: true } : {}),
-    };
-  };
-  // The shell reports replace and replace-all separately: a session with more
-  // matches than it enumerates keeps `find.replace` enabled and disables
-  // `find.replaceAll` with `search-truncated`.
-  // Tracks whether find() handed the shell a query it may still be resolving
-  // through the Document API fallback. Querying the empty string is how the
-  // shell advances its fallback generation and releases that paint.
-  let shellFallbackOutstanding = false;
-  const cancelOutstandingShellFallback = (): void => {
-    if (!shellFallbackOutstanding) return;
-    shellFallbackOutstanding = false;
-    const editSearch = getEditCommandSearch();
-    if (editSearch && typeof editSearch.query === 'function') {
-      safeCall<unknown>(() => hostMethod(editSearch, 'query')?.({ query: '' }), null);
-    }
-  };
-  const readEditCommandCanReplace = (): boolean =>
-    pendingFallbackGeneration !== searchRequestGeneration &&
-    readEditCommandStateEntry('find.replace')?.enabled === true;
-  const readEditCommandCanReplaceAll = (): boolean =>
-    pendingFallbackGeneration !== searchRequestGeneration &&
-    readEditCommandStateEntry('find.replaceAll')?.enabled === true;
-  const applyHostSearchResult = (
-    result: unknown,
-    fallbackCanReplace = false,
-    fallbackCanReplaceAll = fallbackCanReplace,
-  ): void => {
-    const snapshot = normalizeHostSearchResult(result, fallbackCanReplace, fallbackCanReplaceAll);
-    if (!snapshot) {
-      setSearchState({ total: 0, activeIndex: -1, canReplace: false, canReplaceAll: false, reason: undefined });
-      return;
-    }
-    setSearchState({
-      ...(snapshot.query !== undefined ? { query: snapshot.query } : {}),
-      total: snapshot.total,
-      activeIndex: snapshot.activeIndex,
-      canReplace: snapshot.canReplace,
-      canReplaceAll: snapshot.canReplaceAll,
-      ...(snapshot.includeDeletedText !== undefined ? { includeDeletedText: snapshot.includeDeletedText } : {}),
-      ...(snapshot.regex !== undefined ? { regex: snapshot.regex } : {}),
-      // The surface stays available on an invalid pattern; the reason names the
-      // input error so the UI can render an inline message instead of "no results".
-      reason: snapshot.invalidPattern ? SUPERDOC_UI_REASONS.searchInvalidPattern : undefined,
-    });
-  };
-  const syncSearchStateFromHost = (): SearchSnapshot => {
-    const host = getHostSearch();
-    if (host && typeof host.getState !== 'function') {
-      searchState = {
-        ...searchState,
-        available: searchIsAvailable(),
-        reason: searchIsAvailable() ? undefined : SUPERDOC_UI_REASONS.searchUnavailable,
-      };
-      return searchState;
-    }
-    if (!host) {
-      const editSearch = getEditCommandSearch();
-      if (editSearch && typeof editSearch.getState === 'function') {
-        const editSnapshot = normalizeHostSearchResult(
-          safeCall<unknown>(() => hostMethod(editSearch, 'getState')?.(), null),
-          readEditCommandCanReplace(),
-          readEditCommandCanReplaceAll(),
-        );
-        // While a worker-backed request is outstanding the shell's state
-        // describes the previous session. Copying it back here would resurface
-        // the old matches through getSnapshot() and new observers, so the
-        // published no-match snapshot stands until that request settles.
-        if (pendingFallbackGeneration === searchRequestGeneration) return searchState;
-        if (editSnapshot) {
-          searchState = {
-            ...searchState,
-            ...(editSnapshot.query !== undefined ? { query: editSnapshot.query } : {}),
-            total: editSnapshot.total,
-            activeIndex: editSnapshot.activeIndex,
-            canReplace: editSnapshot.canReplace,
-            canReplaceAll: editSnapshot.canReplaceAll,
-            available: true,
-            reason: editSnapshot.invalidPattern ? SUPERDOC_UI_REASONS.searchInvalidPattern : undefined,
-            open: searchState.open || Boolean(editSnapshot.query),
-          };
-          return searchState;
-        }
-      }
-      searchState = {
-        ...SEARCH_UNAVAILABLE_SLICE,
-        query: searchState.query,
-        caseSensitive: searchState.caseSensitive,
-        includeTrackedDeletions: searchState.includeTrackedDeletions,
-        includeDeletedText: searchState.includeDeletedText,
-      };
-      return searchState;
-    }
-    const snapshot = normalizeHostSearchResult(safeCall<unknown>(() => hostMethod(host, 'getState')?.(), null));
-    if (!snapshot) return searchState;
-    searchState = {
-      ...searchState,
-      ...(snapshot.query !== undefined ? { query: snapshot.query } : {}),
-      total: snapshot.total,
-      activeIndex: snapshot.activeIndex,
-      canReplace: snapshot.canReplace,
-      canReplaceAll: snapshot.canReplaceAll,
-      ...(snapshot.includeDeletedText !== undefined ? { includeDeletedText: snapshot.includeDeletedText } : {}),
-      ...(snapshot.includeDeletedText !== undefined ? { includeTrackedDeletions: snapshot.includeDeletedText } : {}),
-      ...(snapshot.regex !== undefined ? { regex: snapshot.regex } : {}),
-      available: true,
-      reason: snapshot.invalidPattern ? SUPERDOC_UI_REASONS.searchInvalidPattern : undefined,
-      open: searchState.open || Boolean(snapshot.query),
-    };
-    return searchState;
-  };
-  const mapHostReplaceResult = (result: unknown): WorkflowActionResult => {
-    const record = result && typeof result === 'object' ? (result as LooseRecord) : null;
-    if (record?.status === 'committed') return { ok: true };
-    if (record?.status === 'rejected' && record.reason === 'read-only') {
-      return { ok: false, reason: SUPERDOC_UI_REASONS.documentReadonly };
-    }
-    const rejection = record?.rejection;
-    if (
-      record?.status === 'rejected' &&
-      rejection &&
-      typeof rejection === 'object' &&
-      (rejection as LooseRecord).code === 'read-only-document'
-    ) {
-      return { ok: false, reason: SUPERDOC_UI_REASONS.documentReadonly };
-    }
-    if (record?.status === 'rejected' && record.reason === 'truncated') {
-      return { ok: false, reason: SUPERDOC_UI_REASONS.searchTruncated };
-    }
-    const failure = record?.failure;
-    if (
-      record?.status === 'receipt-failure' &&
-      failure &&
-      typeof failure === 'object' &&
-      (failure as LooseRecord).code === 'REVISION_MISMATCH'
-    ) {
-      return { ok: false, reason: SUPERDOC_UI_REASONS.targetUnresolved };
-    }
-    return { ok: false, reason: SUPERDOC_UI_REASONS.operationUnavailable };
-  };
-  const settleHostSearchReplacement = (result: unknown): WorkflowActionResult | Promise<WorkflowActionResult> => {
-    // Capture before emitting: observers can close, clear, switch editors or
-    // destroy the controller synchronously. Staleness suppresses publication,
-    // while the caller still receives the actual mutation outcome.
-    const generation = searchRequestGeneration;
-    syncSearchStateFromHost();
-    emitSearch();
-    if (!isPromiseLike(result)) return mapHostReplaceResult(result);
-    return Promise.resolve(result).then(
-      (resolved) => {
-        if (generation === searchRequestGeneration) {
-          syncSearchStateFromHost();
-          emitSearch();
-        }
-        return mapHostReplaceResult(resolved);
-      },
-      () => {
-        if (generation === searchRequestGeneration) {
-          setSearchState({ available: false, reason: SUPERDOC_UI_REASONS.searchUnavailable });
-        }
-        return { ok: false, reason: SUPERDOC_UI_REASONS.searchUnavailable };
-      },
-    );
-  };
-  const searchSnap = snapshotHandle<SearchSnapshot>({
-    get: () => syncSearchStateFromHost(),
-    subscribe: (listener) => {
-      searchListeners.add(listener);
-      return () => searchListeners.delete(listener);
+  scheduleActiveSearchRefresh = scheduleSearchRefresh;
+
+  const styles = createStylesHandle({
+    reads: styleReads,
+    select: sliceHandle,
+    snapshotHandle,
+    currentSelection: () => state.selection,
+    isDisposed: () => disposed,
+    getDoc,
+    contentToken,
+    demandHeavyDocRead: (key) => {
+      coldAsyncReadDeferrals.set(`${key}\u0000${contentToken()}`, 'released');
+      demandHeavyDocRead(key);
     },
+    readAsyncEntry: (key) => asyncReads.get(key),
+    readDocumentMode,
+    readHostSelectionSnapshot,
+    readSelectionInfoFresh: () => readSelectionInfoFresh(),
+    settleWorkflowReceipt,
   });
-  const search: SearchController = {
-    get: searchSnap.get,
-    getSnapshot: searchSnap.getSnapshot,
-    subscribe: searchSnap.subscribe,
-    observe: searchSnap.observe,
-    open: (): WorkflowActionResult => {
-      if (!searchIsAvailable()) {
-        setSearchState({ available: false, open: false, reason: SUPERDOC_UI_REASONS.searchUnavailable });
-        return { ok: false, reason: SUPERDOC_UI_REASONS.searchUnavailable };
-      }
-      setSearchState({ available: true, open: true, reason: undefined });
-      return { ok: true };
-    },
-    close: (): void => {
-      // Invalidate in-flight async queries so a late result cannot write into
-      // the closed session.
-      completedFallbackSearch = null;
-      searchRequestGeneration += 1;
-      cancelRefreshShellSearch();
-      if (releaseActiveSearchSession) {
-        // Prefer what the session recorded about itself. Re-deriving from the
-        // current facade cleared the host twice and never reached a fallback
-        // that had also painted, and it addresses the wrong editor entirely
-        // once the active one has changed.
-        releaseSearchSession();
-      } else {
-        // Nothing captured, so no session was opened through `find()`; clear
-        // whatever the current editor exposes.
-        const host = getHostSearch();
-        if (host && typeof host.clear === 'function') {
-          safeCall<unknown>(() => hostMethod(host, 'clear')?.(), null);
-        } else {
-          const editSearch = getEditCommandSearch();
-          if (editSearch && typeof editSearch.query === 'function') {
-            safeCall<unknown>(() => hostMethod(editSearch, 'query')?.({ query: '' }), null);
-          }
-        }
-      }
-      searchState = { ...SEARCH_UNAVAILABLE_SLICE, available: searchIsAvailable(), reason: undefined };
-      if (!searchState.available) searchState.reason = SUPERDOC_UI_REASONS.searchUnavailable;
-      emitSearch();
-    },
-    find: (query: string, options?: SearchQueryOptions): SearchSnapshot => {
-      const host = getHostSearch();
-      const caseSensitive = Boolean(options?.caseSensitive);
-      const includeDeletedText = (options?.includeTrackedDeletions ?? options?.includeDeletedText) === true;
-      const regex = options?.regex === true;
-      if (
-        (!host || typeof host.setSession !== 'function') &&
-        completedFallbackSearch !== null &&
-        completedFallbackSearch === getEditCommandSearch() &&
-        pendingFallbackGeneration !== searchRequestGeneration &&
-        searchRefreshTimer === null &&
-        searchState.open &&
-        searchState.available &&
-        !searchState.reason &&
-        searchState.query === query &&
-        searchState.caseSensitive === caseSensitive &&
-        searchState.includeDeletedText === includeDeletedText &&
-        searchState.regex === regex
-      ) {
-        // Re-finding the completed session must not clear it and start another
-        // worker request before an immediately following replacement.
-        syncSearchStateFromHost();
-        emitSearch();
-        return searchState;
-      }
-      completedFallbackSearch = null;
-      if (searchRefreshTimer !== null) {
-        clearTimeout(searchRefreshTimer);
-        searchRefreshTimer = null;
-      }
-      const generation = ++searchRequestGeneration;
-      cancelRefreshShellSearch();
-      // A previous find() may have handed the shell a Document API fallback
-      // that is still running. Its generation only advances when the shell's
-      // query() is called again, and a query the host answers synchronously
-      // never calls it; the stale fallback would then resolve and project its
-      // own session onto the host. Advance it now, before this request runs.
-      cancelOutstandingShellFallback();
-      if (!host || typeof host.setSession !== 'function') {
-        const editSearch = getEditCommandSearch();
-        if (editSearch && typeof editSearch.query === 'function' && typeof editSearch.getState === 'function') {
-          // Observers run inline, so the first publication of this query must
-          // already describe it: carrying the previous session's totals and
-          // replace capabilities here would let a re-entrant observer act on
-          // the old shell session. The request counts as pending from this
-          // emit until its own result lands, synchronously or not.
-          pendingFallbackGeneration = generation;
-          setSearchState({
-            query,
-            caseSensitive,
-            includeDeletedText,
-            regex,
-            total: 0,
-            activeIndex: -1,
-            canReplace: false,
-            canReplaceAll: false,
-            available: true,
-            open: true,
-            reason: undefined,
-          });
-          // The worker-backed fallback paints too, and it is released by querying
-          // the empty string rather than by `clear()`. Captured for the same
-          // reason as the host path: this facade belongs to the current editor.
-          releaseActiveSearchSession = () => {
-            hostMethod(editSearch, 'query')?.({ query: '' });
-          };
-          const result = safeCall<unknown>(
-            () => hostMethod(editSearch, 'query')?.({ query, caseSensitive, includeDeletedText, regex }),
-            null,
-          );
-          if (isPromiseLike(result)) {
-            shellFallbackOutstanding = true;
-            // The shell answers asynchronously, and until it does its state
-            // describes whichever session it last settled. The production shell
-            // exposes only query, total, activeIndex, and canReplace, so no
-            // reading of that state can prove it belongs to this request: an
-            // A -> B -> A sequence, or the same query with new options, both
-            // look current. Nothing is published until this request's own
-            // result settles; the session reports no matches meanwhile.
-            void Promise.resolve(result).then(
-              (resolved) => {
-                if (generation !== searchRequestGeneration) return;
-                shellFallbackOutstanding = false;
-                pendingFallbackGeneration = null;
-                completedFallbackSearch = editSearch;
-                applyHostSearchResult(resolved, readEditCommandCanReplace(), readEditCommandCanReplaceAll());
-              },
-              () => {
-                if (generation !== searchRequestGeneration) return;
-                shellFallbackOutstanding = false;
-                // The shell rethrows without replacing its stored session, so
-                // its state still describes the previous query. Leave the
-                // pending guard in place: this request's failed no-match
-                // snapshot stays authoritative until the next request.
-                setSearchState({ available: false, reason: SUPERDOC_UI_REASONS.searchUnavailable });
-              },
-            );
-            return searchState;
-          }
-          pendingFallbackGeneration = null;
-          completedFallbackSearch = editSearch;
-          applyHostSearchResult(result, readEditCommandCanReplace(), readEditCommandCanReplaceAll());
-          applyHostSearchResult(
-            safeCall<unknown>(() => hostMethod(editSearch, 'getState')?.(), null),
-            readEditCommandCanReplace(),
-            readEditCommandCanReplaceAll(),
-          );
-          return searchState;
-        }
-        return setSearchState({
-          query,
-          total: 0,
-          activeIndex: -1,
-          available: false,
-          caseSensitive,
-          includeDeletedText,
-          regex,
-          reason: SUPERDOC_UI_REASONS.searchUnavailable,
-        });
-      }
-      setSearchState({
-        query,
-        caseSensitive,
-        includeDeletedText,
-        regex,
-        available: true,
-        open: true,
-        reason: undefined,
-      });
-      // Capture how to release this session while the host is still reachable;
-      // an active-editor change has to close it after `activeEditor` has moved on.
-      releaseActiveSearchSession = () => {
-        hostMethod(host, 'clear')?.();
-      };
-      const result = safeCall<unknown>(
-        () =>
-          hostMethod(host, 'setSession')?.(query, {
-            caseSensitive,
-            includeDeletedText,
-            ...(regex ? { regex: true } : {}),
-            highlight: true,
-          }),
-        null,
-      );
-      applyHostSearchResult(result);
-      if (
-        query.length > 0 &&
-        searchState.total === 0 &&
-        searchState.reason !== SUPERDOC_UI_REASONS.searchInvalidPattern
-      ) {
-        const editSearch = getEditCommandSearch();
-        if (editSearch && typeof editSearch.query === 'function' && typeof editSearch.getState === 'function') {
-          // The host opened a session and found nothing, and now the fallback
-          // runs and paints its own. Two backends are holding a session, so the
-          // teardown has to release both: composing onto whatever the host path
-          // captured, rather than replacing it, is what makes that true.
-          const releaseHostSession = releaseActiveSearchSession;
-          releaseActiveSearchSession = () => {
-            releaseHostSession?.();
-            hostMethod(editSearch, 'query')?.({ query: '' });
-          };
-          const commandResult = safeCall<unknown>(
-            () => hostMethod(editSearch, 'query')?.({ query, caseSensitive, includeDeletedText, regex }),
-            null,
-          );
-          if (isPromiseLike(commandResult)) {
-            shellFallbackOutstanding = true;
-            void Promise.resolve(commandResult).then(
-              (resolved) => {
-                if (generation !== searchRequestGeneration) return;
-                shellFallbackOutstanding = false;
-                applyHostSearchResult(resolved, readEditCommandCanReplace(), readEditCommandCanReplaceAll());
-              },
-              () => {
-                if (generation !== searchRequestGeneration) return;
-                shellFallbackOutstanding = false;
-                setSearchState({ available: false, reason: SUPERDOC_UI_REASONS.searchUnavailable });
-              },
-            );
-          } else {
-            applyHostSearchResult(commandResult, readEditCommandCanReplace(), readEditCommandCanReplaceAll());
-          }
-          applyHostSearchResult(
-            safeCall<unknown>(() => hostMethod(editSearch, 'getState')?.(), null),
-            readEditCommandCanReplace(),
-            readEditCommandCanReplaceAll(),
-          );
-        }
-      }
-      return searchState;
-    },
-    search: (query: string, options?: SearchQueryOptions): SearchSnapshot => search.find(query, options),
-    next: (): WorkflowActionResult => {
-      const host = getHostSearch();
-      if (!host || typeof host.next !== 'function') {
-        const editSearch = getEditCommandSearch();
-        if (!editSearch || typeof editSearch.next !== 'function' || typeof editSearch.getState !== 'function') {
-          return { ok: false, reason: SUPERDOC_UI_REASONS.searchUnavailable };
-        }
-        if (searchState.total === 0) return { ok: false, reason: SUPERDOC_UI_REASONS.operationUnavailable };
-        const result = safeCall<unknown>(() => hostMethod(editSearch, 'next')?.(), null);
-        if (isPromiseLike(result)) {
-          // Navigation continues an existing session, so the token is read
-          // rather than advanced. `close()`, an active-editor change and
-          // `destroy()` all move it, which is what makes a late result stale.
-          const generation = searchRequestGeneration;
-          // `Promise.resolve` upgrades the bare thenable so the rejection
-          // handler also covers a throwing fulfillment handler, matching
-          // `.then(...).catch(...)` semantics on a real promise.
-          void Promise.resolve(result)
-            .then((resolved) => {
-              if (generation !== searchRequestGeneration) return;
-              applyHostSearchResult(resolved, readEditCommandCanReplace(), readEditCommandCanReplaceAll());
-            })
-            .catch(() => {
-              if (generation !== searchRequestGeneration) return;
-              setSearchState({ available: false, reason: SUPERDOC_UI_REASONS.searchUnavailable });
-            });
-        } else {
-          applyHostSearchResult(result, readEditCommandCanReplace(), readEditCommandCanReplaceAll());
-        }
-        applyHostSearchResult(
-          safeCall<unknown>(() => hostMethod(editSearch, 'getState')?.(), null),
-          readEditCommandCanReplace(),
-          readEditCommandCanReplaceAll(),
-        );
-        return { ok: true };
-      }
-      if (searchState.total === 0) return { ok: false, reason: SUPERDOC_UI_REASONS.operationUnavailable };
-      applyHostSearchResult(safeCall<unknown>(() => hostMethod(host, 'next')?.(), null));
-      return { ok: true };
-    },
-    previous: (): WorkflowActionResult => {
-      const host = getHostSearch();
-      if (!host || typeof host.previous !== 'function') {
-        const editSearch = getEditCommandSearch();
-        if (!editSearch || typeof editSearch.previous !== 'function' || typeof editSearch.getState !== 'function') {
-          return { ok: false, reason: SUPERDOC_UI_REASONS.searchUnavailable };
-        }
-        if (searchState.total === 0) return { ok: false, reason: SUPERDOC_UI_REASONS.operationUnavailable };
-        const result = safeCall<unknown>(() => hostMethod(editSearch, 'previous')?.(), null);
-        if (isPromiseLike(result)) {
-          // Navigation continues an existing session, so the token is read
-          // rather than advanced. `close()`, an active-editor change and
-          // `destroy()` all move it, which is what makes a late result stale.
-          const generation = searchRequestGeneration;
-          // `Promise.resolve` upgrades the bare thenable so the rejection
-          // handler also covers a throwing fulfillment handler, matching
-          // `.then(...).catch(...)` semantics on a real promise.
-          void Promise.resolve(result)
-            .then((resolved) => {
-              if (generation !== searchRequestGeneration) return;
-              applyHostSearchResult(resolved, readEditCommandCanReplace(), readEditCommandCanReplaceAll());
-            })
-            .catch(() => {
-              if (generation !== searchRequestGeneration) return;
-              setSearchState({ available: false, reason: SUPERDOC_UI_REASONS.searchUnavailable });
-            });
-        } else {
-          applyHostSearchResult(result, readEditCommandCanReplace(), readEditCommandCanReplaceAll());
-        }
-        applyHostSearchResult(
-          safeCall<unknown>(() => hostMethod(editSearch, 'getState')?.(), null),
-          readEditCommandCanReplace(),
-          readEditCommandCanReplaceAll(),
-        );
-        return { ok: true };
-      }
-      if (searchState.total === 0) return { ok: false, reason: SUPERDOC_UI_REASONS.operationUnavailable };
-      applyHostSearchResult(safeCall<unknown>(() => hostMethod(host, 'previous')?.(), null));
-      return { ok: true };
-    },
-    clear: (): void => {
-      completedFallbackSearch = null;
-      // Same boundary as `close()`: the query and matches are gone, so an
-      // in-flight continuation must not republish them. `clear()` keeps the
-      // session open where `close()` releases it, but both invalidate the
-      // results a late `next()`/`previous()` would write back.
-      searchRequestGeneration += 1;
-      cancelRefreshShellSearch();
-      cancelOutstandingShellFallback();
-      const host = getHostSearch();
-      if (host && typeof host.clear === 'function') safeCall<unknown>(() => hostMethod(host, 'clear')?.(), null);
-      if (!host || typeof host.clear !== 'function') {
-        const editSearch = getEditCommandSearch();
-        if (editSearch && typeof editSearch.query === 'function') {
-          safeCall<unknown>(() => hostMethod(editSearch, 'query')?.({ query: '' }), null);
-        }
-      }
-      setSearchState({
-        query: '',
-        total: 0,
-        activeIndex: -1,
-        canReplace: false,
-        canReplaceAll: false,
-        reason: undefined,
-      });
-    },
-    // Replace routes through the single host search session, which owns the
-    // match list and read-only gating. Fail closed with a stable reason when
-    // the host cannot replace rather than fabricating edits.
-    replace: (replacement: string): WorkflowActionResult | Promise<WorkflowActionResult> => {
-      const host = getHostSearch();
-      if (!host) {
-        const editSearch = getEditCommandSearch();
-        if (!editSearch || typeof editSearch.replace !== 'function' || typeof editSearch.getState !== 'function') {
-          return { ok: false, reason: SUPERDOC_UI_REASONS.searchUnavailable };
-        }
-        if (!readEditCommandCanReplace()) return { ok: false, reason: SUPERDOC_UI_REASONS.operationUnavailable };
-        const result = safeCall<unknown>(
-          () =>
-            hostMethod(editSearch, 'replace')?.({ replacement: typeof replacement === 'string' ? replacement : '' }),
-          null,
-        );
-        if (isPromiseLike(result)) {
-          // Worker-backed replace settles asynchronously: resolve with the real
-          // mapped outcome so callers hold their pending state until the
-          // mutation lands, instead of a fire-and-forget immediate ok.
-          // Read, do not advance: this continues the open session. `close()`,
-          // `clear()`, an active-editor change and `destroy()` move the token,
-          // and a mutation that lands after any of those must not publish into
-          // whatever replaced it.
-          //
-          // Captured BEFORE the pre-settlement emit below, because `emitSearch()`
-          // runs observer callbacks synchronously and an observer is free to
-          // close or clear the session in response — a find panel dismissing
-          // itself when a replace starts is enough. Reading the token afterwards
-          // picks up the value that boundary already advanced to, so the late
-          // result compares equal, looks current, and republishes the previous
-          // session's matches into whatever replaced it.
-          //
-          // Staleness gates the *publication*, never the reported outcome. The
-          // mutation may well have committed, and this method is documented to
-          // resolve with the settled outcome once it lands, so reporting
-          // `operation-unavailable` would tell a caller their edit did not
-          // happen when it did — inviting a duplicate replace or a skipped save.
-          const generation = searchRequestGeneration;
-          syncSearchStateFromHost();
-          emitSearch();
-          const isCurrent = () => generation === searchRequestGeneration;
-          return Promise.resolve(result).then(
-            (resolved) => {
-              if (isCurrent()) {
-                applyHostSearchResult(resolved, readEditCommandCanReplace(), readEditCommandCanReplaceAll());
-                syncSearchStateFromHost();
-                emitSearch();
-              }
-              return mapHostReplaceResult(resolved);
-            },
-            () => {
-              if (isCurrent()) {
-                setSearchState({ available: false, reason: SUPERDOC_UI_REASONS.searchUnavailable });
-              }
-              return { ok: false, reason: SUPERDOC_UI_REASONS.searchUnavailable };
-            },
-          );
-        }
-        syncSearchStateFromHost();
-        emitSearch();
-        return mapHostReplaceResult(result);
-      }
-      if (typeof host.replaceCurrent !== 'function') {
-        return { ok: false, reason: SUPERDOC_UI_REASONS.operationUnavailable };
-      }
-      const result = safeCall<unknown>(
-        () => hostMethod(host, 'replaceCurrent')?.(typeof replacement === 'string' ? replacement : ''),
-        null,
-      );
-      return settleHostSearchReplacement(result);
-    },
-    replaceAll: (replacement: string): WorkflowActionResult | Promise<WorkflowActionResult> => {
-      const host = getHostSearch();
-      if (!host) {
-        const editSearch = getEditCommandSearch();
-        if (!editSearch || typeof editSearch.replaceAll !== 'function' || typeof editSearch.getState !== 'function') {
-          return { ok: false, reason: SUPERDOC_UI_REASONS.searchUnavailable };
-        }
-        if (!readEditCommandCanReplaceAll()) {
-          return {
-            ok: false,
-            reason:
-              readEditCommandStateEntry('find.replaceAll')?.reason === 'search-truncated'
-                ? SUPERDOC_UI_REASONS.searchTruncated
-                : SUPERDOC_UI_REASONS.operationUnavailable,
-          };
-        }
-        const result = safeCall<unknown>(
-          () =>
-            hostMethod(editSearch, 'replaceAll')?.({ replacement: typeof replacement === 'string' ? replacement : '' }),
-          null,
-        );
-        if (isPromiseLike(result)) {
-          // Worker-backed replace-all settles asynchronously: resolve with the
-          // real mapped outcome so callers hold their pending state until the
-          // mutations land, instead of a fire-and-forget immediate ok.
-          // Read, do not advance: this continues the open session. `close()`,
-          // `clear()`, an active-editor change and `destroy()` move the token,
-          // and a mutation that lands after any of those must not publish into
-          // whatever replaced it.
-          //
-          // Captured BEFORE the pre-settlement emit below, because `emitSearch()`
-          // runs observer callbacks synchronously and an observer is free to
-          // close or clear the session in response — a find panel dismissing
-          // itself when a replace starts is enough. Reading the token afterwards
-          // picks up the value that boundary already advanced to, so the late
-          // result compares equal, looks current, and republishes the previous
-          // session's matches into whatever replaced it.
-          //
-          // Staleness gates the *publication*, never the reported outcome. The
-          // mutation may well have committed, and this method is documented to
-          // resolve with the settled outcome once it lands, so reporting
-          // `operation-unavailable` would tell a caller their edit did not
-          // happen when it did — inviting a duplicate replace or a skipped save.
-          const generation = searchRequestGeneration;
-          syncSearchStateFromHost();
-          emitSearch();
-          const isCurrent = () => generation === searchRequestGeneration;
-          return Promise.resolve(result).then(
-            (resolved) => {
-              if (isCurrent()) {
-                applyHostSearchResult(resolved, readEditCommandCanReplace(), readEditCommandCanReplaceAll());
-                syncSearchStateFromHost();
-                emitSearch();
-              }
-              return mapHostReplaceResult(resolved);
-            },
-            () => {
-              if (isCurrent()) {
-                setSearchState({ available: false, reason: SUPERDOC_UI_REASONS.searchUnavailable });
-              }
-              return { ok: false, reason: SUPERDOC_UI_REASONS.searchUnavailable };
-            },
-          );
-        }
-        syncSearchStateFromHost();
-        emitSearch();
-        return mapHostReplaceResult(result);
-      }
-      if (typeof host.replaceAll !== 'function') {
-        return { ok: false, reason: SUPERDOC_UI_REASONS.operationUnavailable };
-      }
-      const result = safeCall<unknown>(
-        () => hostMethod(host, 'replaceAll')?.(typeof replacement === 'string' ? replacement : ''),
-        null,
-      );
-      return settleHostSearchReplacement(result);
-    },
-  };
-
-  let searchRefreshTimer: ReturnType<typeof setTimeout> | null = null;
-  scheduleActiveSearchRefresh = (): void => {
-    completedFallbackSearch = null;
-    if (searchRefreshTimer !== null) clearTimeout(searchRefreshTimer);
-    if (!searchState.open || !searchState.query) return;
-    const scheduledGeneration = searchRequestGeneration;
-    searchRefreshTimer = setTimeout(() => {
-      searchRefreshTimer = null;
-      if (disposed || scheduledGeneration !== searchRequestGeneration || !searchState.open || !searchState.query)
-        return;
-      const input = {
-        query: searchState.query,
-        caseSensitive: searchState.caseSensitive,
-        includeDeletedText: searchState.includeDeletedText,
-        regex: searchState.regex,
-      };
-      const editSearch = getEditCommandSearch();
-      const host = getHostSearch();
-      if (typeof editSearch?.refresh !== 'function' && typeof host?.refresh !== 'function') return;
-      const generation = ++searchRequestGeneration;
-      cancelOutstandingShellFallback();
-      if (typeof editSearch?.refresh === 'function' && typeof editSearch.query === 'function') {
-        const capturedSearch = editSearch;
-        releaseRefreshShellSearch = () => {
-          hostMethod(capturedSearch, 'query')?.({ query: '' });
-        };
-      }
-      const result =
-        typeof editSearch?.refresh === 'function'
-          ? safeCall<unknown>(() => hostMethod(editSearch, 'refresh')?.(input), null)
-          : safeCall<unknown>(() => hostMethod(host, 'refresh')?.(), null);
-      if (isPromiseLike(result)) {
-        pendingFallbackGeneration = generation;
-        setSearchState({ canReplace: false, canReplaceAll: false });
-        void Promise.resolve(result).then(
-          (resolved) => {
-            if (generation !== searchRequestGeneration || disposed) return;
-            releaseRefreshShellSearch = null;
-            pendingFallbackGeneration = null;
-            completedFallbackSearch = editSearch;
-            applyHostSearchResult(resolved, readEditCommandCanReplace(), readEditCommandCanReplaceAll());
-          },
-          () => {
-            if (generation !== searchRequestGeneration || disposed) return;
-            releaseRefreshShellSearch = null;
-            setSearchState({ available: false, reason: SUPERDOC_UI_REASONS.searchUnavailable });
-          },
-        );
-      } else if (result !== null) {
-        releaseRefreshShellSearch = null;
-        completedFallbackSearch = editSearch;
-        applyHostSearchResult(result);
-      }
-    }, 120);
-  };
-
-  const updateStyleToMatchSelection = (input?: StylesUpdateToMatchSelectionInput): WorkflowReceipt => {
-    const mode = readDocumentMode();
-    if (mode === 'viewing') return failedReceipt('The document is read-only.', 'DOCUMENT_READONLY');
-    if (mode === 'suggesting') {
-      return failedReceipt('A style definition cannot be changed as a tracked suggestion.', 'PRECONDITION_FAILED');
-    }
-    const sourceToken = contentToken();
-    const readPositionKey = (): string | null => {
-      const snapshot = readHostSelectionSnapshot() as LooseRecord | null;
-      if (!snapshot) return null;
-      return JSON.stringify({
-        story: snapshot.story,
-        tableCells: snapshot.tableCells,
-        points: ['anchor', 'focus'].map((side) => {
-          const point = snapshot[side] as LooseRecord | undefined;
-          return point
-            ? [
-                point.blockId,
-                point.blockOffset,
-                point.trackedBlockOffset,
-                point.story,
-                point.inlineAffinity,
-                point.outsideContentControl,
-                point.visualCaret,
-              ]
-            : null;
-        }),
-      });
-    };
-    const requestedPosition = readPositionKey();
-    const stale = failedReceipt('The selection or document changed while reading its style.', 'REVISION_MISMATCH');
-    return readSelectionInfoFresh().then((selection) => {
-      const selectionToken = selectionKey(selection);
-      const isCurrent = (): boolean =>
-        !disposed &&
-        contentToken() === sourceToken &&
-        readPositionKey() === requestedPosition &&
-        selectionKey(state.selection) === selectionToken &&
-        readDocumentMode() === mode;
-      if (!isCurrent()) return stale;
-      const active = computeActiveParagraphStyle(selection, getStyleCatalog().cache).style;
-      const story = storyLocatorSignature(selectionStory(selection));
-      const keys = [
-        styleCatalogReadKey({ includePreview: true }),
-        ...selectionBlockIds(selection).map((id) => `node:${story}:${id}`),
-      ];
-      const unreadable = failedReceipt('The selection formatting could not be read.', 'PRECONDITION_FAILED');
-      const run = (active: ActiveParagraphStyle): WorkflowReceipt => {
-        const unavailable = keys.some((key) => {
-          const entry = asyncReads.get(key);
-          return entry && (!entry.hasSettled || entry.token !== sourceToken || entry.failedToken === sourceToken);
-        });
-        if (unavailable) return unreadable;
-        const styleId = input?.styleId ?? active.styleId;
-        if (!styleId) {
-          return failedReceipt(
-            'Choose a style to update: the selection does not have a single paragraph style.',
-            'INVALID_TARGET',
-          );
-        }
-        const doc = getDoc();
-        const readSelection = resolveDocOperation(doc, 'format.readSelection');
-        const apply = resolveDocOperation(doc, 'styles.apply');
-        if (!readSelection || !apply) return failedReceipt('Updating a style to match the selection is unavailable.');
-        let reads: [unknown, unknown];
-        try {
-          reads = [
-            readSelection({ selection: 'current', keys: STYLE_MATCH_READ_KEYS, view: 'effective' }),
-            readSelection({ selection: 'current', keys: STYLE_MATCH_READ_KEYS, view: 'direct' }),
-          ];
-        } catch {
-          return unreadable;
-        }
-        return Promise.all(reads).then(
-          ([effective, direct]) => {
-            if (!isCurrent()) return stale;
-            const patch = buildStyleMatchPatch(
-              effective as FormatReadSelectionResult,
-              direct as FormatReadSelectionResult,
-              {
-                selectionUsesStyle: !active.mixed && active.styleId === styleId,
-              },
-            );
-            if (Object.keys(patch).length === 0)
-              return failedReceipt('The selection already matches the style.', 'NO_OP');
-            const fallback = failedReceipt('Updating the style failed.');
-            return safeCall<WorkflowReceipt>(
-              () =>
-                settleWorkflowReceipt(apply({ target: { scope: 'style', styleId, channel: 'run' }, patch }), fallback),
-              fallback,
-            );
-          },
-          () => unreadable,
-        );
-      };
-      const pending = keys.flatMap((key) => {
-        const entry = asyncReads.get(key);
-        return entry?.inflightToken === sourceToken && entry.settled ? [entry.settled] : [];
-      });
-      if (pending.length === 0) return run(active);
-      return Promise.all(pending).then(() => {
-        if (!isCurrent()) return stale;
-        return run(computeActiveParagraphStyle(selection, getStyleCatalog().cache).style);
-      });
-    });
-  };
-
-  // -- styles (read-only catalogue + active paragraph style) ----------------
-  const stylesSub = sliceHandle((s) => s.styles);
-  const stylesSnap = snapshotHandle(stylesSub);
-  const styles: StylesHandle = {
-    get: stylesSnap.get,
-    getSnapshot: stylesSnap.getSnapshot,
-    subscribe: stylesSnap.subscribe,
-    observe: stylesSnap.observe,
-    getCatalog: (options?: StylesGetCatalogInput): StylesGetCatalogResult | null => {
-      demandHeavyDocRead(styleCatalogReadKey(options));
-      return readStyleCatalogLive(options).value;
-    },
-    getQuickGallery: (): readonly StyleCatalogItem[] => stylesSub.get().quickGallery,
-    getActiveParagraphStyle: (): ActiveParagraphStyle =>
-      computeActiveParagraphStyle(state.selection, getStyleCatalog().cache).style,
-    updateToMatchSelection: (input?: StylesUpdateToMatchSelectionInput): WorkflowReceipt =>
-      updateStyleToMatchSelection(input),
-  };
 
   const openWatermarkSurface = hostMethod(superdoc, 'openSurface');
   const watermark = createWatermarkController({
@@ -13115,10 +11690,8 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     detachDecorationPointer?.();
     decorationListeners.clear();
     disposed = true;
-    completedFallbackSearch = null;
-    if (searchRefreshTimer !== null) clearTimeout(searchRefreshTimer);
-    searchRefreshTimer = null;
-    cancelRefreshShellSearch();
+    cancelFrameRecompute();
+    stopSearchRefresh();
     releaseSharedUiTrackedChangesCatalog(uiTrackedChangesCatalogHost, uiTrackedChangesCatalogState);
     if (foregroundAsyncRetryTimer) {
       clearTimeout(foregroundAsyncRetryTimer);
@@ -13134,20 +11707,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       clearTimeout(typingContentInvalidationTimer);
       typingContentInvalidationTimer = null;
     }
-    if (heavyReadCompletionRecomputeTimer) {
-      clearTimeout(heavyReadCompletionRecomputeTimer);
-      heavyReadCompletionRecomputeTimer = null;
-    }
-    if (detachSourceLoading) detachSourceLoading();
-    detachSourceLoading = null;
-    sourceLoadingSubscriptionHost = null;
-    for (const family of Object.keys(directoryLeaseCounts) as DirectoryFamily[]) {
-      directoryLeaseCounts[family] = 0;
-    }
-    demandedHeavyReads.clear();
-    incompleteTrackChangesDirectoryReadTokens.clear();
-    postSourceCompletionRefreshTokens.clear();
-    sourceCompletionObservedToken = null;
+    heavyReadGate.dispose();
     coldAsyncReadDeferrals.clear();
     for (const detach of detachers.splice(0)) detach();
     if (detachHostSelection) detachHostSelection();
@@ -13174,7 +11734,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     for (const entry of geometryObservers) detachGeometryObserver(entry);
     geometryObservers.clear();
     listeners.clear();
-    searchListeners.clear();
+    clearSearchListeners();
     // A format-painter capture that is mid-await outlives this call. Its
     // continuation re-checks the epoch before publishing, so bumping the epoch
     // is what actually stops it; guarding the handle's entry points only blocks
@@ -13185,10 +11745,8 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     painterCommandDoc = null;
     painterModeListeners.clear();
     documentChangeListeners.clear();
-    contentControlClickListeners.clear();
-    // In-flight search work outlives this call the same way a painter capture
-    // does; moving the token is what stops its continuation from publishing.
-    searchRequestGeneration += 1;
+    clearContentControlClickListeners();
+    invalidateInFlightSearchRequests();
     customCommands.clear();
   };
 

@@ -13366,7 +13366,7 @@ describe('normalizeAnchor XSS protection', () => {
   });
 
   it('paints exact valid Unicode bookmark names as encoded internal links', () => {
-    for (const name of ['école', 'e\u0301cole', 'A١_2', '𐐀'.repeat(20)]) {
+    for (const name of ['école', 'e\u0301cole', 'A١_2', '𐐀'.repeat(20), '_école', '_中文', '_e\u0301cole']) {
       mount = document.createElement('div');
       const block = createFlowBlockWithLink({ version: 2, anchor: name });
       painter = createTestPainter({ blocks: [block], measures: [createMeasureForBlock()] });
@@ -13403,6 +13403,8 @@ describe('normalizeAnchor XSS protection', () => {
       'é<cole',
       '𐐀'.repeat(21),
       'A\uD800',
+      '_é cole',
+      '_é<cole',
     ]) {
       mount = document.createElement('div');
       const block = createFlowBlockWithLink({ version: 2, anchor: name });

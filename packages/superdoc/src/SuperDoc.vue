@@ -421,6 +421,7 @@ type V2EditorReadyPayload = {
   commentsAdapter?: unknown;
   trackedChangesAdapter?: unknown;
   contextMenu?: unknown;
+  viewportQuery?: unknown;
   documentApi?: V2DocumentApi | null;
   documentMutationReadiness?: { whenPainted?: (receipt: unknown) => unknown } | null;
   documentApiUnavailableReason?: string | null;
@@ -1248,6 +1249,7 @@ const onV2EditorReady = (payload: V2EditorReadyPayload | null | undefined) => {
     commentsAdapter,
     trackedChangesAdapter,
     contextMenu,
+    viewportQuery,
     documentApi,
     documentMutationReadiness,
     documentApiUnavailableReason,
@@ -1629,6 +1631,7 @@ const onV2EditorReady = (payload: V2EditorReadyPayload | null | undefined) => {
     // boot failed.
     v2TrackedChanges: trackedChangesAdapter ?? null,
     contextMenu: contextMenu ?? null,
+    viewportQuery: viewportQuery ?? null,
     // ui-phase4-001: v2 page metrics + zoom runtime. Always present in v2
     // mode (null only if the v2 editor host boot failed). Consumers:
     //   - SuperDoc.vue's `activeZoom` watcher calls `pageMetrics.setZoom`
@@ -1945,6 +1948,10 @@ const scheduleV2DomSelectionSync = () => {
 const handleDocumentSelectionChange = () => {
   scheduleV2DomSelectionSync();
 };
+
+watch(pendingComment, (next, previous) => {
+  if (previous && !next && proxy.$superdoc?.config?.documentMode === 'viewing') scheduleV2DomSelectionSync();
+});
 
 const onV2SelectionChanged = ({
   hasRangeSelection,
@@ -2845,6 +2852,9 @@ const editorOptions = (doc: ShellDocument) => {
     onFontsResolved: onFontsResolvedFn,
     // Painter plan P7 §1: page-count seam (layout-end; v2 vertical only).
     onPageCountKnown: proxy.$superdoc.config.onPageCountKnown ?? null,
+    onReviewAnalysisProgress: (progress: { state: string; done: number; total: number; stage: string | null }) => {
+      v2ReviewWindowController.noteAnalysisProgress?.(progress);
+    },
     onReviewWindowCommitted: (payload) => {
       v2ReviewWindowController.onCommittedPagePaint?.({ ...payload, documentId: doc.id });
       if (payload.reviewGeometry && Array.isArray(payload.pageIndices)) {
@@ -4356,7 +4366,7 @@ const whiteboardInteractive = computed(() => whiteboardEnabled.value);
     <div ref="rightSidebarRef" class="superdoc__right-sidebar right-sidebar" v-if="showCommentsSidebar">
       <div class="floating-comments">
         <FloatingComments
-          v-if="hasInitializedLocations && (floatingComments.length > 0 || pendingComment)"
+          v-if="hasInitializedLocations"
           v-for="doc in documentsWithConverations"
           :parent="layers!"
           :current-document="doc"

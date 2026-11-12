@@ -16,6 +16,7 @@
     "control-room-access",
     "run-a-server",
     "deploy-a-server",
+    "reject-stale-writes",
     "use-your-own-provider",
     "upgrade-a-document"
   ]

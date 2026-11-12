@@ -44,6 +44,31 @@ if (receipt.success && nodeId) {
 }
 ```
 
+## Navigate to a footnote or endnote
+
+Pass the address returned by `doc.footnotes.list()` or `doc.footnotes.get()` directly to
+`ui.viewport.scrollIntoView()`. Navigation mounts the note's page when it is outside the
+painted window and reveals the start of the note without moving the selection or changing document content.
+
+```ts
+const notes = await superdoc.activeEditor.doc.footnotes.list({ type: 'footnote' });
+const note = notes.items[0];
+if (note) {
+  const result = await ui.viewport.scrollIntoView({ target: note.address, behavior: 'instant' });
+  if (!result.success) showNoteUnavailable();
+}
+```
+
+The same call accepts endnote addresses. Keep the returned address intact: addresses carry
+`noteType: 'footnote'` or `noteType: 'endnote'` so notes with the same `noteId` stay distinct.
+`footnotes.get`, `footnotes.update`, and `footnotes.remove` honor that family too. An explicit
+family never falls back to the other kind of note. Older hand-built addresses that omit
+`noteType` retain their footnote-first lookup behavior.
+
+A missing note or unavailable note page returns `{ success: false }`. Navigation is local to
+the viewing peer in a shared document. This address support applies to `scrollIntoView()`;
+geometry methods continue to use their own target types.
+
 ## Find controls intersecting selected text
 
 `selection.current()` does not include a content-control collection. For a nonempty text selection, combine its document-ordered `selectionTarget` with `contentControls.listInRange()`, then filter the block-scoped candidates by their exact selection endpoints. This includes enclosing/nested controls and excludes adjacent controls that only touch a selection boundary. The helper paginates the candidate results and keeps story identities separate:

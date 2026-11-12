@@ -41,10 +41,15 @@ function validateFootnoteTarget(target: unknown, operationName: string): asserts
   assertTargetPresent(target, operationName);
 
   const t = target as Record<string, unknown>;
-  if (t.kind !== 'entity' || t.entityType !== 'footnote' || typeof t.noteId !== 'string') {
+  if (
+    t.kind !== 'entity' ||
+    t.entityType !== 'footnote' ||
+    typeof t.noteId !== 'string' ||
+    (t.noteType !== undefined && t.noteType !== 'footnote' && t.noteType !== 'endnote')
+  ) {
     throw new DocumentApiValidationError(
       'INVALID_TARGET',
-      `${operationName} target must be a FootnoteAddress with kind 'entity', entityType 'footnote', and a string noteId.`,
+      `${operationName} target must be a FootnoteAddress with kind 'entity', entityType 'footnote', a string noteId, and optional noteType 'footnote' or 'endnote'.`,
       { target },
     );
   }

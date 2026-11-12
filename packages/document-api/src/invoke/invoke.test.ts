@@ -1,6 +1,6 @@
 import { describe, it, expect, mock } from 'bun:test';
 import { OPERATION_IDS, type OperationId } from '../contract/types.js';
-import { createDocumentApi, type DocumentApiAdapters } from '../index.js';
+import { createDocumentApi, type DocumentApi, type DocumentApiAdapters } from '../index.js';
 import { buildDispatchTable } from './invoke.js';
 import type { FindAdapter } from '../find/find.js';
 import type { GetNodeAdapter } from '../get-node/get-node.js';
@@ -376,6 +376,107 @@ function makeAdapters() {
 }
 
 describe('invoke', () => {
+  describe('content history policy before capability preflight', () => {
+    const target = { kind: 'block', nodeType: 'sdt', nodeId: 'sdt-1' };
+    const operations = [
+      {
+        operationId: 'create.contentControl',
+        input: { kind: 'inline', content: 'Synced' },
+        member: (api: DocumentApi) => api.create.contentControl,
+      },
+      {
+        operationId: 'contentControls.text.setValue',
+        input: { target, value: 'Synced' },
+        member: (api: DocumentApi) => api.contentControls.text.setValue,
+      },
+      {
+        operationId: 'contentControls.replaceContent',
+        input: { target, content: 'Synced', format: 'text' },
+        member: (api: DocumentApi) => api.contentControls.replaceContent,
+      },
+      {
+        operationId: 'replace',
+        input: { target: { kind: 'block', nodeType: 'paragraph', nodeId: 'p1' }, text: 'Synced' },
+        member: (api: DocumentApi) => api.replace,
+      },
+    ];
+
+    for (const entry of operations) {
+      for (const capability of ['available', 'tracked', 'dryRun']) {
+        for (const route of ['named', 'invoke']) {
+          it(`${entry.operationId} ${route} validates history before unsupported ${capability}`, () => {
+            const { adapters, capabilitiesAdapter, writeAdapter } = makeAdapters();
+            const downstream = mock(() => {
+              throw new Error('Content adapter must not execute.');
+            });
+            Object.defineProperty(adapters, 'contentControls', {
+              value: { create: downstream, replaceContent: downstream, text: { setValue: downstream } },
+            });
+            writeAdapter.replaceStructured = downstream;
+            capabilitiesAdapter.resolve = mock((input) => ({
+              operationId: input.operationId,
+              available: { kind: 'supported' as const },
+              tracked: { kind: 'supported' as const },
+              dryRun: { kind: 'supported' as const },
+              [capability]: { kind: 'unsupported' as const, reason: `Unsupported ${capability}.` },
+            }));
+            const api = createDocumentApi(adapters);
+            const call = (input: unknown, options: unknown) =>
+              route === 'named'
+                ? Reflect.apply(entry.member(api), api, [input, options])
+                : Reflect.apply(api.invoke, api, [{ operationId: entry.operationId, input, options }]);
+            const modeOptions = { changeMode: 'tracked', dryRun: true };
+
+            for (const value of [false, null, 'false']) {
+              expect(() => call(entry.input, { ...modeOptions, addToHistory: value })).toThrow(
+                expect.objectContaining({
+                  code: value === false ? 'CAPABILITY_UNAVAILABLE' : 'INVALID_INPUT',
+                  message: expect.stringContaining(value === false ? 'history exclusion' : 'addToHistory'),
+                  details: { operation: entry.operationId, field: 'addToHistory', location: 'options' },
+                }),
+              );
+            }
+            expect(() => call({ ...entry.input, addToHistory: false }, modeOptions)).toThrow(
+              expect.objectContaining({
+                code: 'INVALID_INPUT',
+                message: expect.stringContaining('second options argument'),
+                details: { operation: entry.operationId, field: 'addToHistory', location: 'input' },
+              }),
+            );
+            expect(capabilitiesAdapter.resolve).not.toHaveBeenCalled();
+            expect(downstream).not.toHaveBeenCalled();
+            expect(writeAdapter.write).not.toHaveBeenCalled();
+
+            for (const historyOptions of [{}, { addToHistory: undefined }, { addToHistory: true }]) {
+              const options = { ...modeOptions, ...historyOptions };
+              if (capability === 'available') {
+                expect(() => call(entry.input, options)).toThrow(
+                  expect.objectContaining({
+                    code: 'CAPABILITY_UNAVAILABLE',
+                    message: 'Unsupported available.',
+                    details: { operation: entry.operationId, capability },
+                  }),
+                );
+              } else {
+                expect(call(entry.input, options)).toEqual({
+                  success: false,
+                  failure: {
+                    code: 'CAPABILITY_UNAVAILABLE',
+                    message: `Unsupported ${capability}.`,
+                    details: { operation: entry.operationId, capability },
+                  },
+                });
+              }
+            }
+            expect(capabilitiesAdapter.resolve).toHaveBeenCalledTimes(3);
+            expect(downstream).not.toHaveBeenCalled();
+            expect(writeAdapter.write).not.toHaveBeenCalled();
+          });
+        }
+      }
+    }
+  });
+
   describe('dispatch table completeness', () => {
     it('has an entry for every OperationId', () => {
       const { adapters } = makeAdapters();

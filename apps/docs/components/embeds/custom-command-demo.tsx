@@ -8,7 +8,7 @@ import { CollapsibleEditorPreview } from './collapsible-editor-preview';
 import { CUSTOM_COMMAND_SHORTCUT, matchesCustomCommandShortcut } from './custom-command-shortcut';
 import { EditorDemoViewControls } from './editor-demo-view-controls';
 import { EDITOR_DEMO_FIT_WIDTH_PADDING, fitRuntimeEditorToWidth } from './editor-demo-zoom';
-import { createRuntimeEditor, loadRuntime, type SuperDocInstance } from './superdoc-runtime';
+import { loadRuntime, type SuperDocInstance } from './superdoc-runtime';
 
 const DEMO_DOCUMENT = '/fixtures/getting-started.docx';
 const COMMAND_ID = 'application.insertClause';
@@ -152,7 +152,7 @@ export function CustomCommandDemo() {
         toolbar: { container: toolbarContainer, responsiveTo: 'container' },
       } satisfies UIConfig;
 
-      const instance = createRuntimeEditor(SuperDocCtor, {
+      const instance = new SuperDocCtor({
         selector: mountRef.current,
         document: DEMO_DOCUMENT,
         documentMode: 'editing',

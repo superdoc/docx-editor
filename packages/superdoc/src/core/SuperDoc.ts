@@ -2264,6 +2264,7 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
         ...(target.params ? { params: target.params } : {}),
         ...(target.token ? { token: target.token } : {}),
         ...(target.retry !== undefined ? { retry: target.retry } : {}),
+        ...(target.expectedRevisionScope ? { expectedRevisionScope: target.expectedRevisionScope } : {}),
       };
     }
     return {
@@ -2494,7 +2495,7 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
     const results = await Promise.allSettled(runtimes.map((runtime) => runtime.setUser?.(runtimeUserOf(next))));
     const failure = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
     if (failure) {
-      if (current) {
+      if (current && !this.#destroyed) {
         await Promise.allSettled(
           runtimes
             .filter((_, index) => results[index]!.status === 'fulfilled')
@@ -2503,6 +2504,7 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
       }
       throw failure.reason;
     }
+    if (this.#destroyed) return;
     const target = this.config.user ?? (this.config.user = {} as User);
     for (const key of Object.keys(target)) delete target[key];
     Object.assign(target, next);
@@ -4043,7 +4045,7 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
       const result = await activeEditor.replaceFile(replacementSource);
       const state = result && typeof result === 'object' ? (result as { state?: unknown }).state : null;
       const confirmed = state === null || state === 'review-ready' || state === 'editing-ready';
-      if (confirmed) {
+      if (confirmed && !this.#destroyed) {
         this.#replaceActiveDocumentData(activeEditor, replacementSource);
         this.emit('document-replaced', { editor: activeEditor, host: (activeEditor as { host?: unknown })?.host });
       }

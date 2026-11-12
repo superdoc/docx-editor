@@ -83,6 +83,7 @@ export function createReviewGeometryDelivery<T extends Render>(
         payload.documentEpoch,
         payload.paintEpoch,
         payload.commitSequence,
+        payload.generation,
         payload.pageIndices,
         payload.zoomScale,
         payload.reviewGeometry,

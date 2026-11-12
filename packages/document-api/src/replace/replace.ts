@@ -28,6 +28,7 @@ import type { NestingPolicy } from '../types/placement.js';
 import type { SelectionMutationAdapter } from '../selection-mutation.js';
 import type { WriteAdapter } from '../write/write.js';
 import {
+  validateContentWriteHistoryOptions,
   normalizeMutationOptions,
   normalizeRichMutationOptions,
   normalizeTextMutationOptions,
@@ -484,6 +485,7 @@ export function executeReplace(
   input: ReplaceInput,
   options?: ReplaceExecutionOptions,
 ): SDMutationReceipt {
+  validateContentWriteHistoryOptions('replace', input, options);
   validateReplaceInput(input, options);
   if (
     (options?.replaceMode === 'contents' && !writeAdapter.supportsParagraphContents) ||

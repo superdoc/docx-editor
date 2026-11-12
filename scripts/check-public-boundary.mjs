@@ -518,6 +518,13 @@ const EXEMPT_PATHS = new Map([
     },
   ],
   [
+    'apps/cli/scripts/__tests__/pinned-embedded-binaries.test.ts',
+    {
+      reason: 'embeds build-machine paths on purpose, to assert the artifact audit accepts the pinned binary and rejects a planted path',
+      allow: /^\/Users\/(?:runner|example)\//,
+    },
+  ],
+  [
     'scripts/__tests__/check-public-boundary.test.mjs',
     {
       reason: "this guard's own fixtures, which embed escaping paths on purpose to prove it fails on them",

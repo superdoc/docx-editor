@@ -1,3 +1,4 @@
+import type { DocumentApi } from '@superdoc/document-api';
 import type { ScrollIntoViewInput, ScrollIntoViewOutput, SuperDocUI } from 'superdoc/ui';
 
 declare const ui: SuperDocUI;
@@ -14,3 +15,14 @@ const result: Promise<ScrollIntoViewOutput> = ui.viewport.scrollIntoView(input);
 ui.viewport.scrollIntoView({ ...input, behavior: 'immediate' });
 
 void result;
+
+declare const documentApi: DocumentApi;
+const note = documentApi.footnotes.get({
+  target: { kind: 'entity', entityType: 'footnote', noteId: '1', noteType: 'endnote' },
+});
+const noteNavigation: Promise<ScrollIntoViewOutput> = ui.viewport.scrollIntoView({
+  target: note.address,
+  behavior: 'instant',
+});
+const noteFamily: 'footnote' | 'endnote' | undefined = note.address.noteType;
+void [noteNavigation, noteFamily];

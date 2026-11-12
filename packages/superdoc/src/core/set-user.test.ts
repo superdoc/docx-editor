@@ -29,7 +29,7 @@ function mountReady(config: Partial<Config> = {}) {
   const setUser = vi.fn<(user: EditorRuntimeUser) => Promise<void>>(async () => {});
   runtime.setUser = setUser;
   harness.registerEditorRuntime(runtime);
-  return { instance, setUser, storeUser };
+  return { instance, harness, setUser, storeUser };
 }
 
 afterEach(() => {
@@ -126,6 +126,51 @@ describe('SuperDoc.setUser', () => {
     await Promise.all([toSam, backToJordan]);
     expect(instance.config.user?.name).toBe('Jordan Lee');
     expect(setUser.mock.calls.map(([user]) => user.name)).toEqual(['Sam Ortiz', 'Jordan Lee']);
+  });
+
+  it('leaves a destroyed instance untouched when a pending switch finishes after destroy', async () => {
+    const { instance, setUser, storeUser } = mountReady({ user: { name: 'Jordan Lee' } });
+    const color = instance.config.user?.color;
+    const userBefore = instance.user;
+    let release: () => void = () => {};
+    setUser.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+    );
+    const switched = instance.setUser({ name: 'Sam Ortiz' });
+    const queued = instance.setUser({ name: 'Riley Chen' });
+    await Promise.resolve();
+    instance.destroy();
+    release();
+    await expect(switched).resolves.toBeUndefined();
+    await expect(queued).resolves.toBeUndefined();
+    expect(setUser.mock.calls.map(([user]) => user.name)).toEqual(['Sam Ortiz']);
+    expect(instance.config.user?.name).toBe('Jordan Lee');
+    expect(instance.config.user?.color).toBe(color);
+    expect(instance.user).toBe(userBefore);
+    expect(storeUser.name).toBe('Jordan Lee');
+  });
+
+  it('does not revert runtimes of a destroyed instance when a pending switch fails after destroy', async () => {
+    const { instance, harness, setUser } = mountReady({ user: { name: 'Jordan Lee' } });
+    const other = createFakeV2Runtime({ id: 'other-runtime', documentId: 'other', initialDocumentMode: 'editing' });
+    let fail: (error: Error) => void = () => {};
+    other.setUser = vi.fn(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          fail = reject;
+        }),
+    );
+    harness.registerEditorRuntime(other);
+    const switched = instance.setUser({ name: 'Sam Ortiz' });
+    await Promise.resolve();
+    instance.destroy();
+    fail(new Error('worker closed'));
+    await expect(switched).rejects.toThrow('worker closed');
+    expect(setUser.mock.calls.map(([user]) => user.name)).toEqual(['Sam Ortiz']);
+    expect(instance.config.user?.name).toBe('Jordan Lee');
   });
 });
 

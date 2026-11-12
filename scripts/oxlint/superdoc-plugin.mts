@@ -33,6 +33,10 @@ const PACKAGE_GUARDS: readonly PackageGuard[] = [
   { scope: 'packages/sdk/', guard: { home: 'packages/sdk/langs/node/src/guards.ts', name: 'isRecord' } },
   { scope: 'apps/cli/', guard: { home: 'apps/cli/src/lib/guards.ts', name: 'isRecord' } },
   {
+    scope: 'examples/collaboration/',
+    guard: { home: 'examples/collaboration/attribution-authors.ts', name: 'isRecord' },
+  },
+  {
     scope: 'packages/layout-engine/contracts/',
     guard: { home: 'packages/layout-engine/contracts/src/ooxml-z-index.ts', name: 'isPlainObject' },
   },

@@ -1,6 +1,6 @@
 {
   "v1Version": "1.45.0",
-  "v2Version": "2.29.0",
+  "v2Version": "2.31.0",
   "dispositions": {
     "mechanical": "A direct substitution with equivalent behavior. Safe to apply mechanically, and required to be backed by a compiled fixture before it carries this label.",
     "redesign": "A replacement exists, but the semantics differ. Read the replacement and re-verify the behavior; do not apply it as a find-and-replace.",
@@ -225,7 +225,7 @@
       "failureMode": "missing-export",
       "surface": "custom-ui",
       "symptom": "ESM and TypeScript reject the import. A CommonJS `require` binds `undefined` instead, so the failure surfaces later at the call site.",
-      "notes": "The component is gone, not the workflow. Add actions to the built-in menu with `ui.contextMenu.sections`. For a fully application-owned menu, set `ui: { contextMenu: false }`, listen on the Editor host, and resolve entities and selection with `superdoc.ui.viewport.contextAt({ x, y })`. This does not restore arbitrary ProseMirror positions.",
+      "notes": "The component is gone, not the workflow. Add actions to the built-in menu with `ui.contextMenu.sections`. For a fully application-owned menu, set `ui: { contextMenu: false }`, listen on the Editor host, and resolve entities, selection, and the painted-selection hit with `superdoc.ui.viewport.contextAt({ x, y })`. Await `superdoc.ui.viewport.positionAt({ x, y })` for a document point target. This does not restore arbitrary ProseMirror positions.",
       "docsPath": "/editor/custom-ui/context-menus"
     },
     {

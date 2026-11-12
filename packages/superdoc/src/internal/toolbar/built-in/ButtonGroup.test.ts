@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
-import { mount, type VueWrapper } from '@vue/test-utils';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
+import { DOMWrapper, mount, type VueWrapper } from '@vue/test-utils';
 import { defineComponent, h, nextTick } from 'vue';
 import ButtonGroup from './ButtonGroup.vue';
 import { useToolbarItem, type ToolbarItem } from './use-toolbar-item.js';
@@ -95,7 +95,12 @@ const mountOverflowGroup = (attachTo: HTMLElement = document.body, additionalIte
   return { emitCommand, wrapper };
 };
 
+beforeEach(() => {
+  vi.spyOn(Date, 'now').mockReturnValue(Date.now());
+});
+
 afterEach(() => {
+  vi.restoreAllMocks();
   wrapper?.unmount();
   wrapper = null;
   Object.defineProperty(document, 'fullscreenElement', { configurable: true, value: null });
@@ -103,7 +108,7 @@ afterEach(() => {
 });
 
 describe('ButtonGroup button activation', () => {
-  it('consumes Enter when opening a surface so its newly focused button is not activated', () => {
+  it('consumes Enter when opening a surface so its newly focused button is not activated', async () => {
     const item = useToolbarItem({
       type: 'button',
       name: 'watermark',
@@ -111,14 +116,18 @@ describe('ButtonGroup button activation', () => {
       attributes: { ariaLabel: 'Watermark' },
     });
     mountGroup([item]);
-    const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
-    wrapper!.get('[aria-label="Watermark"]').element.dispatchEvent(event);
+    const button = wrapper!.get<HTMLElement>('[aria-label="Watermark"]');
+    const dispatched = new Promise<KeyboardEvent>((resolve) => {
+      button.element.addEventListener('keydown', resolve, { once: true, capture: true });
+    });
+    await button.trigger('keydown', { key: 'Enter' });
+    const event = await dispatched;
 
     expect(wrapper!.emitted('command')).toEqual([[{ item }]]);
     expect(event.defaultPrevented).toBe(true);
   });
 
-  it('forwards the static argument of a button created with one', () => {
+  it('forwards the static argument of a button created with one', async () => {
     const item = useToolbarItem({
       type: 'button',
       name: 'rtl',
@@ -129,7 +138,7 @@ describe('ButtonGroup button activation', () => {
     });
     mountGroup([item]);
 
-    wrapper!.get<HTMLElement>('[aria-label="Right to left"]').element.click();
+    await wrapper!.get('[aria-label="Right to left"]').trigger('click');
 
     expect(wrapper!.emitted('command')).toEqual([[{ item, argument: { direction: 'rtl' } }]]);
   });
@@ -170,9 +179,10 @@ describe('ButtonGroup font-family combobox wiring', () => {
 
     const fontSizeInput = document.getElementById('inlineTextInput-fontSize')!;
     fontSizeInput.focus();
-    fontSizeInput.dispatchEvent(
-      new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true, cancelable: true }),
-    );
+    await new DOMWrapper(fontSizeInput).trigger('keydown', {
+      key: 'Tab',
+      shiftKey: true,
+    });
     await nextTick();
     await new Promise((resolve) => requestAnimationFrame(resolve));
 
@@ -191,7 +201,7 @@ describe('ButtonGroup font-family combobox wiring', () => {
 
     const fontSizeInput = document.getElementById('inlineTextInput-fontSize')!;
     fontSizeInput.focus();
-    fontSizeInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }));
+    await new DOMWrapper(fontSizeInput).trigger('keydown', { key: 'Tab' });
     await nextTick();
 
     expect(document.activeElement).toBe(editor);
@@ -218,7 +228,7 @@ describe('ButtonGroup font-family combobox wiring', () => {
 
     const fontSizeInput = document.getElementById('inlineTextInput-fontSize')!;
     fontSizeInput.focus();
-    fontSizeInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }));
+    await new DOMWrapper(fontSizeInput).trigger('keydown', { key: 'Tab' });
     await nextTick();
 
     expect(document.activeElement).toBe(editor);
@@ -245,7 +255,7 @@ describe('ButtonGroup overflow menu', () => {
       focusAtCommand = document.activeElement;
     });
 
-    button.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    await new DOMWrapper(button).trigger('keydown', { key: 'Enter' });
     await nextTick();
 
     expect(emitCommand).toHaveBeenCalledOnce();
@@ -357,7 +367,7 @@ describe('ButtonGroup overflow menu', () => {
     await nextTick();
     const bold = document.body.querySelector<HTMLElement>('[aria-label="Bold"]')!;
     expect(bold).not.toBeNull();
-    bold.click();
+    await new DOMWrapper(bold).trigger('click');
     await nextTick();
 
     expect(emitCommand).toHaveBeenCalledTimes(1);
@@ -376,7 +386,7 @@ describe('ButtonGroup overflow menu', () => {
 
     const zoom = document.body.querySelector<HTMLElement>('[aria-label="Zoom"]')!;
     zoom.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
-    zoom.click();
+    await new DOMWrapper(zoom).trigger('click');
     await nextTick();
 
     expect(document.body.querySelector('.sd-toolbar-overflow-menu')).not.toBeNull();
@@ -384,7 +394,7 @@ describe('ButtonGroup overflow menu', () => {
     expect(zoom125).not.toBeNull();
 
     zoom125.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
-    zoom125.click();
+    await new DOMWrapper(zoom125).trigger('click');
     await nextTick();
 
     expect(emitCommand).toHaveBeenCalledWith(

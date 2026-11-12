@@ -148,6 +148,9 @@ export function executeDiffCapture(adapter: DiffAdapter): DiffSnapshot {
 
 export function executeDiffCompare(adapter: DiffAdapter, input: DiffCompareInput): DiffPayload {
   validateSnapshotWrapper(input?.targetSnapshot);
+  if (input.includeDisplay !== undefined && typeof input.includeDisplay !== 'boolean') {
+    throw new DocumentApiValidationError('INVALID_INPUT', 'diff.compare: includeDisplay must be a boolean.');
+  }
   return adapter.compare(input);
 }
 

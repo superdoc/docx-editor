@@ -66,6 +66,7 @@ function makeHitStub(
     activeEditor: {
       mount: { container },
       ...(editorHost ? { host: editorHost } : {}),
+      ...(editorHost ? { viewportQuery: editorHost } : {}),
       ...(typeof editorHost?.getHostVisuals === 'function'
         ? { visuals: (editorHost.getHostVisuals as () => unknown)() }
         : {}),
@@ -247,6 +248,81 @@ describe('viewport.entityAt / trackChanges.getAt — point hit-testing', () => {
     });
 
     ui.destroy();
+  });
+
+  it('contextAt reads the painted-selection hit through this editor viewport bridge', () => {
+    const hit = document.createElement('span');
+    const painted = vi.fn(() => true);
+    const { superdoc, container } = makeHitStub(hit, [], undefined, { isPointInPaintedSelection: painted });
+    stubRect(container, { left: 0, top: 0, right: 100, bottom: 100 });
+    const ui = createSuperDocUI({ superdoc });
+    expect(ui.viewport.contextAt({ x: 10, y: 20 }).insideSelection).toBe(true);
+    expect(painted).toHaveBeenCalledWith({ clientX: 10, clientY: 20 });
+    expect(ui.viewport.contextAt({ x: 110, y: 20 }).insideSelection).toBe(false);
+    expect(painted).toHaveBeenCalledTimes(1);
+    ui.destroy();
+  });
+
+  it('positionAt routes a bounded point through the viewport bridge without changing selection', async () => {
+    const hit = document.createElement('span');
+    const target = {
+      kind: 'selection' as const,
+      story: { kind: 'story' as const, storyType: 'body' as const },
+      start: { kind: 'text' as const, blockId: 'A', offset: 2 },
+      end: { kind: 'text' as const, blockId: 'A', offset: 2 },
+    };
+    const getTargetAtPoint = vi.fn(async () => ({ status: 'resolved' as const, target }));
+    const { superdoc, container } = makeHitStub(hit, [], undefined, { getTargetAtPoint });
+    stubRect(container, { left: 0, top: 0, right: 100, bottom: 100 });
+    const ui = createSuperDocUI({ superdoc });
+    const before = ui.state.selection;
+    expect(await ui.viewport.positionAt({ x: 10, y: 20 })).toEqual({ status: 'resolved', target });
+    expect(getTargetAtPoint).toHaveBeenCalledWith({ clientX: 10, clientY: 20 });
+    expect(ui.state.selection).toEqual(before);
+    expect(await ui.viewport.positionAt({ x: 110, y: 20 })).toEqual({ status: 'no-target' });
+    expect(getTargetAtPoint).toHaveBeenCalledTimes(1);
+    ui.destroy();
+    expect(await ui.viewport.positionAt({ x: 10, y: 20 })).toEqual({ status: 'disposed' });
+  });
+
+  it('positionAt reports availability, cancellation and stale editor swaps while propagating host failures', async () => {
+    const hit = document.createElement('span');
+    const { superdoc, container } = makeHitStub(hit, []);
+    stubRect(container, { left: 0, top: 0, right: 100, bottom: 100 });
+    const ui = createSuperDocUI({ superdoc });
+    expect(await ui.viewport.positionAt({ x: 10, y: 20 })).toEqual({ status: 'unavailable' });
+    ui.destroy();
+
+    let resolve!: (value: { status: 'no-target' }) => void;
+    const pending = new Promise<{ status: 'no-target' }>((done) => {
+      resolve = done;
+    });
+    const host = { getTargetAtPoint: vi.fn(() => pending) };
+    const second = makeHitStub(document.createElement('span'), [], undefined, host);
+    stubRect(second.container, { left: 0, top: 0, right: 100, bottom: 100 });
+    const live = createSuperDocUI({ superdoc: second.superdoc });
+    const aborted = new AbortController();
+    aborted.abort();
+    expect(await live.viewport.positionAt({ x: 10, y: 20, signal: aborted.signal })).toEqual({ status: 'cancelled' });
+    const inFlightAbort = new AbortController();
+    const cancelled = live.viewport.positionAt({ x: 10, y: 20, signal: inFlightAbort.signal });
+    const read = live.viewport.positionAt({ x: 10, y: 20 });
+    inFlightAbort.abort();
+    (second.superdoc.activeEditor as { viewportQuery?: Record<string, unknown> }).viewportQuery = {
+      getTargetAtPoint: vi.fn(),
+    };
+    resolve({ status: 'no-target' });
+    expect(await cancelled).toEqual({ status: 'cancelled' });
+    expect(await read).toEqual({ status: 'stale' });
+    live.destroy();
+
+    const failure = makeHitStub(document.createElement('span'), [], undefined, {
+      getTargetAtPoint: () => Promise.reject(new Error('host failed')),
+    });
+    stubRect(failure.container, { left: 0, top: 0, right: 100, bottom: 100 });
+    const failing = createSuperDocUI({ superdoc: failure.superdoc });
+    await expect(failing.viewport.positionAt({ x: 10, y: 20 })).rejects.toThrow('host failed');
+    failing.destroy();
   });
 
   it('contextAt returns a copy of the queried point', () => {

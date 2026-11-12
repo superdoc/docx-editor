@@ -44,6 +44,9 @@ enables tracked-change decisions only over a tracked change and Copy only when s
 
 `contextAt()` returns the current snapshot immediately. Check `selection.status === 'ready'` before using selected text;
 `pending` and `stale` can carry text from an earlier selection.
+`insideSelection` is `true` when the point falls inside this editor's currently painted selection overlay, including
+cell and whole-table selections. `false` means the painted overlay does not confirm the point is inside. This check
+is independent of `selection.status`; check for `ready` when an action needs a settled selection read.
 
 ## Own the complete interaction
 
@@ -53,7 +56,17 @@ The browser's `contextmenu` event covers pointer input. The Context Menu key and
 Once the menu opens, your application owns focus, arrow keys, Escape, outside-click dismissal, and repositioning or
 dismissal after scroll and resize. It also owns action feedback. Await the action result before reporting success.
 
-`contextAt()` resolves supported entities and selection state, not an arbitrary insertion position under plain text.
+`contextAt().position` remains `null` and is deprecated. To target a Document API mutation at a browser point, await
+`ui.viewport.positionAt({ x: event.clientX, y: event.clientY })`. A `resolved` result contains a read-only
+`SelectionTarget` in the same source coordinate space as `doc.selection.current()`. The query does not move the
+selection. Its target is not an input for `doc.selection.apply` when inline math changes selection offsets.
+
+`positionAt` returns `no-target` when no point target exists, `stale` when the source or painted geometry changes,
+`cancelled` for an aborted signal, `disposed` after editor disposal, and `unavailable` when the host lacks the query.
+It rejects its Promise on internal errors. In an already active editing story and a stable document it matches a
+collapsed click at the same painted point. An inactive header or footer band returns `no-target`; activate the story before querying its text. A first click into a header can activate that story without placing the
+caret. A click can also cancel an active preview or remove an empty footnote on exit, which can change the document
+before placing the caret; the read-only query does none of those actions.
 Use [Selection and position](/editor/custom-ui/selection-and-viewport) when another custom surface needs document targets
 or painted geometry.
 

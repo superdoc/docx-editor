@@ -1,4 +1,5 @@
-import type { DocumentApi, TrackChangeType } from '@superdoc/document-api';
+import type { DocumentApi, OperationId, TrackChangeType } from '@superdoc/document-api';
+import { HISTORY_EXCLUSION_UNSUPPORTED_OPERATIONS, validateContentWriteHistoryOptions } from '@superdoc/document-api';
 
 type Assert<T extends true> = T;
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
@@ -14,6 +15,13 @@ type _Changed = Assert<Equal<TableDefault['changed'], boolean | undefined>>;
 type _ExtractVocabulary = Assert<Equal<Extracted['trackedChanges'][number]['type'], TrackChangeType>>;
 type _NoListItemLeak = Assert<Equal<'item' extends keyof Converted ? true : false, false>>;
 type _RejectsRestartString = Assert<{ level: number; lvlRestart: string } extends StyleLevel ? false : true>;
+type _HistoryValidationInput = Assert<
+  Equal<Parameters<typeof validateContentWriteHistoryOptions>, [string, unknown, unknown]>
+>;
+type _HistoryValidationResult = Assert<Equal<ReturnType<typeof validateContentWriteHistoryOptions>, void>>;
+type _HistoryExclusionOperations = Assert<
+  Equal<typeof HISTORY_EXCLUSION_UNSUPPORTED_OPERATIONS, ReadonlySet<OperationId>>
+>;
 
 const level: StyleLevel = { level: 1, lvlRestart: 0 };
 const sectionBreak: SectionBreak = {

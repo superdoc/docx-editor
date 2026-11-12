@@ -77,6 +77,11 @@ import {
   mutationCommittedEventChangedDocument,
 } from './helpers/v2-review-mutation-impact.js';
 import { resolveV2ReviewTargetCommentId } from './helpers/v2-review-target.js';
+import {
+  createV2ReviewTargetSidebarSync,
+  type V2ReviewTargetSidebarSync,
+  type V2SidebarReviewTarget,
+} from './helpers/v2-review-target-sidebar-sync.js';
 import { createReviewGeometryDelivery } from './helpers/v2-review-geometry-delivery.js';
 import {
   createV2AuthorRequiredNotificationGate,
@@ -373,7 +378,7 @@ type V2SelectionSnapshot = {
   } | null;
 };
 type V2RestampEvent = CustomEvent<{ itemIds?: unknown; refreshReason?: string } | null> | null | undefined;
-type V2ReviewTarget = { origin?: unknown; entityId?: unknown; entityType?: unknown };
+type V2ReviewTarget = V2SidebarReviewTarget;
 type V2HostEvent = Record<string, unknown> & {
   type: string;
   dryRun?: boolean;
@@ -868,7 +873,22 @@ const subDocumentRoots = new Map<string, HTMLElement>();
 const v2Runtimes = new Map<string, V2RuntimeEntry>();
 const v2CommandShortcutBindings = new Map<string, V2ShortcutBinding>();
 const v2SessionShortcutBindings = new Map<string, V2ShortcutBinding>();
+const v2ReviewTargetSidebarSyncs = new Map<string, V2ReviewTargetSidebarSync>();
 let v2RuntimeSeq = 0;
+
+const clearV2ReviewTargetSidebarSync = (documentId: string) => {
+  const sync = v2ReviewTargetSidebarSyncs.get(documentId);
+  if (!sync) return;
+  v2ReviewTargetSidebarSyncs.delete(documentId);
+  sync.detach();
+};
+
+const installV2ReviewTargetSidebarSync = (documentId: string, trackedChangesAdapter: unknown) => {
+  clearV2ReviewTargetSidebarSync(documentId);
+  const sync = createV2ReviewTargetSidebarSync((target) => syncSidebarActiveCommentFromV2ReviewTarget(target));
+  sync.attach(trackedChangesAdapter);
+  v2ReviewTargetSidebarSyncs.set(documentId, sync);
+};
 
 const clearV2CommandShortcutBinding = (documentId: string) => {
   const entry = v2CommandShortcutBindings.get(documentId);
@@ -1006,6 +1026,7 @@ const setSubDocumentRoot = (doc: ShellDocument | null | undefined, el: HTMLEleme
 };
 
 const clearV2RuntimeRegistration = (documentId: string) => {
+  clearV2ReviewTargetSidebarSync(documentId);
   clearV2CommandShortcutBinding(documentId);
   clearV2SessionShortcutBinding(documentId);
   const document: ShellDocument | undefined = getDocument(documentId);
@@ -1712,6 +1733,7 @@ const onV2EditorReady = (payload: V2EditorReadyPayload | null | undefined) => {
     registerFirstPartyCommandMutation(proxy.$superdoc, host, firstPartyCommandMutation as V2CommandMutation);
   }
   installV2CommandShortcutBinding({ documentId, bindEditShortcuts });
+  installV2ReviewTargetSidebarSync(documentId, trackedChangesAdapter);
   installV2SessionShortcutBinding({ documentId, bindSessionShortcuts, documentApi, firstPartyCommandMutation });
   if (collaborationProvider && resolveDocumentV2Collaboration(getDocument(documentId)).state === 'valid') {
     onEditorCollaborationReady({ editor: facade });
@@ -2356,7 +2378,9 @@ const onV2HostEvent = (document: ShellDocument | null | undefined, event: V2Host
     return;
   }
   if (event.type === 'reviewTarget:changed') {
-    syncSidebarActiveCommentFromV2ReviewTarget(event.next);
+    const sync = document?.id ? v2ReviewTargetSidebarSyncs.get(document.id) : undefined;
+    if (sync) sync.onReviewTargetChanged(event.next);
+    else syncSidebarActiveCommentFromV2ReviewTarget(event.next);
     return;
   }
   if (event.type === 'collaboration:remote-changed') {
@@ -3604,6 +3628,9 @@ onBeforeUnmount(() => {
   }
   for (const documentId of Array.from(v2CommandShortcutBindings.keys())) {
     clearV2CommandShortcutBinding(documentId);
+  }
+  for (const documentId of Array.from(v2ReviewTargetSidebarSyncs.keys())) {
+    clearV2ReviewTargetSidebarSync(documentId);
   }
   for (const documentId of Array.from(v2SessionShortcutBindings.keys())) {
     clearV2SessionShortcutBinding(documentId);

@@ -186,7 +186,9 @@ includes `pnpm agent <documentId> <find> <replacement>` to try it against an ope
   its tracked changes. Give each agent its own token, scoped to its documents.
 - **No browser needed.** The agent can edit while nobody has the document open. Editors who join later see its
   suggestions, and an agent that joins later sees their edits.
-- **Presence.** The SDK does not publish presence, so the agent does not appear in participant lists.
+- **Presence.** The agent is invisible to editors by default. Turn on
+  [`collaboration.presence`](/agents/automation/node-sdk#show-the-agent-to-people-in-the-room) to show it in the
+  participant list with a cursor that follows its edits.
 - **Saves.** A connected agent keeps the room from emptying, so the save on leave waits for the idle save.
 
 ## Before you deploy

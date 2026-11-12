@@ -153,6 +153,45 @@ created for this open request. Per-open token authentication is not supported fo
 
 To initialize a new room from a DOCX, set `roomMode: 'create'` for one worker. Later SDK sessions and editors use `roomMode: 'join'`. If multiple backend workers can start the same document, [coordinate room creation](/editor/collaboration/coordinate-room-creation) in your backend and collaboration server before calling `create`.
 
+## Show the agent to people in the room
+
+A collaborative SDK session is invisible to people in the room by default. Turn on `collaboration.presence` to show
+it like any other participant: people in the browser see its name in the participant list, and its cursor moves to
+the end of each edit it makes. With `presence: true`, the name comes from the client's `user` (the email is its stable
+id). Without a user, the session appears as "CLI".
+
+Pass an object instead of `true` to set an explicit identity:
+
+```js
+const document = await client.open({
+  doc: './contract.docx',
+  collaboration: {
+    providerType: 'hocuspocus',
+    url: 'wss://collaboration.example.com',
+    documentId: 'contract-123',
+    presence: { name: 'Contract Bot', color: '#22AA66', userId: 'contract-bot' },
+  },
+});
+```
+
+| Field         | Default                        | Meaning                                 |
+| ------------- | ------------------------------ | --------------------------------------- |
+| `name`        | client user name, or "CLI"     | Label shown next to the cursor          |
+| `color`       | a palette color                | Cursor color as `#RRGGBB`               |
+| `userId`      | client user email, or the name | Stable identity across sessions         |
+| `followEdits` | `true`                         | Move the cursor to the end of each edit |
+
+Omit `presence` or pass `false` to keep the session invisible. To show where the agent is working before it edits,
+place its cursor yourself:
+
+```js
+await document.presence.set({ blockId: 'p1', start: 0, end: 12 });
+await document.presence.set({ clear: true });
+```
+
+The cursor stays on that text while other people edit around it. Only body text can hold the cursor. When the
+session closes, the agent leaves the room.
+
 ## Reject stale writes from other hosts
 
 `expectedRevision` checks one session by default.

@@ -3732,6 +3732,40 @@ describe('public ui — viewport + metadata geometry', () => {
         expect(getTargetRects).not.toHaveBeenCalled();
       }
     });
+
+    it('measures each side of a move by reading the move once, not by looking up the side id', async () => {
+      const MOVE_ID = 'tc|main|move|m1';
+      const source = { kind: 'text', segments: [{ blockId: 'P1', range: { start: 0, end: 12 } }] };
+      const destination = { kind: 'text', segments: [{ blockId: 'P9', range: { start: 4, end: 16 } }] };
+      const side = (subtype: 'move-from' | 'move-to') => ({
+        id: `${MOVE_ID}::${subtype}`,
+        type: 'move',
+        subtype,
+        trackedChangeCanonicalId: MOVE_ID,
+        address: { kind: 'entity', entityType: 'trackedChange', entityId: `${MOVE_ID}::${subtype}` },
+        target: subtype === 'move-to' ? destination : source,
+      });
+      const { superdoc, getTargetRects } = trackChangesSuperdoc(() => Promise.reject(new Error('unused')));
+      const get = vi.fn((input: { id: string }) =>
+        input.id === MOVE_ID
+          ? Promise.resolve({ id: MOVE_ID, type: 'move', target: { kind: 'move', source, destination } })
+          : Promise.reject(Object.assign(new Error('not found'), { code: 'TARGET_NOT_FOUND' })),
+      );
+      const doc = superdoc.activeEditor.doc as Record<string, unknown>;
+      doc.trackChanges = { list: () => ({ items: [side('move-from'), side('move-to')] }), get };
+      const ui = createSuperDocUI({ superdoc });
+      ui.trackChanges.observe(() => {});
+      await settle();
+
+      for (const subtype of ['move-from', 'move-to'] as const) ui.viewport.getRect({ target: side(subtype).address });
+      await settle();
+
+      expect(get.mock.calls.map(([input]) => input.id)).toEqual([MOVE_ID, MOVE_ID]);
+      ui.viewport.getRect({ target: side('move-from').address });
+      expect(getTargetRects).toHaveBeenLastCalledWith({ target: source });
+      ui.viewport.getRect({ target: side('move-to').address });
+      expect(getTargetRects).toHaveBeenLastCalledWith({ target: destination });
+    });
   });
 
   describe('viewport.getRect with a comment address', () => {

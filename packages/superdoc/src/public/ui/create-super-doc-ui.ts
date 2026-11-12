@@ -194,8 +194,12 @@ import {
   readEntityRequestStory,
   readEntityStory,
   readEntityTarget,
+  readMoveSideTarget,
+  readTrackedChangeMoveSide,
   readTrackedChangeNavigationTarget,
   storyLocatorSignature,
+  trackedChangeMoveSidesById,
+  type TrackedChangeMoveSide,
 } from './entity-rows.js';
 import {
   acquireSharedUiTrackedChangesCatalog,
@@ -9689,26 +9693,15 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     const readTarget = namespace === 'trackChanges' ? readTrackedChangeNavigationTarget : readEntityTarget;
     const loadedRow = loaded.find((row) => entityRowMatchesRequest(row, id, rowStory));
     const loadedRecord = loadedRow && typeof loadedRow === 'object' ? (loadedRow as LooseRecord) : null;
-    const moveSide =
-      namespace === 'trackChanges' &&
-      loadedRecord?.type === 'move' &&
-      (loadedRecord.subtype === 'move-to' || loadedRecord.subtype === 'move-from')
-        ? loadedRecord.subtype
-        : null;
-    const trackedChangeLookupId =
-      moveSide && typeof loadedRecord?.trackedChangeCanonicalId === 'string'
-        ? loadedRecord.trackedChangeCanonicalId
-        : id;
+    const moveSide = namespace === 'trackChanges' ? readTrackedChangeMoveSide(loadedRecord) : null;
+    const trackedChangeLookupId = moveSide?.canonicalId ?? id;
     const readResolvedTarget = (row: unknown): unknown | null => {
       if (!moveSide) {
         return namespace === 'trackChanges'
           ? readTrackedChangeNavigationTarget(row, { preferStableBlock: true })
           : readTarget(row);
       }
-      const moveTarget = readEntityTarget(row) as LooseRecord | null;
-      if (moveTarget?.kind !== 'move') return null;
-      const sideTarget = moveSide === 'move-to' ? moveTarget.destination : moveTarget.source;
-      return isHostGeometryTarget(sideTarget) ? sideTarget : null;
+      return readMoveSideTarget(readEntityTarget(row), moveSide.side);
     };
     const fromList = readTarget(loadedRow);
     // A tracked-change list can settle while a large document is still
@@ -10764,13 +10757,24 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
 
   activeEditorResetHooks.push(rebindGeometryObservers);
 
+  const knownTrackedChangeMoveSide = (id: string): TrackedChangeMoveSide | null => {
+    const directory = asyncReads.get('trackChanges');
+    const directoryRows = directory?.hasSettled && Array.isArray(directory.value) ? directory.value : null;
+    return (
+      (directoryRows && trackedChangeMoveSidesById(directoryRows).get(id)) ??
+      trackedChangeMoveSidesById(state.trackChanges.items).get(id) ??
+      null
+    );
+  };
+
   const resolveEntityGeometryTarget = (address: LooseRecord): { target: unknown } | { reason: string } => {
     const comment = address.entityType === 'comment';
     const get = hostMethod(comment ? getDoc()?.comments : getDoc()?.trackChanges, 'get');
     if (!get) return { reason: 'unavailable' };
     const id = address.entityId as string;
     const story = comment ? undefined : readEntityRequestStory({ address });
-    const input = comment ? { commentId: id } : { id, ...(story ? { story } : {}) };
+    const moveSide = comment ? null : knownTrackedChangeMoveSide(id);
+    const input = comment ? { commentId: id } : { id: moveSide?.canonicalId ?? id, ...(story ? { story } : {}) };
     const { value, status } = readAsync<unknown>(
       `${address.entityType}:geometry:${id}:${storyLocatorSignature(story ?? null)}`,
       localContentToken(),
@@ -10779,7 +10783,9 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
           .then(() => get(input))
           .catch(() => null),
       (info) => {
-        const target = readEntityTarget(info) as LooseRecord | null;
+        const target = (
+          moveSide ? readMoveSideTarget(readEntityTarget(info), moveSide.side) : readEntityTarget(info)
+        ) as LooseRecord | null;
         if (!target || !Array.isArray(target.segments) || target.segments.length === 0) return null;
         const navigationAnchorOnly =
           !comment &&

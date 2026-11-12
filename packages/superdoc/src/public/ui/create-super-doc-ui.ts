@@ -381,6 +381,8 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
   };
   const paintedInlineTargets = new WeakSet<object>();
   let painterCaptureEpoch = 0;
+  let painterSettlement: Promise<boolean> = Promise.resolve(false);
+  let painterSingleApplication: object | null = null;
   let painterCommandDoc: LooseRecord | null = null;
   const painterModeListeners = new Set<(mode: FormatPainterMode) => void>();
   // Projected inline values frozen at the last settled, non-empty selection recompute,
@@ -2009,8 +2011,11 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     );
   };
 
-  const selectionInfoMatchesHost = (info: SelectionInfo | null): boolean => {
-    const snapshot = readHostSelectionSnapshot() as LooseRecord | null;
+  const selectionInfoMatchesHost = (
+    info: SelectionInfo | null,
+    nativeSnapshot: object | null = readHostSelectionSnapshot(),
+  ): boolean => {
+    const snapshot = isPlainObject(nativeSnapshot) ? nativeSnapshot : null;
     const target = info?.selectionTarget as LooseRecord | undefined;
     if (!snapshot || target?.kind !== 'selection') return false;
     const matches = (rawPoint: unknown, rawEndpoint: unknown): boolean => {
@@ -2684,6 +2689,14 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     return pickSelectionTextQueryItem(value, selection);
   };
 
+  const readSelectionPresentation = (): LooseRecord | null => {
+    const read =
+      hostMethod(getDoc()?.selection, 'readPresentation') ?? hostMethod(getHost(), 'readAppliedSelectionPresentation');
+    if (!read) return null;
+    const raw = safeCall<unknown>(read, null);
+    return isPlainObject(raw) ? raw : null;
+  };
+
   /**
    * Effective (cascade-resolved) font family / size for the selection, read from
    * the mounted layout and matched by source node id (SD-3652). The Document API
@@ -2691,11 +2704,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
    * projected value; the layout has already resolved them for painting.
    */
   const appliedSelectionPresentation = (selection: SelectionSlice): LooseRecord | null => {
-    const read =
-      hostMethod(getDoc()?.selection, 'readPresentation') ?? hostMethod(getHost(), 'readAppliedSelectionPresentation');
-    if (!read) return null;
-    const raw = safeCall<unknown>(read, null);
-    const value = isPlainObject(raw) ? raw : null;
+    const value = readSelectionPresentation();
     const info = normalizeSelectionInfo(value?.selection);
     return value && info && selectionSignature(selectionSliceFromInfo(info, 'ready')) === selectionSignature(selection)
       ? value
@@ -7966,6 +7975,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
 
   const exitFormatPainter = (): void => {
     painterCaptureEpoch += 1;
+    painterSingleApplication = null;
     painterCommandDoc = null;
     painter = {
       mode: 'idle',
@@ -8304,82 +8314,107 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     return { styleId, operations, markRunProps, numbering, listStyle };
   };
 
-  const maybeApply = async (): Promise<void> => {
-    if (painter.mode === 'idle') return;
-    if (painter.pointerSelecting || painter.keyboardSelecting) return;
-
+  const maybeApply = async (): Promise<boolean> => {
+    if (painter.mode === 'idle' || painter.pointerSelecting || painter.keyboardSelecting) return false;
+    const snapshot = painter.snapshot;
+    const sourceSelectionKey = painter.sourceSelectionKey;
+    const epoch = painterCaptureEpoch;
+    const editor = getEditor();
     const doc = getDoc();
-    const selectionApi = doc?.selection as LooseRecord | undefined;
+    const mode = readDocumentMode();
+    const nativeSelection = readHostSelectionSnapshot();
+    const nativeHasPoints = isPlainObject(nativeSelection) && nativeSelection.anchor && nativeSelection.focus;
+    const generation = selectionRequestGeneration();
+    const cellTarget = currentCellSelectionTarget();
+    const tableCellSelection = tableCellSelectionForTarget(cellTarget);
+    const paintedTarget = heldPaintedTextSelectionTarget();
+    const ownerIsCurrent = () =>
+      !disposed &&
+      painterCaptureEpoch === epoch &&
+      painter.snapshot === snapshot &&
+      getEditor() === editor &&
+      getDoc() === doc &&
+      readDocumentMode() === mode;
+    const requestIsCurrent = () => ownerIsCurrent() && selectionRequestGeneration() === generation;
+    const selectionIsCurrent = (selection: SelectionInfo | null) =>
+      requestIsCurrent() &&
+      (!nativeHasPoints ||
+        readHostSelectionSnapshot() === nativeSelection ||
+        (selection !== null &&
+          selectionInfoMatchesHost(selection, nativeSelection) &&
+          selectionInfoMatchesHost(selection)));
+    if (selectionRequestGate() !== 'open') {
+      if ((await whenSelectionRequestSettled()) !== 'open' || !requestIsCurrent()) return false;
+    }
+    const confirmed = normalizeSelectionInfo(readSelectionPresentation()?.selection);
+    if (confirmed && !selectionIsCurrent(confirmed)) return false;
+    const readCurrent = hostMethod(doc?.selection, 'current');
     const readSelection = async () => {
-      // Capture the held rectangle before an asynchronous selection read can
-      // resolve after the user has moved the caret to a different target.
-      const cellTarget = currentCellSelectionTarget();
-      const tableCellSelection = tableCellSelectionForTarget(cellTarget);
-      const rawSelection =
-        typeof selectionApi?.['current'] === 'function'
-          ? await Promise.resolve((selectionApi['current'] as (opts: unknown) => unknown)({ includeText: true }))
-          : readSelectionInfoLive().value;
-      const selection = normalizeSelectionInfo(rawSelection);
-      let paintedTarget: TextSelectionTarget | null = null;
+      if (!requestIsCurrent()) return null;
+      const raw = confirmed ?? (readCurrent ? readCurrent({ includeText: true }) : readSelectionInfoLive().value);
+      const asynchronous = isPromiseLike(raw);
+      const selection = normalizeSelectionInfo(await raw);
+      if (!ownerIsCurrent() || (asynchronous && !cellTarget && !selectionIsCurrent(selection))) return null;
+      if (
+        cellTarget &&
+        (selection?.target?.segments[0]?.blockId !== cellTarget.start.blockId ||
+          selection?.target?.segments.at(-1)?.blockId !== cellTarget.end.blockId)
+      )
+        return null;
       if (
         selection &&
         !selection.empty &&
         !selection.selectionTarget &&
-        selection.target?.kind === 'text' &&
-        !cellTarget
-      ) {
-        const nativeSelection = readHostSelectionSnapshot();
-        paintedTarget = heldPaintedTextSelectionTarget();
-        if (
-          paintedTarget &&
-          (!nativeSelection ||
-            !appliedSelectionPresentation(selectionSliceFromInfo(selection, 'ready')) ||
-            readHostSelectionSnapshot() !== nativeSelection)
-        )
-          return { selection: null, cellTarget: null, tableCellSelection: null, paintedTarget: null };
-      }
-      return { selection, cellTarget, tableCellSelection, paintedTarget };
+        !cellTarget &&
+        paintedTarget &&
+        (!nativeSelection ||
+          !appliedSelectionPresentation(selectionSliceFromInfo(selection, 'ready')) ||
+          !selectionIsCurrent(selection))
+      )
+        return null;
+      return selection;
     };
-    const waitForSelectionSettle = (): Promise<void> => new Promise<void>((resolve) => setTimeout(resolve, 16));
-
-    // After pointerup/keyup the target selection sometimes "ripens" asynchronously.
-    // Poll for a settled non-empty (text) selection first.
     const MAX_SELECTION_ATTEMPTS = 8;
-    let selectionRead: Awaited<ReturnType<typeof readSelection>> | null = null;
-    let key = '';
-    for (let attempt = 0; attempt < MAX_SELECTION_ATTEMPTS; attempt += 1) {
-      if (attempt > 0) await waitForSelectionSettle();
-      if ((painter as FormatPainterState).mode === 'idle' || painter.pointerSelecting || painter.keyboardSelecting)
-        return;
-      selectionRead = await readSelection();
-      const sel = selectionRead.selection;
-      if (!sel || sel.empty) continue; // wait for text selection to ripen
-      key = selectionKey(sel);
-      if (key === painter.sourceSelectionKey) continue;
-      break;
+    let selection = await readSelection();
+    for (
+      let attempt = 1;
+      !confirmed &&
+      selectionIsCurrent(selection) &&
+      attempt < MAX_SELECTION_ATTEMPTS &&
+      (!selection || selection.empty || selectionKey(selection) === sourceSelectionKey);
+      attempt += 1
+    ) {
+      await new Promise<void>((resolve) => setTimeout(resolve, 16));
+      selection = await readSelection();
     }
+    if (
+      !ownerIsCurrent() ||
+      !selection ||
+      selectionKey(selection) === sourceSelectionKey ||
+      (selection.empty && !snapshot?.paragraph)
+    )
+      return false;
+    return applyFormatPainter(
+      selection,
+      cellTarget,
+      tableCellSelection,
+      selection.selectionTarget ? null : paintedTarget,
+      snapshot,
+    );
+  };
 
-    // Text selection settled: apply inline + paragraph.
-    if (selectionRead?.selection && !selectionRead.selection.empty && key !== painter.sourceSelectionKey) {
-      await applyFormatPainter(
-        selectionRead.selection,
-        selectionRead.cellTarget,
-        selectionRead.tableCellSelection,
-        selectionRead.paintedTarget,
-      );
-      return;
-    }
-
-    // No text selection. If there is a paragraph snapshot, check for a positioned
-    // caret (click) and apply paragraph formatting only.
-    if (painter.snapshot?.paragraph) {
-      const caretRead = await readSelection();
-      const caretSel = caretRead.selection;
-      if (!caretSel) return;
-      const caretKey = selectionKey(caretSel);
-      if (caretKey === painter.sourceSelectionKey) return;
-      await applyFormatPainter(caretSel, caretRead.cellTarget, caretRead.tableCellSelection, caretRead.paintedTarget);
-    }
+  const startPainterApplication = (): Promise<boolean> => {
+    if (disposed || painter.mode === 'idle' || (painter.mode === 'armed' && painterSingleApplication))
+      return Promise.resolve(false);
+    const single = painter.mode === 'armed' ? {} : null;
+    if (single) painterSingleApplication = single;
+    const operation = maybeApply()
+      .catch(() => false)
+      .finally(() => {
+        if (painterSingleApplication === single) painterSingleApplication = null;
+      });
+    painterSettlement = Promise.all([painterSettlement, operation]).then(([, applied]) => applied);
+    return operation;
   };
 
   const applyFormatPainter = async (
@@ -8387,15 +8422,15 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     cellTarget: TextSelectionTarget | null,
     tableCellSelection: ReturnType<typeof tableCellSelectionForTarget>,
     paintedTarget: TextSelectionTarget | null,
-  ): Promise<void> => {
-    const snap = painter.snapshot;
+    snap: FormatPainterSnapshot | null,
+  ): Promise<boolean> => {
     if (!snap) {
       if (painter.mode === 'armed') exitFormatPainter();
-      return;
+      return false;
     }
 
     const doc = painterCommandDoc ?? getDoc();
-    if (!doc) return;
+    if (!doc) return false;
     const ownerEditor = getEditor();
     const ownerDoc = ownerEditor?.doc;
     const ownerMode = readDocumentMode();
@@ -8407,7 +8442,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     );
     if (contentControlLockReason(lockModesById)) {
       recompute();
-      return;
+      return false;
     }
 
     // TextTarget (segments/blockIds) for paragraph apply; SelectionTarget for inline apply
@@ -8449,12 +8484,12 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
         ownerEditor?.doc !== ownerDoc ||
         readDocumentMode() !== ownerMode
       )
-        return;
+        return false;
     }
 
     const entries: Array<{ operationId: UiDocRoute; input: LooseRecord; options?: unknown }> = [];
     const options = editorMutationOptionsForRoute('format.apply');
-    if (options?.success === false) return;
+    if (options?.success === false) return false;
     const inlineOptions = {
       ...options,
       ...(tableCellSelection || paintedTarget || (selectionTarget as LooseRecord | null)?.coordinateSpace === 'tracked'
@@ -8597,7 +8632,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       if (batchSupported) {
         if (batchTargets.length * batchOperations.length > PARAGRAPH_BATCH_MAX_EXPANDED_WRITES) {
           recompute();
-          return;
+          return false;
         }
         let payloadBytes = 0;
         for (let index = 0; index < batchTargets.length; index += PARAGRAPH_BATCH_MAX_TARGETS) {
@@ -8608,7 +8643,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
           payloadBytes += new TextEncoder().encode(JSON.stringify(input)).length;
           if (payloadBytes > PARAGRAPH_BATCH_MAX_PAYLOAD_BYTES) {
             recompute();
-            return;
+            return false;
           }
           add('format.paragraph.applyBatch', input);
         }
@@ -8622,43 +8657,48 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       readDocumentMode() !== ownerMode ||
       readDocumentMode() === 'viewing'
     )
-      return;
+      return false;
     const currentLocks = computeSelectionContentControlLockModes(
       doc.contentControls as LooseRecord | undefined,
       targetSelection,
     );
-    if (contentControlLockReason(currentLocks.lockModesById)) return;
+    if (contentControlLockReason(currentLocks.lockModesById)) return false;
+    if (entries.length === 0) return false;
+    let receipt: CommandExecutionResult = true;
     try {
       const execute = resolveDocOperation(doc, 'plan.execute');
       if (entries.length === 1 && entries[0].operationId === 'format.apply') {
         const apply = resolveDocOperation(doc, 'format.apply');
-        if (!apply) return;
+        if (!apply) return false;
         const result = await apply(entries[0].input, entries[0].options);
-        if (!commandResultSucceeded(commandResultFromOperationResult(result))) {
+        receipt = commandResultFromOperationResult(result);
+        if (!commandResultSucceeded(receipt)) {
           recompute();
-          return;
+          return false;
         }
       } else if (execute) {
         const result = await execute({ atomic: true, entries });
         if (!result || (result as LooseRecord).failure || (result as LooseRecord).success === false) {
           recompute();
-          return;
+          return false;
         }
+        receipt = commandResultFromOperationResult(result);
       } else {
-        if (ownerEditor?.editorVersion === 2) return;
+        if (ownerEditor?.editorVersion === 2) return false;
         for (const entry of entries) {
           const operation = resolveDocOperation(doc, entry.operationId);
           if (!operation) continue;
           const result = entry.options ? await operation(entry.input, entry.options) : await operation(entry.input);
-          if (!commandResultSucceeded(commandResultFromOperationResult(result))) {
+          receipt = commandResultFromOperationResult(result);
+          if (!commandResultSucceeded(receipt)) {
             recompute();
-            return;
+            return false;
           }
         }
       }
     } catch {
       recompute();
-      return;
+      return false;
     }
     if (
       disposed ||
@@ -8667,10 +8707,13 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       ownerEditor?.doc !== ownerDoc ||
       readDocumentMode() !== ownerMode
     )
-      return;
+      return false;
 
-    if (painter.mode === 'armed') exitFormatPainter();
+    await awaitMutationReadiness(receipt);
+    if (disposed || getEditor() !== ownerEditor || ownerEditor?.doc !== ownerDoc) return false;
+    if (painter.mode === 'armed' && painter.snapshot === snap) exitFormatPainter();
     recompute();
+    return true;
   };
 
   const runListCommandAsync = (
@@ -11364,6 +11407,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     // before teardown still reaches its listeners and calls back into UI that
     // has already unmounted.
     painterCaptureEpoch += 1;
+    painterSingleApplication = null;
     painterCommandDoc = null;
     painterModeListeners.clear();
     documentChangeListeners.clear();
@@ -11407,19 +11451,20 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
         painter = { ...painter, pointerSelecting: flag };
       },
       notifyPointerUp() {
-        if (disposed) return;
+        if (disposed) return Promise.resolve(false);
         painter = { ...painter, pointerSelecting: false };
-        void maybeApply();
+        return startPainterApplication();
       },
       setKeyboardSelecting(flag: boolean) {
         if (disposed) return;
         painter = { ...painter, keyboardSelecting: flag };
       },
       notifyKeyUp() {
-        if (disposed) return;
+        if (disposed) return Promise.resolve(false);
         painter = { ...painter, keyboardSelecting: false };
-        void maybeApply();
+        return startPainterApplication();
       },
+      whenSettled: () => painterSettlement,
       cancel() {
         if (disposed) return;
         exitFormatPainter();

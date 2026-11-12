@@ -754,11 +754,12 @@ export interface FormatPainterHandle {
   /** Notify the controller that a pointer-drag selection has started. */
   setPointerSelecting(flag: boolean): void;
   /** Notify the controller that the pointer was released; triggers apply if a non-source selection exists. */
-  notifyPointerUp(): void;
+  notifyPointerUp(): Promise<boolean>;
   /** Notify the controller that a keyboard selection key is held. */
   setKeyboardSelecting(flag: boolean): void;
   /** Notify the controller that the keyboard selection key was released; triggers apply. */
-  notifyKeyUp(): void;
+  notifyKeyUp(): Promise<boolean>;
+  whenSettled(): Promise<boolean>;
   /** Cancel an active painter (Esc or programmatic cancel). */
   cancel(): void;
   /** Subscribe to painter mode changes. Returns a detach function. */

@@ -14,6 +14,8 @@ import {
   PARAGRAPH_BATCH_MAX_EXPANDED_WRITES,
   PARAGRAPH_BATCH_MAX_PAYLOAD_BYTES,
 } from '@superdoc/document-api';
+import { BuiltInToolbar } from '../internal/toolbar/built-in-toolbar.js';
+import { createHighContrastMode } from '../composables/use-high-contrast-mode.js';
 import { bulletStyleButtons, numberedStyleButtons } from '../internal/toolbar/built-in/list-style-buttons.js';
 
 // Shared non-empty selection used by inline-format command tests. The public
@@ -5302,13 +5304,14 @@ describe('public ui — command reason taxonomy', () => {
     };
     let native = address('P2', 0, 6);
     let applied = info('P2');
+    let presentationReady = false;
     const selectionHandle = {
       ...(scenario === 'missing native snapshot' ? {} : { getSnapshot: () => held }),
       toSelectionTarget: () => ({ kind: 'ok', mode: 'range', target: native }),
     };
     fixture.superdoc.activeEditor.host = {
       getHandles: () => ({ selection: selectionHandle, editing: { selection: selectionHandle } }),
-      readAppliedSelectionPresentation: () => ({ selection: applied }),
+      readAppliedSelectionPresentation: () => (presentationReady ? { selection: applied } : null),
     } as any;
     const ui = createSuperDocUI({ superdoc: fixture.superdoc });
     try {
@@ -5337,10 +5340,11 @@ describe('public ui — command reason taxonomy', () => {
         destination = info('P2', 0, 5, footnote);
       }
       current.mockReturnValue(Promise.resolve(destination));
+      presentationReady = true;
       finish(destination);
       await vi.advanceTimersByTimeAsync(200);
-      if (scenario === 'moved native destination' || scenario === 'settled image destination') {
-        const blockId = scenario === 'moved native destination' ? 'P3' : 'P2';
+      if (scenario === 'settled image destination') {
+        const blockId = 'P2';
         expect(fixture.getNode.mock.calls.some(([input]) => input.nodeId === blockId)).toBe(true);
         expect(fixture.apply).toHaveBeenCalledExactlyOnceWith(
           { target: address(blockId, 0, 6), inline: { bold: true, color: '#D2003F' } },
@@ -5352,6 +5356,316 @@ describe('public ui — command reason taxonomy', () => {
         expect(fixture.setAlignment).not.toHaveBeenCalled();
       }
     } finally {
+      ui.destroy();
+    }
+  });
+
+  it.each(['notifyPointerUp', 'notifyKeyUp'] as const)(
+    'copy-format %s owns completion through selection, mutation and paint',
+    async (release) => {
+      const selected = Promise.withResolvers<unknown>();
+      const mutated = Promise.withResolvers<unknown>();
+      const painted = Promise.withResolvers<void>();
+      const fixture = makeFormatPainterSuperdoc({ applyResult: () => mutated.promise });
+      const ui = createSuperDocUI({ superdoc: fixture.superdoc });
+      try {
+        expect(await ui.commands.executeAsync('copy-format')).toBe(true);
+        fixture.superdoc.activeEditor.doc.selection.current = () => selected.promise;
+        Object.assign(fixture.superdoc.activeEditor, {
+          documentMutationReadiness: { whenPainted: () => painted.promise },
+        });
+        let complete = false;
+        const operation = Promise.resolve(ui.formatPainter[release]()).then((result) => {
+          complete = true;
+          return result;
+        });
+        await Promise.resolve();
+        expect(complete).toBe(false);
+        selected.resolve(fixture.targetSelection);
+        await vi.waitFor(() => expect(fixture.apply).toHaveBeenCalledTimes(1));
+        expect(complete).toBe(false);
+        mutated.resolve({ success: true });
+        await Promise.resolve();
+        expect(complete).toBe(false);
+        painted.resolve();
+        expect(await operation).toBe(true);
+      } finally {
+        selected.resolve(fixture.targetSelection);
+        mutated.resolve({ success: true });
+        painted.resolve();
+        ui.destroy();
+      }
+    },
+  );
+
+  it.each([
+    ...(['inline', 'plan', 'legacy'] as const).flatMap((route) =>
+      [false, true].map((rejectPaint) => ({ route, rejectPaint, persistent: false })),
+    ),
+    { route: 'inline', rejectPaint: true, persistent: true },
+  ])(
+    'copy-format preserves committed receipt through paint observation: $route reject=$rejectPaint persistent=$persistent',
+    async ({ route, rejectPaint, persistent }) => {
+      let txId = '';
+      let mutationCount = 0;
+      const mutation = vi.fn(() => {
+        txId = `paint-${route}-${++mutationCount}`;
+        return { success: true, txId };
+      });
+      const fixture = makeFormatPainterSuperdoc({
+        applyResult: mutation,
+        ...(route === 'inline' ? {} : { sourceParagraphProps: { alignment: 'center' } }),
+      });
+      const doc = fixture.superdoc.activeEditor.doc;
+      if (route === 'plan') Object.assign(doc, { plan: { execute: mutation } });
+      if (route === 'legacy') {
+        for (const key of Object.keys(doc.format.paragraph)) Reflect.set(doc.format.paragraph, key, mutation);
+        for (const key of Object.keys(doc.styles.paragraph)) Reflect.set(doc.styles.paragraph, key, mutation);
+      }
+      const whenPainted = vi.fn(async () => {
+        if (rejectPaint) throw new Error('Paint observation failed after commit');
+      });
+      Object.assign(fixture.superdoc.activeEditor, { documentMutationReadiness: { whenPainted } });
+      const ui = createSuperDocUI({ superdoc: fixture.superdoc });
+      try {
+        expect(await ui.commands.executeAsync('copy-format')).toBe(true);
+        if (persistent) expect(await ui.commands.executeAsync('copy-format')).toBe(true);
+        fixture.setSelection(fixture.targetSelection);
+        expect(await ui.formatPainter.notifyPointerUp()).toBe(true);
+        expect(await ui.formatPainter.whenSettled()).toBe(true);
+        expect(whenPainted).toHaveBeenCalledExactlyOnceWith({ txId });
+        expect(ui.toolbar.getSnapshot().copyFormatActive).toBe(persistent);
+        if (route === 'legacy') expect(mutation.mock.calls.length).toBeGreaterThan(1);
+        else expect(mutation).toHaveBeenCalledTimes(1);
+      } finally {
+        ui.destroy();
+      }
+    },
+  );
+
+  it('copy-format admits one single-use release and reports later inactive releases', async () => {
+    const selected = Promise.withResolvers<unknown>();
+    const fixture = makeFormatPainterSuperdoc();
+    const ui = createSuperDocUI({ superdoc: fixture.superdoc });
+    try {
+      expect(await ui.commands.executeAsync('copy-format')).toBe(true);
+      fixture.superdoc.activeEditor.doc.selection.current = () => selected.promise;
+      const first = ui.formatPainter.notifyPointerUp();
+      expect(await ui.formatPainter.notifyKeyUp()).toBe(false);
+      selected.resolve(fixture.targetSelection);
+      expect(await first).toBe(true);
+      expect(fixture.apply).toHaveBeenCalledTimes(1);
+      expect(await ui.formatPainter.notifyPointerUp()).toBe(false);
+      expect(await ui.formatPainter.whenSettled()).toBe(true);
+    } finally {
+      selected.resolve(fixture.targetSelection);
+      ui.destroy();
+    }
+  });
+
+  it('copy-format DOM forwarding keeps the accepted release observable after a duplicate', async () => {
+    const selected = Promise.withResolvers<unknown>();
+    const fixture = makeFormatPainterSuperdoc();
+    const container = document.createElement('div');
+    document.body.append(container);
+    Object.assign(fixture.superdoc.activeEditor, { container });
+    const ui = createSuperDocUI({ superdoc: fixture.superdoc });
+    const toolbar = new BuiltInToolbar({
+      superdoc: { ...fixture.superdoc, ui },
+      highContrastMode: createHighContrastMode(),
+    });
+    try {
+      expect(await ui.commands.executeAsync('copy-format')).toBe(true);
+      fixture.superdoc.activeEditor.doc.selection.current = () => selected.promise;
+      container.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+      container.dispatchEvent(new Event('pointerup', { bubbles: true }));
+      container.dispatchEvent(new Event('pointerup', { bubbles: true }));
+      let settled = false;
+      const completion = ui.formatPainter.whenSettled().then((result) => {
+        settled = true;
+        return result;
+      });
+      await Promise.resolve();
+      expect(settled).toBe(false);
+      selected.resolve(fixture.targetSelection);
+      expect(await completion).toBe(true);
+      expect(await ui.formatPainter.whenSettled()).toBe(true);
+      expect(fixture.apply).toHaveBeenCalledTimes(1);
+    } finally {
+      selected.resolve(fixture.targetSelection);
+      toolbar.destroy();
+      ui.destroy();
+      container.remove();
+    }
+  });
+
+  it('copy-format cancels an unresolved release without applying its source to a later selection', async () => {
+    const selected = Promise.withResolvers<unknown>();
+    const fixture = makeFormatPainterSuperdoc();
+    const ui = createSuperDocUI({ superdoc: fixture.superdoc });
+    try {
+      expect(await ui.commands.executeAsync('copy-format')).toBe(true);
+      fixture.superdoc.activeEditor.doc.selection.current = () => selected.promise;
+      const first = ui.formatPainter.notifyPointerUp();
+      ui.formatPainter.cancel();
+      selected.resolve(fixture.targetSelection);
+      expect(await first).toBe(false);
+      expect(fixture.apply).not.toHaveBeenCalled();
+    } finally {
+      selected.resolve(fixture.targetSelection);
+      ui.destroy();
+    }
+  });
+
+  it('copy-format retires an admitted application when canceled and allows a newly armed painter', async () => {
+    const blocked = Promise.withResolvers<void>();
+    const now = vi.spyOn(Date, 'now');
+    const fixture = makeFormatPainterSuperdoc();
+    const ui = createSuperDocUI({ superdoc: fixture.superdoc });
+    try {
+      expect(await ui.commands.executeAsync('copy-format')).toBe(true);
+      const read = fixture.superdoc.activeEditor.doc.getNode;
+      const targetReads = vi.fn(async (input: { nodeId: string }) => {
+        if (input.nodeId === 'P2') await blocked.promise;
+        return read.call(fixture.superdoc.activeEditor.doc, input);
+      });
+      fixture.superdoc.activeEditor.doc.getNode = targetReads;
+      fixture.setSelection(fixture.targetSelection);
+      const first = ui.formatPainter.notifyPointerUp();
+      await vi.waitFor(() => expect(targetReads).toHaveBeenCalledWith(expect.objectContaining({ nodeId: 'P2' })));
+      ui.formatPainter.cancel();
+      now.mockReturnValue(Date.now() + 600);
+      fixture.setSelection({
+        ...fixture.targetSelection,
+        target: { kind: 'text', segments: [{ blockId: 'P1', range: { start: 0, end: 5 } }] },
+        selectionTarget: {
+          kind: 'selection',
+          start: { kind: 'text', blockId: 'P1', offset: 0 },
+          end: { kind: 'text', blockId: 'P1', offset: 5 },
+        },
+      });
+      expect(await ui.commands.executeAsync('copy-format')).toBe(true);
+      fixture.setSelection(fixture.targetSelection);
+      const second = ui.formatPainter.notifyPointerUp();
+      blocked.resolve();
+      expect(await first).toBe(false);
+      expect(await second).toBe(true);
+      expect(fixture.apply).toHaveBeenCalledTimes(1);
+    } finally {
+      blocked.resolve();
+      now.mockRestore();
+      ui.destroy();
+    }
+  });
+
+  it.each([
+    { pending: false, confirmed: false, moved: false },
+    { pending: true, confirmed: false, moved: false },
+    { pending: true, confirmed: true, moved: false },
+    { pending: false, confirmed: false, moved: true },
+    { pending: true, confirmed: false, moved: true },
+    { pending: true, confirmed: true, moved: true },
+  ])(
+    'copy-format verifies input acknowledgement ownership: pending=$pending confirmed=$confirmed moved=$moved',
+    async ({ pending, confirmed, moved }) => {
+      const selected = Promise.withResolvers<unknown>();
+      const request = Promise.withResolvers<'open'>();
+      const fixture = makeFormatPainterSuperdoc();
+      const ui = createSuperDocUI({ superdoc: fixture.superdoc });
+      const destination = moved
+        ? {
+            ...fixture.targetSelection,
+            target: { kind: 'text', segments: [{ blockId: 'P3', range: { start: 0, end: 5 } }] },
+            selectionTarget: {
+              kind: 'selection',
+              start: { kind: 'text', blockId: 'P3', offset: 0 },
+              end: { kind: 'text', blockId: 'P3', offset: 5 },
+            },
+          }
+        : fixture.targetSelection;
+      try {
+        expect(await ui.commands.executeAsync('copy-format')).toBe(true);
+        let gate: 'open' | 'pending' = pending ? 'pending' : 'open';
+        let native = {
+          anchor: { blockId: 'P2', blockOffset: 0 },
+          focus: { blockId: 'P2', blockOffset: 5 },
+          revision: 1,
+        };
+        Object.assign(fixture.superdoc.activeEditor, {
+          host: {
+            getHandles: () => ({
+              selection: { getSnapshot: () => native },
+              editing: {
+                selectionTargets: {
+                  apply: vi.fn(),
+                  selectionRequestGate: () => gate,
+                  selectionRequestGeneration: () => 1,
+                  whenSelectionRequestSettled: () => request.promise,
+                },
+              },
+            }),
+            readAppliedSelectionPresentation: () => (confirmed && gate === 'open' ? { selection: destination } : null),
+          },
+        });
+        fixture.superdoc.activeEditor.doc.selection.current = () => selected.promise;
+        const operation = ui.formatPainter.notifyPointerUp();
+        native = {
+          anchor: { blockId: moved ? 'P3' : 'P2', blockOffset: 0 },
+          focus: { blockId: moved ? 'P3' : 'P2', blockOffset: 5 },
+          revision: 2,
+        };
+        gate = 'open';
+        request.resolve('open');
+        selected.resolve(destination);
+        expect(await operation).toBe(!moved);
+        if (moved) expect(fixture.apply).not.toHaveBeenCalled();
+        else
+          expect(fixture.apply).toHaveBeenCalledExactlyOnceWith(
+            { target: fixture.targetSelection.selectionTarget, inline: { bold: true, color: '#D2003F' } },
+            { offsetSpace: 'kernel' },
+          );
+      } finally {
+        request.resolve('open');
+        selected.resolve(destination);
+        ui.destroy();
+      }
+    },
+  );
+
+  it('copy-format freezes confirmed destinations before asynchronous document reads', async () => {
+    const blocked = Promise.withResolvers<void>();
+    const fixture = makeFormatPainterSuperdoc();
+    const ui = createSuperDocUI({ superdoc: fixture.superdoc });
+    try {
+      expect(await ui.commands.executeAsync('copy-format')).toBe(true);
+      expect(await ui.commands.executeAsync('copy-format')).toBe(true);
+      const second = {
+        ...fixture.targetSelection,
+        target: { kind: 'text', segments: [{ blockId: 'P3', range: { start: 0, end: 5 } }] },
+        selectionTarget: {
+          kind: 'selection',
+          start: { kind: 'text', blockId: 'P3', offset: 0 },
+          end: { kind: 'text', blockId: 'P3', offset: 5 },
+        },
+      };
+      let selection = fixture.targetSelection;
+      Object.assign(fixture.superdoc.activeEditor.doc.selection, { readPresentation: () => ({ selection }) });
+      fixture.superdoc.activeEditor.doc.selection.current = async () => {
+        await blocked.promise;
+        return selection;
+      };
+      const first = ui.formatPainter.notifyPointerUp();
+      selection = second;
+      const next = ui.formatPainter.notifyKeyUp();
+      blocked.resolve();
+      await Promise.all([first, next]);
+      await vi.waitFor(() => expect(fixture.apply).toHaveBeenCalledTimes(2));
+      expect(fixture.apply.mock.calls.map(([input]) => input.target)).toEqual([
+        fixture.targetSelection.selectionTarget,
+        second.selectionTarget,
+      ]);
+    } finally {
+      blocked.resolve();
       ui.destroy();
     }
   });

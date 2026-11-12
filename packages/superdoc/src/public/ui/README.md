@@ -16,3 +16,12 @@
 
 Keep each controller on the existing surface state. Do not introduce a second event bus or state store for the public
 handle.
+
+Format painter release notifications return a promise that resolves to `true` after
+formatting commits and paint readiness is observed, or `false` when no application
+succeeds. A paint-observation failure preserves a successful mutation result.
+`whenSettled()` waits for the applications already started and returns the latest
+accepted application's result; ignored duplicate or inactive notifications do not
+replace it. DOM event callers can dispatch a release, then await this
+method. Persistent mode stays active across applications, so its active state
+does not indicate completion.

@@ -71,6 +71,8 @@ An address identifies a document location or object. A target describes the cont
 
 Keep the target returned for the current document revision. If the document changes first, query again instead of assuming that an old target still points to the same content.
 
+In the V2 runtime, `doc.create.image({ src })` creates a new paragraph at the end of the target story; it does not use the editor's caret. To insert in an existing paragraph, provide `at: { kind: 'inParagraph', target, offset }`. For a collapsed caret in plain text, obtain the text point from `doc.selection.current().selectionTarget`, resolve its block as a paragraph address, and use its offset. Inline content controls can make a boundary ambiguous; use `inContentControl` for those targets.
+
 ## 3. Mutate
 
 Pass the target to the operation that makes the change. The target makes the scope explicit. It also lets each host apply the same operation contract without inspecting its UI state.

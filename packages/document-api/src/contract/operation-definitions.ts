@@ -4539,7 +4539,8 @@ export const OPERATION_DEFINITIONS = {
   // -------------------------------------------------------------------------
   'create.image': {
     memberPath: 'create.image',
-    description: 'Insert a new image at the target position.',
+    description:
+      'Insert a new image at the target position. In the V2 runtime, omitting `at` creates a paragraph at the end of the target story. Use `inParagraph` with a paragraph address and visible-text offset to insert into an existing paragraph.',
     expectedResult:
       'Returns a CreateImageResult with the new image address. Tracked-mode results include `trackedChangeRefs` pointing at the tracked insertion review entity. When the target is an inherited or missing header/footer slot, Word-compatible ownership materialization applies immediately; review controls the inserted image.',
     requiresDocumentContext: true,

@@ -36,6 +36,32 @@ For Vanilla, replace the contents of `<body>` in `index.html` with:
 `measurementUnit` is an Editor-wide preference, so it stays at the top level rather than inside `ui.ruler`. Set the
 initial unit to inches or centimeters, then change it with `setMeasurementUnit()`.
 
+## Pin the ruler
+
+Provide a container to place the ruler outside the Editor mount. For example, put a sticky container inside the same
+scroll area as the Editor:
+
+```html
+<div style="height: 80vh; overflow: auto">
+  <div id="ruler" style="position: sticky; top: 0; z-index: 20; height: 0"></div>
+  <div id="editor"></div>
+</div>
+```
+
+```ts
+const superdoc = new SuperDoc({
+  selector: '#editor',
+  document: '/sample.docx',
+  ui: { ruler: { container: '#ruler' } },
+});
+```
+
+The host controls the container's placement and scrolling. Print pages are centered in the available Editor space;
+there is no separate page-centering setting. The ruler tracks the page position as the document scrolls, zooms, or
+resizes, and its handles continue to edit the active section. When the visible page has a different width, the ruler
+keeps the active section’s width and shares the visible page’s center rather than its edges. In affected older releases, returning to the top can
+temporarily restore alignment, but it may be lost again when scrolling down.
+
 ## Configure the ruler
 
 Choose a field to see its type, default, and a configuration fragment you can copy.

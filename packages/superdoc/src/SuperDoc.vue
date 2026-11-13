@@ -443,7 +443,10 @@ type V2EditorReadyPayload = {
   documentOpenToken?: object | null;
 };
 type V2RulerPageLayout = {
-  getActiveRulerContext?: () => { pageIndex?: number } | null | undefined;
+  getActiveRulerContext?: () =>
+    | { pageIndex?: number; base?: { widthPx?: number }; zoom?: { scale?: number } }
+    | null
+    | undefined;
   subscribeActiveRulerContext?: (listener: (context: { pageIndex?: number } | null | undefined) => void) => () => void;
 };
 type V2EditorFailedPayload = {
@@ -3949,11 +3952,16 @@ const resolveV2RulerAlignmentContainer = () => {
   return subDocumentRoots.get(activeDocumentId) ?? subDocumentRoots.get(String(activeDocumentId)) ?? null;
 };
 
-const getV2ActivePageRect = () => {
+const getV2ActiveStage = () => {
   const activeDocumentId = getActiveV2DocumentId();
   const stage =
     activeDocumentId == null ? latestV2MountStage : (v2MountStagesByDocumentId.get(String(activeDocumentId)) ?? null);
-  if (!stage?.isConnected) return null;
+  return stage?.isConnected ? stage : null;
+};
+
+const getV2ActivePageRect = () => {
+  const stage = getV2ActiveStage();
+  if (!stage) return null;
   const workerRoots = stage.querySelectorAll('[data-sd-worker-dom-root]');
   if (workerRoots.length) {
     if (workerRoots.length !== 1) return null;
@@ -3972,6 +3980,36 @@ const getV2ActivePageRect = () => {
   return (activePage ?? wrapper).getBoundingClientRect();
 };
 
+const getV2VisiblePageRect = () => {
+  const stage = getV2ActiveStage();
+  if (!stage) return null;
+  const workerRoots = stage.querySelectorAll<HTMLElement>('[data-sd-worker-dom-root]');
+  if (workerRoots.length !== 1) return null;
+  const root = workerRoots[0];
+  let top = 0;
+  let bottom = window.innerHeight;
+  for (let ancestor = root.parentElement; ancestor && ancestor !== document.body; ancestor = ancestor.parentElement) {
+    if (!/^(auto|scroll|hidden|clip)$/.test(getComputedStyle(ancestor).overflowY) || !ancestor.clientHeight) continue;
+    const rect = ancestor.getBoundingClientRect();
+    top = Math.max(top, rect.top);
+    bottom = Math.min(bottom, rect.bottom);
+  }
+  const pages = Array.from(
+    root.querySelectorAll<HTMLElement>('.superdoc-page[data-worker-page-id][data-page-index]'),
+  ).filter((page) => page.closest('[data-sd-worker-dom-root]') === root);
+  let nearest: DOMRect | null = null;
+  let nearestDistance = Infinity;
+  for (const page of pages) {
+    const rect = page.getBoundingClientRect();
+    const distance = rect.bottom < top ? top - rect.bottom : rect.top > bottom ? rect.top - bottom : 0;
+    if (distance < nearestDistance) {
+      nearest = rect;
+      nearestDistance = distance;
+    }
+  }
+  return nearest;
+};
+
 const syncV2RulerOffset = () => {
   if (!isV2Mode.value) {
     if (Object.keys(v2RulerHostStyle.value).length) v2RulerHostStyle.value = {};
@@ -3984,19 +4022,29 @@ const syncV2RulerOffset = () => {
     if (v2RulerPageRect.value !== null) v2RulerPageRect.value = null;
     return;
   }
-  const pageRect = getV2ActivePageRect();
+  const activePageRect = getV2ActivePageRect();
+  const pageRect = activePageRect ?? getV2VisiblePageRect();
   if (!pageRect) {
     if (Object.keys(v2RulerHostStyle.value).length) v2RulerHostStyle.value = {};
     if (v2RulerPageRect.value !== null) v2RulerPageRect.value = null;
     return;
   }
   const containerRect = alignmentContainer.getBoundingClientRect();
-  const paddingLeft = Math.max(0, pageRect.left - containerRect.left);
-  const paddingRight = Math.max(0, containerRect.right - pageRect.right);
+  const context = v2RulerContextPageLayout?.getActiveRulerContext?.();
+  const rulerWidth = activePageRect
+    ? pageRect.width
+    : (context?.base?.widthPx ?? pageRect.width) * (context?.zoom?.scale ?? 1);
+  const rulerLeft = pageRect.left + (pageRect.width - rulerWidth) / 2;
+  const paddingLeft = Math.max(0, rulerLeft - containerRect.left);
+  const paddingRight = Math.max(0, containerRect.right - rulerLeft - rulerWidth);
   const left = `${paddingLeft}px`;
   const right = `${paddingRight}px`;
   if (v2RulerHostStyle.value.paddingLeft !== left || v2RulerHostStyle.value.paddingRight !== right) {
     v2RulerHostStyle.value = { paddingLeft: left, paddingRight: right };
+  }
+  if (!activePageRect) {
+    if (v2RulerPageRect.value !== null) v2RulerPageRect.value = null;
+    return;
   }
   const previousRect = v2RulerPageRect.value;
   if (

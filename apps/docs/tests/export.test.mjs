@@ -21,6 +21,7 @@ const routes = [
   ['editor/quickstart/index.html', 'Open and edit your first DOCX'],
   ['editor/migrate-from-v1/overview/index.html', 'Migrate from v1'],
   ['editor/migrate-from-v1/removed-apis/index.html', 'Removed in v2'],
+  ['editor/migrate-from-v1/legacy-collaboration-server/index.html', 'Move off the legacy collaboration server'],
   ['editor/configuration/index.html', 'Configure the Editor'],
   ['editor/interaction-permissions/index.html', 'Choose interaction capabilities and permissions'],
   ['editor/load-and-save-documents/index.html', 'Load and save a DOCX'],
@@ -173,7 +174,7 @@ test('exports the condensed primary sections and keeps migration last', async ()
   );
   assert.deepEqual(
     migrationLinks.slice(expectedPrimaryLabels.length).map(({ text }) => text),
-    ['Overview', 'Removed APIs'],
+    ['Overview', 'Removed APIs', 'Legacy collaboration server'],
   );
   assert.deepEqual(
     resourceLinks.slice(expectedPrimaryLabels.length).map(({ text }) => text),

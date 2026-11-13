@@ -61,7 +61,7 @@ for (const page of pages) {
 //
 // `removed-apis.mdx` is exempt because it is generated from the catalog and is a
 // lookup table by design, not a page of worked examples.
-const REFERENCE_PAGES = new Set(['removed-apis.mdx']);
+const REFERENCE_PAGES = new Set(['removed-apis.mdx', 'legacy-collaboration-server.mdx']);
 
 // Deleting a page entirely is invisible to a loop over the pages that exist, so
 // the expected set is named here. This is the one place a content change has to

@@ -2,5 +2,5 @@
   "title": "Migrate from v1",
   "root": true,
   "defaultOpen": false,
-  "pages": ["overview", "removed-apis"]
+  "pages": ["overview", "removed-apis", "legacy-collaboration-server"]
 }

@@ -9,6 +9,7 @@ import { isRecord } from '../object-guards.js';
 import type { OperationId } from '../contract/types.js';
 
 export const HISTORY_EXCLUSION_UNSUPPORTED_OPERATIONS: ReadonlySet<OperationId> = new Set<OperationId>([
+  'insert',
   'create.contentControl',
   'contentControls.text.setValue',
   'contentControls.replaceContent',
@@ -117,7 +118,7 @@ export interface TrackedTextMutationOptions extends MutationOptions, TrackedAttr
 }
 
 export type TrackedRichContentMutationOptions = TrackedTextMutationOptions &
-  Pick<RichContentMutationOptions, 'supportCheck'>;
+  Pick<RichContentMutationOptions, 'supportCheck'> & { addToHistory?: boolean };
 
 export type TextMutationOptions = (MutationOptions & { author?: never; date?: never }) | TrackedTextMutationOptions;
 

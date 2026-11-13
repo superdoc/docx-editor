@@ -2052,10 +2052,10 @@ export interface MutationsApi {
   commitTemporary(input: TemporaryMutationCommitInput): Promise<TemporaryMutationReceipt>;
   preview(input: MutationsPreviewInput): Promise<MutationsPreviewOutput>;
   /**
-   * Apply an atomic plan. `options` is host-side cancellation and is not part
-   * of the plan payload.
+   * Apply an atomic plan. `options` configures cancellation or supported history
+   * exclusion and is not part of the plan payload.
    */
-  apply(input: MutationsApplyInput, options?: OperationCancellation): Promise<PlanReceipt>;
+  apply(input: MutationsApplyInput, options?: OperationCancellation & { addToHistory?: boolean }): Promise<PlanReceipt>;
 }
 export interface RangesApi {
   resolve(input: ResolveRangeInput): ResolveRangeOutput;
@@ -4198,9 +4198,13 @@ export function createDocumentApi(adapters: DocumentApiAdapters): DocumentApi {
         rejectMutationPlanAuthorOptions(options[0]);
         return adapters.mutations.preview(captureMutationPlanAuthor(input));
       },
-      apply(input: MutationsApplyInput, options?: OperationCancellation): Promise<PlanReceipt> {
+      apply(
+        input: MutationsApplyInput,
+        options?: OperationCancellation & { addToHistory?: boolean },
+      ): Promise<PlanReceipt> {
         rejectMutationPlanAuthorOptions(options);
         assertOperationCanStart(options);
+        validateContentWriteHistoryOptions('mutations.apply', input, options);
         return adapters.mutations.apply(captureMutationPlanAuthor(input));
       },
     },

@@ -36,7 +36,7 @@ Check `doc.capabilities().planEngine.supportedStepOps` before constructing plans
 
 ## Attribute a tracked text plan
 
-Put one display author in the plan input. The same input works with `mutations.preview`, `mutations.apply`, typed `invoke`, and the Node SDK. The second argument to `mutations.apply` remains host cancellation options; an `author` there is rejected.
+Put one display author in the plan input. The same input works with `mutations.preview`, `mutations.apply`, typed `invoke`, and the Node SDK. Pass cancellation or history exclusion options in the second argument to `mutations.apply`; an `author` there is rejected.
 
 ```ts
 const matches = await doc.query.match({
@@ -235,6 +235,8 @@ A valid preview is still a snapshot. Another writer can change the document befo
 ## Apply atomically
 
 `doc.mutations.apply(plan)` commits every step together. If compilation, target resolution, an assertion, or revision validation fails, the plan does not partially apply successful steps.
+
+To keep an agent's tracked text plan out of the local user's undo history, pass `{ addToHistory: false }` as the second argument. The option is supported for plans containing tracked text insert, delete, rewrite, and assertion steps. The changes remain reviewable and are synchronized to shared-room peers.
 
 Plan validation failures reject with `name: 'DocumentApiValidationError'` and a domain `code`. When a step caused the failure, `details.stepId` identifies it; protected text can also provide `details.reason`. A single `format.apply` step that would make no change rejects with `NO_OP`, just as direct `format.apply` returns a `NO_OP` failure. The document, revision, and history remain unchanged. In a multi-step plan, no-op steps do not prevent other valid steps from committing and report `effect: 'noop'` in the receipt.
 

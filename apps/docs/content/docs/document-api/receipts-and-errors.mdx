@@ -98,6 +98,12 @@ Known V2 text-range refusals add a stable `failure.details.reason`. Use the
 public helper and types from `superdoc/ui` (also exported by
 `@superdoc/document-api`) instead of parsing the human-readable message:
 
+For `clipboard.insert` into content-locked text, the mounted V2 editor reports
+`text-range-in-sdt` in both direct and tracked mode. Direct paste returns
+`INVALID_TARGET` with `details.unsupportedReason: 'paste-target-unsupported'`
+and diagnostics; tracked paste returns `INVALID_CONTEXT`. Other V2 hosts can
+return the direct-paste diagnostic without the additional `reason`.
+
 ```ts
 import { getDocumentApiRejectionReason } from 'superdoc/ui';
 

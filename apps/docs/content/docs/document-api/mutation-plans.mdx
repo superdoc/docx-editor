@@ -236,6 +236,8 @@ A valid preview is still a snapshot. Another writer can change the document befo
 
 `doc.mutations.apply(plan)` commits every step together. If compilation, target resolution, an assertion, or revision validation fails, the plan does not partially apply successful steps.
 
+Plan validation failures reject with `name: 'DocumentApiValidationError'` and a domain `code`. When a step caused the failure, `details.stepId` identifies it; protected text can also provide `details.reason`. A single `format.apply` step that would make no change rejects with `NO_OP`, just as direct `format.apply` returns a `NO_OP` failure. The document, revision, and history remain unchanged. In a multi-step plan, no-op steps do not prevent other valid steps from committing and report `effect: 'noop'` in the receipt.
+
 The returned plan receipt includes the before/after revision, a result for every step, any tracked-change addresses, and timing metadata. Use step results for verification and diagnostics, not for inventing performance claims.
 
 <Callout variant='success' title='Verification target'>

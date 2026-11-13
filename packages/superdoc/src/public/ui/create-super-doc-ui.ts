@@ -3671,7 +3671,8 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
         const entry = readListApplyStateEntry();
         const shippedStatus = typeof entry?.shippedStatus === 'string' ? entry.shippedStatus : null;
         const supported = shippedStatus !== 'not-shipped' && shippedStatus !== 'disabled';
-        const enabled = supported && (typeof entry?.enabled === 'boolean' ? entry.enabled : true);
+        const missingTarget = hostMethod(doc?.selection, 'current') != null && listSelectionScope(selection) == null;
+        const enabled = supported && !missingTarget && (typeof entry?.enabled === 'boolean' ? entry.enabled : true);
         const activeSeed = supported ? readListActiveSeed(entry) : null;
         if (readonly) {
           return normalizeCommandState(
@@ -3692,6 +3693,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
             supported,
             value: entry?.value,
             pending: listCommandIsPending(listKind, selection),
+            reason: supported && missingTarget ? SUPERDOC_UI_REASONS.selectionRequired : undefined,
           },
           'builtin',
         );

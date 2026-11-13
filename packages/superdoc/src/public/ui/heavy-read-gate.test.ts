@@ -51,6 +51,7 @@ function setup(over: Partial<HeavyReadGateDeps> = {}) {
       entries.set(key, entry);
     }),
     scheduleAsyncRefresh: vi.fn(),
+    shouldRefreshActiveContentControls: () => false,
     recompute: vi.fn(),
     foregroundMutationActive: () => foregroundActive,
     scheduleForegroundAsyncRetry: vi.fn(),

@@ -35,6 +35,7 @@ export interface ContentControlsHandleDeps {
     directory: Subscribable<ContentControlsSlice>,
   ) => SnapshotSubscribable<ContentControlsSlice>;
   directoryLeaseHeld: () => boolean;
+  acquireActivePath: () => () => void;
   demandCatalog: () => void;
   isDisposed: () => boolean;
   currentEditor: () => LooseRecord | null;
@@ -216,7 +217,17 @@ export function createContentControlsHandle(deps: ContentControlsHandleDeps): Co
     getSnapshot: directory.getSnapshot,
     subscribe: directory.subscribe,
     observe: directory.observe,
-    observeActivePath: activePathWithoutLease.observe,
+    observeActivePath: (listener) => {
+      const release = deps.acquireActivePath();
+      const unsubscribe = activePathWithoutLease.observe(listener);
+      let released = false;
+      return () => {
+        if (released) return;
+        released = true;
+        unsubscribe();
+        release();
+      };
+    },
     onClick: (listener) => {
       if (deps.isDisposed()) return () => {};
       clickListeners.add(listener);

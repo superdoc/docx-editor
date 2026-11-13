@@ -35,6 +35,7 @@ export interface HeavyReadGateDeps {
   readAsyncEntry: (key: string) => AsyncReadEntry | undefined;
   replaceAsyncEntry: (key: string, entry: AsyncReadEntry) => void;
   scheduleAsyncRefresh: () => void;
+  shouldRefreshActiveContentControls: () => boolean;
   recompute: () => void;
   foregroundMutationActive: () => boolean;
   scheduleForegroundAsyncRetry: (delayMs: number) => void;
@@ -166,8 +167,11 @@ export function createHeavyReadGate(deps: HeavyReadGateDeps): HeavyReadGate {
   };
 
   const noteSourceComplete = (): void => {
-    sourceCompletionObservedToken = deps.contentToken();
+    const token = deps.contentToken();
+    const firstObservation = sourceCompletionObservedToken !== token;
+    sourceCompletionObservedToken = token;
     refreshIncompleteTrackChangesDirectories();
+    if (firstObservation && deps.shouldRefreshActiveContentControls()) deps.scheduleAsyncRefresh();
   };
 
   const retrySourcePhaseWithoutSubscription = (): void => {

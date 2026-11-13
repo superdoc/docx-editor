@@ -113,6 +113,63 @@ describe('viewport.entityAt / trackChanges.getAt — point hit-testing', () => {
     ui.destroy();
   });
 
+  it('reports painted nested block ancestry in order with the correct story and no duplicates', () => {
+    const run = document.createElement('span');
+    run.setAttribute('data-story-key', 'fn:fn-1');
+    run.setAttribute('data-sdt-type', 'structuredContent');
+    run.setAttribute('data-sdt-id', '1');
+    run.setAttribute(
+      'data-sdt-ancestry',
+      JSON.stringify([
+        { id: '3', tag: 'inner', type: 'text' },
+        { id: '2', tag: 'middle', type: 'text' },
+        { id: '1', tag: 'outer', type: 'text' },
+      ]),
+    );
+    const wrapper = document.createElement('div');
+    wrapper.setAttribute('data-layout-story', 'body');
+    wrapper.setAttribute('data-sdt-type', 'structuredContent');
+    wrapper.setAttribute('data-sdt-id', '1');
+    wrapper.appendChild(run);
+    const { superdoc } = makeHitStub(wrapper, []);
+    const ui = createSuperDocUI({ superdoc });
+    withElementFromPoint(run, () => {
+      const story = { kind: 'story', storyType: 'footnote', noteId: 'fn-1' };
+      const expected = [
+        { type: 'contentControl', id: '3', scope: 'block', tag: 'inner', story },
+        { type: 'contentControl', id: '2', scope: 'block', tag: 'middle', story },
+        { type: 'contentControl', id: '1', scope: 'block', tag: 'outer', story },
+      ];
+      expect(ui.viewport.entityAt({ x: 10, y: 20 })).toEqual(expected);
+      expect(ui.viewport.contextAt({ x: 10, y: 20 }).entities).toEqual(expected);
+    });
+    ui.destroy();
+  });
+
+  it('does not attribute the outer control label to a nested control', () => {
+    const wrapper = document.createElement('div');
+    wrapper.setAttribute('data-sdt-type', 'structuredContent');
+    wrapper.setAttribute('data-sdt-id', '1');
+    wrapper.setAttribute('data-sdt-scope', 'block');
+    const label = document.createElement('div');
+    wrapper.appendChild(label);
+    const line = document.createElement('div');
+    line.setAttribute(
+      'data-sdt-ancestry',
+      JSON.stringify([
+        { id: '2', type: 'text' },
+        { id: '1', type: 'text' },
+      ]),
+    );
+    wrapper.appendChild(line);
+    const { superdoc } = makeHitStub(wrapper, []);
+    const ui = createSuperDocUI({ superdoc });
+    withElementFromPoint(label, () => {
+      expect(ui.viewport.entityAt({ x: 10, y: 20 })).toEqual([{ type: 'contentControl', id: '1', scope: 'block' }]);
+    });
+    ui.destroy();
+  });
+
   it('uses a child run story key when the enclosing control is in a note band', () => {
     const control = document.createElement('span');
     control.setAttribute('data-sdt-type', 'structuredContent');

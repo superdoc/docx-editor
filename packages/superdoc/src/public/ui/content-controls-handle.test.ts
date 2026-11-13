@@ -92,6 +92,7 @@ function setup(items: ContentControlInfo[] = [control('cc-1')], catalog: unknown
       return snapshotHandle(passive);
     },
     directoryLeaseHeld: () => env.leaseHeld,
+    acquireActivePath: vi.fn(() => vi.fn()),
     demandCatalog: vi.fn(),
     isDisposed: () => env.disposed,
     currentEditor: () => env.editor,
@@ -109,6 +110,15 @@ function setup(items: ContentControlInfo[] = [control('cc-1')], catalog: unknown
 }
 
 describe('content-controls handle', () => {
+  it('releases an active-path subscription only once', () => {
+    const { handle, deps } = setup();
+    const stop = handle.observeActivePath(() => {});
+    const release = deps.acquireActivePath.mock.results[0]?.value;
+    stop();
+    stop();
+    expect(release).toHaveBeenCalledTimes(1);
+  });
+
   it('renews catalog demand from the directory selector only while a lease is held', () => {
     const { deps, env, leased } = setup();
     leased[0]?.get();

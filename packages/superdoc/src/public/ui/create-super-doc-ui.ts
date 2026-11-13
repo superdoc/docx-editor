@@ -1277,6 +1277,10 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
   const FOREGROUND_ASYNC_RETRY_MS = 120;
   const COLD_ASYNC_READ_START_DELAY_MS = 180;
 
+  let activeContentControlObservers = 0;
+  const activeContentControlsObserved = (): boolean =>
+    directoryLeaseCounts.contentControls > 0 || activeContentControlObservers > 0;
+
   const heavyReadGate = createHeavyReadGate({
     isDisposed: () => disposed,
     currentHost: getHost,
@@ -1286,6 +1290,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       asyncReads.set(key, entry);
     },
     scheduleAsyncRefresh,
+    shouldRefreshActiveContentControls: activeContentControlsObserved,
     recompute: () => recompute(),
     foregroundMutationActive: () => foregroundMutationActive(),
     scheduleForegroundAsyncRetry: (delayMs) => scheduleForegroundAsyncRetry(delayMs),
@@ -1294,6 +1299,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     directoryLeaseCounts,
     incompleteTrackChangesDirectoryReadTokens,
     holdsHeavyRead,
+    hostSourceLoadPhase,
     typingIsRecent,
     demandHeavyDocRead,
     acquireDirectoryLease,
@@ -1546,6 +1552,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     normalize: (raw: unknown) => T | null,
     immediate = false,
     gateToken = token,
+    allowHeavyRead = false,
   ): { value: T | null; status: SliceStatus } => {
     const serve = (
       entry: AsyncReadEntry | null | undefined,
@@ -1558,7 +1565,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       scheduleForegroundAsyncRetry(HEAVY_READ_IDLE_POLL_MS);
       return serve(entry, 'stale');
     }
-    if (!immediate && holdsHeavyRead(key, gateToken)) return serve(entry, 'stale');
+    if (!immediate && !allowHeavyRead && holdsHeavyRead(key, gateToken)) return serve(entry, 'stale');
     if (!immediate && foregroundMutationActive()) {
       scheduleForegroundAsyncRetry();
       return serve(entry, 'stale');
@@ -1568,7 +1575,8 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       return serve(entry, 'stale');
     }
     if (!entry && key.startsWith('effInline:') && shouldDeferEffectiveInlineRead(key)) return serve(entry, 'pending');
-    if (!immediate && !entry && shouldDeferColdAsyncRead(key, gateToken)) return serve(entry, 'pending');
+    if (!immediate && !allowHeavyRead && !entry && shouldDeferColdAsyncRead(key, gateToken))
+      return serve(entry, 'pending');
     if (!entry || entry.inflightToken !== token) {
       const completed = issueAsyncRead(key, token, run, normalize);
       if (completed) return serve(completed, 'ready');
@@ -2440,6 +2448,9 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       () => listInRange(range),
       (raw) =>
         raw && Array.isArray((raw as LooseRecord).items) ? ((raw as LooseRecord).items as ContentControlInfo[]) : [],
+      false,
+      contentToken(),
+      activeContentControlsObserved() && hostSourceLoadPhase() !== 'loading',
     );
     const rows = value ?? [];
     const lockModesById = new Map<string, string>();
@@ -10514,6 +10525,13 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     snapshotHandle,
     leasedDirectorySnapshot: (passive, directory) => directorySnapshotHandle(passive, directory, 'contentControls'),
     directoryLeaseHeld: () => directoryLeaseCounts.contentControls > 0,
+    acquireActivePath: () => {
+      activeContentControlObservers += 1;
+      scheduleAsyncRefresh();
+      return () => {
+        activeContentControlObservers -= 1;
+      };
+    },
     demandCatalog: () => demandHeavyDocRead('contentControls'),
     isDisposed: () => disposed,
     currentEditor: getEditor,

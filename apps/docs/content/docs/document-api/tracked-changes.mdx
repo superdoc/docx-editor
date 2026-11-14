@@ -35,6 +35,16 @@ if (!receipt.success) {
 
 The replacement remains open for review. Saving the DOCX preserves that review state until a person or programmatic workflow accepts or rejects it.
 
+### Hyperlinks inside a pending insertion
+
+Tracked `hyperlinks.insert` and `hyperlinks.wrap` join an existing insertion when its author matches the caller. This also applies after reopening a document, to an insertion from another peer, and to an imported insertion. The link and its text stay in the original suggestion: accepting keeps them, and rejecting removes them. A tracked hyperlink inside another author's insertion is refused; a direct edit can instead split the insertion around the link.
+
+For authoring, SuperDoc compares email addresses when both are present, ignoring case and surrounding whitespace. A conflicting email is never overridden by a matching name. When the insertion has no email, a matching name is used instead, ignoring case and repeated whitespace; this supports Word documents that record only a name. If the insertion has an email but the caller does not, the match cannot be established. Empty or unknown authors do not match. This is the same authoring rule used for tracked typing inside an insertion and lets an agent refine its suggestion across sessions.
+
+Author names and emails in documents and session configuration are unverified attribution. They can be copied or spoofed, so matching authorship is not authentication or permission to edit. Integrations must authenticate callers and enforce their own access controls. Review permissions are separate: an application's permission resolver can distinguish own and other revisions using its stricter identity classification, which does not use name fallback when the current user has an email and the imported revision does not. Some structural operations also require proof that the current session created the revision, because they rewrite more than hyperlink content.
+
+Undo history belongs to each editing session. Sharing author attribution does not give a session ownership of another session's history.
+
 ### Attribute one tracked edit
 
 Use `author: { name }` and an optional `date` to attribute one tracked insert, delete, replace, inline format, or list edit without changing the session user. Inserts and replacements can be plain text, HTML, Markdown, or a structured fragment:

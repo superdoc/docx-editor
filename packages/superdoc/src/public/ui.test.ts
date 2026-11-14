@@ -15665,6 +15665,450 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
     ui.destroy();
   });
 
+  const presentationCaretSelectionInfo = (blockId: string, offset: number, captureState?: string) => {
+    const selection = caretSelectionInfo(blockId, offset);
+    return {
+      ...selection,
+      target: {
+        kind: 'text',
+        segments: [{ blockId, range: { start: offset, end: offset } }],
+        ...(captureState === undefined ? {} : { captureState }),
+      },
+      selectionTarget: {
+        ...selection.selectionTarget,
+        ...(captureState === undefined ? {} : { captureState }),
+      },
+    };
+  };
+
+  it('never publishes blank caret fonts when only presentation targets have capture metadata (SD-7955)', () => {
+    let selection = presentationCaretSelectionInfo('P1', 1, 'revision-1');
+    let publishSelection = () => {};
+    const readPresentation = vi.fn(() => ({
+      selection: presentationCaretSelectionInfo('P1', selection.selectionTarget.start.offset, 'revision-1'),
+      inlineStyle: { fontFamily: 'Arial', fontSize: '10' },
+    }));
+    const host = storeCapableHost({
+      getForegroundMutationState: () => ({ active: 0, pending: 0 }),
+      readLiveSelectionSyncSnapshot: () => selection,
+      readMountedProjectionBlocksByIds: () => null,
+      getHandles: () => ({
+        editing: {
+          selection: {
+            subscribe: (listener: () => void) => {
+              publishSelection = listener;
+              return () => {};
+            },
+          },
+        },
+      }),
+    });
+    const superdoc = makeBlockSuperdoc(
+      {
+        selection: { current: () => selection, readPresentation },
+        format: { fontFamily: vi.fn(), fontSize: vi.fn() },
+      },
+      { selectionInfo: null, editorExtra: { host } },
+    );
+    const ui = createSuperDocUI({ superdoc });
+    publishSelection();
+    const publishedFonts: unknown[][] = [];
+    const stop = ui.toolbar.observe((snapshot) => {
+      publishedFonts.push([snapshot.commands['font-family']?.value, snapshot.commands['font-size']?.value]);
+    });
+    try {
+      expect(publishedFonts).toEqual([['Arial', '10']]);
+      for (const offset of [2, 3, 4, 5]) {
+        selection = presentationCaretSelectionInfo('P1', offset);
+        publishSelection();
+        expect(ui.selection.getSnapshot()).toMatchObject({
+          status: 'ready',
+          empty: true,
+          target: selection.target,
+          selectionTarget: selection.selectionTarget,
+        });
+        expect(ui.commands.get('font-family').getState().value).toBe('Arial');
+        expect(ui.commands.get('font-size').getState().value).toBe('10');
+      }
+      expect(readPresentation).toHaveBeenCalled();
+      expect(publishedFonts.every(([family, size]) => family === 'Arial' && size === '10')).toBe(true);
+      expect(selection.target).not.toHaveProperty('captureState');
+      expect(selection.selectionTarget).not.toHaveProperty('captureState');
+      expect(readPresentation().selection.target.captureState).toBe('revision-1');
+      expect(readPresentation().selection.selectionTarget.captureState).toBe('revision-1');
+    } finally {
+      stop();
+      ui.destroy();
+    }
+  });
+
+  it('publishes changed and unavailable presentation fonts at a new offset in the same block (SD-7955)', () => {
+    let selection = presentationCaretSelectionInfo('P1', 1, 'revision-1');
+    let inlineStyle: { fontFamily?: string; fontSize?: string } = { fontFamily: 'Arial', fontSize: '10' };
+    let publishSelection = () => {};
+    const host = storeCapableHost({
+      getForegroundMutationState: () => ({ active: 0, pending: 0 }),
+      readLiveSelectionSyncSnapshot: () => selection,
+      readMountedProjectionBlocksByIds: () => null,
+      getHandles: () => ({
+        editing: {
+          selection: {
+            subscribe: (listener: () => void) => {
+              publishSelection = listener;
+              return () => {};
+            },
+          },
+        },
+      }),
+    });
+    const superdoc = makeBlockSuperdoc(
+      {
+        selection: {
+          current: () => selection,
+          readPresentation: () => ({
+            selection: presentationCaretSelectionInfo('P1', selection.selectionTarget.start.offset, 'revision-1'),
+            inlineStyle,
+          }),
+        },
+        format: { fontFamily: vi.fn(), fontSize: vi.fn() },
+      },
+      { selectionInfo: null, editorExtra: { host } },
+    );
+    const ui = createSuperDocUI({ superdoc });
+    publishSelection();
+    const publishedFonts: unknown[][] = [];
+    const stop = ui.toolbar.observe((snapshot) => {
+      publishedFonts.push([snapshot.commands['font-family']?.value, snapshot.commands['font-size']?.value]);
+    });
+    try {
+      selection = presentationCaretSelectionInfo('P1', 2);
+      inlineStyle = { fontFamily: 'Cambria', fontSize: '15' };
+      publishSelection();
+      expect(ui.selection.getSnapshot().selectionTarget).toEqual(selection.selectionTarget);
+      expect(ui.commands.get('font-family').getState().value).toBe('Cambria');
+      expect(ui.commands.get('font-size').getState().value).toBe('15');
+
+      selection = presentationCaretSelectionInfo('P1', 3);
+      inlineStyle = {};
+      publishSelection();
+      expect(ui.selection.getSnapshot().selectionTarget).toEqual(selection.selectionTarget);
+      expect(ui.commands.get('font-family').getState().value).toBeUndefined();
+      expect(ui.commands.get('font-size').getState().value).toBeUndefined();
+      expect(publishedFonts).toEqual([
+        ['Arial', '10'],
+        ['Cambria', '15'],
+        [undefined, undefined],
+      ]);
+    } finally {
+      stop();
+      ui.destroy();
+    }
+  });
+
+  it('matches an uncaptured presentation without altering captured mutation targets (SD-7955)', () => {
+    const selection = presentationCaretSelectionInfo('P1', 2, 'revision-1');
+    const presentedSelection = presentationCaretSelectionInfo('P1', 2);
+    Object.freeze(selection.target);
+    Object.freeze(selection.selectionTarget);
+    Object.freeze(presentedSelection.target);
+    Object.freeze(presentedSelection.selectionTarget);
+    let publishSelection = () => {};
+    const host = storeCapableHost({
+      getForegroundMutationState: () => ({ active: 0, pending: 0 }),
+      readLiveSelectionSyncSnapshot: () => selection,
+      readMountedProjectionBlocksByIds: () => null,
+      getHandles: () => ({
+        editing: {
+          selection: {
+            subscribe: (listener: () => void) => {
+              publishSelection = listener;
+              return () => {};
+            },
+          },
+        },
+      }),
+    });
+    const superdoc = makeBlockSuperdoc(
+      {
+        selection: {
+          current: () => selection,
+          readPresentation: () => ({
+            selection: presentedSelection,
+            inlineStyle: { fontFamily: 'Arial', fontSize: '10' },
+          }),
+        },
+        format: { fontFamily: vi.fn(), fontSize: vi.fn() },
+      },
+      { selectionInfo: null, editorExtra: { host } },
+    );
+    const ui = createSuperDocUI({ superdoc });
+    try {
+      publishSelection();
+      expect(ui.commands.get('font-family').getState().value).toBe('Arial');
+      expect(ui.commands.get('font-size').getState().value).toBe('10');
+      expect(ui.selection.getSnapshot().target).toBe(selection.target);
+      expect(ui.selection.getSnapshot().selectionTarget).toBe(selection.selectionTarget);
+      expect(selection.target.captureState).toBe('revision-1');
+      expect(selection.selectionTarget.captureState).toBe('revision-1');
+      expect(presentedSelection.target).not.toHaveProperty('captureState');
+      expect(presentedSelection.selectionTarget).not.toHaveProperty('captureState');
+    } finally {
+      ui.destroy();
+    }
+  });
+
+  it.each([
+    {
+      name: 'capture metadata on only the text target',
+      selection: presentationCaretSelectionInfo('P1', 1),
+      presentedSelection: {
+        ...presentationCaretSelectionInfo('P1', 1),
+        target: presentationCaretSelectionInfo('P1', 1, 'revision-1').target,
+      },
+      matches: true,
+    },
+    {
+      name: 'capture metadata on only the selection target',
+      selection: presentationCaretSelectionInfo('P1', 1),
+      presentedSelection: {
+        ...presentationCaretSelectionInfo('P1', 1),
+        selectionTarget: presentationCaretSelectionInfo('P1', 1, 'revision-1').selectionTarget,
+      },
+      matches: true,
+    },
+    {
+      name: 'identical captured targets',
+      selection: presentationCaretSelectionInfo('P1', 1, 'revision-1'),
+      presentedSelection: presentationCaretSelectionInfo('P1', 1, 'revision-1'),
+      matches: true,
+    },
+    {
+      name: 'a different text-target offset',
+      selection: presentationCaretSelectionInfo('P1', 1),
+      presentedSelection: {
+        ...presentationCaretSelectionInfo('P1', 1, 'revision-1'),
+        target: presentationCaretSelectionInfo('P1', 2, 'revision-1').target,
+      },
+      matches: false,
+    },
+    {
+      name: 'a different selection-target offset',
+      selection: presentationCaretSelectionInfo('P1', 1),
+      presentedSelection: {
+        ...presentationCaretSelectionInfo('P1', 1, 'revision-1'),
+        selectionTarget: presentationCaretSelectionInfo('P1', 2, 'revision-1').selectionTarget,
+      },
+      matches: false,
+    },
+    {
+      name: 'a different text-target block',
+      selection: presentationCaretSelectionInfo('P1', 1),
+      presentedSelection: {
+        ...presentationCaretSelectionInfo('P1', 1, 'revision-1'),
+        target: presentationCaretSelectionInfo('P2', 1, 'revision-1').target,
+      },
+      matches: false,
+    },
+    {
+      name: 'a different selection-target block',
+      selection: presentationCaretSelectionInfo('P1', 1),
+      presentedSelection: {
+        ...presentationCaretSelectionInfo('P1', 1, 'revision-1'),
+        selectionTarget: presentationCaretSelectionInfo('P2', 1, 'revision-1').selectionTarget,
+      },
+      matches: false,
+    },
+    {
+      name: 'a different text-target story',
+      selection: presentationCaretSelectionInfo('P1', 1),
+      presentedSelection: {
+        ...presentationCaretSelectionInfo('P1', 1, 'revision-1'),
+        target: {
+          ...presentationCaretSelectionInfo('P1', 1, 'revision-1').target,
+          story: { kind: 'story', storyType: 'footnote', noteId: 'note-1' },
+        },
+      },
+      matches: false,
+    },
+    {
+      name: 'a different selection-target story',
+      selection: presentationCaretSelectionInfo('P1', 1),
+      presentedSelection: {
+        ...presentationCaretSelectionInfo('P1', 1, 'revision-1'),
+        selectionTarget: {
+          ...presentationCaretSelectionInfo('P1', 1, 'revision-1').selectionTarget,
+          story: { kind: 'story', storyType: 'footnote', noteId: 'note-1' },
+        },
+      },
+      matches: false,
+    },
+    {
+      name: 'a different endpoint story',
+      selection: presentationCaretSelectionInfo('P1', 1),
+      presentedSelection: {
+        ...presentationCaretSelectionInfo('P1', 1, 'revision-1'),
+        selectionTarget: {
+          ...presentationCaretSelectionInfo('P1', 1, 'revision-1').selectionTarget,
+          start: {
+            ...presentationCaretSelectionInfo('P1', 1).selectionTarget.start,
+            story: { kind: 'story', storyType: 'footnote', noteId: 'note-1' },
+          },
+        },
+      },
+      matches: false,
+    },
+    {
+      name: 'a different text-target coordinate space',
+      selection: presentationCaretSelectionInfo('P1', 1),
+      presentedSelection: {
+        ...presentationCaretSelectionInfo('P1', 1, 'revision-1'),
+        target: { ...presentationCaretSelectionInfo('P1', 1, 'revision-1').target, coordinateSpace: 'tracked' },
+      },
+      matches: false,
+    },
+    {
+      name: 'a different selection-target coordinate space',
+      selection: presentationCaretSelectionInfo('P1', 1),
+      presentedSelection: {
+        ...presentationCaretSelectionInfo('P1', 1, 'revision-1'),
+        selectionTarget: {
+          ...presentationCaretSelectionInfo('P1', 1, 'revision-1').selectionTarget,
+          coordinateSpace: 'tracked',
+        },
+      },
+      matches: false,
+    },
+    {
+      name: 'an additional segment',
+      selection: presentationCaretSelectionInfo('P1', 1),
+      presentedSelection: {
+        ...presentationCaretSelectionInfo('P1', 1, 'revision-1'),
+        target: {
+          ...presentationCaretSelectionInfo('P1', 1, 'revision-1').target,
+          segments: [
+            { blockId: 'P1', range: { start: 1, end: 1 } },
+            { blockId: 'P2', range: { start: 0, end: 0 } },
+          ],
+        },
+      },
+      matches: false,
+    },
+    {
+      name: 'nested capture metadata',
+      selection: presentationCaretSelectionInfo('P1', 1),
+      presentedSelection: {
+        ...presentationCaretSelectionInfo('P1', 1, 'revision-1'),
+        target: {
+          ...presentationCaretSelectionInfo('P1', 1, 'revision-1').target,
+          segments: [{ blockId: 'P1', range: { start: 1, end: 1 }, captureState: 'nested-revision' }],
+        },
+      },
+      matches: false,
+    },
+    {
+      name: 'a different target kind',
+      selection: presentationCaretSelectionInfo('P1', 1),
+      presentedSelection: {
+        ...presentationCaretSelectionInfo('P1', 1, 'revision-1'),
+        target: { ...caretSelectionInfo('P1', 1).target, captureState: 'revision-1' },
+      },
+      matches: false,
+    },
+    {
+      name: 'conflicting text-target capture revisions despite a missing selection-target capture',
+      selection: {
+        ...presentationCaretSelectionInfo('P1', 1),
+        target: presentationCaretSelectionInfo('P1', 1, 'revision-1').target,
+      },
+      presentedSelection: presentationCaretSelectionInfo('P1', 1, 'revision-2'),
+      matches: false,
+    },
+    {
+      name: 'conflicting selection-target capture revisions despite a missing text-target capture',
+      selection: {
+        ...presentationCaretSelectionInfo('P1', 1),
+        selectionTarget: presentationCaretSelectionInfo('P1', 1, 'revision-1').selectionTarget,
+      },
+      presentedSelection: presentationCaretSelectionInfo('P1', 1, 'revision-2'),
+      matches: false,
+    },
+    {
+      name: 'a mixed range selection',
+      selection: SELECTION_INFO,
+      presentedSelection: {
+        ...SELECTION_INFO,
+        target: { ...SELECTION_INFO.target, captureState: 'revision-1' },
+        selectionTarget: { ...SELECTION_INFO.selectionTarget, captureState: 'revision-1' },
+      },
+      matches: false,
+    },
+    {
+      name: 'a noncollapsed selection',
+      selection: { ...presentationCaretSelectionInfo('P1', 1), empty: false },
+      presentedSelection: { ...presentationCaretSelectionInfo('P1', 1, 'revision-1'), empty: false },
+      matches: false,
+    },
+    {
+      name: 'a noncollapsed presentation',
+      selection: presentationCaretSelectionInfo('P1', 1),
+      presentedSelection: { ...presentationCaretSelectionInfo('P1', 1, 'revision-1'), empty: false },
+      matches: false,
+    },
+    {
+      name: 'a table selection',
+      selection: { ...presentationCaretSelectionInfo('P1', 1), tableSelection: { kind: 'cell', tableNodeId: 'T1' } },
+      presentedSelection: presentationCaretSelectionInfo('P1', 1, 'revision-1'),
+      matches: false,
+    },
+    {
+      name: 'a table presentation',
+      selection: presentationCaretSelectionInfo('P1', 1),
+      presentedSelection: {
+        ...presentationCaretSelectionInfo('P1', 1, 'revision-1'),
+        tableSelection: { kind: 'cell', tableNodeId: 'T1' },
+      },
+      matches: false,
+    },
+  ])('keeps presentation capture matching scoped to $name (SD-7955)', ({ selection, presentedSelection, matches }) => {
+    let publishSelection = () => {};
+    const host = storeCapableHost({
+      getForegroundMutationState: () => ({ active: 0, pending: 0 }),
+      readLiveSelectionSyncSnapshot: () => selection,
+      readMountedProjectionBlocksByIds: () => null,
+      getHandles: () => ({
+        editing: {
+          selection: {
+            subscribe: (listener: () => void) => {
+              publishSelection = listener;
+              return () => {};
+            },
+          },
+        },
+      }),
+    });
+    const superdoc = makeBlockSuperdoc(
+      {
+        selection: {
+          current: () => selection,
+          readPresentation: () => ({
+            selection: presentedSelection,
+            inlineStyle: { fontFamily: 'Arial', fontSize: '10' },
+          }),
+        },
+        format: { fontFamily: vi.fn(), fontSize: vi.fn() },
+      },
+      { selectionInfo: null, editorExtra: { host } },
+    );
+    const ui = createSuperDocUI({ superdoc });
+    try {
+      publishSelection();
+      expect(ui.commands.get('font-family').getState().value).toBe(matches ? 'Arial' : undefined);
+      expect(ui.commands.get('font-size').getState().value).toBe(matches ? '10' : undefined);
+    } finally {
+      ui.destroy();
+    }
+  });
+
   it('keeps the displayed caret font while its next worker input is awaiting presentation (SD-4464)', () => {
     let selection = caretSelectionInfo('P1', 1);
     let foreground = { active: 0, pending: 0 };

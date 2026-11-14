@@ -2721,7 +2721,30 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
   const appliedSelectionPresentation = (selection: SelectionSlice): LooseRecord | null => {
     const value = readSelectionPresentation();
     const info = normalizeSelectionInfo(value?.selection);
-    return value && info && selectionSignature(selectionSliceFromInfo(info, 'ready')) === selectionSignature(selection)
+    if (!value || !info) return null;
+    const applied = selectionSliceFromInfo(info, 'ready');
+    if (selectionSignature(applied) === selectionSignature(selection)) return value;
+    if (
+      !selection.empty ||
+      !applied.empty ||
+      selection.tableSelection ||
+      applied.tableSelection ||
+      !collapsedTextAddressFromSelection(selection) ||
+      !collapsedTextAddressFromSelection(applied)
+    ) {
+      return null;
+    }
+    const matchesPresentationTarget = (liveTarget: unknown, appliedTarget: unknown): boolean => {
+      if (!isPlainObject(liveTarget) || !isPlainObject(appliedTarget)) return liveTarget === appliedTarget;
+      const { captureState: liveCapture, ...liveAddress } = liveTarget;
+      const { captureState: appliedCapture, ...appliedAddress } = appliedTarget;
+      if (liveCapture !== undefined && appliedCapture !== undefined) {
+        return JSON.stringify(liveTarget) === JSON.stringify(appliedTarget);
+      }
+      return JSON.stringify(liveAddress) === JSON.stringify(appliedAddress);
+    };
+    return matchesPresentationTarget(selection.target, applied.target) &&
+      matchesPresentationTarget(selection.selectionTarget, applied.selectionTarget)
       ? value
       : null;
   };

@@ -16,6 +16,7 @@ export const TOOLBAR_ITEM_ALIASES = Object.freeze({
   'line-height': 'lineHeight',
   'linked-style': 'linkedStyles',
   'measurement-unit': 'measurementUnit',
+  'comments-layout': 'commentsLayout',
   'formatting-marks': 'formattingMarks',
   'copy-format': 'copyFormat',
   'clear-formatting': 'clearFormatting',

@@ -6,6 +6,7 @@ export const HOST_EVENTS = [
   'editorCreate',
   'active-editor-change',
   'document-mode-change',
+  'comments-layout-change',
   'formatting-marks-change',
   'zoomChange',
   'measurement-unit-change',

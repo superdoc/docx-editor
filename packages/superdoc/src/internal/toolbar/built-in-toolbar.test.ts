@@ -130,6 +130,66 @@ async function waitForElement<T extends Element>(
 }
 
 describe('BuiltInToolbar', () => {
+  it('keeps the default toolbar out of the document-wide comments directory', async () => {
+    const list = vi.fn(() => ({ items: [] }));
+    const host = makeHost({
+      activeEditor: {
+        id: 'editor-1',
+        editorVersion: 2,
+        doc: makeCommandDoc({ comments: { list } }),
+        reviewWindow: {
+          getSnapshot: () => ({ status: 'ready', commentItems: [], trackedChangeItems: [] }),
+          subscribe: () => () => {},
+        },
+        host: {
+          getDocumentLoadingSnapshot: () => ({ sourceStage: 'source-complete' }),
+          subscribeDocumentLoading: () => () => {},
+          getForegroundMutationState: () => ({ active: 0, pending: 0 }),
+        },
+      },
+    });
+    const toolbar = new BuiltInToolbar({ highContrastMode: createHighContrastMode(), superdoc: host });
+    try {
+      await nextTick();
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      expect(list).not.toHaveBeenCalled();
+    } finally {
+      toolbar.destroy();
+    }
+  });
+
+  it('updates comments layout from host events and releases the listener on destroy', () => {
+    let layout = { requested: 'sidebar', effective: 'sidebar' };
+    const host = makeHost({ getCommentsLayout: () => layout, uiConfig: { comments: { enabled: true } } });
+    const emit = host.emit;
+    if (typeof emit !== 'function') throw new Error('Host events are unavailable');
+    const toolbar = new BuiltInToolbar({
+      highContrastMode: createHighContrastMode(),
+      superdoc: host,
+      showCommentsLayoutButton: true,
+    });
+    const item = toolbar.getToolbarItemByName('commentsLayout');
+    if (!item) throw new Error('Comments layout control is unavailable');
+    const update = vi.spyOn(toolbar, 'updateToolbarState');
+    try {
+      expect(item.selectedValue.value).toBe('sidebar');
+      layout = { requested: 'inline', effective: 'inline' };
+      emit('comments-layout-change');
+      expect(item.selectedValue.value).toBe('inline');
+      layout = { requested: 'auto', effective: 'sidebar' };
+      emit('comments-layout-change');
+      expect(item.label.value).toBe('Auto (Sidebar)');
+      layout = { requested: 'auto', effective: 'inline' };
+      emit('comments-layout-change');
+      expect(item.label.value).toBe('Auto (Inline)');
+    } finally {
+      toolbar.destroy();
+    }
+    update.mockClear();
+    emit('comments-layout-change');
+    expect(update).not.toHaveBeenCalled();
+  });
+
   it('assigns a distinct render identity to every default toolbar slot', () => {
     const toolbar = new BuiltInToolbar({
       highContrastMode: createHighContrastMode(),

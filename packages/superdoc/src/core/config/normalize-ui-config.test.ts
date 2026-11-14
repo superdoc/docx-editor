@@ -9,6 +9,23 @@ import { describe, expect, it } from 'vite-plus/test';
 import { BUILT_IN_SURFACES, normalizeUiConfig } from './normalize-ui-config.js';
 
 describe('normalizeUiConfig', () => {
+  it('normalizes comments layout control placement and labels', () => {
+    const options = normalizeUiConfig({
+      ui: {
+        toolbar: {
+          items: { right: ['comments-layout'] },
+          includeItems: ['comments-layout'],
+          strings: { 'comments-layout': 'Review layout', 'comments-layout-auto': 'Automatic' },
+        },
+      },
+    }).toolbar.options;
+    expect(options.groups).toEqual({ right: ['commentsLayout'] });
+    expect(options.showCommentsLayoutButton).toBe(true);
+    expect(options.texts.commentsLayout).toBe('Review layout');
+    expect(options.texts.commentsLayoutAuto).toBe('Automatic');
+    expect(normalizeUiConfig({ ui: { toolbar: true } }).toolbar.options.showCommentsLayoutButton).toBe(false);
+  });
+
   it('normalizes opt-in Watermark composition, icon and text overrides', () => {
     const options = normalizeUiConfig({
       ui: {

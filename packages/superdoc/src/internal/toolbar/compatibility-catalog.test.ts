@@ -52,6 +52,7 @@ describe('built-in toolbar compatibility catalog', () => {
       'redo',
       'search',
       'zoom',
+      'commentsLayout',
       'ruler',
       'formattingMarks',
       'documentMode',

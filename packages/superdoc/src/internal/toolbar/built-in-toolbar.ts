@@ -110,6 +110,7 @@ type BuiltInToolbarConfig = {
   showTableOfContentsButton: boolean;
   showWatermarkButton: boolean;
   showPageNumberButton: boolean;
+  showCommentsLayoutButton: boolean;
   uiDisplayFallbackFont?: string;
 };
 
@@ -120,6 +121,7 @@ type ToolbarSuperDoc = Partial<
     | 'config'
     | 'ui'
     | 'uiConfig'
+    | 'getCommentsLayout'
     | 'fonts'
     | 'on'
     | 'off'
@@ -310,6 +312,7 @@ export class BuiltInToolbar extends EventEmitter {
     showTableOfContentsButton: false,
     showWatermarkButton: false,
     showPageNumberButton: false,
+    showCommentsLayoutButton: false,
   };
 
   toolbarItems: ToolbarItem[] = [];
@@ -333,6 +336,7 @@ export class BuiltInToolbar extends EventEmitter {
   declare snapshot: Partial<Pick<ToolbarSnapshotSlice, 'commands' | 'copyFormatActive'>> | null;
   declare _unsubscribeController: (() => void) | null;
   declare _detachFormatPainterModeChange: (() => void) | null;
+  declare _detachCommentsLayout: (() => void) | null;
   declare _customCommandRegs: Map<string, CustomCommandRegistrationResult<CustomButtonPayload>>;
   declare _reportedInvalidCustomItems: Set<string>;
   declare _lastFontOptionsSignature: string;
@@ -367,6 +371,7 @@ export class BuiltInToolbar extends EventEmitter {
     this._unsubscribeController = null;
     /** Format-painter mode subscription unsubscribe handle. */
     this._detachFormatPainterModeChange = null;
+    this._detachCommentsLayout = null;
     /** Registered custom-button command unregister handles. */
     this._customCommandRegs = new Map();
     /**
@@ -467,6 +472,10 @@ export class BuiltInToolbar extends EventEmitter {
         this.#disarmFormatPainterListeners();
       }
     });
+    const superdoc = this.superdoc;
+    const onCommentsLayoutChange = () => this.updateToolbarState();
+    superdoc?.on?.('comments-layout-change', onCommentsLayoutChange);
+    this._detachCommentsLayout = () => superdoc?.off?.('comments-layout-change', onCommentsLayoutChange);
   }
 
   #destroyController() {
@@ -474,6 +483,8 @@ export class BuiltInToolbar extends EventEmitter {
     this._unsubscribeController = null;
     this._detachFormatPainterModeChange?.();
     this._detachFormatPainterModeChange = null;
+    this._detachCommentsLayout?.();
+    this._detachCommentsLayout = null;
     this.#disarmFormatPainterListeners();
     for (const reg of this._customCommandRegs.values()) {
       try {
@@ -977,6 +988,21 @@ export class BuiltInToolbar extends EventEmitter {
 
     if (name === 'search') {
       item.setDisabled(this.superdoc?.uiConfig?.search?.enabled !== true);
+      return true;
+    }
+
+    if (name === 'commentsLayout') {
+      const layout = this.superdoc?.getCommentsLayout?.();
+      item.setDisabled(!layout || this.superdoc?.uiConfig?.comments.enabled !== true);
+      if (layout) {
+        item.selectedValue.value = layout.requested;
+        const effectiveLabel =
+          layout.effective === 'sidebar'
+            ? (nonEmptyString(this.config.texts.commentsLayoutSidebar) ?? 'Sidebar')
+            : (nonEmptyString(this.config.texts.commentsLayoutInline) ?? 'Inline');
+        const autoLabel = nonEmptyString(this.config.texts.commentsLayoutAuto) ?? 'Auto';
+        item.label.value = layout.requested === 'auto' ? `${autoLabel} (${effectiveLabel})` : effectiveLabel;
+      }
       return true;
     }
 

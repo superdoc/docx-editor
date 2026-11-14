@@ -330,6 +330,7 @@ export function useSuperDocSearch(): Readonly<ShallowRef<SearchSnapshot>> {
 /** Subscribe to the comments slice. */
 export function useSuperDocComments(): Readonly<ShallowRef<CommentsSlice>> {
   return useSuperDocSlice((ui) => ui.comments, {
+    layout: { requested: 'sidebar', effective: 'sidebar' },
     status: 'pending',
     listStatus: 'pending',
     items: [],

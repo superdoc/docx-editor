@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { createPinia, setActivePinia } from 'pinia';
 import { vClickOutside } from '@superdoc/common';
 import { flushPromises, mount } from '@vue/test-utils';
+import { h, ref } from 'vue';
 import CommentDialogSource from './CommentDialog.vue?raw';
 import CommentDialog from './CommentDialog.vue';
 import CommentsList from './commentsList/commentsList.vue';
@@ -9,6 +10,7 @@ import useComment from './use-comment.js';
 import { useCommentsStore } from '../../stores/comments-store.js';
 import { useSuperdocStore } from '../../stores/superdoc-store.js';
 import { makeV2CommentsAdapter, makeV2TrackedChangesAdapter } from '../../test-support/v2-review-adapters.js';
+import { getSuperDocUiOwnerId } from '../../core/superdoc-ui-owner.js';
 
 const DOCX_TYPE = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const COMMENT_DIALOG_SOURCE = CommentDialogSource;
@@ -69,6 +71,188 @@ describe('CommentDialog', () => {
       },
     };
   });
+
+  it.each(
+    ['edit', 'reply'].flatMap((kind) => ['success', 'rejection', 'new draft'].map((result) => ({ kind, result }))),
+  )('preserves $kind ownership after layout relocates its dialog ($result)', async ({ kind, result }) => {
+    superdocStub.activeEditor.editorVersion = 2;
+    superdocStub.activeEditor.v2Comments = {
+      documentId: 'doc-1',
+      getCapabilityState: () => ({ canWrite: true }),
+      setActiveComment: vi.fn(),
+    };
+    const root = useComment({ commentId: 'layout-root', fileId: 'doc-1', commentText: 'Original' });
+    commentsStore.commentsList = [root];
+    commentsStore.activeComment = root.commentId;
+    let settle: ((outcome: { ok: boolean }) => void) | undefined;
+    const completion = new Promise<{ ok: boolean }>((resolve) => {
+      settle = resolve;
+    });
+    const submit = vi
+      .spyOn(commentsStore, kind === 'edit' ? 'editCommentV2' : 'replyCommentV2')
+      .mockReturnValue(completion);
+    const first = mountDialog(root);
+    let relocated;
+    try {
+      if (kind === 'edit') {
+        first.findComponent({ name: 'CommentHeader' }).vm.$emit('overflow-select', 'edit');
+        await flushPromises();
+      } else await first.find('.reply-pill').trigger('click');
+      commentsStore.currentCommentText = 'Submitted during layout switch';
+      await flushPromises();
+      await first.find('button.reply-btn-primary').trigger('click');
+      expect(submit).toHaveBeenCalledTimes(1);
+      first.unmount();
+      relocated = mountDialog(root);
+      await flushPromises();
+      expect(relocated.find('.reply-expanded').exists()).toBe(true);
+      if (kind === 'reply') {
+        expect(relocated.find('button.reply-btn-primary').attributes('disabled')).toBeDefined();
+      }
+      if (result === 'new draft') commentsStore.currentCommentText = 'Newer unsaved draft';
+      settle?.({ ok: result !== 'rejection' });
+      await flushPromises();
+      expect(commentsStore.currentCommentText).toBe(
+        result === 'success' ? '' : result === 'new draft' ? 'Newer unsaved draft' : 'Submitted during layout switch',
+      );
+      expect(commentsStore.editingCommentId).toBe(result !== 'success' && kind === 'edit' ? root.commentId : null);
+      expect(relocated.find('.reply-expanded').exists()).toBe(result !== 'success');
+      if (result !== 'success')
+        expect(relocated.find('button.reply-btn-primary').attributes('disabled')).toBeUndefined();
+      if (result === 'rejection') {
+        expect(relocated.find('[role="alert"]').exists()).toBe(true);
+        submit.mockResolvedValue({ ok: true });
+        await relocated.find('button.reply-btn-primary').trigger('click');
+        await flushPromises();
+        expect(relocated.find('.reply-expanded').exists()).toBe(false);
+        expect(commentsStore.currentCommentText).toBe('');
+      }
+    } finally {
+      settle?.({ ok: true });
+      relocated?.unmount();
+      if (!relocated) first.unmount();
+    }
+  });
+
+  it.each(
+    [
+      { operation: 'reply', identity: 'thread', relocate: false },
+      { operation: 'reply', identity: 'thread', relocate: true },
+      { operation: 'reply', identity: 'file', relocate: true },
+      { operation: 'edit', identity: 'thread', relocate: true },
+      { operation: 'edit', identity: 'file', relocate: true },
+    ].flatMap((scenario) => [true, false].map((ok) => ({ ...scenario, ok }))),
+  )(
+    'SD-6028 isolates a $operation recipient $identity after relocation=$relocate success=$ok',
+    async ({ operation, identity, relocate, ok }) => {
+      superdocStub.activeEditor.editorVersion = 2;
+      superdocStub.activeEditor.v2Comments = {
+        documentId: 'doc-1',
+        getCapabilityState: () => ({ canWrite: true }),
+        setActiveComment: vi.fn(),
+      };
+      const first = useComment({ commentId: 'recipient-x', fileId: 'doc-1', commentText: 'Thread X' });
+      const second = useComment({
+        commentId: identity === 'thread' ? 'recipient-y' : first.commentId,
+        fileId: identity === 'file' ? 'doc-2' : first.fileId,
+        commentText: 'Thread Y',
+      });
+      commentsStore.commentsList = [first, second];
+      commentsStore.activeComment = first.commentId;
+      const layout = ref(relocate ? 'sidebar' : 'inline');
+      const active = ref(first);
+      const Parent = {
+        setup: () => () =>
+          h('div', [
+            layout.value === 'sidebar'
+              ? h(CommentDialog, { key: 'sidebar', comment: first, isFloatingInstanceActive: true })
+              : null,
+            layout.value === 'inline' ? h(CommentDialog, { comment: active.value }) : null,
+          ]),
+      };
+      let settle: (outcome: { ok: boolean }) => void = () => {
+        throw new Error('Pending comment mutation was not initialized');
+      };
+      const pending = new Promise<{ ok: boolean }>((resolve) => {
+        settle = resolve;
+      });
+      const submit = vi
+        .spyOn(commentsStore, operation === 'reply' ? 'replyCommentV2' : 'editCommentV2')
+        .mockReturnValueOnce(pending);
+      const wrapper = mountComments(Parent);
+      try {
+        const original = wrapper.findComponent(CommentDialog);
+        if (operation === 'reply') await original.find('.reply-pill').trigger('click');
+        else {
+          original.findComponent({ name: 'CommentHeader' }).vm.$emit('overflow-select', 'edit');
+          await flushPromises();
+        }
+        commentsStore.currentCommentText = 'Pending reply from X';
+        await flushPromises();
+        await original.find('button.reply-btn-primary').trigger('click');
+        expect(submit).toHaveBeenCalledTimes(1);
+        if (relocate) {
+          layout.value = 'inline';
+          await flushPromises();
+          expect(wrapper.findComponent(CommentDialog).element).not.toBe(original.element);
+        }
+        const receivingElement = wrapper.findComponent(CommentDialog).element;
+        commentsStore.activeComment = second.commentId;
+        active.value = second;
+        await flushPromises();
+        const receiver = wrapper.findComponent(CommentDialog);
+        expect(receiver.element).toBe(receivingElement);
+        expect(receiver.props('comment').commentText).toBe('Thread Y');
+        const read = () => ({
+          draft: commentsStore.currentCommentText,
+          mentions: [...commentsStore.currentCommentMentions],
+          expanded: receiver.find('.reply-expanded').exists(),
+          alert: receiver.find('[role="alert"]').exists(),
+        });
+        const before = read();
+        settle({ ok });
+        await flushPromises();
+        expect(read()).toEqual(before);
+        expect(commentsStore.currentCommentText).toBe('Pending reply from X');
+      } finally {
+        settle({ ok: true });
+        wrapper.unmount();
+      }
+    },
+  );
+
+  it.each(['sd-comments-layout-control', 'sd-toolbar-overflow-trigger', 'option'])(
+    'keeps the active thread for its own layout control (%s), but not another editor',
+    (kind) => {
+      const comment = useComment({ commentId: 'layout-thread', fileId: 'doc-1', commentText: 'Review' });
+      commentsStore.commentsList = [comment];
+      commentsStore.activeComment = comment.commentId;
+      const wrapper = mountDialog(comment, {}, { 'click-outside': vClickOutside });
+      const toolbar = document.createElement('div');
+      const owner = getSuperDocUiOwnerId(superdocStub);
+      if (!owner) throw new Error('Missing toolbar owner');
+      toolbar.setAttribute('data-superdoc-ui-owner', owner);
+      const control = document.createElement('button');
+      if (kind === 'option') control.setAttribute('data-sd-comments-layout-option', '');
+      else control.className = kind;
+      toolbar.append(control);
+      document.body.append(toolbar);
+      const originalElementFromPoint = document.elementFromPoint;
+      document.elementFromPoint = () => control;
+      try {
+        control.click();
+        expect(commentsStore.activeComment).toBe(comment.commentId);
+        toolbar.setAttribute('data-superdoc-ui-owner', 'different-editor');
+        control.click();
+        expect(commentsStore.activeComment).toBeNull();
+      } finally {
+        wrapper.unmount();
+        toolbar.remove();
+        if (originalElementFromPoint) document.elementFromPoint = originalElementFromPoint;
+        else delete document.elementFromPoint;
+      }
+    },
+  );
 
   it.each(['comment-tool', 'other-tool', 'outside'])(
     'keeps cancellation scoped to the activating comment tool or an actual %s click',

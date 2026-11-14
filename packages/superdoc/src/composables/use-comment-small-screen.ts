@@ -6,12 +6,13 @@ import {
   DEFAULT_DOCUMENT_VISIBLE_MIN_WIDTH_PX,
 } from '../helpers/comment-small-screen.js';
 import { isFiniteNumber } from '../helpers/is-finite-number.js';
-import type { CommentsConfig } from '../core/types/index.js';
+import type { CommentsConfig, CommentsLayout } from '../core/types/index.js';
 
 interface UseCommentSmallScreenOptions {
   commentsModuleConfig: Readonly<Ref<CommentsConfig | null | undefined>>;
   superdocRoot: Readonly<Ref<HTMLElement | null>>;
   layers: Readonly<Ref<HTMLElement | null>>;
+  onLayoutResolved?: (compact: boolean) => void;
 }
 
 const SUPERDOC_DOCUMENT_SELECTOR = '.superdoc__document';
@@ -23,7 +24,12 @@ const getRequiredSidebarWidth = (documentWidth: number): number => {
   return documentWidth + DEFAULT_COMMENTS_SIDEBAR_LANE_PX + DEFAULT_COMMENTS_MIN_GUTTER_PX;
 };
 
-export function useCommentSmallScreen({ commentsModuleConfig, superdocRoot, layers }: UseCommentSmallScreenOptions) {
+export function useCommentSmallScreen({
+  commentsModuleConfig,
+  superdocRoot,
+  layers,
+  onLayoutResolved,
+}: UseCommentSmallScreenOptions) {
   const superdocContainerWidth = ref(0);
   const isCompactCommentsMode = ref(false);
 
@@ -161,35 +167,40 @@ export function useCommentSmallScreen({ commentsModuleConfig, superdocRoot, laye
 
   // For `auto`, prefer an explicit breakpoint and otherwise derive one from
   // the measured document and sidebar widths.
-  const recalculateCompactCommentsMode = (): void => {
+  const resolveCompactCommentsMode = (
+    requestedLayout?: CommentsLayout,
+    fallback = isCompactCommentsMode.value,
+  ): boolean => {
     const width = getAvailableCommentsContainerWidth();
 
     const commentsConfig = commentsModuleConfig.value;
-    const layout = commentsConfig?.layout ?? DEFAULT_COMMENTS_LAYOUT;
+    const layout = requestedLayout ?? commentsConfig?.layout ?? DEFAULT_COMMENTS_LAYOUT;
     if (layout === 'sidebar') {
       superdocContainerWidth.value = width;
-      isCompactCommentsMode.value = false;
-      return;
+      return false;
     }
     if (layout === 'inline') {
       superdocContainerWidth.value = width;
-      isCompactCommentsMode.value = true;
-      return;
+      return true;
     }
     if (!(Number.isFinite(width) && width > 0)) {
-      return;
+      return fallback;
     }
     superdocContainerWidth.value = width;
 
     const configuredBreakpoint = commentsConfig?.responsive?.breakpoint;
     if (isValidCompactBreakpoint(configuredBreakpoint)) {
-      isCompactCommentsMode.value = width < configuredBreakpoint;
-      return;
+      return width < configuredBreakpoint;
     }
 
     const measuredDocumentWidth = getMeasuredDocumentWidth();
     const requiredWidth = getRequiredSidebarWidth(measuredDocumentWidth);
-    isCompactCommentsMode.value = width < requiredWidth;
+    return width < requiredWidth;
+  };
+
+  const recalculateCompactCommentsMode = (): void => {
+    isCompactCommentsMode.value = resolveCompactCommentsMode();
+    onLayoutResolved?.(isCompactCommentsMode.value);
   };
 
   onBeforeUnmount(() => {
@@ -209,6 +220,7 @@ export function useCommentSmallScreen({ commentsModuleConfig, superdocRoot, laye
     superdocContainerWidth,
     isCompactCommentsMode,
     recalculateCompactCommentsMode,
+    resolveCompactCommentsMode,
     ensureCompactMeasurementObserver,
   };
 }

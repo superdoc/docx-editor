@@ -10,7 +10,7 @@ import '../style.css';
 import { EventEmitter } from 'eventemitter3';
 import type { DocumentReplacementResult } from '../public/document-replacement.js';
 import { v4 as uuidv4 } from 'uuid';
-import { nextTick, toRaw } from 'vue';
+import { nextTick, shallowRef, toRaw } from 'vue';
 import type { HocuspocusProviderWebsocket } from '@hocuspocus/provider';
 import type { Pinia } from 'pinia';
 import type { ContentControlType } from '@superdoc/document-api';
@@ -44,7 +44,13 @@ import { normalizeUiConfig } from './config/normalize-ui-config.js';
 import { normalizeInteractionConfig } from './config/normalize-interaction-config.js';
 import { normalizeSurfacesConfig } from './config/normalize-surfaces-config.js';
 import { warnForMissingDocumentFonts } from './helpers/font-diagnostics.js';
-import { normalizeCommentsUiConfig } from '../helpers/comment-small-screen.js';
+import {
+  DEFAULT_COMMENTS_LAYOUT,
+  isCommentsLayout,
+  normalizeCommentsUiConfig,
+  registerCommentsLayoutBridge,
+} from '../helpers/comment-small-screen.js';
+import type { CommentsLayout, CommentsLayoutState, EffectiveCommentsLayout } from './types/index.js';
 import { isFiniteNumber } from '../helpers/is-finite-number.js';
 import { EditorRuntimeRegistry } from './editor-runtime/editor-runtime-registry.js';
 import type { EditorRuntimeFocusOptions } from './editor-runtime/types.js';
@@ -583,6 +589,7 @@ interface SuperDocEventMap {
   'pdf:document-ready': [];
   'sidebar-toggle': [boolean];
   'comments-list-change': [SuperDocCommentsListChangePayload];
+  'comments-layout-change': [CommentsLayoutState];
   /** Requests the shell open its find/replace surface (e.g. the toolbar search button). */
   'search:open': [];
   /** @deprecated replaceWith=`superdoc.ui.zoom.observe` removeIn=v3.0 */
@@ -780,6 +787,8 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
    * config which surfaces are on.
    */
   #uiConfig: ReturnType<typeof normalizeUiConfig> = normalizeUiConfig({});
+  #commentsLayout = shallowRef<CommentsLayoutState>(Object.freeze({ requested: 'sidebar', effective: 'sidebar' }));
+  #commentsLayoutResolver: ((layout: CommentsLayout) => EffectiveCommentsLayout) | null = null;
 
   /**
    * Which built-in surfaces this instance renders.
@@ -1215,6 +1224,14 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
     // surface decision downstream comes from here rather than re-deriving
     // precedence from `modules.*` and the top-level aliases.
     this.#uiConfig = normalizeUiConfig(this.config);
+    const legacyComments = this.config.modules.comments;
+    const configuredLayout = this.#uiConfig.comments.options.layout ?? (legacyComments && legacyComments.layout);
+    const requested = isCommentsLayout(configuredLayout) ? configuredLayout : DEFAULT_COMMENTS_LAYOUT;
+    this.#commentsLayout.value = Object.freeze({ requested, effective: requested === 'inline' ? 'inline' : 'sidebar' });
+    registerCommentsLayoutBridge(this, {
+      setResolver: (resolver) => this.#setCommentsLayoutResolver(resolver),
+      setEffective: (effective) => this.#setEffectiveCommentsLayout(effective),
+    });
     this.#interactionConfig = normalizeInteractionConfig(this.config);
     this.#surfacesConfig = normalizeSurfacesConfig(this.config);
     // Seed the live suppression flag from the resolved profile. `editorOptions`
@@ -1420,6 +1437,35 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
     }
     this.#ensureContentControlActiveChangeBridge();
     return this.#ui;
+  }
+
+  getCommentsLayout(): CommentsLayoutState {
+    return this.#commentsLayout.value;
+  }
+
+  setCommentsLayout(layout: CommentsLayout): void {
+    if (!isCommentsLayout(layout)) throw new RangeError('Invalid comments layout');
+    if (this.#destroyed) return;
+    const effective =
+      layout === 'auto' ? (this.#commentsLayoutResolver?.(layout) ?? this.#commentsLayout.value.effective) : layout;
+    this.#publishCommentsLayout({ requested: layout, effective });
+  }
+
+  #setCommentsLayoutResolver(resolver: ((layout: CommentsLayout) => EffectiveCommentsLayout) | null): void {
+    this.#commentsLayoutResolver = resolver;
+    if (resolver) this.setCommentsLayout(this.#commentsLayout.value.requested);
+  }
+
+  #setEffectiveCommentsLayout(effective: EffectiveCommentsLayout): void {
+    if (this.#commentsLayout.value.requested !== 'auto' || this.#destroyed) return;
+    this.#publishCommentsLayout({ requested: 'auto', effective });
+  }
+
+  #publishCommentsLayout(next: CommentsLayoutState): void {
+    const previous = this.#commentsLayout.value;
+    if (previous.requested === next.requested && previous.effective === next.effective) return;
+    this.#commentsLayout.value = Object.freeze(next);
+    this.emit('comments-layout-change', this.#commentsLayout.value);
   }
 
   getDocumentApi(): BrowserDocumentApi | null {

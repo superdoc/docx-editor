@@ -143,6 +143,8 @@ export type { ContentControlClickPayload, ContentControlRef } from '../content-c
 import type { ExportParams } from '../export-types.js';
 import type { SuperDocVisualHandle, SuperDocVisualOptions } from '../../core/extensions/types.js';
 import type { DocumentReplacementResult } from '../document-replacement.js';
+import type { CommentsLayout, CommentsLayoutState } from '../../core/types/index.js';
+export type { CommentsLayout, CommentsLayoutState, EffectiveCommentsLayout } from '../../core/types/index.js';
 export type { DocumentReplacementResult } from '../document-replacement.js';
 
 import type { SuperDocUIReason } from './reasons.js';
@@ -768,6 +770,7 @@ export interface FormatPainterHandle {
 
 /** Comments slice. */
 export interface CommentsSlice {
+  layout: CommentsLayoutState;
   /**
    * Readiness of the underlying async comments read, combined with the live
    * selection read ({@link SliceStatus}). Checks that only need the comment
@@ -1118,6 +1121,7 @@ export type CommentAnchorCapture =
 
 /** Comments handle. */
 export interface CommentsHandle extends SnapshotSubscribable<CommentsSlice> {
+  setLayout(layout: CommentsLayout): void;
   /** Read the passive page-window snapshot without starting a document-wide read. Observers receive the complete directory separately. */
   getSnapshot(): CommentsSlice;
   /** List comments through the best-known controller/Document API state. */
@@ -1773,6 +1777,8 @@ export interface SuperDocLike {
    */
   ui?: BorrowedSuperDocUI;
   getDocumentApi?(): BrowserDocumentApi | null;
+  getCommentsLayout?(): CommentsLayoutState;
+  setCommentsLayout?(layout: CommentsLayout): void;
   /** Lifecycle event subscription. */
   on?(event: string, handler: (...args: unknown[]) => void): unknown;
   /** Lifecycle event unsubscription. */

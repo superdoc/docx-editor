@@ -1422,6 +1422,8 @@ export type LinkPopoverResolver = (context: LinkPopoverContext) => LinkPopoverRe
 
 /** Layouts supported by the built-in comments UI. */
 export type CommentsLayout = 'auto' | 'sidebar' | 'inline';
+export type EffectiveCommentsLayout = 'sidebar' | 'inline';
+export type CommentsLayoutState = Readonly<{ requested: CommentsLayout; effective: EffectiveCommentsLayout }>;
 
 /** Width settings used when `ui.comments.layout` is `auto`. */
 export interface CommentsResponsiveConfig {
@@ -3812,6 +3814,7 @@ export type ToolbarItemId =
   | 'linked-style'
   | 'ruler'
   | 'measurement-unit'
+  | 'comments-layout'
   | 'formatting-marks'
   | 'copy-format'
   | 'clear-formatting'
@@ -3819,7 +3822,12 @@ export type ToolbarItemId =
   | 'document-mode';
 
 /** Controls that `includeItems` can add to the default toolbar. */
-export type ToolbarOptionalItemId = 'formatting-marks' | 'table-of-contents' | 'watermark' | 'page-number';
+export type ToolbarOptionalItemId =
+  | 'formatting-marks'
+  | 'table-of-contents'
+  | 'watermark'
+  | 'page-number'
+  | 'comments-layout';
 
 /** Slots whose built-in toolbar icon can be replaced. */
 export type ToolbarIconId =
@@ -3910,6 +3918,10 @@ export type ToolbarStringId =
   | 'indent-increase'
   | 'zoom'
   | 'measurement-unit'
+  | 'comments-layout'
+  | 'comments-layout-sidebar'
+  | 'comments-layout-inline'
+  | 'comments-layout-auto'
   | 'undo'
   | 'redo'
   | 'track-changes-accept-selection'

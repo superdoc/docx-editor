@@ -296,6 +296,10 @@ const TOOLBAR_STRING_ALIASES: KeyAliases = Object.freeze({
   'indent-decrease': 'indentLeft',
   'indent-increase': 'indentRight',
   'measurement-unit': 'measurementUnit',
+  'comments-layout': 'commentsLayout',
+  'comments-layout-sidebar': 'commentsLayoutSidebar',
+  'comments-layout-inline': 'commentsLayoutInline',
+  'comments-layout-auto': 'commentsLayoutAuto',
   'track-changes-accept-selection': 'trackChangesAccept',
   'track-changes-reject-selection': 'trackChangesReject',
   'clear-formatting': 'clearFormatting',
@@ -351,6 +355,7 @@ const TOOLBAR_OPTIONAL_ITEM_REGIONS = Object.freeze({
   watermark: 'center',
   'page-number': 'center',
   'formatting-marks': 'right',
+  'comments-layout': 'right',
   'table-of-contents': 'center',
 });
 
@@ -502,6 +507,7 @@ function normalizeToolbarOptions(options: ToolbarSurfaceOptions): Record<string,
         : itemIds.has('table-of-contents') || includeItems?.has('table-of-contents'),
     showWatermarkButton: itemIds.has('watermark') || includeItems?.has('watermark') || false,
     showPageNumberButton: itemIds.has('page-number') || includeItems?.has('page-number') || false,
+    showCommentsLayoutButton: itemIds.has('comments-layout') || includeItems?.has('comments-layout') || false,
   });
 }
 

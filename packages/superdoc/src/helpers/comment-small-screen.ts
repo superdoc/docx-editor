@@ -1,4 +1,4 @@
-import type { CommentsLayout, CommentsResponsiveConfig } from '../core/types/index.js';
+import type { CommentsLayout, CommentsResponsiveConfig, EffectiveCommentsLayout } from '../core/types/index.js';
 import { isPlainObject } from './object-guards.ts';
 import { isFiniteNumber } from './is-finite-number.ts';
 
@@ -11,8 +11,22 @@ export const RIGHT_CLICK_COMMENT_SUPPRESS_MS = 250;
 export const DEFAULT_COMMENTS_LAYOUT = 'sidebar';
 export const VALID_COMMENTS_LAYOUTS = new Set<string>(['auto', 'sidebar', 'inline']);
 
-const isCommentsLayout = (value: unknown): value is CommentsLayout =>
+export const isCommentsLayout = (value: unknown): value is CommentsLayout =>
   typeof value === 'string' && VALID_COMMENTS_LAYOUTS.has(value);
+
+type CommentsLayoutBridge = {
+  setResolver(resolver: ((layout: CommentsLayout) => EffectiveCommentsLayout) | null): void;
+  setEffective(effective: EffectiveCommentsLayout): void;
+};
+
+const commentsLayoutBridges = new WeakMap<object, CommentsLayoutBridge>();
+
+export const registerCommentsLayoutBridge = (owner: object, bridge: CommentsLayoutBridge): void => {
+  commentsLayoutBridges.set(owner, bridge);
+};
+
+export const getCommentsLayoutBridge = (owner: object): CommentsLayoutBridge | undefined =>
+  commentsLayoutBridges.get(owner);
 
 const firstDefined = (...values: unknown[]): unknown => values.find((value) => value !== undefined);
 

@@ -60,6 +60,7 @@ const itemIds = {
   'linked-style': true,
   ruler: true,
   'measurement-unit': true,
+  'comments-layout': true,
   'formatting-marks': true,
   'copy-format': true,
   'clear-formatting': true,

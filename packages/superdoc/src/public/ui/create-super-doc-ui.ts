@@ -47,6 +47,7 @@ import type {
   CommentInfo,
   CommentsHandle,
   CommentsSlice,
+  CommentsLayoutState,
   ContextMenuItem,
   ContentControlInfo,
   BookmarksHandle,
@@ -361,6 +362,10 @@ function projectTrackChangesItem(item: unknown): TrackChangesItem | null {
 }
 
 const FRAME_RECOMPUTE_FALLBACK_MS = 100;
+const DEFAULT_COMMENTS_LAYOUT_STATE: CommentsLayoutState = Object.freeze({
+  requested: 'sidebar',
+  effective: 'sidebar',
+});
 
 export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
   const superdoc = options.superdoc as unknown as LooseRecord;
@@ -2180,6 +2185,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     }
     const activeId = explicitActiveCommentId ?? activeIds[0] ?? null;
     return {
+      layout: options.superdoc.getCommentsLayout?.() ?? DEFAULT_COMMENTS_LAYOUT_STATE,
       status: combineStatus(listStatus, selection.status),
       listStatus,
       items,
@@ -2338,6 +2344,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     const directory = readCommentsDirectory();
     const items = directory.value ?? windowSnapshot.items;
     return {
+      layout: windowSnapshot.layout,
       status: combineStatus(directory.status, selection.status),
       listStatus: directory.status,
       items,
@@ -9820,6 +9827,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     explicitActiveCommentId = null;
   });
   const comments: CommentsHandle = {
+    setLayout: (layout) => options.superdoc.setCommentsLayout?.(layout),
     get: commentsSnap.get,
     getSnapshot: commentsSnap.getSnapshot,
     subscribe: commentsSnap.subscribe,

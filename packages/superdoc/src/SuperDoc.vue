@@ -134,10 +134,9 @@ import {
 } from './internal/diagnostics/diagnostic-dedupe.js';
 import SurfaceHost from './components/surfaces/SurfaceHost.vue';
 import {
-  DEFAULT_COMMENTS_LAYOUT,
+  getCommentsLayoutBridge,
   isActiveTrackedChangeContextMenuTarget,
   RIGHT_CLICK_COMMENT_SUPPRESS_MS,
-  VALID_COMMENTS_LAYOUTS,
 } from './helpers/comment-small-screen.js';
 
 type SuperDocInstance = typeof superdoc;
@@ -616,6 +615,7 @@ const {
   clearInstantSidebarAlignment,
 } = commentsStore;
 const { proxy, superdoc } = useSuperDocInstance();
+const commentsLayoutBridge = getCommentsLayoutBridge(superdoc);
 (commentsStore as ShellCommentsStoreActions & { proxy?: typeof proxy }).proxy = proxy;
 const documentOpenTelemetry = createDocumentOpenTelemetry(superdoc.config);
 
@@ -676,8 +676,7 @@ const commentsModuleConfig = computed(() => {
   // Merging in this direction (rather than copying `ui` options back onto the
   // shared object) keeps policy and collaboration state untouched.
   const presentation = proxy.$superdoc?.uiConfig?.comments?.options;
-  if (!presentation || Object.keys(presentation).length === 0) return config;
-  return mergeCommentsConfig(config, presentation);
+  return mergeCommentsConfig(config, { ...presentation, layout: proxy.$superdoc.getCommentsLayout().requested });
 });
 
 const superdocStyleVars = computed(() => {
@@ -725,11 +724,13 @@ const {
   superdocContainerWidth,
   isCompactCommentsMode,
   recalculateCompactCommentsMode,
+  resolveCompactCommentsMode,
   ensureCompactMeasurementObserver,
 } = useCommentSmallScreen({
   commentsModuleConfig,
   superdocRoot,
   layers,
+  onLayoutResolved: (compact) => commentsLayoutBridge?.setEffective(compact ? 'inline' : 'sidebar'),
 });
 
 // V2 branch: DOCX is always routed through the v2 host shell wrapper
@@ -3334,15 +3335,7 @@ const hasPdfFloatingComments = computed(() => {
   return fromSubmitted || fromPending;
 });
 
-const shouldUseSidebarComments = computed(() => {
-  const layout: string = (commentsModuleConfig.value as ShellCommentsConfig | null)?.layout ?? DEFAULT_COMMENTS_LAYOUT;
-  if (!VALID_COMMENTS_LAYOUTS.has(layout)) return true;
-  if (layout === 'sidebar') return true;
-  if (layout === 'inline') return false;
-  // Backward-compatible default: keep sidebar unless integrator explicitly opts into auto.
-  if (layout !== 'auto') return true;
-  return !isCompactCommentsMode.value;
-});
+const shouldUseSidebarComments = computed(() => proxy.$superdoc.getCommentsLayout().effective === 'sidebar');
 const sidebarEnabled = computed(() => {
   // ui-phase3-001: v2 mode is no longer a hard gate. The sidebar may render
   // once `V2DocumentEditor` has published at least one render-epoch-checked
@@ -3490,6 +3483,11 @@ onMounted(() => {
   proxy.$superdoc?.on?.('document-mode-change', handleV2DocumentModeChange);
   proxy.$superdoc?.on?.('active-editor-change', syncV2RulerActiveEditor);
 
+  commentsLayoutBridge?.setResolver((layout) => {
+    const compact = resolveCompactCommentsMode(layout, proxy.$superdoc.getCommentsLayout().effective === 'inline');
+    isCompactCommentsMode.value = compact;
+    return compact ? 'inline' : 'sidebar';
+  });
   recalculateCompactCommentsMode();
   ensureCompactMeasurementObserver();
 });
@@ -3619,6 +3617,7 @@ function handleContainerKeydown(e: KeyboardEvent) {
 }
 
 onBeforeUnmount(() => {
+  commentsLayoutBridge?.setResolver(null);
   passwordPrompt.destroy();
   findReplace.destroy();
   linkPopover.destroy();

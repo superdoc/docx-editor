@@ -25,6 +25,7 @@ const INITIAL_ZOOM = {
   value: 80,
 } satisfies ZoomSlice;
 const INITIAL_COMMENTS = {
+  layout: { requested: 'sidebar', effective: 'sidebar' },
   status: 'pending',
   listStatus: 'pending',
   items: [],

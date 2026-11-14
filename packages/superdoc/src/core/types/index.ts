@@ -3988,6 +3988,13 @@ interface ToolbarCustomItemBase {
    * Defaults to `default`.
    */
   size?: 'compact' | 'default' | 'wide';
+  /**
+   * Higher numbers receive toolbar space before lower numbers, including built-in controls at zero.
+   * Defaults to zero; non-finite values are treated as zero. Equal priorities keep their existing
+   * allocation order. This does not change region or display order. Controls that cannot fit move
+   * into the overflow menu. Ignored when `overflow` is `visible`.
+   */
+  overflowPriority?: number;
   /** DOM hooks for styling and accessible naming. */
   attributes?: ToolbarCustomItemAttributes;
 }

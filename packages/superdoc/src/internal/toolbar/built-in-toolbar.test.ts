@@ -8,6 +8,7 @@ import { useToolbarItem } from './built-in/use-toolbar-item.js';
 import { createSuperDocUI, registerFirstPartyCommandMutation } from '../../public/ui/create-super-doc-ui.js';
 import type { SuperDocLike, SuperDocUI } from '../../public/ui/types.js';
 import { normalizeUiConfig } from '../../core/config/normalize-ui-config.js';
+import type { ToolbarConfig } from '../../core/types/index.js';
 import { createHighContrastMode } from '../../composables/use-high-contrast-mode.js';
 
 /**
@@ -130,6 +131,160 @@ async function waitForElement<T extends Element>(
 }
 
 describe('BuiltInToolbar', () => {
+  describe('custom overflow priority', () => {
+    function mountToolbar(width: number, options: ToolbarConfig = {}) {
+      const container = document.createElement('div');
+      Object.defineProperty(container, 'offsetWidth', { configurable: true, get: () => width });
+      document.body.append(container);
+      const normalized = normalizeUiConfig({
+        ui: { toolbar: { ...options, container, responsiveTo: 'container' } },
+      }).toolbar;
+      const toolbar = new BuiltInToolbar({
+        highContrastMode: createHighContrastMode(),
+        superdoc: makeHost(),
+        selector: normalized.container,
+        ...normalized.options,
+      });
+      return {
+        toolbar,
+        container,
+        resize: (nextWidth: number) => {
+          width = nextWidth;
+          toolbar.onToolbarResize();
+        },
+      };
+    }
+
+    const customItems: ToolbarConfig['customItems'] = [
+      { type: 'button', id: 'approve', label: 'Approve', overflowPriority: 10, onSelect: () => {} },
+      {
+        type: 'dropdown',
+        id: 'status',
+        label: 'Status',
+        size: 'wide',
+        overflowPriority: 20,
+        options: [{ id: 'draft', label: 'Draft' }],
+        onSelect: () => {},
+      },
+    ];
+
+    it('keeps important custom controls on a full toolbar before ordinary controls', () => {
+      const { toolbar, container } = mountToolbar(700, { customItems });
+      try {
+        expect(container.querySelector('[data-item="btn-approve"]')).not.toBeNull();
+        expect(container.querySelector('[data-item="btn-status"]')).not.toBeNull();
+        expect(toolbar.overflowItems.some((item) => !item.isCustomToolbarItem)).toBe(true);
+      } finally {
+        toolbar.destroy();
+      }
+    });
+
+    it('allocates by priority while preserving configured order and dropdown selection across resizes', () => {
+      const { toolbar, resize } = mountToolbar(300, { items: {}, customItems });
+      try {
+        expect(toolbar.toolbarItems.map((item) => item.name.value)).toEqual(['approve', 'status']);
+        const status = toolbar.getToolbarItemByName('status');
+        if (!status) throw new Error('Status control missing');
+        status.selectedValue.value = 'draft';
+
+        resize(200);
+        expect(toolbar.toolbarItems.map((item) => item.name.value)).toEqual(['overflow', 'status']);
+        expect(toolbar.overflowItems.map((item) => item.name.value)).toEqual(['approve']);
+        resize(100);
+        expect(toolbar.toolbarItems.map((item) => item.name.value)).toEqual(['overflow']);
+        expect(toolbar.overflowItems.map((item) => item.name.value)).toEqual(['approve', 'status']);
+        resize(300);
+        expect(toolbar.toolbarItems.map((item) => item.name.value)).toEqual(['approve', 'status']);
+        expect(toolbar.getToolbarItemByName('status')?.selectedValue.value).toBe('draft');
+      } finally {
+        toolbar.destroy();
+      }
+    });
+
+    it('lets a prioritized custom control displace ordinary sticky controls when space is limited', () => {
+      const { toolbar } = mountToolbar(200, { customItems });
+      try {
+        expect(toolbar.toolbarItems.map((item) => item.name.value)).toContain('status');
+        expect(toolbar.overflowItems.map((item) => item.name.value)).toContain('documentMode');
+      } finally {
+        toolbar.destroy();
+      }
+    });
+
+    it('retains configuration order for equal priorities', () => {
+      const { toolbar } = mountToolbar(150, {
+        items: {},
+        customItems: [
+          { type: 'button', id: 'first', label: 'First', overflowPriority: 1, onSelect: () => {} },
+          { type: 'button', id: 'second', label: 'Second', overflowPriority: 1, onSelect: () => {} },
+        ],
+      });
+      try {
+        expect(toolbar.toolbarItems.map((item) => item.name.value)).toEqual(['overflow', 'first']);
+        expect(toolbar.overflowItems.map((item) => item.name.value)).toEqual(['second']);
+      } finally {
+        toolbar.destroy();
+      }
+    });
+
+    it('uses remaining space for a smaller control when the highest priority cannot fit', () => {
+      const { toolbar } = mountToolbar(150, { items: {}, customItems });
+      try {
+        expect(toolbar.toolbarItems.map((item) => item.name.value)).toEqual(['overflow', 'approve']);
+        expect(toolbar.overflowItems.map((item) => item.name.value)).toEqual(['status']);
+      } finally {
+        toolbar.destroy();
+      }
+    });
+
+    it('preserves default menu allocation when all custom priorities are zero', () => {
+      const implicit = mountToolbar(700, {
+        customItems: [{ type: 'button', id: 'action', label: 'Action', onSelect: () => {} }],
+      }).toolbar;
+      const explicit = mountToolbar(700, {
+        customItems: [{ type: 'button', id: 'action', label: 'Action', overflowPriority: 0, onSelect: () => {} }],
+      }).toolbar;
+      try {
+        expect(explicit.toolbarItems.map((item) => item.name.value)).toEqual(
+          implicit.toolbarItems.map((item) => item.name.value),
+        );
+        expect(explicit.overflowItems.map((item) => item.name.value)).toEqual(
+          implicit.overflowItems.map((item) => item.name.value),
+        );
+      } finally {
+        implicit.destroy();
+        explicit.destroy();
+      }
+    });
+
+    it('allows lower priorities and ignores non-finite priorities', () => {
+      const { toolbar } = mountToolbar(150, {
+        items: {},
+        customItems: [
+          { type: 'button', id: 'lower', label: 'Lower', overflowPriority: -1, onSelect: () => {} },
+          { type: 'button', id: 'normal', label: 'Normal', overflowPriority: NaN, onSelect: () => {} },
+          { type: 'button', id: 'invalid', label: 'Invalid', overflowPriority: Infinity, onSelect: () => {} },
+        ],
+      });
+      try {
+        expect(toolbar.toolbarItems.map((item) => item.name.value)).toEqual(['overflow', 'normal']);
+        expect(toolbar.overflowItems.map((item) => item.name.value)).toEqual(['lower', 'invalid']);
+      } finally {
+        toolbar.destroy();
+      }
+    });
+
+    it('keeps global visible policy independent of per-item priority', () => {
+      const { toolbar } = mountToolbar(100, { items: {}, customItems, overflow: 'visible' });
+      try {
+        expect(toolbar.toolbarItems.map((item) => item.name.value)).toEqual(['approve', 'status']);
+        expect(toolbar.overflowItems).toEqual([]);
+      } finally {
+        toolbar.destroy();
+      }
+    });
+  });
+
   it('keeps the default toolbar out of the document-wide comments directory', async () => {
     const list = vi.fn(() => ({ items: [] }));
     const host = makeHost({

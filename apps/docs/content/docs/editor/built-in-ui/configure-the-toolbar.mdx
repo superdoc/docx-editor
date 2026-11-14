@@ -128,6 +128,22 @@ These choices configure ordinary text highlighting. Tracked-change author colors
 `overflow: 'menu'`, controls that no longer fit move into the overflow menu. SuperDoc adds its trigger when needed; do
 not list it in `items`.
 
+Set `overflowPriority` on a custom button or dropdown to give it space before less important controls:
+
+```ts
+const customItems = [
+  { type: 'button', id: 'approve', label: 'Approve', overflowPriority: 10, onSelect: approveDocument },
+];
+```
+
+Higher numbers receive space first. Built-in controls and custom controls without a priority use zero; equal priorities
+keep their existing allocation order. Priorities affect which controls fit, while region and display order stay the
+same. If a prioritized control cannot fit, it moves into the overflow menu too. Other controls can still use the remaining
+space. With priorities enabled, even controls normally kept on the toolbar can move into overflow to make room.
+
+The whole-toolbar `overflow: 'visible'` policy ignores priorities and keeps all controls on the toolbar. It can produce
+horizontal overflow at narrow widths.
+
 Resize the Editor to your narrowest supported width. Every required control should remain reachable, and the toolbar
 should not add horizontal page overflow. See [Layout](/editor/built-in-ui/responsive-layout) for document scaling,
 contained scrolling, and fullscreen behavior.

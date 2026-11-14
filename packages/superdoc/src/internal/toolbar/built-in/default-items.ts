@@ -1510,18 +1510,25 @@ export const makeDefaultItems = ({
     const rank = (item: ToolbarItem) => orderIndex.get(item.name.value) ?? Number.MAX_SAFE_INTEGER;
     layoutItems.sort((a, b) => rank(a) - rank(b));
   }
+  const hasPriorities = layoutItems.some((item) => item.overflowPriority !== 0);
+  const allocationItems = hasPriorities
+    ? [...layoutItems].sort(
+        (a, b) => b.overflowPriority - a.overflowPriority || Number(isStickyItem(b)) - Number(isStickyItem(a)),
+      )
+    : layoutItems;
   const partitionItems = (reserveOverflowTrigger: boolean) => {
     const overflowItems: ToolbarItem[] = [];
     const visibleItems: ToolbarItem[] = [];
-    const stickyItemsWidth = layoutItems
-      .filter(isStickyItem)
-      .reduce((total, item) => total + getToolbarItemWidth(item), 0);
+    const stickyItemsWidth = hasPriorities
+      ? 0
+      : layoutItems.filter(isStickyItem).reduce((total, item) => total + getToolbarItemWidth(item), 0);
     let totalWidth =
       toolbarPadding +
       stickyItemsWidth +
       (reserveOverflowTrigger && overflowTrigger ? getToolbarItemWidth(overflowTrigger) : 0);
 
-    layoutItems.forEach((item, index) => {
+    allocationItems.forEach((item) => {
+      const index = layoutItems.indexOf(item);
       const itemWidth = getToolbarItemWidth(item);
 
       if (
@@ -1547,7 +1554,7 @@ export const makeDefaultItems = ({
         return;
       }
 
-      if (isStickyItem(item)) {
+      if (isStickyItem(item) && !hasPriorities) {
         visibleItems.push(item);
         return;
       }
@@ -1560,7 +1567,11 @@ export const makeDefaultItems = ({
       }
     });
 
-    return { visibleItems, overflowItems };
+    const visible = new Set(visibleItems);
+    return {
+      visibleItems: layoutItems.filter((item) => visible.has(item)),
+      overflowItems: layoutItems.filter((item) => !visible.has(item)),
+    };
   };
 
   let { visibleItems, overflowItems } = partitionItems(false);

@@ -3936,7 +3936,15 @@ describe('public ui — viewport + metadata geometry', () => {
       activeEditor: {
         doc: {
           comments: { list: () => ({ items: [] }) },
-          selection: { current: () => null },
+          selection: {
+            current: () => ({
+              empty: true,
+              target: { kind: 'text', segments: [{ blockId: 'P1', range: { start: 0, end: 0 } }] },
+              activeMarks: [],
+              activeCommentIds: [],
+              activeChangeIds: [],
+            }),
+          },
           trackChanges: { list: () => ({ items: [] }) },
         },
         editCommands: { lists: { apply }, getSnapshot },

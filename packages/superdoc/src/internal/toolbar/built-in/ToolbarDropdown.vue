@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, defineComponent, h, inject, nextTick, onBeforeUnmount, onMounted, ref, useSlots, watch } from 'vue';
 import type { CSSProperties, PropType } from 'vue';
+import { v4 as uuidv4 } from 'uuid';
 import type { ToolbarItemOption as DropdownOption } from '../built-in-toolbar.js';
 
 interface DropdownMenuProps {
@@ -58,6 +59,7 @@ const emit = defineEmits<{
 }>();
 const slots = useSlots();
 const toolbarOwnerId = inject<string | null>('sdToolbarOwnerId', null);
+const descriptionIdPrefix = `sd-toolbar-option-description-${uuidv4()}`;
 
 const triggerRef = ref<HTMLDivElement | null>(null);
 const menuRef = ref<HTMLDivElement | null>(null);
@@ -86,7 +88,16 @@ const mergedMenuClass = computed(() => {
   const onlyRenderOptions =
     hasCustomMenu.value ||
     (props.options.length > 0 && props.options.every((option) => option && option.type === 'render'));
-  return ['toolbar-dropdown-menu', fromProps, { 'toolbar-dropdown-menu--render-only': onlyRenderOptions }];
+  return [
+    'toolbar-dropdown-menu',
+    fromProps,
+    {
+      'toolbar-dropdown-menu--render-only': onlyRenderOptions,
+      'toolbar-dropdown-menu--described': props.options.some(
+        (option) => option?.description && option.type !== 'render',
+      ),
+    },
+  ];
 });
 
 const mergedMenuStyle = computed(() => {
@@ -467,18 +478,31 @@ onBeforeUnmount(() => {
             :class="[
               option.class,
               option.props?.class,
-              { 'sd-disabled': option.disabled, 'sd-render': isRenderOption(option) },
+              {
+                'sd-disabled': option.disabled,
+                'sd-render': isRenderOption(option),
+                'toolbar-dropdown-option--described': option.description && !isRenderOption(option),
+              },
             ]"
             tabindex="-1"
             @click="onOptionClick(option)"
             v-bind="{ ...option.props, ...getNodeProps(option) }"
+            :aria-describedby="
+              option.description && !isRenderOption(option) ? `${descriptionIdPrefix}-${index}` : undefined
+            "
           >
             <RenderOption v-if="isRenderOption(option)" :option="option" />
             <template v-else>
               <span v-if="hasIcon(option)" class="toolbar-dropdown-option__icon">
                 <OptionIcon :option="option" />
               </span>
-              <span class="toolbar-dropdown-option__label">{{ option.label }}</span>
+              <span v-if="option.description" class="toolbar-dropdown-option__text">
+                <span class="toolbar-dropdown-option__label">{{ option.label }}</span>
+                <span :id="`${descriptionIdPrefix}-${index}`" class="toolbar-dropdown-option__description">{{
+                  option.description
+                }}</span>
+              </span>
+              <span v-else class="toolbar-dropdown-option__label">{{ option.label }}</span>
             </template>
           </div>
         </div>
@@ -523,6 +547,33 @@ onBeforeUnmount(() => {
   color: var(--sd-ui-dropdown-text, #47484a);
   transition: background-color 0.2s ease-out;
   box-sizing: border-box;
+}
+
+.toolbar-dropdown-menu--described {
+  max-width: min(360px, calc(100vw - 16px));
+}
+
+.toolbar-dropdown-option--described {
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+.toolbar-dropdown-option__text {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.toolbar-dropdown-option__description {
+  display: block;
+  font-size: var(--sd-ui-font-size-200, 12px);
+  line-height: 1.4;
+  color: var(--sd-ui-text-muted, #666666);
+}
+
+.toolbar-dropdown-menu .toolbar-dropdown-option:hover .toolbar-dropdown-option__description,
+.toolbar-dropdown-menu .toolbar-dropdown-option.sd-selected .toolbar-dropdown-option__description {
+  color: inherit;
 }
 
 .toolbar-dropdown-option__icon {

@@ -6,6 +6,7 @@ import type {
   ToolbarCommandId,
   ToolbarConfig,
   ToolbarCustomItem,
+  ToolbarCustomOption,
   ToolbarCustomButtonCommandId,
   ToolbarCustomDropdownCommandId,
   ToolbarCustomItemSelectContext,
@@ -14,6 +15,16 @@ import type {
   ToolbarRegion,
   ToolbarStringId,
 } from 'superdoc';
+
+const describedOption: ToolbarCustomOption = {
+  id: 'sidebar',
+  label: 'Sidebar',
+  description: 'Show comments beside the document.',
+};
+const description: string | undefined = describedOption.description;
+// @ts-expect-error Descriptions are plain text.
+const invalidDescription: ToolbarCustomOption = { id: 'invalid', label: 'Invalid', description: 2 };
+void [description, invalidDescription];
 
 const region: ToolbarRegion = 'center';
 const item: ToolbarItemId = 'document-mode';
@@ -83,7 +94,7 @@ const customItems = [
     label: 'Status',
     options: [
       { id: 'draft', label: 'Draft' },
-      { id: 'approved', label: 'Approved', value: 2 },
+      { id: 'approved', label: 'Approved', value: 2, description: 'Ready to share with reviewers.' },
     ],
     onSelect: ({ value }) => value,
   },

@@ -917,6 +917,92 @@ describe('BuiltInToolbar', () => {
     toolbar.destroy();
   });
 
+  it.each([false, true])(
+    'shows custom option descriptions and preserves selection (overflow: %s)',
+    async (overflow) => {
+      const container = document.createElement('div');
+      Object.defineProperty(container, 'offsetWidth', { value: overflow ? 50 : 1000 });
+      document.body.append(container);
+      const onSelect = vi.fn();
+      const normalized = normalizeUiConfig({
+        ui: {
+          toolbar: {
+            items: {},
+            responsiveTo: 'container',
+            customItems: [
+              {
+                type: 'dropdown',
+                id: 'layout-probe',
+                label: 'Layout probe',
+                options: [
+                  {
+                    id: 'sidebar',
+                    label: 'Sidebar',
+                    value: 2,
+                    description: 'Keep <b>comments</b> beside the document.',
+                  },
+                  { id: 'automatic', label: 'Automatic' },
+                  {
+                    id: 'unavailable',
+                    label: 'Unavailable',
+                    description: 'Unavailable for this document.',
+                    disabled: true,
+                  },
+                ],
+                onSelect,
+              },
+            ],
+          },
+        },
+      }).toolbar;
+      const toolbar = new BuiltInToolbar({
+        highContrastMode: createHighContrastMode(),
+        superdoc: makeHost(),
+        selector: container,
+        ...normalized.options,
+      });
+      try {
+        await nextTick();
+        await new Promise<void>((resolve) => setTimeout(resolve, 0));
+        if (overflow) {
+          container.querySelector<HTMLElement>('[aria-label="Overflow items"]')!.click();
+          await nextTick();
+          await new Promise<void>((resolve) => setTimeout(resolve, 0));
+        }
+        const trigger = await waitForElement(() =>
+          document.querySelector<HTMLElement>('[data-item="btn-layout-probe"]'),
+        );
+        trigger.click();
+        const described = await waitForElement(() =>
+          document.querySelector<HTMLElement>('[aria-label="Layout probe - Sidebar"]'),
+        );
+        const description = described.querySelector('.toolbar-dropdown-option__description');
+        expect(description?.textContent).toBe('Keep <b>comments</b> beside the document.');
+        expect(description?.querySelector('b')).toBeNull();
+        expect(described.getAttribute('aria-describedby')).toBe(description?.id);
+        expect(
+          document
+            .querySelector('[aria-label="Layout probe - Automatic"]')
+            ?.querySelector('.toolbar-dropdown-option__description'),
+        ).toBeNull();
+        document.querySelector<HTMLElement>('[aria-label="Layout probe - Unavailable"]')!.click();
+        expect(onSelect).not.toHaveBeenCalled();
+        described.click();
+        expect(onSelect).toHaveBeenCalledWith(
+          expect.objectContaining({
+            value: 2,
+            option: expect.objectContaining({
+              id: 'sidebar',
+              description: 'Keep <b>comments</b> beside the document.',
+            }),
+          }),
+        );
+      } finally {
+        toolbar.destroy();
+      }
+    },
+  );
+
   it('renders canonical dropdown option SVG markup', async () => {
     const toolbarContainer = document.createElement('div');
     document.body.append(toolbarContainer);

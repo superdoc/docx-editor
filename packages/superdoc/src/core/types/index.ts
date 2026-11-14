@@ -3946,6 +3946,8 @@ export interface ToolbarCustomOption {
   id: string;
   /** Text shown in the dropdown. */
   label: string;
+  /** Plain-text supporting detail shown below the label in direct and overflow menus. */
+  description?: string;
   /** Value passed to the item's action. Defaults to `id`. */
   value?: string | number;
   /** Trusted inline SVG markup shown beside the label. */

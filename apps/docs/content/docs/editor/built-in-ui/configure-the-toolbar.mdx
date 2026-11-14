@@ -92,6 +92,13 @@ to add application actions. Controls listed in `items` render in the order given
 For a custom item, use `command` when it can run one built-in action directly. Use `onSelect` for registered commands or
 workflows that need more input; its context includes `execute` and `executeAsync`.
 
+Custom dropdown options can include an optional `description` string. The supporting text appears below the option's
+label in both the toolbar dropdown and the overflow menu. It is rendered as plain text. For example:
+
+```ts
+{ id: 'sidebar', label: 'Sidebar', value: 'sidebar', description: 'Show comments beside the document.' }
+```
+
 Keep `satisfies ToolbarConfig` from the examples. It checks control IDs, icon and string slots, font options, and custom
 item shapes without widening the object. Prefer one composition strategy instead of combining a long `items` allowlist
 with a long `excludeItems` list.

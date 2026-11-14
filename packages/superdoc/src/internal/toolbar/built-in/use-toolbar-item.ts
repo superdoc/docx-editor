@@ -9,6 +9,7 @@ export type ToolbarItemType = (typeof TOOLBAR_ITEM_TYPES)[number];
 export interface ToolbarItemOption {
   key?: string | number;
   label?: string;
+  description?: string;
   type?: string;
   disabled?: boolean;
   class?: unknown;

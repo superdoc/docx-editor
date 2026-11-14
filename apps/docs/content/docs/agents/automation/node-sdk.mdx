@@ -153,6 +153,64 @@ created for this open request. Per-open token authentication is not supported fo
 
 To initialize a new room from a DOCX, set `roomMode: 'create'` for one worker. Later SDK sessions and editors use `roomMode: 'join'`. If multiple backend workers can start the same document, [coordinate room creation](/editor/collaboration/coordinate-room-creation) in your backend and collaboration server before calling `create`.
 
+### When an opened room is ready to read
+
+When `client.open()` resolves for a Hocuspocus or y-websocket room, the document already holds everything the collaboration
+server it connected to had for that room. Your agent can read and decide right away; it doesn't need a delay or a
+poll first. After `create`, a fresh `join` can read the new room at once.
+
+That guarantee covers one server. If several server processes can hold the same room, `open()` doesn't wait for
+edits that reached another process but not this one. Route every connection for a room to one process, or share
+rooms between processes, for example with Hocuspocus's Redis extension, and treat edits that are still crossing
+between processes as not yet in the room.
+
+Being ready to read doesn't mean your agent's edits are stored. Storage depends on your collaboration server.
+
+### Confirm the server received your edits
+
+An edit's result means the edit was applied in your agent's copy of the room. To know the collaboration server has
+it too, wait for a server receipt:
+
+```js
+await document.insert({ value: ' Approved by the review agent.' });
+await document.collaboration.waitForServerReceipt({ timeoutMs: 10_000 });
+```
+
+It resolves once the server has received every edit this document made before the call. If the server doesn't confirm
+within `timeoutMs` (the collaboration profile's `syncTimeoutMs`, 30 seconds by default, when you leave it out), it
+throws `COLLABORATION_SYNC_TIMEOUT`. The edits stay in your agent's copy and are sent again when the connection
+recovers, so you can call it again later. A document opened without a collaboration room throws
+`CAPABILITY_UNSUPPORTED`.
+
+Received is not stored. Your server writes rooms to storage on its own schedule, so a receipt doesn't confirm that the
+edit survives a server crash. If you need that, have your storage flow confirm it. The connection states that
+SuperDoc reports, such as `synced`, describe the connection, not a single edit.
+
+### Await committed storage and cross-instance initial state
+
+The [collaboration server template](/editor/collaboration/deploy-a-server) supports an explicit storage contract:
+
+```js
+await writer.insert({ value: ' Terms approved.' });
+const { commitId } = await writer.collaboration.waitForStorageCommit({ timeoutMs: 10_000 });
+await agent.collaboration.waitForInitialSync({ timeoutMs: 10_000 });
+const currentText = await agent.getText();
+```
+
+The storage commitment covers edits completed by `writer` before that call. Its `commitId` correlates the response
+with that commitment call; success is returned after the backing store accepts the write. `waitForInitialSync`
+then integrates the latest committed state before the agent reads or decides, including when it is connected to
+another server process. Edits still held only in another client's memory are outside this boundary.
+
+For the qualified multi-instance topology, run multiple template server processes on **one host**, all using the
+same local SQLite database. The template README explains `COLLABORATION_SQLITE_FILE`, transaction and generation
+handling. This contract does not cover separate hosts, network filesystems or Redis deployments.
+
+Storage errors throw `COLLABORATION_STORAGE_FAILED`; a missing acknowledgement before the deadline throws
+`COLLABORATION_SYNC_TIMEOUT`. A timeout leaves the store outcome uncertain, so keep the document and retry or verify
+its state through a fresh reader. These calls require a server implementing the template's storage protocol;
+ordinary connection readiness and server receipts retain their existing meaning.
+
 ## Show the agent to people in the room
 
 A collaborative SDK session is invisible to people in the room by default. Turn on `collaboration.presence` to show
@@ -199,13 +257,13 @@ When several backend workers or browsers write to the same Hocuspocus room, set 
 A write that started from a revision another host has already changed then fails with `REVISION_MISMATCH` instead of merging.
 See [Reject stale writes across hosts](/editor/collaboration/reject-stale-writes) for the server setup and the `REVISION_UNVERIFIED` reasons.
 
-## Close a Liveblocks collaboration session
+## Close a collaboration session
 
-In a Liveblocks room, `close()` waits until Liveblocks confirms it has every change from the session, then leaves
-the room. You can close right after your last edit; you don't need a delay or a poll of the room first.
+In a Hocuspocus or Liveblocks room, `close()` waits until the server confirms it has every change from the session,
+then leaves the room. You can close right after your last edit; you don't need a delay or a poll of the room first.
 
 The wait ends at the collaboration profile's `syncTimeoutMs` (30 seconds by default) or shortly before the close
-request's own timeout, whichever comes first. If Liveblocks has not confirmed by then, the session is still released
+request's own timeout, whichever comes first. If the server has not confirmed by then, the session is still released
 and `close()` throws `COLLABORATION_SYNC_TIMEOUT`. Treat that as
 "the room may be missing edits from this session":
 

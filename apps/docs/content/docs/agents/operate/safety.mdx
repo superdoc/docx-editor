@@ -122,9 +122,9 @@ try {
 
 Make cleanup best-effort. A close failure that throws will mask the error that actually ended the run.
 
-In a Liveblocks collaboration session, log close failures instead of dropping them. `COLLABORATION_SYNC_TIMEOUT` from
-`close` means Liveblocks did not confirm it received every edit from the session, so the room may be missing some.
-See [Close a Liveblocks collaboration session](/agents/automation/node-sdk#close-a-liveblocks-collaboration-session).
+In a Hocuspocus or Liveblocks collaboration session, log close failures instead of dropping them.
+`COLLABORATION_SYNC_TIMEOUT` from `close` means the server did not confirm it received every edit from the session, so
+the room may be missing some. See [Close a collaboration session](/agents/automation/node-sdk#close-a-collaboration-session).
 
 ## Treat tool calls as untrusted input
 

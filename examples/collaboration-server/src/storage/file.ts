@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { readFile, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { createAtomicWriter } from './atomic-write.ts';
 import type { RoomStore } from './types.ts';
@@ -19,5 +19,6 @@ export function createFileRoomStore(directory: string): RoomStore {
       }
     },
     store: (roomName, state) => writeFileAtomically(hashedFileFor(roomName), state),
+    delete: (roomName) => rm(hashedFileFor(roomName), { force: true }),
   };
 }

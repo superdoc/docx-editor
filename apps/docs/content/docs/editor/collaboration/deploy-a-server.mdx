@@ -95,11 +95,18 @@ then open any room.
 The template stores one file of room state per room. It stores a room shortly after edits stop, at least every 10
 seconds during editing, and once more when the last editor leaves.
 
-To use your database or object storage, implement two methods, `load` and `store`, and pass them to the server. The
-template's README has copyable Postgres and S3 versions.
+To use your database or object storage, implement three methods, `load`, `store` and `delete`, and pass them to the
+server. The template's README has copyable Postgres and S3 versions.
 
 If more than one server process can hold the same room, one can overwrite the other's newer edits. Route every
 connection for a room to one process, or share rooms between processes with Hocuspocus's Redis extension.
+
+For several server processes on one host, the template also offers a qualified local SQLite mode:
+set `COLLABORATION_SQLITE_FILE` to the same local database path in every process. It merges updates in transactions,
+refreshes connected peers from committed storage, and fences deleted room generations. Its README gives the setup
+and the SDK's `waitForInitialSync` and `waitForStorageCommit` boundaries. This mode requires Node 22.13 or newer;
+it does not support network filesystems or separate hosts. Redis deployment readiness and durability are separate
+integration contracts.
 
 [Save and restore a room](/editor/collaboration/save-and-restore-a-room) explains why room state and DOCX files are
 stored separately.
@@ -126,6 +133,30 @@ scripts.
 `createRoom` does not coordinate retries between several backends. If your service retries creation automatically,
 add the single-initializer rules in [Recover an interrupted
 initialization](/editor/collaboration/initialize-a-document#recover-an-interrupted-initialization).
+
+## Delete or reset a room
+
+To throw a room away, call `deleteRoom` with the full room name from code that runs in the server process, for example
+an authenticated admin route:
+
+```ts
+await server.deleteRoom('sd2/v2.1/contract-42');
+```
+
+When it resolves, everyone in the room was disconnected and their connection state is `failed`, any running write has
+finished, and the room is gone from storage. Joins during the delete are refused. DOCX files saved earlier are kept.
+
+To reset a room to a new file, delete it, then create it again with `createRoom`. Editors join as usual.
+
+With the default file store, a client that was offline during the delete still holds the old content. If it reconnects after the room is created
+again, that content returns to the room. If offline editors are possible, reset to a new document ID instead.
+
+The template's SQLite mode persists a generation for each room and the current SuperDoc Hocuspocus adapter retains
+it on reconnect. In that mode old-generation connections and writes are refused after a reset, including offline
+clients and clients connected through another process. Fresh clients join the new generation normally.
+
+To load a new file while editors stay connected, call `replaceFile` from an editor or the Node SDK. It replaces the
+content in the same room for everyone and keeps the room's edit history.
 
 ## Save DOCX files
 

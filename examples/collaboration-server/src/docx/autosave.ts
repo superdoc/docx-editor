@@ -5,6 +5,8 @@ import path from 'node:path';
 import { documentIdFromRoomName } from '../room-name.ts';
 import { createDefaultSdkClient, withToken, type SdkClient } from '../sdk.ts';
 import type { DocxStore } from '../storage/types.ts';
+import type { DocxAutosave } from './types.ts';
+export type { DocxAutosave } from './types.ts';
 
 export interface DocxAutosaveOptions {
   serverUrl: string;
@@ -15,14 +17,6 @@ export interface DocxAutosaveOptions {
   retryDelayMs?: number;
   createClient?: () => SdkClient;
   log?: (message: string) => void;
-}
-
-export interface DocxAutosave {
-  readonly marker: { name: string; value: string };
-  roomChanged(roomName: string): void;
-  roomEmptied(roomName: string): void;
-  flush(): Promise<void>;
-  stop(): Promise<void>;
 }
 
 export function createDocxAutosave(options: DocxAutosaveOptions): DocxAutosave {
@@ -37,6 +31,7 @@ export function createDocxAutosave(options: DocxAutosaveOptions): DocxAutosave {
   const timers = new Map<string, NodeJS.Timeout>();
   const queue: string[] = [];
   const failures = new Map<string, unknown>();
+  const deleted = new Set<string>();
   let running: Promise<void> | null = null;
   let client: SdkClient | undefined;
   let flushing = 0;
@@ -67,6 +62,7 @@ export function createDocxAutosave(options: DocxAutosaveOptions): DocxAutosave {
     if (documentId === null) return log(`Not a SuperDoc room, skipping DOCX autosave: ${roomName}`);
 
     for (let attempt = 0; ; attempt += 1) {
+      if (deleted.has(roomName)) return log(`Skipped ${documentId}.docx: its room was deleted.`);
       try {
         await saveOnce(documentId);
         return log(`Saved ${documentId}.docx`);
@@ -74,6 +70,7 @@ export function createDocxAutosave(options: DocxAutosaveOptions): DocxAutosave {
         await client?.dispose().catch(() => {});
         client = undefined;
         const reason = error instanceof Error ? error.message : String(error);
+        if (deleted.has(roomName)) return log(`Skipped ${documentId}.docx: its room was deleted.`);
         if (attempt >= retries) {
           dirty.add(roomName);
           failures.set(roomName, error);
@@ -130,6 +127,7 @@ export function createDocxAutosave(options: DocxAutosaveOptions): DocxAutosave {
   return {
     marker,
     roomChanged(roomName) {
+      deleted.delete(roomName);
       dirty.add(roomName);
       clearTimeout(timers.get(roomName));
       if (flushing > 0) enqueue(roomName);
@@ -137,6 +135,15 @@ export function createDocxAutosave(options: DocxAutosaveOptions): DocxAutosave {
     },
     roomEmptied(roomName) {
       if (!stopped && dirty.has(roomName)) enqueue(roomName);
+    },
+    roomDeleted(roomName) {
+      deleted.add(roomName);
+      dirty.delete(roomName);
+      failures.delete(roomName);
+      clearTimeout(timers.get(roomName));
+      timers.delete(roomName);
+      const queued = queue.indexOf(roomName);
+      if (queued !== -1) queue.splice(queued, 1);
     },
     flush,
     stop() {

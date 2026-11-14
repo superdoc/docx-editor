@@ -246,3 +246,22 @@ test('a room with an empty name does not stop the rooms queued behind it', async
     ['contract-42'],
   );
 });
+
+test('a deleted room is not saved, and a failed save of it does not fail flush', async () => {
+  const { autosave, sdk, saved } = setup({ idleMs: 60_000, retries: 0, sdk: fakeSdk({ failures: 1 }) });
+  autosave.roomChanged(ROOM);
+  autosave.roomDeleted(ROOM);
+  await autosave.flush();
+  assert.equal(sdk.opens.length, 0, 'the pending save was cancelled');
+
+  autosave.roomChanged(ROOM);
+  autosave.roomEmptied(ROOM);
+  await waitFor(() => sdk.opens.length === 1, 'the save to start');
+  autosave.roomDeleted(ROOM);
+  await autosave.flush();
+  assert.equal(saved.length, 0);
+
+  autosave.roomChanged(ROOM);
+  await autosave.flush();
+  assert.equal(saved.length, 1, 'a room filled again after its delete is saved as usual');
+});

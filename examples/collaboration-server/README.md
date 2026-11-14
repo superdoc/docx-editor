@@ -123,10 +123,54 @@ at least every 10 seconds while edits continue, and once more when the last clie
 the next time someone opens that room.
 
 File storage suits a single server process. To use a database or object storage, implement the `RoomStore`
-interface in `src/storage/types.ts` and pass it to `createCollaborationServer` in `server.ts`. It has two
-methods: `load` returns the saved bytes for a room, or `null`, and `store` replaces them.
+interface in `src/storage/types.ts` and pass it to `createCollaborationServer` in `server.ts`. It has three
+methods: `load` returns the saved bytes for a room, or `null`, `store` replaces them, and `delete` removes them.
+`delete` must succeed when the room is not stored.
 
 Room state is not a DOCX file. See [Save DOCX files](#save-docx-files) for the Word file.
+
+### Multiple server processes on one host
+
+The template also supports several Hocuspocus processes on **one host**, using the same SQLite file on a local
+filesystem. This optional mode requires Node 22.13 or newer; the default file store retains its Node 22.12 minimum.
+The example CI uses Node 22.21.1. SQLite mode uses WAL transactions with `synchronous=FULL`, merges Yjs updates under
+the database write lock, and refreshes loaded rooms from committed storage every 50 ms. A failed store never becomes
+a successful storage acknowledgement.
+
+The template uses the store's generation-fenced `coordination.commit` path. Direct calls to its legacy two-argument
+`store` method are refused because they cannot identify the room generation that produced a snapshot.
+
+```sh
+COLLABORATION_SQLITE_FILE=./collaboration-data/rooms.sqlite PORT=1234 pnpm start
+COLLABORATION_SQLITE_FILE=./collaboration-data/rooms.sqlite PORT=1235 pnpm start
+```
+
+Use an absolute database path when processes have different working directories. Network filesystems, separate hosts,
+Redis deployments, and sharing the ordinary `.yjs` file store between processes are outside this mode's contract.
+Keep your normal access checks enabled. Opening a rejected connection does not create a stored room.
+
+For background work, commit the writer's edits, then await committed initial state through the reader's server:
+
+```ts
+await writer.collaboration.waitForStorageCommit({ timeoutMs: 10_000 });
+await agent.collaboration.waitForInitialSync({ timeoutMs: 10_000 });
+const text = await agent.getText();
+```
+
+`waitForInitialSync` integrates the latest committed room state before it resolves. It works for a newly joined
+agent or an already open agent connected to another process. It does not wait for edits still held only by another
+client. `waitForStorageCommit` covers the edits completed in the calling document before the call and returns
+`{ committed: true, commitId }`, where `commitId` identifies that acknowledgement call. It waits for the actual backing
+store operation, including deletion-only edits. A store rejection throws `COLLABORATION_STORAGE_FAILED`; no response
+before the deadline throws `COLLABORATION_SYNC_TIMEOUT`. Timeouts leave commitment uncertain: retain the document and
+retry or read back the room. A connection-state event and `waitForServerReceipt()` remain separate memory/transport
+signals and do not confirm storage.
+
+SQLite keeps a persistent room generation across process restarts. Deletion advances it in the same database
+transaction that removes the old state. Connected peers on other processes are closed, stale in-flight writes are
+rejected, and clients that were offline during the reset are refused when they reconnect. New clients can then seed
+and join the new generation. This fencing applies to clients using the current SuperDoc Hocuspocus adapter; a custom
+provider must retain the `superdoc-room-storage-v1` generation message as its `sdRoomGeneration` reconnect parameter.
 
 ### Example: Postgres
 
@@ -157,6 +201,9 @@ export function createPostgresRoomStore(pool: pg.Pool): RoomStore {
         [roomName, Buffer.from(state)],
       );
     },
+    async delete(roomName) {
+      await pool.query('DELETE FROM collaboration_rooms WHERE name = $1', [roomName]);
+    },
   };
 }
 ```
@@ -172,7 +219,7 @@ roomStore: createPostgresRoomStore(new pg.Pool({ connectionString: process.env.D
 With [`@aws-sdk/client-s3`](https://www.npmjs.com/package/@aws-sdk/client-s3), one object per room:
 
 ```ts
-import { GetObjectCommand, NoSuchKey, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { DeleteObjectCommand, GetObjectCommand, NoSuchKey, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { createHash } from 'node:crypto';
 import type { RoomStore } from './src/storage/types.ts';
 
@@ -192,6 +239,9 @@ export function createS3RoomStore(s3: S3Client, bucket: string): RoomStore {
     },
     async store(roomName, state) {
       await s3.send(new PutObjectCommand({ Bucket: bucket, Key: key(roomName), Body: state }));
+    },
+    async delete(roomName) {
+      await s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: key(roomName) }));
     },
   };
 }
@@ -238,6 +288,43 @@ if (!document.roomCreated) {
 as a reason to create a new room. If creation fails partway, read
 [Recover an interrupted initialization](https://docs.superdoc.dev/editor/collaboration/initialize-a-document#recover-an-interrupted-initialization)
 before retrying.
+
+## Delete or reset a room
+
+To throw a room away, for example after a bad edit or to load a new version of the file, call `deleteRoom` on
+the server with the full room name:
+
+```ts
+await server.deleteRoom('sd2/v2.1/contract-42');
+```
+
+It runs in the server process, so expose it the way you expose other admin actions, for example behind an
+authenticated route. When the promise resolves:
+
+- everyone in the room was disconnected. Their SuperDoc connection state becomes `failed` and they do not
+  reconnect,
+- any write that was running has finished, and no scheduled write will bring the room back,
+- the room is gone from your `RoomStore`. The next client finds an empty room,
+- a pending DOCX autosave for the room is cancelled. DOCX files saved earlier are kept.
+
+Anyone who tries to join while the delete runs is refused. Other rooms are not affected.
+
+To reset a room, delete it and then create it again from the new file:
+
+```ts
+await server.deleteRoom('sd2/v2.1/contract-42');
+await createRoom({ serverUrl, documentId: 'contract-42', docxPath: './contract-v2.docx', token: serviceToken });
+```
+
+Editors then open it with `roomMode: 'join'` as usual.
+
+With the default file store, a client that was offline when the room was deleted still holds the old content. If it reconnects after the
+room is created again, it sends that content back into the new room. If offline editors are possible, reset to
+a new document ID instead, or refuse their old tokens in `authorize`.
+
+To replace the content while everyone stays connected, use `replaceFile` instead. It loads a new DOCX into the
+same room for every open editor, and keeps the room's edit history. See
+[Load and save documents](https://docs.superdoc.dev/editor/load-and-save-documents).
 
 ## Save DOCX files
 

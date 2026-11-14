@@ -25,6 +25,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 import { createBuiltInToolbar } from '../internal/toolbar/built-in-toolbar.js';
 import type { SuperDocUI } from '../public/ui/types.js';
 import { createHighContrastMode } from '../composables/use-high-contrast-mode.js';
+import { createFakeV2Runtime } from './editor-runtime/conformance/fake-v2-runtime.js';
+import type { EditorRuntime } from './editor-runtime/index.js';
+import type { Editor } from './types/index.js';
 
 const factoryCalls = vi.hoisted(() => ({ count: 0 }));
 
@@ -191,6 +194,36 @@ describe('superdoc.ui — identity', () => {
     superdoc.setActiveEditor(null);
 
     expect(superdoc.ui.document.getSnapshot().ready).toBe(false);
+  });
+
+  it.each([
+    ['its own facade keeps', 'own', 'runtime'],
+    ['another facade releases', 'other', null],
+  ] as const)('re-activating %s the active runtime (SD-6697)', (_, activated, expected) => {
+    const superdoc = mount();
+    const shell = superdoc as unknown as {
+      registerEditorRuntime(runtime: EditorRuntime): void;
+      setActiveRuntime(id: string, reason: string): void;
+      getActiveRuntime(): EditorRuntime | null;
+    };
+    const runtime = createFakeV2Runtime({ id: 'doc-runtime', documentId: 'doc' });
+    const facade = runtime.getLegacyEditorProjection?.() as Editor;
+    runtime.getLegacyEditorProjection = () => facade;
+    shell.registerEditorRuntime(runtime);
+    shell.setActiveRuntime(runtime.id, 'v2-editor-ready');
+    superdoc.activeEditor = facade;
+    const other = { editorVersion: 2, documentId: 'other' } as unknown as Editor;
+    const editor = activated === 'own' ? facade : other;
+    const changes: Array<Editor | null> = [];
+    superdoc.on('active-editor-change', () => changes.push(superdoc.activeEditor));
+
+    superdoc.setActiveEditor(editor);
+
+    expect({ runtime: shell.getActiveRuntime(), editor: superdoc.activeEditor, changes }).toEqual({
+      runtime: expected && runtime,
+      editor,
+      changes: activated === 'own' ? [] : [other],
+    });
   });
 
   it('never shares a controller between instances', () => {

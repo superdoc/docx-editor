@@ -2955,7 +2955,12 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
    */
   #setActiveEditorCompatibilityProjection(editor: ActiveEditor | null) {
     if (isV2ActiveEditorFacade(editor)) {
-      if (!this.#applyingRuntimeActiveChange && this.#editorRuntimeRegistry.getActive()) {
+      const activeRuntime = this.#editorRuntimeRegistry.getActive();
+      if (
+        !this.#applyingRuntimeActiveChange &&
+        activeRuntime &&
+        activeRuntime.getLegacyEditorProjection?.() !== editor
+      ) {
         this.#editorRuntimeRegistry.setActive(null, 'set-active-v2-facade');
       }
       // One transition, one notification. `setDocumentMode('editing')` and

@@ -421,7 +421,7 @@ export const INTENT_GROUP_META: Record<string, IntentGroupMeta> = {
       '\n' +
       'NUMBERING (ordered lists):\n' +
       '• "set_value": restart numbering at the target. Pass target:{listItem} + value:<number> (e.g. value:1 to start over) or value:null to clear a previous override. Mid-sequence targets are atomically split off into their own sequence.\n' +
-      '• "continue_previous": make the target\'s sequence continue numbering from the nearest compatible previous sequence (same abstract definition). Pass target:{listItem of the sequence you want to renumber}. Fails with NO_COMPATIBLE_PREVIOUS or INCOMPATIBLE_DEFINITIONS if no matching prior sequence exists.\n' +
+      '• "continue_previous": make the target\'s sequence continue numbering from the nearest compatible previous sequence (the same level definitions, from one abstract definition or two identical ones, as Restart at 1 in Word writes). Pass target:{listItem of the sequence you want to renumber}. Fails with NO_COMPATIBLE_PREVIOUS or INCOMPATIBLE_DEFINITIONS if no matching prior sequence exists.\n' +
       '\n' +
       'SEQUENCE SHAPE (merge / split):\n' +
       '• "merge": merge the target\'s sequence with an adjacent one into one continuous list. Pass target:{listItem} + direction:"withPrevious" or "withNext". Absorbed items adopt the absorbing sequence\'s numbering definition, and empty paragraphs between the two sequences are removed so numbering flows continuously.\n' +

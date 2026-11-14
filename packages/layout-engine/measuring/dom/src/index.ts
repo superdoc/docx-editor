@@ -1936,9 +1936,7 @@ async function measureParagraphBlock(
       Number.isFinite(box.to) &&
       box.from >= 0 &&
       box.to > box.from &&
-      box.to <= visibleTextLength &&
-      block.attrs?.directionContext?.inlineDirection !== 'rtl' &&
-      block.runs.every((run) => !isTextRun(run) || run.bidi?.rtl !== true),
+      box.to <= visibleTextLength,
   );
   if (inlineBoxes?.length && inlineLineBudgets === undefined) {
     const unboxedBlock = { ...block, inlineBoxes: undefined };

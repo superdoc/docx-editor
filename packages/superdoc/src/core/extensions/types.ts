@@ -453,11 +453,6 @@ export interface SuperDocInlineBoxAppearance {
   color?: string;
 }
 
-/**
- * Options for {@link SuperDocVisualApi.inlineBox}. Inline boxes are
- * render-only and byte-neutral. They currently support LTR visible-text
- * targets only; unsupported directions and overlapping boxes fail closed.
- */
 export interface SuperDocInlineBoxOptions {
   layout?: SuperDocInlineBoxLayout;
   appearance?: SuperDocInlineBoxAppearance;

@@ -957,6 +957,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
   };
   let documentMutationRevision = 0;
   let remoteCommentsRevision = 0;
+  let contentControlReviewRevision = 0;
   // Explicit custom-UI list/navigation consumers share one paged directory
   // transport. Legacy hosts without the committed-window feed also use this
   // coordinator as their compatibility presentation source. A foreground
@@ -1112,6 +1113,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
   /** Token shared by document-content reads (editor identity + mutation revision). */
   const contentToken = (): string => `${editorIdentityId(getEditor())}|m${documentMutationRevision}`;
   const commentsDirectoryToken = (): string => `${contentToken()}|r${remoteCommentsRevision}`;
+  const contentControlsReadToken = (): string => `${contentToken()}|${contentControlReviewRevision}`;
 
   const clearPostDecisionTrackChanges = (): void => {
     postDecisionTrackChangesToken = null;
@@ -2390,7 +2392,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     items: ContentControlInfo[],
     status: SliceStatus,
   ): { items: ContentControlInfo[]; status: SliceStatus } => {
-    const token = contentToken();
+    const token = contentControlsReadToken();
     if (status === 'ready') {
       settledActiveContentControlsToken = token;
       settledActiveContentControls = items;
@@ -2408,12 +2410,14 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     const listContentControls = hostMethod(ccApi, 'list');
     const { value, status: listStatus } = readAsync<ContentControlsSlice['items']>(
       'contentControls',
-      contentToken(),
+      contentControlsReadToken(),
       () => (listContentControls ? listContentControls() : undefined),
       (raw) =>
         raw && Array.isArray((raw as LooseRecord).items)
           ? ((raw as LooseRecord).items as ContentControlsSlice['items'])
           : [],
+      false,
+      contentToken(),
     );
     const catalogItems = value ?? [];
     const { items: activeItems, status: rangeStatus } = computeActiveContentControls(ccApi, selection);
@@ -2451,7 +2455,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     if (!range) return { lockModesById: new Map(), rows: [], status: 'ready' };
     const { value, status } = readAsync<ContentControlInfo[]>(
       `contentControls:inRange:${selectionSignature(selection)}`,
-      contentToken(),
+      contentControlsReadToken(),
       () => listInRange(range),
       (raw) =>
         raw && Array.isArray((raw as LooseRecord).items) ? ((raw as LooseRecord).items as ContentControlInfo[]) : [],
@@ -5483,6 +5487,8 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
             // not enumerate every removed logical identity).
             replaceTrackedChangeItemsInCache([]);
             publishAllTrackedChangesResolved(event.receipt);
+            contentControlReviewRevision += 1;
+            scheduleAsyncRefresh();
             if (event.cause === 'preview') invalidateDocumentContent();
             return;
           }
@@ -5509,6 +5515,8 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
             return;
           }
           if (impact?.removedIds.size && impact.upsertIds.size === 0) {
+            contentControlReviewRevision += 1;
+            scheduleAsyncRefresh();
             if (event.cause === 'preview') invalidateDocumentContent();
             return;
           }

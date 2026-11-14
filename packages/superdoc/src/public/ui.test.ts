@@ -21943,6 +21943,91 @@ describe('public ui — async browser reads (read coordinator)', () => {
     return { superdoc, notifySelection: () => notifySelection() };
   }
 
+  for (const target of ['some', 'all'])
+    for (const active of [false, true])
+      it(`refreshes content controls after ${target} review decisions with active selection=${active}`, async () => {
+        const hostEvents: Array<(event: Record<string, unknown>) => void> = [];
+        let text = 'abc';
+        const list = vi.fn(async () => ({ items: [{ ...ASYNC_CONTENT_CONTROL, text }] }));
+        const listInRange = vi.fn(async () => ({ items: [{ ...ASYNC_CONTENT_CONTROL, text }] }));
+        const listTrackedChanges = vi.fn(async () => ({
+          items: [
+            { id: 'tc-1', type: 'insert' },
+            { id: 'tc-2', type: 'delete' },
+          ],
+        }));
+        const { superdoc } = makeAsyncSuperdoc({
+          hostEvents,
+          ...(active
+            ? {}
+            : {
+                selection: () =>
+                  Promise.resolve({
+                    empty: true,
+                    target: null,
+                    activeMarks: [],
+                    activeCommentIds: [],
+                    activeChangeIds: [],
+                  }),
+              }),
+          contentControls: { list, listInRange },
+          v2TrackedChanges: { listTrackedChanges },
+        });
+        const ui = createSuperDocUI({ superdoc });
+        const stop = ui.contentControls.observe(() => {});
+        try {
+          await vi.waitFor(() =>
+            expect(ui.contentControls.getSnapshot()).toMatchObject({
+              status: 'ready',
+              items: [expect.objectContaining({ text: 'abc' })],
+            }),
+          );
+          const beforeReviewReads = listTrackedChanges.mock.calls.length;
+          text = '[Agreement reference]';
+          hostEvents.at(-1)?.({
+            type: 'mutation:committed',
+            origin: 'command',
+            receipt: {
+              success: true,
+              txId: 'review-1',
+              removed: [{ kind: 'entity', entityType: 'trackedChange', entityId: 'tc-1' }],
+            },
+            ...(target === 'all'
+              ? {
+                  trackedChangeAllResolved: {
+                    schemaVersion: 1,
+                    targetKind: 'all',
+                    decision: 'reject',
+                    catalogRevision: 'catalog-2',
+                    sourceCoverageRevision: 'coverage-2',
+                    logicalTargetCount: 2,
+                    physicalCarrierCount: 2,
+                    remainingLogicalCount: 0,
+                    txId: 'review-1',
+                    documentEpoch: 'document-1',
+                    commitSequence: 2,
+                    packagePreviousRevision: 'package-1',
+                    packageNextRevision: 'package-2',
+                  },
+                }
+              : {}),
+          });
+          await vi.waitFor(() =>
+            expect(ui.contentControls.getSnapshot()).toMatchObject({
+              status: 'ready',
+              items: [expect.objectContaining({ text: '[Agreement reference]' })],
+            }),
+          );
+          expect(list).toHaveBeenCalledTimes(2);
+          if (active) expect(listInRange).toHaveBeenCalledTimes(2);
+          expect(listTrackedChanges).toHaveBeenCalledTimes(beforeReviewReads);
+          expect(ui.trackChanges.getSnapshot().items.map((item) => item.id)).toEqual(target === 'all' ? [] : ['tc-2']);
+        } finally {
+          stop();
+          ui.destroy();
+        }
+      });
+
   it('refreshes settled content-control observers for consecutive standalone document mutations', async () => {
     const hostEvents: Array<(event: Record<string, unknown>) => void> = [];
     let items = [ASYNC_CONTENT_CONTROL];

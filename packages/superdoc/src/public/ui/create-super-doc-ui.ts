@@ -260,6 +260,7 @@ import { createSearchHandle } from './search-handle.js';
 import { createDocumentPolicy } from './document-policy.js';
 import { createViewportPointQueries } from './viewport-point-queries.js';
 import { createStyleReads, createStylesHandle, documentDefaultParagraphStyleId } from './styles-handle.js';
+import { schedulePostFrame } from './post-frame.js';
 
 type FirstPartyCommandMutation = {
   selectionReader?: {
@@ -910,6 +911,19 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     };
     frameRecompute = scheduled;
     if (typeof requestFrame === 'function') frame = requestFrame(run);
+  };
+  let postFrameRecompute: { cancel: () => void } | null = null;
+  const cancelPostFrameRecompute = (): void => {
+    postFrameRecompute?.cancel();
+    postFrameRecompute = null;
+  };
+  const requestPostFrameRecompute = (reason: string): void => {
+    if (disposed || postFrameRecompute) return;
+    const scheduled = schedulePostFrame(() => {
+      if (postFrameRecompute !== scheduled || disposed) return;
+      recompute(reason);
+    });
+    postFrameRecompute = scheduled;
   };
   let microtaskRecomputeQueued = false;
   const requestMicrotaskRecompute = (reason: string): void => {
@@ -4948,7 +4962,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
   let currentV2ReviewWindowSource: LooseRecord | null = null;
   let detachV2ReviewWindow: (() => void) | null = null;
 
-  const requestEditCommandsRecompute = (): void => requestMicrotaskRecompute('edit-commands');
+  const requestEditCommandsRecompute = (): void => requestPostFrameRecompute('edit-commands');
 
   const syncEditCommandsSubscription = (): void => {
     const next = getEditCommands();
@@ -5428,7 +5442,8 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
           type === 'document:mutated' ||
           (type === 'mutation:committed' && mutationCommittedEventChangedDocument(event));
         if (documentEdited && host && hostMethod(host, 'isDirty')) {
-          recompute('document-dirty');
+          if (state.document.dirty) requestPostFrameRecompute('document-dirty');
+          else recompute('document-dirty');
         } else if (documentEdited && host && !dirtyHosts.has(host)) {
           dirtyHosts.add(host);
           recompute('document-dirty');
@@ -5572,6 +5587,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
 
   const recompute = (reason = 'unspecified'): void => {
     cancelFrameRecompute();
+    cancelPostFrameRecompute();
     microtaskRecomputeQueued = false;
     if (disposed) return;
     for (const request of pendingListRequests) {
@@ -11421,6 +11437,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     decorationListeners.clear();
     disposed = true;
     cancelFrameRecompute();
+    cancelPostFrameRecompute();
     stopSearchRefresh();
     releaseSharedUiTrackedChangesCatalog(uiTrackedChangesCatalogHost, uiTrackedChangesCatalogState);
     if (foregroundAsyncRetryTimer) {

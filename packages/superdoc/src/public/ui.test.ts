@@ -47,6 +47,13 @@ async function nextAnimationFrame(): Promise<void> {
   for (let index = 0; index < 4; index += 1) await Promise.resolve();
 }
 
+async function afterNextFramePublish(): Promise<void> {
+  await nextAnimationFrame();
+  if (vi.isFakeTimers()) vi.advanceTimersByTime(0);
+  else await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  for (let index = 0; index < 4; index += 1) await Promise.resolve();
+}
+
 /**
  * Smoke test for the public facade ui entry (SD-3183).
  * Three runtime re-exports cover the entry. Declaration-side validation
@@ -4307,7 +4314,7 @@ describe('public ui — viewport + metadata geometry', () => {
     // The read lands and the adapter republishes; no lifecycle event fires.
     resolvedRead = true;
     notify!();
-    await Promise.resolve();
+    await afterNextFramePublish();
 
     expect(ui.commands.get('undo').getState().reason).toBe(SUPERDOC_UI_REASONS.historyEmpty);
     ui.destroy();
@@ -4394,7 +4401,7 @@ describe('public ui — viewport + metadata geometry', () => {
     ui.destroy();
   });
 
-  it('coalesces background publishes into one frame recompute and keeps edit-command updates in the same task', async () => {
+  it('coalesces background publishes into one frame recompute and folds edit-command updates into it', async () => {
     const editCommandListeners = new Set<() => void>();
     const windowListeners = new Set<() => void>();
     const handlers = new Map<string, Set<(payload?: unknown) => void>>();
@@ -4462,10 +4469,13 @@ describe('public ui — viewport + metadata geometry', () => {
     for (const listener of editCommandListeners) listener();
     for (const listener of editCommandListeners) listener();
     for (let index = 0; index < 8; index += 1) await Promise.resolve();
-    expect(recomputes, 'edit-command emissions recompute once in the same task').toBe(2);
+    expect(recomputes, 'edit-command emissions do not recompute inside the task').toBe(1);
 
-    await nextAnimationFrame();
-    expect(recomputes, 'the same-task recompute supersedes the queued frame recompute').toBe(2);
+    await afterNextFramePublish();
+    expect(recomputes, 'the frame recompute also covers the queued post-frame recompute').toBe(2);
+
+    await afterNextFramePublish();
+    expect(recomputes, 'nothing is left queued after the post-frame recompute').toBe(2);
     stop();
     ui.destroy();
   });
@@ -4523,8 +4533,7 @@ describe('public ui — viewport + metadata geometry', () => {
     toolbarEmissions = 0;
 
     for (let i = 0; i < 5; i += 1) notify!();
-    await Promise.resolve();
-    await Promise.resolve();
+    await afterNextFramePublish();
 
     // Exactly one: `<= 1` would also pass if the recompute were dropped
     // entirely, which is the other half of what coalescing must not do.
@@ -4534,8 +4543,7 @@ describe('public ui — viewport + metadata geometry', () => {
     undoEnabled = true;
     recomputes = 0;
     for (let i = 0; i < 5; i += 1) notify!();
-    await Promise.resolve();
-    await Promise.resolve();
+    await afterNextFramePublish();
 
     expect(recomputes, 'a changed snapshot must still recompute exactly once').toBe(1);
     expect(toolbarEmissions, 'changed toolbar facts must publish exactly once').toBe(1);
@@ -13495,7 +13503,7 @@ describe('public ui — Plan B command catalog (row 747)', () => {
     const publish = async (next: unknown) => {
       history = next;
       for (const listener of listeners) listener();
-      await Promise.resolve();
+      await afterNextFramePublish();
     };
 
     return (async () => {

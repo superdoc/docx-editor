@@ -4408,6 +4408,35 @@ export const OPERATION_DEFINITIONS = {
   // -------------------------------------------------------------------------
   // History
   // -------------------------------------------------------------------------
+  'history.beginGroup': {
+    memberPath: 'history.beginGroup',
+    description:
+      'Begin one editor-local undo group across awaited public writes. Nesting and temporary mutation overlap are rejected. Finish with endGroup in finally; failed writes leave the successful prefix undoable. Native input and undo/redo finish the group; remote peer edits retain their own ownership.',
+    expectedResult:
+      'Returns a session-local groupId. Empty groups create no history entry. The handle does not survive document replacement or reopen.',
+    requiresDocumentContext: true,
+    metadata: readOperation({
+      idempotency: 'non-idempotent',
+      throws: ['CAPABILITY_UNAVAILABLE', 'PRECONDITION_FAILED'],
+    }),
+    referenceDocPath: 'history/begin-group.mdx',
+    referenceGroup: 'history',
+    batchable: false,
+  },
+  'history.endGroup': {
+    memberPath: 'history.endGroup',
+    description:
+      'Finish the matching editor-local group. Call in finally after awaiting each write. A stale handle returns closed false when no group is active; a mismatched handle cannot close another active group. Successful writes become one Undo and one Redo without rolling back failed writes.',
+    expectedResult: 'Returns the supplied groupId and closed, indicating whether this call closed an active group.',
+    requiresDocumentContext: true,
+    metadata: readOperation({
+      idempotency: 'idempotent',
+      throws: ['INVALID_INPUT', 'CAPABILITY_UNAVAILABLE', 'PRECONDITION_FAILED'],
+    }),
+    referenceDocPath: 'history/end-group.mdx',
+    referenceGroup: 'history',
+    batchable: false,
+  },
   'history.get': {
     memberPath: 'history.get',
     description: 'Query the current undo/redo history state of the document.',

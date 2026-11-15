@@ -157,6 +157,9 @@ export type {
   // `DocumentApi` is the synchronous SDK counterpart.
   BrowserDocumentApi,
   PartialBrowserDocumentApi,
+  HistoryGroupHandle,
+  HistoryEndGroupInput,
+  HistoryEndGroupResult,
   DocumentApi,
   Receipt,
   DocumentApiRejectionReason,

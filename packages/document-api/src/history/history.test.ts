@@ -1,6 +1,12 @@
 import { describe, expect, it, mock } from 'bun:test';
 import type { HistoryAdapter } from './history.js';
-import { executeHistoryGet, executeHistoryUndo, executeHistoryRedo } from './history.js';
+import {
+  executeHistoryGet,
+  executeHistoryUndo,
+  executeHistoryRedo,
+  executeHistoryBeginGroup,
+  executeHistoryEndGroup,
+} from './history.js';
 import type { HistoryState, HistoryActionResult } from './history.types.js';
 
 function makeHistoryAdapter(
@@ -113,4 +119,20 @@ describe('history execute functions', () => {
       expect(result.revision.before).toBe(result.revision.after);
     });
   });
+});
+
+it('delegates serializable history groups and validates before unsupported adapters', () => {
+  const adapter = makeHistoryAdapter();
+  expect(() => executeHistoryBeginGroup(adapter)).toThrow('History grouping is unavailable');
+  expect(() => executeHistoryEndGroup(adapter, { groupId: '' })).toThrow('non-empty groupId');
+  expect(() => executeHistoryEndGroup(adapter, { groupId: 'group' })).toThrow('History grouping is unavailable');
+  const handle = { groupId: 'session:1' };
+  const grouped = {
+    ...adapter,
+    beginGroup: mock(() => handle),
+    endGroup: mock((input: { groupId: string }) => ({ ...input, closed: true })),
+  };
+  expect(executeHistoryBeginGroup(grouped)).toBe(handle);
+  expect(executeHistoryEndGroup(grouped, handle)).toEqual({ ...handle, closed: true });
+  expect(grouped.endGroup).toHaveBeenCalledWith(handle);
 });

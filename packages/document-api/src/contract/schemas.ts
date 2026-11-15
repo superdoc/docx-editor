@@ -10153,6 +10153,17 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
     failure: sectionMutationFailureSchemaFor('tables.clearDefaultStyle'),
   },
   // --- history.* ---
+  'history.beginGroup': {
+    input: strictEmptyObjectSchema,
+    output: objectSchema({ groupId: { type: 'string', minLength: 1 } }, ['groupId']),
+  },
+  'history.endGroup': {
+    input: objectSchema({ groupId: { type: 'string', minLength: 1, pattern: '\\S' } }, ['groupId']),
+    output: objectSchema({ groupId: { type: 'string', minLength: 1 }, closed: { type: 'boolean' } }, [
+      'groupId',
+      'closed',
+    ]),
+  },
   'history.get': {
     input: strictEmptyObjectSchema,
     output: objectSchema(

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { generateOrderedListIndex, intToJapaneseCounting, normalizeLvlTextChar } from './index';
+import { formatListNumber, generateOrderedListIndex, intToJapaneseCounting, normalizeLvlTextChar } from './index';
 
 describe('generateOrderedListIndex', () => {
   // SD-5466: Word reproduces every non-placeholder lvlText character verbatim, leading zero included.
@@ -321,6 +321,36 @@ describe('generateOrderedListIndex', () => {
   });
 });
 
+describe('formatListNumber bounds', () => {
+  it('counts Word roman numerals past 3999 and returns decimal text for a start past 32767 instead of looping', () => {
+    expect(formatListNumber(4000, 'upperRoman')).toBe('MMMM');
+    expect(formatListNumber(32767, 'lowerRoman')).toBe(`${'m'.repeat(32)}dcclxvii`);
+    expect(formatListNumber(32768, 'upperRoman')).toBe('32768');
+    expect(formatListNumber(1e20, 'upperRoman')).toBe('100000000000000000000');
+    expect(intToJapaneseCounting(-1)).toBe('-1');
+    expect(intToJapaneseCounting(-12345)).toBe('-12345');
+  });
+
+  it('returns bounded text for a huge start in every counted format', () => {
+    for (const format of [
+      'decimal',
+      'decimalZero',
+      'upperRoman',
+      'upperLetter',
+      'ordinal',
+      'ordinalText',
+      'cardinalText',
+      'hebrew1',
+      'hebrew2',
+      'chineseCounting',
+      'chineseCountingThousand',
+      'japaneseCounting',
+    ]) {
+      expect(formatListNumber(1e20, format).length, format).toBeLessThan(200);
+    }
+  });
+});
+
 describe('normalizeLvlTextChar', () => {
   it('normalizes known bullet glyphs', () => {
     expect(normalizeLvlTextChar('')).toBe('•');
@@ -341,7 +371,7 @@ describe('normalizeLvlTextChar', () => {
 
 describe('intToJapaneseCounting', () => {
   it('returns zero and single digit representations', () => {
-    expect(intToJapaneseCounting(0)).toBe('零');
+    expect(intToJapaneseCounting(0)).toBe('〇');
     expect(intToJapaneseCounting(3)).toBe('三');
   });
 
@@ -349,5 +379,39 @@ describe('intToJapaneseCounting', () => {
     expect(intToJapaneseCounting(10)).toBe('十');
     expect(intToJapaneseCounting(15)).toBe('十五');
     expect(intToJapaneseCounting(342)).toBe('三百四十二');
+  });
+
+  it('writes the 万 group, no zero marker and a leading 一 only before 千 after 万, as Word 16.0.17928 shows', () => {
+    for (const [value, text] of [
+      [100, '百'],
+      [101, '百一'],
+      [110, '百十'],
+      [111, '百十一'],
+      [1000, '千'],
+      [1001, '千一'],
+      [1010, '千十'],
+      [1100, '千百'],
+      [1111, '千百十一'],
+      [2000, '二千'],
+      [4001, '四千一'],
+      [9999, '九千九百九十九'],
+      [10000, '一万'],
+      [10001, '一万一'],
+      [10010, '一万十'],
+      [10100, '一万百'],
+      [10110, '一万百十'],
+      [11000, '一万一千'],
+      [11100, '一万一千百'],
+      [11111, '一万一千百十一'],
+      [12345, '一万二千三百四十五'],
+      [20000, '二万'],
+      [21000, '二万一千'],
+      [21111, '二万一千百十一'],
+      [30000, '三万'],
+      [30303, '三万三百三'],
+      [32767, '三万二千七百六十七'],
+    ] as const) {
+      expect(intToJapaneseCounting(value), String(value)).toBe(text);
+    }
   });
 });

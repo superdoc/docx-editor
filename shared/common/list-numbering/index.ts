@@ -2,49 +2,20 @@ type NumberingHandler = (path: number[], lvlText: string, customFormat?: string)
 
 type NumberFormatter = (value: number) => string;
 
-const handleDecimal: NumberingHandler = (path, lvlText) => generateNumbering(path, lvlText, numberToStringFormatter);
-const handleRoman: NumberingHandler = (path, lvlText) => generateNumbering(path, lvlText, intToRoman);
-const handleLowerRoman: NumberingHandler = (path, lvlText) => {
-  const result = handleRoman(path, lvlText);
-  return result ? result.toLowerCase() : null;
-};
-const handleAlpha: NumberingHandler = (path, lvlText) => generateNumbering(path, lvlText, intToAlpha);
-const handleLowerAlpha: NumberingHandler = (path, lvlText) => {
-  const result = handleAlpha(path, lvlText);
-  return result ? result.toLowerCase() : null;
-};
-const handleOrdinal: NumberingHandler = (path, lvlText) => generateNumbering(path, lvlText, ordinalFormatter);
-const handleOrdinalText: NumberingHandler = (path, lvlText) => generateNumbering(path, lvlText, ordinalTextFormatter);
-const handleCardinalText: NumberingHandler = (path, lvlText) => generateNumbering(path, lvlText, cardinalTextFormatter);
-const handleCustom: NumberingHandler = (path, lvlText, customFormat) =>
-  generateFromCustom(path, lvlText, customFormat as string);
-const handleJapaneseCounting: NumberingHandler = (path, lvlText) =>
-  generateNumbering(path, lvlText, intToJapaneseCounting);
-const handleDecimalZero: NumberingHandler = (path, lvlText) => generateNumbering(path, lvlText, decimalZeroFormatter);
-const handleChineseCounting: NumberingHandler = (path, lvlText) =>
-  generateNumbering(path, lvlText, intToChineseCounting);
-const handleChineseCountingThousand: NumberingHandler = (path, lvlText) =>
-  generateNumbering(path, lvlText, intToChineseCountingThousand);
-const handleHebrewNumeral: NumberingHandler = (path, lvlText) => generateNumbering(path, lvlText, intToHebrewNumeral);
-const handleHebrewAlphabetic: NumberingHandler = (path, lvlText) =>
-  generateNumbering(path, lvlText, intToHebrewAlphabetic);
+const lowerCased =
+  (formatter: NumberFormatter): NumberFormatter =>
+  (value) =>
+    formatter(value).toLowerCase();
 
-const listIndexMap: Record<string, NumberingHandler> = {
-  decimal: handleDecimal,
-  decimalZero: handleDecimalZero,
-  lowerRoman: handleLowerRoman,
-  upperRoman: handleRoman,
-  lowerLetter: handleLowerAlpha,
-  upperLetter: handleAlpha,
-  ordinal: handleOrdinal,
-  ordinalText: handleOrdinalText,
-  cardinalText: handleCardinalText,
-  custom: handleCustom,
-  japaneseCounting: handleJapaneseCounting,
-  chineseCounting: handleChineseCounting,
-  chineseCountingThousand: handleChineseCountingThousand,
-  hebrew1: handleHebrewNumeral,
-  hebrew2: handleHebrewAlphabetic,
+const formatterFor = (numFmt: string | undefined): NumberFormatter | null =>
+  (numFmt != null && NUMBER_FORMATTERS.get(numFmt)) || null;
+
+export const formatListNumber = (value: number, numFmt: string | undefined, customFormat?: string | null): string => {
+  if (!Number.isFinite(value) || value < 0) return String(value);
+  if (numFmt === 'custom') return customFormatter(customFormat)(value);
+  if (numFmt === 'bullet') return '';
+  const formatter = formatterFor(numFmt);
+  return formatter ? formatter(value) : String(value);
 };
 
 export interface GenerateOrderedListIndexOptions {
@@ -61,8 +32,9 @@ export const generateOrderedListIndex = ({
   customFormat,
 }: GenerateOrderedListIndexOptions): string | null => {
   if (typeof lvlText !== 'string') return null;
-  const handler = listIndexMap[listNumberingType as string];
-  return handler ? handler(listLevel, lvlText, customFormat) : null;
+  const formatter =
+    listNumberingType === 'custom' ? customFormatter(customFormat ?? null) : formatterFor(listNumberingType);
+  return formatter ? generateNumbering(listLevel, lvlText, formatter) : null;
 };
 
 const createNumbering = (values: string[], lvlText: string): string => {
@@ -82,138 +54,114 @@ const ordinalFormatter: NumberFormatter = (value) => {
   return `${value}${suffix}`;
 };
 
-// OOXML w:numFmt values per ECMA-376 §17.18.59:
-//   ordinalText  -> "First", "Second", "Third", ...
-//   cardinalText -> "One", "Two", "Three", ...
-// Used by legal/contract templates (e.g., FIRST: SECOND: section markers).
-// The <w:caps/> mark on the run elevates these to "FIRST", "SECOND", etc.
-const ONES_ORDINAL = [
-  '',
-  'First',
-  'Second',
-  'Third',
-  'Fourth',
-  'Fifth',
-  'Sixth',
-  'Seventh',
-  'Eighth',
-  'Ninth',
-  'Tenth',
-  'Eleventh',
-  'Twelfth',
-  'Thirteenth',
-  'Fourteenth',
-  'Fifteenth',
-  'Sixteenth',
-  'Seventeenth',
-  'Eighteenth',
-  'Nineteenth',
+const ONES = [
+  'zero',
+  'one',
+  'two',
+  'three',
+  'four',
+  'five',
+  'six',
+  'seven',
+  'eight',
+  'nine',
+  'ten',
+  'eleven',
+  'twelve',
+  'thirteen',
+  'fourteen',
+  'fifteen',
+  'sixteen',
+  'seventeen',
+  'eighteen',
+  'nineteen',
 ];
-const TENS_ORDINAL = [
-  '',
-  '',
-  'Twentieth',
-  'Thirtieth',
-  'Fortieth',
-  'Fiftieth',
-  'Sixtieth',
-  'Seventieth',
-  'Eightieth',
-  'Ninetieth',
+const TENS = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
+const SCALES: ReadonlyArray<readonly [number, string]> = [
+  [1_000_000_000, 'billion'],
+  [1_000_000, 'million'],
+  [1000, 'thousand'],
+  [100, 'hundred'],
 ];
-const ONES_CARDINAL = [
-  '',
-  'One',
-  'Two',
-  'Three',
-  'Four',
-  'Five',
-  'Six',
-  'Seven',
-  'Eight',
-  'Nine',
-  'Ten',
-  'Eleven',
-  'Twelve',
-  'Thirteen',
-  'Fourteen',
-  'Fifteen',
-  'Sixteen',
-  'Seventeen',
-  'Eighteen',
-  'Nineteen',
-];
-const TENS_CARDINAL = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
-
-const ordinalTextFormatter: NumberFormatter = (value) => {
-  if (!Number.isFinite(value) || value < 1) return '';
-  if (value < ONES_ORDINAL.length) return ONES_ORDINAL[value];
-  if (value < 100) {
-    const t = Math.floor(value / 10);
-    const o = value % 10;
-    if (o === 0) return TENS_ORDINAL[t];
-    return `${TENS_CARDINAL[t]}-${ONES_ORDINAL[o]}`;
-  }
-  // Fallback for 100+: numeric ordinal (kept simple).
-  return ordinalFormatter(value);
+const ORDINAL_WORDS: Record<string, string> = {
+  one: 'first',
+  two: 'second',
+  three: 'third',
+  five: 'fifth',
+  eight: 'eighth',
+  nine: 'ninth',
+  twelve: 'twelfth',
 };
 
-const cardinalTextFormatter: NumberFormatter = (value) => {
-  if (!Number.isFinite(value) || value < 1) return '';
-  if (value < ONES_CARDINAL.length) return ONES_CARDINAL[value];
+const cardinalWords = (value: number): string => {
+  if (value < 20) return ONES[value];
   if (value < 100) {
-    const t = Math.floor(value / 10);
-    const o = value % 10;
-    if (o === 0) return TENS_CARDINAL[t];
-    return `${TENS_CARDINAL[t]}-${ONES_CARDINAL[o]}`;
+    const ones = value % 10;
+    return ones === 0 ? TENS[Math.floor(value / 10)] : `${TENS[Math.floor(value / 10)]}-${ONES[ones]}`;
   }
-  return String(value);
+  const [scale, name] = SCALES.find(([size]) => value >= size) ?? SCALES[SCALES.length - 1];
+  const rest = value % scale;
+  return `${cardinalWords(Math.floor(value / scale))} ${name}${rest === 0 ? '' : ` ${cardinalWords(rest)}`}`;
 };
+
+const ordinalWord = (word: string): string => {
+  if (ORDINAL_WORDS[word]) return ORDINAL_WORDS[word];
+  if (word.endsWith('y')) return `${word.slice(0, -1)}ieth`;
+  return `${word}th`;
+};
+
+const ordinalWords = (value: number): string => {
+  const cardinal = cardinalWords(value);
+  const last = /[a-z]+$/.exec(cardinal)?.[0] ?? cardinal;
+  return cardinal.slice(0, cardinal.length - last.length) + ordinalWord(last);
+};
+
+const capitalized = (text: string): string => text.charAt(0).toUpperCase() + text.slice(1);
+
+const ordinalTextFormatter: NumberFormatter = (value) =>
+  Number.isInteger(value) && value >= 0 ? capitalized(ordinalWords(value)) : String(value);
+
+const cardinalTextFormatter: NumberFormatter = (value) =>
+  Number.isInteger(value) && value >= 0 ? capitalized(cardinalWords(value)) : String(value);
 
 const decimalZeroFormatter: NumberFormatter = (value) => {
   if (value >= 10) return String(value);
   return `0${value}`;
 };
 
-const generateFromCustom = (path: number[], lvlText: string, customFormat: string): string => {
-  if (typeof customFormat !== 'string') {
-    return generateNumbering(path, lvlText, numberToStringFormatter);
-  }
-  if (customFormat.match(/(?:[0]+\d,\s){3}\.{3}/) == null) {
-    return generateNumbering(path, lvlText, numberToStringFormatter);
-  }
-
-  const match = customFormat.match(/(\d+)/);
-  if (!match) {
-    throw new Error('Invalid format string: no numeric pattern found');
-  }
-
-  const digitCount = match[1].length;
-  return generateNumbering(path, lvlText, (p) => String(p).padStart(digitCount, '0'));
+const customFormatter = (customFormat: string | null | undefined): NumberFormatter => {
+  const width = customFormat?.match(/(?:[0]+\d,\s){3}\.{3}/)?.[0].match(/\d+/)?.[0].length;
+  return width ? (value) => String(value).padStart(width, '0') : numberToStringFormatter;
 };
 
 const numberToStringFormatter: NumberFormatter = (value) => String(value);
 
-const intToRoman = (num: number): string => {
-  const romanNumeralMap = [
-    { value: 1000, numeral: 'M' },
-    { value: 900, numeral: 'CM' },
-    { value: 500, numeral: 'D' },
-    { value: 400, numeral: 'CD' },
-    { value: 100, numeral: 'C' },
-    { value: 90, numeral: 'XC' },
-    { value: 50, numeral: 'L' },
-    { value: 40, numeral: 'XL' },
-    { value: 10, numeral: 'X' },
-    { value: 9, numeral: 'IX' },
-    { value: 5, numeral: 'V' },
-    { value: 4, numeral: 'IV' },
-    { value: 1, numeral: 'I' },
-  ];
+const ROMAN_NUMERALS: ReadonlyArray<readonly [number, string]> = [
+  [1000, 'M'],
+  [900, 'CM'],
+  [500, 'D'],
+  [400, 'CD'],
+  [100, 'C'],
+  [90, 'XC'],
+  [50, 'L'],
+  [40, 'XL'],
+  [10, 'X'],
+  [9, 'IX'],
+  [5, 'V'],
+  [4, 'IV'],
+  [1, 'I'],
+];
 
-  let result = '';
-  let remaining = num;
-  for (const { value, numeral } of romanNumeralMap) {
+const WORD_BLANK_NUMBER = ' ';
+
+const LARGEST_COUNTED_ROMAN = 32767;
+
+const intToRoman = (num: number): string => {
+  if (num < 1) return WORD_BLANK_NUMBER;
+  if (!Number.isInteger(num) || num > LARGEST_COUNTED_ROMAN) return String(num);
+  let result = 'M'.repeat(Math.floor(num / 1000));
+  let remaining = num % 1000;
+  for (const [value, numeral] of ROMAN_NUMERALS) {
     while (remaining >= value) {
       result += numeral;
       remaining -= value;
@@ -222,55 +170,41 @@ const intToRoman = (num: number): string => {
   return result;
 };
 
-/**
- * Word-compatible alphabetic numbering for `upperLetter` / `lowerLetter`
- * list formats: A, B, ..., Z, AA, BB, ..., ZZ, AAA, BBB, ..., ZZZ, AAAA, ...
- *
- * The OOXML spec maps `n` to the letter at index `(n-1) % 26` repeated
- * `floor((n-1) / 26) + 1` times. This differs from a base-26 (Excel-style)
- * mapping where 27 → "AA" but 28 → "AB"; Word emits "BB" at 28.
- */
+const LETTER_CYCLE = 780;
+
 const intToAlpha = (num: number): string => {
-  if (num < 1) return '';
-  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-  const letter = alphabet[(num - 1) % 26];
-  const repeats = Math.floor((num - 1) / 26) + 1;
-  return letter.repeat(repeats);
+  if (num < 1) return WORD_BLANK_NUMBER;
+  const value = ((num - 1) % LETTER_CYCLE) + 1;
+  const letter = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[(value - 1) % 26];
+  return letter.repeat(Math.floor((value - 1) / 26) + 1);
 };
 
-export const intToJapaneseCounting = (num: number): string => {
-  const digits = ['', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
-  const units = ['', '十', '百', '千'];
+const JAPANESE_DIGITS = ['', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
+const JAPANESE_UNITS = [
+  ['千', 1000],
+  ['百', 100],
+  ['十', 10],
+] as const;
 
-  if (num === 0) return '零';
-  if (num < 10) return digits[num];
-
+const japaneseGroup = (group: number, keepsThousandOne: boolean): string => {
   let result = '';
-  let tempNum = num;
-  let unitIndex = 0;
-
-  while (tempNum > 0) {
-    const digit = tempNum % 10;
-    if (digit !== 0) {
-      const digitStr = digit === 1 && unitIndex > 0 ? '' : digits[digit];
-      result = digitStr + (unitIndex > 0 ? units[unitIndex] : '') + result;
-    } else if (result && tempNum > 0) {
-      if (!result.startsWith('零') && tempNum % 100 !== 0) {
-        result = '零' + result;
-      }
-    }
-
-    tempNum = Math.floor(tempNum / 10);
-    unitIndex += 1;
-
-    if (unitIndex > 3) break;
+  for (const [unit, size] of JAPANESE_UNITS) {
+    const digit = Math.floor(group / size) % 10;
+    if (digit === 0) continue;
+    const keepsOne = unit === '千' && keepsThousandOne;
+    result += (digit === 1 && !keepsOne ? '' : JAPANESE_DIGITS[digit]) + unit;
   }
+  return result + JAPANESE_DIGITS[group % 10];
+};
 
-  if (num >= 10 && num < 20) {
-    result = result.replace(/^一十/, '十');
-  }
+const LARGEST_JAPANESE_GROUPED = 99_999_999;
 
-  return result;
+export const intToJapaneseCounting = (num: number): string => {
+  if (num === 0) return '〇';
+  if (!Number.isInteger(num) || num < 0 || num > LARGEST_JAPANESE_GROUPED) return String(num);
+  const wan = Math.floor(num / 10_000);
+  const rest = num % 10_000;
+  return (wan > 0 ? `${japaneseGroup(wan, false)}万` : '') + japaneseGroup(rest, wan > 0);
 };
 
 // OOXML w:numFmt values per ECMA-376 §17.18.59, matched to Word 16 output
@@ -394,6 +328,25 @@ const intToHebrewAlphabetic = (num: number): string => {
   const repeats = Math.floor((value - 1) / HEBREW_ALPHABET.length);
   return `\u200F${'ת'.repeat(repeats)}${HEBREW_ALPHABET[(value - 1) % HEBREW_ALPHABET.length]}`;
 };
+
+const NUMBER_FORMATTERS: ReadonlyMap<string, NumberFormatter> = new Map(
+  Object.entries({
+    decimal: numberToStringFormatter,
+    decimalZero: decimalZeroFormatter,
+    lowerRoman: lowerCased(intToRoman),
+    upperRoman: intToRoman,
+    lowerLetter: lowerCased(intToAlpha),
+    upperLetter: intToAlpha,
+    ordinal: ordinalFormatter,
+    ordinalText: ordinalTextFormatter,
+    cardinalText: cardinalTextFormatter,
+    japaneseCounting: intToJapaneseCounting,
+    chineseCounting: intToChineseCounting,
+    chineseCountingThousand: intToChineseCountingThousand,
+    hebrew1: intToHebrewNumeral,
+    hebrew2: intToHebrewAlphabetic,
+  }),
+);
 
 const normalizeChars = new Set(['', '', '○', '■', '□']);
 

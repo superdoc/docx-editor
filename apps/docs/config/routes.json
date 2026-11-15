@@ -301,6 +301,8 @@
     "/document-api/reference/header-footers/refs/set/",
     "/document-api/reference/header-footers/resolve/",
     "/document-api/reference/history/",
+    "/document-api/reference/history/begin-group/",
+    "/document-api/reference/history/end-group/",
     "/document-api/reference/history/get/",
     "/document-api/reference/history/redo/",
     "/document-api/reference/history/undo/",

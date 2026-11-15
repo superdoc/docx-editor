@@ -18,6 +18,11 @@ export const formatListNumber = (value: number, numFmt: string | undefined, cust
   return formatter ? formatter(value) : String(value);
 };
 
+const LEGAL_KEEPS_FORMAT = new Set(['decimalZero', 'none', 'bullet']);
+
+export const legalNumberFormat = (numFmt: string, isLegal: boolean | undefined): string =>
+  isLegal && !LEGAL_KEEPS_FORMAT.has(numFmt) ? 'decimal' : numFmt;
+
 export interface GenerateOrderedListIndexOptions {
   listLevel: number[];
   lvlText: string | null | undefined;

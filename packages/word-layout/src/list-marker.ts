@@ -10,7 +10,7 @@
  * `NumberingManager` instance passed in. Callers (the v2 adapter, the v1
  * NumberingPlugin) are responsible for scope.
  */
-import { generateOrderedListIndex, normalizeLvlTextChar } from '@superdoc/common/list-numbering';
+import { generateOrderedListIndex, legalNumberFormat, normalizeLvlTextChar } from '@superdoc/common/list-numbering';
 import type { NumberingManager } from './numbering-manager.js';
 import type { ListRenderingAttrs, WordListJustification } from './types.js';
 
@@ -153,7 +153,7 @@ function formatNumberingTemplate(definition: WordListMarkerDefinition, path: num
       generateOrderedListIndex({
         listLevel: path,
         lvlText: template,
-        listNumberingType: legalEquivalent(numberingType, definition.isLegal),
+        listNumberingType: legalNumberFormat(numberingType, definition.isLegal),
         customFormat: definition.customFormat,
       }) ?? ''
     );
@@ -165,7 +165,7 @@ function formatNumberingTemplate(definition: WordListMarkerDefinition, path: num
     if (!Number.isFinite(ordinal)) return match;
     const format = formats.get(referencedLevel);
     const effectiveNumberingType = format?.numFmt ?? (referencedLevel === definition.ilvl ? numberingType : 'decimal');
-    const listNumberingType = legalEquivalent(effectiveNumberingType, definition.isLegal);
+    const listNumberingType = legalNumberFormat(effectiveNumberingType, definition.isLegal);
     return (
       generateOrderedListIndex({
         listLevel: path,
@@ -175,14 +175,6 @@ function formatNumberingTemplate(definition: WordListMarkerDefinition, path: num
       }) ?? ''
     );
   });
-}
-
-const ARABIC_NUMBER_FORMATS = new Set(['decimal', 'decimalZero']);
-
-// SD-5466: a format that already counts in Arabic digits is its own decimal equivalent, so Word 16 renders a legal decimalZero level as `SECTION 1.01`.
-function legalEquivalent(numberingType: string, isLegal: boolean | undefined): string {
-  if (!isLegal || numberingType === 'none' || ARABIC_NUMBER_FORMATS.has(numberingType)) return numberingType;
-  return 'decimal';
 }
 
 function normalizeSuffix(suffix: string | undefined): ListRenderingAttrs['suffix'] {

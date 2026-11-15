@@ -109,7 +109,7 @@ describe('computeWordListMarker', () => {
     expect(result.listRenderingAttrs.markerText).toBe('1(1)');
   });
 
-  it('preserves none levels and resolves bullet templates under legal numbering', () => {
+  it('preserves none levels and blanks bullet placeholders under legal numbering, as Word does', () => {
     const hiddenAncestor = computeWordListMarker({
       definition: baseDef({
         ilvl: 1,
@@ -136,7 +136,7 @@ describe('computeWordListMarker', () => {
       manager: createNumberingManager(),
       paragraphOrdinal: 1,
     });
-    expect(legalBullet.listRenderingAttrs.markerText).toBe('1)');
+    expect(legalBullet.listRenderingAttrs.markerText).toBe(')');
 
     const legalGlyph = computeWordListMarker({
       definition: baseDef({

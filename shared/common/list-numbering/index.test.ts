@@ -325,7 +325,6 @@ describe('normalizeLvlTextChar', () => {
   it('normalizes known bullet glyphs', () => {
     expect(normalizeLvlTextChar('')).toBe('•');
     expect(normalizeLvlTextChar('○')).toBe('◦');
-    expect(normalizeLvlTextChar('o')).toBe('◦');
     expect(normalizeLvlTextChar('■')).toBe('▪');
     expect(normalizeLvlTextChar('□')).toBe('◯');
   });
@@ -333,6 +332,10 @@ describe('normalizeLvlTextChar', () => {
   it('returns the original character when no normalization is required', () => {
     expect(normalizeLvlTextChar('•')).toBe('•');
     expect(normalizeLvlTextChar(undefined)).toBeUndefined();
+  });
+
+  it("keeps Word's o bullet as the letter o, which Word paints in the level's font", () => {
+    expect(normalizeLvlTextChar('o')).toBe('o');
   });
 });
 

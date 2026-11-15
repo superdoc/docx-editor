@@ -395,13 +395,13 @@ const intToHebrewAlphabetic = (num: number): string => {
   return `\u200F${'ת'.repeat(repeats)}${HEBREW_ALPHABET[(value - 1) % HEBREW_ALPHABET.length]}`;
 };
 
-const normalizeChars = new Set(['', '', '○', 'o', '■', '□']);
+const normalizeChars = new Set(['', '', '○', '■', '□']);
 
 export const normalizeLvlTextChar = (lvlText?: string): string | undefined => {
   if (!lvlText || !normalizeChars.has(lvlText)) return lvlText;
 
   if (lvlText === '') return '•';
-  if (lvlText === '○' || lvlText === 'o') return '◦';
+  if (lvlText === '○') return '◦';
   if (lvlText === '■' || lvlText === '') return '▪';
   if (lvlText === '□') return '◯';
   return lvlText;

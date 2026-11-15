@@ -7,6 +7,7 @@ import { DOCX } from '@superdoc/common';
 import { useSuperdocStore } from '../stores/superdoc-store.js';
 import { normalizeUiConfig } from '../core/config/normalize-ui-config.js';
 import SuperDoc from '../SuperDoc.vue';
+import { fixedCommentsLayout } from '../test-support/comments-layout.js';
 import { globalPropertiesWith } from '../test-support/global-properties.js';
 
 const publisher = vi.hoisted(() => ({
@@ -95,6 +96,7 @@ async function mountShell() {
   Object.assign(store.modules, config.modules);
   const superdoc = Object.assign(new EventEmitter(), {
     config,
+    ...fixedCommentsLayout(),
     uiConfig: normalizeUiConfig(config),
     activeEditor: { editorVersion: 2, documentId: 'a' },
     user: { name: 'Reviewer' },

@@ -8,6 +8,7 @@ import { useSuperdocStore } from '../stores/superdoc-store.js';
 import { useCommentsStore } from '../stores/comments-store.js';
 import { normalizeUiConfig } from '../core/config/normalize-ui-config.js';
 import SuperDoc from '../SuperDoc.vue';
+import { fixedCommentsLayout } from '../test-support/comments-layout.js';
 import FloatingComments from '../components/CommentsLayer/FloatingComments.vue';
 import useComment from '../components/CommentsLayer/use-comment.js';
 
@@ -54,6 +55,7 @@ async function mountShell({ realFloating = false } = {}) {
   const broadcastSidebarToggle = vi.fn();
   const superdoc = Object.assign(new EventEmitter(), {
     config,
+    ...fixedCommentsLayout(),
     uiConfig: normalizeUiConfig(config),
     activeEditor: { editorVersion: 2, documentId: 'doc-a' },
     user: { name: 'Fixture author' },

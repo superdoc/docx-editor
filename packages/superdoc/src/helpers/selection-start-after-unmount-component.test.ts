@@ -7,6 +7,7 @@ import { DOCX } from '@superdoc/common';
 import { useSuperdocStore } from '../stores/superdoc-store.js';
 import { normalizeUiConfig } from '../core/config/normalize-ui-config.js';
 import SuperDoc from '../SuperDoc.vue';
+import { fixedCommentsLayout } from '../test-support/comments-layout.js';
 
 vi.mock('@superdoc/v2-browser-shell/vue', () => ({
   V2SuperEditor: defineComponent({ setup: () => () => h('div') }),
@@ -41,6 +42,7 @@ async function mountShell(errorHandler: (error: unknown) => void) {
   Object.assign(store.modules, config.modules);
   const superdoc = Object.assign(new EventEmitter(), {
     config,
+    ...fixedCommentsLayout(),
     uiConfig: normalizeUiConfig(config),
     activeEditor: { editorVersion: 2, documentId: 'doc-a' },
     user: { name: 'Fixture author' },

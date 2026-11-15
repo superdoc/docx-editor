@@ -7405,6 +7405,7 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
       {
         target: listItemAddressSchema,
         direction: { enum: ['withPrevious', 'withNext'] },
+        allowIncompatible: { type: 'boolean' },
       },
       ['target', 'direction'],
     ),

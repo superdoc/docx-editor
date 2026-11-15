@@ -369,6 +369,18 @@ describe('executeListsJoin validates direction', () => {
     executeListsJoin(adapter, { target: validTarget, direction: 'withPrevious' });
     expect(adapter.join).toHaveBeenCalled();
   });
+
+  it('passes allowIncompatible to the adapter only when the caller sets it', () => {
+    const adapter = stubAdapter();
+    executeListsJoin(adapter, { target: validTarget, direction: 'withPrevious' });
+    executeListsJoin(adapter, { target: validTarget, direction: 'withPrevious', allowIncompatible: true });
+    expect(adapter.join.mock.calls[0]?.[0]).toEqual({ target: validTarget, direction: 'withPrevious' });
+    expect(adapter.join.mock.calls[1]?.[0]).toEqual({
+      target: validTarget,
+      direction: 'withPrevious',
+      allowIncompatible: true,
+    });
+  });
 });
 
 describe('executeListsMerge validates direction', () => {

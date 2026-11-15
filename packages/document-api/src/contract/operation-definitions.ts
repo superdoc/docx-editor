@@ -2302,7 +2302,8 @@ export const OPERATION_DEFINITIONS = {
   },
   'lists.join': {
     memberPath: 'lists.join',
-    description: 'Merge two adjacent list sequences into one.',
+    description:
+      "Merge two adjacent list sequences into one. Fails with INCOMPATIBLE_DEFINITIONS when their list definitions differ, unless allowIncompatible is true: then the absorbed sequence adopts the absorbing definition, as Word's Continue Numbering does. Empty paragraphs between the sequences are kept. The join still fails with INCOMPATIBLE_DEFINITIONS when the absorbing definition is a bullet at, or does not define, a level an absorbed item uses, since those items would lose their numbers.",
     expectedResult: 'Returns a ListsJoinResult with the resulting listId of the merged sequence.',
     requiresDocumentContext: true,
     metadata: mutationOperation({

@@ -1,6 +1,7 @@
 import type { TextMutationOptions } from '../write/write.js';
 import { normalizeTextMutationOptions } from '../write/write.js';
 import { DocumentApiValidationError } from '../errors.js';
+import { validateStoryLocator } from '../validation/story-validator.js';
 import { isInteger } from '../validation-primitives.js';
 import { isRecord } from '../object-guards.js';
 import { BLOCK_NODE_TYPES } from '../types/base.js';
@@ -194,6 +195,7 @@ function validateListItemAddress(value: unknown, field: string, operationName: s
       { field: `${field}.nodeId`, value: t.nodeId },
     );
   }
+  if (t.story !== undefined) validateStoryLocator(t.story, `${operationName}.${field}.story`);
 }
 /** Convenience: validates input.target as a ListItemAddress. */
 function validateListItemTarget(input: { target?: unknown }, operationName: string): void {
@@ -561,6 +563,7 @@ export function executeListsList(adapter: ListsAdapter, query?: ListsListQuery):
     optionalInteger(q.limit, 'limit', 'lists.list');
     optionalInteger(q.offset, 'offset', 'lists.list');
     optionalInteger(q.ordinal, 'ordinal', 'lists.list');
+    if (q.in !== undefined) validateStoryLocator(q.in, 'lists.list.in');
     if (q.within !== undefined) {
       if (!isRecord(q.within)) {
         throw new DocumentApiValidationError('INVALID_INPUT', 'lists.list within must be an object.', {
@@ -1124,6 +1127,8 @@ function unavailableListsResult<TResult extends ListsGetStateResult | ListsMutat
 export function executeListsGetState(adapter: ListsAdapter, input: ListsGetStateInput): ListsGetStateResult {
   validateListInput(input, 'lists.getState');
   validateV2BlockTarget(input.target, 'target', 'lists.getState');
+  if (isRecord(input.target) && input.target.story !== undefined)
+    validateStoryLocator(input.target.story, 'lists.getState.target.story');
   if (!adapter.getState) return unavailableListsResult<ListsGetStateResult>('lists.getState');
   return adapter.getState(input);
 }

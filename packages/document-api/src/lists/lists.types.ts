@@ -16,6 +16,7 @@ export type ListItemAddress = {
   kind: 'block';
   nodeType: 'listItem';
   nodeId: string;
+  story?: StoryLocator;
 };
 /** Any block-level paragraph, whether or not it is a list item. */
 export type BlockAddress = {
@@ -126,6 +127,7 @@ export type CanJoinReason = 'NO_ADJACENT_SEQUENCE' | 'INCOMPATIBLE_DEFINITIONS' 
 // Discovery / query types
 // ---------------------------------------------------------------------------
 export interface ListsListQuery {
+  in?: StoryLocator;
   within?: ListWithinAddress;
   limit?: number;
   offset?: number;
@@ -571,7 +573,9 @@ export type ListsBlockTarget =
   | { kind: 'block'; nodeType: 'paragraph'; nodeId: string }
   | { kind: 'block'; nodeType: 'listItem'; nodeId: string };
 export interface ListsGetStateInput {
-  target: ListsBlockTarget;
+  target: ListsBlockTarget & {
+    story?: StoryLocator;
+  };
 }
 export interface ListsGetStateSuccessResult {
   success: true;

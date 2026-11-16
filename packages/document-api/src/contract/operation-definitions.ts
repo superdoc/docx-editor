@@ -2145,7 +2145,8 @@ export const OPERATION_DEFINITIONS = {
   },
   'lists.list': {
     memberPath: 'lists.list',
-    description: 'List all list nodes in the document, optionally filtered by scope.',
+    description:
+      'List all list nodes in one story (the main body by default; pass `in` for a header, footer, note or text box), optionally filtered by scope.',
     expectedResult: 'Returns a ListsListResult with an array of list item summaries and total count.',
     requiresDocumentContext: true,
     metadata: readOperation({
@@ -2157,7 +2158,8 @@ export const OPERATION_DEFINITIONS = {
   },
   'lists.get': {
     memberPath: 'lists.get',
-    description: 'Retrieve a specific list node by target.',
+    description:
+      'Retrieve a specific list node by target. Pass the address `lists.list` returned; its `story` locates items outside the main body.',
     expectedResult: 'Returns a ListItemInfo object with the item kind, level, marker, and address.',
     requiresDocumentContext: true,
     metadata: readOperation({
@@ -2826,7 +2828,7 @@ export const OPERATION_DEFINITIONS = {
   'lists.getState': {
     memberPath: 'lists.getState',
     description:
-      'Read the numbering-aware list state for a paragraph (numId, ilvl, abstract reference, level format). Returns null when the target is not a list item.',
+      'Read the numbering-aware list state for a paragraph (numId, ilvl, abstract reference, level format). Returns null when the target is not a list item. `target.story` locates a paragraph outside the main body.',
     expectedResult:
       'Returns a ListsGetStateResult with `isListItem` plus numId/ilvl/abstract/numFmt metadata when present.',
     requiresDocumentContext: true,

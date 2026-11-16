@@ -968,6 +968,41 @@ describe('lists.create validates union fields', () => {
 // lists.list — query validation
 // ---------------------------------------------------------------------------
 
+describe('lists story locators', () => {
+  const footnote = { kind: 'story', storyType: 'footnote', noteId: '1' } as const;
+
+  it('lists.list passes a valid in story through', () => {
+    const adapter = stubAdapter();
+    executeListsList(adapter, { in: footnote });
+    expect(adapter.list).toHaveBeenCalledWith({ in: footnote });
+  });
+
+  it('lists.list rejects a malformed in story', () => {
+    expect(() => executeListsList(stubAdapter(), { in: { kind: 'story', storyType: 'nowhere' } } as any)).toThrow(
+      /lists\.list\.in/,
+    );
+  });
+
+  it('lists.get accepts an address with a story and rejects a malformed one', () => {
+    const adapter = stubAdapter();
+    executeListsGet(adapter, { address: { kind: 'block', nodeType: 'listItem', nodeId: 'p1', story: footnote } });
+    expect(adapter.get).toHaveBeenCalled();
+    expect(() =>
+      executeListsGet(stubAdapter(), {
+        address: { kind: 'block', nodeType: 'listItem', nodeId: 'p1', story: { kind: 'story' } },
+      } as any),
+    ).toThrow(/address\.story/);
+  });
+
+  it('lists.getState rejects a malformed target story', () => {
+    expect(() =>
+      executeListsGetState(stubAdapter(), {
+        target: { kind: 'block', nodeType: 'paragraph', nodeId: 'p1', story: { kind: 'story', storyType: 'footnote' } },
+      } as any),
+    ).toThrow(/target\.story/);
+  });
+});
+
 describe('lists.list validates query', () => {
   it('accepts undefined query', () => {
     const adapter = stubAdapter();

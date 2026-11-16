@@ -1286,6 +1286,19 @@ const listsV2BlockTargetSchema: JsonSchema = {
     ),
   ],
 };
+const listsGetStateTargetSchema: JsonSchema = {
+  oneOf: (['paragraph', 'listItem'] as const).map((nodeType) =>
+    objectSchema(
+      {
+        kind: { const: 'block' },
+        nodeType: { const: nodeType },
+        nodeId: { type: 'string' },
+        story: ref('StoryLocator'),
+      },
+      ['kind', 'nodeType', 'nodeId'],
+    ),
+  ),
+};
 const paragraphTargetSchema: JsonSchema = {
   oneOf: [paragraphAddressSchema, headingAddressSchema, listItemAddressSchema],
 };
@@ -7164,6 +7177,7 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
   },
   'lists.list': {
     input: objectSchema({
+      in: storyLocatorSchema,
       within: blockNodeAddressSchema,
       limit: { type: 'integer' },
       offset: { type: 'integer' },
@@ -8030,7 +8044,7 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
   'lists.getState': {
     input: objectSchema(
       {
-        target: listsV2BlockTargetSchema,
+        target: listsGetStateTargetSchema,
       },
       ['target'],
     ),

@@ -1979,6 +1979,51 @@ watch(pendingComment, (next, previous) => {
   if (previous && !next && proxy.$superdoc?.config?.documentMode === 'viewing') scheduleV2DomSelectionSync();
 });
 
+let v2CommentSelectionRequest = 0;
+const canActivateV2CommentFromCaret = () => proxy.$superdoc.config.documentMode !== 'viewing';
+const invalidateV2CommentSelection = () => {
+  v2CommentSelectionRequest += 1;
+  commentsStore.setActiveCommentFromCaret('', []);
+};
+const syncV2CommentFromCaret = async (hasRangeSelection: boolean) => {
+  const request = ++v2CommentSelectionRequest;
+  const editor = proxy.$superdoc.activeEditor;
+  const documentId = editor?.options?.documentId;
+  const selection = editor?.doc?.selection;
+  if (hasRangeSelection) {
+    commentsStore.setActiveCommentFromCaret('', []);
+    return;
+  }
+  if (
+    editor?.editorVersion !== 2 ||
+    !documentId ||
+    !selection ||
+    !canActivateV2CommentFromCaret() ||
+    commentsStore.hasCommentDraft
+  )
+    return;
+  const activationRevision = commentsStore.commentActivationRevision;
+  try {
+    const current = await selection.current();
+    if (
+      request !== v2CommentSelectionRequest ||
+      proxy.$superdoc.activeEditor !== editor ||
+      editor.options?.documentId !== documentId ||
+      !canActivateV2CommentFromCaret() ||
+      commentsStore.commentActivationRevision !== activationRevision ||
+      commentsStore.hasCommentDraft
+    )
+      return;
+    commentsStore.setActiveCommentFromCaret(
+      documentId,
+      current.empty && current.target ? current.activeCommentIds : [],
+      current.empty && current.target ? current.activeChangeIds : [],
+    );
+  } catch {
+    return;
+  }
+};
+
 const onV2SelectionChanged = ({
   hasRangeSelection,
   snapshot,
@@ -1986,6 +2031,7 @@ const onV2SelectionChanged = ({
   recordInteraction(proxy.$superdoc, 'selection:changed', () => ({ hasRangeSelection, selection: snapshot }));
   v2HasRangeSelection.value = hasRangeSelection === true;
   v2SelectionSnapshot.value = hasRangeSelection === true ? (snapshot ?? null) : null;
+  void syncV2CommentFromCaret(v2HasRangeSelection.value);
   if (v2HasRangeSelection.value) {
     scheduleV2SelectionToolbarStateSync();
     return;
@@ -2544,6 +2590,7 @@ const recollectV2GeometryIfActive = (options: V2GeometryPublishOptionsInput = un
 // last committed review window and republish floating geometry after repaint.
 // Review rows and geometry stay separate; neither can delay canonical paint.
 const handleV2DocumentModeChange = () => {
+  invalidateV2CommentSelection();
   if (!isV2Mode.value) return;
   try {
     v2ReviewWindowController.refreshCommittedWindow('document-mode-change');
@@ -3107,6 +3154,7 @@ const syncSidebarActiveCommentFromV2ReviewTarget = (target: V2ReviewTarget | nul
   if (!commentId) return;
 
   syncInstantSidebarAlignmentFromEditorSelection(commentId);
+  commentsStore.beginExplicitCommentActivation();
   activeComment.value = commentId;
   isCommentHighlighted.value = true;
   setTimeout(() => {
@@ -3482,6 +3530,7 @@ onMounted(() => {
   // document-mode change (viewing/editing/suggesting). See handler comment.
   proxy.$superdoc?.on?.('document-mode-change', handleV2DocumentModeChange);
   proxy.$superdoc?.on?.('active-editor-change', syncV2RulerActiveEditor);
+  proxy.$superdoc?.on?.('active-editor-change', invalidateV2CommentSelection);
 
   commentsLayoutBridge?.setResolver((layout) => {
     const compact = resolveCompactCommentsMode(layout, proxy.$superdoc.getCommentsLayout().effective === 'inline');
@@ -3617,6 +3666,7 @@ function handleContainerKeydown(e: KeyboardEvent) {
 }
 
 onBeforeUnmount(() => {
+  v2CommentSelectionRequest += 1;
   commentsLayoutBridge?.setResolver(null);
   passwordPrompt.destroy();
   findReplace.destroy();
@@ -3665,6 +3715,7 @@ onBeforeUnmount(() => {
   document.removeEventListener('selectionchange', handleDocumentSelectionChange);
   proxy.$superdoc?.off?.('document-mode-change', handleV2DocumentModeChange);
   proxy.$superdoc?.off?.('active-editor-change', syncV2RulerActiveEditor);
+  proxy.$superdoc?.off?.('active-editor-change', invalidateV2CommentSelection);
 });
 
 const selectionLayer = ref<HTMLDivElement | null>(null);

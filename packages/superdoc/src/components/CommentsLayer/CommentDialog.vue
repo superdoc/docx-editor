@@ -150,6 +150,8 @@ type DialogCommentsStore = {
   getTrackedChangeThread(parentComment: CommentModel): readonly CommentModel[];
   getComment(id: string): Record<string, unknown> | null | undefined;
   setActiveComment(superdoc: DialogSuperDoc, id: string | null | undefined): void;
+  beginExplicitCommentActivation(): void;
+  replyingCommentId: string | null;
   getPendingComment(params: {
     documentId?: string | null;
     isInternal?: boolean;
@@ -184,6 +186,7 @@ type DialogCommentsStoreRefs = {
   suppressInternalExternal: Ref<boolean>;
   getConfig: Ref<{ readOnly?: boolean; allowResolve?: boolean }>;
   activeComment: Ref<string | null | undefined>;
+  isActiveCommentFromCaret: Ref<boolean>;
   activeFloatingCommentInstanceId: Ref<string | null>;
   floatingCommentsOffset: Ref<number>;
   pendingComment: Ref<CommentModel | null>;
@@ -249,6 +252,7 @@ const retireOwnEditSession = () => {
 const retireOwnReplySession = () => {
   if (commentReplySessions.get(commentsStore)?.owner === replySessionOwner) {
     commentReplySessions.delete(commentsStore);
+    if (commentsStore.replyingCommentId === props.comment.commentId) commentsStore.replyingCommentId = null;
   }
 };
 
@@ -269,6 +273,7 @@ const {
   suppressInternalExternal,
   getConfig,
   activeComment,
+  isActiveCommentFromCaret,
   activeFloatingCommentInstanceId,
   floatingCommentsOffset,
   pendingComment,
@@ -560,7 +565,13 @@ const commentsAreReadOnly = () => getConfig.value?.readOnly === true;
 const resolveIsDisabled = () => getConfig.value?.allowResolve === false;
 
 const showInputSection = computed(() => {
-  return !commentsAreReadOnly() && isDialogActive.value && !props.comment.resolvedTime && !isEditingAnyComment.value;
+  return (
+    !isActiveCommentFromCaret.value &&
+    !commentsAreReadOnly() &&
+    isDialogActive.value &&
+    !props.comment.resolvedTime &&
+    !isEditingAnyComment.value
+  );
 });
 
 const readOnlyMutationOutcome = () => ({ ok: false, reason: 'read-only-document' });
@@ -577,6 +588,14 @@ const trackedChangeDecisionDisabledOutcome = () => ({
 
 // Reply pill → expanded editor toggle
 const isReplying = ref(false);
+watch(
+  isReplying,
+  (replying) => {
+    if (replying) commentsStore.replyingCommentId = props.comment.commentId ?? null;
+    else if (commentsStore.replyingCommentId === props.comment.commentId) commentsStore.replyingCommentId = null;
+  },
+  { flush: 'sync' },
+);
 const isSubmittingReply = ref(false);
 const isSubmittingNewComment = ref(false);
 watch(
@@ -614,6 +633,7 @@ const startReply = () => {
   if (isV2WriteDisabled.value) {
     return { ok: false, reason: v2WriteCapability.value?.reason ?? 'v2-write-unavailable' };
   }
+  commentsStore.beginExplicitCommentActivation();
   const editorOwner = isV2Mode.value && v2CommentsAdapter.value ? captureCommentEditorOwner() : null;
   const documentId = editorOwner?.adapter.documentId;
   const pendingDraft = pendingComment.value;
@@ -863,6 +883,7 @@ const hasTextContent = computed(() => {
 });
 
 const setFocus = async () => {
+  commentsStore.beginExplicitCommentActivation();
   const editor = proxy.$superdoc.activeEditor;
   const v2Adapter =
     editor?.editorVersion === 2 ? ((editor?.v2Comments as V2CommentsAdapter | null | undefined) ?? null) : null;
@@ -905,6 +926,7 @@ const setFocus = async () => {
       clearInstantSidebarAlignment();
       return result;
     }
+    commentsStore.beginExplicitCommentActivation();
     if (!props.comment.resolvedTime) {
       activeComment.value = props.comment.commentId;
       if (props.floatingInstanceId) {
@@ -1803,6 +1825,7 @@ onBeforeUnmount(() => {
     nextTick(() => {
       if (replySession.owner === null && commentReplySessions.get(commentsStore) === replySession) {
         commentReplySessions.delete(commentsStore);
+        if (commentsStore.replyingCommentId === replySession.threadId) commentsStore.replyingCommentId = null;
       }
     });
   } else retireOwnReplySession();

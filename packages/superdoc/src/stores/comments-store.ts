@@ -337,6 +337,16 @@ export const useCommentsStore = defineStore('comments', () => {
   const commentsParentElement = ref<HTMLElement | null>(null);
   const hasInitializedLocations = ref(false);
   const activeComment = ref<string | null>(null);
+  const caretActivatedCommentId = ref<string | null>(null);
+  const commentActivationRevision = ref(0);
+  const replyingCommentId = ref<string | null>(null);
+  const isActiveCommentFromCaret = computed(
+    () => activeComment.value !== null && activeComment.value === caretActivatedCommentId.value,
+  );
+  const beginExplicitCommentActivation = () => {
+    caretActivatedCommentId.value = null;
+    commentActivationRevision.value += 1;
+  };
   const activeFloatingCommentInstanceId = ref<string | null>(null);
   const editingCommentId = ref<string | null>(null);
   const suppressInternalExternal = ref(true);
@@ -384,6 +394,20 @@ export const useCommentsStore = defineStore('comments', () => {
   const instantSidebarAlignmentInstanceId = ref<string | null>(null);
 
   const pendingComment = ref<CommentModel | null>(null);
+  const hasCommentDraft = computed(() =>
+    Boolean(
+      pendingComment.value ||
+      editingCommentId.value ||
+      replyingCommentId.value ||
+      currentCommentText.value ||
+      currentCommentMentions.value.length,
+    ),
+  );
+  watch(
+    [activeComment, pendingComment, editingCommentId, replyingCommentId, currentCommentText, currentCommentMentions],
+    () => commentActivationRevision.value++,
+    { deep: true, flush: 'sync' },
+  );
   const pendingV2CommentTarget = shallowRef<unknown>(null);
   let pendingCommentRequest = 0;
   const isViewingMode = computed(() => viewingVisibility.documentMode === 'viewing');
@@ -574,6 +598,7 @@ export const useCommentsStore = defineStore('comments', () => {
    * Set the active comment or clear all active comments
    */
   const setActiveComment = (superdoc: CommentsStoreHost | null | undefined, id: string | null | undefined) => {
+    beginExplicitCommentActivation();
     const activeEditor = superdoc?.activeEditor;
     const v2Adapter = getV2CommentsAdapter(superdoc);
 
@@ -1043,6 +1068,7 @@ export const useCommentsStore = defineStore('comments', () => {
   };
 
   const showAddComment = (superdoc: CommentsStoreHost, targetClientY: number | null = null) => {
+    beginExplicitCommentActivation();
     const request = ++pendingCommentRequest;
     const editor = superdoc?.activeEditor;
     const v2Adapter = getV2CommentsAdapter(superdoc);
@@ -4229,6 +4255,7 @@ export const useCommentsStore = defineStore('comments', () => {
   };
 
   const clearActiveCommentSelection = () => {
+    caretActivatedCommentId.value = null;
     activeComment.value = null;
     setActiveFloatingCommentInstance(null);
   };
@@ -4249,6 +4276,41 @@ export const useCommentsStore = defineStore('comments', () => {
     if (!doesFloatingInstanceBelongToComment(activeFloatingCommentInstanceId.value, commentId)) {
       setActiveFloatingCommentInstance(null);
     }
+  };
+
+  const setActiveCommentFromCaret = (
+    documentId: string,
+    ids: readonly string[],
+    activeChangeIds: readonly string[] = [],
+  ) => {
+    if (hasCommentDraft.value) return;
+    const active = getComment(activeComment.value);
+    if (
+      !isActiveCommentFromCaret.value &&
+      active?.trackedChange &&
+      belongsToDocument(active, documentId) &&
+      activeChangeIds.some((id) => id === active.trackedChangeCanonicalId || getCommentAliasIds(active).includes(id))
+    )
+      return;
+    const candidates = ids.flatMap((id) => {
+      const comment = getGroupedComments.value.parentComments.find(
+        (row) =>
+          !row.trackedChange &&
+          !row.resolvedTime &&
+          belongsToDocument(row, documentId) &&
+          getCommentAliasIds(row).includes(id),
+      );
+      return comment ? [comment] : [];
+    });
+    const comment = candidates.find((row) => row.commentId === activeComment.value) ?? candidates[0];
+    if (!comment) {
+      if (isActiveCommentFromCaret.value) clearActiveCommentSelection();
+      return;
+    }
+    if (comment.commentId === activeComment.value && !isActiveCommentFromCaret.value) return;
+    caretActivatedCommentId.value = comment.commentId;
+    activeComment.value = comment.commentId;
+    syncActiveFloatingInstanceWithComment(comment.commentId);
   };
 
   function canonicalizeActiveCommentAlias() {
@@ -4285,6 +4347,10 @@ export const useCommentsStore = defineStore('comments', () => {
     hasSyncedCollaborationComments,
     editingCommentId,
     activeComment,
+    isActiveCommentFromCaret,
+    commentActivationRevision,
+    replyingCommentId,
+    hasCommentDraft,
     activeFloatingCommentInstanceId,
     suppressInternalExternal,
     pendingComment,
@@ -4338,6 +4404,8 @@ export const useCommentsStore = defineStore('comments', () => {
     setViewingVisibility,
     getComment,
     setActiveComment,
+    beginExplicitCommentActivation,
+    setActiveCommentFromCaret,
     getPendingComment,
     showAddComment,
     addComment,

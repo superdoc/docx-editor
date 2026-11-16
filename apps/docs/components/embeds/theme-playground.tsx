@@ -7,7 +7,7 @@ import type { ZoomSlice } from 'superdoc/ui';
 import { CollapsibleEditorPreview } from './collapsible-editor-preview';
 import { EditorDemoViewControls } from './editor-demo-view-controls';
 import { EDITOR_DEMO_FIT_WIDTH_PADDING, fitRuntimeEditorToWidth } from './editor-demo-zoom';
-import { createRuntimeEditor, loadRuntime, type SuperDocConstructor, type SuperDocInstance } from './superdoc-runtime';
+import { loadRuntime, type SuperDocConstructor, type SuperDocInstance } from './superdoc-runtime';
 
 const DEMO_DOCUMENT = '/fixtures/getting-started.docx';
 const THEME_NAME = 'docs-playground';
@@ -256,7 +256,7 @@ export function ThemePlayground() {
         },
       } satisfies UIConfig;
 
-      const instance = createRuntimeEditor(runtime, {
+      const instance = new runtime({
         selector: mountRef.current,
         document: DEMO_DOCUMENT,
         documentMode: 'editing',

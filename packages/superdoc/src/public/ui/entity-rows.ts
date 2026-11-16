@@ -5,6 +5,37 @@ export function readEntityTarget(row: unknown): unknown | null {
   return readRecord(readRecord(row)?.target) ?? null;
 }
 
+export type TrackedChangeMoveSide = { canonicalId: string; side: 'move-from' | 'move-to' };
+
+export function readTrackedChangeMoveSide(row: unknown): TrackedChangeMoveSide | null {
+  const record = readRecord(row);
+  if (record?.type !== 'move' || typeof record.trackedChangeCanonicalId !== 'string') return null;
+  if (record.subtype !== 'move-from' && record.subtype !== 'move-to') return null;
+  return { canonicalId: record.trackedChangeCanonicalId, side: record.subtype };
+}
+
+const moveSidesByRows = new WeakMap<readonly unknown[], ReadonlyMap<string, TrackedChangeMoveSide>>();
+
+export function trackedChangeMoveSidesById(rows: readonly unknown[]): ReadonlyMap<string, TrackedChangeMoveSide> {
+  const cached = moveSidesByRows.get(rows);
+  if (cached) return cached;
+  const sides = new Map<string, TrackedChangeMoveSide>();
+  for (const row of rows) {
+    const side = readTrackedChangeMoveSide(row);
+    const id = readRecord(row)?.id;
+    if (side && typeof id === 'string') sides.set(id, side);
+  }
+  moveSidesByRows.set(rows, sides);
+  return sides;
+}
+
+export function readMoveSideTarget(moveTarget: unknown, side: TrackedChangeMoveSide['side']): unknown | null {
+  const record = readRecord(moveTarget);
+  if (record?.kind !== 'move') return null;
+  const sideTarget = side === 'move-to' ? record.destination : record.source;
+  return isHostGeometryTarget(sideTarget) ? sideTarget : null;
+}
+
 export function isHostGeometryTarget(target: unknown): boolean {
   const record = readRecord(target);
   if (!record) return false;

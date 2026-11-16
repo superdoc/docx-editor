@@ -122,6 +122,25 @@ alignment or scrolling. Only body bookmarks are supported; other targets
 return `{ success: false, reason: 'target-unresolved' }`. The handle and
 address types are exported from `superdoc/ui`.
 
+### Observe extension paint and mutations
+
+An extension can subscribe with `context.onPaint` or
+`context.events.on('paint', ...)` to observe a presented editor frame. Paints
+can combine multiple edits, so an event is not a one-to-one receipt for a
+mutation or a guarantee of physical display. Decoration providers run when
+decorations are refreshed and are not a paint-completion signal.
+
+`visible.blockIds` may be `null` when the host cannot provide a visible block
+set; it means the range is unknown, not that no blocks are visible. Extension
+activation can occur after the document is ready or source-complete. Read
+`context.getSnapshot()` for the current state; `onReady` and
+`onSourceComplete` also replay the already-reached state to new listeners.
+
+Mutation `affects` describes the kinds identified for the mutation.
+Text edits can include `text`; structural or formatting edits may have an empty
+set even when they changed the document. Do not assume that every paragraph or
+table change includes `block`.
+
 ## Common mistakes
 
 | Wrong | Right |

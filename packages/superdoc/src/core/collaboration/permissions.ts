@@ -129,12 +129,10 @@ const readPermissionDataProperty = (source: unknown, key: PropertyKey): unknown 
   return undefined;
 };
 
-export const readBuiltInTrackedChangePermissionDecision = (
+export const readBuiltInTrackedChangePermissionPolicy = (
   superdoc: unknown,
   canPerform: unknown,
-  permission: string,
-  trackedChange: unknown,
-): boolean | null => {
+): ((permission: string) => boolean) | null => {
   try {
     if (
       readPermissionDataProperty(superdoc, 'canPerformPermission') !== canPerform ||
@@ -146,37 +144,18 @@ export const readBuiltInTrackedChangePermissionDecision = (
     if (!config || typeof config !== 'object') return null;
     const role = readPermissionDataProperty(config, 'role');
     const isInternal = readPermissionDataProperty(config, 'isInternal');
-    const user = readPermissionDataProperty(config, 'user');
     const resolver = readPermissionDataProperty(config, 'permissionResolver');
     const modules = readPermissionDataProperty(config, 'modules');
     const comments = readPermissionDataProperty(modules, 'comments');
     const deprecatedResolver = readPermissionDataProperty(comments, 'permissionResolver');
-    const commentsStore = readPermissionDataProperty(superdoc, 'commentsStore');
-    const getComment = readPermissionDataProperty(commentsStore, 'getComment');
-    const comment = readPermissionDataProperty(trackedChange, 'comment');
-    const commentId = readPermissionDataProperty(trackedChange, 'commentId');
-    const id = readPermissionDataProperty(trackedChange, 'id');
     if (
-      [
-        role,
-        isInternal,
-        user,
-        resolver,
-        modules,
-        comments,
-        deprecatedResolver,
-        commentsStore,
-        getComment,
-        comment,
-        commentId,
-        id,
-      ].includes(NON_DATA_PERMISSION_PROPERTY) ||
+      [role, isInternal, resolver, modules, comments, deprecatedResolver].includes(NON_DATA_PERMISSION_PROPERTY) ||
       typeof resolver === 'function' ||
       typeof deprecatedResolver === 'function'
     ) {
       return null;
     }
-    return defaultDecisionFor(permission, role, isInternal);
+    return (permission) => defaultDecisionFor(permission, role, isInternal);
   } catch {
     return null;
   }

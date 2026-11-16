@@ -14,6 +14,7 @@ import type {
   TableFragment,
   TableMeasure,
 } from './index.js';
+import { PARTIAL_ROW_RENDERS_TO_CELL_END } from './partial-row.js';
 import { computeFragmentPmRange } from './pm-range.js';
 
 // Bookmark start/end markers are inline PM leaf nodes. A bookmark can legally sit
@@ -277,7 +278,7 @@ function cellLineRange(
   const fromLine = typeof rawFromLine === 'number' && rawFromLine >= 0 ? Math.min(rawFromLine, totalLines) : 0;
   const toLine =
     typeof rawToLine === 'number'
-      ? Math.max(0, Math.min(rawToLine === -1 ? totalLines : rawToLine, totalLines))
+      ? Math.max(0, Math.min(rawToLine === PARTIAL_ROW_RENDERS_TO_CELL_END ? totalLines : rawToLine, totalLines))
       : totalLines;
 
   return computeCellLineRange(cell, cellMeasure, fromLine, Math.max(fromLine, toLine));

@@ -34,6 +34,74 @@ import {
 
 const validTarget = { kind: 'block' as const, nodeType: 'sdt' as const, nodeId: 'sdt-1' };
 
+describe('content write history options', () => {
+  const cases = [
+    {
+      operation: 'create.contentControl',
+      execute: executeCreateContentControl,
+      input: { kind: 'inline', content: 'Synced' },
+    },
+    {
+      operation: 'contentControls.text.setValue',
+      execute: executeContentControlsTextSetValue,
+      input: { target: validTarget, value: 'Synced' },
+    },
+    {
+      operation: 'contentControls.replaceContent',
+      execute: executeContentControlsReplaceContent,
+      input: { target: validTarget, content: 'Synced', format: 'text' },
+    },
+  ];
+  for (const entry of cases) {
+    for (const dryRun of [false, true]) {
+      for (const value of [false, null, 0, 1, 'false', {}, []]) {
+        it(`${entry.operation} rejects ${JSON.stringify(value)} with dryRun=${dryRun} before dispatch`, () => {
+          const called = mock(noop);
+          const adapter = { create: called, replaceContent: called, text: { setValue: called } };
+          let error: unknown;
+          try {
+            Reflect.apply(entry.execute, undefined, [adapter, entry.input, { addToHistory: value, dryRun }]);
+          } catch (caught) {
+            error = caught;
+          }
+          expect(error).toMatchObject({
+            code: value === false ? 'CAPABILITY_UNAVAILABLE' : 'INVALID_INPUT',
+            details: { operation: entry.operation, field: 'addToHistory' },
+          });
+          expect(error).toHaveProperty('message', expect.stringContaining('addToHistory'));
+          expect(called).not.toHaveBeenCalled();
+        });
+      }
+    }
+    it(`${entry.operation} rejects a misplaced input option`, () => {
+      const called = mock(noop);
+      expect(() =>
+        Reflect.apply(entry.execute, undefined, [
+          { create: called, replaceContent: called, text: { setValue: called } },
+          { ...entry.input, addToHistory: false },
+        ]),
+      ).toThrow('second');
+      expect(called).not.toHaveBeenCalled();
+    });
+    for (const { name, options } of [
+      { name: 'omitted options', options: undefined },
+      { name: 'empty options', options: {} },
+      { name: 'undefined addToHistory', options: { addToHistory: undefined } },
+      { name: 'true addToHistory', options: { addToHistory: true } },
+    ]) {
+      it(`${entry.operation} preserves supported options ${name}`, () => {
+        const called = mock(noop);
+        Reflect.apply(entry.execute, undefined, [
+          { create: called, replaceContent: called, text: { setValue: called } },
+          entry.input,
+          options,
+        ]);
+        expect(called).toHaveBeenCalledWith(entry.input, options);
+      });
+    }
+  }
+});
+
 function noop() {
   return { success: true, contentControl: validTarget } as any;
 }
@@ -245,6 +313,22 @@ describe('wrap validates kind', () => {
   it('rejects invalid kind', () => {
     expect(() => executeContentControlsWrap(stubAdapter(), { kind: 'bogus' as any, target: validTarget })).toThrow(
       /'block' or 'inline'/,
+    );
+  });
+
+  it('rejects a controlType outside the content-control type set', () => {
+    const input = { kind: 'inline', target: validTarget, controlType: 'bogus' };
+    expect(() => Reflect.apply(executeContentControlsWrap, undefined, [stubAdapter(), input])).toThrow(
+      /contentControls.wrap controlType must be one of/,
+    );
+  });
+
+  it('passes a declared controlType to the adapter', () => {
+    const adapter = stubAdapter();
+    executeContentControlsWrap(adapter, { kind: 'inline', target: validTarget, controlType: 'dropDownList' });
+    expect(adapter.wrap).toHaveBeenCalledWith(
+      { kind: 'inline', target: validTarget, controlType: 'dropDownList' },
+      undefined,
     );
   });
 });

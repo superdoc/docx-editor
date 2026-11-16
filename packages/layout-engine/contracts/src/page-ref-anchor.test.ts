@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vite-plus/test';
 import type { Layout, ListBlock, ParagraphBlock, TableBlock, TableMeasure } from './index.js';
 import { buildPageRefAnchorMap } from './page-ref-anchor.js';
+import { PARTIAL_ROW_RENDERS_TO_CELL_END } from './partial-row.js';
 
 describe('buildPageRefAnchorMap', () => {
   it('returns display page information for fragment PM ranges', () => {
@@ -348,6 +349,87 @@ describe('buildPageRefAnchorMap', () => {
     expect(
       buildPageRefAnchorMap(new Map([['secondLine', 115]]), layout, [table], [measure]).get('secondLine')?.physicalPage,
     ).toBe(2);
+  });
+
+  it('anchors a split-row target through the end of the cell when toLineByCell is PARTIAL_ROW_RENDERS_TO_CELL_END', () => {
+    const table: TableBlock = {
+      kind: 'table',
+      id: 't1',
+      rows: [
+        {
+          id: 'r1',
+          cells: [
+            {
+              id: 'c1',
+              paragraph: {
+                kind: 'paragraph',
+                id: 'p1',
+                runs: [
+                  { text: 'First line', fontFamily: 'Arial', fontSize: 12, pmStart: 100, pmEnd: 110 },
+                  { text: 'Second line', fontFamily: 'Arial', fontSize: 12, pmStart: 111, pmEnd: 122 },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    };
+    const measure: TableMeasure = {
+      kind: 'table',
+      rows: [
+        {
+          height: 40,
+          cells: [
+            {
+              width: 100,
+              height: 40,
+              paragraph: {
+                kind: 'paragraph',
+                totalHeight: 40,
+                lines: [
+                  { fromRun: 0, fromChar: 0, toRun: 0, toChar: 10, width: 60, ascent: 8, descent: 2, lineHeight: 20 },
+                  { fromRun: 1, fromChar: 0, toRun: 1, toChar: 11, width: 70, ascent: 8, descent: 2, lineHeight: 20 },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+      totalHeight: 40,
+      columnWidths: [100],
+    };
+    const layout: Layout = {
+      pageSize: { w: 800, h: 1000 },
+      pages: [
+        {
+          number: 3,
+          fragments: [
+            {
+              kind: 'table',
+              blockId: 't1',
+              fromRow: 0,
+              toRow: 1,
+              x: 0,
+              y: 0,
+              width: 100,
+              height: 40,
+              partialRow: {
+                rowIndex: 0,
+                fromLineByCell: [0],
+                toLineByCell: [PARTIAL_ROW_RENDERS_TO_CELL_END],
+                isFirstPart: true,
+                isLastPart: true,
+                partialHeight: 40,
+              },
+            },
+          ],
+        },
+      ],
+    };
+
+    expect(
+      buildPageRefAnchorMap(new Map([['secondLine', 115]]), layout, [table], [measure]).get('secondLine')?.physicalPage,
+    ).toBe(3);
   });
 
   it('falls back to list item paragraph ranges when fragment PM data is missing', () => {

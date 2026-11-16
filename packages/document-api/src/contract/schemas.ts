@@ -4279,6 +4279,7 @@ function buildContentControlSchemas(): Record<ContentControlOperationId, Operati
       input: objectSchema(
         {
           kind: { enum: ['block', 'inline'] },
+          controlType: { type: 'string' },
           target: contentControlTargetSchema,
           tag: { type: 'string' },
           alias: { type: 'string' },
@@ -4676,7 +4677,12 @@ const anchoredMetadataAttachMutation = refMutationSchemas(
 const anchoredMetadataMutation = refMutationSchemas({ id: { type: 'string', minLength: 1 } }, ['id']);
 // --- Footnote schemas ---
 const footnoteAddressSchema: JsonSchema = objectSchema(
-  { kind: { const: 'entity' }, entityType: { const: 'footnote' }, noteId: { type: 'string' } },
+  {
+    kind: { const: 'entity' },
+    entityType: { const: 'footnote' },
+    noteId: { type: 'string' },
+    noteType: { enum: ['footnote', 'endnote'] },
+  },
   ['kind', 'entityType', 'noteId'],
 );
 const footnoteConfigScopeSchema: JsonSchema = {
@@ -4963,6 +4969,28 @@ const diffApplyEligibilitySchema: JsonSchema = objectSchema(
   },
   ['direct', 'tracked'],
 );
+const diffDisplaySideSchema: JsonSchema = {
+  oneOf: [objectSchema({ text: { type: 'string' }, target: textAddressSchema }, ['text', 'target']), { type: 'null' }],
+};
+const diffDisplaySchema: JsonSchema = objectSchema(
+  {
+    changes: arraySchema(
+      objectSchema(
+        {
+          id: { type: 'string' },
+          kind: { enum: ['insert', 'delete', 'replace', 'format', 'move'] },
+          before: diffDisplaySideSchema,
+          after: diffDisplaySideSchema,
+          targetAnchor: { oneOf: [textAddressSchema, { type: 'null' }] },
+          ordinal: { type: 'number' },
+        },
+        ['id', 'kind', 'before', 'after', 'targetAnchor', 'ordinal'],
+      ),
+    ),
+    unrenderedFamilies: arraySchema({ type: 'string' }),
+  },
+  ['changes', 'unrenderedFamilies'],
+);
 const diffPayloadSchema: JsonSchema = objectSchema(
   {
     version: { type: 'string', enum: ['sd-diff-payload/v1', 'sd-diff-payload/v2'] },
@@ -4972,6 +5000,7 @@ const diffPayloadSchema: JsonSchema = objectSchema(
     coverage: diffCoverageSchema,
     summary: diffSummarySchema,
     applyEligibility: diffApplyEligibilitySchema,
+    display: diffDisplaySchema,
     partChanges: arraySchema(
       objectSchema(
         {
@@ -9134,7 +9163,7 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
   'tables.convertFromText': {
     input: {
       ...objectSchema({
-        target: blockNodeAddressSchema,
+        target: { oneOf: [blockNodeAddressSchema, selectionTargetSchema] },
         nodeId: { type: 'string' },
         delimiter: {
           oneOf: [
@@ -11387,7 +11416,7 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
         name: {
           type: 'string',
           description:
-            'Visible bookmark creation name: starts with a Unicode letter, followed by letters, nonspacing/spacing combining marks, decimal digits or underscores; at most 40 UTF-16 code units. Invalid nonempty names return INVALID_PAYLOAD without mutation. Names are not normalized or truncated; imported names are unaffected.',
+            'Bookmark creation name: starts with a Unicode letter or underscore, followed by letters, nonspacing/spacing combining marks, decimal digits or underscores; at most 40 UTF-16 code units. Invalid nonempty names return INVALID_PAYLOAD without mutation. Names are not normalized or truncated; imported names are unaffected.',
         },
         at: textTargetSchema,
         tableColumn: objectSchema({ colFirst: { type: 'integer' }, colLast: { type: 'integer' } }, [
@@ -11781,9 +11810,14 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
     output: diffSnapshotSchema,
   },
   'diff.compare': {
-    input: objectSchema({ targetSnapshot: diffSnapshotSchema, styleChangeMode: { enum: ['direct', 'tracked'] } }, [
-      'targetSnapshot',
-    ]),
+    input: objectSchema(
+      {
+        targetSnapshot: diffSnapshotSchema,
+        includeDisplay: { type: 'boolean' },
+        styleChangeMode: { enum: ['direct', 'tracked'] },
+      },
+      ['targetSnapshot'],
+    ),
     output: diffPayloadSchema,
   },
   'diff.apply': {

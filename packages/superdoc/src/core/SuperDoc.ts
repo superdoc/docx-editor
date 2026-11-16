@@ -455,6 +455,18 @@ function destroyedDuringUpgradeError(): Error {
   return new Error('SuperDoc: instance was destroyed during upgrade');
 }
 
+function destroyedDuringReplaceError(): Error {
+  return new Error('SuperDoc: instance was destroyed during replace');
+}
+
+function replaceDuringUpgradeError(): Error {
+  return new Error('SuperDoc: cannot replace the document while an upgrade is in progress');
+}
+
+function upgradeDuringReplaceError(): Error {
+  return new Error('SuperDoc: cannot upgrade while a document replace is in progress');
+}
+
 function isV2ActiveEditorFacade(editor: unknown): editor is V2ActiveEditorFacade {
   return Boolean(editor && typeof editor === 'object' && (editor as { editorVersion?: unknown }).editorVersion === 2);
 }
@@ -674,6 +686,8 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
     promise: Promise<UpgradeToCollaborationResult>;
     rejectOnDestroy: (error: Error) => void;
   } | null = null;
+
+  #pendingReplaces = 0;
 
   /**
    * Unsubscribe handle for the v2 presence → `awareness-update` bridge. Set
@@ -2041,14 +2055,20 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
       });
     }
     const { target } = this.#validateUpgradePrerequisites(options);
+    if (this.#pendingReplaces > 0) throw upgradeDuringReplaceError();
     let rejectOnDestroy: (error: Error) => void = () => {};
     const destroyed = new Promise<never>((_resolve, reject) => {
       rejectOnDestroy = reject;
     });
-    const operation = Promise.race([this.#runUpgrade(target), destroyed]).finally(() => {
+    let startRun = () => {};
+    const run = new Promise<UpgradeToCollaborationResult>((resolve) => {
+      startRun = () => resolve(this.#runUpgrade(target));
+    });
+    const operation = Promise.race([run, destroyed]).finally(() => {
       this.#pendingUpgrade = null;
     });
     this.#pendingUpgrade = { target, promise: operation, rejectOnDestroy };
+    startRun();
     return operation;
   }
 
@@ -2264,6 +2284,7 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
         ...(target.params ? { params: target.params } : {}),
         ...(target.token ? { token: target.token } : {}),
         ...(target.retry !== undefined ? { retry: target.retry } : {}),
+        ...(target.expectedRevisionScope ? { expectedRevisionScope: target.expectedRevisionScope } : {}),
       };
     }
     return {
@@ -2494,7 +2515,7 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
     const results = await Promise.allSettled(runtimes.map((runtime) => runtime.setUser?.(runtimeUserOf(next))));
     const failure = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
     if (failure) {
-      if (current) {
+      if (current && !this.#destroyed) {
         await Promise.allSettled(
           runtimes
             .filter((_, index) => results[index]!.status === 'fulfilled')
@@ -2503,6 +2524,7 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
       }
       throw failure.reason;
     }
+    if (this.#destroyed) return;
     const target = this.config.user ?? (this.config.user = {} as User);
     for (const key of Object.keys(target)) delete target[key];
     Object.assign(target, next);
@@ -4037,10 +4059,21 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
   async #replaceActiveDocument(
     source: File | Blob | ArrayBuffer | Uint8Array,
   ): Promise<{ raw: unknown; confirmed: boolean }> {
+    if (this.#pendingUpgrade) throw replaceDuringUpgradeError();
     const activeEditor = this.activeEditor as ActiveEditor | null;
     if (isV2ActiveEditorFacade(activeEditor) && typeof activeEditor.replaceFile === 'function') {
       const replacementSource = this.#savedDocxToBlob(source);
-      const result = await activeEditor.replaceFile(replacementSource);
+      let result: unknown;
+      this.#pendingReplaces += 1;
+      try {
+        result = await activeEditor.replaceFile(replacementSource);
+      } catch (error) {
+        if (this.#destroyed) throw destroyedDuringReplaceError();
+        throw error;
+      } finally {
+        this.#pendingReplaces -= 1;
+      }
+      if (this.#destroyed) throw destroyedDuringReplaceError();
       const state = result && typeof result === 'object' ? (result as { state?: unknown }).state : null;
       const confirmed = state === null || state === 'review-ready' || state === 'editing-ready';
       if (confirmed) {

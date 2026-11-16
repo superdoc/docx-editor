@@ -10,6 +10,7 @@
  * them, they switch on the typed `ViewportEntityHit[]` this produces.
  */
 
+import { isPlainObject } from '../../helpers/object-guards.js';
 import type { ViewportEntityHit } from './types.js';
 
 /**
@@ -46,6 +47,21 @@ export function collectDecorationProvidersFromChain(start: Element | null, stopA
     if (element === stopAt) break;
   }
   return [...providers];
+}
+
+function readContentControlAncestry(value: string | null): Array<{ id: string; tag: string | null }> {
+  if (!value) return [];
+  try {
+    const controls: unknown = JSON.parse(value);
+    if (!Array.isArray(controls)) return [];
+    return controls.flatMap((control) =>
+      isPlainObject(control) && typeof control.id === 'string' && control.id && control.type !== 'docPartObj'
+        ? [{ id: control.id, tag: typeof control.tag === 'string' ? control.tag : null }]
+        : [],
+    );
+  } catch {
+    return [];
+  }
 }
 
 function parseCommaSeparatedIds(value: string): string[] {
@@ -107,6 +123,18 @@ export function collectEntityHitsFromChain(start: Element | null, stopAt?: Eleme
   let pendingStory: CollectedEntityHit[] = [];
   let nearestStoryKey: string | null = null;
   let nearestLayoutStory: string | null = null;
+  const addContentControl = (id: string, scope: string | null, tag: string | null): void => {
+    const key = `contentControl:${id}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    const hit: CollectedEntityHit = { type: 'contentControl', id };
+    if (nearestStoryKey) hit.storyKey = nearestStoryKey;
+    if (nearestLayoutStory) hit.story = nearestLayoutStory;
+    else pendingStory.push(hit);
+    if (scope === 'block' || scope === 'inline') hit.scope = scope;
+    if (tag) hit.tag = tag;
+    hits.push(hit);
+  };
   let el: Element | null = start;
   while (el) {
     const node = el as { getAttribute(name: string): string | null };
@@ -168,22 +196,13 @@ export function collectEntityHitsFromChain(start: Element | null, stopAt?: Eleme
     // `structuredContent` maps to the Document API's `contentControls.*`
     // namespace, so the walk filters explicitly on that. Nested SDTs surface
     // innermost-first so a switch on `hits[0]` picks the tightest control.
+    for (const control of readContentControlAncestry(node.getAttribute('data-sdt-ancestry'))) {
+      addContentControl(control.id, 'block', control.tag);
+    }
     const sdtType = node.getAttribute('data-sdt-type');
     const sdtId = node.getAttribute('data-sdt-id');
     if (sdtId && sdtType === 'structuredContent') {
-      const key = `contentControl:${sdtId}`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        const scopeAttr = node.getAttribute('data-sdt-scope');
-        const tag = node.getAttribute('data-sdt-tag');
-        const hit: ViewportEntityHit = { type: 'contentControl', id: sdtId };
-        if (nearestStoryKey) (hit as CollectedEntityHit).storyKey = nearestStoryKey;
-        if (nearestLayoutStory) hit.story = nearestLayoutStory;
-        else pendingStory.push(hit);
-        if (scopeAttr === 'block' || scopeAttr === 'inline') hit.scope = scopeAttr;
-        if (tag) hit.tag = tag;
-        hits.push(hit);
-      }
+      addContentControl(sdtId, node.getAttribute('data-sdt-scope'), node.getAttribute('data-sdt-tag'));
     }
     // Stop at the visible host (inclusive): bounds the walk so app-wrapper
     // data-* ABOVE the host can never leak into the hits.

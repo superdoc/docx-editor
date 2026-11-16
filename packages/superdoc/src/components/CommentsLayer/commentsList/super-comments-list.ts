@@ -6,20 +6,31 @@ import type { App, Component, ComponentPublicInstance } from 'vue';
 import { vClickOutside } from '@superdoc/common';
 import { isPlainObject } from '../../../helpers/object-guards.js';
 import type { SuperDoc } from '../../../core/types/index.js';
-import type { CommentsSlice, SnapshotSubscribable } from '../../../public/ui/types.js';
+import type { CommentsSlice, ReviewAnalysisProgress, SnapshotSubscribable } from '../../../public/ui/types.js';
 import CommentsList from './commentsList.vue';
 
 type DirectoryFamily = 'comments' | 'trackChanges';
 
-type DirectorySlice = Pick<CommentsSlice, 'status' | 'listStatus'> & { items: readonly unknown[] };
+type DirectorySlice = Pick<CommentsSlice, 'status' | 'listStatus'> & {
+  items: readonly unknown[];
+  analysis?: ReviewAnalysisProgress | null;
+};
 
 type DirectoryHandle = Pick<SnapshotSubscribable<DirectorySlice>, 'observe' | 'getSnapshot'>;
 
 type DirectoryItems = Record<DirectoryFamily, readonly unknown[] | null>;
 
+const reviewAnalysisOf = (snapshot: DirectorySlice | null | undefined): ReviewAnalysisProgress | null => {
+  const analysis = snapshot?.analysis;
+  return analysis && typeof analysis.done === 'number' && typeof analysis.total === 'number' && analysis.total > 0
+    ? analysis
+    : null;
+};
+
 type ReviewDirectoryStore = {
   isReviewDirectoryActive: boolean;
   isReviewDirectoryLoading: boolean;
+  reviewAnalysisProgress: ReviewAnalysisProgress | null;
   setReviewDirectoryFromV2(input: {
     superdoc?: SuperDoc;
     commentItems?: readonly unknown[];
@@ -104,8 +115,15 @@ export class SuperComments extends EventEmitter {
         if (generation !== this.directoryGeneration) return;
         if ((snapshot?.listStatus ?? snapshot?.status) !== 'ready') {
           const store = readCommentsStore(this.superdoc);
-          if (store) store.isReviewDirectoryLoading = true;
+          if (store) {
+            store.isReviewDirectoryLoading = true;
+            if (family === 'trackChanges') store.reviewAnalysisProgress = reviewAnalysisOf(snapshot);
+          }
           return;
+        }
+        if (family === 'trackChanges') {
+          const store = readCommentsStore(this.superdoc);
+          if (store) store.reviewAnalysisProgress = null;
         }
         const items = Array.isArray(snapshot.items) ? snapshot.items : [];
         if (this.directoryItemRefs[family] === items) {
@@ -170,6 +188,7 @@ export class SuperComments extends EventEmitter {
       store.clearReviewDirectory();
       store.isReviewDirectoryActive = false;
       store.isReviewDirectoryLoading = false;
+      store.reviewAnalysisProgress = null;
     }
     if (this.app) {
       this.app.unmount();

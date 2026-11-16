@@ -4,6 +4,7 @@
  */
 import type {
   Config,
+  BorrowedSuperDocUI,
   ToolbarConfig,
   ToolbarCustomButtonCommand,
   ToolbarDropdownOption,
@@ -51,3 +52,9 @@ const _legacyConfig: Config = {
 };
 
 void [_config, _legacyConfig];
+
+declare const painter: BorrowedSuperDocUI['formatPainter'];
+const pointerPaint: Promise<boolean> = painter.notifyPointerUp();
+const keyboardPaint: Promise<boolean> = painter.notifyKeyUp();
+const allPaints: Promise<boolean> = painter.whenSettled();
+void [pointerPaint, keyboardPaint, allPaints];

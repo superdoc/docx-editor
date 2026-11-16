@@ -8,6 +8,8 @@ import { useSuperdocStore } from '../stores/superdoc-store.js';
 import { useCommentsStore } from '../stores/comments-store.js';
 import { normalizeUiConfig } from '../core/config/normalize-ui-config.js';
 import SuperDoc from '../SuperDoc.vue';
+import FloatingComments from '../components/CommentsLayer/FloatingComments.vue';
+import useComment from '../components/CommentsLayer/use-comment.js';
 
 vi.mock('@superdoc/v2-browser-shell/vue', () => ({
   V2SuperEditor: defineComponent({ setup: () => () => h('div') }),
@@ -36,7 +38,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-async function mountShell() {
+async function mountShell({ realFloating = false } = {}) {
   const frames = new Map<number, FrameRequestCallback>();
   let frameId = 0;
   vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
@@ -64,7 +66,7 @@ async function mountShell() {
     global: {
       plugins: [pinia],
       config: { globalProperties: { $superdoc: superdoc } },
-      stubs: { SurfaceHost: true, FloatingComments: true, CommentDialog: true },
+      stubs: { SurfaceHost: true, FloatingComments: !realFloating, CommentDialog: true },
     },
   });
   mounted.push(wrapper);
@@ -93,7 +95,7 @@ async function mountShell() {
     commentsStore.pendingComment = comment;
     await flushPromises();
   };
-  return { broadcastSidebarToggle, setPendingComment };
+  return { broadcastSidebarToggle, setPendingComment, wrapper, commentsStore, store };
 }
 
 describe('sidebar-toggle broadcast', () => {
@@ -119,4 +121,72 @@ describe('sidebar-toggle broadcast', () => {
     await setPendingComment(null);
     expect(broadcastSidebarToggle.mock.lastCall).toEqual([false]);
   });
+});
+
+it('keeps a committed comment mounted across geometry refresh while removing absent cards and closed contexts', async () => {
+  const { wrapper, commentsStore, store } = await mountShell({ realFloating: true });
+  store.isReady = true;
+  commentsStore.hasInitializedLocations = true;
+  const position = {
+    key: 'comment-a',
+    threadId: 'comment-a',
+    bounds: { top: 100, bottom: 120, left: 0, right: 100 },
+    rects: [{ top: 100, bottom: 120, left: 0, right: 100 }],
+  };
+  commentsStore.commentsList = [useComment({ commentId: 'comment-a', fileId: 'doc-a', commentText: 'Saved' })];
+  commentsStore.editorCommentPositions = { 'comment-a': position };
+  commentsStore.committedReviewPresentations = {
+    'doc-a': {
+      epoch: 'document-epoch',
+      baseVersion: 0,
+      version: 1,
+      unchanged: false,
+      coordinate: { documentEpoch: 'document-epoch', mountId: 'mount-a', commitSequence: 1, reviewVersion: 1 },
+      rowVersions: { 'comment-a': 1 },
+      groupOrder: { open: ['comment-a'], resolved: [] },
+      updateContext: vi.fn(),
+      instances: [
+        {
+          id: 'comment-a',
+          rowId: 'comment-a',
+          threadId: 'comment-a',
+          pageIndex: 0,
+          positionKey: 'comment-a',
+          positionEntry: position,
+          anchorTop: 100,
+          anchorBottom: 120,
+          top: 100,
+          height: 110,
+          isPrimary: true,
+          isOffscreenReviewCard: false,
+          mount: true,
+        },
+      ],
+    },
+  };
+  await flushPromises();
+  const sidebar = wrapper.findComponent(FloatingComments);
+  expect(sidebar.exists()).toBe(true);
+  const mountedSidebar = sidebar.element;
+  const dialog = sidebar.findComponent({ name: 'CommentDialog' });
+  expect(dialog.exists()).toBe(true);
+  const mountedDialog = dialog.element;
+  commentsStore.editorCommentPositions = {};
+  await flushPromises();
+  expect(commentsStore.getFloatingComments).toHaveLength(0);
+  expect(wrapper.findComponent(FloatingComments).element).toBe(mountedSidebar);
+  expect(wrapper.findComponent({ name: 'CommentDialog' }).element).toBe(mountedDialog);
+  commentsStore.committedReviewPresentations = {};
+  commentsStore.commentsList = [];
+  await flushPromises();
+  expect(wrapper.findAllComponents({ name: 'CommentDialog' })).toHaveLength(0);
+  commentsStore.isCommentsListVisible = true;
+  await flushPromises();
+  expect(wrapper.findComponent(FloatingComments).exists()).toBe(false);
+  commentsStore.isCommentsListVisible = false;
+  await flushPromises();
+  expect(wrapper.findComponent(FloatingComments).exists()).toBe(true);
+  store.documents = [];
+  await flushPromises();
+  expect(wrapper.findComponent(FloatingComments).exists()).toBe(false);
 });

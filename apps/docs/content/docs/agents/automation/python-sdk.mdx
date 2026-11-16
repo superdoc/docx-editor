@@ -195,6 +195,41 @@ document = await client.open(
 The credential is separate from the collaboration profile and command-line arguments. It applies to the provider
 created for this open request. Per-open token authentication is not supported for Liveblocks.
 
+## Show the agent to people in the room
+
+A collaborative SDK session is invisible to people in the room by default. Turn on `collaboration.presence` to show
+it like any other participant: people in the browser see its name in the participant list, and its cursor moves to
+the end of each edit it makes. With `presence: true`, the name comes from the client's `user` (the email is its stable
+id). Without a user, the session appears as "CLI".
+
+Pass an object instead of `true` to set an explicit identity:
+
+```python
+document = await client.open(
+    {
+        "doc": "./contract.docx",
+        "collaboration": {
+            "providerType": "hocuspocus",
+            "url": "wss://collaboration.example.com",
+            "documentId": "contract-123",
+            "presence": {"name": "Contract Bot", "color": "#22AA66", "userId": "contract-bot"},
+        },
+    }
+)
+```
+
+`name` defaults to the client user name, `color` to a palette color, `userId` to the client user email, and
+`followEdits` to `True`. Omit `"presence"` or pass `False` to keep the session invisible. To show where the agent is
+working before it edits, place its cursor yourself:
+
+```python
+await document.presence.set({"blockId": "p1", "start": 0, "end": 12})
+await document.presence.set({"clear": True})
+```
+
+The cursor stays on that text while other people edit around it. Only body text can hold the cursor. When the
+session closes, the agent leaves the room.
+
 ## Close a Liveblocks collaboration session
 
 In a Liveblocks room, `close` waits until Liveblocks confirms it has every change from the session, then leaves

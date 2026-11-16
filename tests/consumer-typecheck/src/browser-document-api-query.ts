@@ -23,3 +23,15 @@ if (superdoc.activeEditor?.doc) {
     void [revision, offset, ref];
   });
 }
+
+async function clearListedFooter() {
+  const doc = superdoc.activeEditor?.doc;
+  if (!doc) return;
+  const { items } = await doc.headerFooters.list({});
+  const slot = items.find((item) => item.kind === 'footer' && item.variant === 'default' && item.refId);
+  if (!slot) return;
+  return doc.headerFooters.refs.clear({
+    target: { kind: 'headerFooterSlot', section: slot.section, headerFooterKind: slot.kind, variant: slot.variant },
+  });
+}
+void clearListedFooter;

@@ -368,6 +368,7 @@ export interface ContentControlsGetParentInput {
 
 export interface ContentControlsWrapInput {
   kind: NodeKind;
+  controlType?: ContentControlType;
   target: ContentControlTarget;
   tag?: string;
   alias?: string;

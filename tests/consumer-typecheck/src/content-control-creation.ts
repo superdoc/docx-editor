@@ -88,3 +88,16 @@ doc.create.contentControl({
   },
   target: { kind: 'inline', nodeType: 'sdt', nodeId: 'field-1' },
 });
+
+const wrapInput: Parameters<DocumentApi['contentControls']['wrap']>[0] = {
+  kind: 'inline',
+  controlType: 'dropDownList',
+  lockMode: 'contentLocked',
+  tag: 'agreement.choice',
+  target: { kind: 'inline', nodeType: 'sdt', nodeId: 'field-1' },
+};
+const wrapResult = syncDoc.contentControls.wrap(wrapInput);
+if (wrapResult.success) {
+  const wrappedControlId: string = wrapResult.contentControl.nodeId;
+  void wrappedControlId;
+}

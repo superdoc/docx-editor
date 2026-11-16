@@ -79,6 +79,12 @@ When building a target from `projectHtml({ includeSourceMap: true })`, retain th
 
 `behavior: 'exact'` removes only the resolved text range. The default `'selection'` behavior may expand to block edges when the query covers an entire boundary block.
 
+In the browser editor, deleting a collapsed selection returns a failed receipt with code `NO_OP` and message `delete produced no change.` No content or history is changed. SuperDoc 2.29.0 returned success for a direct empty deletion. The headless/MCP adapter retains that success result and may record a history entry; hosts that need consistent empty-delete behavior across runtimes should skip collapsed targets. Treat `NO_OP` as an unchanged document.
+
+An exact paragraph-mark deletion joins adjacent editable paragraphs. A direct join across a pending paragraph revision, a protected paragraph, or a container boundary returns `INVALID_TARGET` without changing content or history, including during `dryRun`. Accept or reject pending paragraph revisions before retrying a direct join.
+
+Tracked paragraph-mark deletion within a table cell returns `INVALID_TARGET` in preview and commit without changing content or history. Direct joins within the same editable cell remain supported.
+
 ## 3. Inspect receipts before continuing
 
 Check `success` before saving, exporting, or starting another dependent operation. A failed receipt includes a stable failure code and message. A successful receipt includes the resolved target, and may include revision and effect details depending on the operation.

@@ -48,6 +48,8 @@ jobs:
               - 'scripts/__tests__/check-examples.test.mjs'
               - 'scripts/check-go-links.mjs'
               - 'scripts/__tests__/check-go-links.test.mjs'
+              - 'scripts/__tests__/lint-examples.test.mts'
+              - 'vite.config.ts'
 
   validate:
     name: CI Examples / validate
@@ -112,6 +114,10 @@ jobs:
       - name: Build SDK example dependencies
         if: needs.detect.outputs.examples == 'true'
         run: pnpm run generate:all && pnpm --filter @superdoc/sdk run build
+
+      - name: Lint examples against built types
+        if: needs.detect.outputs.examples == 'true'
+        run: node --test scripts/__tests__/lint-examples.test.mts
 
       - name: Install Chromium
         if: needs.detect.outputs.examples == 'true'

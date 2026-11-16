@@ -14,6 +14,8 @@ import {
   PARAGRAPH_BATCH_MAX_EXPANDED_WRITES,
   PARAGRAPH_BATCH_MAX_PAYLOAD_BYTES,
 } from '@superdoc/document-api';
+import { BuiltInToolbar } from '../internal/toolbar/built-in-toolbar.js';
+import { createHighContrastMode } from '../composables/use-high-contrast-mode.js';
 import { bulletStyleButtons, numberedStyleButtons } from '../internal/toolbar/built-in/list-style-buttons.js';
 
 // Shared non-empty selection used by inline-format command tests. The public
@@ -37,6 +39,13 @@ const SELECTION_INFO = {
 afterEach(() => {
   vi.useRealTimers();
 });
+
+async function nextAnimationFrame(): Promise<void> {
+  for (let index = 0; index < 4; index += 1) await Promise.resolve();
+  if (vi.isFakeTimers()) vi.advanceTimersToNextFrame();
+  else await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  for (let index = 0; index < 4; index += 1) await Promise.resolve();
+}
 
 /**
  * Smoke test for the public facade ui entry (SD-3183).
@@ -1058,6 +1067,72 @@ describe('public facade (ui)', () => {
     expect(ui.commands.get(commandId).getState()).toMatchObject({ enabled: true });
     expect(await ui.toolbar.execute(commandId)).toEqual({ success: true });
     expect(decide).toHaveBeenCalledExactlyOnceWith({ decision, target: { kind: 'ids', ids: ['tc-ins', 'tc-move'] } });
+  });
+
+  it.each([
+    ['accept', BUILT_IN_COMMAND_IDS.acceptChange],
+    ['reject', BUILT_IN_COMMAND_IDS.rejectChange],
+  ] as const)('waits for review warm-up and decides the selected ids for %s via %s', async (decision, commandId) => {
+    const story = { kind: 'story', storyType: 'body' } as const;
+    const selectionTarget = {
+      kind: 'selection',
+      story,
+      start: { kind: 'text', blockId: '57130001', offset: 0, story },
+      end: { kind: 'text', blockId: '57130002', offset: 9, story },
+    };
+    let warm = false;
+    let finishWarmup = (): void => {};
+    const warmed = new Promise<void>((resolve) => {
+      finishWarmup = resolve;
+    });
+    const decide = vi.fn(() => ({ success: true }));
+    const ui = createSuperDocUI({
+      superdoc: {
+        activeEditor: {
+          doc: {
+            comments: { list: () => ({ items: [] }) },
+            selection: {
+              current: () => ({
+                empty: false,
+                target: { kind: 'text', story, segments: [{ blockId: '57130001', range: { start: 0, end: 4 } }] },
+                selectionTarget,
+                activeMarks: [],
+                activeCommentIds: [],
+                text: 'Lead\nnew moved',
+                ...(warm
+                  ? { activeChangeIds: ['tc-ins', 'tc-move'], trackedChangesWhollySelected: true }
+                  : { activeChangeIds: [], reviewWarming: true }),
+              }),
+            },
+            trackChanges: {
+              list: async () => {
+                await warmed;
+                warm = true;
+                return {
+                  items: [
+                    { id: 'tc-ins', type: 'insertion', grouping: 'standalone' },
+                    { id: 'tc-move', type: 'move' },
+                  ],
+                };
+              },
+              decide,
+            },
+          },
+        },
+        config: { documentMode: 'editing' },
+        on: vi.fn(),
+        off: vi.fn(),
+      },
+    });
+    expect(ui.commands.get(commandId).getState()).toMatchObject({ enabled: true });
+    const executed = ui.toolbar.execute(commandId);
+    await Promise.resolve();
+    expect(decide).not.toHaveBeenCalled();
+    finishWarmup();
+    expect(await executed).toBe(true);
+    await vi.waitFor(() =>
+      expect(decide).toHaveBeenCalledExactlyOnceWith({ decision, target: { kind: 'ids', ids: ['tc-ins', 'tc-move'] } }),
+    );
   });
 
   it.each([
@@ -2244,6 +2319,57 @@ describe('public facade (ui)', () => {
     expect(patch).toHaveBeenNthCalledWith(1, { commentId: 'c1', status: 'resolved' });
     expect(patch).toHaveBeenNthCalledWith(2, { commentId: 'c1', status: 'active' });
   });
+
+  it.each([false, true])(
+    'refreshes explicit comment status changes while passive catalogs wait for idle with async=%s',
+    async (asyncPatch) => {
+      vi.useFakeTimers();
+      let stage = 'source-loading';
+      let status = 'open';
+      const loading = new Set<(snapshot: unknown) => void>();
+      const list = vi.fn(() => ({ items: [{ id: 'c1', text: 'note', status }] }));
+      const receipt = { success: true };
+      const superdoc = {
+        activeEditor: {
+          host: {
+            getDocumentLoadingSnapshot: () => ({ sourceStage: stage }),
+            subscribeDocumentLoading: (listener: (snapshot: unknown) => void) => {
+              loading.add(listener);
+              return () => loading.delete(listener);
+            },
+          },
+          doc: {
+            comments: {
+              list,
+              patch: (input: { status: string }) => {
+                status = input.status === 'resolved' ? 'resolved' : 'open';
+                return asyncPatch ? Promise.resolve(receipt) : receipt;
+              },
+            },
+            selection: { current: () => null },
+            trackChanges: { list: () => ({ items: [] }) },
+          },
+        },
+        config: { documentMode: 'editing' },
+        on: vi.fn(),
+        off: vi.fn(),
+      };
+      const ui = createSuperDocUI({ superdoc });
+      try {
+        expect(ui.comments.list()[0]?.status).toBe('open');
+        stage = 'source-complete';
+        for (const listener of loading) listener({ sourceStage: stage });
+        await vi.advanceTimersByTimeAsync(0);
+        expect(await ui.comments.resolve('c1')).toBe(receipt);
+        expect(ui.comments.list()[0]?.status).toBe('resolved');
+        expect(await ui.comments.reopen('c1')).toBe(receipt);
+        expect(ui.comments.list()[0]?.status).toBe('open');
+        expect(list).toHaveBeenCalledTimes(3);
+      } finally {
+        ui.destroy();
+      }
+    },
+  );
 
   // cui-selection-040: the selection slice + geometry read truthfully from the
   // v2 live-selection source.
@@ -3606,6 +3732,40 @@ describe('public ui — viewport + metadata geometry', () => {
         expect(getTargetRects).not.toHaveBeenCalled();
       }
     });
+
+    it('measures each side of a move by reading the move once, not by looking up the side id', async () => {
+      const MOVE_ID = 'tc|main|move|m1';
+      const source = { kind: 'text', segments: [{ blockId: 'P1', range: { start: 0, end: 12 } }] };
+      const destination = { kind: 'text', segments: [{ blockId: 'P9', range: { start: 4, end: 16 } }] };
+      const side = (subtype: 'move-from' | 'move-to') => ({
+        id: `${MOVE_ID}::${subtype}`,
+        type: 'move',
+        subtype,
+        trackedChangeCanonicalId: MOVE_ID,
+        address: { kind: 'entity', entityType: 'trackedChange', entityId: `${MOVE_ID}::${subtype}` },
+        target: subtype === 'move-to' ? destination : source,
+      });
+      const { superdoc, getTargetRects } = trackChangesSuperdoc(() => Promise.reject(new Error('unused')));
+      const get = vi.fn((input: { id: string }) =>
+        input.id === MOVE_ID
+          ? Promise.resolve({ id: MOVE_ID, type: 'move', target: { kind: 'move', source, destination } })
+          : Promise.reject(Object.assign(new Error('not found'), { code: 'TARGET_NOT_FOUND' })),
+      );
+      const doc = superdoc.activeEditor.doc as Record<string, unknown>;
+      doc.trackChanges = { list: () => ({ items: [side('move-from'), side('move-to')] }), get };
+      const ui = createSuperDocUI({ superdoc });
+      ui.trackChanges.observe(() => {});
+      await settle();
+
+      for (const subtype of ['move-from', 'move-to'] as const) ui.viewport.getRect({ target: side(subtype).address });
+      await settle();
+
+      expect(get.mock.calls.map(([input]) => input.id)).toEqual([MOVE_ID, MOVE_ID]);
+      ui.viewport.getRect({ target: side('move-from').address });
+      expect(getTargetRects).toHaveBeenLastCalledWith({ target: source });
+      ui.viewport.getRect({ target: side('move-to').address });
+      expect(getTargetRects).toHaveBeenLastCalledWith({ target: destination });
+    });
   });
 
   describe('viewport.getRect with a comment address', () => {
@@ -3776,7 +3936,15 @@ describe('public ui — viewport + metadata geometry', () => {
       activeEditor: {
         doc: {
           comments: { list: () => ({ items: [] }) },
-          selection: { current: () => null },
+          selection: {
+            current: () => ({
+              empty: true,
+              target: { kind: 'text', segments: [{ blockId: 'P1', range: { start: 0, end: 0 } }] },
+              activeMarks: [],
+              activeCommentIds: [],
+              activeChangeIds: [],
+            }),
+          },
           trackChanges: { list: () => ({ items: [] }) },
         },
         editCommands: { lists: { apply }, getSnapshot },
@@ -4139,8 +4307,6 @@ describe('public ui — viewport + metadata geometry', () => {
     // The read lands and the adapter republishes; no lifecycle event fires.
     resolvedRead = true;
     notify!();
-    // The recompute is coalesced into a microtask so an adapter emission that
-    // shares a gesture with a selection change does not recompute twice.
     await Promise.resolve();
 
     expect(ui.commands.get('undo').getState().reason).toBe(SUPERDOC_UI_REASONS.historyEmpty);
@@ -4225,6 +4391,82 @@ describe('public ui — viewport + metadata geometry', () => {
     expect(toolbarEmissions, 'unchanged toolbar facts must not emit').toBe(0);
     stopRecomputes();
     stopToolbar();
+    ui.destroy();
+  });
+
+  it('coalesces background publishes into one frame recompute and keeps edit-command updates in the same task', async () => {
+    const editCommandListeners = new Set<() => void>();
+    const windowListeners = new Set<() => void>();
+    const handlers = new Map<string, Set<(payload?: unknown) => void>>();
+    const superdoc = {
+      activeEditor: {
+        editorVersion: 2,
+        doc: {
+          comments: { list: () => ({ items: [] }) },
+          selection: { current: () => null },
+          trackChanges: { list: () => ({ items: [] }) },
+          history: { undo: vi.fn(), redo: vi.fn() },
+        },
+        editCommands: {
+          subscribe: (listener: () => void) => {
+            editCommandListeners.add(listener);
+            return () => editCommandListeners.delete(listener);
+          },
+          getSnapshot: () => ({ commands: {} }),
+        },
+        reviewWindow: {
+          getSnapshot: () => ({ status: 'ready', trackedChangeItems: [], commentItems: [] }),
+          subscribe: (listener: () => void) => {
+            windowListeners.add(listener);
+            return () => windowListeners.delete(listener);
+          },
+        },
+      },
+      config: { documentMode: 'editing' },
+      on: (event: string, handler: (payload?: unknown) => void) => {
+        const set = handlers.get(event) ?? new Set();
+        set.add(handler);
+        handlers.set(event, set);
+      },
+      off: (event: string, handler: (payload?: unknown) => void) => {
+        handlers.get(event)?.delete(handler);
+      },
+    };
+    const ui = createSuperDocUI({ superdoc });
+    await nextAnimationFrame();
+    expect(editCommandListeners.size).toBe(1);
+    expect(windowListeners.size).toBe(1);
+    let recomputes = 0;
+    const stop = ui
+      .select(
+        (state) => state,
+        () => false,
+      )
+      .subscribe(() => {
+        recomputes += 1;
+      });
+
+    for (const listener of windowListeners) listener();
+    for (const handler of handlers.get('viewport-change') ?? []) handler({});
+    for (const listener of windowListeners) listener();
+    for (let index = 0; index < 8; index += 1) await Promise.resolve();
+    expect(recomputes, 'no synchronous recompute inside the burst task').toBe(0);
+
+    await nextAnimationFrame();
+    expect(recomputes, 'the burst publishes once in the next frame').toBe(1);
+
+    await nextAnimationFrame();
+    expect(recomputes, 'nothing is left queued after the frame').toBe(1);
+
+    for (const listener of windowListeners) listener();
+    for (const listener of editCommandListeners) listener();
+    for (const listener of editCommandListeners) listener();
+    for (let index = 0; index < 8; index += 1) await Promise.resolve();
+    expect(recomputes, 'edit-command emissions recompute once in the same task').toBe(2);
+
+    await nextAnimationFrame();
+    expect(recomputes, 'the same-task recompute supersedes the queued frame recompute').toBe(2);
+    stop();
     ui.destroy();
   });
 
@@ -5104,13 +5346,14 @@ describe('public ui — command reason taxonomy', () => {
     };
     let native = address('P2', 0, 6);
     let applied = info('P2');
+    let presentationReady = false;
     const selectionHandle = {
       ...(scenario === 'missing native snapshot' ? {} : { getSnapshot: () => held }),
       toSelectionTarget: () => ({ kind: 'ok', mode: 'range', target: native }),
     };
     fixture.superdoc.activeEditor.host = {
       getHandles: () => ({ selection: selectionHandle, editing: { selection: selectionHandle } }),
-      readAppliedSelectionPresentation: () => ({ selection: applied }),
+      readAppliedSelectionPresentation: () => (presentationReady ? { selection: applied } : null),
     } as any;
     const ui = createSuperDocUI({ superdoc: fixture.superdoc });
     try {
@@ -5139,10 +5382,11 @@ describe('public ui — command reason taxonomy', () => {
         destination = info('P2', 0, 5, footnote);
       }
       current.mockReturnValue(Promise.resolve(destination));
+      presentationReady = true;
       finish(destination);
       await vi.advanceTimersByTimeAsync(200);
-      if (scenario === 'moved native destination' || scenario === 'settled image destination') {
-        const blockId = scenario === 'moved native destination' ? 'P3' : 'P2';
+      if (scenario === 'settled image destination') {
+        const blockId = 'P2';
         expect(fixture.getNode.mock.calls.some(([input]) => input.nodeId === blockId)).toBe(true);
         expect(fixture.apply).toHaveBeenCalledExactlyOnceWith(
           { target: address(blockId, 0, 6), inline: { bold: true, color: '#D2003F' } },
@@ -5154,6 +5398,316 @@ describe('public ui — command reason taxonomy', () => {
         expect(fixture.setAlignment).not.toHaveBeenCalled();
       }
     } finally {
+      ui.destroy();
+    }
+  });
+
+  it.each(['notifyPointerUp', 'notifyKeyUp'] as const)(
+    'copy-format %s owns completion through selection, mutation and paint',
+    async (release) => {
+      const selected = Promise.withResolvers<unknown>();
+      const mutated = Promise.withResolvers<unknown>();
+      const painted = Promise.withResolvers<void>();
+      const fixture = makeFormatPainterSuperdoc({ applyResult: () => mutated.promise });
+      const ui = createSuperDocUI({ superdoc: fixture.superdoc });
+      try {
+        expect(await ui.commands.executeAsync('copy-format')).toBe(true);
+        fixture.superdoc.activeEditor.doc.selection.current = () => selected.promise;
+        Object.assign(fixture.superdoc.activeEditor, {
+          documentMutationReadiness: { whenPainted: () => painted.promise },
+        });
+        let complete = false;
+        const operation = Promise.resolve(ui.formatPainter[release]()).then((result) => {
+          complete = true;
+          return result;
+        });
+        await Promise.resolve();
+        expect(complete).toBe(false);
+        selected.resolve(fixture.targetSelection);
+        await vi.waitFor(() => expect(fixture.apply).toHaveBeenCalledTimes(1));
+        expect(complete).toBe(false);
+        mutated.resolve({ success: true });
+        await Promise.resolve();
+        expect(complete).toBe(false);
+        painted.resolve();
+        expect(await operation).toBe(true);
+      } finally {
+        selected.resolve(fixture.targetSelection);
+        mutated.resolve({ success: true });
+        painted.resolve();
+        ui.destroy();
+      }
+    },
+  );
+
+  it.each([
+    ...(['inline', 'plan', 'legacy'] as const).flatMap((route) =>
+      [false, true].map((rejectPaint) => ({ route, rejectPaint, persistent: false })),
+    ),
+    { route: 'inline', rejectPaint: true, persistent: true },
+  ])(
+    'copy-format preserves committed receipt through paint observation: $route reject=$rejectPaint persistent=$persistent',
+    async ({ route, rejectPaint, persistent }) => {
+      let txId = '';
+      let mutationCount = 0;
+      const mutation = vi.fn(() => {
+        txId = `paint-${route}-${++mutationCount}`;
+        return { success: true, txId };
+      });
+      const fixture = makeFormatPainterSuperdoc({
+        applyResult: mutation,
+        ...(route === 'inline' ? {} : { sourceParagraphProps: { alignment: 'center' } }),
+      });
+      const doc = fixture.superdoc.activeEditor.doc;
+      if (route === 'plan') Object.assign(doc, { plan: { execute: mutation } });
+      if (route === 'legacy') {
+        for (const key of Object.keys(doc.format.paragraph)) Reflect.set(doc.format.paragraph, key, mutation);
+        for (const key of Object.keys(doc.styles.paragraph)) Reflect.set(doc.styles.paragraph, key, mutation);
+      }
+      const whenPainted = vi.fn(async () => {
+        if (rejectPaint) throw new Error('Paint observation failed after commit');
+      });
+      Object.assign(fixture.superdoc.activeEditor, { documentMutationReadiness: { whenPainted } });
+      const ui = createSuperDocUI({ superdoc: fixture.superdoc });
+      try {
+        expect(await ui.commands.executeAsync('copy-format')).toBe(true);
+        if (persistent) expect(await ui.commands.executeAsync('copy-format')).toBe(true);
+        fixture.setSelection(fixture.targetSelection);
+        expect(await ui.formatPainter.notifyPointerUp()).toBe(true);
+        expect(await ui.formatPainter.whenSettled()).toBe(true);
+        expect(whenPainted).toHaveBeenCalledExactlyOnceWith({ txId });
+        expect(ui.toolbar.getSnapshot().copyFormatActive).toBe(persistent);
+        if (route === 'legacy') expect(mutation.mock.calls.length).toBeGreaterThan(1);
+        else expect(mutation).toHaveBeenCalledTimes(1);
+      } finally {
+        ui.destroy();
+      }
+    },
+  );
+
+  it('copy-format admits one single-use release and reports later inactive releases', async () => {
+    const selected = Promise.withResolvers<unknown>();
+    const fixture = makeFormatPainterSuperdoc();
+    const ui = createSuperDocUI({ superdoc: fixture.superdoc });
+    try {
+      expect(await ui.commands.executeAsync('copy-format')).toBe(true);
+      fixture.superdoc.activeEditor.doc.selection.current = () => selected.promise;
+      const first = ui.formatPainter.notifyPointerUp();
+      expect(await ui.formatPainter.notifyKeyUp()).toBe(false);
+      selected.resolve(fixture.targetSelection);
+      expect(await first).toBe(true);
+      expect(fixture.apply).toHaveBeenCalledTimes(1);
+      expect(await ui.formatPainter.notifyPointerUp()).toBe(false);
+      expect(await ui.formatPainter.whenSettled()).toBe(true);
+    } finally {
+      selected.resolve(fixture.targetSelection);
+      ui.destroy();
+    }
+  });
+
+  it('copy-format DOM forwarding keeps the accepted release observable after a duplicate', async () => {
+    const selected = Promise.withResolvers<unknown>();
+    const fixture = makeFormatPainterSuperdoc();
+    const container = document.createElement('div');
+    document.body.append(container);
+    Object.assign(fixture.superdoc.activeEditor, { container });
+    const ui = createSuperDocUI({ superdoc: fixture.superdoc });
+    const toolbar = new BuiltInToolbar({
+      superdoc: { ...fixture.superdoc, ui },
+      highContrastMode: createHighContrastMode(),
+    });
+    try {
+      expect(await ui.commands.executeAsync('copy-format')).toBe(true);
+      fixture.superdoc.activeEditor.doc.selection.current = () => selected.promise;
+      container.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+      container.dispatchEvent(new Event('pointerup', { bubbles: true }));
+      container.dispatchEvent(new Event('pointerup', { bubbles: true }));
+      let settled = false;
+      const completion = ui.formatPainter.whenSettled().then((result) => {
+        settled = true;
+        return result;
+      });
+      await Promise.resolve();
+      expect(settled).toBe(false);
+      selected.resolve(fixture.targetSelection);
+      expect(await completion).toBe(true);
+      expect(await ui.formatPainter.whenSettled()).toBe(true);
+      expect(fixture.apply).toHaveBeenCalledTimes(1);
+    } finally {
+      selected.resolve(fixture.targetSelection);
+      toolbar.destroy();
+      ui.destroy();
+      container.remove();
+    }
+  });
+
+  it('copy-format cancels an unresolved release without applying its source to a later selection', async () => {
+    const selected = Promise.withResolvers<unknown>();
+    const fixture = makeFormatPainterSuperdoc();
+    const ui = createSuperDocUI({ superdoc: fixture.superdoc });
+    try {
+      expect(await ui.commands.executeAsync('copy-format')).toBe(true);
+      fixture.superdoc.activeEditor.doc.selection.current = () => selected.promise;
+      const first = ui.formatPainter.notifyPointerUp();
+      ui.formatPainter.cancel();
+      selected.resolve(fixture.targetSelection);
+      expect(await first).toBe(false);
+      expect(fixture.apply).not.toHaveBeenCalled();
+    } finally {
+      selected.resolve(fixture.targetSelection);
+      ui.destroy();
+    }
+  });
+
+  it('copy-format retires an admitted application when canceled and allows a newly armed painter', async () => {
+    const blocked = Promise.withResolvers<void>();
+    const now = vi.spyOn(Date, 'now');
+    const fixture = makeFormatPainterSuperdoc();
+    const ui = createSuperDocUI({ superdoc: fixture.superdoc });
+    try {
+      expect(await ui.commands.executeAsync('copy-format')).toBe(true);
+      const read = fixture.superdoc.activeEditor.doc.getNode;
+      const targetReads = vi.fn(async (input: { nodeId: string }) => {
+        if (input.nodeId === 'P2') await blocked.promise;
+        return read.call(fixture.superdoc.activeEditor.doc, input);
+      });
+      fixture.superdoc.activeEditor.doc.getNode = targetReads;
+      fixture.setSelection(fixture.targetSelection);
+      const first = ui.formatPainter.notifyPointerUp();
+      await vi.waitFor(() => expect(targetReads).toHaveBeenCalledWith(expect.objectContaining({ nodeId: 'P2' })));
+      ui.formatPainter.cancel();
+      now.mockReturnValue(Date.now() + 600);
+      fixture.setSelection({
+        ...fixture.targetSelection,
+        target: { kind: 'text', segments: [{ blockId: 'P1', range: { start: 0, end: 5 } }] },
+        selectionTarget: {
+          kind: 'selection',
+          start: { kind: 'text', blockId: 'P1', offset: 0 },
+          end: { kind: 'text', blockId: 'P1', offset: 5 },
+        },
+      });
+      expect(await ui.commands.executeAsync('copy-format')).toBe(true);
+      fixture.setSelection(fixture.targetSelection);
+      const second = ui.formatPainter.notifyPointerUp();
+      blocked.resolve();
+      expect(await first).toBe(false);
+      expect(await second).toBe(true);
+      expect(fixture.apply).toHaveBeenCalledTimes(1);
+    } finally {
+      blocked.resolve();
+      now.mockRestore();
+      ui.destroy();
+    }
+  });
+
+  it.each([
+    { pending: false, confirmed: false, moved: false },
+    { pending: true, confirmed: false, moved: false },
+    { pending: true, confirmed: true, moved: false },
+    { pending: false, confirmed: false, moved: true },
+    { pending: true, confirmed: false, moved: true },
+    { pending: true, confirmed: true, moved: true },
+  ])(
+    'copy-format verifies input acknowledgement ownership: pending=$pending confirmed=$confirmed moved=$moved',
+    async ({ pending, confirmed, moved }) => {
+      const selected = Promise.withResolvers<unknown>();
+      const request = Promise.withResolvers<'open'>();
+      const fixture = makeFormatPainterSuperdoc();
+      const ui = createSuperDocUI({ superdoc: fixture.superdoc });
+      const destination = moved
+        ? {
+            ...fixture.targetSelection,
+            target: { kind: 'text', segments: [{ blockId: 'P3', range: { start: 0, end: 5 } }] },
+            selectionTarget: {
+              kind: 'selection',
+              start: { kind: 'text', blockId: 'P3', offset: 0 },
+              end: { kind: 'text', blockId: 'P3', offset: 5 },
+            },
+          }
+        : fixture.targetSelection;
+      try {
+        expect(await ui.commands.executeAsync('copy-format')).toBe(true);
+        let gate: 'open' | 'pending' = pending ? 'pending' : 'open';
+        let native = {
+          anchor: { blockId: 'P2', blockOffset: 0 },
+          focus: { blockId: 'P2', blockOffset: 5 },
+          revision: 1,
+        };
+        Object.assign(fixture.superdoc.activeEditor, {
+          host: {
+            getHandles: () => ({
+              selection: { getSnapshot: () => native },
+              editing: {
+                selectionTargets: {
+                  apply: vi.fn(),
+                  selectionRequestGate: () => gate,
+                  selectionRequestGeneration: () => 1,
+                  whenSelectionRequestSettled: () => request.promise,
+                },
+              },
+            }),
+            readAppliedSelectionPresentation: () => (confirmed && gate === 'open' ? { selection: destination } : null),
+          },
+        });
+        fixture.superdoc.activeEditor.doc.selection.current = () => selected.promise;
+        const operation = ui.formatPainter.notifyPointerUp();
+        native = {
+          anchor: { blockId: moved ? 'P3' : 'P2', blockOffset: 0 },
+          focus: { blockId: moved ? 'P3' : 'P2', blockOffset: 5 },
+          revision: 2,
+        };
+        gate = 'open';
+        request.resolve('open');
+        selected.resolve(destination);
+        expect(await operation).toBe(!moved);
+        if (moved) expect(fixture.apply).not.toHaveBeenCalled();
+        else
+          expect(fixture.apply).toHaveBeenCalledExactlyOnceWith(
+            { target: fixture.targetSelection.selectionTarget, inline: { bold: true, color: '#D2003F' } },
+            { offsetSpace: 'kernel' },
+          );
+      } finally {
+        request.resolve('open');
+        selected.resolve(destination);
+        ui.destroy();
+      }
+    },
+  );
+
+  it('copy-format freezes confirmed destinations before asynchronous document reads', async () => {
+    const blocked = Promise.withResolvers<void>();
+    const fixture = makeFormatPainterSuperdoc();
+    const ui = createSuperDocUI({ superdoc: fixture.superdoc });
+    try {
+      expect(await ui.commands.executeAsync('copy-format')).toBe(true);
+      expect(await ui.commands.executeAsync('copy-format')).toBe(true);
+      const second = {
+        ...fixture.targetSelection,
+        target: { kind: 'text', segments: [{ blockId: 'P3', range: { start: 0, end: 5 } }] },
+        selectionTarget: {
+          kind: 'selection',
+          start: { kind: 'text', blockId: 'P3', offset: 0 },
+          end: { kind: 'text', blockId: 'P3', offset: 5 },
+        },
+      };
+      let selection = fixture.targetSelection;
+      Object.assign(fixture.superdoc.activeEditor.doc.selection, { readPresentation: () => ({ selection }) });
+      fixture.superdoc.activeEditor.doc.selection.current = async () => {
+        await blocked.promise;
+        return selection;
+      };
+      const first = ui.formatPainter.notifyPointerUp();
+      selection = second;
+      const next = ui.formatPainter.notifyKeyUp();
+      blocked.resolve();
+      await Promise.all([first, next]);
+      await vi.waitFor(() => expect(fixture.apply).toHaveBeenCalledTimes(2));
+      expect(fixture.apply.mock.calls.map(([input]) => input.target)).toEqual([
+        fixture.targetSelection.selectionTarget,
+        second.selectionTarget,
+      ]);
+    } finally {
+      blocked.resolve();
       ui.destroy();
     }
   });
@@ -7459,7 +8013,11 @@ describe('public ui — viewport.scrollIntoView parity', () => {
     expect(result).toEqual({ success: true });
     // A TextAddress is normalized to a single-segment text target.
     expect(scrollTargetIntoView).toHaveBeenCalledWith({
-      target: { kind: 'text', segments: [{ blockId: 'P1', range: { start: 0, end: 5 } }] },
+      target: {
+        kind: 'text',
+        segments: [{ blockId: 'P1', range: { start: 0, end: 5 } }],
+        story: { kind: 'story', storyType: 'body' },
+      },
       block: 'start',
       behavior: 'auto',
     });
@@ -7475,7 +8033,11 @@ describe('public ui — viewport.scrollIntoView parity', () => {
 
     expect(result).toEqual({ success: true });
     expect(scrollTargetIntoView).toHaveBeenCalledWith({
-      target: { kind: 'text', segments: [{ blockId: 'P1', range: { start: 0, end: 5 } }] },
+      target: {
+        kind: 'text',
+        segments: [{ blockId: 'P1', range: { start: 0, end: 5 } }],
+        story: { kind: 'story', storyType: 'body' },
+      },
       block: 'center',
       behavior: 'instant',
     });
@@ -7492,7 +8054,11 @@ describe('public ui — viewport.scrollIntoView parity', () => {
     expect(result).toEqual({ success: false });
     expect(scrollTargetIntoView).toHaveBeenCalledTimes(1);
     expect(scrollTargetIntoView).toHaveBeenCalledWith({
-      target: { kind: 'text', segments: [{ blockId: 'P-far', range: { start: 0, end: 0 } }] },
+      target: {
+        kind: 'text',
+        segments: [{ blockId: 'P-far', range: { start: 0, end: 0 } }],
+        story: { kind: 'story', storyType: 'body' },
+      },
       block: 'start',
       behavior: 'instant',
     });
@@ -7514,8 +8080,46 @@ describe('public ui — viewport.scrollIntoView parity', () => {
     const result = await ui.viewport.scrollIntoView({ target, block: 'nearest', behavior: 'auto' });
 
     expect(result).toEqual({ success: true });
-    // A multi-segment target passes through unchanged.
-    expect(scrollTargetIntoView).toHaveBeenCalledWith({ target, block: 'nearest', behavior: 'auto' });
+    expect(scrollTargetIntoView).toHaveBeenCalledWith({
+      target: { ...target, story: { kind: 'story', storyType: 'body' } },
+      block: 'nearest',
+      behavior: 'auto',
+    });
+  });
+
+  it('treats a note block without story as a body target', async () => {
+    const scrollTargetIntoView = vi.fn(async ({ target }: { target: { story?: { storyType?: string } } }) => ({
+      success: target.story?.storyType !== 'body',
+    }));
+    const { superdoc } = makeWorkflowSuperdoc({ host: { scrollTargetIntoView } });
+    const ui = createSuperDocUI({ superdoc });
+
+    expect(
+      await ui.viewport.scrollIntoView({ target: { kind: 'text', blockId: 'NOTE-1', range: { start: 0, end: 0 } } }),
+    ).toEqual({ success: false });
+    expect(scrollTargetIntoView).toHaveBeenCalledWith({
+      target: {
+        kind: 'text',
+        segments: [{ blockId: 'NOTE-1', range: { start: 0, end: 0 } }],
+        story: { kind: 'story', storyType: 'body' },
+      },
+      block: 'center',
+      behavior: 'smooth',
+    });
+  });
+
+  it('forwards an API-returned footnote address without a tracked-change lookup', async () => {
+    const scrollTargetIntoView = vi.fn(async () => ({ success: true }));
+    const { superdoc } = makeWorkflowSuperdoc({ host: { scrollTargetIntoView } });
+    const ui = createSuperDocUI({ superdoc });
+    const address = { kind: 'entity', entityType: 'footnote', noteId: '1' } as const;
+
+    expect(await ui.viewport.scrollIntoView({ target: address, behavior: 'instant' })).toEqual({ success: true });
+    expect(scrollTargetIntoView).toHaveBeenCalledExactlyOnceWith({
+      target: address,
+      block: 'center',
+      behavior: 'instant',
+    });
   });
 
   it('scrolls a comment entity into view', async () => {
@@ -14830,6 +15434,94 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
     ...extra,
   });
 
+  it('reads text ranges asynchronously without building the full live selection synchronously', async () => {
+    const snapshot = { anchor: { blockId: 'P1', blockOffset: 0 }, focus: { blockId: 'P1', blockOffset: 5 } };
+    const selection = {
+      ...caretSelectionInfo('P1', 0),
+      empty: false,
+      selectionTarget: {
+        kind: 'selection',
+        start: { kind: 'text', blockId: 'P1', offset: 0 },
+        end: { kind: 'text', blockId: 'P1', offset: 5 },
+      },
+      activeChangeIds: ['range-change'],
+    };
+    let publish: ((snapshot: unknown) => void) | null = null;
+    const read = vi.fn(() => selection);
+    const host = storeCapableHost({
+      readLiveSelectionSyncSnapshot: read,
+      readAppliedSelectionPresentation: () => ({ selection: { ...selection, tableSelection: null } }),
+      getHandles: () => ({
+        editing: {
+          selection: {
+            getSnapshot: () => snapshot,
+            subscribe: (listener: (snapshot: unknown) => void) => {
+              publish = listener;
+              return () => {};
+            },
+          },
+        },
+      }),
+    });
+    const superdoc = makeBlockSuperdoc(
+      { selection: { current: async () => selection } },
+      { selectionInfo: null, editorExtra: { host } },
+    );
+    const ui = createSuperDocUI({ superdoc });
+    try {
+      read.mockClear();
+      publish?.(snapshot);
+      expect(read).not.toHaveBeenCalled();
+      await vi.waitFor(() => expect(ui.selection.getSnapshot().activeChangeIds).toEqual(['range-change']));
+    } finally {
+      ui.destroy();
+    }
+  });
+
+  it.each([false, true])(
+    'reads range formatting through the Document API presentation when available=%s',
+    async (authoritative) => {
+      const snapshot = { anchor: { blockId: 'P1', blockOffset: 0 }, focus: { blockId: 'P1', blockOffset: 5 } };
+      const selection = {
+        ...caretSelectionInfo('P1', 0),
+        empty: false,
+        target: { kind: 'text', segments: [{ blockId: 'P1', range: { start: 0, end: 5 } }] },
+        selectionTarget: {
+          kind: 'selection',
+          start: { kind: 'text', blockId: 'P1', offset: 0 },
+          end: { kind: 'text', blockId: 'P1', offset: 5 },
+        },
+        text: 'Range',
+      };
+      const query = vi.fn(async () => ({ items: [] }));
+      const presentation = () => ({
+        selection,
+        inlineStyle: { fontFamily: 'Arial', fontSize: '11', color: '#000000', highlight: '#FFFF00' },
+      });
+      const host = storeCapableHost({
+        readAppliedSelectionPresentation: authoritative ? () => null : presentation,
+        getHandles: () => ({ editing: { selection: { getSnapshot: () => snapshot, subscribe: () => () => {} } } }),
+      });
+      const superdoc = makeBlockSuperdoc(
+        {
+          selection: { current: async () => selection, ...(authoritative ? { readPresentation: presentation } : {}) },
+          query: { match: query },
+          format: { fontFamily: vi.fn(), fontSize: vi.fn() },
+        },
+        { selectionInfo: selection, editorExtra: { host } },
+      );
+      const ui = createSuperDocUI({ superdoc });
+      try {
+        await vi.waitFor(() => expect(ui.commands.get('font-family').getState().value).toBe('Arial'));
+        expect(ui.commands.get('font-size').getState().value).toBe('11');
+        if (authoritative) expect(query).not.toHaveBeenCalled();
+        else expect(query).toHaveBeenCalled();
+      } finally {
+        ui.destroy();
+      }
+    },
+  );
+
   it('uses the clicked caret marks instead of carrying marks from the previous caret', () => {
     let seed = { ...caretSelectionInfo('P1', 1), activeMarks: ['bold'] };
     let publishSelection: (() => void) | null = null;
@@ -21036,6 +21728,7 @@ describe('public ui — async browser reads (read coordinator)', () => {
       trackedChangeItems: [{ id: 'tc-deep', type: 'delete', author: 'Grace' }],
     };
     for (const listener of listeners) listener();
+    await nextAnimationFrame();
 
     expect(ui.comments.getSnapshot().items.map((item) => item.id)).toEqual(['comment-deep']);
     expect(ui.trackChanges.getSnapshot().items.map((item) => item.id)).toEqual(['tc-deep']);
@@ -21627,6 +22320,90 @@ describe('public ui — async browser reads (read coordinator)', () => {
     ui.destroy();
   });
 
+  it('SD-8074 C3 regression guard observer-dedup: unchanged window publications preserve a settled directory', async () => {
+    const snapshot = {
+      status: 'ready',
+      routeId: 'window-1',
+      commentItems: [{ id: 'c-1', text: 'Unchanged' }],
+      trackedChangeItems: [],
+    };
+    const listeners = new Set<() => void>();
+    const list = vi.fn(async () => ({ items: snapshot.commentItems }));
+    const { superdoc } = makeAsyncSuperdoc({ comments: list });
+    Object.assign(superdoc.activeEditor, {
+      editorVersion: 2,
+      reviewWindow: {
+        getSnapshot: () => snapshot,
+        subscribe: (listener: () => void) => {
+          listeners.add(listener);
+          return () => listeners.delete(listener);
+        },
+      },
+    });
+    const ui = createSuperDocUI({ superdoc });
+    const observer = vi.fn();
+    const stop = ui.comments.observe(observer);
+    try {
+      await flush();
+      expect(observer.mock.lastCall?.[0]).toMatchObject({ status: 'ready', items: snapshot.commentItems });
+      const emissions = observer.mock.calls.length;
+      const reads = list.mock.calls.length;
+      expect(reads).toBeGreaterThan(0);
+      for (let publication = 0; publication < 10; publication += 1) {
+        for (const listener of listeners) listener();
+        await nextAnimationFrame();
+      }
+      expect(observer).toHaveBeenCalledTimes(emissions);
+      expect(list).toHaveBeenCalledTimes(reads);
+    } finally {
+      stop();
+      ui.destroy();
+    }
+  });
+
+  it('SD-8074 C1 C2 race: a comments read in flight when a remote comment change arrives does not settle stale text', async () => {
+    const hostEvents: Array<(event: Record<string, unknown>) => void> = [];
+    const settleRead: Array<(text: string) => void> = [];
+    const list = vi.fn(
+      () =>
+        new Promise<{ items: Array<{ id: string; text: string }> }>((resolve) => {
+          settleRead.push((text) => resolve({ items: [{ id: 'c-1', text }] }));
+        }),
+    );
+    const { superdoc } = makeAsyncSuperdoc({ comments: list, hostEvents });
+    Object.assign(superdoc.activeEditor, {
+      editorVersion: 2,
+      reviewWindow: {
+        getSnapshot: () => ({ status: 'ready', routeId: 'window-1', commentItems: [], trackedChangeItems: [] }),
+        subscribe: () => () => undefined,
+      },
+    });
+    const ui = createSuperDocUI({ superdoc });
+    const existing = vi.fn();
+    const attachedLater = vi.fn();
+    const stops = [ui.comments.observe(existing)];
+    try {
+      await flush();
+      expect(settleRead).toHaveLength(1);
+      for (const listener of [...hostEvents]) listener({ type: 'collaboration:remote-comments-changed' });
+      await flush();
+      expect(settleRead).toHaveLength(2);
+      settleRead[0]?.('Original');
+      await flush();
+      settleRead[1]?.('Edited');
+      await flush();
+      stops.push(ui.comments.observe(attachedLater));
+      await flush();
+      const edited = { status: 'ready', items: [{ id: 'c-1', text: 'Edited' }] };
+      expect(existing.mock.lastCall?.[0]).toMatchObject(edited);
+      expect(attachedLater.mock.lastCall?.[0]).toMatchObject(edited);
+      expect(list).toHaveBeenCalledTimes(2);
+    } finally {
+      for (const stop of stops) stop();
+      ui.destroy();
+    }
+  });
+
   it('re-filters comments when a host refreshes the same review-window rows in place', async () => {
     const rows: Record<string, unknown>[] = [
       { id: 'c-1', commentId: 'c-1', text: 'First' },
@@ -21745,6 +22522,7 @@ describe('public ui — async browser reads (read coordinator)', () => {
       trackedChangeItems: [{ id: 'tc-restored', type: 'delete' }],
     };
     for (const listener of windowListeners) listener();
+    await nextAnimationFrame();
 
     expect(ui.comments.getSnapshot().items.map((item) => item.id)).toEqual(['comment-deep']);
     expect(ui.trackChanges.getSnapshot().items.map((item) => item.id)).toEqual(['tc-restored']);

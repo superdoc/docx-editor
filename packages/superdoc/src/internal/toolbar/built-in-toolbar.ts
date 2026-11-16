@@ -1277,7 +1277,7 @@ export class BuiltInToolbar extends EventEmitter {
     const onPointerUp = (e: PointerEvent) => {
       this.ui?.formatPainter.setPointerSelecting(false);
       if (isToolbarSurface(e.target)) return;
-      this.ui?.formatPainter.notifyPointerUp();
+      void this.ui?.formatPainter.notifyPointerUp();
     };
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -1288,7 +1288,7 @@ export class BuiltInToolbar extends EventEmitter {
     };
     const onKeyUp = () => {
       this.ui?.formatPainter.setKeyboardSelecting(false);
-      this.ui?.formatPainter.notifyKeyUp();
+      void this.ui?.formatPainter.notifyKeyUp();
     };
 
     container.addEventListener('pointerdown', onPointerDown);

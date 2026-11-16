@@ -36,6 +36,7 @@ type V2CollaborationUnsupportedReason =
   | 'invalid-adapter-id'
   | 'invalid-provider-options'
   | 'invalid-sync-timeout'
+  | 'invalid-expected-revision-scope'
   | 'missing-auth'
   | 'mixed-auth'
   | 'unsupported-document-type'
@@ -75,6 +76,7 @@ export interface NormalizedV2CollaborationTarget {
   syncTimeoutMs?: number;
   /** Explicit room operation; join is the default at the untrusted input boundary. */
   roomMode: 'join' | 'create';
+  expectedRevisionScope?: 'session' | 'room';
 }
 
 type V2CollaborationTargetResolution =
@@ -275,6 +277,15 @@ function resolveWebsocketFamily(
         : null;
   const roomMode = normalizeRoomMode(candidate.roomMode);
   if (!roomMode) return invalidRoomMode();
+  const scope = candidate.expectedRevisionScope;
+  if (scope !== undefined && !(scope === 'session' || (scope === 'room' && family === 'hocuspocus'))) {
+    return {
+      ok: false,
+      reason: 'invalid-expected-revision-scope',
+      message:
+        'SuperDoc v2 collaboration.expectedRevisionScope must be "session", or "room" with the "hocuspocus" provider.',
+    };
+  }
   return {
     ok: true,
     target: {
@@ -282,6 +293,7 @@ function resolveWebsocketFamily(
       documentId,
       roomMode,
       serverUrl,
+      ...(scope === undefined ? {} : { expectedRevisionScope: scope }),
       ...(params ? { params } : {}),
       ...(token ? { token } : {}),
       ...(family === 'hocuspocus' && candidate.retry !== undefined

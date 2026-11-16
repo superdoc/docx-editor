@@ -69,7 +69,9 @@ function makeHarness(
   options: {
     transitionToCompleteDuringSubscribe?: boolean;
     contentControlsList?: () => unknown;
+    contentControlsInRange?: () => unknown;
     commentsList?: () => unknown;
+    committedComments?: () => unknown;
     initialCommentIds?: string[];
     selectionCurrent?: () => unknown;
     syncSelection?: () => unknown;
@@ -96,7 +98,7 @@ function makeHarness(
   };
 
   const ccList = vi.fn(options.contentControlsList ?? (() => ({ items: [{ id: 'cc-1' }] })));
-  const ccListInRange = vi.fn(() => ({ items: [{ id: 'cc-1' }] }));
+  const ccListInRange = vi.fn(options.contentControlsInRange ?? (() => ({ items: [{ id: 'cc-1' }] })));
   const hyperlinksList = vi.fn((_input: unknown) => ({ items: [] }));
   const stylesGetCatalog = vi.fn((_input?: unknown) => ({
     styles: [],
@@ -134,7 +136,7 @@ function makeHarness(
       node: { kind: 'paragraph', paragraph: { props: { alignment: paragraphAlignment } } },
     }),
     format: { paragraph: { setAlignment: vi.fn() } },
-    comments: { list: commentsList },
+    comments: { list: commentsList, readCommittedItems: () => options.committedComments?.() },
     trackChanges: { list: trackChangesList },
     contentControls: { list: ccList, listInRange: ccListInRange },
     // `wrap` makes the routed `link` command resolvable so its active-state
@@ -490,6 +492,98 @@ describe('public ui — heavy-read policy during source loading (table-driven ov
 });
 
 describe('public ui — heavy-read policy behavior details', () => {
+  it('uses committed selection locks immediately while the content-control catalog is held', () => {
+    vi.useFakeTimers();
+    let locked = true;
+    const selection = () => ({
+      empty: false,
+      target: SELECTION_TARGET,
+      selectionTarget: SELECTION_SELECTION_TARGET,
+      activeMarks: [],
+      activeCommentIds: [],
+      activeChangeIds: [],
+      contentControlLocked: locked,
+    });
+    const harness = makeHarness('opening', { syncSelection: selection, selectionCurrent: selection });
+    try {
+      harness.emitSelection({ anchor: { blockId: 'P1', blockOffset: 0 }, focus: { blockId: 'P3', blockOffset: 5 } });
+      expect(harness.ui.commands.get('clear-formatting').getState()).toMatchObject({
+        enabled: false,
+        reason: 'content-control-locked',
+      });
+      expect(harness.countFor('contentControls:inRange:')).toBe(0);
+      locked = false;
+      harness.emitSelection({ anchor: { blockId: 'P1', blockOffset: 0 }, focus: { blockId: 'P3', blockOffset: 5 } });
+      expect(harness.ui.commands.get('clear-formatting').getState()).toMatchObject({ enabled: true });
+      expect(harness.countFor('contentControls:inRange:')).toBe(0);
+    } finally {
+      harness.ui.destroy();
+    }
+  });
+
+  it('reads committed comments on explicit list calls without a lease or idle wait', () => {
+    vi.useFakeTimers();
+    const harness = makeHarness('opening');
+    try {
+      expect(harness.ui.comments.list().map((item) => item.id)).toEqual(['c-1']);
+      harness.setComments(['c-1', 'c-2']);
+      harness.emitMutation();
+      harness.setForeground({ active: 1, pending: 0 });
+      expect(harness.ui.comments.list().map((item) => item.id)).toEqual(['c-1', 'c-2']);
+      expect(harness.countFor('contentControls')).toBe(0);
+    } finally {
+      harness.ui.destroy();
+    }
+  });
+
+  it('serves committed comment records while derived reads stay gated', () => {
+    vi.useFakeTimers();
+    let items = [{ id: 'c-1', text: 'First', status: 'open' }];
+    const harness = makeHarness('opening', { committedComments: () => items });
+    try {
+      expect(harness.ui.comments.list()).toEqual(items);
+      items = [...items, { id: 'c-2', text: 'Second', status: 'open' }];
+      harness.emitMutation();
+      expect(harness.ui.comments.list()).toEqual(items);
+      items = items.slice(0, 1);
+      harness.emitMutation();
+      expect(harness.ui.comments.list()).toEqual(items);
+      expect(harness.countFor('comments')).toBe(0);
+    } finally {
+      harness.ui.destroy();
+    }
+  });
+
+  it('keeps explicit comment records current when a derived directory is already cached', () => {
+    vi.useFakeTimers();
+    let items = [{ id: 'c-1', text: 'First', status: 'open' }];
+    const harness = makeHarness('source-complete', { committedComments: () => items });
+    try {
+      expect(harness.ui.comments.list()).toMatchObject(items);
+      items = [{ id: 'c-2', text: 'Second', status: 'resolved' }];
+      expect(harness.ui.comments.list()).toMatchObject(items);
+      expect(harness.ui.comments.list({ includeResolved: false })).toEqual([]);
+      items = [];
+      expect(harness.ui.comments.list()).toEqual([]);
+    } finally {
+      harness.ui.destroy();
+    }
+  });
+
+  it('never starts a derived comment catalog from record reads after the cold delay', () => {
+    vi.useFakeTimers();
+    const items = [{ id: 'c-1', text: 'First', status: 'open' }];
+    const harness = makeHarness('source-complete', { committedComments: () => items, reviewWindowItems: () => [] });
+    try {
+      expect(harness.ui.comments.list()).toMatchObject(items);
+      vi.advanceTimersByTime(10000);
+      expect(harness.ui.comments.list()).toMatchObject(items);
+      expect(harness.countFor('comments')).toBe(0);
+    } finally {
+      harness.ui.destroy();
+    }
+  });
+
   it('confirms terminal loading state after attaching a non-replaying subscription', async () => {
     vi.useFakeTimers();
     const harness = makeHarness('source-loading', {
@@ -612,6 +706,27 @@ describe('public ui — heavy-read policy behavior details', () => {
     harness.ui.destroy();
   });
 
+  for (const observer of ['directory', 'activePath'] as const) {
+    it(`refreshes the observed ${observer} selection promptly after source completion`, async () => {
+      vi.useFakeTimers();
+      const harness = makeHarness('source-loading');
+      await settle();
+      const stop =
+        observer === 'directory'
+          ? harness.ui.contentControls.observe(() => undefined)
+          : harness.ui.contentControls.observeActivePath(() => undefined);
+      harness.emitSelection({ anchor: { blockId: 'P1', blockOffset: 0 }, focus: { blockId: 'P3', blockOffset: 5 } });
+      await settle();
+      expect(harness.countFor('contentControls:inRange:')).toBe(0);
+      harness.setStage('source-complete');
+      harness.emitLoading();
+      await settle(1_500);
+      expect(harness.countFor('contentControls:inRange:')).toBeGreaterThan(0);
+      stop();
+      harness.ui.destroy();
+    });
+  }
+
   it('observeActivePath never requests the catalog, during loading or across mutations', async () => {
     vi.useFakeTimers();
     const harness = makeHarness('source-loading');
@@ -629,6 +744,119 @@ describe('public ui — heavy-read policy behavior details', () => {
     stop();
     harness.ui.destroy();
   });
+
+  for (const observer of ['directory', 'activePath'] as const) {
+    it(`keeps ${observer} active controls during typing without retaining them across block changes`, async () => {
+      vi.useFakeTimers();
+      const control = {
+        id: 'inline-control',
+        kind: 'inline',
+        selectionTarget: {
+          kind: 'selection',
+          start: { kind: 'text', blockId: 'P1', offset: 2 },
+          end: { kind: 'text', blockId: 'P1', offset: 20 },
+        },
+      };
+      const selection = (blockId: string, offset: number) => ({
+        empty: true,
+        target: { kind: 'text', segments: [{ blockId, range: { start: offset, end: offset } }] },
+        selectionTarget: {
+          kind: 'selection',
+          start: { kind: 'text', blockId, offset },
+          end: { kind: 'text', blockId, offset },
+        },
+        activeMarks: [],
+        activeCommentIds: [],
+        activeChangeIds: [],
+      });
+      let current = selection('P1', 5);
+      const harness = makeHarness('source-complete', {
+        contentControlsList: () => ({ items: [control] }),
+        contentControlsInRange: () => ({ items: current.selectionTarget.start.blockId === 'P1' ? [control] : [] }),
+        syncSelection: () => current,
+        selectionCurrent: () => current,
+      });
+      const stop =
+        observer === 'directory'
+          ? harness.ui.contentControls.observe(() => undefined)
+          : harness.ui.contentControls.observeActivePath(() => undefined);
+      await settle(1_500);
+      expect(harness.ui.contentControls.getSnapshot().activeIds).toEqual(['inline-control']);
+      const reads = harness.countFor('contentControls:inRange:');
+      current = selection('P1', 7);
+      harness.setSelection(current);
+      harness.emitTypingMutation();
+      harness.emitSelection({ anchor: { blockId: 'P1', blockOffset: 7 }, focus: { blockId: 'P1', blockOffset: 7 } });
+      await settle(500);
+      expect(harness.ui.contentControls.getSnapshot().activeIds).toEqual(['inline-control']);
+      expect(harness.countFor('contentControls:inRange:')).toBeGreaterThan(reads);
+      current = selection('P1', 21);
+      harness.setSelection(current);
+      harness.emitSelection({ anchor: { blockId: 'P1', blockOffset: 21 }, focus: { blockId: 'P1', blockOffset: 21 } });
+      await settle(100);
+      expect(harness.ui.contentControls.getSnapshot().activeIds).toEqual([]);
+      current = selection('P2', 3);
+      harness.setSelection(current);
+      harness.emitSelection({ anchor: { blockId: 'P2', blockOffset: 3 }, focus: { blockId: 'P2', blockOffset: 3 } });
+      await settle(100);
+      expect(harness.ui.contentControls.getSnapshot().activeIds).toEqual([]);
+      stop();
+      harness.ui.destroy();
+    });
+  }
+
+  for (const observer of ['directory', 'activePath'] as const) {
+    it(`does not activate shifted inline controls after typing before them with a ${observer} observer`, async () => {
+      vi.useFakeTimers();
+      let offset = 1;
+      let controlStart = 2;
+      const selection = () => ({
+        empty: true,
+        target: { kind: 'text', segments: [{ blockId: 'P1', range: { start: offset, end: offset } }] },
+        selectionTarget: {
+          kind: 'selection',
+          start: { kind: 'text', blockId: 'P1', offset },
+          end: { kind: 'text', blockId: 'P1', offset },
+        },
+        activeMarks: [],
+        activeCommentIds: [],
+        activeChangeIds: [],
+      });
+      const candidate = () => ({
+        id: 'inline-control',
+        kind: 'inline',
+        selectionTarget: {
+          kind: 'selection',
+          start: { kind: 'text', blockId: 'P1', offset: controlStart },
+          end: { kind: 'text', blockId: 'P1', offset: controlStart + 18 },
+        },
+      });
+      const harness = makeHarness('source-complete', {
+        contentControlsList: () => ({ items: [candidate()] }),
+        contentControlsInRange: () => ({ items: [candidate()] }),
+        syncSelection: selection,
+        selectionCurrent: selection,
+      });
+      const stop =
+        observer === 'directory'
+          ? harness.ui.contentControls.observe(() => undefined)
+          : harness.ui.contentControls.observeActivePath(() => undefined);
+      await settle(1_500);
+      expect(harness.ui.contentControls.getSnapshot().activeIds).toEqual([]);
+      offset = 3;
+      controlStart = 4;
+      harness.setSelection(selection());
+      harness.emitTypingMutation();
+      harness.emitSelection({
+        anchor: { blockId: 'P1', blockOffset: offset },
+        focus: { blockId: 'P1', blockOffset: offset },
+      });
+      await settle(600);
+      expect(harness.ui.contentControls.getSnapshot().activeIds).toEqual([]);
+      stop();
+      harness.ui.destroy();
+    });
+  }
 
   it('an attached content-control observer renews catalog demand across mutations', async () => {
     vi.useFakeTimers();

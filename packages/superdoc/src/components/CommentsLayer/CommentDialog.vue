@@ -1247,6 +1247,19 @@ const retryTrackedChangeDecision = () => {
   handleResolve();
 };
 
+const ownsTrackedChangeDecision = (superdoc: DialogSuperDoc, editor: DialogEditor | null) =>
+  editor !== null && proxy.$superdoc === superdoc && superdoc.activeEditor === editor;
+
+const restoreTrackedChangeDecisionFocus = (superdoc: DialogSuperDoc, editor: DialogEditor | null) => {
+  nextTick(() => {
+    if (!ownsTrackedChangeDecision(superdoc, editor)) return;
+    commentsStore.lastUpdate = new Date();
+    activeComment.value = null;
+    commentsStore.setActiveComment(superdoc, activeComment.value);
+    if (ownsTrackedChangeDecision(superdoc, editor)) superdoc.focus?.({ preventScroll: true });
+  });
+};
+
 const handleReject = async () => {
   if (props.comment.trackedChange) {
     if (trackedChangeDecisionsAreDisabled()) return trackedChangeDecisionDisabledOutcome();
@@ -1258,16 +1271,19 @@ const handleReject = async () => {
 
   if (props.comment.trackedChange) {
     if (isV2Mode.value) {
+      const superdoc = proxy.$superdoc;
+      const editor = superdoc.activeEditor;
       // ui-phase3-003: route tracked-change reject through the store-owned
       // v2 adapter path. Vue state and customer callbacks run only after the
       // v2 receipt commits and the store reconciles from trackChanges.list().
       // Vue state is NOT mutated until the dispatch commits and the store
       // bubble handlers receive the v2 facade explicitly after success.
       const outcome = await commentsStore.decideTrackedChangeFromSidebar({
-        superdoc: proxy.$superdoc,
+        superdoc,
         comment: props.comment,
         decision: 'reject',
       });
+      if (!ownsTrackedChangeDecision(superdoc, editor)) return;
       if (!outcome?.ok || outcome.success === false) {
         // SD-3772 §6: surface the failure (e.g. `stale-catalog`) instead of
         // silently swallowing it. The row stays; focus is not restored.
@@ -1276,14 +1292,9 @@ const handleReject = async () => {
       }
       clearTrackedChangeDecisionFailure();
       if (typeof customHandler === 'function') {
-        customHandler(props.comment, proxy.$superdoc.activeEditor);
+        customHandler(props.comment, editor);
       }
-      nextTick(() => {
-        commentsStore.lastUpdate = new Date();
-        activeComment.value = null;
-        commentsStore.setActiveComment(proxy.$superdoc, activeComment.value);
-        proxy.$superdoc.focus?.({ preventScroll: true });
-      });
+      restoreTrackedChangeDecisionFocus(superdoc, editor);
       return;
     }
 
@@ -1348,11 +1359,14 @@ const handleResolve = async () => {
   // v2 mode is active. Vue state mutates only after the dispatch commits and
   // the store reconciles from `host.getHandles().trackChanges.list()`.
   if (props.comment.trackedChange && isV2Mode.value) {
+    const superdoc = proxy.$superdoc;
+    const editor = superdoc.activeEditor;
     const outcome = await commentsStore.decideTrackedChangeFromSidebar({
-      superdoc: proxy.$superdoc,
+      superdoc,
       comment: props.comment,
       decision: 'accept',
     });
+    if (!ownsTrackedChangeDecision(superdoc, editor)) return;
     if (!outcome?.ok || outcome.success === false) {
       // SD-3772 §6: surface the failure (e.g. `stale-catalog`) instead of
       // silently swallowing it. The row stays; focus is not restored.
@@ -1361,14 +1375,9 @@ const handleResolve = async () => {
     }
     clearTrackedChangeDecisionFailure();
     if (typeof customHandler === 'function') {
-      customHandler(props.comment, proxy.$superdoc.activeEditor);
+      customHandler(props.comment, editor);
     }
-    nextTick(() => {
-      commentsStore.lastUpdate = new Date();
-      activeComment.value = null;
-      commentsStore.setActiveComment(proxy.$superdoc, activeComment.value);
-      proxy.$superdoc.focus?.({ preventScroll: true });
-    });
+    restoreTrackedChangeDecisionFocus(superdoc, editor);
     return;
   }
 
@@ -1496,7 +1505,8 @@ const handleCommentUpdate = async (comment: CommentModel) => {
     if (session?.owner === editSessionOwner) session.submission = submission;
     const editorOwner = captureCommentEditorOwner();
     const documentId = editorOwner.adapter.documentId;
-    const thread = props.comment;
+    const threadId = props.comment.commentId;
+    const fileId = props.comment.fileId;
     const draft = currentCommentText.value;
     const outcome = await commentsStore.editCommentV2({
       superdoc: proxy.$superdoc,
@@ -1509,7 +1519,8 @@ const handleCommentUpdate = async (comment: CommentModel) => {
       session.submission !== submission ||
       !editorOwner.isCurrent() ||
       editorOwner.adapter.documentId !== documentId ||
-      props.comment !== thread ||
+      props.comment.commentId !== threadId ||
+      props.comment.fileId !== fileId ||
       editingCommentId.value !== comment.commentId ||
       currentCommentText.value !== draft
     )

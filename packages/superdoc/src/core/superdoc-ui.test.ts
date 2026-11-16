@@ -343,7 +343,7 @@ describe('superdoc.ui — destruction', () => {
     expect(() => ui.createScope().dispose()).not.toThrow();
   });
 
-  it('does not call back into application code after destroy', () => {
+  it('does not call back into application code after destroy', async () => {
     // The format painter is the only handle that retains an application callback
     // and later invokes it. Unguarded, `cancel()` fires a listener belonging to
     // a component that may already have unmounted, which is worse than a stale
@@ -358,7 +358,7 @@ describe('superdoc.ui — destruction', () => {
     });
     ui.formatPainter.cancel();
     ui.formatPainter.setPointerSelecting(true);
-    ui.formatPainter.notifyPointerUp();
+    expect(await ui.formatPainter.notifyPointerUp()).toBe(false);
 
     expect(calls).toBe(0);
     // The unsubscribe is still a function, so callers need no disposal branch.

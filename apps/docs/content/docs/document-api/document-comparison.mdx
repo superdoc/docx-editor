@@ -23,6 +23,34 @@ console.log(diff.summary.changedComponents);
 
 `diff.summary` reports which components changed (`body`, `comments`, `styles`, `numbering`, `headerFooters`, `parts`) without exposing the underlying comparison mechanics. `diff.payload` is opaque and engine-owned; do not inspect or persist it directly. See the [`diff.compare` reference](/document-api/reference/diff/compare) for the full result shape.
 
+## Display differences without applying them
+
+Request `includeDisplay: true` to build a read-only comparison view:
+
+```ts
+const diff = await baseDoc.diff.compare({ targetSnapshot, includeDisplay: true });
+
+for (const change of diff.display?.changes ?? []) {
+  console.log(change.kind, change.before?.text, change.after?.text);
+}
+```
+
+`display.changes` describes changed body paragraphs, including before/after text,
+text addresses in each version, and document order. Use the `after.target` address
+with the target document's UI decorations and viewport APIs. For a removed
+paragraph, `targetAnchor` identifies nearby text in the target document where a
+removal annotation can be placed; it is not the deleted text itself. An empty
+target document can have no anchor.
+
+Display entries summarize paragraphs; they are not an exhaustive word-level edit
+script or an authorship record. `display.unrenderedFamilies` lists detected change
+categories that are not represented by these body annotations. Keep those limits
+visible in a comparison interface. Display data does not determine apply eligibility.
+
+The option defaults to omitted: existing calls retain their result shape and do
+not build display details. Older engines and legacy body-only snapshots can omit
+`display` even when requested; check for it before offering a comparison view.
+
 ## Read applyEligibility before apply
 
 `diff.applyEligibility` reports, per change mode, whether the diff is a candidate for apply or already known to be blocked, before you call apply at all:

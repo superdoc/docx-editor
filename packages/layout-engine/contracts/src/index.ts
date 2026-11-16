@@ -3699,6 +3699,8 @@ export type ImageFragmentMetadata = {
   minHeight: number;
 };
 
+export { PARTIAL_ROW_RENDERS_TO_CELL_END } from './partial-row.js';
+
 export type PartialRowInfo = {
   rowIndex: number; // Which row is partially split
   fromLineByCell: number[]; // Per-cell line start (inclusive) - 0 for first part

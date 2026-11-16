@@ -77,6 +77,11 @@ import {
   mutationCommittedEventChangedDocument,
 } from './helpers/v2-review-mutation-impact.js';
 import { resolveV2ReviewTargetCommentId } from './helpers/v2-review-target.js';
+import {
+  createV2ReviewTargetSidebarSync,
+  type V2ReviewTargetSidebarSync,
+  type V2SidebarReviewTarget,
+} from './helpers/v2-review-target-sidebar-sync.js';
 import { createReviewGeometryDelivery } from './helpers/v2-review-geometry-delivery.js';
 import {
   createV2AuthorRequiredNotificationGate,
@@ -373,7 +378,7 @@ type V2SelectionSnapshot = {
   } | null;
 };
 type V2RestampEvent = CustomEvent<{ itemIds?: unknown; refreshReason?: string } | null> | null | undefined;
-type V2ReviewTarget = { origin?: unknown; entityId?: unknown; entityType?: unknown };
+type V2ReviewTarget = V2SidebarReviewTarget;
 type V2HostEvent = Record<string, unknown> & {
   type: string;
   dryRun?: boolean;
@@ -421,6 +426,7 @@ type V2EditorReadyPayload = {
   commentsAdapter?: unknown;
   trackedChangesAdapter?: unknown;
   contextMenu?: unknown;
+  viewportQuery?: unknown;
   documentApi?: V2DocumentApi | null;
   documentMutationReadiness?: { whenPainted?: (receipt: unknown) => unknown } | null;
   documentApiUnavailableReason?: string | null;
@@ -437,7 +443,10 @@ type V2EditorReadyPayload = {
   documentOpenToken?: object | null;
 };
 type V2RulerPageLayout = {
-  getActiveRulerContext?: () => { pageIndex?: number } | null | undefined;
+  getActiveRulerContext?: () =>
+    | { pageIndex?: number; base?: { widthPx?: number }; zoom?: { scale?: number } }
+    | null
+    | undefined;
   subscribeActiveRulerContext?: (listener: (context: { pageIndex?: number } | null | undefined) => void) => () => void;
 };
 type V2EditorFailedPayload = {
@@ -867,7 +876,22 @@ const subDocumentRoots = new Map<string, HTMLElement>();
 const v2Runtimes = new Map<string, V2RuntimeEntry>();
 const v2CommandShortcutBindings = new Map<string, V2ShortcutBinding>();
 const v2SessionShortcutBindings = new Map<string, V2ShortcutBinding>();
+const v2ReviewTargetSidebarSyncs = new Map<string, V2ReviewTargetSidebarSync>();
 let v2RuntimeSeq = 0;
+
+const clearV2ReviewTargetSidebarSync = (documentId: string) => {
+  const sync = v2ReviewTargetSidebarSyncs.get(documentId);
+  if (!sync) return;
+  v2ReviewTargetSidebarSyncs.delete(documentId);
+  sync.detach();
+};
+
+const installV2ReviewTargetSidebarSync = (documentId: string, trackedChangesAdapter: unknown) => {
+  clearV2ReviewTargetSidebarSync(documentId);
+  const sync = createV2ReviewTargetSidebarSync((target) => syncSidebarActiveCommentFromV2ReviewTarget(target));
+  sync.attach(trackedChangesAdapter);
+  v2ReviewTargetSidebarSyncs.set(documentId, sync);
+};
 
 const clearV2CommandShortcutBinding = (documentId: string) => {
   const entry = v2CommandShortcutBindings.get(documentId);
@@ -1005,6 +1029,7 @@ const setSubDocumentRoot = (doc: ShellDocument | null | undefined, el: HTMLEleme
 };
 
 const clearV2RuntimeRegistration = (documentId: string) => {
+  clearV2ReviewTargetSidebarSync(documentId);
   clearV2CommandShortcutBinding(documentId);
   clearV2SessionShortcutBinding(documentId);
   const document: ShellDocument | undefined = getDocument(documentId);
@@ -1248,6 +1273,7 @@ const onV2EditorReady = (payload: V2EditorReadyPayload | null | undefined) => {
     commentsAdapter,
     trackedChangesAdapter,
     contextMenu,
+    viewportQuery,
     documentApi,
     documentMutationReadiness,
     documentApiUnavailableReason,
@@ -1629,6 +1655,7 @@ const onV2EditorReady = (payload: V2EditorReadyPayload | null | undefined) => {
     // boot failed.
     v2TrackedChanges: trackedChangesAdapter ?? null,
     contextMenu: contextMenu ?? null,
+    viewportQuery: viewportQuery ?? null,
     // ui-phase4-001: v2 page metrics + zoom runtime. Always present in v2
     // mode (null only if the v2 editor host boot failed). Consumers:
     //   - SuperDoc.vue's `activeZoom` watcher calls `pageMetrics.setZoom`
@@ -1709,6 +1736,7 @@ const onV2EditorReady = (payload: V2EditorReadyPayload | null | undefined) => {
     registerFirstPartyCommandMutation(proxy.$superdoc, host, firstPartyCommandMutation as V2CommandMutation);
   }
   installV2CommandShortcutBinding({ documentId, bindEditShortcuts });
+  installV2ReviewTargetSidebarSync(documentId, trackedChangesAdapter);
   installV2SessionShortcutBinding({ documentId, bindSessionShortcuts, documentApi, firstPartyCommandMutation });
   if (collaborationProvider && resolveDocumentV2Collaboration(getDocument(documentId)).state === 'valid') {
     onEditorCollaborationReady({ editor: facade });
@@ -1945,6 +1973,10 @@ const scheduleV2DomSelectionSync = () => {
 const handleDocumentSelectionChange = () => {
   scheduleV2DomSelectionSync();
 };
+
+watch(pendingComment, (next, previous) => {
+  if (previous && !next && proxy.$superdoc?.config?.documentMode === 'viewing') scheduleV2DomSelectionSync();
+});
 
 const onV2SelectionChanged = ({
   hasRangeSelection,
@@ -2349,7 +2381,9 @@ const onV2HostEvent = (document: ShellDocument | null | undefined, event: V2Host
     return;
   }
   if (event.type === 'reviewTarget:changed') {
-    syncSidebarActiveCommentFromV2ReviewTarget(event.next);
+    const sync = document?.id ? v2ReviewTargetSidebarSyncs.get(document.id) : undefined;
+    if (sync) sync.onReviewTargetChanged(event.next);
+    else syncSidebarActiveCommentFromV2ReviewTarget(event.next);
     return;
   }
   if (event.type === 'collaboration:remote-changed') {
@@ -2845,6 +2879,9 @@ const editorOptions = (doc: ShellDocument) => {
     onFontsResolved: onFontsResolvedFn,
     // Painter plan P7 §1: page-count seam (layout-end; v2 vertical only).
     onPageCountKnown: proxy.$superdoc.config.onPageCountKnown ?? null,
+    onReviewAnalysisProgress: (progress: { state: string; done: number; total: number; stage: string | null }) => {
+      v2ReviewWindowController.noteAnalysisProgress?.(progress);
+    },
     onReviewWindowCommitted: (payload) => {
       v2ReviewWindowController.onCommittedPagePaint?.({ ...payload, documentId: doc.id });
       if (payload.reviewGeometry && Array.isArray(payload.pageIndices)) {
@@ -3595,6 +3632,9 @@ onBeforeUnmount(() => {
   for (const documentId of Array.from(v2CommandShortcutBindings.keys())) {
     clearV2CommandShortcutBinding(documentId);
   }
+  for (const documentId of Array.from(v2ReviewTargetSidebarSyncs.keys())) {
+    clearV2ReviewTargetSidebarSync(documentId);
+  }
   for (const documentId of Array.from(v2SessionShortcutBindings.keys())) {
     clearV2SessionShortcutBinding(documentId);
   }
@@ -3912,11 +3952,16 @@ const resolveV2RulerAlignmentContainer = () => {
   return subDocumentRoots.get(activeDocumentId) ?? subDocumentRoots.get(String(activeDocumentId)) ?? null;
 };
 
-const getV2ActivePageRect = () => {
+const getV2ActiveStage = () => {
   const activeDocumentId = getActiveV2DocumentId();
   const stage =
     activeDocumentId == null ? latestV2MountStage : (v2MountStagesByDocumentId.get(String(activeDocumentId)) ?? null);
-  if (!stage?.isConnected) return null;
+  return stage?.isConnected ? stage : null;
+};
+
+const getV2ActivePageRect = () => {
+  const stage = getV2ActiveStage();
+  if (!stage) return null;
   const workerRoots = stage.querySelectorAll('[data-sd-worker-dom-root]');
   if (workerRoots.length) {
     if (workerRoots.length !== 1) return null;
@@ -3935,6 +3980,36 @@ const getV2ActivePageRect = () => {
   return (activePage ?? wrapper).getBoundingClientRect();
 };
 
+const getV2VisiblePageRect = () => {
+  const stage = getV2ActiveStage();
+  if (!stage) return null;
+  const workerRoots = stage.querySelectorAll<HTMLElement>('[data-sd-worker-dom-root]');
+  if (workerRoots.length !== 1) return null;
+  const root = workerRoots[0];
+  let top = 0;
+  let bottom = window.innerHeight;
+  for (let ancestor = root.parentElement; ancestor && ancestor !== document.body; ancestor = ancestor.parentElement) {
+    if (!/^(auto|scroll|hidden|clip)$/.test(getComputedStyle(ancestor).overflowY) || !ancestor.clientHeight) continue;
+    const rect = ancestor.getBoundingClientRect();
+    top = Math.max(top, rect.top);
+    bottom = Math.min(bottom, rect.bottom);
+  }
+  const pages = Array.from(
+    root.querySelectorAll<HTMLElement>('.superdoc-page[data-worker-page-id][data-page-index]'),
+  ).filter((page) => page.closest('[data-sd-worker-dom-root]') === root);
+  let nearest: DOMRect | null = null;
+  let nearestDistance = Infinity;
+  for (const page of pages) {
+    const rect = page.getBoundingClientRect();
+    const distance = rect.bottom < top ? top - rect.bottom : rect.top > bottom ? rect.top - bottom : 0;
+    if (distance < nearestDistance) {
+      nearest = rect;
+      nearestDistance = distance;
+    }
+  }
+  return nearest;
+};
+
 const syncV2RulerOffset = () => {
   if (!isV2Mode.value) {
     if (Object.keys(v2RulerHostStyle.value).length) v2RulerHostStyle.value = {};
@@ -3947,19 +4022,29 @@ const syncV2RulerOffset = () => {
     if (v2RulerPageRect.value !== null) v2RulerPageRect.value = null;
     return;
   }
-  const pageRect = getV2ActivePageRect();
+  const activePageRect = getV2ActivePageRect();
+  const pageRect = activePageRect ?? getV2VisiblePageRect();
   if (!pageRect) {
     if (Object.keys(v2RulerHostStyle.value).length) v2RulerHostStyle.value = {};
     if (v2RulerPageRect.value !== null) v2RulerPageRect.value = null;
     return;
   }
   const containerRect = alignmentContainer.getBoundingClientRect();
-  const paddingLeft = Math.max(0, pageRect.left - containerRect.left);
-  const paddingRight = Math.max(0, containerRect.right - pageRect.right);
+  const context = v2RulerContextPageLayout?.getActiveRulerContext?.();
+  const rulerWidth = activePageRect
+    ? pageRect.width
+    : (context?.base?.widthPx ?? pageRect.width) * (context?.zoom?.scale ?? 1);
+  const rulerLeft = pageRect.left + (pageRect.width - rulerWidth) / 2;
+  const paddingLeft = Math.max(0, rulerLeft - containerRect.left);
+  const paddingRight = Math.max(0, containerRect.right - rulerLeft - rulerWidth);
   const left = `${paddingLeft}px`;
   const right = `${paddingRight}px`;
   if (v2RulerHostStyle.value.paddingLeft !== left || v2RulerHostStyle.value.paddingRight !== right) {
     v2RulerHostStyle.value = { paddingLeft: left, paddingRight: right };
+  }
+  if (!activePageRect) {
+    if (v2RulerPageRect.value !== null) v2RulerPageRect.value = null;
+    return;
   }
   const previousRect = v2RulerPageRect.value;
   if (
@@ -4356,7 +4441,7 @@ const whiteboardInteractive = computed(() => whiteboardEnabled.value);
     <div ref="rightSidebarRef" class="superdoc__right-sidebar right-sidebar" v-if="showCommentsSidebar">
       <div class="floating-comments">
         <FloatingComments
-          v-if="hasInitializedLocations && (floatingComments.length > 0 || pendingComment)"
+          v-if="hasInitializedLocations"
           v-for="doc in documentsWithConverations"
           :parent="layers!"
           :current-document="doc"

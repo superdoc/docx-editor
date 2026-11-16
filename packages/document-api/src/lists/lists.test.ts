@@ -31,7 +31,12 @@ import {
   executeListsRemoveV2,
   executeListsRestartV2,
 } from './lists.js';
-import { LIST_PRESET_IDS, LIST_PRESET_MARKERS, LIST_CUSTOM_NUMBERING_FORMATS } from './lists.types.js';
+import {
+  LIST_PRESET_IDS,
+  LIST_PRESET_MARKERS,
+  LIST_CUSTOM_NUMBERING_FORMATS,
+  listLevelMatchesPreset,
+} from './lists.types.js';
 
 const validTarget = { kind: 'block' as const, nodeType: 'listItem' as const, nodeId: 'li-1' };
 
@@ -1072,12 +1077,42 @@ describe('LIST_PRESET_MARKERS (canonical preset → OOXML marker map)', () => {
   });
 
   it('maps bullet presets to numFmt=bullet with a distinct glyph and no start', () => {
-    expect(LIST_PRESET_MARKERS.disc).toEqual({ numFmt: 'bullet', lvlText: '•' });
-    expect(LIST_PRESET_MARKERS.circle).toEqual({ numFmt: 'bullet', lvlText: 'o' });
-    expect(LIST_PRESET_MARKERS.square).toEqual({ numFmt: 'bullet', lvlText: '▪' });
+    expect(LIST_PRESET_MARKERS.disc).toEqual({
+      numFmt: 'bullet',
+      lvlText: '\uF0B7',
+      markerFonts: { ascii: 'Symbol', hAnsi: 'Symbol' },
+    });
+    expect(LIST_PRESET_MARKERS.circle).toEqual({
+      numFmt: 'bullet',
+      lvlText: 'o',
+      markerFonts: { ascii: 'Courier New', hAnsi: 'Courier New', cs: 'Courier New' },
+    });
+    expect(LIST_PRESET_MARKERS.square).toEqual({
+      numFmt: 'bullet',
+      lvlText: '\uF0A7',
+      markerFonts: { ascii: 'Wingdings', hAnsi: 'Wingdings' },
+    });
     expect(LIST_PRESET_MARKERS.dash).toEqual({ numFmt: 'bullet', lvlText: '-' });
     for (const bullet of ['disc', 'circle', 'square', 'dash'] as const) {
       expect(LIST_PRESET_MARKERS[bullet].start).toBeUndefined();
     }
+  });
+});
+
+describe('listLevelMatchesPreset', () => {
+  it('matches a level by the character its preset writes, and by the character earlier SuperDoc releases wrote', () => {
+    expect(listLevelMatchesPreset({ numFmt: 'bullet', lvlText: '\uF0B7' }, 'disc')).toBe(true);
+    expect(listLevelMatchesPreset({ numFmt: 'bullet', lvlText: '•' }, 'disc')).toBe(true);
+    expect(listLevelMatchesPreset({ numFmt: 'bullet', lvlText: 'o' }, 'circle')).toBe(true);
+    expect(listLevelMatchesPreset({ numFmt: 'bullet', lvlText: '\uF0A7' }, 'square')).toBe(true);
+    expect(listLevelMatchesPreset({ numFmt: 'bullet', lvlText: '▪' }, 'square')).toBe(true);
+    expect(listLevelMatchesPreset({ numFmt: 'decimal', lvlText: '%1.' }, 'decimal')).toBe(true);
+  });
+
+  it('does not match another preset, another kind, or an unknown level', () => {
+    expect(listLevelMatchesPreset({ numFmt: 'bullet', lvlText: '•' }, 'square')).toBe(false);
+    expect(listLevelMatchesPreset({ numFmt: 'bullet', lvlText: '\uF0A7' }, 'disc')).toBe(false);
+    expect(listLevelMatchesPreset({ numFmt: 'decimal', lvlText: '•' }, 'disc')).toBe(false);
+    expect(listLevelMatchesPreset({ numFmt: null, lvlText: null }, 'circle')).toBe(false);
   });
 });

@@ -25,6 +25,23 @@ const makeRunRenderContext = (overrides: Partial<RunRenderContext> = {}): RunRen
     ...overrides,
   }) as unknown as RunRenderContext;
 
+describe('renderTextRun paints the bullet Word shows for a Symbol or Wingdings private-use character', () => {
+  const context: FragmentRenderContext = { pageNumber: 1, totalPages: 1, section: 'body' };
+
+  it.each([
+    ['Symbol', '\uF0B7', '\u2022'],
+    ['Wingdings', '\uF0A7', '\u25AA'],
+  ])('%s %s paints %s', (fontFamily, stored, painted) => {
+    const run: TextRun = { text: `${stored}\tItem`, fontFamily, fontSize: 16 };
+    expect(renderTextRun(run, context, makeRunRenderContext())?.textContent).toBe(`${painted}\tItem`);
+  });
+
+  it('leaves the same character alone in a font that is not Symbol or Wingdings', () => {
+    const run: TextRun = { text: '\uF0B7', fontFamily: 'Arial', fontSize: 16 };
+    expect(renderTextRun(run, context, makeRunRenderContext())?.textContent).toBe('\uF0B7');
+  });
+});
+
 describe('resolveRunText', () => {
   const context: FragmentRenderContext = {
     pageNumber: 1,

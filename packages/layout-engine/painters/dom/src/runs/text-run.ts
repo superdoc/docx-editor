@@ -1,4 +1,5 @@
 import type { Run, TextRun } from '@superdoc/contracts';
+import { normalizeSymbolFontText } from '@superdoc/common/list-numbering';
 import {
   DELETED_PAGE_BREAK_LABEL,
   isPageBreakDeletionAnchorRun,
@@ -346,7 +347,7 @@ export const renderTextRun = (
   const isActiveLink = !!(linkData && !linkData.blocked && linkData.href);
   const elem = isActiveLink ? renderContext.doc.createElement('a') : renderContext.doc.createElement('span');
   elem.classList.add(CLASS_NAMES.textRun);
-  const text = resolveRunText(run, context);
+  const text = normalizeSymbolFontText(resolveRunText(run, context), run.fontFamily);
   const bidiLanguage = run.script?.language?.complexScript;
   const effectiveText = run.bidi?.rtl === true ? normalizeRtlDateTokenForWordParity(text, bidiLanguage) : text;
   setTextContentWithFormattingSpaceMarks(elem, effectiveText, renderContext.doc, renderContext.showFormattingMarks);

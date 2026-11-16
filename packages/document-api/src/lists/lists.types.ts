@@ -90,6 +90,12 @@ export interface ListPresetMarker {
   lvlText: string;
   /** First number for ordered presets; omitted for bullets. */
   start?: number;
+  markerFonts?: ListPresetMarkerFonts;
+}
+export interface ListPresetMarkerFonts {
+  ascii: string;
+  hAnsi: string;
+  cs?: string;
 }
 export const LIST_PRESET_MARKERS: Record<ListPresetId, ListPresetMarker> = {
   decimal: { numFmt: 'decimal', lvlText: '%1.', start: 1 },
@@ -100,11 +106,40 @@ export const LIST_PRESET_MARKERS: Record<ListPresetId, ListPresetMarker> = {
   upperLetterParenthesis: { numFmt: 'upperLetter', lvlText: '%1)', start: 1 },
   lowerRoman: { numFmt: 'lowerRoman', lvlText: '%1.', start: 1 },
   upperRoman: { numFmt: 'upperRoman', lvlText: '%1.', start: 1 },
-  disc: { numFmt: 'bullet', lvlText: '•' },
-  circle: { numFmt: 'bullet', lvlText: 'o' },
-  square: { numFmt: 'bullet', lvlText: '▪' },
+  disc: { numFmt: 'bullet', lvlText: '\uF0B7', markerFonts: { ascii: 'Symbol', hAnsi: 'Symbol' } },
+  circle: {
+    numFmt: 'bullet',
+    lvlText: 'o',
+    markerFonts: { ascii: 'Courier New', hAnsi: 'Courier New', cs: 'Courier New' },
+  },
+  square: { numFmt: 'bullet', lvlText: '\uF0A7', markerFonts: { ascii: 'Wingdings', hAnsi: 'Wingdings' } },
   dash: { numFmt: 'bullet', lvlText: '-' },
 };
+const LIST_PRESET_EARLIER_LEVEL_TEXT: Partial<Record<ListPresetId, string>> = { disc: '•', square: '▪' };
+
+export const LIST_UNSTYLED_BULLET_MARKER: ListPresetMarker = { numFmt: 'bullet', lvlText: '•' };
+export interface ListPresetTemplateLevel extends ListPresetMarker {
+  level: 0;
+  markerFont?: null;
+}
+export function listPresetTemplateLevel(preset: ListPresetId): ListPresetTemplateLevel {
+  const marker = LIST_PRESET_MARKERS[preset];
+  return marker.markerFonts ? { level: 0, ...marker } : { level: 0, ...marker, markerFont: null };
+}
+export function isListPresetId(value: unknown): value is ListPresetId {
+  return LIST_PRESET_IDS.some((id) => id === value);
+}
+export function listLevelMatchesPreset(
+  level: { numFmt?: string | null; lvlText?: string | null },
+  preset: ListPresetId,
+): boolean {
+  const marker = LIST_PRESET_MARKERS[preset];
+  if (!marker || level.numFmt !== marker.numFmt) return false;
+  return (
+    level.lvlText === marker.lvlText ||
+    (level.lvlText != null && level.lvlText === LIST_PRESET_EARLIER_LEVEL_TEXT[preset])
+  );
+}
 // ---------------------------------------------------------------------------
 // Failure code enums
 // ---------------------------------------------------------------------------

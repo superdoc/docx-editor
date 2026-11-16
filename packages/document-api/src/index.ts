@@ -1801,6 +1801,8 @@ export type {
   TrailingCharacter,
   ListPresetId,
   ListPresetMarker,
+  ListPresetMarkerFonts,
+  ListPresetTemplateLevel,
   ListLevelTemplate,
   ListTemplate,
   ListsApplyTemplateInput,
@@ -1845,6 +1847,10 @@ export {
   TRAILING_CHARACTERS,
   LIST_PRESET_IDS,
   LIST_PRESET_MARKERS,
+  listLevelMatchesPreset,
+  isListPresetId,
+  listPresetTemplateLevel,
+  LIST_UNSTYLED_BULLET_MARKER,
   LIST_CUSTOM_NUMBERING_FORMATS,
 } from './lists/lists.types.js';
 export type {

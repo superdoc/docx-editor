@@ -6,6 +6,7 @@ import {
   intToJapaneseCounting,
   isCountedNumberFormat,
   normalizeLvlTextChar,
+  normalizeSymbolFontText,
 } from './index';
 
 describe('generateOrderedListIndex', () => {
@@ -482,5 +483,20 @@ describe('docx-support numbering formats row', () => {
       'numberInDash',
     ])
       expect(isCountedNumberFormat(format), format).toBe(true);
+  });
+});
+
+describe('normalizeSymbolFontText', () => {
+  it('maps the private-use bullet of a Symbol or Wingdings run to the glyph Word shows', () => {
+    expect(normalizeSymbolFontText('\uF0B7\tItem', 'Symbol')).toBe('\u2022\tItem');
+    expect(normalizeSymbolFontText('\uF0A7\tItem', '"Wingdings", __superdoc_core_symbols__, sans-serif')).toBe(
+      '\u25AA\tItem',
+    );
+  });
+
+  it('leaves text in other fonts, and other characters, unchanged', () => {
+    expect(normalizeSymbolFontText('\uF0B7', 'Arial')).toBe('\uF0B7');
+    expect(normalizeSymbolFontText('\uF0A7', 'Symbol')).toBe('\uF0A7');
+    expect(normalizeSymbolFontText('abc', undefined)).toBe('abc');
   });
 });

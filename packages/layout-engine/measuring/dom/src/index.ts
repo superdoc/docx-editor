@@ -98,6 +98,7 @@ import {
   DEFAULT_LIST_HANGING_PX as DEFAULT_LIST_HANGING,
 } from '@superdoc/common/layout-constants';
 import { resolveListTextStartPx, type MinimalMarker } from '@superdoc/common/list-marker-utils';
+import { normalizeSymbolFontText } from '@superdoc/common/list-numbering';
 import { calculateRotatedBounds, normalizeRotation } from '@superdoc/geometry-utils';
 import { toCssFontFamily } from '@superdoc/font-utils';
 import {
@@ -6246,7 +6247,8 @@ const capitalizeText = (text: string, fullText?: string, startOffset?: number): 
   return result;
 };
 
-const applyTextTransform = (text: string, run: Run | DropCapRun, startOffset?: number): string => {
+const applyTextTransform = (rawText: string, run: Run | DropCapRun, startOffset?: number): string => {
+  const text = 'fontFamily' in run ? normalizeSymbolFontText(rawText, run.fontFamily) : rawText;
   // Only TextRun and TabRun have textTransform (via RunMarks)
   const transform = 'textTransform' in run ? run.textTransform : undefined;
   if (!text || !transform || transform === 'none') return text;

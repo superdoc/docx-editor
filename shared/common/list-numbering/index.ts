@@ -454,10 +454,28 @@ export const normalizeLvlTextChar = (lvlText?: string): string | undefined => {
   return lvlText;
 };
 
+const SYMBOL_FONT_PRIVATE_USE_GLYPHS: Readonly<Record<string, string>> = { symbol: '\uF0B7', wingdings: '\uF0A7' };
+
+const primaryFontFamily = (fontFamily: string | null | undefined): string =>
+  (fontFamily ?? '')
+    .split(',')[0]
+    ?.trim()
+    .replace(/^["']|["']$/g, '')
+    .toLowerCase() ?? '';
+
+const SYMBOL_FONT_PRIVATE_USE_PATTERN = /[\uF0A7\uF0B7]/;
+
+export const normalizeSymbolFontText = (text: string, fontFamily: string | null | undefined): string => {
+  if (!SYMBOL_FONT_PRIVATE_USE_PATTERN.test(text)) return text;
+  const glyph = SYMBOL_FONT_PRIVATE_USE_GLYPHS[primaryFontFamily(fontFamily)];
+  return glyph && text.includes(glyph) ? text.split(glyph).join(normalizeLvlTextChar(glyph) ?? glyph) : text;
+};
+
 export const listNumberingHelpers = {
   generateOrderedListIndex,
   intToJapaneseCounting,
   normalizeLvlTextChar,
+  normalizeSymbolFontText,
 };
 
 export type { NumberingHandler };

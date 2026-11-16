@@ -28,6 +28,7 @@ export type { NumberingFormat } from './marker-utils.js';
 export { createNumberingManager } from './numbering-manager.js';
 export type { NumberingManager, NumberingManagerSnapshot, NumberingCursor } from './numbering-manager.js';
 export { computeWordListMarker } from './list-marker.js';
+export { isCountedNumberFormat } from '@superdoc/common/list-numbering';
 export type {
   ComputeWordListMarkerInput,
   ComputeWordListMarkerResult,

@@ -2,6 +2,99 @@ type NumberingHandler = (path: number[], lvlText: string, customFormat?: string)
 
 type NumberFormatter = (value: number) => string;
 
+const WORD_BLANK_NUMBER = ' ';
+
+const decimalDigits: NumberFormatter = (value) => String(value);
+
+const digitsIn = (digits: string): NumberFormatter => {
+  const table = [...digits];
+  return (value) => [...String(value)].map((digit) => table[Number(digit)]).join('');
+};
+
+const enclosedUpTo =
+  (first: number, count: number): NumberFormatter =>
+  (value) =>
+    value >= 1 && value <= count ? String.fromCodePoint(first + value - 1) : String(value);
+
+const cyclingLetters = (letters: string, zero: string): NumberFormatter => {
+  const alphabet = [...letters];
+  return (value) => (value < 1 ? zero : alphabet[(value - 1) % alphabet.length]);
+};
+
+const MAX_LETTER_REPEATS = 30;
+
+const repeatingLetters = (letters: string, zero: string): NumberFormatter => {
+  const alphabet = [...letters];
+  return (value) => {
+    if (value < 1) return zero;
+    const wrapped = (value - 1) % (alphabet.length * MAX_LETTER_REPEATS);
+    return alphabet[wrapped % alphabet.length].repeat(Math.floor(wrapped / alphabet.length) + 1);
+  };
+};
+
+const HEAVENLY_STEMS = '甲乙丙丁戊己庚辛壬癸';
+const EARTHLY_BRANCHES = '子丑寅卯辰巳午未申酉戌亥';
+
+const sexagenaryCycle: NumberFormatter = (value) => {
+  if (value < 1) return String(value);
+  const index = (value - 1) % 60;
+  return HEAVENLY_STEMS[index % 10] + EARTHLY_BRANCHES[index % 12];
+};
+
+const tableThenDecimal =
+  (table: string): NumberFormatter =>
+  (value) =>
+    value >= 1 && value <= table.length ? table[value - 1] : String(value);
+
+const CHICAGO_MARKS = '*†‡§';
+
+const JAPANESE_DIGITAL_BLANK_FROM = 10_000;
+
+const ideographDigits = digitsIn('〇一二三四五六七八九');
+const fullWidthDigits = digitsIn('０１２３４５６７８９');
+const koreanHanjaDigits = digitsIn('零一二三四五六七八九');
+
+const SCRIPT_FORMATTERS: Record<string, NumberFormatter> = {
+  decimalHalfWidth: decimalDigits,
+  bahtText: decimalDigits,
+  dollarText: decimalDigits,
+  decimalFullWidth: fullWidthDigits,
+  decimalFullWidth2: fullWidthDigits,
+  hindiNumbers: digitsIn('०१२३४५६७८९'),
+  thaiNumbers: digitsIn('๐๑๒๓๔๕๖๗๘๙'),
+  ideographDigital: ideographDigits,
+  japaneseDigitalTenThousand: (value) => (value >= JAPANESE_DIGITAL_BLANK_FROM ? '' : ideographDigits(value)),
+  taiwaneseDigital: digitsIn('○一二三四五六七八九'),
+  koreanDigital: digitsIn('영일이삼사오육칠팔구'),
+  koreanDigital2: (value) => (value === 0 ? '\uF9B2' : koreanHanjaDigits(value)),
+  hex: (value) => value.toString(16).toUpperCase(),
+  numberInDash: (value) => `- ${value} -`,
+  none: () => '',
+  decimalEnclosedCircle: enclosedUpTo(0x2460, 20),
+  decimalEnclosedCircleChinese: enclosedUpTo(0x2460, 20),
+  decimalEnclosedFullstop: enclosedUpTo(0x2488, 20),
+  decimalEnclosedParen: enclosedUpTo(0x2474, 20),
+  ideographEnclosedCircle: enclosedUpTo(0x3220, 10),
+  ideographTraditional: tableThenDecimal(HEAVENLY_STEMS),
+  ideographZodiac: tableThenDecimal(EARTHLY_BRANCHES),
+  ideographZodiacTraditional: sexagenaryCycle,
+  chicago: repeatingLetters(CHICAGO_MARKS, ''),
+  aiueo: cyclingLetters('ｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉﾊﾋﾌﾍﾎﾏﾐﾑﾒﾓﾔﾕﾖﾗﾘﾙﾚﾛﾜｦﾝ', '0'),
+  aiueoFullWidth: cyclingLetters(
+    'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン',
+    '0',
+  ),
+  iroha: cyclingLetters('ｲﾛﾊﾆﾎﾍﾄﾁﾘﾇﾙｦﾜｶﾖﾀﾚｿﾂﾈﾅﾗﾑｳヰﾉｵｸﾔﾏｹﾌｺｴﾃｱｻｷﾕﾒﾐｼヱﾋﾓｾｽﾝ', '0'),
+  irohaFullWidth: cyclingLetters(
+    'イロハニホヘトチリヌルヲワカヨタレソツネナラムウヰノオクヤマケフコエテアサキユメミシヱヒモセスン',
+    '0',
+  ),
+  chosung: cyclingLetters('ㄱㄴㄷㄹㅁㅂㅅㅇㅈㅊㅋㅌㅍㅎ', '0'),
+  ganada: cyclingLetters('가나다라마바사아자차카타파하', '0'),
+  russianLower: repeatingLetters('абвгдежзиклмнопрстуфхцчшщыэюя', WORD_BLANK_NUMBER),
+  russianUpper: repeatingLetters('АБВГДЕЖЗИКЛМНОПРСТУФХЦЧШЩЫЭЮЯ', WORD_BLANK_NUMBER),
+};
+
 const lowerCased =
   (formatter: NumberFormatter): NumberFormatter =>
   (value) =>
@@ -9,6 +102,11 @@ const lowerCased =
 
 const formatterFor = (numFmt: string | undefined): NumberFormatter | null =>
   (numFmt != null && NUMBER_FORMATTERS.get(numFmt)) || null;
+
+const FORMATTED_WITHOUT_TABLE = new Set(['bullet', 'custom']);
+
+export const isCountedNumberFormat = (numFmt: string): boolean =>
+  FORMATTED_WITHOUT_TABLE.has(numFmt) || formatterFor(numFmt) !== null;
 
 export const formatListNumber = (value: number, numFmt: string | undefined, customFormat?: string | null): string => {
   if (!Number.isFinite(value) || value < 0) return String(value);
@@ -136,10 +234,8 @@ const decimalZeroFormatter: NumberFormatter = (value) => {
 
 const customFormatter = (customFormat: string | null | undefined): NumberFormatter => {
   const width = customFormat?.match(/(?:[0]+\d,\s){3}\.{3}/)?.[0].match(/\d+/)?.[0].length;
-  return width ? (value) => String(value).padStart(width, '0') : numberToStringFormatter;
+  return width ? (value) => String(value).padStart(width, '0') : decimalDigits;
 };
-
-const numberToStringFormatter: NumberFormatter = (value) => String(value);
 
 const ROMAN_NUMERALS: ReadonlyArray<readonly [number, string]> = [
   [1000, 'M'],
@@ -157,8 +253,6 @@ const ROMAN_NUMERALS: ReadonlyArray<readonly [number, string]> = [
   [1, 'I'],
 ];
 
-const WORD_BLANK_NUMBER = ' ';
-
 const LARGEST_COUNTED_ROMAN = 32767;
 
 const intToRoman = (num: number): string => {
@@ -175,14 +269,7 @@ const intToRoman = (num: number): string => {
   return result;
 };
 
-const LETTER_CYCLE = 780;
-
-const intToAlpha = (num: number): string => {
-  if (num < 1) return WORD_BLANK_NUMBER;
-  const value = ((num - 1) % LETTER_CYCLE) + 1;
-  const letter = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[(value - 1) % 26];
-  return letter.repeat(Math.floor((value - 1) / 26) + 1);
-};
+const intToAlpha = repeatingLetters('ABCDEFGHIJKLMNOPQRSTUVWXYZ', WORD_BLANK_NUMBER);
 
 const JAPANESE_DIGITS = ['', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
 const JAPANESE_UNITS = [
@@ -336,7 +423,7 @@ const intToHebrewAlphabetic = (num: number): string => {
 
 const NUMBER_FORMATTERS: ReadonlyMap<string, NumberFormatter> = new Map(
   Object.entries({
-    decimal: numberToStringFormatter,
+    decimal: decimalDigits,
     decimalZero: decimalZeroFormatter,
     lowerRoman: lowerCased(intToRoman),
     upperRoman: intToRoman,
@@ -347,9 +434,11 @@ const NUMBER_FORMATTERS: ReadonlyMap<string, NumberFormatter> = new Map(
     cardinalText: cardinalTextFormatter,
     japaneseCounting: intToJapaneseCounting,
     chineseCounting: intToChineseCounting,
+    taiwaneseCounting: intToChineseCounting,
     chineseCountingThousand: intToChineseCountingThousand,
     hebrew1: intToHebrewNumeral,
     hebrew2: intToHebrewAlphabetic,
+    ...SCRIPT_FORMATTERS,
   }),
 );
 

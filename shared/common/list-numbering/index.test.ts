@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'bun:test';
-import { formatListNumber, generateOrderedListIndex, intToJapaneseCounting, normalizeLvlTextChar } from './index';
+import { readFileSync } from 'node:fs';
+import {
+  formatListNumber,
+  generateOrderedListIndex,
+  intToJapaneseCounting,
+  isCountedNumberFormat,
+  normalizeLvlTextChar,
+} from './index';
 
 describe('generateOrderedListIndex', () => {
   // SD-5466: Word reproduces every non-placeholder lvlText character verbatim, leading zero included.
@@ -413,5 +420,67 @@ describe('intToJapaneseCounting', () => {
     ] as const) {
       expect(intToJapaneseCounting(value), String(value)).toBe(text);
     }
+  });
+});
+
+describe('japaneseDigitalTenThousand', () => {
+  it('writes digits below 10000 and no number from 10000 up, as Word 16.0.17928 shows', () => {
+    for (const [value, text] of [
+      [100, '一〇〇'],
+      [101, '一〇一'],
+      [110, '一一〇'],
+      [111, '一一一'],
+      [1000, '一〇〇〇'],
+      [1001, '一〇〇一'],
+      [1010, '一〇一〇'],
+      [1100, '一一〇〇'],
+      [1111, '一一一一'],
+      [2000, '二〇〇〇'],
+      [4001, '四〇〇一'],
+      [9999, '九九九九'],
+      [10000, ''],
+      [10001, ''],
+      [10010, ''],
+      [10100, ''],
+      [10110, ''],
+      [11000, ''],
+      [11100, ''],
+      [11111, ''],
+      [12345, ''],
+      [20000, ''],
+      [21000, ''],
+      [21111, ''],
+      [30000, ''],
+      [30303, ''],
+      [32767, ''],
+    ] as const) {
+      expect(formatListNumber(value, 'japaneseDigitalTenThousand'), String(value)).toBe(text);
+    }
+  });
+});
+
+describe('docx-support numbering formats row', () => {
+  it('names exactly the formats SuperDoc does not count, and every other named format is counted', () => {
+    const docs = readFileSync(
+      new URL('../../../apps/docs/content/docs/editor/docx-support.mdx', import.meta.url),
+      'utf8',
+    );
+    const sentence = /recognizes every OOXML numbering format except ([^.]*)\./.exec(docs)?.[1] ?? '';
+    const uncounted = [...sentence.matchAll(/`([A-Za-z0-9]+)`/g)].map((match) => match[1]);
+    expect(uncounted.length).toBeGreaterThan(0);
+    expect(uncounted.filter(isCountedNumberFormat)).toEqual([]);
+    for (const format of [
+      'decimal',
+      'hindiNumbers',
+      'thaiNumbers',
+      'ideographTraditional',
+      'ideographZodiac',
+      'ideographZodiacTraditional',
+      'bahtText',
+      'dollarText',
+      'russianLower',
+      'numberInDash',
+    ])
+      expect(isCountedNumberFormat(format), format).toBe(true);
   });
 });

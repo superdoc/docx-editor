@@ -160,7 +160,6 @@ describe('resolveListTextStartPx', () => {
             glyphWidthPx: 20,
             justification: 'left',
             suffix: 'tab',
-            gutterWidthPx: 8,
           },
         };
         const indentLeft = 36;
@@ -181,7 +180,6 @@ describe('resolveListTextStartPx', () => {
             glyphWidthPx: 20,
             justification: 'left',
             suffix: 'tab',
-            gutterWidthPx: 8,
           },
           textStartPx: 50,
         };
@@ -202,7 +200,6 @@ describe('resolveListTextStartPx', () => {
             glyphWidthPx: 20,
             markerX: 0,
             justification: 'center',
-            gutterWidthPx: 12,
             suffix: 'tab',
           },
           firstLineIndentMode: true,
@@ -217,7 +214,6 @@ describe('resolveListTextStartPx', () => {
             glyphWidthPx: 20,
             markerX: 28,
             justification: 'right',
-            gutterWidthPx: 4,
             suffix: 'tab',
           },
           textStartPx: 120,
@@ -373,7 +369,6 @@ describe('resolveListTextStartPx', () => {
           markerX: 48,
           glyphWidthPx: 18.65625,
           textStartX: 66,
-          gutterWidthPx: 8,
           suffix: 'tab',
         },
       };
@@ -588,7 +583,7 @@ describe('resolveListTextStartPx', () => {
       // text-start ~one glyph left of the painted text, so clicking between two
       // characters placed the caret over the wrong character.
       const wordLayout: MinimalWordLayout = {
-        marker: { glyphWidthPx: 10, justification: 'right', gutterWidthPx: LIST_MARKER_GAP, suffix: 'tab' },
+        marker: { glyphWidthPx: 10, justification: 'right', suffix: 'tab' },
       };
       // indentLeft 144, firstLine 0, hanging 12 -> anchor = markerContentEnd = 132.
       // computeTabWidth (right, no positive first-line indent) -> hanging (12),
@@ -809,42 +804,18 @@ describe('resolveListTextStartPx', () => {
       expect(result).toBe(36);
     });
 
-    it('enforces minimum gutterWidth when textStartPx is behind currentPosStandard', () => {
-      // Overflow: marker extends past the target text start
-      const wordLayout: MinimalWordLayout = {
-        marker: {
-          glyphWidthPx: 25, // wider than hanging
-          suffix: 'tab',
-        },
-        textStartPx: 36,
-      };
-      const indentLeft = 36;
-      const hanging = 18;
-      // markerStartPos = 36 - 18 = 18
-      // currentPosStandard = 18 + 25 = 43
-      // gap = max(36 - 43, 8) = max(-7, 8) = 8
-      const result = resolveListTextStartPx(wordLayout, indentLeft, 0, hanging, mockMeasureMarkerText);
-
-      expect(result).toBe(43 + LIST_MARKER_GAP); // 43 + 8 = 51
-      expect(result).not.toBe(43 + DEFAULT_TAB_INTERVAL_PX);
-    });
-
-    it('uses custom gutterWidthPx when larger than LIST_MARKER_GAP', () => {
+    it('stops at the next default tab stop when the marker ends past textStartPx, however close to that stop', () => {
       const wordLayout: MinimalWordLayout = {
         marker: {
           glyphWidthPx: 25,
           suffix: 'tab',
-          gutterWidthPx: 12,
         },
         textStartPx: 36,
       };
-      const indentLeft = 36;
-      const hanging = 18;
-      // markerStartPos = 18, currentPosStandard = 18 + 25 = 43
-      // gap = max(36 - 43, 12) = max(-7, 12) = 12
-      const result = resolveListTextStartPx(wordLayout, indentLeft, 0, hanging, mockMeasureMarkerText);
+      const result = resolveListTextStartPx(wordLayout, 36, 0, 18, mockMeasureMarkerText);
 
-      expect(result).toBe(43 + 12); // 55
+      expect(result).toBe(48);
+      expect(result).not.toBe(43 + LIST_MARKER_GAP);
     });
   });
 

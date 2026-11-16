@@ -12,7 +12,7 @@
  * - measuring/dom/src/index.ts (full typography measurement)
  */
 
-import { LIST_MARKER_GAP, SPACE_SUFFIX_GAP_PX, DEFAULT_TAB_INTERVAL_PX } from './layout-constants.js';
+import { SPACE_SUFFIX_GAP_PX, DEFAULT_TAB_INTERVAL_PX } from './layout-constants.js';
 
 /**
  * Minimal marker run formatting information for text measurement.
@@ -81,8 +81,6 @@ export type MinimalMarker = {
   markerX?: number;
   /** Horizontal position where text should start (used in firstLineIndentMode) */
   textStartX?: number;
-  /** Width of the gutter between marker and text (used for center/right justification) */
-  gutterWidthPx?: number;
   /** Marker justification: 'left', 'center', or 'right' */
   justification?: 'left' | 'center' | 'right';
   /** What follows the marker: 'tab', 'space', or 'nothing' */
@@ -213,13 +211,9 @@ const getNextDefaultTabStopPx = (currentPosPx: number, originPx = 0): number => 
   return currentPosPx + DEFAULT_TAB_INTERVAL_PX - remainderPx;
 };
 
-const getMinimumReadableTextStartPx = (markerContentEndPx: number, gutterWidthPx: number): number =>
-  markerContentEndPx + gutterWidthPx;
-
 const resolveExplicitStandardTextStartPx = (
   explicitTextStartPx: number | undefined,
   markerContentEndPx: number,
-  gutterWidthPx: number,
   originPx = 0,
 ): number | undefined => {
   if (explicitTextStartPx == null) {
@@ -231,14 +225,7 @@ const resolveExplicitStandardTextStartPx = (
   }
 
   if (explicitTextStartPx > 0) {
-    // Marker overflows the hanging-indent text-start (e.g. "mm)" wider than
-    // its level's hanging in a multi-letter alphabetic list). Word's
-    // behavior: the suffix tab advances to the next default tab stop (every
-    // 0.5"), NOT to a fixed small gutter. The minimum-readable gutter remains
-    // as a safety floor when marker happens to land right on a tab stop.
-    const nextTabStopPx = getNextDefaultTabStopPx(markerContentEndPx, originPx);
-    const minReadablePx = getMinimumReadableTextStartPx(markerContentEndPx, gutterWidthPx);
-    return Math.max(nextTabStopPx, minReadablePx);
+    return getNextDefaultTabStopPx(markerContentEndPx, originPx);
   }
 
   return undefined;
@@ -401,7 +388,6 @@ export function resolveListMarkerGeometry(
   // behavior, but those compat flags are not yet plumbed through the word-layout
   // contract. Until they are, this unconditionally assumes the default Word mode.
   // That is correct for the vast majority of documents.
-  const gutterWidthPx = Math.max(getNonNegativeFiniteNumber(marker.gutterWidthPx) ?? 0, LIST_MARKER_GAP);
   const wordTextStartPx = getFiniteNumber(wordLayout?.textStartPx);
   const explicitSuffixTabPx = resolveExplicitStandardSuffixTabPx(
     wordLayout?.tabsPx,
@@ -418,12 +404,7 @@ export function resolveListMarkerGeometry(
     };
   }
 
-  const explicitTextStartPx = resolveExplicitStandardTextStartPx(
-    wordTextStartPx,
-    markerContentEndPx,
-    gutterWidthPx,
-    markerOffsetX,
-  );
+  const explicitTextStartPx = resolveExplicitStandardTextStartPx(wordTextStartPx, markerContentEndPx, markerOffsetX);
   if (explicitTextStartPx != null) {
     return {
       markerStartPx,

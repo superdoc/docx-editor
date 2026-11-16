@@ -420,6 +420,7 @@ const writeTableHash = (tableBlock: TableBlock, write: HashWriter, capabilities?
         const wordLayout = paragraphBlock.attrs?.wordLayout as MinimalWordLayout | undefined;
         const marker = wordLayout?.marker;
         const markerRunKey = markerRunSignature(paragraphBlock.attrs?.wordLayout?.marker?.run);
+        const markerGutterWidthPx = paragraphBlock.attrs?.wordLayout?.marker?.gutterWidthPx;
         const numbering = paragraphBlock.attrs?.numberingProperties;
         if (numbering)
           append(
@@ -492,7 +493,7 @@ const writeTableHash = (tableBlock: TableBlock, write: HashWriter, capabilities?
               marker.run?.smallCaps,
               marker.justification,
               marker.suffix,
-              marker.gutterWidthPx,
+              markerGutterWidthPx,
               marker.markerBoxWidthPx,
               marker.glyphWidthPx,
               marker.markerX,

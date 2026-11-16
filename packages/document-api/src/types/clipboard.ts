@@ -83,6 +83,8 @@ export interface SDPasteRunMarks {
   /** Six-digit RGB color, or `auto` to reset an inherited text color. */
   color?: string;
   highlight?: string;
+  // SD-7622: Six-digit RGB shading stays w:shd even when its color matches Word's highlight palette.
+  shading?: string;
   fontSizePt?: number;
   fontFamily?: string;
   verticalAlign?: 'baseline' | 'superscript' | 'subscript';

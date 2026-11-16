@@ -7,8 +7,8 @@ const fragment: NonNullable<Parameters<DocumentApi['clipboard']['insert']>[0]['f
   blocks: [
     {
       kind: 'paragraph',
-      runs: [{ text: 'VALUE', styleRef: 'MyValue', marks: { color: 'auto' } }],
-      inlines: [{ kind: 'text', text: 'VALUE', styleRef: 'MyValue', marks: { color: 'auto' } }],
+      runs: [{ text: 'VALUE', styleRef: 'MyValue', marks: { color: 'auto', shading: 'FFFF00' } }],
+      inlines: [{ kind: 'text', text: 'VALUE', styleRef: 'MyValue', marks: { color: 'auto', shading: 'FFFF00' } }],
     },
   ],
 };
@@ -21,6 +21,8 @@ if (parsed.success) {
     if (block.kind !== 'paragraph') continue;
     for (const run of block.runs) {
       const styleRef: string | undefined = run.styleRef;
+      const shading: string | undefined = run.marks?.shading;
+      void shading;
       void styleRef;
     }
     for (const inline of block.inlines ?? []) {

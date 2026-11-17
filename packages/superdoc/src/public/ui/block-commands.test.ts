@@ -1,9 +1,6 @@
+import { readParagraphLeftIndent } from './paragraph-indentation.js';
 import { describe, expect, it } from 'vite-plus/test';
-import {
-  buildTableCommandInput,
-  readParagraphIndentationFromResult,
-  type ResolvedTableContext,
-} from './block-commands.js';
+import { buildTableCommandInput, type ResolvedTableContext } from './block-commands.js';
 
 const context: ResolvedTableContext = {
   canMerge: true,
@@ -67,29 +64,41 @@ describe('buildTableCommandInput', () => {
   });
 });
 
-describe('readParagraphIndentationFromResult', () => {
-  it('converts resolved points to twips and omits unset sides', () => {
+describe('readParagraphLeftIndent', () => {
+  it('converts resolved leading points to twips', () => {
     expect(
-      readParagraphIndentationFromResult({
+      readParagraphLeftIndent({
         node: { kind: 'paragraph', paragraph: { resolved: { indent: { left: 36 } } } },
       }),
-    ).toEqual({
-      left: 720,
-    });
+    ).toBe(720);
   });
 
-  it('reads heading props and the logical start/end names', () => {
+  it('reads heading props and the logical start name', () => {
     expect(
-      readParagraphIndentationFromResult({
+      readParagraphLeftIndent({
         node: { kind: 'heading', heading: { props: { indent: { start: 18, end: 9, hanging: 18 } } } },
       }),
-    ).toEqual({ left: 360, right: 180, hanging: 360 });
+    ).toBe(360);
+  });
+
+  it.each([
+    [{ start: 72 }, { left: 36, start: 72 }, 1440],
+    [{ left: 72 }, { left: 36, start: 72 }, 1440],
+    [{ left: 72 }, { left: 72, start: 36 }, 1440],
+    [{ start: 0 }, { left: 36, start: 0 }, 0],
+    [{ start: -45 }, { left: 36, start: -45 }, -900],
+  ])('uses the direct edge to disambiguate resolved aliases %o', (direct, resolved, left) => {
+    expect(
+      readParagraphLeftIndent({
+        node: { kind: 'paragraph', paragraph: { props: { indent: direct }, resolved: { indent: resolved } } },
+      }),
+    ).toBe(left);
   });
 
   it('returns null for other node kinds and for empty indentation', () => {
-    expect(readParagraphIndentationFromResult({ node: { kind: 'table' } })).toBeNull();
+    expect(readParagraphLeftIndent({ node: { kind: 'table' } })).toBeNull();
     expect(
-      readParagraphIndentationFromResult({ node: { kind: 'paragraph', paragraph: { resolved: { indent: {} } } } }),
+      readParagraphLeftIndent({ node: { kind: 'paragraph', paragraph: { resolved: { indent: {} } } } }),
     ).toBeNull();
   });
 });

@@ -16859,12 +16859,12 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
     );
     const ui = createSuperDocUI({ superdoc });
 
-    expect(await ui.toolbar.execute('text-align', 'center')).toMatchObject({ success: true });
+    expect(await ui.toolbar.executeAsync('text-align', 'center')).toMatchObject({ success: true });
     expect(setAlignment).toHaveBeenCalledWith(
       { target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P1' }, alignment: 'center' },
       { changeMode: 'tracked' },
     );
-    expect(await ui.toolbar.execute('line-height', 1.5)).toMatchObject({ success: true });
+    expect(await ui.toolbar.executeAsync('line-height', 1.5)).toMatchObject({ success: true });
     expect(setSpacing).toHaveBeenCalledWith(
       { target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P1' }, line: 360, lineRule: 'auto' },
       { changeMode: 'tracked' },
@@ -17992,6 +17992,843 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
     expect(apply).not.toHaveBeenCalled();
   });
 
+  function effectiveIndentNode(
+    id: string,
+    left?: number,
+    kind = 'paragraph',
+    props: Record<string, unknown> = { indent: { left: 0 } },
+  ) {
+    return {
+      kind,
+      paragraphIds: { paraId: id },
+      [kind]: { props, resolved: { indent: { left, hanging: 12 } } },
+    };
+  }
+
+  function effectiveIndentFind(nodes: ReturnType<typeof effectiveIndentNode>[], story?: unknown) {
+    return vi.fn(({ within }: { within: { nodeId: string; nodeType: string } }) => {
+      const matches = nodes.filter(
+        (node) => node.paragraphIds.paraId === within.nodeId && node.kind === within.nodeType,
+      );
+      return {
+        total: matches.length,
+        limit: 2,
+        offset: 0,
+        items: matches.map((node) => ({
+          address: {
+            kind: 'block',
+            nodeType: node.kind,
+            nodeId: node.paragraphIds.paraId,
+            ...(story ? { story } : {}),
+          },
+          node,
+        })),
+      };
+    });
+  }
+
+  it('SD-7235 targets only selected resolved paragraphs without reading a story snapshot', async () => {
+    const find = effectiveIndentFind([effectiveIndentNode('P1', 36), effectiveIndentNode('P2', 6)]);
+    const get = vi.fn(() => {
+      throw new Error('Whole story read');
+    });
+    const setIndentation = vi.fn(() => ({ success: true }));
+    const ui = createSuperDocUI({
+      superdoc: makeBlockSuperdoc({
+        get,
+        find,
+        lists: { indent: vi.fn(), getState: () => ({ success: true, isListItem: false }) },
+        format: { paragraph: { setIndentation } },
+      }),
+    });
+    expect(await ui.toolbar.executeAsync('indent-increase')).toMatchObject({ success: true });
+    expect(get).not.toHaveBeenCalled();
+    expect(find).toHaveBeenCalledTimes(2);
+    for (const nodeId of ['P1', 'P2'])
+      expect(find).toHaveBeenCalledWith({
+        select: { type: 'node', nodeType: 'paragraph' },
+        within: { kind: 'block', nodeType: 'paragraph', nodeId },
+        in: { kind: 'story', storyType: 'body' },
+        options: { includeResolved: true },
+        limit: 2,
+        offset: 0,
+      });
+    expect(setIndentation.mock.calls).toEqual(
+      [1440, 840].map((left, index) => [
+        {
+          target: { kind: 'block', nodeType: 'paragraph', nodeId: `P${index + 1}` },
+          left,
+        },
+      ]),
+    );
+  });
+
+  function ruleFindResult(left: number | undefined = 36, kind = 'paragraph', story?: unknown) {
+    return {
+      total: 1,
+      limit: 2,
+      offset: 0,
+      items: [
+        {
+          address: { kind: 'block', nodeType: kind, nodeId: 'P1', ...(story ? { story } : {}) },
+          node: {
+            kind,
+            paragraphIds: { paraId: 'P1' },
+            [kind]: { resolved: left === undefined ? {} : { indent: { left } } },
+          },
+        },
+      ],
+    };
+  }
+
+  function ruleIndentUi(docExtra: Record<string, unknown> = {}, opts: Parameters<typeof makeBlockSuperdoc>[1] = {}) {
+    const setIndentation = vi.fn(() => ({ success: true }));
+    const find = vi.fn(() => ruleFindResult());
+    const get = vi.fn(() => ({ body: [{ kind: 'horizontalRule', id: 'P1', horizontalRule: {} }] }));
+    const getNodeById = vi.fn(() => ({ node: effectiveIndentNode('P1', 0) }));
+    const superdoc = makeBlockSuperdoc(
+      {
+        get,
+        find,
+        getNodeById,
+        lists: { indent: vi.fn(), outdent: vi.fn(), getState: () => ({ success: true, isListItem: false }) },
+        format: { paragraph: { setIndentation } },
+        ...docExtra,
+      },
+      { selectionInfo: SINGLE_BLOCK_SELECTION_INFO, ...opts },
+    );
+    const ui = createSuperDocUI({ superdoc });
+    return { ui, superdoc, setIndentation, find, get, getNodeById };
+  }
+
+  it.each(['header', 'footer'] as const)(
+    'SD-7235 targets canonical %s table-cell identities',
+    async (headerFooterKind) => {
+      for (const story of [
+        { kind: 'story', storyType: 'headerFooterPart', refId: 'rId6' },
+        {
+          kind: 'story',
+          storyType: 'headerFooterSlot',
+          section: { kind: 'section', sectionId: 's1' },
+          headerFooterKind,
+          variant: 'default',
+        },
+      ]) {
+        const canonicalId = '13713DF0';
+        const sourceId = 'ABCDEF12';
+        const node = effectiveIndentNode(canonicalId, 36);
+        const find = vi.fn(() => ({
+          total: 1,
+          limit: 2,
+          offset: 0,
+          items: [{ address: { kind: 'block', nodeType: 'paragraph', nodeId: canonicalId, story }, node }],
+        }));
+        const get = vi.fn(() => ({
+          body: [{ kind: 'table', table: { rows: [{ cells: [{ content: [effectiveIndentNode(sourceId, 36)] }] }] } }],
+        }));
+        const { ui, setIndentation } = ruleIndentUi(
+          {
+            find,
+            get,
+            lists: { indent: vi.fn(), outdent: vi.fn(), getStateInStory: () => ({ success: true, isListItem: false }) },
+          },
+          {
+            selectionInfo: {
+              ...SINGLE_BLOCK_SELECTION_INFO,
+              target: { kind: 'text', story, segments: [{ blockId: canonicalId, range: { start: 0, end: 0 } }] },
+              selectionTarget: {
+                kind: 'selection',
+                story,
+                start: { kind: 'text', blockId: canonicalId, offset: 0, story },
+                end: { kind: 'text', blockId: canonicalId, offset: 0, story },
+              },
+            },
+          },
+        );
+        for (const [command, left] of [
+          ['indent-increase', 1440],
+          ['indent-decrease', 0],
+        ] as const) {
+          expect(await ui.toolbar.executeAsync(command)).toMatchObject({ success: true });
+          expect(setIndentation).toHaveBeenLastCalledWith({
+            target: { kind: 'block', nodeType: 'paragraph', nodeId: canonicalId, story },
+            left,
+          });
+        }
+        expect(get).not.toHaveBeenCalled();
+        expect(find).toHaveBeenCalledWith(
+          expect.objectContaining({
+            within: { kind: 'block', nodeType: 'paragraph', nodeId: canonicalId, story },
+            in: story,
+            options: { includeResolved: true },
+          }),
+        );
+      }
+    },
+  );
+
+  it.each(['paragraph', 'horizontalRule'])(
+    'SD-7235 preserves direct logical indentation over inherited physical indentation for %s',
+    async (kind) => {
+      for (const start of [72, 0, -45]) {
+        for (const command of ['indent-increase', 'indent-decrease']) {
+          const node = {
+            kind: 'paragraph',
+            paragraphIds: { paraId: 'P1' },
+            paragraph: { props: { indent: { start } }, resolved: { indent: { left: 36, start } } },
+          };
+          const result = ruleFindResult();
+          const find = vi.fn(() => ({ ...result, items: [{ ...result.items[0], node }] }));
+          const { ui, setIndentation } = ruleIndentUi({
+            find,
+            get: () => ({
+              body: kind === 'paragraph' ? [node] : [{ kind, id: 'P1', horizontalRule: {} }],
+            }),
+          });
+          expect(await ui.toolbar.executeAsync(command)).toMatchObject({ success: true });
+          expect(setIndentation).toHaveBeenCalledExactlyOnceWith({
+            target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P1' },
+            left: Math.max(0, start * 20 + (command === 'indent-increase' ? 720 : -720)),
+          });
+        }
+      }
+    },
+  );
+
+  it.each([
+    ['direct720', 36, 'indent-increase', 1440],
+    ['direct720', 36, 'indent-decrease', 0],
+    ['inherited720', 36, 'indent-increase', 1440],
+    ['inherited720', 36, 'indent-decrease', 0],
+    ['explicit0', 0, 'indent-increase', 720],
+    ['explicit0', 0, 'indent-decrease', 0],
+    ['direct-negative900', -45, 'indent-increase', 0],
+    ['direct-negative900', -45, 'indent-decrease', 0],
+    ['inherited-negative900', -45, 'indent-increase', 0],
+    ['inherited-negative900', -45, 'indent-decrease', 0],
+  ])('SD-7235 R1 %s %s %s writes only effective left', async (_name, left, command, expected) => {
+    const find = vi.fn(() => ruleFindResult(left));
+    const authored =
+      _name === 'direct-negative900'
+        ? { indent: { left } }
+        : _name === 'inherited-negative900'
+          ? { styleId: 'IndentStyle' }
+          : { indent: { left: 0 } };
+    const { ui, setIndentation } = ruleIndentUi({
+      find,
+      getNodeById: () => ({ node: effectiveIndentNode('P1', 0, 'paragraph', authored) }),
+    });
+    expect(await ui.toolbar.executeAsync(command)).toMatchObject({ success: true });
+    expect(find).toHaveBeenCalledExactlyOnceWith({
+      select: { type: 'node', nodeType: 'paragraph' },
+      within: { kind: 'block', nodeType: 'paragraph', nodeId: 'P1' },
+      in: { kind: 'story', storyType: 'body' },
+      options: { includeResolved: true },
+      limit: 2,
+      offset: 0,
+    });
+    expect(setIndentation).toHaveBeenCalledExactlyOnceWith({
+      target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P1' },
+      left: expected,
+    });
+  });
+
+  it('SD-7235 reads resolved sources without serializing semantic rule snapshots', async () => {
+    const { ui, get, find, setIndentation } = ruleIndentUi();
+    expect(await ui.toolbar.executeAsync('indent-increase')).toMatchObject({ success: true });
+    expect(get).not.toHaveBeenCalled();
+    expect(find).toHaveBeenCalledTimes(1);
+    expect(setIndentation).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    'missing',
+    'rejected',
+    'empty',
+    'multiple',
+    'partial',
+    'offset',
+    'limit',
+    'no-items',
+    'address-id',
+    'payload-id',
+    'address-kind',
+    'node-kind',
+    'payload',
+    'resolved-missing',
+    'resolved-null',
+    'resolved-array',
+    'left-string',
+    'left-infinite',
+    'start-invalid',
+    'indent-invalid',
+    'body-conflict',
+    'extra-item',
+  ])('SD-7235 R1 rejects invalid source find %s without authored fallback', async (scenario) => {
+    const valid = ruleFindResult();
+    const item = valid.items[0];
+    if (!item) throw new Error('Missing test result');
+    let result: unknown = valid;
+    if (scenario === 'empty') result = { ...valid, total: 0, items: [] };
+    if (scenario === 'multiple') result = { ...valid, total: 2, items: [item, item] };
+    if (scenario === 'partial') result = { ...valid, total: 2 };
+    if (scenario === 'offset') result = { ...valid, offset: 1 };
+    if (scenario === 'limit') result = { ...valid, limit: 0 };
+    if (scenario === 'no-items') result = { ...valid, items: null };
+    if (scenario === 'extra-item') result = { ...valid, items: [item, item] };
+    if (scenario === 'address-id') item.address.nodeId = 'other';
+    if (scenario === 'payload-id') item.node.paragraphIds.paraId = 'other';
+    if (scenario === 'address-kind') item.address.kind = 'inline';
+    if (scenario === 'node-kind') item.node.kind = 'heading';
+    if (scenario === 'body-conflict')
+      result = {
+        ...valid,
+        items: [
+          {
+            ...item,
+            address: { ...item.address, story: { kind: 'story', storyType: 'headerFooterPart', refId: 'rId6' } },
+          },
+        ],
+      };
+    const payloads: Record<string, unknown> = {
+      payload: null,
+      'resolved-missing': { props: { indent: { left: 36 } } },
+      'resolved-null': { resolved: null },
+      'resolved-array': { resolved: [] },
+      'left-string': { resolved: { indent: { left: '36' } } },
+      'left-infinite': { resolved: { indent: { left: Infinity } } },
+      'start-invalid': { resolved: { indent: { left: 36, start: NaN } } },
+      'indent-invalid': { resolved: { indent: [] } },
+    };
+    if (scenario in payloads)
+      result = { ...valid, items: [{ ...item, node: { ...item.node, paragraph: payloads[scenario] } }] };
+    const find =
+      scenario === 'missing'
+        ? undefined
+        : vi.fn(async () => {
+            if (scenario === 'rejected') throw new Error('Unavailable find');
+            return result;
+          });
+    const { ui, setIndentation } = ruleIndentUi({ find });
+    expect(await ui.toolbar.executeAsync('indent-increase')).toBe(false);
+    expect(setIndentation).not.toHaveBeenCalled();
+  });
+
+  it('SD-7235 R1 reads a nested heading only after an exact valid empty paragraph page', async () => {
+    const find = vi
+      .fn()
+      .mockReturnValueOnce({ total: 0, limit: 2, offset: 0, items: [] })
+      .mockReturnValueOnce(ruleFindResult(36, 'heading'));
+    const { ui, setIndentation } = ruleIndentUi({
+      find,
+      get: () => ({
+        body: [
+          {
+            kind: 'table',
+            table: { rows: [{ cells: [{ content: [{ kind: 'horizontalRule', id: 'P1', horizontalRule: {} }] }] }] },
+          },
+        ],
+      }),
+    });
+    expect(await ui.toolbar.executeAsync('indent-increase')).toMatchObject({ success: true });
+    expect(find).toHaveBeenCalledTimes(2);
+    expect(find.mock.calls.map(([input]) => input.select.nodeType)).toEqual(['paragraph', 'heading']);
+    expect(find.mock.calls[1]?.[0].within).toEqual({ kind: 'block', nodeType: 'heading', nodeId: 'P1' });
+    expect(setIndentation).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['headerFooterPart', 'headerFooterSlot'])(
+    'SD-7235 R1 exact %s read ignores duplicate body IDs and rejects wrong story',
+    async (storyType) => {
+      const story =
+        storyType === 'headerFooterPart'
+          ? { kind: 'story', storyType, refId: 'rId6' }
+          : {
+              kind: 'story',
+              storyType,
+              section: { kind: 'section', sectionId: 's1' },
+              headerFooterKind: 'header',
+              variant: 'default',
+            };
+      const find = vi.fn(() => ruleFindResult(36, 'paragraph', story));
+      const { ui, get, setIndentation } = ruleIndentUi(
+        { find, lists: { indent: vi.fn(), getStateInStory: () => ({ success: true, isListItem: false }) } },
+        { selectionInfo: multiSelectionInfoInStory(story) },
+      );
+      await ui.toolbar.executeAsync('indent-increase');
+      expect(get).not.toHaveBeenCalled();
+      expect(find).toHaveBeenCalledWith(
+        expect.objectContaining({ in: story, within: { kind: 'block', nodeType: 'paragraph', nodeId: 'P1', story } }),
+      );
+      expect(setIndentation).toHaveBeenCalledExactlyOnceWith({
+        target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P1', story },
+        left: 1440,
+      });
+      find.mockReturnValue(ruleFindResult(36, 'paragraph', { ...story, refId: 'other' }));
+      await ui.toolbar.executeAsync('indent-increase');
+      expect(setIndentation).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('SD-7235 R1 uses fresh resolved-only reads, empty effective zero and tracked options', async () => {
+    const find = vi
+      .fn()
+      .mockReturnValueOnce(ruleFindResult(36))
+      .mockReturnValueOnce(ruleFindResult(72))
+      .mockReturnValueOnce({
+        total: 1,
+        limit: 2,
+        offset: 0,
+        items: [
+          {
+            address: { kind: 'block', nodeType: 'paragraph', nodeId: 'P1' },
+            node: {
+              kind: 'paragraph',
+              paragraphIds: { paraId: 'P1' },
+              paragraph: { props: { indent: { left: 99 } }, resolved: {} },
+            },
+          },
+        ],
+      });
+    const { ui, setIndentation } = ruleIndentUi({ find }, { mode: 'suggesting' });
+    for (let index = 0; index < 3; index++) await ui.toolbar.executeAsync('indent-increase');
+    expect(setIndentation.mock.calls).toEqual(
+      [1440, 2160, 720].map((left) => [
+        { target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P1' }, left },
+        { changeMode: 'tracked' },
+      ]),
+    );
+  });
+
+  it.each([true, false])('SD-7235 R1 keeps lazy normal/list routing with mixed rule=%s', async (mixed) => {
+    const find = effectiveIndentFind([effectiveIndentNode('P1', 36), effectiveIndentNode('P2', 6)]);
+    const indent = vi.fn(() => ({ success: true }));
+    const get = vi.fn(() => ({
+      body: [{ kind: 'horizontalRule', id: 'P1', horizontalRule: {} }, effectiveIndentNode('P2', 6)],
+    }));
+    const { ui, setIndentation } = ruleIndentUi(
+      {
+        find,
+        get,
+        lists: {
+          indent,
+          getState: ({ target }: { target: { nodeId: string } }) => ({
+            success: true,
+            isListItem: !mixed || target.nodeId === 'P3',
+            seed: null,
+          }),
+        },
+      },
+      {
+        selectionInfo: {
+          ...SINGLE_BLOCK_SELECTION_INFO,
+          target: {
+            kind: 'text',
+            segments: ['P1', 'P2', 'P3'].map((blockId) => ({ blockId, range: { start: 0, end: 0 } })),
+          },
+        },
+      },
+    );
+    await ui.toolbar.executeAsync('indent-increase');
+    if (mixed) {
+      expect(get).not.toHaveBeenCalled();
+      expect(find).toHaveBeenCalledTimes(2);
+      expect(setIndentation.mock.calls).toEqual(
+        [
+          ['P1', 1440],
+          ['P2', 840],
+        ].map(([nodeId, left]) => [{ target: { kind: 'block', nodeType: 'paragraph', nodeId }, left }]),
+      );
+      expect(indent).toHaveBeenCalledExactlyOnceWith({ target: { kind: 'block', nodeType: 'listItem', nodeId: 'P3' } });
+    } else {
+      expect(get).not.toHaveBeenCalled();
+      expect(find).not.toHaveBeenCalled();
+      expect(setIndentation).not.toHaveBeenCalled();
+    }
+  });
+
+  it.each(['editor', 'doc', 'host', 'mode', 'selection', 'lifetime', 'content'])(
+    'SD-7235 R1 rejects delayed find %s invalidation',
+    async (change) => {
+      let release = () => {};
+      let started = () => {};
+      const reading = new Promise<void>((resolve) => {
+        started = resolve;
+      });
+      const pending = new Promise<unknown>((resolve) => {
+        release = () => resolve(ruleFindResult());
+      });
+      const lifetime = { aborted: false };
+      let generation = 0;
+      let onEvent = (_event: unknown) => {};
+      const host = {
+        events: {
+          subscribe: (handler: (event: unknown) => void) => {
+            onEvent = handler;
+            return () => {};
+          },
+        },
+        getForegroundInteractionLifetime: () => lifetime,
+        getHandles: () => ({
+          editing: { selectionTargets: { apply: vi.fn(), selectionRequestGeneration: () => generation } },
+        }),
+      };
+      const { ui, superdoc, setIndentation } = ruleIndentUi(
+        {
+          find: () => {
+            started();
+            return pending;
+          },
+        },
+        {
+          editorExtra: { host },
+        },
+      );
+      const executing = ui.toolbar.executeAsync('indent-increase');
+      await Promise.race([reading, nextAnimationFrame()]);
+      if (change === 'editor') superdoc.activeEditor = { ...superdoc.activeEditor };
+      if (change === 'doc') superdoc.activeEditor.doc = { ...superdoc.activeEditor.doc };
+      if (change === 'host') superdoc.activeEditor.host = {};
+      if (change === 'mode') superdoc.config.documentMode = 'viewing';
+      if (change === 'selection') generation++;
+      if (change === 'lifetime') lifetime.aborted = true;
+      if (change === 'content') onEvent({ type: 'document:mutated' });
+      release();
+      expect(await executing).toBe(false);
+      expect(setIndentation).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ['inherited increase', 'indent-increase', 36, 1440],
+    ['inherited decrease', 'indent-decrease', 36, 0],
+    ['defaults increase', 'indent-increase', 6, 840],
+    ['negative effective increase', 'indent-increase', -6, 600],
+    ['deep negative direct increase', 'indent-increase', -45, 0],
+    ['deep negative direct decrease', 'indent-decrease', -45, 0],
+    ['deep negative inherited increase', 'indent-increase', -45, 0],
+    ['deep negative inherited decrease', 'indent-decrease', -45, 0],
+    ['below-step clamp', 'indent-decrease', 6, 0],
+    ['explicit zero increase', 'indent-increase', 0, 720],
+    ['explicit zero decrease', 'indent-decrease', 0, 0],
+  ])('SD-7235 CASE-1 CASE-2 paragraph indentation %s', async (_name, command, left, expected) => {
+    const setIndentation = vi.fn(() => ({ success: true }));
+    const clearIndentation = vi.fn(() => ({ success: true }));
+    const authored = _name.includes('deep negative direct')
+      ? { indent: { left } }
+      : _name.includes('deep negative inherited')
+        ? { styleId: 'IndentStyle' }
+        : { indent: { left: 0 } };
+    const get = vi.fn(async () => ({ body: [effectiveIndentNode('P1', left, 'paragraph', authored)] }));
+    const getNodeById = vi.fn(() => ({ node: effectiveIndentNode('P1', 0) }));
+    const superdoc = makeBlockSuperdoc(
+      {
+        get,
+        find: effectiveIndentFind([effectiveIndentNode('P1', left, 'paragraph', authored)]),
+        getNodeById,
+        lists: { indent: vi.fn(), outdent: vi.fn(), getState: () => ({ success: true, isListItem: false }) },
+        format: { paragraph: { setIndentation, clearIndentation } },
+      },
+      { selectionInfo: SINGLE_BLOCK_SELECTION_INFO },
+    );
+    const ui = createSuperDocUI({ superdoc });
+    expect(await ui.toolbar.executeAsync(command)).toMatchObject({ success: true });
+    expect(get).not.toHaveBeenCalled();
+    expect(setIndentation).toHaveBeenCalledExactlyOnceWith({
+      target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P1' },
+      left: expected,
+    });
+    expect(clearIndentation).not.toHaveBeenCalled();
+  });
+
+  it('SD-7235 CASE-4 reads fresh targeted heading and table paragraph identities each command', async () => {
+    const setIndentation = vi.fn(() => ({ success: true }));
+    let nodes = [effectiveIndentNode('P1', 36, 'heading'), effectiveIndentNode('P2', 6)];
+    const find = vi.fn((input: Parameters<ReturnType<typeof effectiveIndentFind>>[0]) =>
+      effectiveIndentFind(nodes)(input),
+    );
+    const get = vi.fn();
+    const ui = createSuperDocUI({
+      superdoc: makeBlockSuperdoc({
+        get,
+        find,
+        lists: { indent: vi.fn(), outdent: vi.fn(), getState: () => ({ success: true, isListItem: false }) },
+        format: { paragraph: { setIndentation } },
+      }),
+    });
+    await ui.toolbar.executeAsync('indent-increase');
+    expect(find).toHaveBeenCalledTimes(3);
+    expect(setIndentation).toHaveBeenNthCalledWith(1, {
+      target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P1' },
+      left: 1440,
+    });
+    expect(setIndentation).toHaveBeenNthCalledWith(2, {
+      target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P2' },
+      left: 840,
+    });
+    nodes = [effectiveIndentNode('P1', 72, 'heading'), effectiveIndentNode('P2', 42)];
+    await ui.toolbar.executeAsync('indent-decrease');
+    expect(find).toHaveBeenCalledTimes(6);
+    expect(get).not.toHaveBeenCalled();
+    expect(setIndentation).toHaveBeenLastCalledWith({
+      target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P2' },
+      left: 120,
+    });
+  });
+
+  it.each(['missing', 'ambiguous', 'malformed', 'rejected'])(
+    'SD-7235 CASE-4 paragraph indentation fails closed for %s resolved find',
+    async (scenario) => {
+      const setIndentation = vi.fn(() => ({ success: true }));
+      const getNodeById = vi.fn(() => ({ node: effectiveIndentNode('P1', 36) }));
+      const find = vi.fn(async () => {
+        if (scenario === 'rejected') throw new Error('find unavailable');
+        if (scenario === 'malformed') return { success: false };
+        const valid = ruleFindResult();
+        return scenario === 'ambiguous'
+          ? { ...valid, total: 2, items: [...valid.items, ...valid.items] }
+          : { ...valid, total: 0, items: [] };
+      });
+      const ui = createSuperDocUI({
+        superdoc: makeBlockSuperdoc(
+          {
+            find,
+            getNodeById,
+            lists: { indent: vi.fn(), outdent: vi.fn(), getState: () => ({ success: true, isListItem: false }) },
+            format: { paragraph: { setIndentation } },
+          },
+          { selectionInfo: SINGLE_BLOCK_SELECTION_INFO },
+        ),
+      });
+      expect(await ui.toolbar.executeAsync('indent-increase')).toBe(false);
+      expect(setIndentation).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['headerFooterPart', 'headerFooterSlot'])(
+    'SD-7235 CASE-4 paragraph indentation scopes duplicate IDs to %s',
+    async (storyType) => {
+      const story =
+        storyType === 'headerFooterPart'
+          ? { kind: 'story', storyType, refId: 'rId6' }
+          : {
+              kind: 'story',
+              storyType,
+              section: { kind: 'section', sectionId: 's1' },
+              headerFooterKind: 'header',
+              variant: 'default',
+            };
+      const setIndentation = vi.fn(() => ({ success: true }));
+      const get = vi.fn(async () => ({ body: [effectiveIndentNode('P1', 36), effectiveIndentNode('P2', 6)] }));
+      const getNode = vi.fn(() => ({ node: effectiveIndentNode('P1', 0) }));
+      const ui = createSuperDocUI({
+        superdoc: makeBlockSuperdoc(
+          {
+            get,
+            find: effectiveIndentFind([effectiveIndentNode('P1', 36), effectiveIndentNode('P2', 6)], story),
+            getNode,
+            lists: { indent: vi.fn(), outdent: vi.fn(), getStateInStory: () => ({ success: true, isListItem: false }) },
+            format: { paragraph: { setIndentation } },
+          },
+          { selectionInfo: multiSelectionInfoInStory(story) },
+        ),
+      });
+      expect(await ui.toolbar.executeAsync('indent-increase')).toMatchObject({ success: true });
+      expect(get).not.toHaveBeenCalled();
+      expect(setIndentation).toHaveBeenCalledWith({
+        target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P1', story },
+        left: 1440,
+      });
+    },
+  );
+
+  it('SD-7235 CASE-4 paragraph indentation preserves unsupported-story authored fallback', async () => {
+    const story = { kind: 'story', storyType: 'footnote', noteId: '1' };
+    const get = vi.fn();
+    const getNodeById = vi.fn();
+    const getNode = vi.fn(() => ({ node: effectiveIndentNode('P1', 36) }));
+    const setIndentation = vi.fn(() => ({ success: true }));
+    const ui = createSuperDocUI({
+      superdoc: makeBlockSuperdoc(
+        {
+          get,
+          getNode,
+          getNodeById,
+          lists: { indent: vi.fn(), outdent: vi.fn(), getStateInStory: () => ({ success: true, isListItem: false }) },
+          format: { paragraph: { setIndentation } },
+        },
+        { selectionInfo: multiSelectionInfoInStory(story) },
+      ),
+    });
+    await ui.toolbar.executeAsync('indent-increase');
+    expect(get).not.toHaveBeenCalled();
+    expect(setIndentation).toHaveBeenCalledWith({
+      target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P1', story },
+      left: 1440,
+    });
+  });
+
+  it.each(['editor', 'doc', 'mode', 'selection', 'lifetime'])(
+    'SD-7235 CASE-4 paragraph indentation rejects delayed %s invalidation',
+    async (change) => {
+      let release = () => {};
+      let started = () => {};
+      const reading = new Promise<void>((resolve) => {
+        started = resolve;
+      });
+      const result = new Promise<unknown>((resolve) => {
+        release = () => resolve(ruleFindResult());
+      });
+      const find = vi.fn(() => {
+        started();
+        return result;
+      });
+      const setIndentation = vi.fn(() => ({ success: true }));
+      const lifetime = { aborted: false };
+      let generation = 0;
+      const host = {
+        getForegroundInteractionLifetime: () => lifetime,
+        getHandles: () => ({
+          editing: { selectionTargets: { apply: vi.fn(), selectionRequestGeneration: () => generation } },
+        }),
+      };
+      const superdoc = makeBlockSuperdoc(
+        {
+          find,
+          lists: { indent: vi.fn(), outdent: vi.fn(), getState: () => ({ success: true, isListItem: false }) },
+          format: { paragraph: { setIndentation } },
+        },
+        { selectionInfo: SINGLE_BLOCK_SELECTION_INFO, editorExtra: { host } },
+      );
+      const ui = createSuperDocUI({ superdoc });
+      const executing = ui.toolbar.executeAsync('indent-increase');
+      await Promise.race([reading, nextAnimationFrame()]);
+      if (change === 'editor') superdoc.activeEditor = { ...superdoc.activeEditor };
+      if (change === 'doc') superdoc.activeEditor.doc = { ...superdoc.activeEditor.doc };
+      if (change === 'mode') superdoc.config.documentMode = 'viewing';
+      if (change === 'selection') generation += 1;
+      if (change === 'lifetime') lifetime.aborted = true;
+      release();
+      expect(await executing).toBe(false);
+      expect(setIndentation).not.toHaveBeenCalled();
+    },
+  );
+
+  it('SD-7235 CASE-4 paragraph indentation rejects malformed selected payloads', async () => {
+    const setIndentation = vi.fn(() => ({ success: true }));
+    const ui = createSuperDocUI({
+      superdoc: makeBlockSuperdoc(
+        {
+          find: () => ({
+            ...ruleFindResult(),
+            items: [
+              {
+                address: { kind: 'block', nodeType: 'paragraph', nodeId: 'P1' },
+                node: { kind: 'paragraph', paragraphIds: { paraId: 'P1' } },
+              },
+            ],
+          }),
+          lists: { indent: vi.fn(), getState: () => ({ success: true, isListItem: false }) },
+          format: { paragraph: { setIndentation } },
+        },
+        { selectionInfo: SINGLE_BLOCK_SELECTION_INFO },
+      ),
+    });
+    expect(await ui.toolbar.executeAsync('indent-increase')).toBe(false);
+    expect(setIndentation).not.toHaveBeenCalled();
+  });
+
+  it.each([true, false])('SD-7235 CASE-3 list indentation uses targeted reads for mixed=%s', async (mixed) => {
+    const get = vi.fn(() => ({ body: [effectiveIndentNode('P2', 6)] }));
+    const indent = vi.fn(() => ({ success: true }));
+    const indentRange = vi.fn(() => ({ success: true }));
+    const setIndentation = vi.fn(() => ({ success: true }));
+    const ui = createSuperDocUI({
+      superdoc: makeBlockSuperdoc({
+        get,
+        find: effectiveIndentFind([effectiveIndentNode('P2', 6)]),
+        lists: {
+          indent,
+          indentRange,
+          getState: ({ target }: { target: { nodeId: string } }) => ({
+            success: true,
+            isListItem: !mixed || target.nodeId === 'P1',
+            seed: null,
+          }),
+        },
+        format: { paragraph: { setIndentation } },
+      }),
+    });
+    await ui.toolbar.executeAsync('indent-increase');
+    if (mixed) {
+      expect(get).not.toHaveBeenCalled();
+      expect(indentRange).not.toHaveBeenCalled();
+      expect(indent).toHaveBeenCalledWith({ target: { kind: 'block', nodeType: 'listItem', nodeId: 'P1' } });
+      expect(setIndentation).toHaveBeenCalledExactlyOnceWith({
+        target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P2' },
+        left: 840,
+      });
+    } else {
+      expect(get).not.toHaveBeenCalled();
+      expect(indentRange).toHaveBeenCalledTimes(1);
+      expect(setIndentation).not.toHaveBeenCalled();
+    }
+  });
+
+  it('SD-7235 CASE-4 paragraph indentation uses zero for an identified paragraph without effective indentation', async () => {
+    const setIndentation = vi.fn(() => ({ success: true }));
+    const ui = createSuperDocUI({
+      superdoc: makeBlockSuperdoc(
+        {
+          find: () => ruleFindResult(0),
+          lists: { indent: vi.fn(), getState: () => ({ success: true, isListItem: false }) },
+          format: { paragraph: { setIndentation } },
+        },
+        { selectionInfo: SINGLE_BLOCK_SELECTION_INFO },
+      ),
+    });
+    await ui.toolbar.executeAsync('indent-increase');
+    expect(setIndentation).toHaveBeenCalledExactlyOnceWith({
+      target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P1' },
+      left: 720,
+    });
+  });
+
+  it('SD-7235 CASE-4 paragraph outdent requires an explicit-zero setter capability', async () => {
+    const clearIndentation = vi.fn();
+    const ui = createSuperDocUI({
+      superdoc: makeBlockSuperdoc(
+        {
+          lists: { outdent: vi.fn(), getState: () => ({ success: true, isListItem: false }) },
+          format: { paragraph: { clearIndentation } },
+        },
+        { selectionInfo: SINGLE_BLOCK_SELECTION_INFO },
+      ),
+    });
+    expect(ui.commands.get('indent-decrease').getState()).toMatchObject({ enabled: false, supported: false });
+    expect(await ui.toolbar.executeAsync('indent-decrease')).toBe(false);
+    expect(clearIndentation).not.toHaveBeenCalled();
+  });
+
+  it('SD-7235 CASE-3 paragraph indentation retains suggesting options with resolved reads', async () => {
+    const setIndentation = vi.fn(() => ({ success: true }));
+    const ui = createSuperDocUI({
+      superdoc: makeBlockSuperdoc(
+        {
+          find: effectiveIndentFind([effectiveIndentNode('P1', 36)]),
+          lists: { outdent: vi.fn(), getState: () => ({ success: true, isListItem: false }) },
+          format: { paragraph: { setIndentation } },
+        },
+        { mode: 'suggesting', selectionInfo: SINGLE_BLOCK_SELECTION_INFO },
+      ),
+    });
+    await ui.toolbar.executeAsync('indent-decrease');
+    expect(setIndentation).toHaveBeenCalledExactlyOnceWith(
+      { target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P1' }, left: 0 },
+      { changeMode: 'tracked' },
+    );
+  });
+
   it('indent-increase / indent-decrease route lists.indent / lists.outdent for list items', async () => {
     const indent = vi.fn(() => ({ success: true }));
     const outdent = vi.fn(() => ({ success: true }));
@@ -18092,8 +18929,6 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
     expect(setIndentation).toHaveBeenCalledWith({
       target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P1' },
       left: 1440,
-      right: 240,
-      firstLine: 360,
     });
   });
 
@@ -18148,6 +18983,44 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
     expect(setIndentation).not.toHaveBeenCalled();
   });
 
+  it.each(['throw', 'reject'] as const)(
+    'SD-7235 keeps the legacy zero fallback when a node read fails with %s',
+    async (failure) => {
+      for (const story of [undefined, { kind: 'story', storyType: 'headerFooterPart', refId: 'rId6' }]) {
+        const setIndentation = vi.fn(() => ({ success: true }));
+        let failRead = false;
+        const read = vi.fn(() => {
+          if (!failRead) return null;
+          if (failure === 'reject') return Promise.reject(new Error('Unavailable node'));
+          throw new Error('Unavailable node');
+        });
+        const getState = () => ({ success: true, isListItem: false });
+        const ui = createSuperDocUI({
+          superdoc: makeBlockSuperdoc(
+            {
+              lists: { indent: vi.fn(), outdent: vi.fn(), getState, getStateInStory: getState },
+              format: { paragraph: { setIndentation } },
+              getNode: read,
+              getNodeById: read,
+            },
+            { selectionInfo: story ? multiSelectionInfoInStory(story) : SINGLE_BLOCK_SELECTION_INFO },
+          ),
+        });
+        failRead = true;
+        for (const [command, left] of [
+          ['indent-increase', 720],
+          ['indent-decrease', 0],
+        ] as const) {
+          expect(await ui.toolbar.executeAsync(command)).toMatchObject({ success: true });
+          expect(setIndentation).toHaveBeenCalledWith({
+            target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P1', ...(story ? { story } : {}) },
+            left,
+          });
+        }
+      }
+    },
+  );
+
   it('indent-increase reads hybrid paragraph indentation from the selected header/footer story', async () => {
     const story = { kind: 'story', storyType: 'headerFooterPart', refId: 'rId6' } as const;
     const indent = vi.fn(() => ({ success: true }));
@@ -18181,13 +19054,13 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
     expect(setIndentation).toHaveBeenCalledWith({
       target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P1', story },
       left: 1440,
-      right: 240,
     });
     expect(indent).not.toHaveBeenCalled();
   });
 
-  it('indent-decrease clears plain paragraph indentation when the next step reaches zero', async () => {
+  it('indent-decrease sets explicit zero when the next step reaches zero', async () => {
     const outdent = vi.fn(() => ({ success: true }));
+    const setIndentation = vi.fn(() => ({ success: true }));
     const clearIndentation = vi.fn(() => ({ success: true }));
     const getState = vi.fn(() => ({ success: true, isListItem: false, seed: null }));
     const getNodeById = vi.fn(() => ({
@@ -18205,7 +19078,7 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
     const superdoc = makeBlockSuperdoc(
       {
         lists: { outdent, getState },
-        format: { paragraph: { setIndentation: vi.fn(), clearIndentation } },
+        format: { paragraph: { setIndentation, clearIndentation } },
         getNodeById,
       },
       { selectionInfo: SINGLE_BLOCK_SELECTION_INFO },
@@ -18215,8 +19088,10 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
     expect(ui.commands.get('indent-decrease').getState()).toMatchObject({ enabled: true, supported: true });
     expect(await ui.toolbar.executeAsync('indent-decrease')).toMatchObject({ success: true });
     expect(outdent).not.toHaveBeenCalled();
-    expect(clearIndentation).toHaveBeenCalledWith({
+    expect(clearIndentation).not.toHaveBeenCalled();
+    expect(setIndentation).toHaveBeenCalledWith({
       target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P1' },
+      left: 0,
     });
   });
 

@@ -1,55 +1,7 @@
 import { readRecord, type LooseRecord } from './loose-record.js';
-import { isFiniteNumber } from '../../helpers/is-finite-number.js';
 import type { TableCommandSpec } from './commands.js';
 
 export const PARAGRAPH_INDENT_STEP_TWIPS = 720;
-
-export type ParagraphIndentationTwips = {
-  left?: number;
-  right?: number;
-  firstLine?: number;
-  hanging?: number;
-};
-
-export function pointsToTwips(value: number): number {
-  return Math.round(value * 20);
-}
-
-export function readParagraphIndentationFromResult(result: unknown): ParagraphIndentationTwips | null {
-  const node = readRecord(readRecord(result)?.node);
-  if (!node) return null;
-  const paragraphPayload =
-    node.kind === 'heading'
-      ? readRecord(node.heading)
-      : node.kind === 'paragraph'
-        ? readRecord(node.paragraph)
-        : undefined;
-  if (!paragraphPayload) return null;
-  const resolvedIndent = readRecord(paragraphPayload.resolved)?.indent;
-  const indent =
-    resolvedIndent != null ? readRecord(resolvedIndent) : readRecord(readRecord(paragraphPayload.props)?.indent);
-  if (!indent) return null;
-
-  const left = isFiniteNumber(indent.left)
-    ? pointsToTwips(indent.left)
-    : isFiniteNumber(indent.start)
-      ? pointsToTwips(indent.start)
-      : undefined;
-  const right = isFiniteNumber(indent.right)
-    ? pointsToTwips(indent.right)
-    : isFiniteNumber(indent.end)
-      ? pointsToTwips(indent.end)
-      : undefined;
-  const firstLine = isFiniteNumber(indent.firstLine) ? pointsToTwips(indent.firstLine) : undefined;
-  const hanging = isFiniteNumber(indent.hanging) ? pointsToTwips(indent.hanging) : undefined;
-  if (left == null && right == null && firstLine == null && hanging == null) return null;
-  return {
-    ...(left != null ? { left } : {}),
-    ...(right != null ? { right } : {}),
-    ...(firstLine != null ? { firstLine } : {}),
-    ...(hanging != null ? { hanging } : {}),
-  };
-}
 
 export interface ResolvedTableContext {
   canMerge: boolean;

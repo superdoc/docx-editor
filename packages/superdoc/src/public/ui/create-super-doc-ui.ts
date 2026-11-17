@@ -184,8 +184,6 @@ import {
   PARAGRAPH_INDENT_STEP_TWIPS,
   buildTableCommandInput,
   readMergeRange,
-  readParagraphIndentationFromResult,
-  type ParagraphIndentationTwips,
   type ResolvedTableContext,
 } from './block-commands.js';
 import {
@@ -4545,31 +4543,6 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     }
   };
 
-  /** Await a block's current paragraph indentation authoritatively. */
-  const resolveParagraphIndentationForBlockAsync = async (
-    doc: LooseRecord | null,
-    blockId: string,
-    story?: unknown,
-  ): Promise<ParagraphIndentationTwips | null> => {
-    if (!doc) return null;
-    try {
-      const isBodyStory = !story || (story as LooseRecord).storyType === 'body';
-      const raw =
-        story && typeof doc.getNode === 'function'
-          ? await (doc.getNode as AnyFn)(paragraphTarget(blockId, story))
-          : isBodyStory && typeof doc.getNodeById === 'function'
-            ? await (doc.getNodeById as AnyFn)({
-                nodeId: blockId,
-                nodeType: 'paragraph',
-                story: { kind: 'story', storyType: 'body' },
-              })
-            : null;
-      return readParagraphIndentationFromResult(raw && typeof raw === 'object' ? raw : null);
-    } catch {
-      return null;
-    }
-  };
-
   const computeHybridIndentCommandState = (
     descriptor: CommandDescriptor,
     doc: LooseRecord | null,
@@ -4595,10 +4568,8 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
 
     const listOp = descriptor.docRoute ? resolveDocOperation(doc, descriptor.docRoute) : null;
     const paragraphSetIndent = resolveDocOperation(doc, 'format.paragraph.setIndentation');
-    const paragraphClearIndent = resolveDocOperation(doc, 'format.paragraph.clearIndentation');
     const mode = descriptor.list?.mode;
-    const paragraphOpAvailable =
-      mode === 'indent' ? paragraphSetIndent != null : paragraphSetIndent != null || paragraphClearIndent != null;
+    const paragraphOpAvailable = paragraphSetIndent != null;
     const story = selectionStory(selection);
     let listMembership: Array<boolean | null> | null = null;
     if (story.storyType !== 'body') {
@@ -4648,7 +4619,15 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
         continue;
       }
       if (isListItem === false && paragraphOpAvailable) {
-        if (story.storyType !== 'body' && typeof doc?.getNode !== 'function') continue;
+        if (
+          story.storyType !== 'body' &&
+          typeof doc?.getNode !== 'function' &&
+          !(
+            (story.storyType === 'headerFooterPart' || story.storyType === 'headerFooterSlot') &&
+            typeof doc?.find === 'function'
+          )
+        )
+          continue;
         return normalizeCommandState({ enabled: true, active, supported: true, value }, 'builtin');
       }
       if (isListItem === null) {
@@ -6967,6 +6946,22 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     );
   };
 
+  const captureCommandOwner = () => {
+    const editor = getEditor();
+    const sourceDoc = editor?.doc;
+    const host = editor?.host;
+    const mode = readDocumentMode();
+    const rawLifetime = safeCall<unknown>(() => hostMethod(host, 'getForegroundInteractionLifetime')?.(), undefined);
+    const lifetime = hasAbortedFlag(rawLifetime) ? rawLifetime : undefined;
+    return () =>
+      !disposed &&
+      getEditor() === editor &&
+      editor?.doc === sourceDoc &&
+      editor?.host === host &&
+      readDocumentMode() === mode &&
+      !lifetime?.aborted;
+  };
+
   const executeHybridIndentCommand = (
     descriptor: CommandDescriptor,
     listOp: AnyFn,
@@ -6974,10 +6969,25 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
   ): CommandExecutionResult => {
     const doc = getDoc();
     const paragraphSetIndent = resolveDocOperation(doc, 'format.paragraph.setIndentation');
-    const paragraphClearIndent = resolveDocOperation(doc, 'format.paragraph.clearIndentation');
     const mode = descriptor.list?.mode;
     const story = selectionStory(state.selection);
     const targetStory = selectionStoryLocator(state.selection);
+
+    const ownerIsCurrent = captureCommandOwner();
+    const sourceToken = contentToken();
+    const selectionToken = selectionKey(state.selection);
+    const selectionGeneration = selectionRequestGeneration();
+    const isCurrent = () =>
+      ownerIsCurrent() &&
+      contentToken() === sourceToken &&
+      selectionKey(state.selection) === selectionToken &&
+      selectionRequestGeneration() === selectionGeneration;
+    const find = hostMethod(doc, 'find');
+    const useResolved =
+      (find || typeof doc?.get === 'function') &&
+      (story.storyType === 'body' || story.storyType === 'headerFooterPart' || story.storyType === 'headerFooterSlot');
+
+    let indentationReads: Promise<typeof import('./paragraph-indentation.js')> | undefined;
 
     type HybridIndentPlan =
       | { kind: 'list'; routeToCall: string; opToCall: AnyFn; input: LooseRecord }
@@ -7006,62 +7016,61 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       // plain paragraph. Fail this block closed so toolbar indent cannot write a
       // direct paragraph indent onto a list item.
       if (isListItem === null) return null;
-      if (targetStory && (targetStory as LooseRecord).storyType !== 'body' && typeof doc?.getNode !== 'function') {
-        return null;
-      }
-      const current = await resolveParagraphIndentationForBlockAsync(doc, blockId, targetStory);
-      const preserved: LooseRecord = {};
-      if (current?.right != null) preserved.right = current.right;
-      if (current?.firstLine != null) preserved.firstLine = current.firstLine;
-      if (current?.hanging != null) preserved.hanging = current.hanging;
-
-      if (mode === 'indent') {
-        if (!paragraphSetIndent) return null;
-        return {
-          kind: 'paragraph',
-          routeToCall: 'format.paragraph.setIndentation',
-          opToCall: paragraphSetIndent,
-          input: {
-            target: paragraphTarget(blockId, targetStory),
-            left: Math.max(0, current?.left ?? 0) + PARAGRAPH_INDENT_STEP_TWIPS,
-            ...preserved,
-          },
-        };
-      }
-      const nextLeft = Math.max(0, (current?.left ?? 0) - PARAGRAPH_INDENT_STEP_TWIPS);
-      if (nextLeft > 0) preserved.left = nextLeft;
-      if (Object.keys(preserved).length === 0) {
-        if (paragraphClearIndent) {
-          return {
-            kind: 'paragraph',
-            routeToCall: 'format.paragraph.clearIndentation',
-            opToCall: paragraphClearIndent,
-            input: { target: paragraphTarget(blockId, targetStory) },
-          };
+      if (!paragraphSetIndent) return null;
+      const { readParagraphLeftIndent, readResolvedParagraphFind } = await (indentationReads ??=
+        import('./paragraph-indentation.js'));
+      let current: number | null;
+      if (useResolved) {
+        if (!find) return null;
+        const readSource = async (kind: 'paragraph' | 'heading') =>
+          readResolvedParagraphFind(
+            await find({
+              select: { type: 'node', nodeType: kind },
+              within: { ...paragraphTarget(blockId, targetStory), nodeType: kind },
+              in: story,
+              options: { includeResolved: true },
+              limit: 2,
+              offset: 0,
+            }),
+            blockId,
+            kind,
+            story,
+          );
+        let source = await readSource('paragraph');
+        if (source === 'empty') source = await readSource('heading');
+        if (typeof source !== 'number') return null;
+        current = source;
+      } else {
+        const getNode = hostMethod(doc, 'getNode');
+        if (story.storyType !== 'body' && !getNode) return null;
+        /** Await a block's current paragraph indentation authoritatively. */
+        try {
+          const raw =
+            targetStory && getNode
+              ? await getNode(paragraphTarget(blockId, targetStory))
+              : story.storyType === 'body'
+                ? await hostMethod(doc, 'getNodeById')?.({ nodeId: blockId, nodeType: 'paragraph', story })
+                : null;
+          current = readParagraphLeftIndent(raw);
+        } catch {
+          current = null;
         }
-        if (paragraphSetIndent) {
-          return {
-            kind: 'paragraph',
-            routeToCall: 'format.paragraph.setIndentation',
-            opToCall: paragraphSetIndent,
-            input: { target: paragraphTarget(blockId, targetStory), left: 0 },
-          };
-        }
-        return null;
       }
-      if (paragraphSetIndent) {
-        return {
-          kind: 'paragraph',
-          routeToCall: 'format.paragraph.setIndentation',
-          opToCall: paragraphSetIndent,
-          input: { target: paragraphTarget(blockId, targetStory), ...preserved },
-        };
-      }
-      return null;
+      const left = current ?? 0;
+      return {
+        kind: 'paragraph',
+        routeToCall: 'format.paragraph.setIndentation',
+        opToCall: paragraphSetIndent,
+        input: {
+          target: paragraphTarget(blockId, targetStory),
+          left: Math.max(0, left + (mode === 'indent' ? PARAGRAPH_INDENT_STEP_TWIPS : -PARAGRAPH_INDENT_STEP_TWIPS)),
+        },
+      };
     };
 
     pendingCommandSettlement = (async (): Promise<CommandExecutionResult> => {
       const plans = await Promise.all(blockIds.map((blockId) => planBlock(blockId).catch(() => null)));
+      if (!isCurrent()) return false;
       const allListItems = plans.length === blockIds.length && plans.every((plan) => plan?.kind === 'list');
       const preserveFirstItemLevel = blockIds.length === 1 && story.storyType === 'body';
       if (allListItems && (readDocumentMode() !== 'suggesting' || preserveFirstItemLevel)) {
@@ -8072,19 +8081,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
 
   const executeCopyFormat = async (): Promise<boolean> => {
     const commandDoc = firstPartyCommandDoc ?? null;
-    const editor = getEditor();
-    const doc = editor?.doc;
-    const host = editor?.host;
-    const mode = readDocumentMode();
-    const rawLifetime = safeCall<unknown>(() => hostMethod(host, 'getForegroundInteractionLifetime')?.(), undefined);
-    const lifetime = hasAbortedFlag(rawLifetime) ? rawLifetime : undefined;
-    const isCurrent = () =>
-      !disposed &&
-      getEditor() === editor &&
-      editor?.doc === doc &&
-      editor?.host === host &&
-      readDocumentMode() === mode &&
-      !lifetime?.aborted;
+    const isCurrent = captureCommandOwner();
     // Toolbar state is optimistic, but format-painter capture must snapshot the
     // authoritative source formatting. An async toolbar command may still be
     // preparing its selection before the mutation scheduler becomes active, so

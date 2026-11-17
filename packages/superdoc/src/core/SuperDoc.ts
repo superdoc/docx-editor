@@ -12,7 +12,7 @@ import type { DocumentReplacementResult } from '../public/document-replacement.j
 import { v4 as uuidv4 } from 'uuid';
 import { nextTick, shallowRef, toRaw } from 'vue';
 import type { HocuspocusProviderWebsocket } from '@hocuspocus/provider';
-import type { Pinia } from 'pinia';
+import { disposePinia, getActivePinia, setActivePinia, type Pinia } from 'pinia';
 import type { ContentControlType } from '@superdoc/document-api';
 import JSZip from 'jszip';
 
@@ -4353,6 +4353,11 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
       this.removeAllListeners();
       delete this.app.config.globalProperties.$config;
       delete this.app.config.globalProperties.$superdoc;
+    }
+    if (this.pinia) {
+      if (getActivePinia() === this.pinia) setActivePinia(undefined);
+      disposePinia(this.pinia);
+      this.pinia = undefined;
     }
 
     // SuperDoc owns the UI controller, so it is the only place that destroys

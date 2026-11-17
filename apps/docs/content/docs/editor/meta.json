@@ -7,6 +7,7 @@
     "quickstart",
     "configuration",
     "interaction-permissions",
+    "locks-and-protection",
     "document-modes",
     "lifecycle-and-events",
     "load-and-save-documents",

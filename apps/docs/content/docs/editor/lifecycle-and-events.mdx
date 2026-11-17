@@ -44,13 +44,13 @@ and the built-in UI's own chrome. Everything about one area of the document or t
 [`superdoc.ui`](/editor/custom-ui/controller-setup), where `getSnapshot()` and `observe()` report state, `onChange()`
 reports committed changes, and `onX()` reports an interaction.
 
-| Your question                                                 | Where to listen                                                   |
-| ------------------------------------------------------------- | ----------------------------------------------------------------- |
-| Is the document open, and did opening it fail?                | `onReady`, `onException`                                          |
-| Is the document locked, and is collaboration still connected? | `onLocked`, `onCollaborationConnectionChange`                     |
-| Did the built-in comments list appear or disappear?           | `onCommentsListChange`                                            |
-| What changed in the document?                                 | `superdoc.ui.document.onChange()`                                 |
-| What is the zoom, the mode, or the undo depth right now?      | `superdoc.ui.zoom`, `superdoc.ui.document`, `superdoc.ui.history` |
+| Your question                                                 | Where to listen                                                                                                         |
+| ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Is the document open, and did opening it fail?                | `onReady`, `onException`                                                                                                |
+| Is the document locked, and is collaboration still connected? | [`onLocked`](/editor/locks-and-protection#coordinate-editors-with-the-document-lock), `onCollaborationConnectionChange` |
+| Did the built-in comments list appear or disappear?           | `onCommentsListChange`                                                                                                  |
+| What changed in the document?                                 | `superdoc.ui.document.onChange()`                                                                                       |
+| What is the zoom, the mode, or the undo depth right now?      | `superdoc.ui.zoom`, `superdoc.ui.document`, `superdoc.ui.history`                                                       |
 
 An instance event is deprecated once its `superdoc.ui` replacement reports everything the event reported. Deprecated
 events keep working until SuperDoc 3.0.

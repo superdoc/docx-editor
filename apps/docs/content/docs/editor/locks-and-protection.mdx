@@ -1,0 +1,143 @@
+---
+title: Locks, protection, and authorization
+navTitle: Locks and protection
+description: Compare document locks, content-control locks, Word protection, and permission ranges with the authorization your backend enforces.
+---
+
+SuperDoc has several features that look like locks. They shape normal editing, record Word settings in the DOCX, or
+tell collaborators who is working. None of them authenticates a user or decides who may read, save, or change a
+document. Your backend makes those decisions.
+
+## Compare the layers
+
+| Layer                     | API                                                 | Stored in                        | What it does                                                                                                     |
+| ------------------------- | --------------------------------------------------- | -------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Document lock             | `superdoc.setLocked()`, `onLocked`                  | Collaboration room, not the DOCX | Shares a locked flag and `lockedBy` user. It does not block any edit.                                            |
+| Content-control lock      | `contentControls.setLockMode()`                     | DOCX                             | Stops normal edits to a field's contents, removal of the field, or both, in SuperDoc and Word.                   |
+| Word editing restriction  | `protection.setEditingRestriction()`                | DOCX                             | `readOnly` blocks edits outside permission ranges in SuperDoc and Word. Other modes apply only in Word.          |
+| Permission range          | `permissionRanges.create()`                         | DOCX                             | Lets one editor, or everyone, edit a region of a `readOnly` document.                                            |
+| Client interaction policy | `documentMode`, `interaction`, `permissionResolver` | Editor configuration             | Sets the actions one Editor instance offers. See [Interaction and permissions](/editor/interaction-permissions). |
+| Backend authorization     | Your service                                        | Your service                     | Decides who may open the document, join the room, save, and which changes are accepted.                          |
+
+Only the last layer holds against someone who controls the browser. Every other layer runs in the client that makes
+the change. A modified client can skip it, and anyone with the DOCX can change its settings in another tool.
+
+## What a clause lock is
+
+Wrap a clause in a content control and set `contentLocked` or `sdtContentLocked`. That lock is:
+
+- **Word metadata.** It is saved in the DOCX, and Word keeps the clause read-only after export.
+- **Editor interaction policy.** SuperDoc rejects typing inside the clause and refuses Document API edits to it. The
+  failure code depends on the operation: `LOCK_VIOLATION`, `CAPABILITY_UNAVAILABLE`, or `INVALID_CONTEXT`. Handle
+  all three as a possible lock refusal. In collaboration, a rejected edit leaves the shared text unchanged for every
+  participant.
+
+It is not a collaboration lock and not server authorization. Any caller with Document API access can call
+`contentControls.setLockMode()` to unlock the clause, or replace it with
+`contentControls.replaceContent({ overrideContentLock: true })`. A client that does not run SuperDoc can send
+collaboration updates that change the clause. To guarantee that a clause stays fixed, your backend must check the
+changes it accepts.
+
+See [Lock template fields](/editor/content-controls/lock-template-fields) to set the four lock modes.
+
+## Coordinate editors with the document lock
+
+The document lock is shared state for your application's own workflow, such as "Legal is reviewing this draft". It
+does not make the document read-only.
+
+`superdoc.setLocked(true)` stores the lock and the configured `user` as `lockedBy`. In collaboration, it is stored in
+the room, and every participant receives `onLocked`. Without collaboration, it changes only the local instance.
+`setLocked(false)` clears it. Any participant can call either method.
+
+Choose what the lock means in the client. This example switches other participants to viewing mode:
+
+```ts
+const currentUser = { id: 'user-42', name: 'Ada Lovelace', email: 'ada@example.com' };
+
+const superdoc = new SuperDoc({
+  // ...document and collaboration options
+  user: currentUser,
+  onLocked: ({ isLocked, lockedBy }) => {
+    const lockedByOther = isLocked && lockedBy?.id !== currentUser.id;
+    superdoc.setDocumentMode(lockedByOther ? 'viewing' : 'editing');
+  },
+});
+```
+
+`lockedBy` comes from the browser that set the lock. Treat it as a display label, not proof of who locked the
+document. If a lock must stop saves, record it on your backend and refuse writes there.
+
+`Config.isLocked` and `Config.lockedBy` set the initial lock state. `superdoc.lockSuperdoc()` changes only the local
+instance and emits `onLocked`; it does not update collaborators.
+
+## Word restriction modes and named exceptions
+
+`editor.doc.protection.setEditingRestriction({ mode })` authors `readOnly`, `comments`,
+`trackedChanges`, or `forms` in the DOCX. Always inspect the returned
+`state.editingRestriction.runtimeEnforced`: V2 enforces `readOnly`; the other
+three modes are saved for Word and currently report `false` in SuperDoc.
+In particular, `trackedChanges` does not switch SuperDoc to suggesting mode;
+direct edits can be saved without revision markup.
+`enforced: true` describes the saved Word setting, not a browser authorization
+guarantee. Under an enforced `readOnly` restriction, Document API edits outside
+a granted permission range fail with `PERMISSION_DENIED`.
+
+`passwordProtected` reports that the DOCX contains a password hash. SuperDoc does
+not ask for or verify the password. `clearEditingRestriction()` removes the
+restriction, so do not rely on a Word password to protect a document in SuperDoc.
+
+Your application owns the editor roster and authenticated user. The
+`superdoc` helpers accept that roster explicitly, so they work with
+`Config.users`, `superdoc.users`, or an application directory without treating
+presence or comment authors as a directory:
+
+```ts
+import { listPermissionRangeEditors, resolvePermissionRangeEditor } from 'superdoc';
+
+const choices = listPermissionRangeEditors(superdoc.users);
+const selected = resolvePermissionRangeEditor(superdoc.users, selectedUserId);
+if (selected.status === 'resolved') {
+  await editor.doc.permissionRanges.create({ target: selection, principal: selected.principal });
+}
+```
+
+Discovery includes `ambiguous` entries so the host can disable conflicting
+choices. Resolution returns `unknown` for absent IDs and `ambiguous` for duplicate
+IDs, duplicate emails, or email/ID collisions; neither result contains a grant.
+Names are display labels. Resolution uses an exact host ID or a case-insensitive
+email and serializes the email into Word's `w:ed` when supplied. An ID without an
+email remains a host-specific Word editor string; it does not establish that
+Word recognizes the same account. Word account authentication remains external.
+
+Set `Config.user` to the active host user. In a `readOnly` document, a
+well-formed permission range covering the full edit allows that user's exact
+`id`, their email ignoring case, or `everyone`. Overlapping grants are additive:
+a grant to another editor does not cancel a matching user or `everyone` grant.
+Users without a matching grant remain refused. This works without a
+`permissionResolver`; tracked-change author overrides do not
+change the active permission identity. Imported unsupported groups, missing or
+conflicting identities, and malformed markers block intersecting edits even
+when another range grants access. Body permissions are supported in collaboration;
+editing permission markers in headers and footers during collaboration remains unsupported.
+
+Saved editor IDs and the host roster are different things.
+`editor.doc.permissionRanges.list()` reads document exceptions; the helpers
+resolve host identities and do not authenticate users, provision Word accounts,
+or change server access controls.
+
+`Config.user` is set by the browser. A permission range matches whoever that
+configuration names, so it guides normal editing. It does not prove that the
+person in the browser is that user.
+
+## Enforce access on your backend
+
+Use the layers above to give honest users a clear editing experience. Then enforce the same policy where your
+service accepts work:
+
+- Authenticate the user before serving the document or a signed URL.
+- Authorize the collaboration connection. See [Control room access](/editor/collaboration/control-room-access).
+- Authorize every save and export your service accepts.
+- If a clause, field, or region must not change, validate the saved result, or expose operations your service can
+  authorize one by one. Accepting arbitrary DOCX uploads or collaboration updates cannot guarantee that a lock held.
+
+See [Secure integration](/editor/secure-integration) for the full set of trusted boundaries.

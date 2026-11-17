@@ -607,6 +607,7 @@
     "/editor/license/",
     "/editor/lifecycle-and-events/",
     "/editor/load-and-save-documents/",
+    "/editor/locks-and-protection/",
     "/editor/migrate-from-v1/legacy-collaboration-server/",
     "/editor/migrate-from-v1/overview/",
     "/editor/migrate-from-v1/removed-apis/",

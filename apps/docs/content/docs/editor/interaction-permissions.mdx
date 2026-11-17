@@ -102,52 +102,8 @@ Choose a collaboration provider and persistence path that can enforce the policy
 Keep client settings aligned with that policy for a clear user experience. Do not treat a hidden button, a resolver
 result, or a browser-supplied author as evidence that the backend request is authorized.
 
-## Word restriction modes and named exceptions
+## Word protection and locks
 
-`editor.doc.protection.setEditingRestriction({ mode })` authors `readOnly`, `comments`,
-`trackedChanges`, or `forms` in the DOCX. Always inspect the returned
-`state.editingRestriction.runtimeEnforced`: V2 enforces `readOnly`; the other
-three modes are saved for Word and currently report `false` in SuperDoc.
-In particular, `trackedChanges` does not switch SuperDoc to suggesting mode;
-direct edits can be saved without revision markup.
-`enforced: true` describes the saved Word setting, not a browser authorization
-guarantee. Use `clearEditingRestriction()` to disable the saved restriction.
-
-Your application owns the editor roster and authenticated user. The
-`superdoc` helpers accept that roster explicitly, so they work with
-`Config.users`, `superdoc.users`, or an application directory without treating
-presence or comment authors as a directory:
-
-```ts
-import { listPermissionRangeEditors, resolvePermissionRangeEditor } from 'superdoc';
-
-const choices = listPermissionRangeEditors(superdoc.users);
-const selected = resolvePermissionRangeEditor(superdoc.users, selectedUserId);
-if (selected.status === 'resolved') {
-  await editor.doc.permissionRanges.create({ target: selection, principal: selected.principal });
-}
-```
-
-Discovery includes `ambiguous` entries so the host can disable conflicting
-choices. Resolution returns `unknown` for absent IDs and `ambiguous` for duplicate
-IDs, duplicate emails, or email/ID collisions; neither result contains a grant.
-Names are display labels. Resolution uses an exact host ID or a case-insensitive
-email and serializes the email into Word's `w:ed` when supplied. An ID without an
-email remains a host-specific Word editor string; it does not establish that
-Word recognizes the same account. Word account authentication remains external.
-
-Set `Config.user` to the active host user. In a `readOnly` document, a
-well-formed permission range covering the full edit allows that user's exact
-`id`, their email ignoring case, or `everyone`. Overlapping grants are additive:
-a grant to another editor does not cancel a matching user or `everyone` grant.
-Users without a matching grant remain refused. This works without a
-`permissionResolver`; tracked-change author overrides do not
-change the active permission identity. Imported unsupported groups, missing or
-conflicting identities, and malformed markers block intersecting edits even
-when another range grants access. Body permissions are supported in collaboration;
-editing permission markers in headers and footers during collaboration remains unsupported.
-
-Saved editor IDs and the host roster are different things.
-`editor.doc.permissionRanges.list()` reads document exceptions; the helpers
-resolve host identities and do not authenticate users, provision Word accounts,
-or change server access controls.
+Word editing restrictions, permission ranges, content-control locks, and the shared document lock are separate from
+these client settings. None of them is an authorization boundary. See
+[Locks, protection, and authorization](/editor/locks-and-protection) to compare them.

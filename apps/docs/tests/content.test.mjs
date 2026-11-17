@@ -54,6 +54,31 @@ test('interaction permissions guide is reachable from navigation, configuration,
   }
 });
 
+test('locks guide separates each lock layer from backend authorization', async () => {
+  const page = await readFile(new URL('editor/locks-and-protection.mdx', contentRoot), 'utf8');
+  for (const api of ['setLocked', 'setLockMode', 'setEditingRestriction', 'permissionRanges.create', 'Your service']) {
+    assert.ok(page.includes(api), `comparison table must include ${api}`);
+  }
+  assert.match(page, /does not block any edit/u);
+  assert.match(page, /overrideContentLock: true/u);
+  assert.match(page, /not a collaboration lock and not server authorization/u);
+  assert.match(page, /runtimeEnforced/u);
+  assert.match(page, /does\s+not ask for or verify the password/u);
+  assert.match(page, /\/editor\/collaboration\/control-room-access/u);
+
+  const { pages } = JSON.parse(await readFile(new URL('editor/meta.json', contentRoot), 'utf8'));
+  assert.equal(pages.indexOf('locks-and-protection'), pages.indexOf('interaction-permissions') + 1);
+  for (const path of [
+    'editor/interaction-permissions.mdx',
+    'editor/secure-integration.mdx',
+    'editor/content-controls/lock-template-fields.mdx',
+    'editor/lifecycle-and-events.mdx',
+  ]) {
+    const linking = await readFile(new URL(path, contentRoot), 'utf8');
+    assert.ok(linking.includes('/editor/locks-and-protection'), `${path} must link to the locks guide`);
+  }
+});
+
 test('Editor navigation places setup and accessibility before feature depth', async () => {
   const { pages } = JSON.parse(await readFile(new URL('editor/meta.json', contentRoot), 'utf8'));
   const sectionOf = (page) => {

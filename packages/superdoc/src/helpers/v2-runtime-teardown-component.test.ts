@@ -7,6 +7,7 @@ import { DOCX } from '@superdoc/common';
 import { useSuperdocStore, type StoreDocument } from '../stores/superdoc-store.js';
 import { normalizeUiConfig } from '../core/config/normalize-ui-config.js';
 import SuperDoc from '../SuperDoc.vue';
+import { fixedCommentsLayout } from '../test-support/comments-layout.js';
 
 type HostSnapshot = { state: string; documentMode: string; editableSubset?: { commands: string[] } };
 type HostListener = (snapshot: HostSnapshot) => void;
@@ -69,6 +70,7 @@ async function teardownFixture() {
     documentMode: 'editing',
   };
   const superdoc = Object.assign(new EventEmitter(), {
+    ...fixedCommentsLayout(),
     config,
     uiConfig: normalizeUiConfig(config),
     activeEditor: null as unknown,

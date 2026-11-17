@@ -7,6 +7,7 @@ import { DOCX } from '@superdoc/common';
 import { useSuperdocStore } from '../stores/superdoc-store.js';
 import { normalizeUiConfig } from '../core/config/normalize-ui-config.js';
 import SuperDoc from '../SuperDoc.vue';
+import { fixedCommentsLayout } from '../test-support/comments-layout.js';
 import { createInteractionHistory, closeInteractionHistory } from '../internal/diagnostics/interaction-history.js';
 
 vi.mock('../core/v2-integration/v2-integration.js', async (importOriginal) => {
@@ -43,6 +44,7 @@ async function mountShell(history = { enabled: false }) {
     diagnostics: { history },
   };
   const superdoc = Object.assign(new EventEmitter(), {
+    ...fixedCommentsLayout(),
     config,
     uiConfig: normalizeUiConfig(config),
     activeEditor: { editorVersion: 2, documentId: 'doc-a' },

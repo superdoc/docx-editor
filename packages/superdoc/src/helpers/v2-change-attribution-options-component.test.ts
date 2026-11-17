@@ -8,6 +8,7 @@ import { useSuperdocStore } from '../stores/superdoc-store.js';
 import { normalizeUiConfig } from '../core/config/normalize-ui-config.js';
 import type { ChangesConfig, User } from '../core/types/index.js';
 import SuperDoc from '../SuperDoc.vue';
+import { fixedCommentsLayout } from '../test-support/comments-layout.js';
 import { globalPropertiesWith } from '../test-support/global-properties.js';
 
 vi.mock('../core/v2-integration/v2-integration.js', async (importOriginal) => {
@@ -46,6 +47,7 @@ async function editorOptions(input: { user: User; changes?: ChangesConfig }) {
   ];
   const config = { modules: {}, documentMode: 'editing', ...(input.changes ? { changes: input.changes } : {}) };
   const superdoc = Object.assign(new EventEmitter(), {
+    ...fixedCommentsLayout(),
     config,
     uiConfig: normalizeUiConfig(config),
     activeEditor: null,

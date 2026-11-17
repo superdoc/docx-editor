@@ -50,7 +50,6 @@ import type {
 import type { V2EditorRuntimeAdapterOptions } from './core/editor-runtime/v2/v2-editor-runtime-adapter.js';
 
 import CommentDialog from './components/CommentsLayer/CommentDialog.vue';
-import FloatingComments from './components/CommentsLayer/FloatingComments.vue';
 import PdfCommentsLayer from './components/CommentsLayer/PdfCommentsLayer.vue';
 import { useWhiteboard } from './components/Whiteboard/use-whiteboard';
 import WhiteboardLayer from './components/Whiteboard/WhiteboardLayer.vue';
@@ -69,6 +68,7 @@ import { useCommentSmallScreen } from './composables/use-comment-small-screen.js
 import { useCommentSidebar } from './composables/use-comment-sidebar.js';
 import { useCompactCommentPopover } from './composables/use-compact-comment-popover.js';
 import { getVisibleThreadAnchorClientY } from './helpers/comment-focus.js';
+import { isPlainObject, isThenable } from './helpers/object-guards.js';
 import { mergeCommentsConfig } from './core/config/merge-comments-config.js';
 import { normalizeHyperlinksConfig } from './core/config/normalize-hyperlinks-config.js';
 import {
@@ -373,8 +373,11 @@ type V2SelectionSnapshot = {
   anchor?: {
     fragmentId?: unknown;
     blockId?: unknown;
+    blockOffset?: unknown;
     position?: { anchor?: { nativeId?: unknown } | null } | null;
   } | null;
+  focus?: { blockId?: unknown; blockOffset?: unknown } | null;
+  story?: unknown;
 };
 type V2RestampEvent = CustomEvent<{ itemIds?: unknown; refreshReason?: string } | null> | null | undefined;
 type V2ReviewTarget = V2SidebarReviewTarget;
@@ -501,6 +504,11 @@ type V2CollaborationResolution =
   | { state: 'valid'; config: Record<string, unknown> };
 
 const PdfViewer = defineAsyncComponent(() => import('./components/PdfViewer/PdfViewer.vue'));
+const FloatingComments = shallowRef<typeof import('./components/CommentsLayer/FloatingComments.vue').default | null>(
+  null,
+);
+let floatingCommentsLoad: Promise<void> | null = null;
+const floatingCommentsLoadFailed = ref(false);
 const getDocumentLoadPassword = (doc: ShellDocument) => doc.password ?? proxy.$superdoc.config.password;
 // Preserve the distinction between no collaboration request and a malformed
 // request. Invalid input is a terminal preflight failure; it must never be
@@ -753,6 +761,15 @@ const v2GeometryEpoch = ref<number | null>(null);
 let v2GeometryRafHandle = 0;
 let v2GeometryReplayRafHandle = 0;
 let v2GeometryReplayGeneration = 0;
+let pendingInlineCommentDismissal: { documentId: string; refresh: () => void } | null = null;
+const retireInlineCommentDismissal = (documentId?: string | null) => {
+  if (documentId === undefined || pendingInlineCommentDismissal?.documentId === documentId)
+    pendingInlineCommentDismissal = null;
+};
+const refreshInlineCommentDismissal = (documentId: string | null) => {
+  if (pendingInlineCommentDismissal?.documentId === documentId) pendingInlineCommentDismissal.refresh();
+};
+let inlineCommentSelectionSignal: { snapshot?: V2SelectionSnapshot | null; hasRangeSelection: boolean } | null = null;
 let v2TrackedChangeRestampRetainPaints = 0;
 let v2TrackedChangeRestampRetentionReason: string | null = null;
 const TRACKED_CHANGE_CARRIERS_RESTAMPED_EVENT = 'superdoc:v2-tracked-change-carriers-restamped';
@@ -1376,6 +1393,7 @@ const onV2EditorReady = (payload: V2EditorReadyPayload | null | undefined) => {
     collapse = null,
     focus = true,
   }: { target?: unknown; collapse?: V2AuthoringSelectionCollapse; focus?: boolean } = {}) => {
+    retireInlineCommentDismissal(documentId);
     if (!target || typeof target !== 'object') {
       return createV2AuthoringFailure('invalid-target', 'target must be a SelectionTarget object');
     }
@@ -1437,6 +1455,7 @@ const onV2EditorReady = (payload: V2EditorReadyPayload | null | undefined) => {
     setSelectionTarget: (input: Partial<Parameters<V2AuthoringFacade['setSelectionTarget']>[0]> = {}) =>
       applyV2SelectionTarget(input),
     setSelectionByText: async (input: Partial<Parameters<V2AuthoringFacade['setSelectionByText']>[0]> = {}) => {
+      retireInlineCommentDismissal(documentId);
       const resolved = await resolveV2TextMatch(input);
       if (!resolved.ok) return resolved;
       const applied = await applyV2SelectionTarget({
@@ -2028,6 +2047,7 @@ const onV2SelectionChanged = ({
   hasRangeSelection,
   snapshot,
 }: { hasRangeSelection?: boolean; snapshot?: V2SelectionSnapshot | null } = {}) => {
+  inlineCommentSelectionSignal = { snapshot, hasRangeSelection: hasRangeSelection === true };
   recordInteraction(proxy.$superdoc, 'selection:changed', () => ({ hasRangeSelection, selection: snapshot }));
   v2HasRangeSelection.value = hasRangeSelection === true;
   v2SelectionSnapshot.value = hasRangeSelection === true ? (snapshot ?? null) : null;
@@ -2361,6 +2381,7 @@ const onV2PageMetrics = (payload: { snapshot?: { pages?: unknown } | null; stage
 };
 
 const onV2RenderCleared = (payload: { documentId?: string | null } | null | undefined) => {
+  retireInlineCommentDismissal();
   linkPopover.destroy();
   cancelScheduledV2DomSelectionSync();
   cancelScheduledV2SelectionToolbarSync();
@@ -2410,6 +2431,7 @@ const onV2HostEvent = (document: ShellDocument | null | undefined, event: V2Host
   // editor-update or review side effects through this subscription.
   if (event.type === 'mutation:committed' && event.dryRun) return;
   const documentId = document?.id ?? null;
+  if (event.type === 'collaboration:document-replaced') retireInlineCommentDismissal(documentId);
   if (event.type === 'history:changed' && event.state) {
     proxy.$superdoc.emit('history-change', { documentId, history: event.state });
     return;
@@ -2428,12 +2450,22 @@ const onV2HostEvent = (document: ShellDocument | null | undefined, event: V2Host
     return;
   }
   if (event.type === 'reviewTarget:changed') {
+    if (
+      event.reason === 'user-click' ||
+      event.reason === 'panel-focus' ||
+      event.reason === 'history' ||
+      event.reason === 'dispose'
+    )
+      retireInlineCommentDismissal(documentId);
+    else if (event.reason === 'receipt-remap' || event.reason === 'receipt-invalidate')
+      refreshInlineCommentDismissal(documentId);
     const sync = document?.id ? v2ReviewTargetSidebarSyncs.get(document.id) : undefined;
     if (sync) sync.onReviewTargetChanged(event.next);
     else syncSidebarActiveCommentFromV2ReviewTarget(event.next);
     return;
   }
   if (event.type === 'collaboration:remote-changed') {
+    refreshInlineCommentDismissal(documentId);
     if (event.reviewChanged !== false) {
       v2ReviewWindowController.invalidate('collaboration:remote-review-changed');
       // Comment-only remote commits do not necessarily repaint the document.
@@ -2478,6 +2510,18 @@ const onV2HostEvent = (document: ShellDocument | null | undefined, event: V2Host
     return;
   }
   if (event.type === 'mutation:committed') {
+    const receipt = isPlainObject(event.receipt) ? event.receipt : null;
+    const result = isPlainObject(event.result) ? event.result : null;
+    if (
+      mutationCommittedEventChangedDocument(event) &&
+      receipt?.success !== false &&
+      receipt?.ok !== false &&
+      result?.success !== false &&
+      result?.ok !== false
+    ) {
+      retireInlineCommentDismissal(documentId);
+      dismissInlineCommentAfterV2Insertion(document, event);
+    }
     const bulkDecisionEvent = toV2BulkDecisionEvent(documentId, event.trackedChangeBulkDecision);
     if (bulkDecisionEvent) {
       proxy.$superdoc.emit('tracked-changes:bulk-decision', bulkDecisionEvent);
@@ -3165,6 +3209,7 @@ const syncSidebarActiveCommentFromV2ReviewTarget = (target: V2ReviewTarget | nul
 const onEditorCommentsUpdate = (params: EditorCommentsUpdateParams = {}) => {
   // Set the active comment in the store
   let { activeCommentId, type, comment: commentPayload } = params;
+  if (Object.prototype.hasOwnProperty.call(params, 'activeCommentId')) retireInlineCommentDismissal();
   // Only sync active state when the event explicitly requests it.
   // Replay add/update events often omit activeCommentId; inferring it here can
   // cause repeated focus toggles while replay emits batched updates.
@@ -3405,15 +3450,35 @@ const sidebarEnabled = computed(() => {
     pendingComment.value || (isReady.value && layers.value && isCommentsEnabled.value && !isCommentsListVisible.value),
   );
 });
-const showCommentsSidebar = useCommentSidebar({
+const requestedCommentsSidebar = useCommentSidebar({
   documentKey: computed(() => JSON.stringify(documents.value.map((document) => document.id))),
   enabled: sidebarEnabled,
   hasContent: computed(() =>
     Boolean(pendingComment.value || floatingComments.value.length || hasOpenTrackedChanges.value),
   ),
 });
+watch(
+  requestedCommentsSidebar,
+  (visible) => {
+    if (!visible || FloatingComments.value || floatingCommentsLoad) return;
+    floatingCommentsLoadFailed.value = false;
+    floatingCommentsLoad = import('./components/CommentsLayer/FloatingComments.vue')
+      .then(({ default: component }) => {
+        FloatingComments.value = component;
+      })
+      .catch((error: unknown) => {
+        floatingCommentsLoad = null;
+        floatingCommentsLoadFailed.value = true;
+        proxy.$superdoc.emit('exception', { error, editor: null });
+      });
+  },
+  { immediate: true },
+);
+const showCommentsSidebar = computed(() => requestedCommentsSidebar.value && FloatingComments.value !== null);
+const compactCommentPopover = shallowRef<HTMLDivElement | null>(null);
 const activeCompactComment = computed(() => {
   if (showCommentsSidebar.value) return null;
+  if (requestedCommentsSidebar.value && !compactCommentPopover.value && !floatingCommentsLoadFailed.value) return null;
   if (!isCommentsEnabled.value) return null;
   if (pendingComment.value) return pendingComment.value;
   if (!activeComment.value) return null;
@@ -3423,6 +3488,179 @@ const activeCompactComment = computed(() => {
   }
   return comment;
 });
+const dismissInlineCommentAfterV2Insertion = (sourceDocument: ShellDocument | null | undefined, event: V2HostEvent) => {
+  if (
+    event.origin !== 'command' ||
+    event.cause !== 'user' ||
+    event.editableCommandKind !== 'insert-text' ||
+    !isPlainObject(event.receipt)
+  )
+    return;
+  const editor = proxy.$superdoc.activeEditor;
+  const comment = activeCompactComment.value;
+  const thread = typeof comment?.parentCommentId === 'string' ? getComment(comment.parentCommentId) : comment;
+  const documentId = sourceDocument?.id;
+  if (!documentId) return;
+  const isCurrentPresentation = () =>
+    isCommentsEnabled.value &&
+    !shouldUseSidebarComments.value &&
+    !pendingComment.value &&
+    activeCompactComment.value === comment &&
+    !!thread &&
+    !thread.trackedChange &&
+    thread.selection?.source !== 'pdf' &&
+    sourceDocument?.type === DOCX &&
+    documents.value.some((document) => document === sourceDocument) &&
+    editor?.editorVersion === 2 &&
+    proxy.$superdoc.activeEditor === editor &&
+    editor.documentId === documentId &&
+    (editor.options?.documentId == null || editor.options.documentId === documentId) &&
+    commentsStore.belongsToDocument(thread, documentId) &&
+    !superdocRoot.value
+      ?.querySelector('.superdoc__compact-comment-popover')
+      ?.contains(globalThis.document.activeElement);
+  if (!isCurrentPresentation()) return;
+  const intent = {
+    documentId,
+    serial: 0,
+    inFlight: false,
+    queued: false,
+    refresh: () => {
+      intent.serial++;
+      scheduleRead();
+    },
+  };
+  const reconcile = (
+    selection: unknown,
+    selectionSignal: typeof inlineCommentSelectionSignal,
+  ): 'keep' | 'dismiss' | 'refresh' => {
+    if (!isPlainObject(selection)) return 'keep';
+    if (
+      selection.empty !== true ||
+      !Array.isArray(selection.activeCommentIds) ||
+      !selection.activeCommentIds.every((id: unknown) => typeof id === 'string')
+    )
+      return 'keep';
+    const target = selection.target;
+    const selectionTarget = selection.selectionTarget;
+    const start = isPlainObject(selectionTarget) ? selectionTarget.start : null;
+    const end = isPlainObject(selectionTarget) ? selectionTarget.end : null;
+    const hasSelectionTarget =
+      isPlainObject(selectionTarget) &&
+      selectionTarget.kind === 'selection' &&
+      isPlainObject(start) &&
+      isPlainObject(end) &&
+      start.kind === 'text' &&
+      end.kind === 'text' &&
+      typeof start.blockId === 'string' &&
+      start.blockId.length > 0 &&
+      start.blockId === end.blockId &&
+      typeof start.offset === 'number' &&
+      Number.isSafeInteger(start.offset) &&
+      start.offset >= 0 &&
+      start.offset === end.offset;
+    const segment =
+      isPlainObject(target) && target.kind === 'text' && Array.isArray(target.segments) && target.segments.length === 1
+        ? target.segments[0]
+        : null;
+    const range = isPlainObject(segment) ? segment.range : null;
+    const hasTextTarget =
+      isPlainObject(segment) &&
+      typeof segment.blockId === 'string' &&
+      segment.blockId.length > 0 &&
+      isPlainObject(range) &&
+      typeof range.start === 'number' &&
+      Number.isSafeInteger(range.start) &&
+      range.start >= 0 &&
+      range.start === range.end;
+    if (selectionTarget == null ? !hasTextTarget : !hasSelectionTarget) return 'keep';
+    if (inlineCommentSelectionSignal !== selectionSignal && inlineCommentSelectionSignal?.snapshot) {
+      const snapshot = inlineCommentSelectionSignal?.snapshot;
+      const blockId =
+        hasSelectionTarget && isPlainObject(start) ? start.blockId : isPlainObject(segment) ? segment.blockId : null;
+      const offset =
+        hasSelectionTarget && isPlainObject(start) ? start.offset : isPlainObject(range) ? range.start : null;
+      const story = isPlainObject(selectionTarget)
+        ? selectionTarget.story
+        : isPlainObject(target)
+          ? target.story
+          : null;
+      if (
+        typeof snapshot.anchor?.blockId === 'string' &&
+        typeof snapshot.focus?.blockId === 'string' &&
+        typeof snapshot.anchor?.blockOffset === 'number' &&
+        typeof snapshot.focus?.blockOffset === 'number' &&
+        (inlineCommentSelectionSignal.hasRangeSelection ||
+          snapshot.anchor?.blockId !== blockId ||
+          snapshot.focus?.blockId !== blockId ||
+          snapshot.anchor?.blockOffset !== offset ||
+          snapshot.focus?.blockOffset !== offset ||
+          JSON.stringify(snapshot.story) !== JSON.stringify(story))
+      )
+        return 'refresh';
+    }
+    const touchesThread = selection.activeCommentIds.some((id: unknown) => {
+      if (typeof id !== 'string') return false;
+      const member = getComment(id);
+      const root = typeof member?.parentCommentId === 'string' ? getComment(member.parentCommentId) : member;
+      return root === thread;
+    });
+    return touchesThread ? 'keep' : 'dismiss';
+  };
+  const scheduleRead = (): void => {
+    if (pendingInlineCommentDismissal !== intent || intent.inFlight || intent.queued) return;
+    intent.queued = true;
+    queueMicrotask(() => {
+      intent.queued = false;
+      read();
+    });
+  };
+  const read = (): void => {
+    if (pendingInlineCommentDismissal !== intent || intent.inFlight) return;
+    if (!isCurrentPresentation()) {
+      retireInlineCommentDismissal();
+      return;
+    }
+    intent.inFlight = true;
+    const serial = intent.serial;
+    const selectionSignal = inlineCommentSelectionSignal;
+    const complete = (selection?: unknown) => {
+      intent.inFlight = false;
+      if (pendingInlineCommentDismissal !== intent) return;
+      if (!isCurrentPresentation()) {
+        retireInlineCommentDismissal();
+        return;
+      }
+      if (serial !== intent.serial) {
+        scheduleRead();
+        return;
+      }
+      const outcome = reconcile(selection, selectionSignal);
+      if (outcome === 'refresh') {
+        intent.refresh();
+        return;
+      }
+      retireInlineCommentDismissal();
+      if (outcome === 'dismiss') commentsStore.setActiveComment(proxy.$superdoc, null);
+    };
+    try {
+      const selection = editor?.doc?.selection?.current?.({ includeText: false });
+      if (isThenable(selection)) void Promise.resolve(selection).then(complete, () => complete());
+      else complete(selection);
+    } catch {
+      complete();
+    }
+  };
+  pendingInlineCommentDismissal = intent;
+  read();
+};
+watch(
+  [activeComment, pendingComment, activeCompactComment, shouldUseSidebarComments, isCommentsEnabled],
+  () => {
+    retireInlineCommentDismissal();
+  },
+  { flush: 'sync' },
+);
 const { compactCommentPopoverStyle, closeCompactCommentPopover, resetClickAnchor } = useCompactCommentPopover({
   activeComment,
   pendingComment,
@@ -3473,6 +3711,10 @@ useViewportFit({
  */
 const scrollToComment = (commentId: string) => {
   proxy.$superdoc.scrollToComment(commentId);
+};
+
+const retireInlineCommentDismissalOnEditorChange = () => {
+  retireInlineCommentDismissal();
 };
 
 // ui-phase3-001: viewport listeners for v2 geometry refresh. The immediate
@@ -3531,6 +3773,7 @@ onMounted(() => {
   proxy.$superdoc?.on?.('document-mode-change', handleV2DocumentModeChange);
   proxy.$superdoc?.on?.('active-editor-change', syncV2RulerActiveEditor);
   proxy.$superdoc?.on?.('active-editor-change', invalidateV2CommentSelection);
+  proxy.$superdoc?.on?.('active-editor-change', retireInlineCommentDismissalOnEditorChange);
 
   commentsLayoutBridge?.setResolver((layout) => {
     const compact = resolveCompactCommentsMode(layout, proxy.$superdoc.getCommentsLayout().effective === 'inline');
@@ -3610,6 +3853,7 @@ function handleFindShortcut(e: KeyboardEvent) {
   // browser on worker/pre-ready hosts or when a resolver returns `none`.
   if (!findReplace.wouldOpen()) return;
 
+  retireInlineCommentDismissal();
   e.preventDefault();
   e.stopPropagation();
   claimFindShortcut(findShortcutOwner);
@@ -3618,6 +3862,7 @@ function handleFindShortcut(e: KeyboardEvent) {
 
 // The instance the user last touched owns the ambient (no-focus) shortcut.
 function handleFindOwnershipInteraction() {
+  retireInlineCommentDismissal();
   claimFindShortcut(findShortcutOwner);
 }
 
@@ -3626,6 +3871,7 @@ function handleFindOwnershipInteraction() {
 // external toolbar open the same surface as Cmd/Ctrl+F.
 function handleOpenFindRequest() {
   if (!isFindReplaceEnabled.value) return;
+  if (findReplace.wouldOpen()) retireInlineCommentDismissal();
   findReplace.open();
 }
 
@@ -3642,13 +3888,38 @@ function handleFormattingMarksShortcut(e: KeyboardEvent) {
   proxy.$superdoc.toggleFormattingMarks?.();
 }
 
+function isV2NativeSelectionIntent(e: KeyboardEvent) {
+  if (e.defaultPrevented || e.isComposing || e.keyCode === 229 || e.key === 'Dead') return false;
+  const mount = getActiveV2MountContainer();
+  const target = e.target;
+  if (
+    !mount ||
+    (target !== mount &&
+      !(target instanceof HTMLTextAreaElement && target.dataset.v2ImeHost === 'true' && mount.contains(target)))
+  )
+    return false;
+  if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown', 'Tab'].includes(e.key))
+    return true;
+  const key = e.key.toLowerCase();
+  const platform = mount.ownerDocument.defaultView?.navigator.platform ?? '';
+  const isMac = /Mac|iPhone|iPad|iPod/.test(platform);
+  if ((e.ctrlKey || e.metaKey) && !e.altKey && (key === 'a' || key === 'z' || (!isMac && key === 'y'))) return true;
+  if (e.key === 'Backspace' && e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && /Mac/.test(platform)) return true;
+  return (
+    e.key === 'Enter' ||
+    ((e.key === 'Backspace' || e.key === 'Delete') && !e.metaKey && !e.shiftKey && (isMac ? !e.ctrlKey : !e.altKey))
+  );
+}
+
 /**
  * Handle document-level shortcuts before browser or shell handlers.
  * Use a capture listener because the dev shell and presentation-mode bridge
  * do not always leave keyboard focus on a node that bubbles through the root.
  */
 function handleDocumentShortcut(e: KeyboardEvent) {
+  if (isV2NativeSelectionIntent(e)) retireInlineCommentDismissal();
   if (e.key === 'Escape' && activeCompactComment.value) {
+    retireInlineCommentDismissal();
     e.preventDefault();
     e.stopPropagation();
     closeCompactCommentPopover();
@@ -3670,6 +3941,7 @@ onBeforeUnmount(() => {
   commentsLayoutBridge?.setResolver(null);
   passwordPrompt.destroy();
   findReplace.destroy();
+  retireInlineCommentDismissal();
   linkPopover.destroy();
   cancelScheduledV2DomSelectionSync();
   cancelScheduledV2SelectionToolbarSync();
@@ -3716,6 +3988,7 @@ onBeforeUnmount(() => {
   proxy.$superdoc?.off?.('document-mode-change', handleV2DocumentModeChange);
   proxy.$superdoc?.off?.('active-editor-change', syncV2RulerActiveEditor);
   proxy.$superdoc?.off?.('active-editor-change', invalidateV2CommentSelection);
+  proxy.$superdoc?.off?.('active-editor-change', retireInlineCommentDismissalOnEditorChange);
 });
 
 const selectionLayer = ref<HTMLDivElement | null>(null);
@@ -4499,7 +4772,12 @@ const whiteboardInteractive = computed(() => whiteboardEnabled.value);
       </div>
     </div>
 
-    <div v-if="activeCompactComment" class="superdoc__compact-comment-popover" :style="compactCommentPopoverStyle">
+    <div
+      ref="compactCommentPopover"
+      v-if="activeCompactComment"
+      class="superdoc__compact-comment-popover"
+      :style="compactCommentPopoverStyle"
+    >
       <CommentDialog :comment="activeCompactComment as CommentModel" :parent="layers!" />
     </div>
 

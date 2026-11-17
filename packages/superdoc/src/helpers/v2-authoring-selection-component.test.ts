@@ -7,6 +7,7 @@ import { DOCX } from '@superdoc/common';
 import { useSuperdocStore } from '../stores/superdoc-store.js';
 import { normalizeUiConfig } from '../core/config/normalize-ui-config.js';
 import SuperDoc from '../SuperDoc.vue';
+import { fixedCommentsLayout } from '../test-support/comments-layout.js';
 
 vi.mock('../core/v2-integration/v2-integration.js', async (importOriginal) => {
   const actual = await importOriginal();
@@ -40,6 +41,7 @@ async function authoringFixture(selectionTargets) {
   };
   const runtimes = new Map();
   const superdoc = Object.assign(new EventEmitter(), {
+    ...fixedCommentsLayout(),
     config,
     uiConfig: normalizeUiConfig(config),
     activeEditor: null,

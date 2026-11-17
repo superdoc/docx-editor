@@ -7,6 +7,7 @@ import { useSuperdocStore } from '../../stores/superdoc-store.js';
 import { normalizeUiConfig } from '../../core/config/normalize-ui-config.js';
 import { Whiteboard } from '../../core/whiteboard/Whiteboard';
 import SuperDoc from '../../SuperDoc.vue';
+import { fixedCommentsLayout } from '../../test-support/comments-layout.js';
 
 vi.mock('../PdfViewer/PdfViewer.vue', () => ({ default: { name: 'PdfViewer', template: '<div />' } }));
 
@@ -22,6 +23,7 @@ async function mountPdfShell(whiteboard: Whiteboard | null) {
   const config = { modules: { whiteboard: { enabled: true } }, documentMode: 'editing' };
   Object.assign(store.modules, config.modules);
   const superdoc = Object.assign(new EventEmitter(), {
+    ...fixedCommentsLayout(),
     config,
     uiConfig: normalizeUiConfig(config),
     user: { name: 'Fixture author' },

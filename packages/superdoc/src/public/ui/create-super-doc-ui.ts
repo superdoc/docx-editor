@@ -9490,6 +9490,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
    * a resolved target that cannot be made visible is `target-not-visible`, not
    * `target-unresolved`.
    */
+  const scrollFailure = (reason: SuperDocUIReason): WorkflowScrollResult => ({ success: false, ok: false, reason });
   const scrollTargetIntoView = async (
     target: unknown,
     options?: {
@@ -9497,33 +9498,42 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       behavior?: ScrollIntoViewInput['behavior'];
       shouldContinue?: () => boolean;
     },
+    onTerminal?: () => void,
   ): Promise<WorkflowScrollResult> => {
-    if (!getEditor()) return { success: false, ok: false, reason: SUPERDOC_UI_REASONS.notReady };
-    if (!target) return { success: false, ok: false, reason: SUPERDOC_UI_REASONS.targetUnresolved };
+    if (!getEditor()) return scrollFailure(SUPERDOC_UI_REASONS.notReady);
+    if (!target) return scrollFailure(SUPERDOC_UI_REASONS.targetUnresolved);
     const host = getHost();
     const scroll = host?.scrollTargetIntoView;
-    if (typeof scroll !== 'function') {
-      return { success: false, ok: false, reason: SUPERDOC_UI_REASONS.hostCapabilityUnavailable };
-    }
+    if (typeof scroll !== 'function') return scrollFailure(SUPERDOC_UI_REASONS.hostCapabilityUnavailable);
     try {
       const input = {
         target,
         block: options?.block ?? 'center',
         behavior: options?.behavior ?? 'smooth',
       };
-      const result = await Promise.resolve(
-        options?.shouldContinue ? scroll.call(host, input, options.shouldContinue) : scroll.call(host, input),
-      );
-      if (result && typeof result === 'object' && (result as LooseRecord).success === false) {
-        return {
-          success: false,
-          ok: false,
-          reason: coerceSuperDocUIReason((result as LooseRecord).reason, SUPERDOC_UI_REASONS.targetUnresolved),
-        };
+      const result = await (options?.shouldContinue
+        ? scroll.call(host, input, options.shouldContinue)
+        : scroll.call(host, input));
+      const reason = result && typeof result === 'object' && 'reason' in result ? result.reason : undefined;
+      if (
+        options?.shouldContinue?.() === false ||
+        reason === 'superseded' ||
+        reason === 'interrupted' ||
+        reason === 'scroll-expired'
+      ) {
+        onTerminal?.();
+        return scrollFailure(SUPERDOC_UI_REASONS.targetNotVisible);
+      }
+      if (result && typeof result === 'object' && 'success' in result && result.success === false) {
+        return scrollFailure(coerceSuperDocUIReason(reason, SUPERDOC_UI_REASONS.targetUnresolved));
       }
       return { success: true, ok: true };
     } catch {
-      return { success: false, ok: false, reason: SUPERDOC_UI_REASONS.hostCapabilityUnavailable };
+      const superseded = options?.shouldContinue?.() === false;
+      if (superseded) onTerminal?.();
+      return scrollFailure(
+        superseded ? SUPERDOC_UI_REASONS.targetNotVisible : SUPERDOC_UI_REASONS.hostCapabilityUnavailable,
+      );
     }
   };
 
@@ -9705,8 +9715,11 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       shouldContinue?: () => boolean;
     },
   ): Promise<WorkflowScrollResult> => {
-    const primary = await scrollTargetIntoView(target, options);
-    if (primary.ok) return primary;
+    let skipFallback = false;
+    const primary = await scrollTargetIntoView(target, options, () => {
+      skipFallback = true;
+    });
+    if (skipFallback || primary.ok) return primary;
     const trackedChanges = getV2TrackedChanges();
     const focusTrackedChange = trackedChanges?.focusTrackedChange;
     if (typeof focusTrackedChange !== 'function') return primary;
@@ -9719,7 +9732,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
           }
         : changeId;
     try {
-      const fallbackResult = await Promise.resolve(focusTrackedChange.call(trackedChanges, fallbackInput));
+      const fallbackResult = await focusTrackedChange.call(trackedChanges, fallbackInput);
       if (fallbackResult && typeof fallbackResult === 'object' && (fallbackResult as LooseRecord).ok === true) {
         return { success: true, ok: true };
       }

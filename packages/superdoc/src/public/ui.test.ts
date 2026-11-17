@@ -9790,6 +9790,45 @@ describe('public ui — track changes workflow parity (row 748)', () => {
     expect(focusTrackedChange).toHaveBeenCalledWith('tc-1');
   });
 
+  it('does not focus a tracked change after its host scroll is superseded', async () => {
+    const target = { kind: 'structural', address: { kind: 'entity', entityType: 'trackedChange', entityId: 'tc-1' } };
+    const focusTrackedChange = vi.fn(async () => ({ ok: true }));
+    const scrollTargetIntoView = vi.fn(async () => ({ success: false, reason: 'superseded' }));
+    const { superdoc } = makeWorkflowSuperdoc({
+      trackChanges: { list: () => ({ items: [{ id: 'tc-1', type: 'formatting', target }] }) },
+      host: { scrollTargetIntoView },
+      v2TrackedChanges: { focusTrackedChange },
+    });
+    const ui = createSuperDocUI({ superdoc });
+
+    expect(await ui.trackChanges.scrollTo('tc-1')).toEqual({
+      success: false,
+      ok: false,
+      reason: SUPERDOC_UI_REASONS.targetNotVisible,
+    });
+    expect(focusTrackedChange).not.toHaveBeenCalled();
+  });
+
+  it('does not focus a tracked change after user interruption or scroll expiration', async () => {
+    const target = { kind: 'text', segments: [{ blockId: 'P-far', range: { start: 0, end: 1 } }] };
+    for (const reason of ['interrupted', 'scroll-expired']) {
+      const focusTrackedChange = vi.fn(async () => ({ ok: true }));
+      const scrollTargetIntoView = vi.fn(async () => ({ success: false, reason }));
+      const { superdoc } = makeWorkflowSuperdoc({
+        trackChanges: { list: () => ({ items: [{ id: 'tc-far', type: 'insertion', target }] }) },
+        host: { scrollTargetIntoView },
+        v2TrackedChanges: { focusTrackedChange },
+      });
+      const ui = createSuperDocUI({ superdoc });
+      expect(await ui.trackChanges.scrollTo('tc-far')).toEqual({
+        success: false,
+        ok: false,
+        reason: SUPERDOC_UI_REASONS.targetNotVisible,
+      });
+      expect(focusTrackedChange).not.toHaveBeenCalled();
+    }
+  });
+
   it('navigateNext fails closed without advancing when there are no tracked changes', async () => {
     const scrollTargetIntoView = vi.fn(async () => ({ success: true }));
     const { superdoc } = makeWorkflowSuperdoc({

@@ -148,8 +148,8 @@ export interface ScrollIntoViewInput {
   /** Alignment within the viewport. Defaults to `'center'`. */
   block?: 'start' | 'center' | 'end' | 'nearest';
   /**
-   * Scroll behavior. Defaults to `'smooth'`. `'auto'` follows the computed
-   * CSS `scroll-behavior`; `'instant'` always moves without animation.
+   * Scroll behavior, default `'smooth'`; `'auto'` follows CSS `scroll-behavior`.
+   * `'instant'` never animates; reduced motion makes every value instant.
    */
   behavior?: 'auto' | 'instant' | 'smooth';
 }

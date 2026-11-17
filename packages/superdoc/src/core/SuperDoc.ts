@@ -49,6 +49,7 @@ import {
   isCommentsLayout,
   normalizeCommentsUiConfig,
   registerCommentsLayoutBridge,
+  releaseCommentsLayoutBridge,
 } from '../helpers/comment-small-screen.js';
 import type { CommentsLayout, CommentsLayoutState, EffectiveCommentsLayout } from './types/index.js';
 import { isFiniteNumber } from '../helpers/is-finite-number.js';
@@ -4366,6 +4367,7 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
     this.#editorRuntimeRegistryUnsub?.();
     this.#editorRuntimeRegistryUnsub = null;
     this.#editorRuntimeRegistry.clear();
+    releaseCommentsLayoutBridge(this);
 
     // Remove the internal wrapper element from the user's container
     if (this.#mountWrapper) {

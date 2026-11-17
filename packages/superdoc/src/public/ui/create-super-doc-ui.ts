@@ -272,10 +272,20 @@ type FirstPartyCommandMutation = {
 };
 
 const firstPartyCommandMutations = new WeakMap<object, WeakMap<object, FirstPartyCommandMutation>>();
-const firstPartyCommandExecutors = new WeakMap<
-  object,
-  (id: string, payload?: unknown, requireEnabled?: boolean) => Promise<CommandExecutionResult>
->();
+const controllerRegistries: WeakMap<object, unknown>[] = [];
+
+function controllerRegistry<V>(): WeakMap<object, V> {
+  const registry = new WeakMap<object, V>();
+  controllerRegistries.push(registry);
+  return registry;
+}
+
+function releaseControllerRegistries(ui: object): void {
+  for (const registry of controllerRegistries) registry.delete(ui);
+}
+
+const firstPartyCommandExecutors =
+  controllerRegistry<(id: string, payload?: unknown, requireEnabled?: boolean) => Promise<CommandExecutionResult>>();
 
 export function registerFirstPartyCommandMutation(
   superdoc: object,
@@ -290,7 +300,7 @@ export function registerFirstPartyCommandMutation(
   hosts.set(host, mutation);
 }
 
-const firstPartyPageNumberReaders = new WeakMap<object, () => Promise<unknown>>();
+const firstPartyPageNumberReaders = controllerRegistry<() => Promise<unknown>>();
 
 /**
  * Read the page numbers of the caret's section for the built-in popover. Resolves
@@ -11453,6 +11463,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     cancelPostFrameRecompute();
     stopSearchRefresh();
     releaseSharedUiTrackedChangesCatalog(uiTrackedChangesCatalogHost, uiTrackedChangesCatalogState);
+    if (controllerRef) releaseControllerRegistries(controllerRef);
     if (foregroundAsyncRetryTimer) {
       clearTimeout(foregroundAsyncRetryTimer);
       foregroundAsyncRetryTimer = null;

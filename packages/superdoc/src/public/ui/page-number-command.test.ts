@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vite-plus/test';
 import { createSuperDocUI } from '../ui.js';
 import {
   executeFirstPartyCommandAsync,
+  executeFirstPartyShortcutAsync,
   readFirstPartyPageNumbers,
   registerFirstPartyCommandMutation,
 } from './create-super-doc-ui.js';
@@ -349,5 +350,16 @@ describe('readFirstPartyPageNumbers', () => {
     host.getCodePageNumberEditingCommands = () => null;
     expect(await readFirstPartyPageNumbers(ui)).toBeNull();
     expect(await readFirstPartyPageNumbers({})).toBeNull();
+  });
+});
+
+describe('destroy', () => {
+  it('drops the first-party executor and page-number reader, whose closures would otherwise keep the destroyed SuperDoc alive', async () => {
+    const { ui, humanRemove, codeRead } = setup({ selection: selectionAt(null) });
+    ui.destroy();
+    expect(await executeFirstPartyShortcutAsync(ui, 'page-numbers-remove')).toBe(false);
+    expect(await readFirstPartyPageNumbers(ui)).toBeNull();
+    expect(humanRemove).not.toHaveBeenCalled();
+    expect(codeRead).not.toHaveBeenCalled();
   });
 });

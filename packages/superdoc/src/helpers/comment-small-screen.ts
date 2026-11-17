@@ -28,6 +28,10 @@ export const registerCommentsLayoutBridge = (owner: object, bridge: CommentsLayo
 export const getCommentsLayoutBridge = (owner: object): CommentsLayoutBridge | undefined =>
   commentsLayoutBridges.get(owner);
 
+export const releaseCommentsLayoutBridge = (owner: object): void => {
+  commentsLayoutBridges.delete(owner);
+};
+
 const firstDefined = (...values: unknown[]): unknown => values.find((value) => value !== undefined);
 
 const normalizeResponsiveTarget = (value: unknown): string | HTMLElement | undefined => {

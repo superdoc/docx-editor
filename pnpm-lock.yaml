@@ -14705,7 +14705,7 @@ snapshots:
       minimalistic-assert: 1.0.1
       minimalistic-crypto-utils: 1.0.1
 
-  emf-converter@2.0.2(patch_hash=1abbabb14f8f07072a82275df3896736435f29ba688b841d20db97bf0a8ff8df): {}
+  emf-converter@2.0.2(patch_hash=734f9d53f787644205a5fe6c126724456c7aa60660d7cc473fc7cde41444d154): {}
 
   emoji-regex@8.0.0: {}
 

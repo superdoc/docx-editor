@@ -5493,13 +5493,15 @@ export const OPERATION_DEFINITIONS = {
   },
   'contentControls.unwrap': {
     memberPath: 'contentControls.unwrap',
-    description: 'Remove the content control wrapper, preserving its content in place.',
-    expectedResult: 'Returns a ContentControlMutationResult; reports NO_OP if already unwrapped.',
+    description:
+      'Remove the content control wrapper, preserving its content in place. Word leaves the control in place when Track Changes is on, so a tracked unwrap is refused.',
+    expectedResult:
+      'Returns a ContentControlMutationResult; reports NO_OP if already unwrapped, and CAPABILITY_UNAVAILABLE in tracked mode.',
     requiresDocumentContext: true,
     metadata: mutationOperation({
       idempotency: 'conditional',
       supportsDryRun: true,
-      trackedSupport: 'always',
+      trackedSupport: 'never',
       possibleFailureCodes: ['NO_OP'],
       throws: T_CC_MUTATION,
     }),

@@ -2,6 +2,9 @@ import type { DocumentApi } from 'superdoc/ui';
 
 declare const doc: DocumentApi;
 const changes = doc.trackChanges.list({ in: 'all' });
+const scoped = doc.trackChanges.list({ blockIds: ['paragraph-id'], offset: 0, limit: 1 });
+const scopedTotal: number = scoped.total;
+void scopedTotal;
 for (const change of changes.items) {
   const group = change.reviewGroup;
   if (group?.role !== 'parent') continue;

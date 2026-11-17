@@ -719,6 +719,7 @@ export interface TrackChangeInfo {
 export interface TrackChangesListQuery {
   limit?: number;
   offset?: number;
+  blockIds?: readonly string[];
   /**
    * Filter by tracked-change broad type. Accepts the canonical spec
    * vocabulary (`insertion` / `deletion` / `replacement` / ...) and the

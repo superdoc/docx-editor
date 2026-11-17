@@ -96,7 +96,12 @@ Custom dropdown options can include an optional `description` string. The suppor
 label in both the toolbar dropdown and the overflow menu. It is rendered as plain text. For example:
 
 ```ts
-{ id: 'sidebar', label: 'Sidebar', value: 'sidebar', description: 'Show comments beside the document.' }
+const sidebarOption = {
+  id: 'sidebar',
+  label: 'Sidebar',
+  value: 'sidebar',
+  description: 'Show comments beside the document.',
+};
 ```
 
 Keep `satisfies ToolbarConfig` from the examples. It checks control IDs, icon and string slots, font options, and custom

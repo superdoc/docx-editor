@@ -571,6 +571,7 @@ export const INTENT_GROUP_META: Record<string, IntentGroupMeta> = {
 const NONE_FAILURES: readonly ReceiptFailureCode[] = [];
 const NONE_THROWS: readonly PreApplyThrowCode[] = [];
 const FOOTNOTE_MUTATION_FAILURES: readonly ReceiptFailureCode[] = ['INVALID_FRAGMENT', 'CAPABILITY_UNAVAILABLE'];
+const CAPABILITY_REFUSAL_FAILURE_CODE = 'CAPABILITY_UNAVAILABLE' satisfies ReceiptFailureCode;
 function readOperation(
   options: {
     idempotency?: OperationIdempotency;
@@ -608,6 +609,7 @@ function mutationOperation(options: {
   historyUnsafe?: boolean;
   returnsPromise?: boolean;
   returnsReceipt?: boolean;
+  failuresAreThrown?: true;
 }): CommandStaticMetadata {
   return {
     mutates: true,
@@ -616,7 +618,9 @@ function mutationOperation(options: {
     trackedSupport: options.trackedSupport,
     supportsTrackedMode: options.trackedSupport === 'always',
     ...(options.trackedSupport === 'conditional' ? { supportsConditionalTrackedMode: true } : {}),
-    possibleFailureCodes: options.possibleFailureCodes,
+    possibleFailureCodes: options.failuresAreThrown
+      ? options.possibleFailureCodes
+      : [...new Set<ReceiptFailureCode>([...options.possibleFailureCodes, CAPABILITY_REFUSAL_FAILURE_CODE])],
     throws: {
       preApply: options.throws,
       postApplyForbidden: true,
@@ -3181,6 +3185,7 @@ export const OPERATION_DEFINITIONS = {
       supportsDryRun: false,
       trackedSupport: 'conditional',
       possibleFailureCodes: [],
+      failuresAreThrown: true,
       throws: [
         'INVALID_INPUT',
         'TARGET_NOT_FOUND',
@@ -3206,6 +3211,7 @@ export const OPERATION_DEFINITIONS = {
       supportsDryRun: false,
       trackedSupport: 'conditional',
       possibleFailureCodes: [],
+      failuresAreThrown: true,
       throws: [
         'INVALID_INPUT',
         'TARGET_NOT_FOUND',
@@ -3231,6 +3237,7 @@ export const OPERATION_DEFINITIONS = {
       supportsDryRun: false,
       trackedSupport: 'conditional',
       possibleFailureCodes: [],
+      failuresAreThrown: true,
       throws: [
         'INVALID_INPUT',
         'TARGET_NOT_FOUND',
@@ -3257,6 +3264,7 @@ export const OPERATION_DEFINITIONS = {
       supportsDryRun: false,
       trackedSupport: 'conditional',
       possibleFailureCodes: [],
+      failuresAreThrown: true,
       throws: [
         'INVALID_INPUT',
         'TARGET_NOT_FOUND',

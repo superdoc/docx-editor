@@ -10558,7 +10558,7 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
     failure: objectSchema(
       {
         success: { const: false },
-        failure: objectSchema({ code: { enum: ['INVALID_TARGET', 'INVALID_INPUT'] }, message: { type: 'string' } }, [
+        failure: objectSchema({ code: { enum: possibleFailureCodes('create.image') }, message: { type: 'string' } }, [
           'code',
           'message',
         ]),

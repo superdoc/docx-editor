@@ -322,6 +322,40 @@ describe('document-api contract catalog', () => {
     }
   });
 
+  it('declares CAPABILITY_UNAVAILABLE as a receipt failure for every mutation that returns receipts', () => {
+    const temporaryMutations = [
+      'mutations.beginTemporary',
+      'mutations.replaceTemporary',
+      'mutations.rollbackTemporary',
+      'mutations.commitTemporary',
+    ];
+    const undeclared = OPERATION_IDS.filter(
+      (operationId) =>
+        COMMAND_CATALOG[operationId].mutates &&
+        !temporaryMutations.includes(operationId) &&
+        !COMMAND_CATALOG[operationId].possibleFailureCodes.includes('CAPABILITY_UNAVAILABLE'),
+    );
+    expect(undeclared).toEqual([]);
+    for (const operationId of [
+      'tables.move',
+      'citations.bibliography.insert',
+      'footnotes.configure',
+      'blocks.delete',
+    ] as const) {
+      expect(COMMAND_CATALOG[operationId].possibleFailureCodes, operationId).toContain('CAPABILITY_UNAVAILABLE');
+    }
+  });
+
+  it('publishes a receipt failure schema that accepts CAPABILITY_UNAVAILABLE wherever it is declared', () => {
+    const schemas = buildInternalContractSchemas();
+    for (const operationId of OPERATION_IDS) {
+      if (!COMMAND_CATALOG[operationId].possibleFailureCodes.includes('CAPABILITY_UNAVAILABLE')) continue;
+      const failure = schemas.operations[operationId].failure as ContractTestSchemaShape | undefined;
+      const codes = failure?.properties?.failure?.properties?.code?.enum;
+      if (codes) expect(codes, operationId).toContain('CAPABILITY_UNAVAILABLE');
+    }
+  });
+
   it('keeps input schemas closed for object-shaped payloads', () => {
     const schemas = buildInternalContractSchemas();
 

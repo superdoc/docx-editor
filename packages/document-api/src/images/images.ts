@@ -255,6 +255,19 @@ export function executeImagesSetPosition(
       field: 'position',
     });
   }
+  const offset = input.position.marginOffset;
+  for (const [axis, align, field] of [
+    ['horizontal', input.position.alignH, offset?.horizontal],
+    ['vertical', input.position.alignV, offset?.top],
+  ] as const) {
+    if (align != null && field != null) {
+      throw new DocumentApiValidationError(
+        'INVALID_INPUT',
+        `images.setPosition: the ${axis} axis takes an alignment or an offset, not both.`,
+        { field: axis === 'horizontal' ? 'position.alignH' : 'position.alignV' },
+      );
+    }
+  }
   return adapter.setPosition(input, options);
 }
 

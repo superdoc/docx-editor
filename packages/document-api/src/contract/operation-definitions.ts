@@ -4743,7 +4743,7 @@ export const OPERATION_DEFINITIONS = {
   },
   'images.setPosition': {
     memberPath: 'images.setPosition',
-    description: 'Set the anchor position for a floating image.',
+    description: 'Set the anchor position for a floating image. Each axis takes an alignment or an offset, not both.',
     expectedResult: 'Returns an ImagesMutationResult.',
     requiresDocumentContext: true,
     metadata: mutationOperation({
@@ -4751,7 +4751,7 @@ export const OPERATION_DEFINITIONS = {
       supportsDryRun: true,
       trackedSupport: 'always',
       possibleFailureCodes: ['NO_OP'],
-      throws: T_IMAGE_COMMAND,
+      throws: [...T_IMAGE_COMMAND, 'INVALID_INPUT'],
     }),
     referenceDocPath: 'images/set-position.mdx',
     referenceGroup: 'images',

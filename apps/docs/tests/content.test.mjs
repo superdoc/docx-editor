@@ -437,7 +437,7 @@ test('Features exposes an interface-neutral Comments owner without moving existi
   const featureEnd = meta.pages.indexOf('---', featureStart + 1);
   assert.ok(featureEnd > featureStart);
   assert.deepEqual(meta.pages.slice(featureStart + 1, featureEnd), [
-    'comments', 'fonts', 'track-changes', 'content-controls', 'collaboration', 'version-history', '...platform',
+    'comments', 'comment-mentions', 'fonts', 'track-changes', 'content-controls', 'collaboration', 'version-history', '...platform',
   ]);
   for (const page of ['export-options']) {
     assert.ok(meta.pages.indexOf(page) > meta.pages.indexOf('load-and-save-documents'));

@@ -30,6 +30,9 @@ Manually constructed numeric targets and targets captured by older versions have
 
 On success, the creation receipt includes the new thread ID. Keep that ID for replies and later lifecycle changes.
 
+To record mentions, pass `metadata: { mentions: [{ name, email }] }`. The built-in comments UI uses the same field. See
+[Mentions](/editor/comment-mentions) for reading mentions and sending notifications.
+
 ## Add replies without another target
 
 A reply belongs to an existing thread. Pass `parentCommentId` and text. Do not pass the root target again.

@@ -1,0 +1,75 @@
+---
+title: Mention people in comments
+navTitle: Mentions
+description: Let people type @ in a comment, read who was mentioned, and send a Google Chat notification from your server.
+---
+
+Typing `@` in a comment suggests people from the list your application provides. The comment keeps each mentioned
+person's identity, and your application decides whether to notify them. SuperDoc does not send notifications itself.
+
+Start with [Comments](/editor/comments) if you have not added comments to your project yet.
+
+## Provide the people who can be mentioned
+
+Pass the current user as `user` and everyone who can be mentioned as `users`. Each entry needs a `name` or `email`; add a
+stable `id` so your server can match the person without relying on display text.
+
+The suggestion list shows up to eight people whose name or email starts with the text after `@`. People with
+`role: 'viewer'` are not suggested. On internal comments, only people with `access: 'internal'` are suggested. Load
+`users` from your own access list; the browser list is a convenience, not an access check.
+
+## Read mentions from comment events
+
+`onCommentsUpdate` runs when a comment is added or changed. For `add` and `update` events, `event.comment.mentions` lists
+the people mentioned in that comment. Each entry has the `id`, `name`, and `email` you provided; when a person has no
+name, the email is used as the name.
+
+This example sets up the mention list and sends the mentioned people to your server:
+
+<include>../../../snippets/editor/comment-mentions.ts</include>
+
+Ignore events with `rejected: true`. The change did not reach the document.
+
+Editing a comment's text sends an `update` event with the comment's full mention list, including people who were already
+mentioned. Decide who is new on the server, not in the browser.
+
+## Notify mentioned people in Google Chat
+
+In Google Chat, create an incoming webhook for the space that should receive notifications. The webhook URL can post to
+that space, so keep it on your server and never send it to the browser.
+
+Your server should:
+
+1. Identify the signed-in author from the request, not from the request body.
+2. Check that the author may comment on the document.
+3. Look up each mentioned person in your own records for that document. Skip anyone you do not recognize.
+4. Record a key made of document ID, comment ID, and person ID before sending, and skip keys you have already recorded.
+5. Post one message that names everyone new. If any step fails before Google Chat accepts the message, remove the keys
+   so a later event can try again.
+
+This handler uses the standard `Request` and `Response` types, so it fits most server frameworks. Supply the lookups
+and the record of sent notifications from your own storage:
+
+<include>../../../snippets/editor/comment-mentions-server.ts</include>
+
+The handler sends one message per comment rather than one per person, because Google Chat limits how often a webhook
+can post to a space. When the handler returns an error, the browser example logs it; a production app can queue and
+retry on the server instead.
+
+The webhook posts to a space, not to one person. Use the Google Chat API instead when each person should get a direct
+message.
+
+## Mentions in the DOCX
+
+Mentions are saved with the comment when you export the DOCX. When the file is opened in Microsoft Word and saved, the
+mention data stays with the comment and SuperDoc reads it back on the next load.
+
+Code that uses the [Document API](/document-api/comments) can attach mentions when it creates a comment by passing
+`metadata: { mentions: [{ name, email }] }` to `comments.create()`.
+
+## Verify mentions
+
+1. Add a comment, type `@`, and choose a person from the list.
+2. Confirm your server receives the comment ID and that person's `id` and `email`.
+3. Edit the comment text. No second notification should be sent.
+4. Export the DOCX, reopen it, and confirm the comment still lists the person.

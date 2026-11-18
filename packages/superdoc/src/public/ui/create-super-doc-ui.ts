@@ -6974,14 +6974,42 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     const targetStory = selectionStoryLocator(state.selection);
 
     const ownerIsCurrent = captureCommandOwner();
-    const sourceToken = contentToken();
-    const selectionToken = selectionKey(state.selection);
+    const selectionAddressKey = (ignoreOffsets = false) => {
+      const target = state.selection?.selectionTarget ?? state.selection?.target;
+      if (!isPlainObject(target)) return selectionKey(state.selection);
+      const { captureState: _captureState, ...address } = target;
+      if (ignoreOffsets && address.kind === 'selection') {
+        const withoutOffset = (point: unknown) =>
+          isPlainObject(point) && typeof point.offset === 'number' ? { ...point, offset: 0 } : point;
+        return selectionKey({
+          selectionTarget: { ...address, start: withoutOffset(address.start), end: withoutOffset(address.end) },
+        });
+      }
+      if (ignoreOffsets && address.kind === 'text' && Array.isArray(address.segments)) {
+        const segments = address.segments.map((segment: unknown) => {
+          if (!isPlainObject(segment) || !isPlainObject(segment.range)) return segment;
+          const { range } = segment;
+          return {
+            ...segment,
+            range: {
+              ...range,
+              ...(typeof range.start === 'number' ? { start: 0 } : {}),
+              ...(typeof range.end === 'number' ? { end: 0 } : {}),
+            },
+          };
+        });
+        return selectionKey({ selectionTarget: { ...address, segments } });
+      }
+      return selectionKey({ selectionTarget: address });
+    };
+    let selectionAddress = selectionAddressKey();
+    const selectionAddressShape = selectionAddressKey(true);
     const selectionGeneration = selectionRequestGeneration();
-    const isCurrent = () =>
+    const ownerAndSelectionAreCurrent = () =>
       ownerIsCurrent() &&
-      contentToken() === sourceToken &&
-      selectionKey(state.selection) === selectionToken &&
-      selectionRequestGeneration() === selectionGeneration;
+      selectionRequestGeneration() === selectionGeneration &&
+      JSON.stringify(selectionBlockIds(state.selection)) === JSON.stringify(blockIds) &&
+      storyLocatorSignature(selectionStory(state.selection)) === storyLocatorSignature(story);
     const find = hostMethod(doc, 'find');
     const useResolved =
       (find || typeof doc?.get === 'function') &&
@@ -7069,8 +7097,26 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     };
 
     pendingCommandSettlement = (async (): Promise<CommandExecutionResult> => {
-      const plans = await Promise.all(blockIds.map((blockId) => planBlock(blockId).catch(() => null)));
-      if (!isCurrent()) return false;
+      let plans: (HybridIndentPlan | null)[];
+      for (let attempt = 0; ; attempt++) {
+        const sourceToken = contentToken();
+        const selectionToken = selectionKey(state.selection);
+        plans = await Promise.all(blockIds.map((blockId) => planBlock(blockId).catch(() => null)));
+        if (!ownerAndSelectionAreCurrent()) return false;
+        const contentChanged = contentToken() !== sourceToken;
+        const currentAddress = selectionAddressKey();
+        if (currentAddress !== selectionAddress) {
+          if (
+            !contentChanged ||
+            selectionGeneration === undefined ||
+            selectionAddressKey(true) !== selectionAddressShape
+          )
+            return false;
+          selectionAddress = currentAddress;
+        }
+        if (!contentChanged && selectionKey(state.selection) === selectionToken) break;
+        if (selectionGeneration === undefined || !contentChanged || attempt >= 2) return false;
+      }
       const allListItems = plans.length === blockIds.length && plans.every((plan) => plan?.kind === 'list');
       const preserveFirstItemLevel = blockIds.length === 1 && story.storyType === 'body';
       if (allListItems && (readDocumentMode() !== 'suggesting' || preserveFirstItemLevel)) {

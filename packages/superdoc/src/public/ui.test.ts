@@ -18447,7 +18447,7 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
     }
   });
 
-  it.each(['editor', 'doc', 'host', 'mode', 'selection', 'lifetime', 'content'])(
+  it.each(['editor', 'doc', 'host', 'mode', 'selection', 'lifetime'])(
     'SD-7235 R1 rejects delayed find %s invalidation',
     async (change) => {
       let release = () => {};
@@ -18460,14 +18460,7 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
       });
       const lifetime = { aborted: false };
       let generation = 0;
-      let onEvent = (_event: unknown) => {};
       const host = {
-        events: {
-          subscribe: (handler: (event: unknown) => void) => {
-            onEvent = handler;
-            return () => {};
-          },
-        },
         getForegroundInteractionLifetime: () => lifetime,
         getHandles: () => ({
           editing: { selectionTargets: { apply: vi.fn(), selectionRequestGeneration: () => generation } },
@@ -18492,12 +18485,199 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
       if (change === 'mode') superdoc.config.documentMode = 'viewing';
       if (change === 'selection') generation++;
       if (change === 'lifetime') lifetime.aborted = true;
-      if (change === 'content') onEvent({ type: 'document:mutated' });
       release();
       expect(await executing).toBe(false);
       expect(setIndentation).not.toHaveBeenCalled();
     },
   );
+
+  it.each(['unchanged selection', 'selection changed', 'owner changed', 'repeated edits', 'no generation'])(
+    'SD-7235 replans a concurrent edit with %s',
+    async (scenario) => {
+      let release = () => {};
+      let started = () => {};
+      let generation = 0;
+      let onEvent = (_event: unknown) => {};
+      const reading = new Promise<void>((resolve) => {
+        started = resolve;
+      });
+      const pending = new Promise<unknown>((resolve) => {
+        release = () => resolve(ruleFindResult(0));
+      });
+      const host = {
+        events: {
+          subscribe: (handler: (event: unknown) => void) => {
+            onEvent = handler;
+            return () => {};
+          },
+        },
+        getHandles: () => ({
+          editing: {
+            selectionTargets: {
+              apply: vi.fn(),
+              selectionRequestGeneration: () => (scenario === 'no generation' ? undefined : generation),
+            },
+          },
+        }),
+      };
+      const find = vi
+        .fn()
+        .mockImplementationOnce(() => {
+          started();
+          return pending;
+        })
+        .mockImplementation(() => {
+          if (scenario === 'repeated edits') onEvent({ type: 'document:mutated' });
+          return ruleFindResult(36);
+        });
+      const { ui, superdoc, setIndentation } = ruleIndentUi({ find }, { editorExtra: { host } });
+      const executing = ui.toolbar.executeAsync('indent-increase');
+      await Promise.race([reading, nextAnimationFrame()]);
+      onEvent({ type: 'document:mutated' });
+      if (scenario === 'selection changed') generation++;
+      if (scenario === 'owner changed') superdoc.activeEditor = { ...superdoc.activeEditor };
+      release();
+      if (scenario === 'unchanged selection') {
+        expect(await executing).toMatchObject({ success: true });
+        expect(find).toHaveBeenCalledTimes(2);
+        expect(setIndentation).toHaveBeenCalledExactlyOnceWith({
+          target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P1' },
+          left: 1440,
+        });
+      } else {
+        expect(await executing).toBe(false);
+        expect(setIndentation).not.toHaveBeenCalled();
+        expect(find).toHaveBeenCalledTimes(scenario === 'repeated edits' ? 3 : 1);
+      }
+    },
+  );
+
+  it.each([
+    ['remote caret remap', true, true, 'P1', undefined, true],
+    ['remote target remap', true, true, 'P1', undefined, false],
+    ['second remote remap', true, true, 'P1', undefined, true],
+    ['local selection change', true, true, 'P1', undefined, true],
+    ['offset change without edit', false, true, 'P1', undefined, true],
+    ['unknown generation', true, false, 'P1', undefined, true],
+    ['different paragraph', true, true, 'P2', undefined, true],
+    ['different story', true, true, 'P1', { kind: 'story', storyType: 'headerFooterPart', refId: 'rId6' }, true],
+    ['different coordinate space', true, true, 'P1', undefined, true],
+  ])('SD-7235 pending indent handles %s', async (scenario, edited, hasGeneration, blockId, story, explicit) => {
+    let release = () => {};
+    let started = () => {};
+    let releaseNext = () => {};
+    let startedNext = () => {};
+    let notifySelection = () => {};
+    let notifyHostEvent = (_event: unknown) => {};
+    let generation = 0;
+    const selection = (id: string, offset: number, selectedStory?: unknown, coordinateSpace?: string) => ({
+      empty: false,
+      target: {
+        kind: 'text',
+        segments: [{ blockId: id, range: { start: offset, end: offset } }],
+        ...(selectedStory ? { story: selectedStory } : {}),
+      },
+      selectionTarget: explicit
+        ? {
+            kind: 'selection',
+            start: { kind: 'text', blockId: id, offset },
+            end: { kind: 'text', blockId: id, offset },
+            ...(selectedStory ? { story: selectedStory } : {}),
+            ...(coordinateSpace ? { coordinateSpace } : {}),
+          }
+        : null,
+      activeMarks: [],
+      activeCommentIds: [],
+      activeChangeIds: [],
+      text: '',
+    });
+    let currentSelection = selection('P1', 0);
+    const reading = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const pending = new Promise<unknown>((resolve) => {
+      release = () => resolve(ruleFindResult(0));
+    });
+    const readingNext = new Promise<void>((resolve) => {
+      startedNext = resolve;
+    });
+    const pendingNext = new Promise<unknown>((resolve) => {
+      releaseNext = () => resolve(ruleFindResult(36));
+    });
+    const find = vi
+      .fn()
+      .mockImplementationOnce(() => {
+        started();
+        return pending;
+      })
+      .mockImplementationOnce(() => {
+        if (scenario !== 'second remote remap') return ruleFindResult(36);
+        startedNext();
+        return pendingNext;
+      })
+      .mockImplementation(() => ruleFindResult(36));
+    const host = {
+      events: {
+        subscribe: (listener: (event: unknown) => void) => {
+          notifyHostEvent = listener;
+          return () => {};
+        },
+      },
+      getHandles: () => ({
+        editing: {
+          selection: {
+            subscribe: (listener: () => void) => {
+              notifySelection = listener;
+              return () => {};
+            },
+          },
+          selectionTargets: {
+            apply: vi.fn(),
+            selectionRequestGeneration: () => (hasGeneration ? generation : undefined),
+          },
+        },
+      }),
+    };
+    const { ui, setIndentation } = ruleIndentUi(
+      { find, selection: { current: () => currentSelection } },
+      { editorExtra: { host } },
+    );
+    const executing = ui.toolbar.executeAsync('indent-increase');
+    await Promise.race([reading, nextAnimationFrame()]);
+    if (edited) notifyHostEvent({ type: 'collaboration:remote-changed', changedStoryIds: ['body'] });
+    currentSelection = selection(blockId, 4, story, scenario === 'different coordinate space' ? 'tracked' : undefined);
+    if (scenario === 'local selection change') generation++;
+    notifySelection();
+    await vi.waitFor(() =>
+      expect(ui.selection.getSnapshot()).toMatchObject({
+        target: currentSelection.target,
+        selectionTarget: currentSelection.selectionTarget,
+      }),
+    );
+    release();
+    if (scenario === 'second remote remap') {
+      await Promise.race([readingNext, nextAnimationFrame()]);
+      notifyHostEvent({ type: 'collaboration:remote-changed', changedStoryIds: ['body'] });
+      currentSelection = selection('P1', 8);
+      notifySelection();
+      await vi.waitFor(() =>
+        expect(ui.selection.getSnapshot().selectionTarget).toEqual(currentSelection.selectionTarget),
+      );
+      releaseNext();
+    }
+    if (scenario === 'remote caret remap' || scenario === 'remote target remap' || scenario === 'second remote remap') {
+      expect(await executing).toMatchObject({ success: true });
+      expect(find).toHaveBeenCalledTimes(scenario === 'second remote remap' ? 3 : 2);
+      expect(setIndentation).toHaveBeenCalledExactlyOnceWith({
+        target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P1' },
+        left: 1440,
+      });
+    } else {
+      expect(await executing).toBe(false);
+      expect(setIndentation).not.toHaveBeenCalled();
+      expect(find).toHaveBeenCalledTimes(1);
+    }
+  });
 
   it.each([
     ['inherited increase', 'indent-increase', 36, 1440],

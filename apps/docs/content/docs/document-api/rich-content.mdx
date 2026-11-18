@@ -48,6 +48,28 @@ Use `dryRun: true` to resolve and preflight without creating IDs, history, or do
 
 Successful raw-source receipts include the final `outcome` and a `conversion` report. They may also include created entity identities, source-path effects, affected stories, text-range shifts, and a transaction ID. Check `success` before using any success-only field.
 
+## Insert a native page break at the browser caret
+
+For a custom button in a mounted browser editor, insert one page-break node without a target or placement:
+
+```ts
+button.addEventListener('mousedown', (event) => event.preventDefault());
+button.addEventListener('click', async () => {
+  const receipt = await superdoc.activeEditor.doc.insert({
+    content: { kind: 'break', break: { type: 'page' } },
+  });
+  if (!receipt.success) {
+    showError(receipt.failure?.message ?? 'Page break could not be inserted.');
+    return;
+  }
+  console.log(receipt.txId, receipt.evaluatedRevision);
+});
+```
+
+The button preserves focus so the operation uses the existing collapsed caret in an ordinary body paragraph. A successful mutation returns `success: true`, `outcome: 'preserved'`, a transaction ID, and the evaluated revisions. It inserts one native Word page break (`w:br` with `w:type="page"`), preserves the surrounding text, and leaves the caret after the break. The operation also works in a shared document, with synchronized history and export.
+
+This browser default applies to a single page-break node (or a one-element array containing it). Untargeted text and other rich inserts keep their append behavior. A range, table selection, or unavailable text caret returns a failure. Existing page-start rules can share a page boundary with a manual break, so inserting a break does not always increase the page count immediately.
+
 ## Native Word XML
 
 Use the same `insert()` and `replace()` APIs for native Word markup:

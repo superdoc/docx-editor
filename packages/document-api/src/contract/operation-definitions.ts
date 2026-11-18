@@ -959,11 +959,11 @@ export const OPERATION_DEFINITIONS = {
       'Insert content into the document. Text, rich, structural, and native OOXML input shapes: ' +
       'text-based (value + type) inserts inline content at a SelectionTarget or ref position within an existing block; ' +
       'structural SDFragment (content) inserts one or more blocks as siblings relative to a BlockNodeAddress target. ' +
-      'When target/ref is omitted, content appends at the end of the document. ' +
+      'When target/ref is omitted, content appends at the end of the document, except in a mounted browser when content is a single {kind:"break", break:{type:"page"}} node or a one-element array containing it, with target, ref, placement, and in all omitted. That page break inserts at the current collapsed text caret in an ordinary body paragraph, preserves surrounding text, and leaves the caret after the native Word page break. ' +
       'Text mode supports text (default), markdown, and html. Native type:ooxml accepts namespaces and dependency manifests, or capture accepts a portable selection.extractOoxml result. Native copies remap package and review identities and require direct mode. ' +
       'Rich markdown/html and structural modes use `placement` (before/after/insideStart/insideEnd) to position relative to a block target.',
     expectedResult:
-      'Returns an SDMutationReceipt with applied status; resolution reports the resolved insertion point/target. Created visible text and structural blocks are reported through effects.insertedText and effects.insertedBlocks when available. Receipt reports NO_OP if the insertion point is invalid or content is empty.',
+      'Returns an SDMutationReceipt with applied status for ordinary inserts; resolution reports the resolved insertion point/target. Created visible text and structural blocks are reported through effects.insertedText and effects.insertedBlocks when available. Receipt reports NO_OP if the insertion point is invalid or content is empty. For the mounted-browser current-caret page-break path, a committed mutation returns a public receipt with success:true, outcome:"preserved", txId, and the evaluated revisions; a successful dryRun leaves the evaluated revisions unchanged and omits txId. A range, table selection, or unavailable text caret returns a failure.',
     requiresDocumentContext: true,
     metadata: mutationOperation({
       idempotency: 'non-idempotent',

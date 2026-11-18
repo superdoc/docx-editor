@@ -180,6 +180,9 @@ async function main() {
           await timing.stage('npm/collaboration-bridge', { parentId: 'npm' }, async () =>
             run('pnpm', ['run', 'build:collaboration-upgrade-engine'], { env: buildEnv }),
           );
+          await timing.stage('npm/collaboration-validation', { parentId: 'npm' }, async () =>
+            run('pnpm', ['run', 'build:collaboration-validation'], { env: buildEnv }),
+          );
           await timing.stage('npm/verify', { parentId: 'npm', command: 'pnpm run verify:npm' }, async () =>
             run('pnpm', ['run', 'verify:npm'], { env: buildEnv }),
           );

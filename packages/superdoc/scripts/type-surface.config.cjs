@@ -60,6 +60,7 @@ const requiredEntryPoints = [
   'superdoc/src/public/ui-vue.d.cts',
   'superdoc/src/public/collaboration-upgrade-engine.d.ts',
   'superdoc/src/public/collaboration-upgrade-engine.d.cts',
+  'superdoc/src/public/collaboration-validation.d.ts',
   'superdoc/src/public/collaboration-worker.d.ts',
   'superdoc/src/public/collaboration-worker.d.cts',
 ];
@@ -267,6 +268,11 @@ const publicContract = {
       subpath: './collaboration-upgrade-engine',
       tier: 'supported',
       note: 'Node-only collaboration upgrade builder and validator; routes through src/public/collaboration-upgrade-engine.ts',
+    },
+    {
+      subpath: './collaboration-validation',
+      tier: 'supported',
+      note: 'Node ESM collaboration update classification against accepted room state',
     },
     {
       subpath: './collaboration-worker',

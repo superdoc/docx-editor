@@ -72,6 +72,14 @@
         "require": "./dist/collaboration-upgrade-engine.cjs"
       }
     },
+    "./collaboration-validation": {
+      "types": {
+        "import": "./dist/superdoc/src/public/collaboration-validation.d.ts"
+      },
+      "node": {
+        "import": "./dist/collaboration-validation.es.js"
+      }
+    },
     "./collaboration-worker": {
       "types": {
         "import": "./dist/superdoc/src/public/collaboration-worker.d.ts",
@@ -116,6 +124,7 @@
     "build:npm": "node ./scripts/build-public-superdoc.mjs --surface npm",
     "build:dev": "SUPERDOC_SKIP_DTS=1 SUPERDOC_NPM_FORMAT=es vp build && SUPERDOC_NPM_FORMAT=cjs vp build",
     "build:collaboration-upgrade-engine": "vp build --config vite.config.collaboration-upgrade-engine.js",
+    "build:collaboration-validation": "vp build --config vite.config.collaboration-validation.ts",
     "verify:npm": "node ./scripts/verify-public-npm.mjs",
     "audit:publish": "node ./scripts/audit-public-output.cjs",
     "audit:declarations": "node ./scripts/audit-declarations.cjs",

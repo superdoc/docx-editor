@@ -90,6 +90,158 @@ then open any room.
 
 [Control access to a room](/editor/collaboration/control-room-access) explains the checks in more detail.
 
+## Gate y-websocket updates by operation
+
+Use `superdoc/collaboration-validation` from Node.js ESM to check a raw Yjs V1 update against the room's
+authoritative, accepted `Y.Doc`. Import the same ESM copy of `yjs` in your server and validator. This helper was
+verified with Yjs 13.6.31.
+
+Create and commit the room through the trusted provisioning path before opening it to reviewers. Include a valid
+`word/settings.xml` part in the provisioning DOCX, even if the settings element is empty. This seeds the settings
+scope before the first review operation. In a room without that scope, the producer can send a separate settings
+initialization update. Admit provisioning and maintenance through your trusted service path before reviewer traffic.
+
+For a y-websocket server, inspect both write-bearing sync messages before using any sync reader that can apply an
+update. The example uses application-provided room routing, authentication, permission checks, storage, and a
+per-room write queue. The existing Hocuspocus template uses its own transport and requires a pre-apply integration
+for that transport.
+
+Create one handler per socket with `createFrameHandler(connection)`. Call it directly from the socket's message
+listener so each frame enters the connection queue in receive order before authentication or routing can pause.
+Handle rejected promises in the listener. Share the room write queue across all connections to that room.
+
+```ts
+import * as Y from 'yjs';
+import * as decoding from 'lib0/decoding';
+import * as encoding from 'lib0/encoding';
+import * as sync from 'y-protocols/sync';
+import { classifyUpdate } from 'superdoc/collaboration-validation';
+
+type Connection = Parameters<typeof authenticateAndRoute>[0];
+
+function createFrameHandler(connection: Connection) {
+  let frameQueue = Promise.resolve();
+  return (frame: Uint8Array) => {
+    const result = frameQueue.then(() => handleFrame(connection, frame));
+    frameQueue = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  };
+}
+
+async function handleFrame(connection: Connection, frame: Uint8Array) {
+  const { room, permissions } = await authenticateAndRoute(connection);
+  let update: Uint8Array;
+  try {
+    const decoder = decoding.createDecoder(frame);
+    if (decoding.readVarUint(decoder) !== 0) return handleNonSyncMessage(connection, frame);
+    const message = decoding.readVarUint(decoder);
+    if (message === sync.messageYjsSyncStep1) return respondToSyncRequest(connection, frame);
+    if (message !== sync.messageYjsSyncStep2 && message !== sync.messageYjsUpdate) return 'invalid-frame';
+    update = decoding.readVarUint8Array(decoder).slice();
+    if (decoding.hasContent(decoder)) return 'invalid-frame';
+  } catch {
+    return 'invalid-frame';
+  }
+
+  return room.serializeWrites(async () => {
+    const accepted = room.acceptedDoc;
+    const decision = classifyUpdate({ accepted, roomName: room.name, update });
+    if (decision.kind === 'noop') return decision;
+
+    const allowed =
+      (decision.kind === 'comment' && permissions.canComment) ||
+      (decision.kind === 'suggestion' && permissions.canSuggest) ||
+      (decision.kind === 'edit' && permissions.canEdit) ||
+      (decision.kind === 'attribution' && permissions.canWriteRoom);
+    if (!allowed) return denyAndResync(connection, decision);
+
+    await room.persistAcceptedUpdate(update);
+    Y.applyUpdate(accepted, update);
+    const outbound = encoding.createEncoder();
+    encoding.writeVarUint(outbound, 0);
+    sync.writeUpdate(outbound, update);
+    room.broadcast(encoding.toUint8Array(outbound), { except: connection });
+    return decision;
+  });
+}
+```
+
+Use a single writer per room or a storage revision fence that covers deletions. Apply and broadcast the same bytes
+you authorized against that accepted state. The room name comes from trusted routing and must exactly match
+`sd2/v2.1/<documentId>`. Your application owns connection identity, permissions, size and execution limits,
+persistence, and peer recovery. Author names, emails, and CRDT writer IDs are descriptive data.
+
+For each update it inspects, `classifyUpdate` encodes the full accepted Yjs room state and loads it into a fresh
+scratch document. The example does this inside the room's write queue, so even a small update incurs a cost that
+grows with the accepted state. When setting room size and write-rate limits, measure classification latency and
+queue delay with representative encoded Yjs state sizes, edit histories, and concurrent writers.
+
+The example uses the application's `canWriteRoom` permission to admit a standalone attribution refresh for an
+authenticated connection already authorized to write to this room. The typed client can send this packet after a
+burst of edits. It refreshes the existing main-story `lastEditActorType` with the same value as that writer's
+accepted attribution stamp and advances its Yjs clock. Apply, persist, and relay it through the same room write
+queue as other admitted updates so the writer's next update has all its dependencies. Derive permissions from
+your application's authentication and authorization policy.
+
+The validator covers committed typed SuperDoc room schema 2.0, story schema 1.2, and package unit schema 1.0. It
+targets the canonical `/word/document.xml` main story with no table records. A supported target is an ordinary native
+paragraph with unformatted text, empty paragraph properties, no source-run boundaries, and no existing inline or
+revision carriers. The supported operations are a fresh root comment on one nonempty range with both endpoints on
+Unicode scalar boundaries, a contiguous single-line plain-text tracked insertion, and the equivalent direct insertion. Comment
+bodies are limited to 65,536 UTF-16 code units and inserted text to 1,048,576 code units. Comments use plain text
+with no account linkage, parent, or imported review metadata. The helper checks the actual
+record, XML wrappers or markers, anchors, range, and narrowly bound source and attribution fields. A fully covered
+combination of distinct operations in separate paragraphs requires edit permission.
+
+Two reviewers can submit their first supported comments on separate paragraphs from the same room state. The
+validator accounts for Yjs arbitration when the packets create the same initial main-story source history,
+paragraph export flag, and actor tag. It checks that these writes accompany the supported comment and its
+paragraph source markers. This covers either arrival order. Explicit deletions of those entries, different values,
+and other unaccounted changes still cause a denial. Use the same resync procedure below for denied writes.
+
+For a supported comment, suggestion, or direct edit, the validator recognizes a new `user` or `api` stamp from a
+`human` or `code` actor with a canonical UTC timestamp including milliseconds. An incoming stamp with `changeTag`,
+`fromClock`, or `toClock`, or an incoming `undo`, `redo`, or `maintenance` stamp, falls outside this policy.
+Attribution checks require a writer-owned client binding without the optional `claim` produced by `setClaim`.
+The validator denies packets that write a binding with a `claim`. During a burst, the client can reuse an accepted
+stamp and omit a stamp write from the packet.
+
+A supported operation can replace the same writer's canonical stamp in accepted history when its new timestamp is
+strictly later. A previous `human` or `code` stamp can have cause `user` or `api` with an optional nonempty `changeTag`,
+or cause `undo` or `redo` without a tag. A previous `maintenance` stamp requires a `code` actor, no tag, and both
+`fromClock` and `toClock` as ordered nonnegative safe integers. Clock fields on other causes, incomplete or invalid
+maintenance ranges, and extra stamp fields fall outside these shapes. Route writes outside the admission policy
+through your application only if it has an explicit trusted path for them.
+
+A standalone refresh uses the writer's accepted `user` or `api` stamp with or without `changeTag`. The refresh
+updates only the matching story actor entry.
+
+| Decision       | Reason and handling                                                                                                                                                               |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `comment`      | `anchored-comment-created`                                                                                                                                                        |
+| `suggestion`   | `tracked-text-inserted`                                                                                                                                                           |
+| `edit`         | `direct-text-inserted` or `mixed-operations`                                                                                                                                      |
+| `attribution`  | `story-attribution-refreshed`. Use the application's room write permission.                                                                                                       |
+| `noop`         | `no-new-effects`. Drop an empty packet or replay.                                                                                                                                 |
+| `invalid`      | `malformed-update` or `malformed-structure`. Deny.                                                                                                                                |
+| `unverifiable` | `baseline-has-pending`, `pending-structs`, `pending-deletions`, `overlapping-structs`, `unsupported-baseline`, or `room-mismatch`. Deny and recover from your trusted room state. |
+| `unsupported`  | `unknown-schema`, `unsupported-encoding`, `unknown-root`, `room-initialization`, or `unexpected-effect`. Deny.                                                                    |
+
+Send the accepted room's state vector in the server's sync request so the peer can reply with a state-vector-differenced
+`SyncStep2`. A valid diff may include previously applied delete ranges. A packet with new effects and structs that
+wholly or partly overlap accepted history is denied. This includes a full room snapshot carrying a fresh operation.
+If the peer has rejected local changes, reopen it with a fresh local `Y.Doc`, sync it from accepted state, then
+retry permitted operations.
+
+`isComment`, `isSuggestion`, and `isEdit` take the same input and match only their corresponding decision.
+Point or cross-paragraph comments, comment replies and changes to existing comments, tracked deletions and
+replacement, revision decisions, formatting, changes to complex or non-main story content, settings changes, and
+unknown extra effects fall outside this policy. A compound update in one paragraph can include retargeting and
+transient writes that this policy denies. Route administrative changes explicitly through a trusted service.
+
 ## Store rooms
 
 The template stores one file of room state per room. It stores a room shortly after edits stop, at least every 10

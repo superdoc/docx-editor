@@ -6,7 +6,14 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vite-plus/test';
 
 const scriptsDir = path.dirname(fileURLToPath(import.meta.url));
-const publicEntries = ['ui', 'ui-react', 'ui-vue', 'collaboration-upgrade-engine', 'collaboration-worker'];
+const publicEntries = [
+  'ui',
+  'ui-react',
+  'ui-vue',
+  'collaboration-upgrade-engine',
+  'collaboration-validation',
+  'collaboration-worker',
+];
 const distRoots: string[] = [];
 
 function seedDist(files: Record<string, string>, { withEntries = true } = {}) {

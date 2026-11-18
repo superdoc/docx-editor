@@ -13,6 +13,7 @@ import type {
   DrawingBlock,
   DrawingMeasure,
 } from '@superdoc/contracts';
+import { PARTIAL_ROW_RENDERS_TO_CELL_END } from '@superdoc/contracts';
 
 describe('renderTableCell', () => {
   let doc: Document;
@@ -1428,6 +1429,34 @@ describe('renderTableCell', () => {
     const renderedLines = Array.from(cellElement.querySelectorAll('.segment-alignment-line')) as HTMLElement[];
     expect(renderedLines).toHaveLength(1);
     expect(renderedLines[0]?.dataset.blockId).toBe('para-after-anchor');
+  });
+
+  it('renders a partial-row slice to the end of the cell when toLine is PARTIAL_ROW_RENDERS_TO_CELL_END', () => {
+    const paragraphs: ParagraphBlock[] = ['first', 'second', 'third'].map((id) => ({
+      kind: 'paragraph',
+      id,
+      runs: [{ text: id, fontFamily: 'Arial', fontSize: 16 }],
+    }));
+
+    const { cellElement } = renderTableCell({
+      ...createBaseDeps(),
+      cellMeasure: { ...baseCellMeasure, blocks: paragraphs.map(() => paragraphMeasure), height: 60 },
+      cell: { ...baseCell, blocks: paragraphs },
+      fromLine: 1,
+      toLine: PARTIAL_ROW_RENDERS_TO_CELL_END,
+      renderLine: (block) => {
+        const line = doc.createElement('div');
+        line.classList.add('cell-end-sentinel-line');
+        line.dataset.blockId = block.id;
+        return line;
+      },
+    });
+
+    const renderedIds = Array.from(
+      cellElement.querySelectorAll<HTMLElement>('.cell-end-sentinel-line'),
+      (line) => line.dataset.blockId,
+    );
+    expect(renderedIds).toEqual(['second', 'third']);
   });
 
   it('positions column-relative anchored images from the cell content box, ignoring table indent and cell offset', () => {

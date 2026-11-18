@@ -55,6 +55,7 @@ test('clients that rejoin while the last write is still running share one room a
   let writes = 0;
   const roomStore: RoomStore = {
     load: (roomName) => fileStore.load(roomName),
+    delete: (roomName) => fileStore.delete(roomName),
     async store(roomName, state) {
       writes += 1;
       if (writes === 1) await firstWriteHeld;
@@ -102,6 +103,7 @@ test('a room stays mapped until writes queued while it was unloading have finish
   let writes = 0;
   const roomStore: RoomStore = {
     load: (roomName) => fileStore.load(roomName),
+    delete: (roomName) => fileStore.delete(roomName),
     async store(roomName, state) {
       writes += 1;
       if (writes <= 2) await new Promise<void>((resolve) => releases.push(resolve));

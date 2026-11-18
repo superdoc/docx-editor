@@ -497,6 +497,8 @@ V1 applications supplied an external Y.Doc and provider through `modules.collabo
 
 The [preview API](/editor/collaboration/connect-two-editors#configure-your-application) names that target `document.collaboration`, typed as `DocumentCollaborationConfig`. It also accepts `collaboration` in `upgradeToCollaboration()`. The older `v2Collaboration` field and `V2CollaborationConfig` type remain supported for existing integrations; new code should use the unversioned names. When both fields are supplied, `collaboration` wins as a whole—settings are not merged. On a document, `collaboration: null` explicitly opens locally.
 
+If your server uses `@superdoc-dev/superdoc-yjs-collaboration`, see [Move off the legacy collaboration server](/editor/migrate-from-v1/legacy-collaboration-server).
+
 [Connect two editors](/editor/collaboration/connect-two-editors) explains create/join, readiness, connection failures, and cleanup. [Run a server](/editor/collaboration/run-a-server) covers provider targets and server responsibilities. Use [Upgrade a document](/editor/collaboration/upgrade-a-document) when a local Editor should create a new room without remounting.
 
 #### Split-origin worker assets

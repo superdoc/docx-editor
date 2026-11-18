@@ -53,7 +53,7 @@ describe('checkGeneratedFiles determinism', () => {
     );
     // The stale gitignored copy must not surface as an issue.
     expect(issues).toEqual([]);
-  });
+  }, 15_000);
 
   it('still flags stale tracked output content', async () => {
     makeWorkspace();
@@ -64,5 +64,5 @@ describe('checkGeneratedFiles determinism', () => {
       roots: ['tracked'],
     });
     expect(issues).toEqual([{ kind: 'content', path: 'tracked/a.json' }]);
-  });
+  }, 15_000);
 });

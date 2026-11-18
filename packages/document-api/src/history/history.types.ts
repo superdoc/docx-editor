@@ -109,3 +109,16 @@ export interface HistoryActionResult {
    */
   collaboration?: SDHistoryCollaborationMeta;
 }
+
+export interface HistoryGroupHandle {
+  groupId: string;
+}
+
+export interface HistoryEndGroupInput {
+  groupId: string;
+}
+
+export interface HistoryEndGroupResult {
+  groupId: string;
+  closed: boolean;
+}

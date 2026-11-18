@@ -10,7 +10,7 @@ import '../style.css';
 import { EventEmitter } from 'eventemitter3';
 import type { DocumentReplacementResult } from '../public/document-replacement.js';
 import { v4 as uuidv4 } from 'uuid';
-import { nextTick, toRaw } from 'vue';
+import { nextTick, shallowRef, toRaw } from 'vue';
 import type { HocuspocusProviderWebsocket } from '@hocuspocus/provider';
 import type { Pinia } from 'pinia';
 import type { ContentControlType } from '@superdoc/document-api';
@@ -44,7 +44,13 @@ import { normalizeUiConfig } from './config/normalize-ui-config.js';
 import { normalizeInteractionConfig } from './config/normalize-interaction-config.js';
 import { normalizeSurfacesConfig } from './config/normalize-surfaces-config.js';
 import { warnForMissingDocumentFonts } from './helpers/font-diagnostics.js';
-import { normalizeCommentsUiConfig } from '../helpers/comment-small-screen.js';
+import {
+  DEFAULT_COMMENTS_LAYOUT,
+  isCommentsLayout,
+  normalizeCommentsUiConfig,
+  registerCommentsLayoutBridge,
+} from '../helpers/comment-small-screen.js';
+import type { CommentsLayout, CommentsLayoutState, EffectiveCommentsLayout } from './types/index.js';
 import { isFiniteNumber } from '../helpers/is-finite-number.js';
 import { EditorRuntimeRegistry } from './editor-runtime/editor-runtime-registry.js';
 import type { EditorRuntimeFocusOptions } from './editor-runtime/types.js';
@@ -455,6 +461,18 @@ function destroyedDuringUpgradeError(): Error {
   return new Error('SuperDoc: instance was destroyed during upgrade');
 }
 
+function destroyedDuringReplaceError(): Error {
+  return new Error('SuperDoc: instance was destroyed during replace');
+}
+
+function replaceDuringUpgradeError(): Error {
+  return new Error('SuperDoc: cannot replace the document while an upgrade is in progress');
+}
+
+function upgradeDuringReplaceError(): Error {
+  return new Error('SuperDoc: cannot upgrade while a document replace is in progress');
+}
+
 function isV2ActiveEditorFacade(editor: unknown): editor is V2ActiveEditorFacade {
   return Boolean(editor && typeof editor === 'object' && (editor as { editorVersion?: unknown }).editorVersion === 2);
 }
@@ -571,6 +589,7 @@ interface SuperDocEventMap {
   'pdf:document-ready': [];
   'sidebar-toggle': [boolean];
   'comments-list-change': [SuperDocCommentsListChangePayload];
+  'comments-layout-change': [CommentsLayoutState];
   /** Requests the shell open its find/replace surface (e.g. the toolbar search button). */
   'search:open': [];
   /** @deprecated replaceWith=`superdoc.ui.zoom.observe` removeIn=v3.0 */
@@ -675,6 +694,8 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
     rejectOnDestroy: (error: Error) => void;
   } | null = null;
 
+  #pendingReplaces = 0;
+
   /**
    * Unsubscribe handle for the v2 presence → `awareness-update` bridge. Set
    * while a v2 collaborative editor is mounted and torn down on remount,
@@ -766,6 +787,8 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
    * config which surfaces are on.
    */
   #uiConfig: ReturnType<typeof normalizeUiConfig> = normalizeUiConfig({});
+  #commentsLayout = shallowRef<CommentsLayoutState>(Object.freeze({ requested: 'sidebar', effective: 'sidebar' }));
+  #commentsLayoutResolver: ((layout: CommentsLayout) => EffectiveCommentsLayout) | null = null;
 
   /**
    * Which built-in surfaces this instance renders.
@@ -1201,6 +1224,14 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
     // surface decision downstream comes from here rather than re-deriving
     // precedence from `modules.*` and the top-level aliases.
     this.#uiConfig = normalizeUiConfig(this.config);
+    const legacyComments = this.config.modules.comments;
+    const configuredLayout = this.#uiConfig.comments.options.layout ?? (legacyComments && legacyComments.layout);
+    const requested = isCommentsLayout(configuredLayout) ? configuredLayout : DEFAULT_COMMENTS_LAYOUT;
+    this.#commentsLayout.value = Object.freeze({ requested, effective: requested === 'inline' ? 'inline' : 'sidebar' });
+    registerCommentsLayoutBridge(this, {
+      setResolver: (resolver) => this.#setCommentsLayoutResolver(resolver),
+      setEffective: (effective) => this.#setEffectiveCommentsLayout(effective),
+    });
     this.#interactionConfig = normalizeInteractionConfig(this.config);
     this.#surfacesConfig = normalizeSurfacesConfig(this.config);
     // Seed the live suppression flag from the resolved profile. `editorOptions`
@@ -1406,6 +1437,35 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
     }
     this.#ensureContentControlActiveChangeBridge();
     return this.#ui;
+  }
+
+  getCommentsLayout(): CommentsLayoutState {
+    return this.#commentsLayout.value;
+  }
+
+  setCommentsLayout(layout: CommentsLayout): void {
+    if (!isCommentsLayout(layout)) throw new RangeError('Invalid comments layout');
+    if (this.#destroyed) return;
+    const effective =
+      layout === 'auto' ? (this.#commentsLayoutResolver?.(layout) ?? this.#commentsLayout.value.effective) : layout;
+    this.#publishCommentsLayout({ requested: layout, effective });
+  }
+
+  #setCommentsLayoutResolver(resolver: ((layout: CommentsLayout) => EffectiveCommentsLayout) | null): void {
+    this.#commentsLayoutResolver = resolver;
+    if (resolver) this.setCommentsLayout(this.#commentsLayout.value.requested);
+  }
+
+  #setEffectiveCommentsLayout(effective: EffectiveCommentsLayout): void {
+    if (this.#commentsLayout.value.requested !== 'auto' || this.#destroyed) return;
+    this.#publishCommentsLayout({ requested: 'auto', effective });
+  }
+
+  #publishCommentsLayout(next: CommentsLayoutState): void {
+    const previous = this.#commentsLayout.value;
+    if (previous.requested === next.requested && previous.effective === next.effective) return;
+    this.#commentsLayout.value = Object.freeze(next);
+    this.emit('comments-layout-change', this.#commentsLayout.value);
   }
 
   getDocumentApi(): BrowserDocumentApi | null {
@@ -2041,14 +2101,20 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
       });
     }
     const { target } = this.#validateUpgradePrerequisites(options);
+    if (this.#pendingReplaces > 0) throw upgradeDuringReplaceError();
     let rejectOnDestroy: (error: Error) => void = () => {};
     const destroyed = new Promise<never>((_resolve, reject) => {
       rejectOnDestroy = reject;
     });
-    const operation = Promise.race([this.#runUpgrade(target), destroyed]).finally(() => {
+    let startRun = () => {};
+    const run = new Promise<UpgradeToCollaborationResult>((resolve) => {
+      startRun = () => resolve(this.#runUpgrade(target));
+    });
+    const operation = Promise.race([run, destroyed]).finally(() => {
       this.#pendingUpgrade = null;
     });
     this.#pendingUpgrade = { target, promise: operation, rejectOnDestroy };
+    startRun();
     return operation;
   }
 
@@ -2264,6 +2330,7 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
         ...(target.params ? { params: target.params } : {}),
         ...(target.token ? { token: target.token } : {}),
         ...(target.retry !== undefined ? { retry: target.retry } : {}),
+        ...(target.expectedRevisionScope ? { expectedRevisionScope: target.expectedRevisionScope } : {}),
       };
     }
     return {
@@ -2494,7 +2561,7 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
     const results = await Promise.allSettled(runtimes.map((runtime) => runtime.setUser?.(runtimeUserOf(next))));
     const failure = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
     if (failure) {
-      if (current) {
+      if (current && !this.#destroyed) {
         await Promise.allSettled(
           runtimes
             .filter((_, index) => results[index]!.status === 'fulfilled')
@@ -2503,6 +2570,7 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
       }
       throw failure.reason;
     }
+    if (this.#destroyed) return;
     const target = this.config.user ?? (this.config.user = {} as User);
     for (const key of Object.keys(target)) delete target[key];
     Object.assign(target, next);
@@ -2887,7 +2955,12 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
    */
   #setActiveEditorCompatibilityProjection(editor: ActiveEditor | null) {
     if (isV2ActiveEditorFacade(editor)) {
-      if (!this.#applyingRuntimeActiveChange && this.#editorRuntimeRegistry.getActive()) {
+      const activeRuntime = this.#editorRuntimeRegistry.getActive();
+      if (
+        !this.#applyingRuntimeActiveChange &&
+        activeRuntime &&
+        activeRuntime.getLegacyEditorProjection?.() !== editor
+      ) {
         this.#editorRuntimeRegistry.setActive(null, 'set-active-v2-facade');
       }
       // One transition, one notification. `setDocumentMode('editing')` and
@@ -4037,10 +4110,21 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
   async #replaceActiveDocument(
     source: File | Blob | ArrayBuffer | Uint8Array,
   ): Promise<{ raw: unknown; confirmed: boolean }> {
+    if (this.#pendingUpgrade) throw replaceDuringUpgradeError();
     const activeEditor = this.activeEditor as ActiveEditor | null;
     if (isV2ActiveEditorFacade(activeEditor) && typeof activeEditor.replaceFile === 'function') {
       const replacementSource = this.#savedDocxToBlob(source);
-      const result = await activeEditor.replaceFile(replacementSource);
+      let result: unknown;
+      this.#pendingReplaces += 1;
+      try {
+        result = await activeEditor.replaceFile(replacementSource);
+      } catch (error) {
+        if (this.#destroyed) throw destroyedDuringReplaceError();
+        throw error;
+      } finally {
+        this.#pendingReplaces -= 1;
+      }
+      if (this.#destroyed) throw destroyedDuringReplaceError();
       const state = result && typeof result === 'object' ? (result as { state?: unknown }).state : null;
       const confirmed = state === null || state === 'review-ready' || state === 'editing-ready';
       if (confirmed) {

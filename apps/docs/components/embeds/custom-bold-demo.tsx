@@ -11,7 +11,7 @@ import type {
   FontSizeOption,
 } from 'superdoc/ui';
 import { CollapsibleEditorPreview } from './collapsible-editor-preview';
-import { createRuntimeEditor, loadRuntime, type SuperDocInstance } from './superdoc-runtime';
+import { loadRuntime, type SuperDocInstance } from './superdoc-runtime';
 
 /**
  * Application-owned formatting controls running against a real Editor.
@@ -182,7 +182,7 @@ export function CustomBoldDemo({ variant = 'standalone' }: CustomBoldDemoProps) 
         };
       }
 
-      const instance = createRuntimeEditor(SuperDocCtor, {
+      const instance = new SuperDocCtor({
         selector: mountRef.current,
         document: isHandoffVariant ? HANDOFF_DOCUMENT : DEMO_DOCUMENT,
         documentMode: 'editing',

@@ -26,7 +26,14 @@ export * from './capabilities/capabilities.js';
 export * from './capabilities/html-markdown-support.js';
 export * from './inline-semantics/index.js';
 export type { HistoryAdapter, HistoryApi } from './history/history.js';
-export { executeHistoryGet, executeHistoryUndo, executeHistoryRedo } from './history/history.js';
+export {
+  executeHistoryGet,
+  executeHistoryUndo,
+  executeHistoryRedo,
+  executeHistoryBeginGroup,
+  executeHistoryEndGroup,
+  validateHistoryEndGroupInput,
+} from './history/history.js';
 export type { ChangesAdapter, ChangesApi } from './changes/changes.js';
 export {
   CHANGES_LIST_LIMIT_MAX,
@@ -100,6 +107,9 @@ export { executeProjectHtml } from './project-html/project-html.js';
 export type { ProjectMarkdownAdapter } from './project-markdown/project-markdown.js';
 export { executeProjectMarkdown } from './project-markdown/project-markdown.js';
 export type {
+  HistoryGroupHandle,
+  HistoryEndGroupInput,
+  HistoryEndGroupResult,
   HistoryState,
   HistoryActionResult,
   HistoryNoopReason,
@@ -464,6 +474,7 @@ import type {
   TextMutationOptions,
   WriteAdapter,
 } from './write/write.js';
+import { HISTORY_EXCLUSION_UNSUPPORTED_OPERATIONS, validateContentWriteHistoryOptions } from './write/write.js';
 import { assertOperationCanStart, type OperationCancellation } from './write/operation-cancellation.js';
 import type { SelectionMutationAdapter } from './selection-mutation.js';
 import {
@@ -498,8 +509,20 @@ export {
   type PlanProjectTextOffsetMarker,
 } from './plan/plan.js';
 import type { HistoryAdapter, HistoryApi } from './history/history.js';
-import type { HistoryState, HistoryActionResult } from './history/history.types.js';
-import { executeHistoryGet, executeHistoryUndo, executeHistoryRedo } from './history/history.js';
+import type {
+  HistoryGroupHandle,
+  HistoryEndGroupInput,
+  HistoryEndGroupResult,
+  HistoryState,
+  HistoryActionResult,
+} from './history/history.types.js';
+import {
+  executeHistoryGet,
+  executeHistoryUndo,
+  executeHistoryRedo,
+  executeHistoryBeginGroup,
+  executeHistoryEndGroup,
+} from './history/history.js';
 import type { ChangesAdapter, ChangesApi } from './changes/changes.js';
 import {
   executeChangesActors,
@@ -1226,6 +1249,7 @@ export type {
   TextMutationOptions,
 } from './write/write.js';
 export type { OperationCancellation, OperationCancellationCode } from './write/operation-cancellation.js';
+export { HISTORY_EXCLUSION_UNSUPPORTED_OPERATIONS, validateContentWriteHistoryOptions } from './write/write.js';
 export {
   OperationCancellationError,
   assertOperationCanStart,
@@ -2050,10 +2074,10 @@ export interface MutationsApi {
   commitTemporary(input: TemporaryMutationCommitInput): Promise<TemporaryMutationReceipt>;
   preview(input: MutationsPreviewInput): Promise<MutationsPreviewOutput>;
   /**
-   * Apply an atomic plan. `options` is host-side cancellation and is not part
-   * of the plan payload.
+   * Apply an atomic plan. `options` configures cancellation or supported history
+   * exclusion and is not part of the plan payload.
    */
-  apply(input: MutationsApplyInput, options?: OperationCancellation): Promise<PlanReceipt>;
+  apply(input: MutationsApplyInput, options?: OperationCancellation & { addToHistory?: boolean }): Promise<PlanReceipt>;
 }
 export interface RangesApi {
   resolve(input: ResolveRangeInput): ResolveRangeOutput;
@@ -2569,6 +2593,8 @@ const HOOK_GATED_OPERATIONS: ReadonlyArray<{
   { operationId: 'format.paragraph.applyBatch', hasHook: (adapters) => !!adapters.paragraphs?.applyBatch },
   { operationId: 'styles.create', hasHook: (a) => typeof a.styles?.create === 'function' },
   { operationId: 'format.readSelection', hasHook: (a) => typeof a.selectionMutation?.readSelection === 'function' },
+  { operationId: 'history.beginGroup', hasHook: (a) => typeof a.history?.beginGroup === 'function' },
+  { operationId: 'history.endGroup', hasHook: (a) => typeof a.history?.endGroup === 'function' },
 ];
 
 function assertCapabilityDecision(
@@ -2624,6 +2650,9 @@ function installCapabilityPreflight(api: DocumentApi, adapter: CapabilitiesAdapt
     if (typeof execute !== 'function') continue;
 
     parent[member] = function capabilityGuardedOperation(input: unknown, options?: unknown): unknown {
+      if (HISTORY_EXCLUSION_UNSUPPORTED_OPERATIONS.has(operationId)) {
+        validateContentWriteHistoryOptions(operationId, input, options);
+      }
       const resolution = adapter.resolve!({ operationId, input, options });
       assertCapabilityDecision(operationId, 'available', resolution.available);
       if (options && typeof options === 'object') {
@@ -2718,7 +2747,19 @@ export function createDocumentApi(adapters: DocumentApiAdapters): DocumentApi {
   const capabilities: CapabilitiesApi = Object.assign(capFn, {
     get: capFn,
     check: (input: SDHtmlMarkdownSupportCheckInput) => executeCapabilitiesCheck(adapters.capabilities, input),
-    resolve: (input: OperationCapabilityResolveInput) => executeCapabilitiesResolve(adapters.capabilities, input),
+    resolve: (input: OperationCapabilityResolveInput): OperationCapabilityResolveResult => {
+      const resolution = executeCapabilitiesResolve(adapters.capabilities, input);
+      const gate = HOOK_GATED_OPERATIONS.find(({ operationId }) => operationId === input.operationId);
+      if (gate && !gate.hasHook(adapters)) {
+        const unavailable = {
+          kind: 'unsupported',
+          code: 'OPERATION_UNAVAILABLE',
+          reason: `${input.operationId} is unavailable in this host.`,
+        } as const;
+        return { ...resolution, available: unavailable, tracked: unavailable, dryRun: unavailable };
+      }
+      return resolution;
+    },
   });
   const inlineAliasApi = buildFormatInlineAliasApi(adapters.selectionMutation);
   const api: DocumentApi = {
@@ -4193,9 +4234,13 @@ export function createDocumentApi(adapters: DocumentApiAdapters): DocumentApi {
         rejectMutationPlanAuthorOptions(options[0]);
         return adapters.mutations.preview(captureMutationPlanAuthor(input));
       },
-      apply(input: MutationsApplyInput, options?: OperationCancellation): Promise<PlanReceipt> {
+      apply(
+        input: MutationsApplyInput,
+        options?: OperationCancellation & { addToHistory?: boolean },
+      ): Promise<PlanReceipt> {
         rejectMutationPlanAuthorOptions(options);
         assertOperationCanStart(options);
+        validateContentWriteHistoryOptions('mutations.apply', input, options);
         return adapters.mutations.apply(captureMutationPlanAuthor(input));
       },
     },
@@ -4220,6 +4265,12 @@ export function createDocumentApi(adapters: DocumentApiAdapters): DocumentApi {
       },
     },
     history: {
+      beginGroup(): HistoryGroupHandle {
+        return executeHistoryBeginGroup(adapters.history);
+      },
+      endGroup(input: HistoryEndGroupInput): HistoryEndGroupResult {
+        return executeHistoryEndGroup(adapters.history, input);
+      },
       get(): HistoryState {
         return executeHistoryGet(adapters.history);
       },
@@ -4330,7 +4381,7 @@ export function createDocumentApi(adapters: DocumentApiAdapters): DocumentApi {
       return handler(request.input, request.options);
     },
   };
-  installCapabilityPreflight(api, adapters.capabilities);
+  installCapabilityPreflight(api, adapters.capabilities?.resolve ? capabilities : undefined);
   installMutationCorrelation(api);
   const dispatch = buildDispatchTable(api);
   return api;

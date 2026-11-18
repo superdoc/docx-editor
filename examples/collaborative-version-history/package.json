@@ -1,0 +1,33 @@
+{
+  "name": "@superdoc-examples/collaborative-version-history",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.24.0",
+  "scripts": {
+    "dev": "concurrently -k \"tsx server.ts\" \"vite\"",
+    "start": "tsx server.ts",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.client.json",
+    "test": "pnpm run test:server && pnpm run test:browser",
+    "test:server": "tsx --test --test-force-exit test/*.test.ts",
+    "test:browser": "playwright test",
+    "browsers": "playwright install chromium"
+  },
+  "dependencies": {
+    "@hocuspocus/server": "2.15.3",
+    "@superdoc/sdk": "2.30.0",
+    "superdoc": "^2.24.0",
+    "yjs": "13.6.31"
+  },
+  "devDependencies": {
+    "@hocuspocus/provider": "2.15.3",
+    "@playwright/test": "^1.57.0",
+    "@types/node": "^22.0.0",
+    "concurrently": "^9.1.2",
+    "jszip": "^3.10.1",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.2",
+    "vite": "^7.2.7"
+  }
+}

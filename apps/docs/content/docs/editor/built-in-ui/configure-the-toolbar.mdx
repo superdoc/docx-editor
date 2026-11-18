@@ -92,6 +92,18 @@ to add application actions. Controls listed in `items` render in the order given
 For a custom item, use `command` when it can run one built-in action directly. Use `onSelect` for registered commands or
 workflows that need more input; its context includes `execute` and `executeAsync`.
 
+Custom dropdown options can include an optional `description` string. The supporting text appears below the option's
+label in both the toolbar dropdown and the overflow menu. It is rendered as plain text. For example:
+
+```ts
+const sidebarOption = {
+  id: 'sidebar',
+  label: 'Sidebar',
+  value: 'sidebar',
+  description: 'Show comments beside the document.',
+};
+```
+
 Keep `satisfies ToolbarConfig` from the examples. It checks control IDs, icon and string slots, font options, and custom
 item shapes without widening the object. Prefer one composition strategy instead of combining a long `items` allowlist
 with a long `excludeItems` list.
@@ -120,6 +132,22 @@ These choices configure ordinary text highlighting. Tracked-change author colors
 `responsiveTo: 'container'` measures the toolbar mount instead of the browser window. With the default
 `overflow: 'menu'`, controls that no longer fit move into the overflow menu. SuperDoc adds its trigger when needed; do
 not list it in `items`.
+
+Set `overflowPriority` on a custom button or dropdown to give it space before less important controls:
+
+```ts
+const customItems = [
+  { type: 'button', id: 'approve', label: 'Approve', overflowPriority: 10, onSelect: approveDocument },
+];
+```
+
+Higher numbers receive space first. Built-in controls and custom controls without a priority use zero; equal priorities
+keep their existing allocation order. Priorities affect which controls fit, while region and display order stay the
+same. If a prioritized control cannot fit, it moves into the overflow menu too. Other controls can still use the remaining
+space. With priorities enabled, even controls normally kept on the toolbar can move into overflow to make room.
+
+The whole-toolbar `overflow: 'visible'` policy ignores priorities and keeps all controls on the toolbar. It can produce
+horizontal overflow at narrow widths.
 
 Resize the Editor to your narrowest supported width. Every required control should remain reachable, and the toolbar
 should not add horizontal page overflow. See [Layout](/editor/built-in-ui/responsive-layout) for document scaling,

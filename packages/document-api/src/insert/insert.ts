@@ -2,6 +2,7 @@ import { isOoxmlContentSource, validateOoxmlContentSource } from '../selection/s
 import type { OoxmlContentSource } from '../selection/selection.types.js';
 import {
   executeWrite,
+  validateContentWriteHistoryOptions,
   normalizeRichMutationOptions,
   normalizeTextMutationOptions,
   type RichContentMutationOptions,
@@ -321,6 +322,7 @@ export function executeInsert(
     OperationCancellation,
 ): SDMutationReceipt {
   assertOperationCanStart(options);
+  validateContentWriteHistoryOptions('insert', input, options);
   validateInsertInput(input);
   if (isOoxmlContentSource(input) && !writeAdapter.supportsNativeOoxml)
     throw new DocumentApiValidationError(

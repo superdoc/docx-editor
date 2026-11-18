@@ -85,6 +85,7 @@ const TOOLBAR_OPTIONAL_ITEMS = {
   'table-of-contents': true,
   watermark: true,
   'page-number': true,
+  'comments-layout': true,
 } satisfies Record<ToolbarOptionalItemId, true>;
 
 const DEV_USER_ROLES = { editor: true, viewer: true, suggester: true } satisfies Record<DevUserRole, true>;

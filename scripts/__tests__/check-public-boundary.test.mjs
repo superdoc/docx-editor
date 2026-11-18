@@ -27,7 +27,7 @@ const CHECKER = resolve(dirname(fileURLToPath(import.meta.url)), '../check-publi
  * `symlinks` maps a path to its raw link target, since a symlink carries its
  * path in the link rather than in any file contents `files` could hold.
  */
-function runCheckerOn(files, { symlinks = {} } = {}) {
+function runCheckerOn(files, { symlinks = {}, symlinksCheckedOutAsFiles = {} } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'public-boundary-'));
   try {
     mkdirSync(join(root, 'scripts'), { recursive: true });
@@ -48,9 +48,18 @@ function runCheckerOn(files, { symlinks = {} } = {}) {
     execFileSync('git', ['init', '-q'], { cwd: root });
     execFileSync('git', ['add', '-A'], { cwd: root });
 
+    for (const [relativePath, target] of Object.entries(symlinksCheckedOutAsFiles)) {
+      const absolute = join(root, relativePath);
+      mkdirSync(dirname(absolute), { recursive: true });
+      writeFileSync(absolute, target);
+      const blob = execFileSync('git', ['hash-object', '-w', '--stdin'], { cwd: root, input: target }).toString().trim();
+      execFileSync('git', ['update-index', '--add', '--cacheinfo', `120000,${blob},${relativePath}`], { cwd: root });
+    }
+
     const result = spawnSync(process.execPath, [join(root, 'scripts', 'check-public-boundary.mjs')], {
       cwd: root,
       encoding: 'utf8',
+      maxBuffer: 64 * 1024 * 1024,
     });
     return { status: result.status, output: `${result.stdout}${result.stderr}` };
   } finally {
@@ -2709,4 +2718,527 @@ test('keeps heredoc payload data when a substitution sits elsewhere in the body'
     'tests/read.sh': `#!/bin/sh\ncat > expected.txt <<END\n$(cat '../labs/private.docx')\nEND\n`,
   });
   assert.equal(executed.status, 1, executed.output);
+});
+
+test('reads markdown and JSON without a comment grammar, so comment-looking text still counts', () => {
+  const cases = {
+    'examples/__tests__/NOTES.md': '<!-- see ../../../../labs/private.docx -->\n',
+    'examples/__tests__/data.json': '{ "path": "x" } // ../../../../labs/private.docx\n',
+  };
+  for (const [file, contents] of Object.entries(cases)) {
+    const { status, output } = runCheckerOn({ [file]: contents });
+    assert.equal(status, 1, `${file} should fail:\n${output}`);
+  }
+});
+
+test('scans every named build input, not only the Makefile and Dockerfile', () => {
+  const cases = {
+    'examples/agent/Containerfile': 'COPY ../../../labs/private.pem /app/key.pem\n',
+    'examples/agent/Justfile': 'build:\n\tcat ../../../labs/private.mk\n',
+    'examples/agent/Procfile': 'web: node ../../../labs/server.js\n',
+  };
+  for (const [file, contents] of Object.entries(cases)) {
+    const { status, output } = runCheckerOn({ [file]: contents });
+    assert.equal(status, 1, `${file} should fail:\n${output}`);
+  }
+});
+
+test('exempts the browser fetch reached through a global receiver', () => {
+  const cases = {
+    'examples/app/__tests__/a.spec.ts': `await window.fetch('/home/alice/profile');\n`,
+    'examples/app/__tests__/b.spec.ts': `await globalThis.fetch('/home/alice/profile');\n`,
+    'examples/app/__tests__/c.spec.ts': `await self.fetch('/home/alice/profile');\n`,
+  };
+  for (const [file, contents] of Object.entries(cases)) {
+    const { status, output } = runCheckerOn({ [file]: contents });
+    assert.equal(status, 0, `${file} should pass:\n${output}`);
+  }
+});
+
+test('does not read a longer element name that starts with style as a stylesheet', () => {
+  const { status, output } = runCheckerOn({
+    'examples/app/fixtures/page.html': `<styles>.hero { background: url('/home/alice/private.png'); }</styles>\n`,
+  });
+  assert.equal(status, 1, output);
+});
+
+test('reads a leading-dot name as having no extension, so its shebang decides', () => {
+  const { status, output } = runCheckerOn({
+    'examples/app/tests/.run': `#!/bin/sh\ncat '../../labs/private.docx'\n`,
+  });
+  assert.equal(status, 1, output);
+});
+
+test('reads a call a formatter split across lines as one argument list', () => {
+  const { status, output } = runCheckerOn({
+    'packages/a/tests/a.test.ts': `const p = resolve(\n  process.cwd(),\n  '../labs/private.docx',\n);\n`,
+  });
+  assert.equal(status, 1, output);
+});
+
+test('reads a CSS url() as a stylesheet reference only in a stylesheet host language', () => {
+  const { status, output } = runCheckerOn({
+    'examples/app/__tests__/a.test.tsx': `const el = <div style="background: url('/home/alice/private.png')" />;\n`,
+  });
+  assert.equal(status, 1, output);
+});
+
+test('treats an unbounded hash as a comment in Python and PHP even before an escaping path', () => {
+  const cases = {
+    'packages/a/tests/a_test.py': `x=1# '../../../../labs/private.docx'\n`,
+    'packages/a/tests/a.php': `<?php\n$x=1# '../../../../labs/private.docx'\n;\n`,
+  };
+  for (const [file, contents] of Object.entries(cases)) {
+    const { status, output } = runCheckerOn({ [file]: contents });
+    assert.equal(status, 0, `${file} should pass:\n${output}`);
+  }
+});
+
+test('reports every finding in a file with more escapes than a call can take as arguments', () => {
+  const { status, output } = runCheckerOn({
+    'examples/__tests__/many.txt': "'../../../labs/x'\n".repeat(150_000),
+  });
+  assert.equal(status, 1, output.slice(0, 2000));
+  assert.doesNotMatch(output, /RangeError/);
+  assert.match(output, /examples\/__tests__\/many\.txt/);
+});
+
+test('says when an escaping path reaches something that exists locally', () => {
+  const { status, output } = runCheckerOn({
+    'examples/__tests__/a.test.ts': `const parent = readdirSync('../../../');\n`,
+  });
+  assert.equal(status, 1, output);
+  assert.match(output, /private sibling/);
+});
+
+test('scans every public clone surface', () => {
+  const files = {
+    'packages/a/__tests__/x.ts': `import '../../../../labs/a.js';\n`,
+    'packages/a/tests/x.ts': `import '../../../../labs/b.js';\n`,
+    'packages/a/test/x.ts': `import '../../../../labs/c.js';\n`,
+    'packages/a/fixtures/x.ts': `import '../../../../labs/d.js';\n`,
+    'packages/a/fixture/x.ts': `import '../../../../labs/e.js';\n`,
+    'packages/a/examples/x.ts': `import '../../../../labs/f.js';\n`,
+  };
+  const { status, output } = runCheckerOn(files);
+  assert.equal(status, 1, output);
+  for (const file of Object.keys(files)) assert.match(output, new RegExp(file.replaceAll('.', '\\.')));
+});
+
+test('scans every listed text extension', () => {
+  const extensions = [
+    '.cjs',
+    '.code-workspace',
+    '.cts',
+    '.css',
+    '.html',
+    '.js',
+    '.json',
+    '.jsx',
+    '.md',
+    '.mdx',
+    '.mjs',
+    '.mts',
+    '.php',
+    '.py',
+    '.sh',
+    '.svg',
+    '.ts',
+    '.tsx',
+    '.txt',
+    '.vue',
+    '.xml',
+    '.yaml',
+    '.yml',
+  ];
+  const files = Object.fromEntries(
+    extensions.map((extension) => [`examples/x/a${extension}`, `"../../../labs/private.docx"\n`]),
+  );
+  const { status, output } = runCheckerOn(files);
+  assert.equal(status, 1, output);
+  for (const file of Object.keys(files)) assert.match(output, new RegExp(`${file.replaceAll('.', '\\.')}\\n`));
+});
+
+test('requires a boundary before a YAML hash comment, as in shell', () => {
+  const { status, output } = runCheckerOn({
+    'examples/a.yaml': 'value: x# ../../labs/private.docx\n',
+  });
+  assert.equal(status, 1, output);
+});
+
+test('reads a Makefile hash outside a recipe as a comment whatever precedes it', () => {
+  const { status, output } = runCheckerOn({
+    'examples/Makefile': `X=1# '../../labs/private.docx'\n`,
+  });
+  assert.equal(status, 0, output);
+});
+
+test('treats each remaining native comment form as prose', () => {
+  const cases = {
+    'examples/x/a.css': '/* was ../../../labs/private.png */\n',
+    'examples/x/a.vue': '<script>\n// was ../../../labs/private.docx\n</script>\n',
+    'examples/x/Containerfile': '# was ../../../labs/private.pem\n',
+    'examples/x/Justfile': '# was ../../../labs/private.mk\n',
+    'examples/x/Procfile': '# was ../../../labs/server.js\n',
+  };
+  for (const [file, contents] of Object.entries(cases)) {
+    const { status, output } = runCheckerOn({ [file]: contents });
+    assert.equal(status, 0, `${file} should pass:\n${output}`);
+  }
+});
+
+test('reads a JavaScript runtime shebang with JavaScript comments', () => {
+  for (const runtime of ['node', 'bun', 'deno']) {
+    const { status, output } = runCheckerOn({
+      'examples/x/run': `#!/usr/bin/env ${runtime}\n// was ../../../labs/private.docx\n`,
+    });
+    assert.equal(status, 0, `${runtime} should pass:\n${output}`);
+  }
+});
+
+test('lets an extension decide the language before a shebang does', () => {
+  const { status, output } = runCheckerOn({
+    'examples/x/a.py': `#!/usr/bin/env node\nx=1# '../../../labs/private.docx'\n`,
+  });
+  assert.equal(status, 0, output);
+});
+
+test('reads a shebang only in an extensionless file, and an extensionless file only with one', () => {
+  const cases = {
+    'examples/x/payload.docx': `#!/bin/sh\ncat '../../../labs/private.docx'\n`,
+    'examples/x/notes': `'../../../labs/private.docx'\n`,
+  };
+  for (const [file, contents] of Object.entries(cases)) {
+    const { status, output } = runCheckerOn({ [file]: contents });
+    assert.equal(status, 0, `${file} should pass:\n${output}`);
+  }
+});
+
+test('ignores a symlink outside the public clone surfaces', () => {
+  const { status, output } = runCheckerOn({}, { symlinks: { 'runtime/link.docx': '../../labs/private.docx' } });
+  assert.equal(status, 0, output);
+});
+
+test('skips a tracked symlink checked out as a plain file', () => {
+  const { status, output } = runCheckerOn(
+    {},
+    { symlinksCheckedOutAsFiles: { 'examples/__tests__/link.docx': '../../../labs/private.docx' } },
+  );
+  assert.equal(status, 0, output);
+});
+
+test('treats the block comment form of PHP, Vue and XML as prose', () => {
+  const cases = {
+    'examples/x/a.php': '<?php\n/* was ../../../labs/private.docx */\n',
+    'examples/x/a.vue': '<script>\n/* was ../../../labs/private.docx */\n</script>\n',
+    'examples/x/a.xml': '<root><!-- was ../../../labs/private.docx --></root>\n',
+  };
+  for (const [file, contents] of Object.entries(cases)) {
+    const { status, output } = runCheckerOn({ [file]: contents });
+    assert.equal(status, 0, `${file} should pass:\n${output}`);
+  }
+});
+
+test('takes a file language from its extension first and its shebang otherwise', () => {
+  const cases = {
+    'examples/x/a.py': `#!/usr/bin/env node\nos.remove('../labs/private.docx')\n`,
+    'examples/x/run': `#!/usr/bin/env python3\nos.remove('../labs/private.docx')\n`,
+  };
+  for (const [file, contents] of Object.entries(cases)) {
+    const { status, output } = runCheckerOn({ [file]: contents });
+    assert.equal(status, 1, `${file} should fail:\n${output}`);
+  }
+});
+
+test('joins dot-dot fragments that normalize composes', () => {
+  const { status, output } = runCheckerOn({
+    'examples/a.test.ts': `const r = path.normalize('..', '..');\n`,
+  });
+  assert.equal(status, 1, output);
+});
+
+test('does not anchor an fs export that is a class or not a function', () => {
+  const cases = {
+    'packages/a/b/tests/a.test.ts': `new Stats('../labs/private.docx');\n`,
+    'packages/a/b/tests/b.test.ts': `new Dirent('../labs/private.docx');\n`,
+    'packages/a/b/tests/c.test.ts': `promises('../labs/private.docx');\n`,
+  };
+  for (const [file, contents] of Object.entries(cases)) {
+    const { status, output } = runCheckerOn({ [file]: contents });
+    assert.equal(status, 0, `${file} should pass:\n${output}`);
+  }
+});
+
+test('anchors every listed Python filesystem and cwd-resolving name at the cwd', () => {
+  const names = [
+    'chdir',
+    'copy',
+    'copy2',
+    'copyfile',
+    'copytree',
+    'getsize',
+    'isdir',
+    'isfile',
+    'listdir',
+    'makedirs',
+    'move',
+    'remove',
+    'replace',
+    'removedirs',
+    'rmtree',
+    'walk',
+    'abspath',
+    'realpath',
+    'expanduser',
+  ];
+  for (const name of names) {
+    const { status, output } = runCheckerOn({
+      [`packages/a/b/tests/${name}_test.py`]: `os.${name}('../labs/private.docx')\n`,
+    });
+    assert.equal(status, 1, `${name} should fail:\n${output}`);
+  }
+});
+
+test('anchors every listed PHP filesystem function at the cwd', () => {
+  const names = [
+    'file_get_contents',
+    'file_put_contents',
+    'chdir',
+    'fopen',
+    'file_exists',
+    'is_dir',
+    'is_file',
+    'is_readable',
+    'is_writable',
+    'is_link',
+    'scandir',
+    'glob',
+    'unlink',
+    'mkdir',
+    'rmdir',
+    'realpath',
+    'readfile',
+    'file',
+    'parse_ini_file',
+    'copy',
+    'rename',
+    'touch',
+    'filesize',
+  ];
+  for (const name of names) {
+    const { status, output } = runCheckerOn({
+      [`examples/getting-started/laravel/routes/${name}.php`]: `<?php ${name}('../../../../labs/private');\n`,
+    });
+    assert.equal(status, 1, `${name} should fail:\n${output}`);
+  }
+});
+
+test('anchors hash_hmac_file at the cwd', () => {
+  const { status, output } = runCheckerOn({
+    'examples/getting-started/laravel/routes/web.php': `<?php hash_hmac_file('sha256', '../../../../labs/private', 'key');\n`,
+  });
+  assert.equal(status, 1, output);
+});
+
+test('looks through toNamespacedPath before choosing the base', () => {
+  const { status, output } = runCheckerOn({
+    'packages/a/b/tests/a.test.ts': `readFileSync(path.toNamespacedPath('../labs/private.docx'));\n`,
+  });
+  assert.equal(status, 1, output);
+});
+
+test('does not judge a traversal that basename or stem reduces to its last segment', () => {
+  const cases = {
+    'packages/a/b/c/tests/a.test.ts': `readFileSync(path.basename('../../../../../../labs/private.docx'));\n`,
+    'packages/a/b/c/tests/a_test.py': `open(stem('../../../../../../labs/private.docx'))\n`,
+  };
+  for (const [file, contents] of Object.entries(cases)) {
+    const { status, output } = runCheckerOn({ [file]: contents });
+    assert.equal(status, 0, `${file} should pass:\n${output}`);
+  }
+});
+
+test('treats import.meta.resolve as module-relative, not cwd-relative', () => {
+  const { status, output } = runCheckerOn({
+    'packages/a/b/tests/a.test.ts': `const url = import.meta.resolve('../labs/private.docx');\n`,
+  });
+  assert.equal(status, 0, output);
+});
+
+test('anchors a forked module path at the cwd', () => {
+  const { status, output } = runCheckerOn({
+    'packages/a/b/tests/a.test.ts': `fork('../labs/worker.js');\n`,
+  });
+  assert.equal(status, 1, output);
+});
+
+test('does not give a shell-command child process the output-only exemption', () => {
+  const cases = {
+    'packages/a/b/tests/a.test.ts': `execSync('echo', { cwd: '../labs/private' });\n`,
+    'packages/a/b/tests/b.test.ts': `exec('echo', { cwd: '../labs/private' });\n`,
+  };
+  for (const [file, contents] of Object.entries(cases)) {
+    const { status, output } = runCheckerOn({ [file]: contents });
+    assert.equal(status, 1, `${file} should fail:\n${output}`);
+  }
+});
+
+test('does not read self.open as a filesystem call', () => {
+  const { status, output } = runCheckerOn({
+    'packages/a/b/c/tests/a.test.ts': `self.open('../../labs/private.docx');\n`,
+  });
+  assert.equal(status, 0, output);
+});
+
+test('reads writeFile on every fs module alias as the path-first function', () => {
+  for (const receiver of ['fsp', 'fsPromises', 'nodeFs', 'promises', 'fs.promises']) {
+    const { status, output } = runCheckerOn({
+      'packages/a/b/tests/a.test.ts': `await ${receiver}.writeFile('../labs/private.docx', 'utf8');\n`,
+    });
+    assert.equal(status, 1, `${receiver} should fail:\n${output}`);
+  }
+});
+
+test('anchors every Python path keyword argument at the cwd', () => {
+  for (const keyword of ['file', 'path', 'src', 'dst']) {
+    const { status, output } = runCheckerOn({
+      'packages/a/b/tests/a_test.py': `os.listdir(${keyword}='../labs/private')\n`,
+    });
+    assert.equal(status, 1, `${keyword} should fail:\n${output}`);
+  }
+});
+
+test('keeps a Bun.write payload data even when it would escape from the destination', () => {
+  const { status, output } = runCheckerOn({
+    'apps/cli/src/a.test.ts': `await Bun.write('out.txt', '../../../../labs/private.docx');\n`,
+  });
+  assert.equal(status, 0, output);
+});
+
+test('reads a bare writeFile as the path-first fs function', () => {
+  const { status, output } = runCheckerOn({
+    'packages/a/b/tests/a.test.ts': `await writeFile('../labs/private.docx', 'utf8');\n`,
+  });
+  assert.equal(status, 1, output);
+});
+
+test('keeps a three-argument write a path even when it ends with options', () => {
+  const { status, output } = runCheckerOn({
+    'packages/a/b/tests/a.test.ts': `await handle.writeFile('../labs/private.docx', data, { flag: 'w' });\n`,
+  });
+  assert.equal(status, 1, output);
+});
+
+test('does not compose the algorithm of hash_hmac_file into its path', () => {
+  const { status, output } = runCheckerOn({
+    'examples/getting-started/laravel/routes/web.php': `<?php hash_hmac_file('sha256', '../labs/private', 'key');\n`,
+  });
+  assert.equal(status, 1, output);
+});
+
+test('keeps a join on a bare identifier anchored at the cwd', () => {
+  const { status, output } = runCheckerOn({
+    'packages/a/tests/a.test.ts': `const s = segments.join('../labs/private.docx');\n`,
+  });
+  assert.equal(status, 1, output);
+});
+
+test('reads a path keyword only in Python, not a JavaScript assignment', () => {
+  const { status, output } = runCheckerOn({
+    'packages/a/b/tests/a.test.ts': `open(file = '../labs/private.docx');\n`,
+  });
+  assert.equal(status, 0, output);
+});
+
+test('does not guess a symlink destination directory from a partly known join', () => {
+  const { status, output } = runCheckerOn({
+    'tests/a.test.ts': `symlinkSync('../shared/data.docx', join(dir, 'fixtures', 'link.docx'));\n`,
+    'shared/data.docx': 'placeholder',
+  });
+  assert.equal(status, 1, output);
+});
+
+test('composes literal segments that follow an explicit directory base', () => {
+  const { status, output } = runCheckerOn({
+    'packages/a/tests/a.test.ts': `const f = resolve(__dirname, 'fixtures', '../../../../labs/private.docx');\n`,
+  });
+  assert.equal(status, 0, output);
+});
+
+test('composes literal segments that follow a cwd base', () => {
+  const { status, output } = runCheckerOn({
+    'packages/a/tests/a.test.ts': `const f = resolve(process.cwd(), 'packages/a', '../../shared/x.docx');\n`,
+    'shared/x.docx': 'x\n',
+  });
+  assert.equal(status, 0, output);
+});
+
+test('names the spawned program by the first argument only', () => {
+  const { status, output } = runCheckerOn({
+    'packages/a/b/tests/a.test.ts': `execFileSync('cat', ['echo', '../labs/private.docx']);\n`,
+  });
+  assert.equal(status, 1, output);
+});
+
+test('treats only resolve on a module-relative receiver as module-relative', () => {
+  const { status, output } = runCheckerOn({
+    'packages/a/b/tests/a.test.ts': `const p = Promise.join('../labs/private.docx');\n`,
+  });
+  assert.equal(status, 1, output);
+});
+
+test('lets an extension decide shell cwd anchoring before a shell shebang does', () => {
+  const { status, output } = runCheckerOn({
+    'packages/a/tests/a.js': `#!/bin/sh\nconst p = '../labs/private.docx';\n`,
+  });
+  assert.equal(status, 0, output);
+});
+
+test('does not anchor a call at the cwd when an earlier literal is absolute', () => {
+  const { status, output } = runCheckerOn({
+    'packages/a/tests/a.test.ts': `const f = resolve('fixtures', '/tmp', '../../../labs/private.docx');\n`,
+  });
+  assert.equal(status, 0, output);
+});
+
+test('does not compose the algorithm of hash_file into its path', () => {
+  const { status, output } = runCheckerOn({
+    'examples/getting-started/laravel/routes/web.php': `<?php hash_file('sha256', '../labs/private');\n`,
+  });
+  assert.equal(status, 1, output);
+});
+
+test('reads a FileHandle options bag with several fields as one argument', () => {
+  const { status, output } = runCheckerOn({
+    'packages/a/b/tests/a.test.ts': `await handle.writeFile('../labs/private.docx', { encoding: 'utf8', signal });\n`,
+  });
+  assert.equal(status, 0, output);
+});
+
+test('does not split an argument on a comma inside a quoted path', () => {
+  const { status, output } = runCheckerOn({
+    'packages/a/b/tests/a.test.ts': `copyFileSync(source, process.cwd() + 'x,y/' + '../labs/private.docx');\n`,
+  });
+  assert.equal(status, 0, output);
+});
+
+test('does not read process.cwd() in a line comment inside an argument list as the base', () => {
+  const { status, output } = runCheckerOn({
+    'packages/a/tests/a.test.ts': `resolve(__dirname, // process.cwd()\n  '../labs/private.docx');\n`,
+  });
+  assert.equal(status, 0, output);
+});
+
+test('blanks a block comment in an argument list rather than joining the text around it', () => {
+  const { status, output } = runCheckerOn({
+    'packages/a/tests/a.test.ts': `resolve(process./* note */cwd(), '../labs/private.docx');\n`,
+  });
+  assert.equal(status, 0, output);
+});
+
+test('does not read a doubled slash in a quoted argument as a comment that hides a later cwd base', () => {
+  const { status, output } = runCheckerOn({
+    'packages/a/tests/a.test.ts': `resolve('a//b', process.cwd(), '../labs/private.docx');\n`,
+  });
+  assert.equal(status, 1, output);
 });

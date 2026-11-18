@@ -6,6 +6,39 @@ import { DocumentApiValidationError } from '../errors.js';
 import type { SDHtmlMarkdownCheckGuard } from '../capabilities/html-markdown-support.js';
 import { assertNoUnknownFields } from '../validation-primitives.js';
 import { isRecord } from '../object-guards.js';
+import type { OperationId } from '../contract/types.js';
+
+export const HISTORY_EXCLUSION_UNSUPPORTED_OPERATIONS: ReadonlySet<OperationId> = new Set<OperationId>([
+  'insert',
+  'create.contentControl',
+  'contentControls.text.setValue',
+  'contentControls.replaceContent',
+  'replace',
+]);
+
+export function validateContentWriteHistoryOptions(operation: string, input: unknown, options: unknown): void {
+  if (isRecord(input) && 'addToHistory' in input) {
+    throw new DocumentApiValidationError(
+      'INVALID_INPUT',
+      `${operation} addToHistory belongs in the second options argument; input.addToHistory is unsupported.`,
+      { operation, field: 'addToHistory', location: 'input' },
+    );
+  }
+  const value = isRecord(options) ? options.addToHistory : undefined;
+  if (value === undefined || value === true) return;
+  if (value === false) {
+    throw new DocumentApiValidationError(
+      'CAPABILITY_UNAVAILABLE',
+      `${operation} does not support history exclusion (addToHistory: false).`,
+      { operation, field: 'addToHistory', location: 'options' },
+    );
+  }
+  throw new DocumentApiValidationError(
+    'INVALID_INPUT',
+    `${operation} options.addToHistory must be a boolean when provided.`,
+    { operation, field: 'addToHistory', location: 'options' },
+  );
+}
 
 export type ChangeMode = 'direct' | 'tracked';
 
@@ -85,7 +118,7 @@ export interface TrackedTextMutationOptions extends MutationOptions, TrackedAttr
 }
 
 export type TrackedRichContentMutationOptions = TrackedTextMutationOptions &
-  Pick<RichContentMutationOptions, 'supportCheck'>;
+  Pick<RichContentMutationOptions, 'supportCheck'> & { addToHistory?: boolean };
 
 export type TextMutationOptions = (MutationOptions & { author?: never; date?: never }) | TrackedTextMutationOptions;
 

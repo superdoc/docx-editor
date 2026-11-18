@@ -46,6 +46,25 @@ const options = {
 const inserted = doc.insert({ value: 'Review' }, options);
 const tag: string | undefined = inserted.changeTag;
 const replaced = doc.replace({ ref: 'selection', text: 'Review' }, options);
+const excluded = { changeMode: 'tracked', author: { name: 'Agent' }, addToHistory: false } as const;
+void browser.insert({ value: 'Agent suggestion' }, excluded);
+void browser.replace({ ref: 'selection', text: 'Agent suggestion' }, excluded);
+void browser.mutations.apply(
+  {
+    atomic: true,
+    changeMode: 'tracked',
+    author: { name: 'Agent' },
+    steps: [
+      {
+        id: 'rewrite',
+        op: 'text.rewrite',
+        where: { by: 'ref', ref: 'selection' },
+        args: { replacement: { text: 'Agent suggestion' } },
+      },
+    ],
+  },
+  { addToHistory: false },
+);
 const formatted = doc.format.bold({ ref: 'selection' }, options);
 void browser.format.bold({ ref: 'selection' }, options);
 void doc.delete({ ref: 'selection' }, { changeMode: 'tracked', date: options.date });

@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SuperDoc collaborative version history</title>
+    <link rel="stylesheet" href="/src/client/style.css" />
+  </head>
+  <body>
+    <header>
+      <strong>Collaborative version history</strong>
+      <span id="user"></span>
+      <span id="connection" role="status">Connecting...</span>
+    </header>
+    <main>
+      <div id="editor"></div>
+      <aside aria-label="Versions">
+        <form id="save-form">
+          <input id="version-label" name="label" placeholder="Version name" required maxlength="200" />
+          <button id="save-version" type="submit" disabled>Save version</button>
+        </form>
+        <form id="compare-form">
+          <label>From <select id="compare-from" name="from"></select></label>
+          <label>To <select id="compare-to" name="to"></select></label>
+          <button id="compare" type="submit" disabled>Compare</button>
+        </form>
+        <p id="status" role="status"></p>
+        <ol id="versions" aria-label="Saved versions"></ol>
+      </aside>
+    </main>
+    <script type="module" src="/src/client/main.ts"></script>
+  </body>
+</html>

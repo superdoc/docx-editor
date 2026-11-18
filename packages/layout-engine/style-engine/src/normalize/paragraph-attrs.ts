@@ -112,8 +112,8 @@ function mapDirectionContext(props: ParagraphProperties): ParagraphAttrs['direct
 }
 
 function mapAlignment(value: string | undefined, isRightToLeft: boolean): ParagraphAttrs['alignment'] | undefined {
-  if (value === 'left') return isRightToLeft ? 'right' : 'left';
-  if (value === 'right') return isRightToLeft ? 'left' : 'right';
+  if (value === 'left' || value === 'start') return isRightToLeft ? 'right' : 'left';
+  if (value === 'right' || value === 'end') return isRightToLeft ? 'left' : 'right';
   if (value === 'center' || value === 'justify') return value;
   if (
     value === 'both' ||
@@ -126,9 +126,6 @@ function mapAlignment(value: string | undefined, isRightToLeft: boolean): Paragr
   ) {
     return 'justify';
   }
-  // start/end without explicit direction default to left.
-  if (value === 'start') return 'left';
-  if (value === 'end') return 'right';
   return undefined;
 }
 

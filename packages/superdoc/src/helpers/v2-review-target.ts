@@ -1,6 +1,11 @@
-type V2ReviewTargetInput = { entityId?: unknown; entityType?: unknown };
+type V2ReviewTargetInput = { entityId?: unknown; entityType?: unknown; paintedEntityId?: unknown };
 
-type V2ReviewTargetComment = { trackedChange?: unknown; commentId?: unknown; importedId?: unknown };
+type V2ReviewTargetComment = {
+  trackedChange?: unknown;
+  commentId?: unknown;
+  importedId?: unknown;
+  trackedChangeCanonicalId?: unknown;
+};
 
 /**
  * Resolve the comments-store identity for a document-origin v2 review target.
@@ -14,6 +19,21 @@ export function resolveV2ReviewTargetCommentId(
 ): string | null {
   if (!target || typeof target.entityId !== 'string') return null;
   if (target.entityType !== 'comment' && target.entityType !== 'trackedChange') return null;
+  if (
+    target.entityType === 'trackedChange' &&
+    typeof target.paintedEntityId === 'string' &&
+    target.paintedEntityId !== target.entityId &&
+    typeof getComment === 'function'
+  ) {
+    const paintedRow = getComment(target.paintedEntityId);
+    if (
+      paintedRow?.trackedChange &&
+      paintedRow.commentId === target.paintedEntityId &&
+      paintedRow.trackedChangeCanonicalId === target.entityId
+    ) {
+      return target.paintedEntityId;
+    }
+  }
   const comment = typeof getComment === 'function' ? getComment(target.entityId) : null;
   if (target.entityType === 'comment' && comment?.trackedChange) {
     return target.entityId;

@@ -293,6 +293,32 @@ describe('content-control:click', () => {
     });
   });
 
+  it('publishes an empty ready active path after subscribing without a click or selection change', async () => {
+    const { focus, superdoc } = mountWithControls(() => []);
+    const clicks = vi.fn();
+    const activePath = vi.fn();
+    const before = superdoc.ui.selection.getSnapshot();
+    superdoc.ui.contentControls.onClick(clicks);
+    const stop = superdoc.ui.contentControls.observeActivePath(activePath);
+    try {
+      activePath.mockClear();
+      await vi.waitFor(() => {
+        expect(activePath).toHaveBeenCalledExactlyOnceWith({
+          activeId: null,
+          activeIds: [],
+          items: [],
+          status: 'ready',
+          total: 0,
+        });
+      });
+      expect(clicks).not.toHaveBeenCalled();
+      expect(focus).not.toHaveBeenCalled();
+      expect(superdoc.ui.selection.getSnapshot()).toEqual(before);
+    } finally {
+      stop();
+    }
+  });
+
   it('resolves clicks for a ui.contentControls.onClick listener with no instance listener', async () => {
     const controls: ContentControl[] = [
       { id: 'ui-only', kind: 'inline', controlType: 'text', properties: { alias: 'Ui only' } },
@@ -302,6 +328,16 @@ describe('content-control:click', () => {
     const activePath = vi.fn();
     superdoc.ui.contentControls.onClick((payload) => payloads.push(payload));
     superdoc.ui.contentControls.observeActivePath(activePath);
+    activePath.mockClear();
+    await vi.waitFor(() => {
+      expect(activePath).toHaveBeenCalledExactlyOnceWith({
+        activeId: null,
+        activeIds: [],
+        items: [],
+        status: 'ready',
+        total: 0,
+      });
+    });
     activePath.mockClear();
 
     expect(superdoc.listenerCount('content-control:click')).toBe(1);

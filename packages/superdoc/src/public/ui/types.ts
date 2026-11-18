@@ -42,6 +42,9 @@ export type {
   BookmarkAddress,
   ScrollIntoViewInput,
   ScrollIntoViewOutput,
+  HistoryGroupHandle,
+  HistoryEndGroupInput,
+  HistoryEndGroupResult,
   DocumentApi,
   EntityAddress,
   CommentsListResult,
@@ -143,6 +146,8 @@ export type { ContentControlClickPayload, ContentControlRef } from '../content-c
 import type { ExportParams } from '../export-types.js';
 import type { SuperDocVisualHandle, SuperDocVisualOptions } from '../../core/extensions/types.js';
 import type { DocumentReplacementResult } from '../document-replacement.js';
+import type { CommentsLayout, CommentsLayoutState } from '../../core/types/index.js';
+export type { CommentsLayout, CommentsLayoutState, EffectiveCommentsLayout } from '../../core/types/index.js';
 export type { DocumentReplacementResult } from '../document-replacement.js';
 
 import type { SuperDocUIReason } from './reasons.js';
@@ -754,11 +759,12 @@ export interface FormatPainterHandle {
   /** Notify the controller that a pointer-drag selection has started. */
   setPointerSelecting(flag: boolean): void;
   /** Notify the controller that the pointer was released; triggers apply if a non-source selection exists. */
-  notifyPointerUp(): void;
+  notifyPointerUp(): Promise<boolean>;
   /** Notify the controller that a keyboard selection key is held. */
   setKeyboardSelecting(flag: boolean): void;
   /** Notify the controller that the keyboard selection key was released; triggers apply. */
-  notifyKeyUp(): void;
+  notifyKeyUp(): Promise<boolean>;
+  whenSettled(): Promise<boolean>;
   /** Cancel an active painter (Esc or programmatic cancel). */
   cancel(): void;
   /** Subscribe to painter mode changes. Returns a detach function. */
@@ -767,6 +773,7 @@ export interface FormatPainterHandle {
 
 /** Comments slice. */
 export interface CommentsSlice {
+  layout: CommentsLayoutState;
   /**
    * Readiness of the underlying async comments read, combined with the live
    * selection read ({@link SliceStatus}). Checks that only need the comment
@@ -797,6 +804,7 @@ export interface TrackChangesSlice {
   status: SliceStatus;
   /** Readiness of the tracked-change list alone, independent of selection. */
   listStatus: SliceStatus;
+  analysis?: ReviewAnalysisProgress | null;
   /** All tracked changes currently loaded. */
   items: readonly TrackChangesItem[];
   /** Total tracked-change count. */
@@ -805,6 +813,12 @@ export interface TrackChangesSlice {
   activeId: string | null;
   /** Distinct authors across the loaded changes. */
   authors: readonly string[];
+}
+
+export interface ReviewAnalysisProgress {
+  done: number;
+  total: number;
+  stage: string | null;
 }
 
 /** Content-controls slice. */
@@ -1017,6 +1031,16 @@ export interface ViewportGetRectsResult {
   results: readonly ViewportRectResult[];
 }
 
+export interface ViewportPositionAtInput {
+  x: number;
+  y: number;
+  signal?: AbortSignal;
+}
+
+export type ViewportPositionAtResult =
+  | { status: 'resolved'; target: SelectionTarget }
+  | { status: 'no-target' | 'stale' | 'cancelled' | 'disposed' | 'unavailable' };
+
 /** Result of `ui.viewport.getRect`. */
 export interface ViewportRectResult {
   /** Whether the target resolved to any painted geometry. */
@@ -1100,6 +1124,7 @@ export type CommentAnchorCapture =
 
 /** Comments handle. */
 export interface CommentsHandle extends SnapshotSubscribable<CommentsSlice> {
+  setLayout(layout: CommentsLayout): void;
   /** Read the passive page-window snapshot without starting a document-wide read. Observers receive the complete directory separately. */
   getSnapshot(): CommentsSlice;
   /** List comments through the best-known controller/Document API state. */
@@ -1444,6 +1469,7 @@ export interface ViewportHandle {
   getRect(input: ViewportGetRectInput): ViewportRectResult;
   /** At most 5000 targets, yielding every 32. Never forces unpainted pages to render. */
   getRects(input: ViewportGetRectsInput): Promise<ViewportGetRectsResult>;
+  positionAt(input: ViewportPositionAtInput): Promise<ViewportPositionAtResult>;
   /**
    * Subscribe to geometry invalidation after selection, zoom, scroll, resize,
    * layout, or repaint changes. The callback is coalesced to one per frame.
@@ -1754,6 +1780,8 @@ export interface SuperDocLike {
    */
   ui?: BorrowedSuperDocUI;
   getDocumentApi?(): BrowserDocumentApi | null;
+  getCommentsLayout?(): CommentsLayoutState;
+  setCommentsLayout?(layout: CommentsLayout): void;
   /** Lifecycle event subscription. */
   on?(event: string, handler: (...args: unknown[]) => void): unknown;
   /** Lifecycle event unsubscription. */

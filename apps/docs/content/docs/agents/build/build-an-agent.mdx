@@ -28,6 +28,8 @@ const { tools, systemPrompt, dispatch } = await createAgentToolkit({
   compatibility, which advertises a different set of tools.
 </Callout>
 
+Need more Document API operations? See the [full preset](/agents/build/tools#the-full-preset).
+
 `provider` accepts `openai`, `anthropic`, `vercel`, or `generic`. It changes the wire shape of the tool definitions, not the operations available.
 
 Assembling the three pieces separately is the most common integration mistake. A prompt that documents a tool the model cannot call teaches it to call that tool, and the failure looks like a model problem rather than a configuration one. The toolkit makes it impossible for the pieces to disagree.

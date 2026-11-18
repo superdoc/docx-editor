@@ -421,7 +421,7 @@ export const INTENT_GROUP_META: Record<string, IntentGroupMeta> = {
       '\n' +
       'NUMBERING (ordered lists):\n' +
       '• "set_value": restart numbering at the target. Pass target:{listItem} + value:<number> (e.g. value:1 to start over) or value:null to clear a previous override. Mid-sequence targets are atomically split off into their own sequence.\n' +
-      '• "continue_previous": make the target\'s sequence continue numbering from the nearest compatible previous sequence (same abstract definition). Pass target:{listItem of the sequence you want to renumber}. Fails with NO_COMPATIBLE_PREVIOUS or INCOMPATIBLE_DEFINITIONS if no matching prior sequence exists.\n' +
+      '• "continue_previous": make the target\'s sequence continue numbering from the nearest compatible previous sequence (the same level definitions, from one abstract definition or two identical ones, as Restart at 1 in Word writes). Pass target:{listItem of the sequence you want to renumber}. Fails with NO_COMPATIBLE_PREVIOUS or INCOMPATIBLE_DEFINITIONS if no matching prior sequence exists.\n' +
       '\n' +
       'SEQUENCE SHAPE (merge / split):\n' +
       '• "merge": merge the target\'s sequence with an adjacent one into one continuous list. Pass target:{listItem} + direction:"withPrevious" or "withNext". Absorbed items adopt the absorbing sequence\'s numbering definition, and empty paragraphs between the two sequences are removed so numbering flows continuously.\n' +
@@ -1519,7 +1519,8 @@ export const OPERATION_DEFINITIONS = {
   },
   'sections.setPageSetup': {
     memberPath: 'sections.setPageSetup',
-    description: 'Set page size/orientation properties for a section.',
+    description:
+      'Set page size/orientation properties for a section. Changing orientation writes only the page size: width and height swap so the long side matches the orientation, unless width or height is given. Page margins stay as they are; to change them with the orientation, call sections.setPageMargins. Portrait is written without an orient attribute, as Word does. No named paper sizes are defined, so a paperSize other than the paper code the section already has (as sections.get reports it) is rejected with INVALID_INPUT; set width and height instead.',
     expectedResult:
       'Returns a SectionMutationResult receipt; reports NO_OP if page size and orientation already match the requested values.',
     requiresDocumentContext: true,
@@ -2301,7 +2302,8 @@ export const OPERATION_DEFINITIONS = {
   },
   'lists.join': {
     memberPath: 'lists.join',
-    description: 'Merge two adjacent list sequences into one.',
+    description:
+      "Merge two adjacent list sequences into one. Fails with INCOMPATIBLE_DEFINITIONS when their list definitions differ, unless allowIncompatible is true: then the absorbed sequence adopts the absorbing definition, as Word's Continue Numbering does. Empty paragraphs between the sequences are kept. The join still fails with INCOMPATIBLE_DEFINITIONS when the absorbing definition is a bullet at, or does not define, a level an absorbed item uses, since those items would lose their numbers.",
     expectedResult: 'Returns a ListsJoinResult with the resulting listId of the merged sequence.',
     requiresDocumentContext: true,
     metadata: mutationOperation({
@@ -3051,7 +3053,7 @@ export const OPERATION_DEFINITIONS = {
     description:
       'Accept or reject tracked changes by logical id, by several logical ids atomically, by selected text range, by logical anchor range ({ anchor, relativeStart, relativeEnd }), or every active change in the document. Range targets may include overlap / side selectors and may partially resolve a change, splitting surviving content into new fragments with stable ids. Legacy `{ id, range: { kind: "partial", ... } }` targets are promoted only when the active adapter supports `decide()`; legacy fallback adapters fail closed with `INVALID_INPUT`. `input.expectedRevision` is accepted as a compatibility alias for mutation options.',
     expectedResult:
-      "Returns a Receipt. `removed` lists retired tracked-change ids; `inserted` lists successor fragment ids produced by partial range splits; `invalidatedRefs` lists every retired tracked-change ref plus cascade-deleted comment ids; `remappedRefs` carries surviving comment anchors moved by the decision; `affectedStories` lists touched stories; `textRangeShifts` reports per-story visible-text deltas; `txId` correlates with history. Formatting, structural and paired move changes are decided by id. Failures: SPAN_FRAGMENTED when a range crosses an indivisible boundary; CAPABILITY_UNAVAILABLE for unpaired move sides, ambiguous mirrored text-box revisions by id, mirrored text-box revisions targeted by range or replacement side, textbox-scoped or inherited header/footer bulk decisions, range targets over changes that are not text insertions or deletions, and permissionResolver denials of an id or range target; TARGET_NOT_FOUND for unknown ids or a range with no overlapping text revision (formatting-only changes are not range targets); NO_OP for an id already resolved by an id or bulk decision (an id retired by a range decision returns TARGET_NOT_FOUND); STALE_REVISION for stale expectedRevision; REVISION_MISMATCH for stale range coverage. { kind: 'all' } skips changes permissionResolver denies and succeeds with an empty receipt when nothing is decidable.",
+      "Returns a Receipt. `removed` lists retired tracked-change ids; `inserted` lists successor fragment ids produced by partial range splits; `invalidatedRefs` lists every retired tracked-change ref plus cascade-deleted comment ids; `remappedRefs` carries surviving comment anchors moved by the decision; `affectedStories` lists touched stories; `textRangeShifts` reports per-story visible-text deltas; `txId` correlates with history. Formatting, structural and paired move changes are decided by id. Unpaired move sides are decided independently by id: move-from behaves like deletion and move-to like insertion. Failures: SPAN_FRAGMENTED when a range crosses an indivisible boundary; CAPABILITY_UNAVAILABLE for ambiguous mirrored text-box revisions by id, mirrored text-box revisions targeted by range or replacement side, textbox-scoped or inherited header/footer bulk decisions, range targets over changes that are not text insertions or deletions, and permissionResolver denials of an id or range target; TARGET_NOT_FOUND for unknown ids or a range with no overlapping text revision (formatting-only changes are not range targets); NO_OP for an id already resolved by an id or bulk decision (an id retired by a range decision returns TARGET_NOT_FOUND); STALE_REVISION for stale expectedRevision; REVISION_MISMATCH for stale range coverage. { kind: 'all' } skips changes permissionResolver denies and succeeds with an empty receipt when nothing is decidable.",
     requiresDocumentContext: true,
     metadata: mutationOperation({
       idempotency: 'conditional',
@@ -3397,14 +3399,15 @@ export const OPERATION_DEFINITIONS = {
   // -------------------------------------------------------------------------
   'tables.convertFromText': {
     memberPath: 'tables.convertFromText',
-    description: 'Convert a text range into a table.',
+    description:
+      'Convert consecutive paragraphs from a starting block, or exactly the whole paragraphs in a selection, into a table. Selection endpoints must be at paragraph boundaries.',
     expectedResult: 'Returns a TableMutationResult receipt confirming text was converted into a table.',
     requiresDocumentContext: true,
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
       trackedSupport: 'never',
-      possibleFailureCodes: ['INVALID_TARGET'],
+      possibleFailureCodes: ['INVALID_TARGET', 'TARGET_NOT_FOUND', 'PRECONDITION_FAILED'],
       throws: T_NOT_FOUND_COMMAND,
     }),
     referenceDocPath: 'tables/convert-from-text.mdx',
@@ -4406,6 +4409,35 @@ export const OPERATION_DEFINITIONS = {
   // -------------------------------------------------------------------------
   // History
   // -------------------------------------------------------------------------
+  'history.beginGroup': {
+    memberPath: 'history.beginGroup',
+    description:
+      'Begin one editor-local undo group across awaited public writes. Nesting and temporary mutation overlap are rejected. Finish with endGroup in finally; failed writes leave the successful prefix undoable. Native input and undo/redo finish the group; remote peer edits retain their own ownership.',
+    expectedResult:
+      'Returns a session-local groupId. Empty groups create no history entry. The handle does not survive document replacement or reopen.',
+    requiresDocumentContext: true,
+    metadata: readOperation({
+      idempotency: 'non-idempotent',
+      throws: ['CAPABILITY_UNAVAILABLE', 'PRECONDITION_FAILED'],
+    }),
+    referenceDocPath: 'history/begin-group.mdx',
+    referenceGroup: 'history',
+    batchable: false,
+  },
+  'history.endGroup': {
+    memberPath: 'history.endGroup',
+    description:
+      'Finish the matching editor-local group. Call in finally after awaiting each write. A stale handle returns closed false when no group is active; a mismatched handle cannot close another active group. Successful writes become one Undo and one Redo without rolling back failed writes.',
+    expectedResult: 'Returns the supplied groupId and closed, indicating whether this call closed an active group.',
+    requiresDocumentContext: true,
+    metadata: readOperation({
+      idempotency: 'idempotent',
+      throws: ['INVALID_INPUT', 'CAPABILITY_UNAVAILABLE', 'PRECONDITION_FAILED'],
+    }),
+    referenceDocPath: 'history/end-group.mdx',
+    referenceGroup: 'history',
+    batchable: false,
+  },
   'history.get': {
     memberPath: 'history.get',
     description: 'Query the current undo/redo history state of the document.',
@@ -4537,7 +4569,8 @@ export const OPERATION_DEFINITIONS = {
   // -------------------------------------------------------------------------
   'create.image': {
     memberPath: 'create.image',
-    description: 'Insert a new image at the target position.',
+    description:
+      'Insert a new image at the target position. In the V2 runtime, omitting `at` creates a paragraph at the end of the target story. Use `inParagraph` with a paragraph address and visible-text offset to insert into an existing paragraph.',
     expectedResult:
       'Returns a CreateImageResult with the new image address. Tracked-mode results include `trackedChangeRefs` pointing at the tracked insertion review entity. When the target is an inherited or missing header/footer slot, Word-compatible ownership materialization applies immediately; review controls the inserted image.',
     requiresDocumentContext: true,
@@ -6187,7 +6220,8 @@ export const OPERATION_DEFINITIONS = {
   'footnotes.list': {
     memberPath: 'footnotes.list',
     description: 'List all footnotes and endnotes in the document.',
-    expectedResult: 'Returns a FootnotesListResult containing discovered footnotes with address and domain data.',
+    expectedResult:
+      'Returns a FootnotesListResult containing notes with address, content, and inline body reference addresses in references. V2 returns an empty references array for an unreferenced note.',
     requiresDocumentContext: true,
     metadata: readOperation({
       idempotency: 'idempotent',
@@ -6199,7 +6233,8 @@ export const OPERATION_DEFINITIONS = {
   'footnotes.get': {
     memberPath: 'footnotes.get',
     description: 'Get detailed information about a specific footnote or endnote.',
-    expectedResult: "Returns a FootnoteInfo object with the note's type, display number, and content.",
+    expectedResult:
+      "Returns a FootnoteInfo object with the note's type, display number, content, and inline body reference addresses in references. V2 returns an empty references array for an unreferenced note.",
     requiresDocumentContext: true,
     metadata: readOperation({
       throws: T_NOT_FOUND_CAPABLE,

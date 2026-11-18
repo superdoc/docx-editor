@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-31T11:37:17.543Z",
+  "generatedAt": "2026-11-12T07:08:18.206Z",
   "ticket": "SD-3212 PR A0",
   "package": "superdoc",
   "rootExport": {
@@ -36,6 +36,7 @@
         "CommentInteractionLevel",
         "CommentsConfig",
         "CommentsLayout",
+        "CommentsLayoutState",
         "CommentsResponsiveConfig",
         "CommentsType",
         "Config",
@@ -79,6 +80,7 @@
         "EditorSurface",
         "EditorTransactionEvent",
         "EditorUpdateEvent",
+        "EffectiveCommentsLayout",
         "EntityAddress",
         "ExportParams",
         "ExportType",
@@ -367,6 +369,7 @@
         "CommentInteractionLevel",
         "CommentsConfig",
         "CommentsLayout",
+        "CommentsLayoutState",
         "CommentsResponsiveConfig",
         "CommentsType",
         "Config",
@@ -410,6 +413,7 @@
         "EditorSurface",
         "EditorTransactionEvent",
         "EditorUpdateEvent",
+        "EffectiveCommentsLayout",
         "EntityAddress",
         "ExportParams",
         "ExportType",
@@ -713,11 +717,11 @@
     }
   },
   "counts": {
-    "types.import": 325,
-    "types.require": 325,
+    "types.import": 327,
+    "types.require": 327,
     "import": 13,
     "require": 13,
-    "union": 325
+    "union": 327
   },
   "divergences": {
     "typesImportVsRequire": {
@@ -751,6 +755,7 @@
         "CommentInteractionLevel",
         "CommentsConfig",
         "CommentsLayout",
+        "CommentsLayoutState",
         "CommentsResponsiveConfig",
         "CommentsType",
         "Config",
@@ -792,6 +797,7 @@
         "EditorSurface",
         "EditorTransactionEvent",
         "EditorUpdateEvent",
+        "EffectiveCommentsLayout",
         "EntityAddress",
         "ExportParams",
         "ExportType",

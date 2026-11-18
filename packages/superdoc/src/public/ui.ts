@@ -70,6 +70,9 @@ export type {
   BuiltInCommandId,
   ToolbarCommandId,
   CommentsHandle,
+  CommentsLayout,
+  CommentsLayoutState,
+  EffectiveCommentsLayout,
   TrackChangesHandle,
   ContentControlsHandle,
   BookmarksHandle,
@@ -144,6 +147,8 @@ export type {
   ViewportGetRectTarget,
   ViewportGetRectsInput,
   ViewportGetRectsResult,
+  ViewportPositionAtInput,
+  ViewportPositionAtResult,
   ViewportRectResult,
   // Re-surfaced public Document API shapes. `BrowserDocumentApi` is what the
   // controller hands back on `CustomCommandContext.doc`, so a consumer writing
@@ -152,6 +157,9 @@ export type {
   // `DocumentApi` is the synchronous SDK counterpart.
   BrowserDocumentApi,
   PartialBrowserDocumentApi,
+  HistoryGroupHandle,
+  HistoryEndGroupInput,
+  HistoryEndGroupResult,
   DocumentApi,
   Receipt,
   DocumentApiRejectionReason,

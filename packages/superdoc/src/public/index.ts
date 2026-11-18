@@ -155,6 +155,8 @@ export type {
   CommentInteractionConfig,
   CommentsConfig,
   CommentsLayout,
+  CommentsLayoutState,
+  EffectiveCommentsLayout,
   CommentsResponsiveConfig,
   TouchInteractionConfig,
   TrackChangesInteractionConfig,

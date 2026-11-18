@@ -6,7 +6,7 @@ import type { BrowserDocumentApi, SuperDocUI, ZoomSlice } from 'superdoc/ui';
 import { clauseLibraryOptions, clauseLibraryTag, type ClauseLibraryOptionId } from '@/lib/clause-library';
 import { CollapsibleEditorPreview } from './collapsible-editor-preview';
 import { EditorDemoViewControls } from './editor-demo-view-controls';
-import { createRuntimeEditor, loadRuntime, loadUIModule, type SuperDocInstance } from './superdoc-runtime';
+import { loadRuntime, loadUIModule, type SuperDocInstance } from './superdoc-runtime';
 
 const fixture = '/fixtures/clause-library-sample.docx';
 const initialZoom = {
@@ -120,7 +120,7 @@ export function ClauseLibraryDemo() {
         if (disposed || loadId !== loadIdRef.current || !mountRef.current) return;
 
         destroyEditor();
-        const instance = createRuntimeEditor(SuperDoc, {
+        const instance = new SuperDoc({
           selector: mountRef.current,
           document: file,
           ui: { comments: false, contentControls: true, toolbar: false },

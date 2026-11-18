@@ -229,6 +229,7 @@ export function useSuperDocSearch(): SearchSnapshot {
 /** Subscribe to the comments slice. */
 export function useSuperDocComments(): CommentsSlice {
   return useSuperDocSlice((ui) => ui.comments, {
+    layout: { requested: 'sidebar', effective: 'sidebar' },
     status: 'pending',
     listStatus: 'pending',
     items: [],

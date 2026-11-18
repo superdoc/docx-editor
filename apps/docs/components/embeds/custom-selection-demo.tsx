@@ -7,7 +7,7 @@ import type { SelectionCapture, SelectionSlice, SelectionTarget, TextTarget, Zoo
 import { CollapsibleEditorPreview } from './collapsible-editor-preview';
 import { EditorDemoViewControls } from './editor-demo-view-controls';
 import { EDITOR_DEMO_FIT_WIDTH_PADDING, fitRuntimeEditorToWidth } from './editor-demo-zoom';
-import { createRuntimeEditor, loadRuntime, type SuperDocInstance } from './superdoc-runtime';
+import { loadRuntime, type SuperDocInstance } from './superdoc-runtime';
 
 const DEMO_DOCUMENT = '/fixtures/custom-selection-workflow.docx';
 const NARROW_DEMO_WIDTH = 520;
@@ -375,7 +375,7 @@ export function CustomSelectionDemo({ reviewFindings = false }: CustomSelectionD
           })
         : null;
 
-      const instance = createRuntimeEditor(SuperDocCtor, {
+      const instance = new SuperDocCtor({
         selector: mountRef.current,
         document: DEMO_DOCUMENT,
         documentMode: 'editing',

@@ -8,6 +8,7 @@ import { useToolbarItem } from './built-in/use-toolbar-item.js';
 import { createSuperDocUI, registerFirstPartyCommandMutation } from '../../public/ui/create-super-doc-ui.js';
 import type { SuperDocLike, SuperDocUI } from '../../public/ui/types.js';
 import { normalizeUiConfig } from '../../core/config/normalize-ui-config.js';
+import type { ToolbarConfig } from '../../core/types/index.js';
 import { createHighContrastMode } from '../../composables/use-high-contrast-mode.js';
 
 /**
@@ -130,6 +131,220 @@ async function waitForElement<T extends Element>(
 }
 
 describe('BuiltInToolbar', () => {
+  describe('custom overflow priority', () => {
+    function mountToolbar(width: number, options: ToolbarConfig = {}) {
+      const container = document.createElement('div');
+      Object.defineProperty(container, 'offsetWidth', { configurable: true, get: () => width });
+      document.body.append(container);
+      const normalized = normalizeUiConfig({
+        ui: { toolbar: { ...options, container, responsiveTo: 'container' } },
+      }).toolbar;
+      const toolbar = new BuiltInToolbar({
+        highContrastMode: createHighContrastMode(),
+        superdoc: makeHost(),
+        selector: normalized.container,
+        ...normalized.options,
+      });
+      return {
+        toolbar,
+        container,
+        resize: (nextWidth: number) => {
+          width = nextWidth;
+          toolbar.onToolbarResize();
+        },
+      };
+    }
+
+    const customItems: ToolbarConfig['customItems'] = [
+      { type: 'button', id: 'approve', label: 'Approve', overflowPriority: 10, onSelect: () => {} },
+      {
+        type: 'dropdown',
+        id: 'status',
+        label: 'Status',
+        size: 'wide',
+        overflowPriority: 20,
+        options: [{ id: 'draft', label: 'Draft' }],
+        onSelect: () => {},
+      },
+    ];
+
+    it('keeps important custom controls on a full toolbar before ordinary controls', () => {
+      const { toolbar, container } = mountToolbar(700, { customItems });
+      try {
+        expect(container.querySelector('[data-item="btn-approve"]')).not.toBeNull();
+        expect(container.querySelector('[data-item="btn-status"]')).not.toBeNull();
+        expect(toolbar.overflowItems.some((item) => !item.isCustomToolbarItem)).toBe(true);
+      } finally {
+        toolbar.destroy();
+      }
+    });
+
+    it('allocates by priority while preserving configured order and dropdown selection across resizes', () => {
+      const { toolbar, resize } = mountToolbar(300, { items: {}, customItems });
+      try {
+        expect(toolbar.toolbarItems.map((item) => item.name.value)).toEqual(['approve', 'status']);
+        const status = toolbar.getToolbarItemByName('status');
+        if (!status) throw new Error('Status control missing');
+        status.selectedValue.value = 'draft';
+
+        resize(200);
+        expect(toolbar.toolbarItems.map((item) => item.name.value)).toEqual(['overflow', 'status']);
+        expect(toolbar.overflowItems.map((item) => item.name.value)).toEqual(['approve']);
+        resize(100);
+        expect(toolbar.toolbarItems.map((item) => item.name.value)).toEqual(['overflow']);
+        expect(toolbar.overflowItems.map((item) => item.name.value)).toEqual(['approve', 'status']);
+        resize(300);
+        expect(toolbar.toolbarItems.map((item) => item.name.value)).toEqual(['approve', 'status']);
+        expect(toolbar.getToolbarItemByName('status')?.selectedValue.value).toBe('draft');
+      } finally {
+        toolbar.destroy();
+      }
+    });
+
+    it('lets a prioritized custom control displace ordinary sticky controls when space is limited', () => {
+      const { toolbar } = mountToolbar(200, { customItems });
+      try {
+        expect(toolbar.toolbarItems.map((item) => item.name.value)).toContain('status');
+        expect(toolbar.overflowItems.map((item) => item.name.value)).toContain('documentMode');
+      } finally {
+        toolbar.destroy();
+      }
+    });
+
+    it('retains configuration order for equal priorities', () => {
+      const { toolbar } = mountToolbar(150, {
+        items: {},
+        customItems: [
+          { type: 'button', id: 'first', label: 'First', overflowPriority: 1, onSelect: () => {} },
+          { type: 'button', id: 'second', label: 'Second', overflowPriority: 1, onSelect: () => {} },
+        ],
+      });
+      try {
+        expect(toolbar.toolbarItems.map((item) => item.name.value)).toEqual(['overflow', 'first']);
+        expect(toolbar.overflowItems.map((item) => item.name.value)).toEqual(['second']);
+      } finally {
+        toolbar.destroy();
+      }
+    });
+
+    it('uses remaining space for a smaller control when the highest priority cannot fit', () => {
+      const { toolbar } = mountToolbar(150, { items: {}, customItems });
+      try {
+        expect(toolbar.toolbarItems.map((item) => item.name.value)).toEqual(['overflow', 'approve']);
+        expect(toolbar.overflowItems.map((item) => item.name.value)).toEqual(['status']);
+      } finally {
+        toolbar.destroy();
+      }
+    });
+
+    it('preserves default menu allocation when all custom priorities are zero', () => {
+      const implicit = mountToolbar(700, {
+        customItems: [{ type: 'button', id: 'action', label: 'Action', onSelect: () => {} }],
+      }).toolbar;
+      const explicit = mountToolbar(700, {
+        customItems: [{ type: 'button', id: 'action', label: 'Action', overflowPriority: 0, onSelect: () => {} }],
+      }).toolbar;
+      try {
+        expect(explicit.toolbarItems.map((item) => item.name.value)).toEqual(
+          implicit.toolbarItems.map((item) => item.name.value),
+        );
+        expect(explicit.overflowItems.map((item) => item.name.value)).toEqual(
+          implicit.overflowItems.map((item) => item.name.value),
+        );
+      } finally {
+        implicit.destroy();
+        explicit.destroy();
+      }
+    });
+
+    it('allows lower priorities and ignores non-finite priorities', () => {
+      const { toolbar } = mountToolbar(150, {
+        items: {},
+        customItems: [
+          { type: 'button', id: 'lower', label: 'Lower', overflowPriority: -1, onSelect: () => {} },
+          { type: 'button', id: 'normal', label: 'Normal', overflowPriority: NaN, onSelect: () => {} },
+          { type: 'button', id: 'invalid', label: 'Invalid', overflowPriority: Infinity, onSelect: () => {} },
+        ],
+      });
+      try {
+        expect(toolbar.toolbarItems.map((item) => item.name.value)).toEqual(['overflow', 'normal']);
+        expect(toolbar.overflowItems.map((item) => item.name.value)).toEqual(['lower', 'invalid']);
+      } finally {
+        toolbar.destroy();
+      }
+    });
+
+    it('keeps global visible policy independent of per-item priority', () => {
+      const { toolbar } = mountToolbar(100, { items: {}, customItems, overflow: 'visible' });
+      try {
+        expect(toolbar.toolbarItems.map((item) => item.name.value)).toEqual(['approve', 'status']);
+        expect(toolbar.overflowItems).toEqual([]);
+      } finally {
+        toolbar.destroy();
+      }
+    });
+  });
+
+  it('keeps the default toolbar out of the document-wide comments directory', async () => {
+    const list = vi.fn(() => ({ items: [] }));
+    const host = makeHost({
+      activeEditor: {
+        id: 'editor-1',
+        editorVersion: 2,
+        doc: makeCommandDoc({ comments: { list } }),
+        reviewWindow: {
+          getSnapshot: () => ({ status: 'ready', commentItems: [], trackedChangeItems: [] }),
+          subscribe: () => () => {},
+        },
+        host: {
+          getDocumentLoadingSnapshot: () => ({ sourceStage: 'source-complete' }),
+          subscribeDocumentLoading: () => () => {},
+          getForegroundMutationState: () => ({ active: 0, pending: 0 }),
+        },
+      },
+    });
+    const toolbar = new BuiltInToolbar({ highContrastMode: createHighContrastMode(), superdoc: host });
+    try {
+      await nextTick();
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      expect(list).not.toHaveBeenCalled();
+    } finally {
+      toolbar.destroy();
+    }
+  });
+
+  it('updates comments layout from host events and releases the listener on destroy', () => {
+    let layout = { requested: 'sidebar', effective: 'sidebar' };
+    const host = makeHost({ getCommentsLayout: () => layout, uiConfig: { comments: { enabled: true } } });
+    const emit = host.emit;
+    if (typeof emit !== 'function') throw new Error('Host events are unavailable');
+    const toolbar = new BuiltInToolbar({
+      highContrastMode: createHighContrastMode(),
+      superdoc: host,
+      showCommentsLayoutButton: true,
+    });
+    const item = toolbar.getToolbarItemByName('commentsLayout');
+    if (!item) throw new Error('Comments layout control is unavailable');
+    const update = vi.spyOn(toolbar, 'updateToolbarState');
+    try {
+      expect(item.selectedValue.value).toBe('sidebar');
+      layout = { requested: 'inline', effective: 'inline' };
+      emit('comments-layout-change');
+      expect(item.selectedValue.value).toBe('inline');
+      layout = { requested: 'auto', effective: 'sidebar' };
+      emit('comments-layout-change');
+      expect(item.label.value).toBe('Auto (Sidebar)');
+      layout = { requested: 'auto', effective: 'inline' };
+      emit('comments-layout-change');
+      expect(item.label.value).toBe('Auto (Inline)');
+    } finally {
+      toolbar.destroy();
+    }
+    update.mockClear();
+    emit('comments-layout-change');
+    expect(update).not.toHaveBeenCalled();
+  });
+
   it('assigns a distinct render identity to every default toolbar slot', () => {
     const toolbar = new BuiltInToolbar({
       highContrastMode: createHighContrastMode(),
@@ -856,6 +1071,92 @@ describe('BuiltInToolbar', () => {
     expect(toolbar.overflowItems).toEqual([]);
     toolbar.destroy();
   });
+
+  it.each([false, true])(
+    'shows custom option descriptions and preserves selection (overflow: %s)',
+    async (overflow) => {
+      const container = document.createElement('div');
+      Object.defineProperty(container, 'offsetWidth', { value: overflow ? 50 : 1000 });
+      document.body.append(container);
+      const onSelect = vi.fn();
+      const normalized = normalizeUiConfig({
+        ui: {
+          toolbar: {
+            items: {},
+            responsiveTo: 'container',
+            customItems: [
+              {
+                type: 'dropdown',
+                id: 'layout-probe',
+                label: 'Layout probe',
+                options: [
+                  {
+                    id: 'sidebar',
+                    label: 'Sidebar',
+                    value: 2,
+                    description: 'Keep <b>comments</b> beside the document.',
+                  },
+                  { id: 'automatic', label: 'Automatic' },
+                  {
+                    id: 'unavailable',
+                    label: 'Unavailable',
+                    description: 'Unavailable for this document.',
+                    disabled: true,
+                  },
+                ],
+                onSelect,
+              },
+            ],
+          },
+        },
+      }).toolbar;
+      const toolbar = new BuiltInToolbar({
+        highContrastMode: createHighContrastMode(),
+        superdoc: makeHost(),
+        selector: container,
+        ...normalized.options,
+      });
+      try {
+        await nextTick();
+        await new Promise<void>((resolve) => setTimeout(resolve, 0));
+        if (overflow) {
+          container.querySelector<HTMLElement>('[aria-label="Overflow items"]')!.click();
+          await nextTick();
+          await new Promise<void>((resolve) => setTimeout(resolve, 0));
+        }
+        const trigger = await waitForElement(() =>
+          document.querySelector<HTMLElement>('[data-item="btn-layout-probe"]'),
+        );
+        trigger.click();
+        const described = await waitForElement(() =>
+          document.querySelector<HTMLElement>('[aria-label="Layout probe - Sidebar"]'),
+        );
+        const description = described.querySelector('.toolbar-dropdown-option__description');
+        expect(description?.textContent).toBe('Keep <b>comments</b> beside the document.');
+        expect(description?.querySelector('b')).toBeNull();
+        expect(described.getAttribute('aria-describedby')).toBe(description?.id);
+        expect(
+          document
+            .querySelector('[aria-label="Layout probe - Automatic"]')
+            ?.querySelector('.toolbar-dropdown-option__description'),
+        ).toBeNull();
+        document.querySelector<HTMLElement>('[aria-label="Layout probe - Unavailable"]')!.click();
+        expect(onSelect).not.toHaveBeenCalled();
+        described.click();
+        expect(onSelect).toHaveBeenCalledWith(
+          expect.objectContaining({
+            value: 2,
+            option: expect.objectContaining({
+              id: 'sidebar',
+              description: 'Keep <b>comments</b> beside the document.',
+            }),
+          }),
+        );
+      } finally {
+        toolbar.destroy();
+      }
+    },
+  );
 
   it('renders canonical dropdown option SVG markup', async () => {
     const toolbarContainer = document.createElement('div');

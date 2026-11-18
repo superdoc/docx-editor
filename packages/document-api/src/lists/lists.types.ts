@@ -236,6 +236,7 @@ export interface ListsDeleteInput {
 export interface ListsJoinInput {
   target: ListItemAddress;
   direction: JoinDirection;
+  allowIncompatible?: boolean;
 }
 export interface ListsCanJoinInput {
   target: ListItemAddress;

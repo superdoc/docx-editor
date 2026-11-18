@@ -9,11 +9,12 @@ import { connect, startServer, waitFor } from './helpers.ts';
 const ROOM = 'sd2/v2.1/contract-42';
 
 function recorder() {
-  const events = { changed: [] as string[], emptied: [] as string[] };
+  const events = { changed: [] as string[], emptied: [] as string[], deleted: [] as string[] };
   const autosave: DocxAutosave = {
     marker: { name: 'superdocAutosave', value: 'the-marker' },
     roomChanged: (room) => events.changed.push(room),
     roomEmptied: (room) => events.emptied.push(room),
+    roomDeleted: (room) => events.deleted.push(room),
     flush: async () => {},
     stop: async () => {},
   };

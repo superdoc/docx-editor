@@ -227,7 +227,7 @@ const REMOVED_ROOT_EXPORTS: MigrationEntry[] = [
     symptom:
       'ESM and TypeScript reject the import. A CommonJS `require` binds `undefined` instead, so the failure surfaces later at the call site.',
     notes:
-      'The component is gone, not the workflow. Add actions to the built-in menu with `ui.contextMenu.sections`. For a fully application-owned menu, set `ui: { contextMenu: false }`, listen on the Editor host, and resolve entities and selection with `superdoc.ui.viewport.contextAt({ x, y })`. This does not restore arbitrary ProseMirror positions.',
+      'The component is gone, not the workflow. Add actions to the built-in menu with `ui.contextMenu.sections`. For a fully application-owned menu, set `ui: { contextMenu: false }`, listen on the Editor host, and resolve entities, selection, and the painted-selection hit with `superdoc.ui.viewport.contextAt({ x, y })`. Await `superdoc.ui.viewport.positionAt({ x, y })` for a document point target. This does not restore arbitrary ProseMirror positions.',
     docsPath: '/editor/custom-ui/context-menus',
   },
   {

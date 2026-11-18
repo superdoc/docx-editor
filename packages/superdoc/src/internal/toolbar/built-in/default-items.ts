@@ -34,6 +34,7 @@ import { tableActionCommandId } from '../compatibility-catalog.js';
 import type { BuiltInToolbar, ToolbarItem } from '../built-in-toolbar.js';
 import type { CommandExecutionResult, SelectionSlice } from '../../../public/ui/types.js';
 import { isPlainObject } from '../../../helpers/object-guards.js';
+import { isCommentsLayout } from '../../../helpers/comment-small-screen.js';
 import { toolbarIcons as builtInToolbarIcons } from './toolbarIcons.js';
 import { toolbarTexts as builtInToolbarTexts } from './toolbarTexts.js';
 
@@ -102,6 +103,7 @@ const controlSizes: ReadonlyMap<string, number> = new Map([
   ['separator', SEPARATOR_WIDTH],
   ['zoom', 71],
   ['measurementUnit', 52],
+  ['commentsLayout', 142],
   ['fontFamily', 118],
   ['fontSize', 57],
   ['textAlign', 40],
@@ -1037,6 +1039,7 @@ export const makeDefaultItems = ({
     disabled: false,
     attributes: {
       ariaLabel: 'Overflow items',
+      className: 'sd-toolbar-overflow-trigger',
     },
   });
 
@@ -1095,6 +1098,34 @@ export const makeDefaultItems = ({
     onActivate: ({ measurementUnit: value }) => {
       if (!value) return;
       measurementUnit.label.value = String(value);
+    },
+  });
+
+  const commentsLayout = useToolbarItem({
+    type: 'dropdown',
+    name: 'commentsLayout',
+    allowWithoutEditor: true,
+    group: 'right',
+    defaultLabel: toolbarTexts.commentsLayoutSidebar,
+    label: toolbarTexts.commentsLayoutSidebar,
+    hasCaret: true,
+    layoutWidth: 142,
+    restoreEditorFocus: true,
+    style: { width: '140px', minWidth: '140px' },
+    dropdownValueKey: 'key',
+    tooltip: toolbarTexts.commentsLayout,
+    attributes: {
+      ariaLabel: toolbarTexts.commentsLayout,
+      dropdownPosition: 'right',
+      className: 'sd-comments-layout-control',
+    },
+    options: [
+      { label: toolbarTexts.commentsLayoutSidebar, key: 'sidebar', props: { 'data-sd-comments-layout-option': '' } },
+      { label: toolbarTexts.commentsLayoutInline, key: 'inline', props: { 'data-sd-comments-layout-option': '' } },
+      { label: toolbarTexts.commentsLayoutAuto, key: 'auto', props: { 'data-sd-comments-layout-option': '' } },
+    ],
+    command: ({ argument }: { argument?: unknown }) => {
+      if (isCommentsLayout(argument)) superToolbar.ui?.comments.setLayout(argument);
     },
   });
 
@@ -1429,6 +1460,9 @@ export const makeDefaultItems = ({
     createSeparator(),
     ruler,
     measurementUnit,
+    ...(superToolbar.config?.showCommentsLayoutButton || configuredItemNames?.has('commentsLayout')
+      ? [commentsLayout]
+      : []),
     ...(shouldIncludeFormattingMarks ? [formattingMarks] : []),
     copyFormat,
     clearFormatting,
@@ -1476,18 +1510,25 @@ export const makeDefaultItems = ({
     const rank = (item: ToolbarItem) => orderIndex.get(item.name.value) ?? Number.MAX_SAFE_INTEGER;
     layoutItems.sort((a, b) => rank(a) - rank(b));
   }
+  const hasPriorities = layoutItems.some((item) => item.overflowPriority !== 0);
+  const allocationItems = hasPriorities
+    ? [...layoutItems].sort(
+        (a, b) => b.overflowPriority - a.overflowPriority || Number(isStickyItem(b)) - Number(isStickyItem(a)),
+      )
+    : layoutItems;
   const partitionItems = (reserveOverflowTrigger: boolean) => {
     const overflowItems: ToolbarItem[] = [];
     const visibleItems: ToolbarItem[] = [];
-    const stickyItemsWidth = layoutItems
-      .filter(isStickyItem)
-      .reduce((total, item) => total + getToolbarItemWidth(item), 0);
+    const stickyItemsWidth = hasPriorities
+      ? 0
+      : layoutItems.filter(isStickyItem).reduce((total, item) => total + getToolbarItemWidth(item), 0);
     let totalWidth =
       toolbarPadding +
       stickyItemsWidth +
       (reserveOverflowTrigger && overflowTrigger ? getToolbarItemWidth(overflowTrigger) : 0);
 
-    layoutItems.forEach((item, index) => {
+    allocationItems.forEach((item) => {
+      const index = layoutItems.indexOf(item);
       const itemWidth = getToolbarItemWidth(item);
 
       if (
@@ -1513,7 +1554,7 @@ export const makeDefaultItems = ({
         return;
       }
 
-      if (isStickyItem(item)) {
+      if (isStickyItem(item) && !hasPriorities) {
         visibleItems.push(item);
         return;
       }
@@ -1526,7 +1567,11 @@ export const makeDefaultItems = ({
       }
     });
 
-    return { visibleItems, overflowItems };
+    const visible = new Set(visibleItems);
+    return {
+      visibleItems: layoutItems.filter((item) => visible.has(item)),
+      overflowItems: layoutItems.filter((item) => !visible.has(item)),
+    };
   };
 
   let { visibleItems, overflowItems } = partitionItems(false);

@@ -13,7 +13,7 @@ const LINK_DATASET_KEYS = {
 const MAX_HREF_LENGTH = 2048;
 const SAFE_ANCHOR_PATTERN = /^[A-Za-z0-9._=-]+$/;
 const SAFE_WORD_BOOKMARK_ANCHOR_PATTERN = /^[A-Za-z0-9._=\-[\]]+$/;
-const VALID_BOOKMARK_ANCHOR_PATTERN = /^\p{L}[\p{L}\p{Mn}\p{Mc}\p{Nd}_]*$/u;
+const VALID_BOOKMARK_ANCHOR_PATTERN = /^[\p{L}_][\p{L}\p{Mn}\p{Mc}\p{Nd}_]*$/u;
 const AMBIGUOUS_LINK_PATTERNS = /^(click here|read more|more|link|here|this|download|view)$/i;
 const INVALID_TARGET_CHARS = /[\u0000-\u001F\u007F]/;
 

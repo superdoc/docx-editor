@@ -134,32 +134,26 @@ const applyInlineBoxStyle = (
   if (!element.style.lineHeight) element.style.lineHeight = `${contentLineHeight}px`;
   element.style.paddingTop = `${box.style.paddingBlockStart}px`;
   element.style.paddingBottom = `${box.style.paddingBlockEnd}px`;
-  element.style.paddingLeft = isFirstLeaf ? `${box.style.paddingInlineStart}px` : '0px';
-  element.style.paddingRight = isLastLeaf ? `${box.style.paddingInlineEnd}px` : '0px';
-  element.style.marginLeft = isFirstLeaf && box.startsRange ? `${box.style.gapBefore}px` : '0px';
-  element.style.marginRight = isLastLeaf && box.endsRange ? `${box.style.gapAfter}px` : '0px';
+  element.style.paddingInlineStart = isFirstLeaf ? `${box.style.paddingInlineStart}px` : '0px';
+  element.style.paddingInlineEnd = isLastLeaf ? `${box.style.paddingInlineEnd}px` : '0px';
+  element.style.marginInlineStart = isFirstLeaf && box.startsRange ? `${box.style.gapBefore}px` : '0px';
+  element.style.marginInlineEnd = isLastLeaf && box.endsRange ? `${box.style.gapAfter}px` : '0px';
   element.style.borderTop = border;
   element.style.borderBottom = border;
-  element.style.borderLeft = isFirstLeaf ? border : '0px';
-  element.style.borderRight = isLastLeaf ? border : '0px';
+  element.style.borderInlineStart = isFirstLeaf ? border : '0px';
+  element.style.borderInlineEnd = isLastLeaf ? border : '0px';
   if (box.style.backgroundColor != null) element.style.backgroundColor = box.style.backgroundColor;
   if (box.style.color != null) element.style.color = box.style.color;
-  element.style.borderTopLeftRadius = isFirstLeaf ? `${radius}px` : '0px';
-  element.style.borderBottomLeftRadius = isFirstLeaf ? `${radius}px` : '0px';
-  element.style.borderTopRightRadius = isLastLeaf ? `${radius}px` : '0px';
-  element.style.borderBottomRightRadius = isLastLeaf ? `${radius}px` : '0px';
+  element.style.borderStartStartRadius = isFirstLeaf ? `${radius}px` : '0px';
+  element.style.borderEndStartRadius = isFirstLeaf ? `${radius}px` : '0px';
+  element.style.borderStartEndRadius = isLastLeaf ? `${radius}px` : '0px';
+  element.style.borderEndEndRadius = isLastLeaf ? `${radius}px` : '0px';
 };
 
-/** Paints measured LTR inline-box slices on the canonical text leaves. */
-export const paintInlineBoxes = (
-  boxes: readonly LineInlineBox[] | undefined,
-  lineElement: HTMLElement,
-  isRtl: boolean,
-): void => {
+export const paintInlineBoxes = (boxes: readonly LineInlineBox[] | undefined, lineElement: HTMLElement): void => {
   if (!boxes?.length) return;
 
   const leafRanges = collectTextLeafRanges(lineElement);
-  if (isRtl) return;
   for (const box of boxes) {
     const coveredLeaves = leafRanges.filter(
       ({ from, to }) => Number.isFinite(from) && Number.isFinite(to) && from < box.to && to > box.from,

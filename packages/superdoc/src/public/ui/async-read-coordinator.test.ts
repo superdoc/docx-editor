@@ -313,7 +313,7 @@ describe('async read coordinator lifecycle', () => {
     ui.destroy();
   });
 
-  it('comments catalog demand cold-starts once and then defers to the typing hold', async () => {
+  it('refreshes explicit comments reads during typing while passive heavy catalogs remain held', async () => {
     vi.useFakeTimers();
     const editor = makeEditor({ stage: 'source-loading' });
     const { ui } = mountController(editor);
@@ -333,9 +333,9 @@ describe('async read coordinator lifecycle', () => {
     ui.comments.list();
     ui.contentControls.list();
     await settle(2_000);
-    expect(editor.commentsList).toHaveBeenCalledTimes(1);
+    expect(editor.commentsList).toHaveBeenCalledTimes(2);
     expect(editor.contentControlsList).toHaveBeenCalledTimes(2);
-    expect(ui.comments.getSnapshot()).toMatchObject({ listStatus: 'stale', total: 1 });
+    expect(ui.comments.getSnapshot()).toMatchObject({ listStatus: 'ready', total: 1 });
     ui.destroy();
   });
 

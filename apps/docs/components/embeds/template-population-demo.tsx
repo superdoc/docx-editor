@@ -11,7 +11,7 @@ import {
 } from '@/lib/template-population';
 import { CollapsibleEditorPreview } from './collapsible-editor-preview';
 import { EditorDemoViewControls } from './editor-demo-view-controls';
-import { createRuntimeEditor, loadRuntime, loadUIModule, type SuperDocInstance } from './superdoc-runtime';
+import { loadRuntime, loadUIModule, type SuperDocInstance } from './superdoc-runtime';
 
 const fixture = '/fixtures/service-agreement-template.docx';
 const initialZoom = {
@@ -146,7 +146,7 @@ export function TemplatePopulationDemo() {
         if (disposed || loadId !== loadIdRef.current || !mountRef.current) return;
 
         destroyEditor();
-        const instance = createRuntimeEditor(SuperDoc, {
+        const instance = new SuperDoc({
           selector: mountRef.current,
           document: file,
           ui: { comments: false, contentControls: true, toolbar: false },

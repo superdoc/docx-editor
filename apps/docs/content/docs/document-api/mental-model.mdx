@@ -71,6 +71,8 @@ An address identifies a document location or object. A target describes the cont
 
 Keep the target returned for the current document revision. If the document changes first, query again instead of assuming that an old target still points to the same content.
 
+In the V2 runtime, `doc.create.image({ src })` creates a new paragraph at the end of the target story; it does not use the editor's caret. To insert in an existing paragraph, provide `at: { kind: 'inParagraph', target, offset }`. For a collapsed caret in plain text, obtain the text point from `doc.selection.current().selectionTarget`, resolve its block as a paragraph address, and use its offset. Inline content controls can make a boundary ambiguous; use `inContentControl` for those targets.
+
 ## 3. Mutate
 
 Pass the target to the operation that makes the change. The target makes the scope explicit. It also lets each host apply the same operation contract without inspecting its UI state.
@@ -90,6 +92,24 @@ Treat the receipt as part of the contract. Do not infer success from a repaint, 
 Browser calls are Promise-shaped. Other clients expose their own synchronous or asynchronous form. The operation names, inputs, outputs, targets, errors, and receipt meaning stay the same.
 
 This separation is deliberate. The host decides how a call runs. The Document API decides what the call means.
+
+## Group a logical action for Undo
+
+Use `history.beginGroup()` and `history.endGroup({ groupId })` to make several history-safe writes one Undo and one Redo in the current editor session. Await each write and close the handle in `finally`:
+
+```ts
+const group = await doc.history.beginGroup();
+try {
+  await doc.replace({ target: firstTarget, text: 'First update' });
+  await doc.replace({ target: secondTarget, text: 'Second update' });
+} finally {
+  await doc.history.endGroup(group);
+}
+```
+
+Each write publishes as it completes and keeps its normal permission, lock, revision, and receipt checks. A failed write leaves the successful prefix undoable; grouping does not roll it back. An empty group adds no history entry. Nested groups, history-unsafe writes, and overlapping temporary mutations are rejected.
+
+Undo, Redo, and native user edits finish the open group. A later `endGroup` returns `closed: false` if no group remains; a mismatched handle cannot close another active group. Remote edits keep the peer's history ownership. Callers sharing one editor must coordinate their groups, and handles do not survive document replacement or reopen.
 
 ## Use the contract in a workflow
 

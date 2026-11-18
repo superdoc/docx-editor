@@ -707,6 +707,7 @@ export function executeListsJoin(
 ): ListsJoinResult {
   validateListItemTarget(input, 'lists.join');
   requireEnum(input.direction, 'direction', VALID_JOIN_DIRECTIONS, 'lists.join');
+  optionalBoolean(input.allowIncompatible, 'allowIncompatible', 'lists.join');
   return adapter.join(input, normalizeTextMutationOptions(options));
 }
 export function executeListsCanJoin(adapter: ListsAdapter, input: ListsCanJoinInput): ListsCanJoinResult {

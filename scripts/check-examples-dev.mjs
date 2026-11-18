@@ -11,7 +11,10 @@ const examplesRoot = path.join(publicRoot, 'examples');
 const portOffset = Number(process.env.VITE_SUPERDOC_EXAMPLE_PORT_OFFSET ?? '0');
 const firstPort = 5300 + portOffset;
 const routes = { collaboration: '/?mode=create&user=Alex' };
-const sidecars = { collaboration: ['tsx', 'server.ts'] };
+const sidecars = {
+  collaboration: ['tsx', 'server.ts'],
+  'collaborative-version-history': ['tsx', 'server.ts'],
+};
 
 export function findDevExamples(root = examplesRoot) {
   return readdirSync(root, { withFileTypes: true })

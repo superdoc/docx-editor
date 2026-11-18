@@ -74,6 +74,13 @@ describe('normalizeParagraphAttrsFromOoxml', () => {
     ).toBe('center');
   });
 
+  it('resolves logical start and end using the paragraph direction', () => {
+    expect(normalizeParagraphAttrsFromOoxml({ rightToLeft: true, justification: 'start' }).alignment).toBe('right');
+    expect(normalizeParagraphAttrsFromOoxml({ rightToLeft: true, justification: 'end' }).alignment).toBe('left');
+    expect(normalizeParagraphAttrsFromOoxml({ rightToLeft: false, justification: 'start' }).alignment).toBe('left');
+    expect(normalizeParagraphAttrsFromOoxml({ rightToLeft: false, justification: 'end' }).alignment).toBe('right');
+  });
+
   it('preserves explicit paragraph bidi as directionContext', () => {
     expect(
       normalizeParagraphAttrsFromOoxml({

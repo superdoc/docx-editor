@@ -84,7 +84,9 @@ describe('bookmarks validation', () => {
       '9starts_with_digit',
       'x'.repeat(60),
       'x'.repeat(41),
-      '_hidden',
+      '_'.concat('a'.repeat(40)),
+      '_has spaces',
+      '_a-b',
       'a=b',
       'a-b',
       'a\n',
@@ -100,15 +102,25 @@ describe('bookmarks validation', () => {
       expect(adapter.insert).not.toHaveBeenCalled();
     });
 
-    it.each(['A', 'ok_name', 'a'.repeat(40), 'école', '中文', 'αριθμός', 'e\u0301cole', 'a١', '𐐀'.repeat(20)])(
-      'preserves a valid creation name %j',
-      (name) => {
-        const adapter = makeAdapter();
-        const input = { name };
-        executeBookmarksInsert(adapter, input as any);
-        expect(adapter.insert).toHaveBeenCalledWith(input, { changeMode: 'direct', dryRun: false });
-      },
-    );
+    it.each([
+      'A',
+      'ok_name',
+      '_hidden',
+      '_Ref123',
+      '_'.concat('a'.repeat(39)),
+      'a'.repeat(40),
+      'école',
+      '中文',
+      'αριθμός',
+      'e\u0301cole',
+      'a١',
+      '𐐀'.repeat(20),
+    ])('preserves a valid creation name %j', (name) => {
+      const adapter = makeAdapter();
+      const input = { name };
+      executeBookmarksInsert(adapter, input as any);
+      expect(adapter.insert).toHaveBeenCalledWith(input, { changeMode: 'direct', dryRun: false });
+    });
 
     it('throws INVALID_INPUT when name is empty', () => {
       const adapter = makeAdapter();

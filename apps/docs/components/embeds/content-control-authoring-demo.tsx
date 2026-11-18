@@ -6,7 +6,7 @@ import type { BrowserDocumentApi, ContentControlInfo, SelectionSlice, SuperDocUI
 import { getReadyAuthoringTarget } from '../../lib/content-control-authoring';
 import { CollapsibleEditorPreview } from './collapsible-editor-preview';
 import { EditorDemoViewControls } from './editor-demo-view-controls';
-import { createRuntimeEditor, loadRuntime, loadUIModule, type SuperDocInstance } from './superdoc-runtime';
+import { loadRuntime, loadUIModule, type SuperDocInstance } from './superdoc-runtime';
 
 const fixture = '/fixtures/service-agreement-draft.docx';
 const initialZoom = {
@@ -146,7 +146,7 @@ export function ContentControlAuthoringDemo() {
         if (disposed || loadId !== loadIdRef.current || !mountRef.current) return;
 
         destroyEditor();
-        const instance = createRuntimeEditor(SuperDoc, {
+        const instance = new SuperDoc({
           selector: mountRef.current,
           document: file,
           ui: { comments: false, contentControls: true, toolbar: false },

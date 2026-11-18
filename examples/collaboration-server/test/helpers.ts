@@ -26,6 +26,7 @@ export async function freePort() {
 
 export interface Client {
   document: Doc;
+  closeCode(): number | undefined;
   pendingChanges(): number;
   leave(): void;
 }
@@ -66,13 +67,14 @@ export async function startServer(
 
 export interface OpenOptions {
   token?: string;
+  document?: Doc;
   parameters?: Record<string, string>;
   waitMs?: number;
 }
 
-export async function open(server: Pick<TestServer, 'port' | 'clients'>, room: string, { token, parameters, waitMs = 5000 }: OpenOptions = {}) {
-  const document = new Doc();
+export async function open(server: Pick<TestServer, 'port' | 'clients'>, room: string, { token, parameters, waitMs = 5000, document = new Doc() }: OpenOptions = {}) {
   let outcome: 'synced' | 'denied' | 'pending' | undefined;
+  let closeCode: number | undefined;
   const socket = new HocuspocusProviderWebsocket({ url: `ws://127.0.0.1:${server.port}`, parameters: parameters ?? {} });
   const provider = new HocuspocusProvider({
     websocketProvider: socket,
@@ -86,11 +88,16 @@ export async function open(server: Pick<TestServer, 'port' | 'clients'>, room: s
       outcome ??= 'denied';
     },
     onClose: ({ event }) => {
-      if (event.code === 4401 || event.code === 4403) outcome ??= 'denied';
+      closeCode = event.code;
+      if (event.code === 4401 || event.code === 4403) {
+        outcome ??= 'denied';
+        provider.disconnect();
+      }
     },
   });
   const client: Client = {
     document,
+    closeCode: () => closeCode,
     pendingChanges: () => provider.unsyncedChanges,
     leave() {
       provider.destroy();

@@ -9,6 +9,7 @@ export type ToolbarItemType = (typeof TOOLBAR_ITEM_TYPES)[number];
 export interface ToolbarItemOption {
   key?: string | number;
   label?: string;
+  description?: string;
   type?: string;
   disabled?: boolean;
   class?: unknown;
@@ -38,6 +39,7 @@ export interface UseToolbarItemOptions {
   isNarrow?: boolean;
   isWide?: boolean;
   layoutWidth?: number;
+  overflowPriority?: number;
   suppressActiveHighlight?: boolean;
   argument?: unknown;
   iconColor?: string;
@@ -91,6 +93,7 @@ export interface ToolbarItem {
   isNarrow: Ref<boolean | undefined>;
   isWide: Ref<boolean | undefined>;
   layoutWidth: Ref<number | undefined>;
+  overflowPriority: number;
   tooltip: Ref<string | undefined>;
   tooltipVisible: Ref<boolean | undefined>;
   tooltipTimeout: Ref<number | undefined>;
@@ -153,6 +156,7 @@ export const useToolbarItem = (options: UseToolbarItemOptions): ToolbarItem => {
   const isNarrow = ref(options.isNarrow);
   const isWide = ref(options.isWide);
   const layoutWidth = ref(options.layoutWidth);
+  const overflowPriority = options.overflowPriority;
   const suppressActiveHighlight = ref(options.suppressActiveHighlight || false);
 
   const argument = ref(options.argument);
@@ -271,6 +275,7 @@ export const useToolbarItem = (options: UseToolbarItemOptions): ToolbarItem => {
 
   return {
     ...refs,
+    overflowPriority: typeof overflowPriority === 'number' && Number.isFinite(overflowPriority) ? overflowPriority : 0,
     initiallyDisabled,
     activate,
     deactivate,

@@ -7,6 +7,9 @@ import { createFileRoomStore } from './src/storage/file.ts';
 
 const config = loadConfig();
 const auth = config.auth;
+const roomStore = process.env.COLLABORATION_SQLITE_FILE
+  ? await (await import('./src/storage/sqlite.ts')).createSqliteRoomStore(process.env.COLLABORATION_SQLITE_FILE)
+  : createFileRoomStore(config.storageDirectory);
 
 const docxAutosave =
   config.docx.mode === 'off'
@@ -29,7 +32,7 @@ const docxAutosave =
 const server = createCollaborationServer({
   port: config.port,
   host: config.host,
-  roomStore: createFileRoomStore(config.storageDirectory),
+  roomStore,
   authorize: auth.mode === 'none' ? null : createExampleAuthorize(auth.secret),
   docxAutosave,
 });
@@ -43,6 +46,7 @@ if (auth.mode === 'none') console.warn('Access checks are off. Anyone who can re
 const stop = async () => {
   try {
     await server.stop();
+    if ('close' in roomStore && typeof roomStore.close === 'function') roomStore.close();
     process.exit(0);
   } catch (error) {
     console.error('Collaboration server shutdown failed:', error);

@@ -1,6 +1,25 @@
 <script lang="ts">
-type CommentEditSession = { owner: object; submission: symbol | null };
-type CommentReplySession = { owner: object };
+type CommentEditSession = {
+  owner: object | null;
+  submission: symbol | null;
+  thread: object;
+  canResume: () => boolean;
+  isRecipientCurrent: () => boolean;
+  failure: string;
+  reportFailure: (failure: string) => void;
+};
+type CommentReplySession = {
+  owner: object | null;
+  threadId: string | undefined;
+  fileId: string | null | undefined;
+  canResume: () => boolean;
+  isRecipientCurrent: () => boolean;
+  draftRevision: number;
+  open: boolean;
+  submitting: boolean;
+  failure: string;
+  publish: (session: CommentReplySession, submissionOnly?: boolean) => void;
+};
 
 // The shared composer can move between dialog instances while a mutation settles.
 const commentEditSessions = new WeakMap<object, CommentEditSession>();
@@ -12,6 +31,7 @@ import { computed, ref, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import type { ComponentPublicInstance, PropType, Ref } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useSuperDocInstance } from '../../composables/use-superdoc-instance';
+import { getSuperDocUiOwnerId } from '../../core/superdoc-ui-owner.js';
 import type { SuperDoc } from '../../core/SuperDoc.js';
 import type { Editor, User } from '../../core/types/index.js';
 import { useCommentsStore, type CommentsStoreEditor } from '../../stores/comments-store';
@@ -559,8 +579,14 @@ const trackedChangeDecisionDisabledOutcome = () => ({
 const isReplying = ref(false);
 const isSubmittingReply = ref(false);
 const isSubmittingNewComment = ref(false);
-let replyDraftRevision = 0;
-watch([currentCommentText, currentCommentMentions], () => replyDraftRevision++, { deep: true, flush: 'sync' });
+watch(
+  [currentCommentText, currentCommentMentions],
+  () => {
+    const session = commentReplySessions.get(commentsStore);
+    if (session?.owner === replySessionOwner) session.draftRevision++;
+  },
+  { deep: true, flush: 'sync' },
+);
 const commentSaveFailure = ref('');
 const commentSaveFailureMessage = (outcome?: MutationOutcome, hasDraft = true) => {
   const reason =
@@ -571,19 +597,73 @@ const commentSaveFailureMessage = (outcome?: MutationOutcome, hasDraft = true) =
         : '';
   return `Your comment could not be saved${reason}.${hasDraft ? ' Your draft is still here. Try again or cancel.' : ' Try again.'}`;
 };
+const publishReplySession = (session: CommentReplySession, submissionOnly = false) => {
+  if (
+    commentReplySessions.get(commentsStore) !== session ||
+    session.owner !== replySessionOwner ||
+    session.threadId !== props.comment.commentId ||
+    session.fileId !== props.comment.fileId
+  )
+    return;
+  if (!submissionOnly) isReplying.value = session.open;
+  isSubmittingReply.value = session.submitting;
+  if (!submissionOnly) commentSaveFailure.value = session.failure;
+};
 const startReply = () => {
   if (commentsAreReadOnly()) return readOnlyMutationOutcome();
   if (isV2WriteDisabled.value) {
     return { ok: false, reason: v2WriteCapability.value?.reason ?? 'v2-write-unavailable' };
   }
-  commentReplySessions.set(commentsStore, { owner: replySessionOwner });
-  commentSaveFailure.value = '';
-  isReplying.value = true;
+  const editorOwner = isV2Mode.value && v2CommentsAdapter.value ? captureCommentEditorOwner() : null;
+  const documentId = editorOwner?.adapter.documentId;
+  const pendingDraft = pendingComment.value;
+  const edit = editingCommentId.value;
+  const session: CommentReplySession = {
+    owner: replySessionOwner,
+    threadId: props.comment.commentId,
+    fileId: props.comment.fileId,
+    canResume: () =>
+      editorOwner !== null &&
+      !commentsAreReadOnly() &&
+      editorOwner.isCurrent() &&
+      editorOwner.adapter.documentId === documentId &&
+      pendingComment.value === pendingDraft &&
+      editingCommentId.value === edit,
+    isRecipientCurrent: () =>
+      session.owner === replySessionOwner &&
+      isDialogActive.value &&
+      session.threadId === props.comment.commentId &&
+      session.fileId === props.comment.fileId,
+    draftRevision: 0,
+    open: true,
+    submitting: false,
+    failure: '',
+    publish: publishReplySession,
+  };
+  commentReplySessions.set(commentsStore, session);
+  session.publish(session);
   nextTick(() => {
     commentInput.value?.focus?.();
     emit('resize');
   });
 };
+
+watch(
+  [() => props.comment.commentId, () => props.comment.fileId],
+  () => {
+    const editSession = commentEditSessions.get(commentsStore);
+    const replySession = commentReplySessions.get(commentsStore);
+    if (editSession?.owner !== editSessionOwner && replySession?.owner !== replySessionOwner) return;
+    if (editSession?.owner === editSessionOwner) {
+      retireOwnEditSession();
+    }
+    retireOwnReplySession();
+    isReplying.value = false;
+    isSubmittingReply.value = false;
+    commentSaveFailure.value = '';
+  },
+  { flush: 'sync' },
+);
 
 const comments = computed(() => {
   const parentComment = props.comment;
@@ -676,6 +756,7 @@ watch(isDialogActive, (active) => {
     textExpanded.value = false;
     threadExpanded.value = false;
     isReplying.value = false;
+    retireOwnReplySession();
     nextTick(() => emit('resize'));
   }
 });
@@ -948,12 +1029,25 @@ const handleClickOutside = (e: ClickOutsideEvent) => {
   // (used by the presentation editor) can redirect e.target away from the
   // originally clicked element, causing the selector check to miss it.
   const elementAtPoint = document.elementFromPoint(e.clientX, e.clientY);
+  const isOwnLayoutControl = (element: Element | null | undefined) => {
+    const control = element?.closest(
+      '.sd-comments-layout-control, .sd-toolbar-overflow-trigger, [data-sd-comments-layout-option]',
+    );
+    const owner = control?.closest('[data-superdoc-ui-owner]')?.getAttribute('data-superdoc-ui-owner');
+    return Boolean(owner && owner === getSuperDocUiOwnerId(proxy.$superdoc));
+  };
   const clickedIgnoredTarget =
     targetElement?.closest?.(CLICK_OUTSIDE_IGNORED_SELECTORS) ||
     elementAtPoint?.closest?.(CLICK_OUTSIDE_IGNORED_SELECTORS) ||
     findIgnoredElementByGeometry(e.clientX, e.clientY);
 
-  if (clickedIgnoredTarget || isCommentHighlighted.value) return;
+  if (
+    isOwnLayoutControl(targetElement) ||
+    isOwnLayoutControl(elementAtPoint) ||
+    clickedIgnoredTarget ||
+    isCommentHighlighted.value
+  )
+    return;
 
   // If clicked on another comment dialog, let that dialog's setFocus handle activation.
   // Without this, the outgoing dialog clears activeComment before the new dialog can set it.
@@ -996,11 +1090,16 @@ const handleAddComment = async () => {
       return { ok: false, reason: 'reply-submit-in-flight' };
     }
 
+    const session = commentReplySessions.get(commentsStore);
     isSubmittingReply.value = true;
     commentSaveFailure.value = '';
+    if (session?.owner === replySessionOwner) {
+      session.submitting = true;
+      session.failure = '';
+      session.publish(session);
+    }
     try {
-      const session = commentReplySessions.get(commentsStore);
-      const draftRevision = replyDraftRevision;
+      const draftRevision = session?.draftRevision;
       const editorOwner = captureCommentEditorOwner();
       const threadId = props.comment.commentId;
       const fileId = props.comment.fileId;
@@ -1015,16 +1114,11 @@ const handleAddComment = async () => {
         ...(currentCommentMentions.value.length ? { mentions: currentCommentMentions.value } : {}),
         ...(trackedChangeTarget ? { trackedChangeTarget } : {}),
       });
-      if (!outcome?.ok) {
-        commentSaveFailure.value = commentSaveFailureMessage(outcome);
-        // Plan §4.1: keep reply editor open and typed text intact for retry.
-        nextTick(() => emit('resize'));
-        return outcome;
-      }
       if (
-        session?.owner !== replySessionOwner ||
+        !session?.owner ||
         commentReplySessions.get(commentsStore) !== session ||
-        replyDraftRevision !== draftRevision ||
+        !session.isRecipientCurrent() ||
+        !session.canResume() ||
         !editorOwner.isCurrent() ||
         props.comment.commentId !== threadId ||
         props.comment.fileId !== fileId ||
@@ -1034,14 +1128,31 @@ const handleAddComment = async () => {
         !isReplying.value
       )
         return outcome;
-      retireOwnReplySession();
+      if (!outcome?.ok) {
+        session.failure = commentSaveFailureMessage(outcome);
+        session.publish(session);
+        nextTick(() => emit('resize'));
+        return outcome;
+      }
+      if (session.draftRevision !== draftRevision) return outcome;
+      session.open = false;
+      session.submitting = false;
+      session.failure = '';
+      session.publish(session);
+      commentReplySessions.delete(commentsStore);
       isReplying.value = false;
       currentCommentText.value = '';
       currentCommentMentions.value = [];
       nextTick(() => emit('resize'));
       return outcome;
     } finally {
-      isSubmittingReply.value = false;
+      const currentSession = commentReplySessions.get(commentsStore);
+      if (session) session.submitting = false;
+      if (session?.owner && currentSession === session && session.isRecipientCurrent()) {
+        session.publish(session, true);
+      } else if (!currentSession || currentSession === session) {
+        isSubmittingReply.value = false;
+      }
     }
   }
 
@@ -1247,6 +1358,19 @@ const retryTrackedChangeDecision = () => {
   handleResolve();
 };
 
+const ownsTrackedChangeDecision = (superdoc: DialogSuperDoc, editor: DialogEditor | null) =>
+  editor !== null && proxy.$superdoc === superdoc && superdoc.activeEditor === editor;
+
+const restoreTrackedChangeDecisionFocus = (superdoc: DialogSuperDoc, editor: DialogEditor | null) => {
+  nextTick(() => {
+    if (!ownsTrackedChangeDecision(superdoc, editor)) return;
+    commentsStore.lastUpdate = new Date();
+    activeComment.value = null;
+    commentsStore.setActiveComment(superdoc, activeComment.value);
+    if (ownsTrackedChangeDecision(superdoc, editor)) superdoc.focus?.({ preventScroll: true });
+  });
+};
+
 const handleReject = async () => {
   if (props.comment.trackedChange) {
     if (trackedChangeDecisionsAreDisabled()) return trackedChangeDecisionDisabledOutcome();
@@ -1258,16 +1382,19 @@ const handleReject = async () => {
 
   if (props.comment.trackedChange) {
     if (isV2Mode.value) {
+      const superdoc = proxy.$superdoc;
+      const editor = superdoc.activeEditor;
       // ui-phase3-003: route tracked-change reject through the store-owned
       // v2 adapter path. Vue state and customer callbacks run only after the
       // v2 receipt commits and the store reconciles from trackChanges.list().
       // Vue state is NOT mutated until the dispatch commits and the store
       // bubble handlers receive the v2 facade explicitly after success.
       const outcome = await commentsStore.decideTrackedChangeFromSidebar({
-        superdoc: proxy.$superdoc,
+        superdoc,
         comment: props.comment,
         decision: 'reject',
       });
+      if (!ownsTrackedChangeDecision(superdoc, editor)) return;
       if (!outcome?.ok || outcome.success === false) {
         // SD-3772 §6: surface the failure (e.g. `stale-catalog`) instead of
         // silently swallowing it. The row stays; focus is not restored.
@@ -1276,14 +1403,9 @@ const handleReject = async () => {
       }
       clearTrackedChangeDecisionFailure();
       if (typeof customHandler === 'function') {
-        customHandler(props.comment, proxy.$superdoc.activeEditor);
+        customHandler(props.comment, editor);
       }
-      nextTick(() => {
-        commentsStore.lastUpdate = new Date();
-        activeComment.value = null;
-        commentsStore.setActiveComment(proxy.$superdoc, activeComment.value);
-        proxy.$superdoc.focus?.({ preventScroll: true });
-      });
+      restoreTrackedChangeDecisionFocus(superdoc, editor);
       return;
     }
 
@@ -1348,11 +1470,14 @@ const handleResolve = async () => {
   // v2 mode is active. Vue state mutates only after the dispatch commits and
   // the store reconciles from `host.getHandles().trackChanges.list()`.
   if (props.comment.trackedChange && isV2Mode.value) {
+    const superdoc = proxy.$superdoc;
+    const editor = superdoc.activeEditor;
     const outcome = await commentsStore.decideTrackedChangeFromSidebar({
-      superdoc: proxy.$superdoc,
+      superdoc,
       comment: props.comment,
       decision: 'accept',
     });
+    if (!ownsTrackedChangeDecision(superdoc, editor)) return;
     if (!outcome?.ok || outcome.success === false) {
       // SD-3772 §6: surface the failure (e.g. `stale-catalog`) instead of
       // silently swallowing it. The row stays; focus is not restored.
@@ -1361,14 +1486,9 @@ const handleResolve = async () => {
     }
     clearTrackedChangeDecisionFailure();
     if (typeof customHandler === 'function') {
-      customHandler(props.comment, proxy.$superdoc.activeEditor);
+      customHandler(props.comment, editor);
     }
-    nextTick(() => {
-      commentsStore.lastUpdate = new Date();
-      activeComment.value = null;
-      commentsStore.setActiveComment(proxy.$superdoc, activeComment.value);
-      proxy.$superdoc.focus?.({ preventScroll: true });
-    });
+    restoreTrackedChangeDecisionFocus(superdoc, editor);
     return;
   }
 
@@ -1460,7 +1580,34 @@ const handleOverflowSelect = async (value: string, comment: CommentModel) => {
 
   switch (value) {
     case 'edit':
-      commentEditSessions.set(commentsStore, { owner: editSessionOwner, submission: null });
+      {
+        const editorOwner = isV2Mode.value && v2CommentsAdapter.value ? captureCommentEditorOwner() : null;
+        const documentId = editorOwner?.adapter.documentId;
+        const threadId = props.comment.commentId;
+        const fileId = props.comment.fileId;
+        commentSaveFailure.value = '';
+        const session: CommentEditSession = {
+          owner: editSessionOwner,
+          submission: null,
+          thread: props.comment,
+          canResume: () =>
+            editorOwner !== null &&
+            isV2Mode.value &&
+            editorOwner.isCurrent() &&
+            editorOwner.adapter.documentId === documentId &&
+            editingCommentId.value === comment.commentId,
+          isRecipientCurrent: () =>
+            session.owner === editSessionOwner &&
+            isDialogActive.value &&
+            props.comment.commentId === threadId &&
+            props.comment.fileId === fileId,
+          failure: '',
+          reportFailure: (failure) => {
+            if (session.isRecipientCurrent()) commentSaveFailure.value = failure;
+          },
+        };
+        commentEditSessions.set(commentsStore, session);
+      }
       currentCommentText.value = comment?.commentText ?? '';
       currentCommentMentions.value = Array.isArray(comment?.mentions) ? [...comment.mentions] : [];
       activeComment.value = props.comment.commentId;
@@ -1496,7 +1643,8 @@ const handleCommentUpdate = async (comment: CommentModel) => {
     if (session?.owner === editSessionOwner) session.submission = submission;
     const editorOwner = captureCommentEditorOwner();
     const documentId = editorOwner.adapter.documentId;
-    const thread = props.comment;
+    const threadId = props.comment.commentId;
+    const fileId = props.comment.fileId;
     const draft = currentCommentText.value;
     const outcome = await commentsStore.editCommentV2({
       superdoc: proxy.$superdoc,
@@ -1504,22 +1652,26 @@ const handleCommentUpdate = async (comment: CommentModel) => {
       text: draft,
     });
     if (
-      session?.owner !== editSessionOwner ||
+      !session?.owner ||
       commentEditSessions.get(commentsStore) !== session ||
+      !session.isRecipientCurrent() ||
       session.submission !== submission ||
       !editorOwner.isCurrent() ||
       editorOwner.adapter.documentId !== documentId ||
-      props.comment !== thread ||
+      props.comment.commentId !== threadId ||
+      props.comment.fileId !== fileId ||
       editingCommentId.value !== comment.commentId ||
       currentCommentText.value !== draft
     )
       return outcome;
     if (!outcome?.ok) {
-      commentSaveFailure.value = commentSaveFailureMessage(outcome);
+      session.failure = commentSaveFailureMessage(outcome);
+      session.reportFailure(session.failure);
       return outcome;
     }
-    commentSaveFailure.value = '';
-    retireOwnEditSession();
+    session.failure = '';
+    session.reportFailure('');
+    commentEditSessions.delete(commentsStore);
     editingCommentId.value = null;
     removePendingComment(proxy.$superdoc);
     return outcome;
@@ -1576,6 +1728,39 @@ const usersFiltered = computed(() => {
 });
 
 onMounted(() => {
+  const session = commentEditSessions.get(commentsStore);
+  if (session?.owner === null && session.thread === props.comment && session.canResume() && isDialogActive.value) {
+    session.owner = editSessionOwner;
+    const threadId = props.comment.commentId;
+    const fileId = props.comment.fileId;
+    session.isRecipientCurrent = () =>
+      session.owner === editSessionOwner &&
+      isDialogActive.value &&
+      props.comment.commentId === threadId &&
+      props.comment.fileId === fileId;
+    commentSaveFailure.value = session.failure;
+    session.reportFailure = (failure) => {
+      if (session.isRecipientCurrent()) commentSaveFailure.value = failure;
+    };
+  }
+  const replySession = commentReplySessions.get(commentsStore);
+  if (
+    replySession?.owner === null &&
+    replySession.open &&
+    replySession.threadId === props.comment.commentId &&
+    replySession.fileId === props.comment.fileId &&
+    replySession.canResume() &&
+    isDialogActive.value
+  ) {
+    replySession.owner = replySessionOwner;
+    replySession.isRecipientCurrent = () =>
+      replySession.owner === replySessionOwner &&
+      isDialogActive.value &&
+      replySession.threadId === props.comment.commentId &&
+      replySession.fileId === props.comment.fileId;
+    replySession.publish = publishReplySession;
+    replySession.publish(replySession);
+  }
   proxy.$superdoc?.on?.('active-editor-change', refreshActiveEditor);
   if (props.autoFocus) {
     nextTick(() => setFocus());
@@ -1598,8 +1783,29 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
-  retireOwnEditSession();
-  retireOwnReplySession();
+  const session = commentEditSessions.get(commentsStore);
+  if (session?.owner === editSessionOwner && session.canResume()) {
+    session.owner = null;
+    nextTick(() => {
+      if (session.owner === null && commentEditSessions.get(commentsStore) === session) {
+        commentEditSessions.delete(commentsStore);
+      }
+    });
+  } else retireOwnEditSession();
+  const replySession = commentReplySessions.get(commentsStore);
+  if (
+    replySession?.owner === replySessionOwner &&
+    replySession.canResume() &&
+    isReplying.value &&
+    isDialogActive.value
+  ) {
+    replySession.owner = null;
+    nextTick(() => {
+      if (replySession.owner === null && commentReplySessions.get(commentsStore) === replySession) {
+        commentReplySessions.delete(commentsStore);
+      }
+    });
+  } else retireOwnReplySession();
   proxy.$superdoc?.off?.('active-editor-change', refreshActiveEditor);
 });
 
@@ -1633,6 +1839,7 @@ watch(
     if (!readOnly) return;
 
     isReplying.value = false;
+    retireOwnReplySession();
     if (comments.value.some((comment) => comment.commentId === editingCommentId.value)) {
       editingCommentId.value = null;
     }
@@ -1647,6 +1854,7 @@ watch(
 watch(isV2WriteDisabled, (isDisabled) => {
   if (!isDisabled) return;
   isReplying.value = false;
+  retireOwnReplySession();
   nextTick(() => emit('resize'));
 });
 </script>

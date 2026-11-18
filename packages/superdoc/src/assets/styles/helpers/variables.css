@@ -197,6 +197,7 @@
   --sd-tracked-changes-delete-text: currentColor;
   --sd-tracked-changes-delete-decoration-thickness: 2px;
   --sd-tracked-changes-format-border: var(--sd-track-format-border, gold);
+  --sd-tracked-changes-change-bar-color: #000;
   --sd-tracked-changes-move-to-border: var(--sd-tracked-changes-semantic-color, #00853d);
   --sd-tracked-changes-move-to-background: var(--sd-tracked-changes-semantic-background, #00853d22);
   --sd-tracked-changes-move-to-background-focused: var(--sd-tracked-changes-semantic-background-focused, #00853d44);

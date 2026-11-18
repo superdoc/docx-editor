@@ -1,0 +1,100 @@
+---
+title: Move off the legacy collaboration server
+navTitle: Legacy collaboration server
+description: Run @superdoc-dev/superdoc-yjs-collaboration 1.0.2 safely until you move to the v2 collaboration server.
+---
+
+`@superdoc-dev/superdoc-yjs-collaboration` is a Node.js server library for SuperDoc v1 collaboration rooms. Version 1.0.2 is the last published release. It is no longer maintained.
+
+New servers should start from [Deploy a collaboration server](/editor/collaboration/deploy-a-server). If you still run 1.0.2, the sections below cover its known problems and how to work around them.
+
+<Callout title='v1 rooms need their own migration'>
+  V2 collaboration rooms use a different document format. Do not connect a v2 editor directly to a room this server
+  holds. See [Migrate existing collaboration
+  data](/editor/collaboration/upgrade-a-document#migrate-existing-collaboration-data-separately).
+</Callout>
+
+## Create the service with the builder
+
+The package README imports a default export. Version 1.0.2 has no default export. Under ESM the import fails, and under CommonJS `new` fails with `is not a constructor`.
+
+Import the named `CollaborationBuilder` instead. `.withName()` is required; `build()` throws without it.
+
+```js
+import { CollaborationBuilder } from '@superdoc-dev/superdoc-yjs-collaboration';
+
+const service = new CollaborationBuilder()
+  .withName('collaboration')
+  .withDebounce(2000)
+  .onAuthenticate(authenticate)
+  .onLoad(loadRoom)
+  .onAutoSave(saveRoom)
+  .build();
+```
+
+Under CommonJS, use `const { CollaborationBuilder } = require('@superdoc-dev/superdoc-yjs-collaboration');`.
+
+## Pass the request shape and catch the rejection
+
+`service.welcome(socket, request)` reads `request.params.documentId` and `request.url`. A Fastify route such as `/collaboration/:documentId` provides both. With other frameworks, build the object yourself.
+
+`welcome()` returns a promise that rejects when:
+
+- `params.documentId` or `url` is missing,
+- `onAuthenticate` returns a falsy value or throws,
+- `onLoad` throws.
+
+On an authentication failure, the server closes the socket with code 1008 or 1011. In the other cases the socket stays open. Without a rejection handler, Node.js 15 and later stop the whole server process on the first rejection.
+
+Always handle the promise and close the socket yourself:
+
+```js
+service
+  .welcome(socket, {
+    url: request.url,
+    params: { documentId },
+    headers: request.headers,
+  })
+  .catch((error) => {
+    logger.warn({ documentId, error }, 'collaboration connection refused');
+    if (socket.readyState === socket.OPEN) socket.close(1011, 'Connection failed');
+  });
+```
+
+## Restart after a failed load
+
+When `onLoad` throws, the room stays in memory with no content. The next connection to the same `documentId` is admitted and gets that empty room. `onLoad` is not called again.
+
+Version 1.0.2 has no way to remove that room. Retry storage reads inside `onLoad`. If a load still fails, restart the server process before editors open that document again.
+
+## Save from onAutoSave, not onChange
+
+`onChange` and `onBeforeChange` run once for every connection that has joined the room since it loaded, including connections that have closed. After 21 editors join and leave, one edit by the 22nd runs `onChange` 22 times. The count resets only when the room leaves memory, `withDocumentExpiryMs` after the last editor leaves. The builder's default is 5,000 ms.
+
+`onAutoSave` runs once per room after edits stop for the `withDebounce` interval, however many editors have joined. Save the room from `onAutoSave`.
+
+Two limits apply:
+
+- Keep `withDebounce` above 0. With 0, `onAutoSave` runs once when the room loads and never again for edits.
+- `onAutoSave` receives the parameters of the connection that loaded the room, not the editor who made the change. Do not read `userContext` there to decide who edited.
+
+## Keep your own Yjs objects out of the room
+
+The package bundles its own copy of Yjs. When your server also imports `yjs`, Yjs logs `Yjs was already imported. This breaks constructor checks and will lead to issues!`.
+
+The two copies do not share classes. A room document is not `instanceof Y.Doc` from your import. Inserting a `Y.XmlText`, `Y.XmlElement`, or `Y.Map` created by your copy throws `Unexpected content type in insert operation`.
+
+Strings, numbers, and plain objects insert normally. 1.0.2 has no safe way to add structured Yjs content, such as `Y.XmlText`, from your server process. Applying an update built with your own copy, for example with `Y.applyUpdate`, inserts without an error, but later edits to that content from editors never reach the room or saved copies. Add structured content through an editor connection, or [move to the v2 server](#move-to-the-v2-server).
+
+## Move to the v2 server
+
+The [v2 server template](/editor/collaboration/deploy-a-server) covers the same responsibilities:
+
+| 1.0.2                     | v2                                                                                                                                                                 |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `onAuthenticate`          | One authorize function, called on every connection and reconnect. See [Check access](/editor/collaboration/deploy-a-server#check-access).                          |
+| `onLoad` and `onAutoSave` | `load` and `store` methods for your database or object storage. See [Store rooms](/editor/collaboration/deploy-a-server#store-rooms).                              |
+| `withDebounce`            | The template stores a room shortly after edits stop, at least every 10 seconds during editing, and when the last editor leaves.                                    |
+| `onChange`                | Read edit attribution on the server. See [Observe edits](/editor/collaboration/observe-edits) and [Record who changed what](/editor/collaboration/record-changes). |
+
+Moving existing rooms is a separate server-side step. See [Migrate existing collaboration data](/editor/collaboration/upgrade-a-document#migrate-existing-collaboration-data-separately), then follow the [v1 migration guide](/editor/migrate-from-v1/overview) for the editor.

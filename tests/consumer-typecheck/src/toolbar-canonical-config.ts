@@ -6,6 +6,9 @@ import type {
   ToolbarCommandId,
   ToolbarConfig,
   ToolbarCustomItem,
+  ToolbarCustomButtonConfig,
+  ToolbarCustomDropdownConfig,
+  ToolbarCustomOption,
   ToolbarCustomButtonCommandId,
   ToolbarCustomDropdownCommandId,
   ToolbarCustomItemSelectContext,
@@ -14,6 +17,19 @@ import type {
   ToolbarRegion,
   ToolbarStringId,
 } from 'superdoc';
+
+const buttonPriority: ToolbarCustomButtonConfig['overflowPriority'] = 10;
+const dropdownPriority: ToolbarCustomDropdownConfig['overflowPriority'] = undefined;
+const readablePriority: number | undefined = buttonPriority;
+const describedOption: ToolbarCustomOption = {
+  id: 'sidebar',
+  label: 'Sidebar',
+  description: 'Show comments beside the document.',
+};
+const description: string | undefined = describedOption.description;
+// @ts-expect-error Descriptions are plain text.
+const invalidDescription: ToolbarCustomOption = { id: 'invalid', label: 'Invalid', description: 2 };
+void [description, invalidDescription];
 
 const region: ToolbarRegion = 'center';
 const item: ToolbarItemId = 'document-mode';
@@ -60,6 +76,7 @@ const itemIds = {
   'linked-style': true,
   ruler: true,
   'measurement-unit': true,
+  'comments-layout': true,
   'formatting-marks': true,
   'copy-format': true,
   'clear-formatting': true,
@@ -74,15 +91,17 @@ const customItems = [
     label: 'Save',
     region: 'right',
     size: 'compact',
+    overflowPriority: 10,
     onSelect: (context: ToolbarCustomItemSelectContext) => context.documentMode,
   },
   {
     type: 'dropdown',
     id: 'status',
     label: 'Status',
+    overflowPriority: 20,
     options: [
       { id: 'draft', label: 'Draft' },
-      { id: 'approved', label: 'Approved', value: 2 },
+      { id: 'approved', label: 'Approved', value: 2, description: 'Ready to share with reviewers.' },
     ],
     onSelect: ({ value }) => value,
   },
@@ -158,6 +177,9 @@ const _badRegisteredCommand: ToolbarCustomItem = {
 };
 
 void [
+  buttonPriority,
+  dropdownPriority,
+  readablePriority,
   _config,
   region,
   item,

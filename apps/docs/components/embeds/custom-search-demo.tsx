@@ -7,7 +7,7 @@ import type { SearchSnapshot, WorkflowActionResult, ZoomSlice } from 'superdoc/u
 import { CollapsibleEditorPreview } from './collapsible-editor-preview';
 import { EditorDemoViewControls } from './editor-demo-view-controls';
 import { EDITOR_DEMO_FIT_WIDTH_PADDING, fitRuntimeEditorToWidth } from './editor-demo-zoom';
-import { createRuntimeEditor, loadRuntime, type SuperDocInstance } from './superdoc-runtime';
+import { loadRuntime, type SuperDocInstance } from './superdoc-runtime';
 
 const DEMO_DOCUMENT = '/fixtures/search-sample.docx';
 const DEFAULT_QUERY = 'Client';
@@ -115,7 +115,7 @@ export function CustomSearchDemo() {
         toolbar: { container: toolbarContainer, responsiveTo: 'container' },
       } satisfies UIConfig;
 
-      const instance = createRuntimeEditor(SuperDocCtor, {
+      const instance = new SuperDocCtor({
         selector: mountRef.current,
         document: DEMO_DOCUMENT,
         documentMode: 'editing',

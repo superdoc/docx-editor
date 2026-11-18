@@ -56,8 +56,6 @@
  *   pnpm run check:public-boundary
  */
 
-// The namespace as well as the two helpers this file calls: `CWD_ANCHORED_CALLEES`
-// reads the module's own export names rather than repeating them by hand.
 import * as nodeFs from 'node:fs';
 const { existsSync, readFileSync, readlinkSync } = nodeFs;
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
@@ -66,45 +64,20 @@ import { execFileSync } from 'node:child_process';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
-/**
- * Surfaces that must work from a bare public clone. A path here cannot depend
- * on anything above the repository root.
- *
- * Runtime modules and build config are intentionally absent: see the scope note
- * above. Widening this list is a policy change, not a fix for a failing check.
- */
-const SCANNED_PATTERNS = [
+const COLOCATED_TEST_IN_ANY_LANGUAGE = /\.(?:test|spec)\.[A-Za-z0-9]+$/;
+
+const PUBLIC_CLONE_SURFACES = [
   /(?:^|\/)__tests__\//,
   /(?:^|\/)tests?\//,
   /(?:^|\/)fixtures?\//,
-  // Any extension, not only the JavaScript family. The directory patterns above
-  // never cared what language a test was written in, and these did, so a
-  // colocated `client.test.py` or `client.test.sh` was not read at all. What is
-  // readable is already decided by `SCANNED_EXTENSIONS` in `isScanned`, so this
-  // cannot pull in a `.docx` fixture that happens to be named `.test.docx`.
-  /\.(?:test|spec)\.[A-Za-z0-9]+$/,
+  COLOCATED_TEST_IN_ANY_LANGUAGE,
   /(?:^|\/)examples\//,
 ];
 
-/**
- * Text formats where a relative path is meaningful. Binaries cannot carry one.
- *
- * Not only the JavaScript family. The scanned surfaces also hold Python and shell
- * tests, PHP and HTML fixtures, and `.cts`/`.mts` consumer tests, and every one of
- * those was skipped before its contents were read, so a private dependency in a
- * `.py` fixture passed the gate. A path literal in any of them breaks a public
- * clone the same way.
- *
- * `.svg` is here for the same reason: it is XML, not a binary, and the scanned
- * surfaces track 14 of them. An `<image href="../../labs/private.png">` in a demo
- * asset is a private dependency a public clone cannot satisfy, and skipping the
- * format by extension meant the required job never opened one.
- *
- * `.code-workspace` is JSON, and its `folders[].path` entries are paths by
- * definition: the one tracked in the word-addin demo points at the directories
- * the editor opens, so an escaping value there leaves the demo unusable from a
- * public clone.
- */
+function isInPublicCloneSurface(file) {
+  return PUBLIC_CLONE_SURFACES.some((pattern) => pattern.test(file));
+}
+
 const SCANNED_EXTENSIONS = new Set([
   '.cjs',
   '.code-workspace',
@@ -131,67 +104,48 @@ const SCANNED_EXTENSIONS = new Set([
   '.yml',
 ]);
 
-/**
- * Comment syntax per scanned extension, so prose about a path is not read as a
- * dependency on one.
- *
- * Applying the JavaScript grammar everywhere was wrong in both directions. A plain
- * `https://` in Markdown swallowed the rest of its line, and a `#` comment in a
- * Python, shell, or YAML test failed the gate for mentioning an old path. Each
- * language gets its own, and a format with no comment syntax gets none.
- *
- * A format gets every comment form it really has, not only its most common one.
- * PHP treats `#` as a line comment as well as `//`, and a `.vue` file is two
- * languages at once, so its template needs `<!-- -->` alongside the script
- * block's `//`. Listing one form per format failed the gate for a valid comment
- * written in the other. PHP 8 attributes are the stated cost of `#`: `#[Foo]`
- * reads as a comment, which can only hide a path, never invent one.
- *
- * `lines` open a comment that ends at the newline; `blocks` are `[open, close]`
- * pairs. Markdown and JSON are absent on purpose: neither has comments, and
- * Markdown's `<!-- -->` is rare enough in a path-bearing fixture that treating it
- * as prose would be the riskier default.
- */
+function basenameOf(file) {
+  return file.slice(file.lastIndexOf('/') + 1);
+}
+
+function extensionAfterNonLeadingDot(basename) {
+  const dot = basename.lastIndexOf('.');
+  return dot > 0 ? basename.slice(dot) : '';
+}
+
+function shebangLineOf(contents) {
+  if (!contents?.startsWith('#!')) return undefined;
+  return contents.slice(0, contents.indexOf('\n') + 1 || contents.length);
+}
+
 const JS_COMMENTS = { lines: ['//'], blocks: [['/*', '*/']] };
 const HASH_COMMENTS = { lines: ['#'] };
-/**
- * `#` opens a comment only where a word does not already run into it.
- *
- * True of shell and YAML, and of neither Python nor PHP nor a Makefile, where
- * `x=1# note` really is a comment. Applying the rule everywhere made `x=1#
- * '../../labs/private.docx'` read as code and failed the unconditional job on a
- * line that carries only comment text. It exists for shell's `${#value}`
- * parameter-length expansion, whose `#` blanked the rest of its line and hid an
- * escaping argument after it, so it is spelled out per grammar rather than
- * pressed onto every `#` format.
- */
 const BOUNDED_HASH_COMMENTS = { lines: ['#'], hashNeedsBoundary: true };
 const SGML_COMMENTS = { blocks: [['<!--', '-->']] };
+const CSS_COMMENTS = { blocks: [['/*', '*/']] };
+const VUE_SCRIPT_AND_TEMPLATE_COMMENTS = {
+  lines: ['//'],
+  blocks: [
+    ['/*', '*/'],
+    ['<!--', '-->'],
+  ],
+};
+const PHP_COMMENTS = { lines: ['//', '#'], blocks: [['/*', '*/']] };
+const MAKE_COMMENTS_WITH_SHELL_RECIPES = { lines: ['#'], hashNeedsBoundaryInRecipes: true };
 
 const COMMENT_GRAMMARS = new Map([
   ['.cjs', JS_COMMENTS],
   ['.cts', JS_COMMENTS],
-  ['.css', { blocks: [['/*', '*/']] }],
+  ['.css', CSS_COMMENTS],
   ['.js', JS_COMMENTS],
   ['.jsx', JS_COMMENTS],
   ['.mjs', JS_COMMENTS],
   ['.mts', JS_COMMENTS],
   ['.ts', JS_COMMENTS],
   ['.tsx', JS_COMMENTS],
-  // Script block plus template: JavaScript comments and SGML comments both apply.
-  [
-    '.vue',
-    {
-      lines: ['//'],
-      blocks: [
-        ['/*', '*/'],
-        ['<!--', '-->'],
-      ],
-    },
-  ],
-  ['.php', { lines: ['//', '#'], blocks: [['/*', '*/']] }],
+  ['.vue', VUE_SCRIPT_AND_TEMPLATE_COMMENTS],
+  ['.php', PHP_COMMENTS],
   ['.py', HASH_COMMENTS],
-  // Shell and YAML both require a boundary before `#`; Python and PHP do not.
   ['.sh', BOUNDED_HASH_COMMENTS],
   ['.yaml', BOUNDED_HASH_COMMENTS],
   ['.yml', BOUNDED_HASH_COMMENTS],
@@ -200,84 +154,25 @@ const COMMENT_GRAMMARS = new Map([
   ['.xml', SGML_COMMENTS],
 ]);
 
-/**
- * The comment grammar for a file, by extension or by basename.
- *
- * The extensionless build inputs are all `#`-commented, so a `# see
- * ../../labs/old.mk` in one is prose about a path rather than a dependency on
- * it, the same way it is in a shell or YAML test.
- *
- * A Makefile carries `hashNeedsBoundaryInRecipes` because it is two languages:
- * its own lines take `#` unconditionally, while a recipe line — one starting with
- * a TAB — is handed to the shell, where `$${#value}` is the parameter-length
- * expansion rather than a comment. Treating a recipe's `#` as a Make comment
- * blanked the rest of that line and hid an escaping `cat` argument after it.
- */
 const BASENAME_COMMENT_GRAMMARS = new Map([
   ['Dockerfile', HASH_COMMENTS],
   ['Containerfile', HASH_COMMENTS],
-  ['Makefile', { lines: ['#'], hashNeedsBoundaryInRecipes: true }],
-  ['Justfile', { lines: ['#'], hashNeedsBoundaryInRecipes: true }],
+  ['Makefile', MAKE_COMMENTS_WITH_SHELL_RECIPES],
+  ['Justfile', MAKE_COMMENTS_WITH_SHELL_RECIPES],
   ['Procfile', HASH_COMMENTS],
 ]);
 
-/**
- * Calls whose string argument is a URL route rather than a filesystem path.
- *
- * A machine-shaped literal is otherwise always a private dependency, which is
- * why `/home/alice/x.docx` is reported wherever it sits. The exception is a
- * server route: `app.get('/home/alice/profile', handler)` names a URL, and the
- * scanned surfaces can hold example servers, so the unconditional job would
- * fail on one even though nothing touches the filesystem.
- *
- * Narrow on purpose. Requiring a path-taking context instead would have been the
- * bigger change and the wrong one: it drops a hardcoded `/home/...` assigned to
- * a variable, which is the shape this guard most wants to catch.
- */
 const ROUTE_REGISTERING_CALLEES = new Set(['get', 'post', 'put', 'patch', 'delete', 'head', 'options', 'all', 'use']);
 
-/**
- * Receivers whose `.get(...)` registers a route rather than reading a key.
- *
- * The callee name alone is far too weak: of the route-shaped calls in the scanned
- * surfaces, most are Maps and caches — `rooms.get`, `metadata.get`,
- * `tokenCache.get`, `pending.get`. Exempting every one of those would wave a
- * machine path through wherever it was handed to a lookup.
- */
 const ROUTER_RECEIVERS = new Set(['app', 'router', 'server', 'api', 'fastify', 'express']);
 
-/**
- * Whether a candidate sits inside a `file:` URL.
- *
- * `file:///home/alice/x.docx` is a machine path whatever receives it.
- */
+const BROWSER_GLOBAL_RECEIVERS = new Set(['globalThis', 'window', 'self']);
+
 function isFileUrl(text, offset) {
   return text.slice(Math.max(0, offset - 8), offset).endsWith('file://');
 }
 
-/**
- * Callees whose first argument is a URL the browser resolves against the origin.
- *
- * `fetch('/home/alice/profile')` requests a route and opens no file on the host,
- * but a leading `/home/` is otherwise a machine path wherever it sits, so the
- * required job rejected a demo doing exactly that. This is the call-shaped
- * counterpart to the markup attributes and CSS `url()` above.
- *
- * Only the machine-rooted question, like those: a traversal handed to `fetch`
- * is still resolved and still reported, and `isFileUrl` still wins, because
- * `fetch('file:///home/alice/x')` names a path in any context.
- */
-const URL_ARGUMENT_CALLEES = new Set(['fetch']);
-
-/** Whether a candidate is the first argument of a call that takes a URL. */
-function isUrlArgument(text, context, offset) {
-  const paren = context?.openParens?.at(-1);
-  if (paren === undefined) return false;
-  const { name, receiver } = calleeBefore(text, paren);
-  // A bare `fetch(...)` or `globalThis.fetch(...)`, not some object's own
-  // `.fetch(...)`, which need not be the browser's.
-  if (!URL_ARGUMENT_CALLEES.has(name)) return false;
-  if (receiver !== '' && !['globalThis', 'window', 'self'].includes(receiver.split('.').pop())) return false;
+function isFirstArgumentOf(text, paren, offset) {
   return (
     text
       .slice(paren + 1, offset)
@@ -286,116 +181,63 @@ function isUrlArgument(text, context, offset) {
   );
 }
 
-/**
- * Whether a candidate is the path of a `new URL(...)` whose base is an http(s)
- * origin.
- *
- * `new URL('/home/alice/profile', 'https://example.com')` names a route on that
- * origin and touches no file, but a leading `/home/` is otherwise a machine
- * path, so the required job rejected a demo doing exactly that.
- *
- * The base has to be a literal with an http or https scheme. `file:` is not
- * matched, so `new URL('/home/alice/x', 'file:///tmp/')` is still a path, and a
- * base this cannot read leaves the candidate exactly where it was.
- */
+function lastSegmentOf(receiver) {
+  return receiver.split('.').pop();
+}
+
+const URL_ARGUMENT_CALLEES = new Set(['fetch']);
+
+function isBrowserFetchCall({ name, receiver }) {
+  return URL_ARGUMENT_CALLEES.has(name) && (receiver === '' || BROWSER_GLOBAL_RECEIVERS.has(lastSegmentOf(receiver)));
+}
+
+function isUrlArgument(text, context, offset) {
+  const paren = context?.openParens?.at(-1);
+  if (paren === undefined) return false;
+  return isBrowserFetchCall(calleeBefore(text, paren)) && isFirstArgumentOf(text, paren, offset);
+}
+
+const HTTP_ORIGIN_LITERAL = /^(['"`])https?:\/\//i;
+
 function isOriginRelativeUrl(text, context, offset) {
   const paren = context?.openParens?.at(-1);
   if (paren === undefined) return false;
   if (calleeBefore(text, paren).name !== 'URL') return false;
-  if (
-    text
-      .slice(paren + 1, offset)
-      .replace(/['"`]\s*$/, '')
-      .trim() !== ''
-  ) {
-    return false;
-  }
-  return /^(['"`])https?:\/\//i.test(currentArgument(completeArgumentList(text, paren)).trim());
+  if (!isFirstArgumentOf(text, paren, offset)) return false;
+  return HTTP_ORIGIN_LITERAL.test(currentArgument(completeArgumentList(text, paren)).trim());
 }
 
-/** Whether a candidate is the first argument of a route registration. */
+function isRouterRegistration({ name, receiver }) {
+  return ROUTER_RECEIVERS.has(lastSegmentOf(receiver)) && ROUTE_REGISTERING_CALLEES.has(name);
+}
+
 function isRouteLiteral(text, context, offset) {
   const paren = context?.openParens?.at(-1);
   if (paren === undefined) return false;
-  const { name, receiver } = calleeBefore(text, paren);
-  // A bare `get(...)` is not a route, and neither is `cache.get(...)`: the
-  // receiver has to name a router.
-  if (!ROUTER_RECEIVERS.has(receiver.split('.').pop()) || !ROUTE_REGISTERING_CALLEES.has(name)) return false;
-  // And only the first argument is the route. Without this the exemption covered
-  // every argument of any `.get(...)`, so a machine path handed to a second
-  // parameter, or to a non-routing `cache.get`, was waved through. Only the
-  // opening quote may sit between the candidate and the `(`.
+  return isRouterRegistration(calleeBefore(text, paren)) && isFirstArgumentOf(text, paren, offset);
+}
+
+const URL_ATTRIBUTES = new Set(['href', 'src', 'action', 'srcset', 'poster', 'data', 'formaction', 'cite', 'ping']);
+
+const OPEN_QUOTED_ATTRIBUTE_VALUE = /([A-Za-z][A-Za-z0-9-]*)\s*=\s*(?:"[^"]*|'[^']*)$/;
+const ATTRIBUTE_NAME_BEFORE_VALUE = /([A-Za-z][A-Za-z0-9-]*)\s*=\s*['"]?\s*$/;
+
+function isUrlAttributeName(name) {
+  return name !== undefined && URL_ATTRIBUTES.has(name.toLowerCase());
+}
+
+function isUrlAttributeValue(text, offset) {
+  if (!isInsideTag(text, offset)) return false;
+  const tagPrefix = text.slice(text.lastIndexOf('<', offset), offset);
+  const valuePrefix = text.slice(Math.max(0, offset - 32), offset);
   return (
-    text
-      .slice(paren + 1, offset)
-      .replace(/['"`]\s*$/, '')
-      .trim() === ''
+    isUrlAttributeName(OPEN_QUOTED_ATTRIBUTE_VALUE.exec(tagPrefix)?.[1]) ||
+    isUrlAttributeName(ATTRIBUTE_NAME_BEFORE_VALUE.exec(valuePrefix)?.[1])
   );
 }
 
-/**
- * Markup attributes whose value is a URL rather than a filesystem path.
- *
- * A machine-rooted literal is otherwise a private dependency wherever it sits,
- * and `isRouteLiteral` is the one exception — but it reads the enclosing call,
- * and markup has none. So `<a href="/home/alice/profile">` in a tracked demo was
- * rejected even though the browser resolves it against the origin and touches no
- * file. That is a false positive on a required job.
- *
- * Only the machine-rooted question is answered here. A traversal in an `href` is
- * still resolved and still reported, because `../../../../labs/x` breaks a public
- * clone whether a browser or a bundler follows it. And `isFileUrl` still wins:
- * `href="file:///home/alice/x"` names a path in any context.
- */
-const URL_ATTRIBUTES = new Set(['href', 'src', 'action', 'srcset', 'poster', 'data', 'formaction', 'cite', 'ping']);
-
-/** Whether a candidate is the value of a markup attribute that carries a URL. */
-function isUrlAttributeValue(text, offset) {
-  if (!isInsideTag(text, offset)) return false;
-  const tagStart = text.lastIndexOf('<', offset);
-  const attributePrefix = text.slice(tagStart, offset);
-  const quotedMatch = /([A-Za-z][A-Za-z0-9-]*)\s*=\s*(?:"[^"]*|'[^']*)$/.exec(attributePrefix);
-  if (quotedMatch && URL_ATTRIBUTES.has(quotedMatch[1].toLowerCase())) return true;
-  // `<a href="` — the attribute name, `=`, and the opening quote, which the
-  // candidate's own offset sits just past.
-  const before = text.slice(Math.max(0, offset - 32), offset);
-  const match = /([A-Za-z][A-Za-z0-9-]*)\s*=\s*['"]?\s*$/.exec(before);
-  if (!match || !URL_ATTRIBUTES.has(match[1].toLowerCase())) return false;
-  // And it has to be a real attribute. The name-and-equals shape alone is also
-  // `const src = '/home/alice/x'`, `SRC=/home/alice/x` in an env template, and
-  // `src=/home/alice/x` in a shell script — so without this the exemption waved
-  // a machine path through in every one of those, which is the direction that
-  // hides a private dependency rather than merely annoying CI.
-  return true;
-}
-
-/**
- * Markup that can embed a stylesheet, as opposed to being one.
- *
- * These formats also embed JavaScript, so `url(` in one of them is only a
- * stylesheet reference where a stylesheet really is. A `<script>` block calling
- * a function named `url` is ordinary code, and exempting it on the token alone
- * would let `url('/home/alice/private.png')` through a scanned `.vue` demo —
- * the fail-open direction, which is the one that hides a private dependency.
- */
 const STYLESHEET_HOST_LANGUAGES = new Set(['.html', '.svg', '.vue']);
 
-/**
- * Whether a candidate is the value of a CSS `url()`, which the browser resolves
- * against the origin exactly like the markup attributes above.
- *
- * `background-image: url('/home/assets/hero.png')` was rejected while
- * `<img src="/home/assets/hero.png">` was not, because only the attribute form
- * had an exemption. Both name a route on the site and touch no file.
- *
- * A `.css` file is a stylesheet throughout. In markup the offset has to sit in
- * a real stylesheet region: inside a `<style>` element, or inside a `style`
- * attribute value.
- *
- * As with the attributes, this answers only the machine-rooted question. A
- * traversal inside `url()` is still resolved and still reported: `url(../../labs/x)`
- * breaks a public clone whichever syntax carries it.
- */
 function isCssUrlValue(text, offset, language) {
   const isStylesheet = language === '.css';
   if (!isStylesheet && !STYLESHEET_HOST_LANGUAGES.has(language)) return false;
@@ -403,99 +245,74 @@ function isCssUrlValue(text, offset, language) {
   return isStylesheet || isInStyleElement(text, offset) || isStyleAttributeValue(text, offset);
 }
 
-/** Whether an offset sits inside an open `<style>` element. */
+const STYLE_ELEMENT_NAME_END = /^<style[\s/>]/;
+
 function isInStyleElement(text, offset) {
   const open = text.lastIndexOf('<style', offset);
-  // `<styles>` is a different element, so the name has to end where `style` does.
-  if (open === -1 || !/^<style[\s/>]/.test(text.slice(open, open + 7))) return false;
+  if (open === -1 || !STYLE_ELEMENT_NAME_END.test(text.slice(open, open + 7))) return false;
   const tagEnd = text.indexOf('>', open);
   if (tagEnd === -1 || tagEnd >= offset) return false;
   const close = text.indexOf('</style', tagEnd);
   return close === -1 || close > offset;
 }
 
-/** Whether an offset sits inside a `style` attribute value. */
 function isStyleAttributeValue(text, offset) {
   if (!isInsideTag(text, offset)) return false;
-  const attributePrefix = text.slice(text.lastIndexOf('<', offset), offset);
-  const match = /([A-Za-z][A-Za-z0-9-]*)\s*=\s*(?:"[^"]*|'[^']*)$/.exec(attributePrefix);
-  return match?.[1].toLowerCase() === 'style';
+  const tagPrefix = text.slice(text.lastIndexOf('<', offset), offset);
+  return OPEN_QUOTED_ATTRIBUTE_VALUE.exec(tagPrefix)?.[1].toLowerCase() === 'style';
 }
 
-/**
- * Whether an offset sits inside an open `<...>` tag.
- *
- * True when the nearest `<` before it comes after the nearest `>`, so the tag it
- * opened has not been closed yet. A tag may span lines, which is why this looks
- * back through the text rather than at the current line.
- *
- * The `<` must be followed by a tag name. Otherwise `if (a < b) {}` earlier in a
- * JavaScript file, or a TypeScript generic, would put everything after it
- * "inside a tag" and restore the same hole one step further out.
- */
+const TAG_NAME_AFTER_LESS_THAN = /^<\/?[A-Za-z][A-Za-z0-9:._-]*[\s/>]/;
+
 function isInsideTag(text, offset) {
   const open = text.lastIndexOf('<', offset);
   if (open === -1 || open < text.lastIndexOf('>', offset)) return false;
-  return /^<\/?[A-Za-z][A-Za-z0-9:._-]*[\s/>]/.test(text.slice(open, open + 40));
+  return TAG_NAME_AFTER_LESS_THAN.test(text.slice(open, open + 40));
 }
 
-/**
- * Interpreters named in a shebang, mapped to the extension whose grammar they
- * share. An extensionless entrypoint gets its comment syntax from the program
- * that runs it: `#!/usr/bin/env php` in `artisan` means PHP comments, not none.
- */
+function isUrlRatherThanPath(text, context, offset, language) {
+  if (isFileUrl(text, offset)) return false;
+  return (
+    isRouteLiteral(text, context, offset) ||
+    isUrlAttributeValue(text, offset) ||
+    isCssUrlValue(text, offset, language) ||
+    isUrlArgument(text, context, offset) ||
+    isOriginRelativeUrl(text, context, offset)
+  );
+}
+
+const SHELL_SHEBANG = /\b(?:ba|z|k|da)?sh\b/;
+
 const SHEBANG_GRAMMARS = [
   [/\b(?:php)\b/, '.php'],
-  [/\b(?:ba|z|k|da)?sh\b/, '.sh'],
+  [SHELL_SHEBANG, '.sh'],
   [/\bpython[\d.]*\b/, '.py'],
   [/\b(?:node|bun|deno)\b/, '.js'],
 ];
 
-/**
- * The extension whose language this file is written in, taking a shebang into
- * account when there is no extension to read.
- *
- * The same question `commentGrammarFor` answers, but the answer is needed as a
- * language rather than as a grammar: shell, Python and YAML share one grammar
- * object, so grammar identity cannot tell them apart.
- */
-function languageExtensionFor(file, contents) {
-  const basename = file.slice(file.lastIndexOf('/') + 1);
-  if (basename.lastIndexOf('.') > 0) return basename.slice(basename.lastIndexOf('.'));
-  if (!contents?.startsWith('#!')) return '';
-  const shebang = contents.slice(0, contents.indexOf('\n') + 1 || contents.length);
-  return (SHEBANG_GRAMMARS.find(([pattern]) => pattern.test(shebang)) ?? [])[1] ?? '';
+function shebangLanguageOf(contents) {
+  const shebang = shebangLineOf(contents);
+  if (shebang === undefined) return undefined;
+  return SHEBANG_GRAMMARS.find(([pattern]) => pattern.test(shebang))?.[1];
 }
 
-/**
- * Environment templates, matched on the whole name rather than an extension.
- *
- * `.env.example` reads as an extension of `.example`, so the allowlist skipped
- * it, and a leading-dot `.env` has no extension at all. Both carry paths by
- * design: an example server's `.env.example` can set
- * `GOOGLE_APPLICATION_CREDENTIALS`, and pointing that at a private sibling would
- * leave the exported demo depending on a file a public clone does not have.
- *
- * The whole `.env*` family, since the suffix is a local convention —
- * `.env.example`, `.env.local`, `.env.test` and a bare `.env` are all the same
- * format. Shell-style, so the `#` comment grammar applies.
- */
+function languageExtensionFor(file, contents) {
+  const extension = extensionAfterNonLeadingDot(basenameOf(file));
+  if (extension !== '') return extension;
+  return shebangLanguageOf(contents) ?? '';
+}
+
 const ENVIRONMENT_TEMPLATE = /^\.env(?:\.[A-Za-z0-9_-]+)*$/;
 
 function commentGrammarFor(file, contents) {
-  const basename = file.slice(file.lastIndexOf('/') + 1);
-  const dot = basename.lastIndexOf('.');
-  // Before the extension test: `.env.example` would otherwise read as `.example`,
-  // and a bare `.env` has no extension at all. The format is shell-style, so a
-  // `# see ../../labs/old.json` in one is prose about a path.
+  const basename = basenameOf(file);
   if (ENVIRONMENT_TEMPLATE.test(basename)) return BOUNDED_HASH_COMMENTS;
-  if (dot > 0) return COMMENT_GRAMMARS.get(basename.slice(dot));
+  const extension = extensionAfterNonLeadingDot(basename);
+  if (extension !== '') return COMMENT_GRAMMARS.get(extension);
   const named = BASENAME_COMMENT_GRAMMARS.get(basename);
   if (named) return named;
-  if (!contents?.startsWith('#!')) return undefined;
-  const shebang = contents.slice(0, contents.indexOf('\n') + 1 || contents.length);
-  const match = SHEBANG_GRAMMARS.find(([pattern]) => pattern.test(shebang));
-  return match ? COMMENT_GRAMMARS.get(match[1]) : undefined;
+  const language = shebangLanguageOf(contents);
+  return language === undefined ? undefined : COMMENT_GRAMMARS.get(language);
 }
 
 /**
@@ -515,6 +332,13 @@ const EXEMPT_PATHS = new Map([
     {
       reason: 'embeds Windows template and hyperlink paths on purpose, to assert the privacy gate reports them',
       allow: /^[A-Za-z]:[\\/]{1,2}/,
+    },
+  ],
+  [
+    'apps/cli/scripts/__tests__/pinned-embedded-binaries.test.ts',
+    {
+      reason: 'embeds build-machine paths on purpose, to assert the artifact audit accepts the pinned binary and rejects a planted path',
+      allow: /^\/Users\/(?:runner|example)\//,
     },
   ],
   [
@@ -671,13 +495,6 @@ const EXEMPT_PATHS = new Map([
 ]);
 
 /**
- * Path-shaped strings in quotes, or after an `=`/`:`/`(`. Deliberately narrow so
- * prose naming a directory does not qualify.
- *
- * The leading `..` is required: this guard is about escaping upward, and an
- * in-repo relative path is not its business.
- */
-/**
  * Absolute literals that name somebody's machine: `/home/alice/…`, `/Users/bob/…`,
  * `C:\Users\…`. Those cannot resolve in any other clone, so they are always a
  * private dependency rather than a portable path.
@@ -736,22 +553,8 @@ const RELATIVE_PATH_PATTERN = /(?:^|[[\s'"`(=,:])((?:\.{1,2}[/\\]|[A-Za-z0-9_@.-
  */
 const COMPOSED_TRAVERSAL_PATTERN = /((?:['"`]\.\.['"`]\s*,\s*)*['"`]\.\.['"`](?:\s*,\s*['"`][^'"`]*['"`])?)/g;
 
-/**
- * Calls that join their separate arguments into a single path.
- *
- * Separate `'..'` arguments are one traversal only when something composes them.
- * `expect(parts).toEqual(['..', '..', 'literal'])` is expected data, and reading
- * it as `../../literal` failed the unconditional boundary job on an array that
- * never touches the filesystem.
- *
- * `relative` is deliberately absent even though it is a path API: it compares two
- * endpoints rather than joining them. `path.relative('..', '..')` returns `''`,
- * but reading it as a composer turned those two literals into `../..` and failed
- * the gate on a shallow file that never escapes.
- */
 const PATH_COMPOSING_CALLEES = new Set(['join', 'normalize', 'resolve']);
 
-/** The joined path a composed traversal is equivalent to. */
 function joinComposedTraversal(fragment) {
   return [...fragment.matchAll(/['"`]([^'"`]*)['"`]/g)]
     .map((match) => match[1])
@@ -759,26 +562,6 @@ function joinComposedTraversal(fragment) {
     .join('/');
 }
 
-/**
- * Callables on `node:fs` whose first argument is a path, plus the `node:path`
- * composers. `resolve('../x')` and `readFileSync('../x')` are decided by whoever
- * launched the process, not by the file the call sits in.
- *
- * The filesystem half is read from the module rather than typed out. A
- * hand-kept list is the wrong shape for this: it reached 30 names with
- * `unlinkSync` missing, so a root-launched `unlinkSync('../labs/private.docx')`
- * was resolved from the source directory and reported clean. Reading the module
- * cannot fall behind Node, and a name added in a later release is covered the
- * day it lands.
- *
- * Two kinds of export are excluded because they are not path-taking calls: an
- * API whose first argument is a file descriptor, and a class or other
- * non-function export, which the capitalized-name test drops.
- *
- * Only consulted when the candidate is the call's first argument. With an
- * explicit base in front of it, as in `resolve(__dirname, '../x')`, the base
- * wins and the path is directory-relative.
- */
 const FD_FIRST_ARGUMENT = new Set([
   'close',
   'closeSync',
@@ -806,140 +589,105 @@ const FD_FIRST_ARGUMENT = new Set([
   'writevSync',
 ]);
 
+const CLASS_EXPORT_NAME = /^[A-Z]/;
+
+function isPathTakingFsExport(name) {
+  return typeof nodeFs[name] === 'function' && !CLASS_EXPORT_NAME.test(name) && !FD_FIRST_ARGUMENT.has(name);
+}
+
+const NODE_PATH_COMPOSERS = ['join', 'resolve'];
+
+const PATH_BUILTINS_SHARED_BY_PYTHON_AND_NODE = ['Path', 'open'];
+
 const CWD_ANCHORED_CALLEES = new Set([
-  ...Object.keys(nodeFs).filter(
-    (name) => typeof nodeFs[name] === 'function' && !/^[A-Z]/.test(name) && !FD_FIRST_ARGUMENT.has(name),
-  ),
-  // `node:path` composers. `join` and `resolve` build a path from a bare
-  // relative argument the same way, and `resolve` is the form most escapes take.
-  'join',
-  'resolve',
-  // Python, because the scanned surfaces hold Python tests and examples and a
-  // relative path there resolves from the process working directory too.
-  // `Path('../labs/x')` was read as file-relative, which from a nested test
-  // stayed inside and reported a real escape clean. `open` is Node's as well,
-  // and means the same thing in both.
-  'Path',
-  'open',
+  ...Object.keys(nodeFs).filter(isPathTakingFsExport),
+  ...NODE_PATH_COMPOSERS,
+  ...PATH_BUILTINS_SHARED_BY_PYTHON_AND_NODE,
 ]);
 
-/**
- * Filesystem callees that belong to one language, keyed by the extensions that
- * language is written in.
- *
- * Kept out of the set above because these names are generic. `remove`, `move`,
- * `copy` and `walk` are ordinary method names in JavaScript, and anchoring them
- * everywhere failed the required job on a `cache.remove('../labs/x')` that never
- * touches the filesystem. Scoping them by extension keeps the escape they were
- * added for — `os.remove(...)` in a Python test resolved from the source
- * directory rather than the cwd — without inventing one in another language.
- *
- * A shebang-only entrypoint gets the same treatment through
- * `shebangExtensionFor`, so an extensionless `#!/usr/bin/env python3` script is
- * read as Python here too.
- */
+const PYTHON_OS_AND_SHUTIL_CALLEES = [
+  'chdir',
+  'copy',
+  'copy2',
+  'copyfile',
+  'copytree',
+  'getsize',
+  'isdir',
+  'isfile',
+  'listdir',
+  'makedirs',
+  'move',
+  'remove',
+  'replace',
+  'removedirs',
+  'rmtree',
+  'walk',
+];
+
+const PYTHON_CWD_RESOLVING_CALLEES = ['abspath', 'realpath', 'expanduser'];
+
+const PHP_FILESYSTEM_FUNCTIONS = [
+  'file_get_contents',
+  'file_put_contents',
+  'chdir',
+  'fopen',
+  'file_exists',
+  'is_dir',
+  'is_file',
+  'is_readable',
+  'is_writable',
+  'is_link',
+  'scandir',
+  'glob',
+  'unlink',
+  'mkdir',
+  'rmdir',
+  'realpath',
+  'readfile',
+  'file',
+  'parse_ini_file',
+  'copy',
+  'rename',
+  'touch',
+];
+
+const PHP_ALGORITHM_FIRST_FILE_FUNCTIONS = ['hash_file', 'hash_hmac_file'];
+
+const PHP_DIGEST_AND_STAT_FUNCTIONS = [
+  'md5_file',
+  'sha1_file',
+  'filemtime',
+  'fileatime',
+  'filectime',
+  'filetype',
+  'fileperms',
+  'fileowner',
+  'filegroup',
+  'fileinode',
+  'filesize',
+  'is_executable',
+  'disk_free_space',
+  'disk_total_space',
+];
+
+const PHP_SPL_FILE_CLASSES = [
+  'SplFileObject',
+  'SplFileInfo',
+  'DirectoryIterator',
+  'RecursiveDirectoryIterator',
+  'FilesystemIterator',
+  'GlobIterator',
+];
+
 const LANGUAGE_CWD_ANCHORED_CALLEES = new Map([
-  [
-    '.py',
-    new Set([
-      // The rest of Python's standard filesystem surface, which resolves from the
-      // working directory the same way. Only `Path` and `open` were listed, so
-      // `os.remove('../labs/private.docx')` and `shutil.copy(...)` were resolved
-      // from the source directory and a real escape stayed inside.
-      'chdir',
-      'copy',
-      'copy2',
-      'copyfile',
-      'copytree',
-      'getsize',
-      'isdir',
-      'isfile',
-      'listdir',
-      'makedirs',
-      'move',
-      'remove',
-      'replace',
-      'removedirs',
-      'rmtree',
-      'walk',
-      // `os.path.abspath` and `realpath` are not filesystem reads, but they do
-      // resolve against the process working directory, which is the question this
-      // set answers. Neither was listed and neither is a pass-through, so the
-      // scanner stopped at the inner call and read the literal from the source
-      // directory, while Python computes it from the cwd and the outer `open`
-      // reaches outside. `expanduser` is here for the same reason: it produces an
-      // absolute path from the environment rather than from the file.
-      'abspath',
-      'realpath',
-      'expanduser',
-    ]),
-  ],
+  ['.py', new Set([...PYTHON_OS_AND_SHUTIL_CALLEES, ...PYTHON_CWD_RESOLVING_CALLEES])],
   [
     '.php',
     new Set([
-      // PHP's filesystem surface, for the same reason. PHP resolves a relative
-      // path from the process working directory, and `examples.yml` launches
-      // the Laravel example from its own root, so a `file_get_contents(
-      // '../../../../labs/private.docx')` in `routes/web.php` really does reach
-      // the private parent while the guard resolved it from the deeper `routes/`
-      // directory and reported clean.
-      'file_get_contents',
-      'file_put_contents',
-      'chdir',
-      'fopen',
-      'file_exists',
-      'is_dir',
-      'is_file',
-      'is_readable',
-      'is_writable',
-      'is_link',
-      // Algorithm-first, so the path is the second argument. Their position is
-      // in `LANGUAGE_PATH_ARGUMENT_POSITION`; without it the leading algorithm
-      // name would be composed into the path as a directory segment.
-      'hash_file',
-      'hash_hmac_file',
-      // The digest and stat family, which take the path first and open it the
-      // same way. Listed as a family rather than one name at a time: they were
-      // all missing together, and a set that covers `filesize` but not
-      // `filemtime` reads as deliberate when it is not. `stat`, `lstat`,
-      // `readlink` and `opendir` are absent here because they are already
-      // anchored by the shared Node names.
-      // The SPL file classes, whose constructor takes the path. Added as a
-      // family for the same reason as the digest functions below: they were all
-      // missing together, and a set that anchors `fopen` but not
-      // `new SplFileObject` reads as a decision when it is an omission.
-      'SplFileObject',
-      'SplFileInfo',
-      'DirectoryIterator',
-      'RecursiveDirectoryIterator',
-      'FilesystemIterator',
-      'GlobIterator',
-      'md5_file',
-      'sha1_file',
-      'filemtime',
-      'fileatime',
-      'filectime',
-      'filetype',
-      'fileperms',
-      'fileowner',
-      'filegroup',
-      'fileinode',
-      'is_executable',
-      'disk_free_space',
-      'disk_total_space',
-      'scandir',
-      'glob',
-      'unlink',
-      'mkdir',
-      'rmdir',
-      'filesize',
-      'realpath',
-      'readfile',
-      'file',
-      'parse_ini_file',
-      'copy',
-      'rename',
-      'touch',
+      ...PHP_FILESYSTEM_FUNCTIONS,
+      ...PHP_ALGORITHM_FIRST_FILE_FUNCTIONS,
+      ...PHP_DIGEST_AND_STAT_FUNCTIONS,
+      ...PHP_SPL_FILE_CLASSES,
     ]),
   ],
 ]);
@@ -951,36 +699,24 @@ function listTrackedFiles() {
     .filter(Boolean);
 }
 
-/**
- * Text formats with no extension to match on, keyed by basename.
- *
- * A build input is a runnable surface: an example's `Makefile` and
- * its `server/Dockerfile` are both tracked, and an `include ../../labs/x.mk` or
- * an escaping `COPY` source in either breaks a public clone the same way an
- * import does. The extension allowlist skipped them before their contents were
- * read, so the required job reported clean on a real escape.
- *
- * An extensionless file carrying a shebang is scanned too, without being named
- * here: `examples/getting-started/laravel/artisan` is a tracked PHP entrypoint,
- * and an escaping `require` in it was invisible while the same line in a `.php`
- * file was rejected. Reading the first two bytes decides that for any such
- * entrypoint rather than growing this list one name at a time.
- */
-const SCANNED_BASENAMES = new Set(['Dockerfile', 'Makefile', 'Containerfile', 'Justfile', 'Procfile']);
+const SCANNED_BASENAMES = new Set(BASENAME_COMMENT_GRAMMARS.keys());
+
+function isScannedByName(basename) {
+  return (
+    SCANNED_EXTENSIONS.has(extensionAfterNonLeadingDot(basename)) ||
+    SCANNED_BASENAMES.has(basename) ||
+    ENVIRONMENT_TEMPLATE.test(basename)
+  );
+}
+
+function isExtensionlessScript(basename, contents) {
+  return extensionAfterNonLeadingDot(basename) === '' && shebangLineOf(contents) !== undefined;
+}
 
 function isScanned(file, contents) {
-  const basename = file.slice(file.lastIndexOf('/') + 1);
-  const dot = basename.lastIndexOf('.');
-  // A leading dot is not an extension separator: `.nvmrc` has no extension.
-  const extension = dot > 0 ? basename.slice(dot) : '';
-  const named =
-    SCANNED_EXTENSIONS.has(extension) || SCANNED_BASENAMES.has(basename) || ENVIRONMENT_TEMPLATE.test(basename);
-  // `contents` is absent on the first pass, which decides what is worth reading.
-  // A shebang is only consulted for a file with no extension at all, so this
-  // never reopens the question for a `.docx` or a `.png`.
-  const executable = extension === '' && contents !== undefined && contents.startsWith('#!');
-  if (!named && !executable) return false;
-  return SCANNED_PATTERNS.some((pattern) => pattern.test(file));
+  const basename = basenameOf(file);
+  if (!isScannedByName(basename) && !isExtensionlessScript(basename, contents)) return false;
+  return isInPublicCloneSurface(file);
 }
 
 /**
@@ -1212,15 +948,6 @@ function describeCallContexts(text, offsets, { grammar, language } = {}) {
   return contexts;
 }
 
-/**
- * APIs whose arguments are each a path in their own right, rather than a base
- * followed by segments to append.
- *
- * `copyFileSync('/tmp/a.docx', '../labs/b.docx')` resolves its destination at the
- * cwd regardless of the source, so an absolute first argument says nothing about
- * the second. Treating every earlier argument as a possible base let the
- * destination be checked from the source file's directory and pass.
- */
 const INDEPENDENT_PATH_ARGUMENTS = new Set([
   'copyFile',
   'copyFileSync',
@@ -1232,13 +959,6 @@ const INDEPENDENT_PATH_ARGUMENTS = new Set([
   'renameSync',
   'symlink',
   'symlinkSync',
-  // Python's two-path APIs, which behave the same way: `shutil.copy('source.docx',
-  // '../labs/private.docx')` resolves its destination from the cwd regardless of
-  // the source. Only the first argument was anchored, so the destination was
-  // composed with `source.docx` and one level of the traversal was swallowed --
-  // `open('../labs/x')` was reported while the same path as a copy destination
-  // was not. `rename` is shared with Node; `replace` is Python's `os.replace`;
-  // the remaining names are `shutil` APIs with no Node counterpart above.
   'copy',
   'copy2',
   'copyfile',
@@ -1249,20 +969,6 @@ const INDEPENDENT_PATH_ARGUMENTS = new Set([
 
 const PYTHON_PATH_ARGUMENT_NAMES = new Set(['file', 'path', 'src', 'dst']);
 
-/**
- * Filesystem APIs that take a path first and *data* second.
- *
- * Only the first argument is a path. `writeFileSync('snapshot.txt',
- * '../../labs/private.docx')` writes that traversal as file contents and opens
- * nothing but `snapshot.txt`, yet the cwd rule anchored the second argument too
- * and failed the required job on a generated fixture.
- *
- * Named rather than inferred. There is no way to tell a path parameter from a
- * data one by shape, and guessing the wrong way here hides a real escape, so the
- * list is the Node write APIs plus PHP's equivalent and nothing else.
- * `appendFile` and `file_put_contents` have the same shape; `copyFileSync` does
- * not, and stays above, because its second argument really is a path.
- */
 const DATA_AFTER_PATH_CALLEES = new Set([
   'writeFile',
   'writeFileSync',
@@ -1271,17 +977,8 @@ const DATA_AFTER_PATH_CALLEES = new Set([
   'file_put_contents',
 ]);
 
-/**
- * The called name before an argument list's `(`, the receiver it was called on,
- * and where the whole qualified name begins.
- *
- * The receiver matters. Stripping it made `require.resolve('../x')` look like
- * `path.resolve`, and those anchor differently: `require.resolve` resolves from
- * the calling module, so an in-repository path was reported as an escape.
- *
- * `start` is where the expression begins, which is where an enclosing call's
- * argument list stops when this call is looked through.
- */
+const STATIC_COMPUTED_MEMBER = /\[\s*(['"`])([A-Za-z0-9_$]+)\1\s*\]$/;
+
 function calleeBefore(text, parenIndex) {
   let end = parenIndex;
   while (end > 0 && /\s/.test(text[end - 1])) end -= 1;
@@ -1289,13 +986,7 @@ function calleeBefore(text, parenIndex) {
     end -= 2;
     while (end > 0 && /\s/.test(text[end - 1])) end -= 1;
   }
-  // A statically computed member reads as the name it spells: `fs['readFileSync']`
-  // is `readFileSync`. Consuming only identifier and dot characters returned no
-  // name at all, so the call anchored nothing and a root-launched escape written
-  // that way was resolved from the source directory and reported clean. All three
-  // quote characters, since a backtick with no interpolation is just as static:
-  // ``fs[`readFileSync`]`` is the same call.
-  const computed = /\[\s*(['"`])([A-Za-z0-9_$]+)\1\s*\]$/.exec(text.slice(0, end));
+  const computed = STATIC_COMPUTED_MEMBER.exec(text.slice(0, end));
   if (computed) {
     const receiverEnd = end - computed[0].length;
     let receiverStart = receiverEnd;
@@ -1309,65 +1000,21 @@ function calleeBefore(text, parenIndex) {
   return { name: qualified.slice(dot + 1), receiver: dot === -1 ? '' : qualified.slice(0, dot), start };
 }
 
-/**
- * Pure rewrites of a path string. They neither resolve nor anchor: they hand the
- * argument back in a different spelling.
- *
- * So whether the path escapes is decided by whoever receives the result, not by
- * the transformer. `path.normalize('../labs/private.docx')` returns
- * `../labs/private.docx` unchanged, and in
- * `readFileSync(path.normalize('../labs/private.docx'))` the outer call anchors it
- * at the process cwd.
- *
- * `dirname` counts: it shortens the path but keeps the traversal, so
- * `readFileSync(path.dirname('../../../labs/private.docx'))` still reads
- * `../../../labs`. Stopping at it made the scanner judge the literal
- * file-relative, which from a nested test stayed inside and reported that escape
- * clean.
- */
 const PASS_THROUGH_PATH_CALLEES = new Set(['dirname', 'normalize', 'toNamespacedPath']);
 
-/**
- * Calls that discard every leading segment, so their result cannot escape.
- *
- * `path.basename('../../../../labs/private.docx')` is `private.docx`, and an
- * outer `readFileSync` around it reads `<cwd>/private.docx` — inside the
- * repository, wherever the traversal pointed. Leaving these out of the
- * pass-through set was not enough: the candidate was still judged as the
- * original literal, so the required job failed on a line that reaches nothing
- * outside. Python's `os.path.basename` and the `.name` of a `Path` mean the same.
- *
- * Discarded rather than rewritten to the last segment. The remaining basename is
- * a bare filename with no traversal left in it, so there is nothing for the
- * resolver to decide, and rewriting would only invent a candidate the file does
- * not contain.
- */
 const PATH_DISCARDING_CALLEES = new Set(['basename', 'stem']);
 
-/**
- * The call that decides this candidate's base, looking through any pass-through
- * transformer around it, plus where that call's argument list stops.
- *
- * Reading only the innermost call let a transformer hide the anchor: because
- * `normalize` is not a path-taking API, `readFileSync(normalize('../labs/x'))`
- * fell through to file-relative resolution and a root-launched escape was
- * reported clean. Unwrapping stops at the first call that is not a pass-through,
- * so `resolve(__dirname, normalize('../x'))` still takes its base from `resolve`.
- */
 function enclosingCall(text, context, offset) {
   const parens = context.openParens;
   let argumentEnd = offset;
   for (let i = parens.length - 1; i >= 0; i -= 1) {
     const { name, start } = calleeBefore(text, parens[i]);
     if (i === 0 || !PASS_THROUGH_PATH_CALLEES.has(name)) return { openParen: parens[i], argumentEnd };
-    // The transformer's own name is not one of the outer call's arguments, so the
-    // argument list has to stop where the transformer's expression begins.
     argumentEnd = start;
   }
   return { openParen: -1, argumentEnd };
 }
 
-/** Whether the innermost call around a candidate joins its arguments into a path. */
 function composesPath(text, context) {
   const paren = context?.openParens?.at(-1);
   if (paren === undefined) return false;
@@ -1375,78 +1022,24 @@ function composesPath(text, context) {
   return PATH_COMPOSING_CALLEES.has(calleeBefore(text, paren).name);
 }
 
-/**
- * Whether the innermost call around a candidate throws its leading segments away.
- *
- * The innermost only: `readFileSync(path.basename('../x'))` reaches nothing
- * outside, while `path.basename(resolve('../x'))` is a different expression whose
- * inner `resolve` really does anchor the traversal.
- *
- * `.name` on a `Path` is Python's spelling of the same thing and takes no
- * argument, so it is matched on the text after the literal rather than as a
- * callee: `open(Path('../../../../labs/x').name)`.
- */
+const PATH_NAME_PROPERTY_AFTER_LITERAL = /^['"`]\s*\)\s*\.\s*name\b/;
+
 function discardsLeadingSegments(text, context, offset, candidate) {
   const paren = context?.openParens?.at(-1);
   if (paren !== undefined && PATH_DISCARDING_CALLEES.has(calleeBefore(text, paren).name)) return true;
-  // The literal's own closing quote, then `)` and `.name`, with nothing between.
-  return /^['"`]\s*\)\s*\.\s*name\b/.test(text.slice(offset + candidate.length));
+  return PATH_NAME_PROPERTY_AFTER_LITERAL.test(text.slice(offset + candidate.length));
 }
 
-/**
- * Receivers whose `resolve` is not `path.resolve`.
- *
- * `require.resolve` and `import.meta.resolve` resolve from the calling module.
- * They share a name with `path.resolve` and mean the opposite thing.
- *
- * `Promise.resolve` shares the name and touches nothing at all, so
- * `Promise.resolve('../labs/private.docx')` was anchored at the cwd and failed
- * the gate on expected data that never reaches the filesystem. That is a false
- * positive on a required job, which is the worse direction here.
- */
 const MODULE_RELATIVE_RECEIVERS = new Set(['require', 'import.meta', 'Promise']);
 
-/**
- * Callees that hand their arguments to a separate process.
- *
- * Whatever the child does with a path operand, it resolves it from the working
- * directory it inherits, so these anchor at the cwd wherever the literal sits in
- * the call.
- */
 const CHILD_PROCESS_CALLEES = new Set(['exec', 'execSync', 'execFile', 'execFileSync', 'spawn', 'spawnSync', 'fork']);
 
-/**
- * The child-process callees that pass their arguments straight to the program,
- * with no shell in between.
- *
- * Only these can have a data-only exemption. `exec` and `execSync` take a
- * command line a shell interprets, so `echo hi > ../labs/x` opens that path even
- * though the command word only prints; deciding that needs the redirection
- * analysis the shell scanner already does, and guessing from the program name
- * would be a hole. They stay anchored.
- */
 const ARGV_CHILD_PROCESS_CALLEES = new Set(['execFile', 'execFileSync', 'spawn', 'spawnSync', 'fork']);
 
-/**
- * Whether a spawned program only prints the arguments it is handed.
- *
- * `execFileSync('echo', ['../labs/x'])` writes that text to stdout and opens
- * nothing, which is the same reading the shell scanner already gives a bare
- * `echo`. Without this, anchoring every literal in a spawning call rejected a
- * fixture generating path-shaped expected output.
- *
- * A `shell` option takes the exemption away. With one, the argv form does go
- * through a shell, and `['ok', '>', '../labs/x']` creates that path even though
- * the program only prints. Any mention of the option cancels it, not only a
- * literal `true`: the value may be a variable or a platform test, and a scanner
- * that cannot read it should not be the one deciding the call is safe.
- */
 const OUTPUT_ONLY_PROGRAMS = /^(['"`])(?:echo|printf)\1$/;
 
-/** A `shell` option in a child-process call, whatever its value. */
 const SHELL_OPTION = /\bshell\s*:/;
 
-/** The first argument of a call, which for a child process names the program. */
 function firstArgument(argumentList) {
   let depth = 0;
   let quote = null;
@@ -1465,81 +1058,20 @@ function firstArgument(argumentList) {
   return argumentList;
 }
 
-/**
- * Receivers that make a shared callee name mean something other than the
- * filesystem.
- *
- * `open` is on `node:fs` and is Python's builtin, so it is in the shared set. It
- * is also `window.open`, which navigates to a URL and touches no file, and
- * anchoring by name alone failed the required job on a web test that only opens
- * a page. The same names are the browser's on `globalThis` and `self`.
- *
- * Keyed by receiver rather than by callee, so `fs.open` and a bare `open(...)`
- * are unaffected. A bare call cannot be disambiguated without following imports,
- * which this file deliberately does not do, and a bare `open` is far more likely
- * to be the filesystem one.
- */
 const NON_FILESYSTEM_RECEIVERS = new Map([
   ['window', new Set(['open'])],
   ['globalThis', new Set(['open'])],
   ['self', new Set(['open'])],
 ]);
 
-/**
- * The mirror of the map above: a callee that only names the filesystem when it
- * is called on a particular receiver, and resolves from the process cwd there.
- *
- * `apps/cli` runs its tests under `bun test`, so `Bun.file('../labs/x')` in a
- * root-launched test really does read the private sibling, and by name alone
- * `file` anchored nothing. Keying on the receiver is what makes it safe to add:
- * a bare `file(...)` or some other object's `.file(...)` is untouched.
- *
- * `Bun.write` is here too, and needs the companion map below: its first argument
- * is the destination path, its second is the data. Keying that by callee name
- * would have changed what every unrelated `write(...)` in the tree means, which
- * is why both halves are receiver-aware rather than only this one.
- */
 const FILESYSTEM_RECEIVER_CALLEES = new Map([['Bun', new Set(['file', 'write'])]]);
 
-/**
- * The receiver-aware half of `DATA_AFTER_PATH_CALLEES`: past the first argument
- * these write the value rather than opening it.
- *
- * `Bun.write('out.txt', '../labs/x')` creates `out.txt` holding that text and
- * reaches nothing, so without this the destination rule above would report the
- * payload as an escape.
- */
 const DATA_AFTER_PATH_RECEIVER_CALLEES = new Map([['Bun', new Set(['write'])]]);
 
-/**
- * Receivers that make `writeFile` the module-level `fs` function, whose first
- * argument is the path it opens.
- *
- * On anything else the same name is `FileHandle.writeFile`, which writes through
- * a handle that is already open and takes the data first. A fixture writing
- * path-shaped expected content with `handle.writeFile('../labs/x')` opens nothing
- * and was failing the required job.
- */
 const FS_MODULE_RECEIVERS = new Set(['fs', 'fsp', 'fsPromises', 'promises', 'nodeFs']);
 
-/** The `FileHandle` methods that share a name with a path-first `fs` function. */
 const HANDLE_DATA_METHODS = new Set(['writeFile', 'appendFile']);
 
-/**
- * Whether this call is the `FileHandle` method rather than the `fs` function.
- *
- * Both conditions are needed, and the argument count is the one that keeps this
- * from opening a hole. A receiver alone would take `myFs.writeFile('../labs/x',
- * data)` out of scope on the strength of an unrecognized name, which is the
- * fail-open direction. What the argument list looks like is the other half.
- *
- * The handle form is `writeFile(data)` or `writeFile(data, options)`, where the
- * options are an encoding name or a bag. `fs.writeFile(path, data)` also has two
- * arguments, so the second one has to be read: only an encoding or an object
- * literal means the handle form, and anything else stays a path. Writing the
- * four characters `utf8` to a path is not a call anyone makes, which is what
- * makes that safe to key on.
- */
 const HANDLE_WRITE_OPTIONS =
   /^(?:\{[\s\S]*\}$|(['"`])(?:utf-?8|ascii|base64url|base64|binary|hex|latin1|ucs-?2|utf-?16le)\1$)/i;
 
@@ -1553,14 +1085,6 @@ function isHandleDataArgument(text, openParen, name, receiver) {
   return HANDLE_WRITE_OPTIONS.test(currentArgument(argumentList).trim());
 }
 
-/**
- * Callees whose path is not their first argument, by language and position.
- *
- * `hash_file('sha256', '../labs/x')` names an algorithm first, and the general
- * rule reads every earlier relative literal as a leading path segment, so the
- * traversal would have been resolved as `sha256/../labs/x`. Naming the position
- * is what keeps the algorithm out of the path.
- */
 const LANGUAGE_PATH_ARGUMENT_POSITION = new Map([
   [
     '.php',
@@ -1571,7 +1095,6 @@ const LANGUAGE_PATH_ARGUMENT_POSITION = new Map([
   ],
 ]);
 
-/** How many arguments precede the candidate in its own call. */
 function argumentPosition(precedingArguments) {
   let depth = 0;
   let quote = null;
@@ -1591,21 +1114,6 @@ function argumentPosition(precedingArguments) {
   return commas;
 }
 
-/**
- * Whether a `join` at this position is `Array.prototype.join` rather than
- * `path.join`.
- *
- * They share a name and mean opposite things: `path.join` builds a path from its
- * arguments, while `['x', 'y'].join('../labs/private.docx')` uses the argument as
- * a separator and touches nothing. Anchoring by name alone failed the required
- * job on the second, which is a false positive on a gate that blocks merges.
- *
- * Decided structurally, on the receiver: a literal array or the result of a call
- * ends in `]` or `)`, and neither can be the `path` module. Narrow on purpose.
- * `segments.join('../x')` stays anchored, because a bare identifier could name
- * either an array or a `path` alias, and guessing from the name would trade this
- * false positive for a missed escape.
- */
 function isArrayJoin(text, parenIndex) {
   const { name, start } = calleeBefore(text, parenIndex);
   if (name !== 'join') return false;
@@ -1614,26 +1122,6 @@ function isArrayJoin(text, parenIndex) {
   return before > 0 && (text[before - 1] === ']' || text[before - 1] === ')');
 }
 
-/**
- * Whether this one candidate is anchored at the process working directory.
- *
- * Decided per candidate rather than per statement, from the call that encloses
- * it: what came before it in that call's arguments, and which function it is
- * being passed to.
- */
-/**
- * The current argument's text, from the last top-level comma of the enclosing
- * call rather than from its `(`.
- *
- * Everything before that comma belongs to a different argument. Reading the whole
- * list let a `process.cwd()` nested in an earlier argument supply a base for a
- * later one: in `copyFileSync(resolve(process.cwd(), 'fixtures/a.docx'),
- * '../labs/private.docx')` the destination is its own path, resolved at the cwd,
- * but it was prefixed with `fixtures/a.docx` and reported clean.
- *
- * Depth-aware, and skips string literals, so a comma inside a nested call or
- * inside a quoted path does not split the argument.
- */
 function currentArgument(argumentList) {
   let depth = 0;
   let quote = null;
@@ -1673,12 +1161,6 @@ function completeArgumentList(text, openParen) {
   return text.slice(openParen + 1);
 }
 
-/**
- * The same text with JavaScript comments blanked to spaces.
- *
- * Length-preserving, so an offset taken from the result still points at the
- * right character of the original.
- */
 /**
  * The same text with the two regex-literal shapes that confuse the scanner
  * blanked to spaces.
@@ -1792,16 +1274,6 @@ function withoutEscapedSlashRegexes(text) {
     .replace(BRACED_REGEX, (match) => ' '.repeat(match.length));
 }
 
-/**
- * The same text with JavaScript comments blanked to spaces, skipping quoted
- * runs so a slash inside a string is not read as syntax.
- *
- * A path segment may legally contain `//`. Blanking by pattern alone, a `//` in
- * `resolve('fixtures//foo', '../../../labs/x')` opened a line comment that ran to
- * the end of the line, which took the cwd base away with it and resolved a real
- * escape from the source directory instead. Length-preserving, so every offset
- * still points at the same character.
- */
 function withoutComments(text) {
   let out = '';
   let quote = null;
@@ -1841,8 +1313,11 @@ function withoutComments(text) {
   return out;
 }
 
+const PYTHON_CWD_EXPRESSION = /(?:Path\.cwd|os\.getcwd)\s*\(\s*\)/;
+const NODE_CWD_EXPRESSION = /process\.cwd\s*\(\s*\)/;
+
 function cwdAnchorFrom(text, language) {
-  const pattern = language === '.py' ? /(?:Path\.cwd|os\.getcwd)\s*\(\s*\)/ : /process\.cwd\s*\(\s*\)/;
+  const pattern = language === '.py' ? PYTHON_CWD_EXPRESSION : NODE_CWD_EXPRESSION;
   const match = pattern.exec(text);
   if (!match) return null;
   const segments = [...text.slice(match.index + match[0].length).matchAll(/['"`]([^'"`]*)['"`]/g)]
@@ -1851,233 +1326,136 @@ function cwdAnchorFrom(text, language) {
   return { cwdRelative: true, prefix: segments.join('/') || undefined };
 }
 
-function isCwdAnchored(text, offset, candidate, context, language, languageCallees) {
-  if (!context || context.inComment) return { cwdRelative: false };
-  const { openParen, argumentEnd } = enclosingCall(text, context, offset);
-  if (openParen === -1) return { cwdRelative: false };
-  const argumentList = text.slice(openParen + 1, argumentEnd);
-  const { name: callee } = calleeBefore(text, openParen);
-  // For a `join`/`resolve`-style call the earlier arguments ARE the base, so the
-  // whole list is read. For a multi-path API they are a different path entirely,
-  // so only the current argument counts: in `copyFileSync(resolve(process.cwd(),
-  // 'fixtures/a.docx'), '../labs/private.docx')` the destination is resolved at the
-  // cwd on its own, and reading the whole list prefixed it with `fixtures/a.docx`
-  // and reported it clean.
-  // Comments are blanked before anything reads this text. A `process.cwd()`
-  // inside one is prose about the base, not the base: `resolve(__dirname, /* not
-  // process.cwd() */ '../../b/x')` was read as cwd-anchored, which resolved a
-  // valid in-repository path from the wrong place and reported it missing.
-  //
-  // Blanked to spaces rather than removed, so every offset in this slice still
-  // lines up with the text it came from. Both JavaScript forms only: this runs
-  // on an argument list, and the formats with other comment syntax do not have
-  // one.
-  const precedingArguments = withoutComments(
-    INDEPENDENT_PATH_ARGUMENTS.has(callee) ? currentArgument(argumentList) : argumentList,
-  );
-  // An explicit cwd expression earlier in this argument list is the base.
-  // Relative literals after it are path segments too: `resolve(process.cwd(),
-  // 'a', '../b')` is `<root>/b`.
-  const precedingCwd = cwdAnchorFrom(precedingArguments, language);
-  if (precedingCwd) return precedingCwd;
-  const { name, receiver } = calleeBefore(text, openParen);
-  if (name === 'URL') {
-    const allArguments = completeArgumentList(text, openParen);
-    const candidateStart = offset - openParen - 1;
-    const afterCandidate = allArguments.slice(candidateStart + candidate.length);
-    const followingBase = /^(['"`])\s*,([\s\S]*)$/.exec(afterCandidate)?.[2];
-    const baseCwd = followingBase ? cwdAnchorFrom(withoutComments(followingBase), language) : null;
-    if (baseCwd) return baseCwd;
-  }
-  // `require.resolve('../x')` and `import.meta.resolve` resolve from the calling
-  // module, not the cwd, despite sharing a name with `path.resolve`.
-  if (name === 'resolve' && MODULE_RELATIVE_RECEIVERS.has(receiver)) return { cwdRelative: false };
-  // `window.open('../x')` navigates to a URL; only the receiver tells it apart
-  // from the filesystem `open` that shares its name.
-  if (NON_FILESYSTEM_RECEIVERS.get(receiver)?.has(name)) return { cwdRelative: false };
-  // A child process inherits the cwd, so every path operand handed to one
-  // resolves there rather than from the file that spawned it. The operand is
-  // usually inside an array — `execFileSync('cat', ['../labs/x'])` — which put it
-  // past the first argument, where the general rule fell back to file-relative
-  // resolution and reported a read of the private sibling as clean.
-  if (CHILD_PROCESS_CALLEES.has(name)) {
-    const program = firstArgument(completeArgumentList(text, openParen)).trim();
-    const argumentList = completeArgumentList(text, openParen);
-    if (
-      ARGV_CHILD_PROCESS_CALLEES.has(name) &&
-      OUTPUT_ONLY_PROGRAMS.test(program) &&
-      !SHELL_OPTION.test(argumentList)
-    ) {
-      return { cwdRelative: false, isData: true };
-    }
-    return { cwdRelative: true };
-  }
-  // `[...].join('../x')` uses its argument as a separator, not as a path segment.
-  if (isArrayJoin(text, openParen)) return { cwdRelative: false };
-  // A dotted variant anchors wherever the function it hangs off does.
-  // `realpathSync.native('../x')` reads its callee name as `native`, which is in
-  // no set, so the path fell back to file-relative resolution and a
-  // root-launched escape was reported clean. The receiver's last segment is the
-  // function that decides, and it is only consulted when the name itself is not
-  // a known callee, so `path.resolve` still resolves as `resolve`.
-  //
-  // `languageCallees` holds the names that only anchor in this file's language,
-  // so a generic `cache.remove(...)` in a JavaScript test is not read as Python's
-  // `os.remove`.
+const NOT_CWD_ANCHORED = Object.freeze({ cwdRelative: false });
+const CWD_ANCHORED = Object.freeze({ cwdRelative: true });
+const DATA_NOT_PATH = Object.freeze({ cwdRelative: false, isData: true });
+
+function cwdBaseAfterUrlCandidate(text, openParen, offset, candidate, language) {
+  const allArguments = completeArgumentList(text, openParen);
+  const candidateStart = offset - openParen - 1;
+  const afterCandidate = allArguments.slice(candidateStart + candidate.length);
+  const followingBase = /^(['"`])\s*,([\s\S]*)$/.exec(afterCandidate)?.[2];
+  return followingBase ? cwdAnchorFrom(withoutComments(followingBase), language) : null;
+}
+
+function isModuleRelativeResolve({ name, receiver }) {
+  return name === 'resolve' && MODULE_RELATIVE_RECEIVERS.has(receiver);
+}
+
+function isNonFilesystemReceiverCall({ name, receiver }) {
+  return Boolean(NON_FILESYSTEM_RECEIVERS.get(receiver)?.has(name));
+}
+
+function isSpawnedOutputOnlyProgram(text, openParen, name) {
+  const argumentList = completeArgumentList(text, openParen);
+  const program = firstArgument(argumentList).trim();
+  return ARGV_CHILD_PROCESS_CALLEES.has(name) && OUTPUT_ONLY_PROGRAMS.test(program) && !SHELL_OPTION.test(argumentList);
+}
+
+function isCwdAnchoringCallee({ name, receiver }, languageCallees) {
   const anchors = (candidateName) =>
     CWD_ANCHORED_CALLEES.has(candidateName) ||
     Boolean(languageCallees?.has(candidateName)) ||
     Boolean(FILESYSTEM_RECEIVER_CALLEES.get(receiver)?.has(candidateName));
-  const anchoringName = anchors(name) ? name : receiver.split('.').pop();
-  if (!anchors(anchoringName)) return { cwdRelative: false };
-  // Only the opening quote separates the candidate from `(`, so it is the first
-  // argument: no base was passed, and a path-taking API anchors it at the cwd.
-  // Python also lets that parameter be named, as in `open(file='../x')`.
-  //
-  // A pass-through template tag is allowed to sit in between. `String.raw` has no
-  // parentheses of its own, so it stayed in the preceding text and the candidate
-  // read as a later argument, which sent `readFileSync(String.raw`../labs/x`)`
-  // back to file-relative resolution. It hands the literal back unchanged, so it
-  // decides nothing about the base.
-  const withoutTag = precedingArguments.replace(/['"`]\s*$/, '').replace(/(?:^|[\s(,])String\.raw\s*$/, '');
-  const beforeCandidate = withoutTag.trim();
-  // Python names the path parameter, and a named argument does not have to come
-  // first: `open(mode='r', file='../labs/x')` opens the same file as
-  // `open('../labs/x')`. Reading the whole preceding text meant only the
-  // keyword-first spelling anchored, so the reordered one resolved from the
-  // source directory and a root-launched escape read as clean. Only the
-  // candidate's own argument answers which parameter it is.
-  const namedArgument = language === '.py' ? currentArgument(beforeCandidate).trim() : beforeCandidate;
-  const keyword = /^([A-Za-z_][A-Za-z0-9_]*)\s*=$/.exec(namedArgument)?.[1];
-  const isFirstArgument =
-    beforeCandidate === '' || (language === '.py' && keyword !== undefined && PYTHON_PATH_ARGUMENT_NAMES.has(keyword));
-  // A named position replaces the first-argument question entirely: the earlier
-  // arguments are not path segments, so neither the composing fallback below nor
-  // the first-argument rule applies to them.
+  return anchors(name) || anchors(lastSegmentOf(receiver));
+}
+
+const PASS_THROUGH_TEMPLATE_TAG = /(?:^|[\s(,])String\.raw\s*$/;
+const PYTHON_KEYWORD_ARGUMENT = /^([A-Za-z_][A-Za-z0-9_]*)\s*=$/;
+
+function isPythonPathKeyword(beforeCandidate) {
+  const keyword = PYTHON_KEYWORD_ARGUMENT.exec(currentArgument(beforeCandidate).trim())?.[1];
+  return keyword !== undefined && PYTHON_PATH_ARGUMENT_NAMES.has(keyword);
+}
+
+function isFirstPathArgument(precedingArguments, language) {
+  const beforeCandidate = precedingArguments.replace(/['"`]\s*$/, '').replace(PASS_THROUGH_TEMPLATE_TAG, '').trim();
+  return beforeCandidate === '' || (language === '.py' && isPythonPathKeyword(beforeCandidate));
+}
+
+const SYMLINK_CALLEES = new Set(['symlink', 'symlinkSync']);
+
+function symlinkTargetDirectory(text, offset, candidate) {
+  const afterTarget = text.slice(offset + candidate.length);
+  const secondArgument = /^(['"`])\s*,\s*([\s\S]*)$/.exec(afterTarget)?.[2] ?? '';
+  const destination = /^(['"`])([^'"`]*)\1/.exec(secondArgument)?.[2] ?? composedLiteralPath(secondArgument);
+  return destination === undefined ? undefined : dirname(destination.replaceAll('\\', '/'));
+}
+
+function isDataAfterPath({ name, receiver }) {
+  return DATA_AFTER_PATH_CALLEES.has(name) || Boolean(DATA_AFTER_PATH_RECEIVER_CALLEES.get(receiver)?.has(name));
+}
+
+function isRootedLiteral(literal) {
+  return literal.startsWith('/') || /^[A-Za-z]:[\\/]/.test(literal);
+}
+
+function anchorFromEarlierLiterals(precedingArguments) {
+  const earlier = precedingArguments.replace(/,\s*['"`]\s*$/, '');
+  const literals = [...earlier.matchAll(/['"`]([^'"`]*)['"`]/g)].map((match) => match[1]);
+  const isBareArgumentList = /^[\s,'"`]*$/.test(earlier.replace(/['"`][^'"`]*['"`]/g, ''));
+  if (!isBareArgumentList || literals.length === 0 || literals.some(isRootedLiteral)) {
+    return { cwdRelative: false, prefix: literals.filter(Boolean).join('/') };
+  }
+  return { cwdRelative: true, prefix: literals.join('/') };
+}
+
+function isCwdAnchored(text, offset, candidate, context, language, languageCallees) {
+  if (!context || context.inComment) return NOT_CWD_ANCHORED;
+  const { openParen, argumentEnd } = enclosingCall(text, context, offset);
+  if (openParen === -1) return NOT_CWD_ANCHORED;
+  const argumentList = text.slice(openParen + 1, argumentEnd);
+  const callee = calleeBefore(text, openParen);
+  const { name, receiver } = callee;
+  const precedingArguments = withoutComments(
+    INDEPENDENT_PATH_ARGUMENTS.has(name) ? currentArgument(argumentList) : argumentList,
+  );
+  const precedingCwd = cwdAnchorFrom(precedingArguments, language);
+  if (precedingCwd) return precedingCwd;
+  if (name === 'URL') {
+    const baseCwd = cwdBaseAfterUrlCandidate(text, openParen, offset, candidate, language);
+    if (baseCwd) return baseCwd;
+  }
+  if (isModuleRelativeResolve(callee)) return NOT_CWD_ANCHORED;
+  if (isNonFilesystemReceiverCall(callee)) return NOT_CWD_ANCHORED;
+  if (CHILD_PROCESS_CALLEES.has(name)) {
+    return isSpawnedOutputOnlyProgram(text, openParen, name) ? DATA_NOT_PATH : CWD_ANCHORED;
+  }
+  if (isArrayJoin(text, openParen)) return NOT_CWD_ANCHORED;
+  if (!isCwdAnchoringCallee(callee, languageCallees)) return NOT_CWD_ANCHORED;
+  const isFirstArgument = isFirstPathArgument(precedingArguments, language);
   const pathPosition = LANGUAGE_PATH_ARGUMENT_POSITION.get(language)?.get(name);
   if (pathPosition !== undefined) {
     return { cwdRelative: argumentPosition(precedingArguments) === pathPosition };
   }
-  if (isFirstArgument && isHandleDataArgument(text, openParen, name, receiver)) {
-    return { cwdRelative: false, isData: true };
+  if (isFirstArgument && isHandleDataArgument(text, openParen, name, receiver)) return DATA_NOT_PATH;
+  if (isFirstArgument && SYMLINK_CALLEES.has(name)) {
+    const targetDirectory = symlinkTargetDirectory(text, offset, candidate);
+    if (targetDirectory !== undefined) return { cwdRelative: true, prefix: targetDirectory };
   }
-  if (isFirstArgument && (name === 'symlink' || name === 'symlinkSync')) {
-    // A relative symlink target is stored verbatim and interpreted from the
-    // destination's directory, not from the process cwd like the destination.
-    const afterTarget = text.slice(offset + candidate.length);
-    const secondArgument = /^(['"`])\s*,\s*([\s\S]*)$/.exec(afterTarget)?.[2] ?? '';
-    const destination = /^(['"`])([^'"`]*)\1/.exec(secondArgument)?.[2] ?? composedLiteralPath(secondArgument);
-    if (destination !== undefined) {
-      return { cwdRelative: true, prefix: dirname(destination.replaceAll('\\', '/')) };
-    }
-  }
-  if (isFirstArgument) return { cwdRelative: true };
-  // Past the first argument of a write API, this is the data being written, not
-  // a path the call opens. Reported as such so the candidate is dropped entirely
-  // rather than merely resolved from somewhere else.
-  if (DATA_AFTER_PATH_CALLEES.has(name) || DATA_AFTER_PATH_RECEIVER_CALLEES.get(receiver)?.has(name)) {
-    return { cwdRelative: false, isData: true };
-  }
-  // A second source or destination path is its own path, not a suffix appended
-  // to the first, so what preceded it does not supply a base.
-  if (INDEPENDENT_PATH_ARGUMENTS.has(name)) return { cwdRelative: true };
-  // Every preceding argument is itself relative, so no absolute base was ever
-  // supplied and the whole call still anchors at the cwd:
-  // `resolve('fixtures', '../../private/x')` is cwd-relative even though the
-  // candidate is second. Requiring the first position missed that entirely.
-  const earlier = precedingArguments.replace(/,\s*['"`]\s*$/, '');
-  const literals = [...earlier.matchAll(/['"`]([^'"`]*)['"`]/g)].map((match) => match[1]);
-  const isBareArgumentList = /^[\s,'"`]*$/.test(earlier.replace(/['"`][^'"`]*['"`]/g, ''));
-  if (
-    !isBareArgumentList ||
-    literals.length === 0 ||
-    !literals.every((literal) => !literal.startsWith('/') && !/^[A-Za-z]:[\\/]/.test(literal))
-  ) {
-    // Not cwd-anchored, because something other than a relative literal supplied
-    // the base. The relative literals between that base and the candidate are
-    // still part of the path though: `resolve(__dirname, '..', '../../x')`
-    // composes both, and dropping the `'..'` resolved one level too low and
-    // reported an escape as clean. `__dirname`-style bases are directory-relative,
-    // which is what the file base already models.
-    return { cwdRelative: false, prefix: literals.filter(Boolean).join('/') };
-  }
-  // The earlier segments are part of the path, not just evidence about its base.
-  // `resolve('fixtures', '../shared/x.docx')` from the root is
-  // `<root>/shared/x.docx`, which is inside; dropping `fixtures` and resolving
-  // only `../shared/x.docx` put it one level too high and failed a valid path.
-  return { cwdRelative: true, prefix: literals.join('/') };
+  if (isFirstArgument) return CWD_ANCHORED;
+  if (isDataAfterPath(callee)) return DATA_NOT_PATH;
+  if (INDEPENDENT_PATH_ARGUMENTS.has(name)) return CWD_ANCHORED;
+  return anchorFromEarlierLiterals(precedingArguments);
 }
 
-/**
- * The value of a `join`/`resolve` call whose arguments are all string literals,
- * or `undefined` when anything in it is not statically known.
- *
- * A symlink destination is commonly composed rather than written out:
- * `symlinkSync('../shared/data.docx', join('fixtures', 'link.docx'))` is a valid
- * in-repository link, and reading only the literal form left the target resolved
- * from the cwd, one directory too high, which failed the required job on it.
- *
- * Deliberately all-or-nothing. A single non-literal argument means the composed
- * value is not knowable here, and guessing at a prefix would move the target to
- * a directory the call never names. Returning `undefined` leaves the caller on
- * the path it already took.
- */
 function composedLiteralPath(text) {
   const call = /^(?:[A-Za-z_$][\w$]*\s*\.\s*)?(?:join|resolve)\s*\(([^()]*)\)/.exec(text);
   if (!call) return undefined;
   const literal = /(['"`])([^'"`]*)\1/g;
   const segments = [...call[1].matchAll(literal)].map((match) => match[2]);
   if (segments.length === 0) return undefined;
-  // Nothing may sit between the literals but separators, so a variable or a
-  // nested call is not silently dropped from the composed value.
   if (call[1].replace(literal, '').trim().replace(/,/g, '').trim() !== '') return undefined;
   return segments.join('/');
 }
 
-/**
- * Resolve a candidate against its file's directory and report whether it lands
- * outside the root. Comparing resolved paths rather than counting `../` keeps
- * `packages/a/../b` correctly inside.
- *
- * Every form this scans is directory-relative, including the two that look like
- * exceptions. `new URL('../x', import.meta.url)` resolves per RFC 3986, which
- * drops the base's last segment — the filename — before applying `../`, and
- * `path.resolve(__dirname, '../x')` is directory-relative by construction. An
- * earlier version treated both as file-relative and so consumed one extra `..`,
- * turning real escapes into passes: from `examples/__tests__/a.spec.ts`, a
- * `../../../labs/private.docx` was reported clean. Verified against Node before
- * removing the special case.
- */
-/**
- * Languages where every relative literal is resolved from the process working
- * directory, whatever encloses it.
- *
- * A shell script has no callee to consult: `cat '../../labs/private.docx'` hands
- * the argument straight to a command, and the shell resolves it from wherever the
- * script was launched. Reading it from the script's own directory turned a real
- * escape into an in-repository path — from `packages/a/tests/` that literal reads
- * as `packages/labs/...`, which exists nowhere and looked clean.
- *
- * Only shell. Python is handled through `Path` and `open` in
- * `CWD_ANCHORED_CALLEES`, because a bare Python string is not a path until
- * something opens it, and the JavaScript family is directory-relative by module
- * semantics.
- *
- * Decided by the shebang when there is no extension, not by the grammar object:
- * shell, Python, and YAML all share `HASH_COMMENTS`, so grammar identity cannot
- * tell them apart. Keying on `.sh` alone meant an extensionless `#!/bin/sh`
- * entrypoint was scanned and read with shell comments, then resolved from its own
- * directory anyway — the one place where the two halves of shebang support
- * disagreed.
- */
 const CWD_RELATIVE_LANGUAGES = new Set(['.sh']);
-const CWD_RELATIVE_SHEBANG = /\b(?:ba|z|k|da)?sh\b/;
 
 function isCwdRelativeLanguage(file, contents) {
-  const basename = file.slice(file.lastIndexOf('/') + 1);
-  if (basename.lastIndexOf('.') > 0) return CWD_RELATIVE_LANGUAGES.has(file.slice(file.lastIndexOf('.')));
-  if (!contents?.startsWith('#!')) return false;
-  return CWD_RELATIVE_SHEBANG.test(contents.slice(0, contents.indexOf('\n') + 1 || contents.length));
+  const extension = extensionAfterNonLeadingDot(basenameOf(file));
+  if (extension !== '') return CWD_RELATIVE_LANGUAGES.has(extension);
+  const shebang = shebangLineOf(contents);
+  return shebang !== undefined && SHELL_SHEBANG.test(shebang);
 }
 
 /**
@@ -2639,49 +2017,37 @@ function resolveCandidate(fromFile, rawCandidate, cwdRelative) {
   return attempts.find((attempt) => attempt.escapes) ?? attempts[0];
 }
 
-/**
- * Symlinks tracked in a scanned surface, as `path -> target`.
- *
- * A symlink carries its path in the link itself rather than in any file it could
- * be read from, and `readFileSync` follows it: a target inside the private parent
- * was scanned for *its* contents under the link's name, and a dangling one landed
- * in the read's `catch` and was skipped. Either way the required job reported
- * clean on a fixture a public clone cannot resolve, so the target is read with
- * `readlink` and resolved before anything is opened.
- *
- * Every tracked symlink in a scanned surface, whatever its name. Extension
- * decides whether a file's *contents* are worth reading; a link to `fixture.docx`
- * escapes just as completely as a link to `fixture.ts`.
- */
+const GIT_SYMLINK_MODE = '120000 ';
+
+function trackedSymlinkPath(lsFilesStageEntry) {
+  const tab = lsFilesStageEntry.indexOf('\t');
+  if (tab === -1 || !lsFilesStageEntry.startsWith(GIT_SYMLINK_MODE)) return undefined;
+  return lsFilesStageEntry.slice(tab + 1);
+}
+
+function readLinkTargetIfStillALink(file) {
+  try {
+    return readlinkSync(resolve(REPO_ROOT, file));
+  } catch {
+    return undefined;
+  }
+}
+
 function listTrackedSymlinks() {
   return execFileSync('git', ['ls-files', '-sz'], { cwd: REPO_ROOT, maxBuffer: 64 * 1024 * 1024 })
     .toString('utf8')
     .split('\0')
     .filter(Boolean)
     .flatMap((entry) => {
-      // `<mode> <sha> <stage>\t<path>`; 120000 is git's mode for a symlink.
-      const tab = entry.indexOf('\t');
-      if (tab === -1 || !entry.startsWith('120000 ')) return [];
-      const file = entry.slice(tab + 1);
-      if (!SCANNED_PATTERNS.some((pattern) => pattern.test(file))) return [];
-      try {
-        return [{ file, target: readlinkSync(resolve(REPO_ROOT, file)) }];
-      } catch {
-        return []; // Removed mid-run, or checked out as a plain file on a platform without links.
-      }
+      const file = trackedSymlinkPath(entry);
+      if (file === undefined || !isInPublicCloneSurface(file)) return [];
+      const target = readLinkTargetIfStillALink(file);
+      return target === undefined ? [] : [{ file, target }];
     });
 }
 
-/**
- * Whether a path is worth opening to look for a shebang.
- *
- * Only a file with no extension at all, inside a scanned surface. Everything
- * else is decided by name, so no binary is ever read.
- */
 function mightBeExecutableScript(file) {
-  const basename = file.slice(file.lastIndexOf('/') + 1);
-  if (basename.lastIndexOf('.') > 0) return false;
-  return SCANNED_PATTERNS.some((pattern) => pattern.test(file));
+  return extensionAfterNonLeadingDot(basenameOf(file)) === '' && isInPublicCloneSurface(file);
 }
 
 const findings = [];
@@ -2699,89 +2065,85 @@ for (const { file, target } of listTrackedSymlinks()) {
   });
 }
 
-for (const file of listTrackedFiles()) {
-  // Two passes: the first rules out anything whose name settles it, so a `.docx`
-  // or a `.png` is never read. Only a path with no extension survives to be
-  // opened and re-tested for a shebang.
-  if (!isScanned(file) && !mightBeExecutableScript(file)) continue;
-  const exemption = EXEMPT_PATHS.get(file);
-
-  let contents;
+function readTrackedFileIfStillPresent(file) {
   try {
-    contents = readFileSync(resolve(REPO_ROOT, file), 'utf8');
+    return readFileSync(resolve(REPO_ROOT, file), 'utf8');
   } catch {
-    continue; // Unreadable or removed mid-run; nothing to assert about it.
+    return undefined;
   }
-  if (!isScanned(file, contents)) continue;
+}
 
-  // Candidates are collected over the whole file rather than line by line, so a
-  // call that a formatter split across lines still reads as one argument list.
-  const candidates = [
-    ...[...contents.matchAll(RELATIVE_PATH_PATTERN)].map((match) => ({
-      candidate: match[1],
-      offset: match.index + match[0].indexOf(match[1]),
-    })),
-    // A machine path is only a machine path where something reads it. A web
-    // example's `app.get('/home/alice/profile', handler)` is a route, and the
-    // unconditional job failed on it even though nothing touches the filesystem.
-    // So `/home` and `/Users` count inside a `file:` URL, which can only be a
-    // path, or where a path-taking call receives them. A drive letter needs no
-    // such test: `C:\Users\...` is a path in any context.
+function matchedGroupAt(match) {
+  return { candidate: match[1], offset: match.index + match[0].indexOf(match[1]) };
+}
+
+function pathCandidatesIn(contents) {
+  return [
+    ...[...contents.matchAll(RELATIVE_PATH_PATTERN)].map(matchedGroupAt),
     ...[...contents.matchAll(ABSOLUTE_PATH_PATTERN)].map((match) => ({
-      candidate: match[1],
-      offset: match.index + match[0].indexOf(match[1]),
+      ...matchedGroupAt(match),
       machineRooted: match[1].startsWith('/'),
     })),
-    // A composed traversal is reported at its first fragment, so the enclosing
-    // call, and therefore the base, is the one those fragments sit in.
     ...[...contents.matchAll(COMPOSED_TRAVERSAL_PATTERN)].map((match) => ({
+      ...matchedGroupAt(match),
       candidate: joinComposedTraversal(match[1]),
-      offset: match.index + match[0].indexOf(match[1]),
       composed: true,
     })),
   ];
+}
 
-  // `//` and `/* */` are comments in JS and TS, not in Markdown or YAML. Applying
-  // the JS rule everywhere meant a plain `https://` in a Markdown line switched
-  // the scanner into comment mode and skipped an escaping link later on that same
-  // line. Vue is included: its script block is JS.
-  //
-  // Regex literals carrying an escaped `//` are blanked first. `const r = /\/\//`
-  // holds the two characters that open a line comment, so the scanner switched to
-  // comment mode at the regex and marked everything after it on that line as
-  // prose -- a real escape written after one passed the gate. Nine tracked files
-  // contain such a regex, so this is reachable rather than theoretical.
-  //
-  // Blanked rather than tokenized. Telling a regex from division needs an
-  // operand-position heuristic, and an earlier attempt at one broke on comments
-  // whose text contains a slash: a scanner that guesses wrong about JavaScript
-  // syntax fails in both directions, and the under-report is the one that matters.
-  // Blanking only the escaped-slash form is narrow enough to reason about, and it
-  // cannot hide a path, because a path cannot appear inside `\/\/`.
-  // The language decides both comment grammar and string interpolation rules.
+function lineStartOffsets(contents) {
+  const lineStarts = [0];
+  for (let i = 0; i < contents.length; i += 1) {
+    if (contents[i] === '\n') lineStarts.push(i + 1);
+  }
+  return lineStarts;
+}
+
+function lineNumberAt(lineStarts, offset) {
+  const line = lineStarts.findIndex((start) => start > offset);
+  return line === -1 ? lineStarts.length : line;
+}
+
+function findingSnippet(contents, lineStarts, line, offset, candidate) {
+  return contents
+    .slice(lineStarts[line - 1], offset + candidate.length + 40)
+    .split('\n')[0]
+    .trim()
+    .slice(0, 110);
+}
+
+function isComposedTraversalNobodyJoins({ composed }, cwdRelative, contents, context) {
+  return Boolean(composed) && !cwdRelative && !composesPath(contents, context);
+}
+
+function isShellPayloadData(contents, offset, dataHeredocs) {
+  return (
+    isPrintedShellArgument(contents, offset) ||
+    isHereStringOperand(contents, offset) ||
+    isInDataHeredoc(dataHeredocs, offset, contents)
+  );
+}
+
+function findingsInFile(file, contents) {
+  const exemption = EXEMPT_PATHS.get(file);
+  const candidates = pathCandidatesIn(contents);
   const language = languageExtensionFor(file, contents);
   const contexts = describeCallContexts(
     withoutEscapedSlashRegexes(contents),
     candidates.map((entry) => entry.offset),
     { grammar: commentGrammarFor(file, contents), language },
   );
-  const lineStarts = [0];
-  for (let i = 0; i < contents.length; i += 1) {
-    if (contents[i] === '\n') lineStarts.push(i + 1);
-  }
-  // The filesystem names that only anchor in this file's language, so a generic
-  // `remove` or `copy` in a JavaScript test is not read as Python's.
+  const lineStarts = lineStartOffsets(contents);
   const languageCallees = LANGUAGE_CWD_ANCHORED_CALLEES.get(language);
-  // Whole-file state, so it is found once rather than once per candidate.
-  const dataHeredocs = isCwdRelativeLanguage(file, contents) ? shellDataHeredocRanges(contents) : [];
+  const shellCwd = isCwdRelativeLanguage(file, contents);
+  const dataHeredocs = shellCwd ? shellDataHeredocRanges(contents) : [];
+  const fileFindings = [];
 
-  for (const { candidate, offset, composed, machineRooted } of candidates) {
+  for (const entry of candidates) {
+    const { candidate, offset, machineRooted } = entry;
     const context = contexts.get(offset);
-    // A path inside a comment is prose about a path, not a dependency on one.
     if (context?.inComment) continue;
-    // A path whose leading segments are thrown away before anything receives it
-    // cannot reach outside: `readFileSync(path.basename('../../../../labs/x'))`
-    // reads `<cwd>/x`, wherever the traversal pointed.
     if (discardsLeadingSegments(contents, context, offset, candidate)) continue;
     const { cwdRelative, prefix, isData } = isCwdAnchored(
       contents,
@@ -2791,44 +2153,10 @@ for (const file of listTrackedFiles()) {
       language,
       languageCallees,
     );
-    // The data argument of a write API is file contents, not a path the call
-    // opens. `writeFileSync('snapshot.txt', '../../labs/x')` touches only
-    // `snapshot.txt`, so the traversal reaches nothing.
     if (isData) continue;
-    // A machine-shaped literal is a private dependency wherever it sits, with two
-    // exceptions: a server route names a URL, not a path, and so does a markup
-    // attribute like `href`, which has no enclosing call to read. A `file:` URL is
-    // always a path, so it overrides both.
-    if (
-      machineRooted &&
-      !isFileUrl(contents, offset) &&
-      (isRouteLiteral(contents, context, offset) ||
-        isUrlAttributeValue(contents, offset) ||
-        isCssUrlValue(contents, offset, language) ||
-        isUrlArgument(contents, context, offset) ||
-        isOriginRelativeUrl(contents, context, offset))
-    ) {
-      continue;
-    }
-    // Separate `'..'` arguments are one traversal only where something joins them
-    // into a path. Anywhere else they are just strings that happen to read as one.
-    //
-    // A cwd-anchored call counts as well as a composer: `readdirSync('..')` from a
-    // root-launched test reads the repository's parent, and a filesystem call is
-    // not in PATH_COMPOSING_CALLEES because it does not join its arguments. Asking
-    // only about composition discarded that escape before it was ever resolved.
-    if (composed && !cwdRelative && !composesPath(contents, context)) continue;
-    const shellCwd = isCwdRelativeLanguage(file, contents);
-    // A shell string that is only printed is test data, not a dependency. The
-    // language rule has no callee to consult, so without this every
-    // traversal-shaped literal in a script read as a filesystem access.
-    if (shellCwd && !cwdRelative && isPrintedShellArgument(contents, offset)) continue;
-    if (shellCwd && !cwdRelative && isHereStringOperand(contents, offset)) continue;
-    // The same rule one level up: a heredoc body handed to a command that copies
-    // it out is the payload being written, not a path the script opens.
-    if (shellCwd && !cwdRelative && isInDataHeredoc(dataHeredocs, offset, contents)) continue;
-    // A PHP include statement has no parentheses, so no callee to read; its
-    // traversal-prefixed form bypasses `include_path` and resolves from the cwd.
+    if (machineRooted && isUrlRatherThanPath(contents, context, offset, language)) continue;
+    if (isComposedTraversalNobodyJoins(entry, cwdRelative, contents, context)) continue;
+    if (shellCwd && !cwdRelative && isShellPayloadData(contents, offset, dataHeredocs)) continue;
     const phpInclude = language === '.php' && isPhpIncludeTarget(contents, offset, candidate);
     const { resolved, escapes } = resolveCandidate(
       file,
@@ -2836,25 +2164,24 @@ for (const file of listTrackedFiles()) {
       cwdRelative || shellCwd || phpInclude,
     );
     if (!escapes) continue;
-    // Exempt only the candidate this entry approves, so an unrelated escape
-    // added to the same file later is still reported.
     if (exemption?.allow.test(candidate)) continue;
-    let line = lineStarts.findIndex((start) => start > offset);
-    line = line === -1 ? lineStarts.length : line;
-    findings.push({
+    const line = lineNumberAt(lineStarts, offset);
+    fileFindings.push({
       file,
       line,
       candidate,
-      // Distinguishes a live private dependency from a merely stale path.
-      // Both fail; the fixes differ.
       existsLocally: existsSync(resolved),
-      text: contents
-        .slice(lineStarts[line - 1], offset + candidate.length + 40)
-        .split('\n')[0]
-        .trim()
-        .slice(0, 110),
+      text: findingSnippet(contents, lineStarts, line, offset, candidate),
     });
   }
+  return fileFindings;
+}
+
+for (const file of listTrackedFiles()) {
+  if (!isScanned(file) && !mightBeExecutableScript(file)) continue;
+  const contents = readTrackedFileIfStillPresent(file);
+  if (contents === undefined || !isScanned(file, contents)) continue;
+  for (const finding of findingsInFile(file, contents)) findings.push(finding);
 }
 
 if (findings.length === 0) {

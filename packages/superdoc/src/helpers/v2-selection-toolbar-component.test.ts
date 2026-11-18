@@ -7,6 +7,7 @@ import { DOCX } from '@superdoc/common';
 import { useSuperdocStore } from '../stores/superdoc-store.js';
 import { normalizeUiConfig } from '../core/config/normalize-ui-config.js';
 import SuperDoc from '../SuperDoc.vue';
+import { fixedCommentsLayout } from '../test-support/comments-layout.js';
 import { makeV2CommentsAdapter } from '../test-support/v2-review-adapters.js';
 
 // The shell fixture replaces the editor; keep the real integration and bridge
@@ -55,6 +56,7 @@ async function mountShell() {
   Object.assign(store.modules, config.modules);
   const superdoc = Object.assign(new EventEmitter(), {
     config,
+    ...fixedCommentsLayout(),
     uiConfig,
     activeEditor: { editorVersion: 2, documentId: 'doc-a', options: { documentId: 'doc-a' } },
     user: { name: 'Fixture author' },

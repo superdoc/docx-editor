@@ -114,11 +114,38 @@ describe('fixture-only inline box proof', () => {
 
     expect(styledLeaves.length).toBeGreaterThan(0);
     expect(styledLeaves[0]!.classList.contains('superdoc-text-run')).toBe(true);
-    expect(styledLeaves[0]!.style.paddingLeft).toBe('24px');
-    expect(styledLeaves[0]!.style.borderLeftWidth).toBe('2px');
+    expect(styledLeaves[0]!.style.paddingInlineStart).toBe('24px');
+    expect(styledLeaves[0]!.style.borderInlineStart).toContain('2px');
     expect(styledLeaves[0]!.style.backgroundColor).not.toBe('');
     expect(styledLeaves[0]!.dataset.pmStart).toBeDefined();
     expect(lineElement.querySelector('[aria-hidden="true"][data-superdoc-inline-box-id]')).toBeNull();
+  });
+
+  it('measures and paints boxes with paragraph or run RTL direction', async () => {
+    const width = await findDecisiveWidth();
+    const base = paragraph();
+    const variants: ParagraphBlock[] = [
+      { ...base, attrs: { directionContext: { inlineDirection: 'rtl' } } },
+      { ...base, runs: [{ kind: 'text', text: TEXT, fontFamily: 'Arial', fontSize: 16, bidi: { rtl: true } }] },
+    ];
+    for (const block of variants) {
+      const [plain, boxed] = await Promise.all([
+        expectParagraphMeasure({ ...block, inlineBoxes: undefined }, width),
+        expectParagraphMeasure(block, width),
+      ]);
+      expect(boxed.lines.map((line) => line.toChar)).not.toEqual(plain.lines.map((line) => line.toChar));
+      const line = boxed.lines.find((candidate) => candidate.inlineBoxes?.length);
+      expect(line).toBeDefined();
+      if (!line) throw new Error('Expected a measured inline box');
+      const lineElement = renderLine({
+        block,
+        line,
+        lineIndex: boxed.lines.indexOf(line),
+        context: { pageNumber: 1, totalPages: 1, section: 'body' },
+        runContext: makeRunContext(),
+      });
+      expect(lineElement.querySelectorAll('[data-superdoc-inline-box-id="fixture-box"]').length).toBeGreaterThan(0);
+    }
   });
 
   it('moves the following paragraph when block padding expands line height', async () => {

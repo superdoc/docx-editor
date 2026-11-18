@@ -48,6 +48,8 @@ jobs:
               - 'scripts/__tests__/check-examples.test.mjs'
               - 'scripts/check-go-links.mjs'
               - 'scripts/__tests__/check-go-links.test.mjs'
+              - 'scripts/__tests__/lint-examples.test.mts'
+              - 'vite.config.ts'
 
   validate:
     name: CI Examples / validate
@@ -87,6 +89,11 @@ jobs:
           cache: 'pnpm'
           cache-dependency-path: pnpm-lock.yaml
 
+      - uses: oven-sh/setup-bun@v2
+        if: needs.detect.outputs.examples == 'true'
+        with:
+          bun-version: 1.3.11
+
       - name: Check permanent example links
         if: needs.detect.outputs.examples == 'true'
         env:
@@ -113,6 +120,10 @@ jobs:
         if: needs.detect.outputs.examples == 'true'
         run: pnpm run generate:all && pnpm --filter @superdoc/sdk run build
 
+      - name: Lint examples against built types
+        if: needs.detect.outputs.examples == 'true'
+        run: node --test scripts/__tests__/lint-examples.test.mts
+
       - name: Install Chromium
         if: needs.detect.outputs.examples == 'true'
         run: pnpm --filter @superdoc-examples/vanilla exec playwright install --with-deps chromium
@@ -121,7 +132,7 @@ jobs:
         if: needs.detect.outputs.examples == 'true'
         env:
           NODE_OPTIONS: --max-old-space-size=4096
-        run: pnpm run check:examples
+        run: SUPERDOC_CLI_BIN="$PWD/apps/cli/src/index.ts" pnpm run check:examples
 
       - name: Upload browser traces
         if: failure() && needs.detect.outputs.examples == 'true'

@@ -21,6 +21,25 @@ function exec(input: unknown): void {
   executeInsert(createStubSelectionAdapter(), createStubWriteAdapter(), input as InsertInput);
 }
 
+describe('insert history options on adapters without exclusion support', () => {
+  for (const value of [false, null, 'false']) {
+    it(`rejects ${JSON.stringify(value)} before writing`, () => {
+      const selection = createStubSelectionAdapter();
+      const write = createStubWriteAdapter();
+      expect(() =>
+        Reflect.apply(executeInsert, undefined, [
+          selection,
+          write,
+          { value: 'text' },
+          { changeMode: 'tracked', addToHistory: value },
+        ]),
+      ).toThrow(expect.objectContaining({ code: value === false ? 'CAPABILITY_UNAVAILABLE' : 'INVALID_INPUT' }));
+      expect(selection.execute).not.toHaveBeenCalled();
+      expect(write.write).not.toHaveBeenCalled();
+    });
+  }
+});
+
 // ---------------------------------------------------------------------------
 // Input shape discrimination
 // ---------------------------------------------------------------------------

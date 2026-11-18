@@ -31,7 +31,7 @@ import {
 } from '@/lib/built-in-editor-demos';
 import { CollapsibleEditorPreview } from './collapsible-editor-preview';
 import { EditorDemoViewControls } from './editor-demo-view-controls';
-import { createRuntimeEditor, loadRuntime, loadUIModule, type SuperDocInstance } from './superdoc-runtime';
+import { loadRuntime, loadUIModule, type SuperDocInstance } from './superdoc-runtime';
 
 const zoomStep = 10;
 const initialZoom = {
@@ -536,7 +536,7 @@ export function EditorDemo({
       setZoom(initialZoom);
 
       let instance: SuperDocInstance | null = null;
-      instance = createRuntimeEditor(SuperDoc, {
+      instance = new SuperDoc({
         selector: mountRef.current,
         document: file ?? SuperDoc.BlankDOCX,
         documentMode: initialDocumentMode,

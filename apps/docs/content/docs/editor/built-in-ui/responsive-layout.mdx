@@ -48,6 +48,37 @@ const config = {
 
 `target` accepts a CSS selector or an `HTMLElement`. Below `breakpoint`, measured in CSS pixels, comments render inline.
 
+## Change the review layout at runtime
+
+Change comment and tracked-change placement without reopening the document:
+
+```ts
+superdoc.ui.comments.setLayout('inline');
+
+const { requested, effective } = superdoc.getCommentsLayout();
+
+const stop = superdoc.ui.comments.observe(({ layout }) => {
+  console.log(layout.requested, layout.effective);
+});
+```
+
+The setter also accepts `sidebar` and `auto`. `requested` is the selected policy; `effective` is `sidebar` or
+`inline`. Call `stop()` when the application no longer needs updates.
+
+The comments snapshot observer fires immediately and whenever the comments snapshot changes. The
+`comments-layout-change` event fires when either the requested policy or effective placement changes, including an
+automatic change after resizing. Use `superdoc.on('comments-layout-change', handler)` and `superdoc.off(...)` to
+subscribe and unsubscribe. `superdoc.setCommentsLayout(layout)` is equivalent to `ui.comments.setLayout(layout)`.
+
+The choice is local to each Editor instance and is not written to the document or shared with other collaborators.
+Before the Editor can measure its container, `auto` retains the previous effective layout (initially `sidebar`);
+after measurement it follows the configured breakpoint. The effective layout describes placement when the review UI
+is enabled, even when no thread is currently visible.
+
+To add the built-in selector to the default toolbar, configure
+`ui.toolbar.includeItems: ['comments-layout']`. It shows both the selected policy and, for `auto`, its current result.
+You can also place `comments-layout` in a focused `ui.toolbar.items` configuration.
+
 ## Reflow document content
 
 Fit-to-width preserves print pages and scales them. To remove visible page boundaries and rewrap DOCX content when the Editor container changes width, select web layout instead:

@@ -272,6 +272,14 @@ export const BUILT_IN_TOOLBAR_CATALOG: readonly BuiltInToolbarItemEntry[] = [
     group: 'right',
   },
   {
+    name: 'commentsLayout',
+    commandId: null,
+    instanceMethod: null,
+    disposition: 'shell-owned',
+    group: 'right',
+    note: 'viewer-local review placement is controlled through ui.comments.setLayout',
+  },
+  {
     name: 'ruler',
     commandId: null,
     instanceMethod: 'toggleRuler',

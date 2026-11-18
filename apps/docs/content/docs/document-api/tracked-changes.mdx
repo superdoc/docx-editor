@@ -35,6 +35,16 @@ if (!receipt.success) {
 
 The replacement remains open for review. Saving the DOCX preserves that review state until a person or programmatic workflow accepts or rejects it.
 
+### Hyperlinks inside a pending insertion
+
+Tracked `hyperlinks.insert` and `hyperlinks.wrap` join an existing insertion when its author matches the caller. This also applies after reopening a document, to an insertion from another peer, and to an imported insertion. The link and its text stay in the original suggestion: accepting keeps them, and rejecting removes them. A tracked hyperlink inside another author's insertion is refused; a direct edit can instead split the insertion around the link.
+
+For authoring, SuperDoc compares email addresses when both are present, ignoring case and surrounding whitespace. A conflicting email is never overridden by a matching name. When the insertion has no email, a matching name is used instead, ignoring case and repeated whitespace; this supports Word documents that record only a name. If the insertion has an email but the caller does not, the match cannot be established. Empty or unknown authors do not match. This is the same authoring rule used for tracked typing inside an insertion and lets an agent refine its suggestion across sessions.
+
+Author names and emails in documents and session configuration are unverified attribution. They can be copied or spoofed, so matching authorship is not authentication or permission to edit. Integrations must authenticate callers and enforce their own access controls. Review permissions are separate: an application's permission resolver can distinguish own and other revisions using its stricter identity classification, which does not use name fallback when the current user has an email and the imported revision does not. Some structural operations also require proof that the current session created the revision, because they rewrite more than hyperlink content.
+
+Undo history belongs to each editing session. Sharing author attribution does not give a session ownership of another session's history.
+
 ### Attribute one tracked edit
 
 Use `author: { name }` and an optional `date` to attribute one tracked insert, delete, replace, inline format, or list edit without changing the session user. Inserts and replacements can be plain text, HTML, Markdown, or a structured fragment:
@@ -56,6 +66,31 @@ await doc.insert({ type: 'html', value: '<p><strong>New clause.</strong></p>' },
 ```
 
 Resolve a fresh target and revision before each dependent edit; refs from an earlier mutation may be stale. The name is copied when you call the method, before a browser worker queues it. Without `author`, the session's startup author is used. `date` is an ISO 8601 UTC timestamp written as the revision date; without it, the time of the call is used. Separate sessions with different startup users remain an alternative.
+
+### Keep agent suggestions out of the local undo history
+
+In V2, pass `addToHistory: false` in the options argument for tracked plain-text inserts and replacements. The suggestion remains pending for review while the local user undoes and redoes their own edits. The same behavior applies in shared rooms, where each participant retains their own undo history. Omitting the option keeps the usual undo behavior.
+
+```ts
+await doc.insert(
+  { target, value: 'Suggested text' },
+  {
+    changeMode: 'tracked',
+    author: { name: 'Automated Reviewer' },
+    addToHistory: false,
+  },
+);
+await doc.replace(
+  { target, text: 'Revised text' },
+  {
+    changeMode: 'tracked',
+    author: { name: 'Automated Reviewer' },
+    addToHistory: false,
+  },
+);
+```
+
+The option also works on `doc.mutations.apply(plan, { addToHistory: false })` for atomic tracked plans containing text insert, delete, rewrite, and assertion steps. Direct writes, rich or structural content, and other plan steps do not support this option and are rejected. Attribution identifies the revision's author; it does not itself change undo ownership.
 
 Only a non-empty `name` is accepted. This is application-provided display attribution, **not** a verified identity or permission grant: the integration remains responsible for authenticating callers and authorizing edits. `email`, `initials`, and `authorImage` are not accepted in this option. It is not supported for direct edits or `mutations.apply/preview`; those option combinations return `INVALID_INPUT`. To check an HTML or Markdown write with `doc.capabilities.check` first, pass the same `author` and `date` to the check: the returned `supportCheck` guard only accepts a write with the same attribution. Cross-paragraph replacements that restructure the document, cross-cell deletions, and appended control payloads that create paragraphs may be rejected instead of silently changing attribution. In a shared room, presence identifies the session participant, while each surviving tracked revision records the author of its mutation. Concurrent edits can still be rejected by the document's normal conflict rules; the author option does not decide conflicts.
 

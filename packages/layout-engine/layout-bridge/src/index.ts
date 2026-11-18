@@ -16,6 +16,7 @@ import {
   computeLinePmRange as computeLinePmRangeUnified,
   effectiveTableCellSpacing,
   getFirstLineIndentOffset,
+  PARTIAL_ROW_RENDERS_TO_CELL_END,
 } from '@superdoc/contracts';
 import { describeCellRenderBlocks, computeCellSliceContentHeight, getEmbeddedRowLines } from '@superdoc/layout-engine';
 import { measureCharacterX } from './text-measurement.js';
@@ -896,7 +897,9 @@ export function selectionToRects(
             const cellAllowedStart = partialRowData?.fromLineByCell?.[cellIdx] ?? 0;
             const rawCellAllowedEnd = partialRowData?.toLineByCell?.[cellIdx];
             const cellAllowedEnd =
-              rawCellAllowedEnd == null || rawCellAllowedEnd === -1 ? totalCellLines : rawCellAllowedEnd;
+              rawCellAllowedEnd == null || rawCellAllowedEnd === PARTIAL_ROW_RENDERS_TO_CELL_END
+                ? totalCellLines
+                : rawCellAllowedEnd;
 
             // Map each paragraph block to its global line range within the cell.
             // cumulativeLine must advance for ALL block types (not just paragraphs)

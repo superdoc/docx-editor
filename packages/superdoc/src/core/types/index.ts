@@ -16,7 +16,7 @@ import type { DiagnosticsConfig } from './diagnostics.js';
 import type { Doc as YDoc } from 'yjs';
 import type { HocuspocusProviderWebsocket } from '@hocuspocus/provider';
 import type { Ref, ComputedRef } from 'vue';
-import type { HyperlinkTarget } from '@superdoc/document-api';
+import type { HyperlinkTarget, SelectionInfo } from '@superdoc/document-api';
 
 import type {
   DocumentFontOption,
@@ -710,6 +710,14 @@ export interface V2HocuspocusCollaborationConfig {
   syncTimeoutMs?: number;
   /** Explicit room operation. Defaults to `'join'`; `'create'` never joins an existing room. */
   roomMode?: 'join' | 'create';
+  /**
+   * Where writes that carry `expectedRevision` are checked. `'session'` (default) compares this
+   * editor's own revision. `'room'` makes the Hocuspocus server admit them one at a time, so a stale
+   * write from any browser or SDK host fails with `REVISION_MISMATCH`. The server must run
+   * `createWriteAdmissionExtension()` from `@superdoc/sdk`; without it those writes fail with
+   * `REVISION_UNVERIFIED`.
+   */
+  expectedRevisionScope?: 'session' | 'room';
 }
 
 /**
@@ -940,10 +948,6 @@ export interface ProofingProvider {
   check: (request: ProofingCheckRequest) => Promise<ProofingCheckResult>;
   suggest?: (request: ProofingSuggestRequest) => Promise<ProofingSuggestResult>;
   dispose?: () => Promise<void> | void;
-}
-
-export interface SelectionInfo {
-  [key: string]: unknown;
 }
 
 /**
@@ -1418,6 +1422,8 @@ export type LinkPopoverResolver = (context: LinkPopoverContext) => LinkPopoverRe
 
 /** Layouts supported by the built-in comments UI. */
 export type CommentsLayout = 'auto' | 'sidebar' | 'inline';
+export type EffectiveCommentsLayout = 'sidebar' | 'inline';
+export type CommentsLayoutState = Readonly<{ requested: CommentsLayout; effective: EffectiveCommentsLayout }>;
 
 /** Width settings used when `ui.comments.layout` is `auto`. */
 export interface CommentsResponsiveConfig {
@@ -3808,6 +3814,7 @@ export type ToolbarItemId =
   | 'linked-style'
   | 'ruler'
   | 'measurement-unit'
+  | 'comments-layout'
   | 'formatting-marks'
   | 'copy-format'
   | 'clear-formatting'
@@ -3815,7 +3822,12 @@ export type ToolbarItemId =
   | 'document-mode';
 
 /** Controls that `includeItems` can add to the default toolbar. */
-export type ToolbarOptionalItemId = 'formatting-marks' | 'table-of-contents' | 'watermark' | 'page-number';
+export type ToolbarOptionalItemId =
+  | 'formatting-marks'
+  | 'table-of-contents'
+  | 'watermark'
+  | 'page-number'
+  | 'comments-layout';
 
 /** Slots whose built-in toolbar icon can be replaced. */
 export type ToolbarIconId =
@@ -3906,6 +3918,10 @@ export type ToolbarStringId =
   | 'indent-increase'
   | 'zoom'
   | 'measurement-unit'
+  | 'comments-layout'
+  | 'comments-layout-sidebar'
+  | 'comments-layout-inline'
+  | 'comments-layout-auto'
   | 'undo'
   | 'redo'
   | 'track-changes-accept-selection'
@@ -3930,6 +3946,8 @@ export interface ToolbarCustomOption {
   id: string;
   /** Text shown in the dropdown. */
   label: string;
+  /** Plain-text supporting detail shown below the label in direct and overflow menus. */
+  description?: string;
   /** Value passed to the item's action. Defaults to `id`. */
   value?: string | number;
   /** Trusted inline SVG markup shown beside the label. */
@@ -3970,6 +3988,13 @@ interface ToolbarCustomItemBase {
    * Defaults to `default`.
    */
   size?: 'compact' | 'default' | 'wide';
+  /**
+   * Higher numbers receive toolbar space before lower numbers, including built-in controls at zero.
+   * Defaults to zero; non-finite values are treated as zero. Equal priorities keep their existing
+   * allocation order. This does not change region or display order. Controls that cannot fit move
+   * into the overflow menu. Ignored when `overflow` is `visible`.
+   */
+  overflowPriority?: number;
   /** DOM hooks for styling and accessible naming. */
   attributes?: ToolbarCustomItemAttributes;
 }

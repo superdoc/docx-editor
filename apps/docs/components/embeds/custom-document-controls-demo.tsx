@@ -6,7 +6,7 @@ import type { UIConfig } from 'superdoc';
 import type { BorrowedSuperDocUI, DocumentSlice, ZoomSlice } from 'superdoc/ui';
 import { CollapsibleEditorPreview } from './collapsible-editor-preview';
 import { EDITOR_DEMO_FIT_WIDTH_PADDING, fitRuntimeEditorToWidth } from './editor-demo-zoom';
-import { createRuntimeEditor, loadRuntime, type SuperDocInstance } from './superdoc-runtime';
+import { loadRuntime, type SuperDocInstance } from './superdoc-runtime';
 
 const DEMO_DOCUMENT = '/fixtures/getting-started.docx';
 const ZOOM_STEP = 10;
@@ -86,7 +86,7 @@ export function CustomDocumentControlsDemo() {
         },
       } satisfies UIConfig;
 
-      const instance = createRuntimeEditor(SuperDocCtor, {
+      const instance = new SuperDocCtor({
         selector: mountRef.current,
         document: DEMO_DOCUMENT,
         documentMode: 'editing',

@@ -16,6 +16,7 @@ Every example is typechecked and has a behavior test for the outcome its README 
 - [Bounded SDK batches](./sdk-batch) — limit active documents, reuse hosts for finite batches, and retain failed work for recovery.
 - [Document comparison](https://go.superdoc.dev/examples/document-comparison) — compare two DOCX files and apply the result as a reviewable tracked change.
 - [Version history](https://go.superdoc.dev/examples/version-history) — save and restore browser-owned DOCX snapshots.
+- [Collaborative version history](./collaborative-version-history) — save versions of a shared room on a schedule or on request, compare two as tracked changes, and restore one into the live room.
 - [Custom UI](https://go.superdoc.dev/examples/custom-ui) — format a document from an application-owned control.
 - [Content controls](https://go.superdoc.dev/examples/content-controls) — add fields to a DOCX template or fill them from application data.
 - [Document modes](https://go.superdoc.dev/examples/document-modes) — switch between viewing, editing, and suggesting.

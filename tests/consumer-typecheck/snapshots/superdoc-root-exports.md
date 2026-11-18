@@ -1,17 +1,17 @@
 # superdoc root export inventory (SD-3212 PR A0)
 
-Generated: 2026-10-31T11:37:17.543Z
+Generated: 2026-11-12T07:08:18.206Z
 Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 
 ## Counts
 
 | Source | Path | Count |
 |---|---|---|
-| types.import | `./dist/superdoc/src/public/index.d.ts` | 315 |
-| types.require | `./dist/superdoc/src/public/index.d.cts` | 315 |
+| types.import | `./dist/superdoc/src/public/index.d.ts` | 327 |
+| types.require | `./dist/superdoc/src/public/index.d.cts` | 327 |
 | import | `./dist/superdoc.es.js` | 13 |
 | require | `./dist/superdoc.cjs` | 13 |
-| **union** |  | **315** |
+| **union** |  | **327** |
 
 ## Divergences
 
@@ -19,13 +19,14 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 - types.require only (not in types.import): 0
 - ESM only (not in CJS): 0
 - CJS only (not in ESM): 0
-- typed but no runtime export (phantom risk): 302
+- typed but no runtime export (phantom risk): 314
 - runtime export but not typed (silent shadow on root): 0
 
 ### Type-only names (no runtime)
 
 - `AwarenessState`
 - `AwarenessUser`
+- `BlockChange`
 - `BlockNavigationAddress`
 - `BlocksListResult`
 - `BookmarkAddress`
@@ -33,12 +34,18 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 - `BorrowedSuperDocUI`
 - `BuiltInCommandId`
 - `CanPerformPermissionParams`
+- `ChangeActor`
+- `ChangeCause`
+- `ChangeProvenance`
+- `ChangeRecord`
+- `ChangesConfig`
 - `CollaborationConfig`
 - `CommentAddress`
 - `CommentInteractionConfig`
 - `CommentInteractionLevel`
 - `CommentsConfig`
 - `CommentsLayout`
+- `CommentsLayoutState`
 - `CommentsResponsiveConfig`
 - `CommentsType`
 - `Config`
@@ -80,6 +87,7 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 - `EditorSurface`
 - `EditorTransactionEvent`
 - `EditorUpdateEvent`
+- `EffectiveCommentsLayout`
 - `EntityAddress`
 - `ExportParams`
 - `ExportType`
@@ -306,6 +314,7 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 - `ToolbarOptionalItemId`
 - `ToolbarRegion`
 - `ToolbarStringId`
+- `TouchInteractionConfig`
 - `TrackChangeAuthor`
 - `TrackChangeHighlightColors`
 - `TrackChangesAuthorColorsConfig`
@@ -321,11 +330,14 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 - `UpgradeToCollaborationOptions`
 - `UpgradeToCollaborationResult`
 - `User`
+- `UserClaim`
+- `UserClaimContext`
 - `V2CollaborationConfig`
 - `ViewOptions`
 - `ViewingOptions`
 - `ViewingTrackedChangesMode`
 - `ViewingVisibilityConfig`
+- `WritingAssistanceConfig`
 
 ## Evidence table
 
@@ -334,22 +346,29 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 | `AwarenessState` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `AwarenessUser` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `BlankDOCX` | ✓ | ✓ | ✓ | ✓ | 1 |   | 1 | 2 | 3 |
+| `BlockChange` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `BlockNavigationAddress` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `BlocksListResult` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `BookmarkAddress` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `BookmarkInfo` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
-| `BorrowedSuperDocUI` | ✓ | ✓ |   |   | 2 |   | 1 | 0 | 0 |
+| `BorrowedSuperDocUI` | ✓ | ✓ |   |   | 3 |   | 1 | 0 | 0 |
 | `BuiltInCommandId` | ✓ | ✓ |   |   | 2 |   | 1 | 0 | 0 |
 | `CanPerformPermissionParams` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
+| `ChangeActor` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
+| `ChangeCause` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
+| `ChangeProvenance` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
+| `ChangeRecord` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
+| `ChangesConfig` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `CollaborationConfig` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `CommentAddress` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `CommentInteractionConfig` | ✓ | ✓ |   |   | 3 |   | 0 | 0 | 0 |
 | `CommentInteractionLevel` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `CommentsConfig` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `CommentsLayout` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
+| `CommentsLayoutState` | ✓ | ✓ |   |   | 0 |   | 0 | 0 | 0 |
 | `CommentsResponsiveConfig` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `CommentsType` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
-| `Config` | ✓ | ✓ |   |   | 40 |   | 16 | 2 | 0 |
+| `Config` | ✓ | ✓ |   |   | 46 |   | 16 | 2 | 0 |
 | `ContentControlActiveChangePayload` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `ContentControlClickPayload` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `ContentControlRef` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
@@ -376,9 +395,9 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 | `DiffPayload` | ✓ | ✓ |   |   | 3 |   | 0 | 0 | 0 |
 | `DirectSurfaceRequest` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `DocRange` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
-| `Document` | ✓ | ✓ |   |   | 3 |   | 135 | 23 | 6 |
-| `DocumentApi` | ✓ | ✓ |   |   | 8 |   | 2 | 0 | 0 |
-| `DocumentCollaborationConfig` | ✓ | ✓ |   |   | 4 |   | 13 | 0 | 0 |
+| `Document` | ✓ | ✓ |   |   | 3 |   | 140 | 23 | 6 |
+| `DocumentApi` | ✓ | ✓ |   |   | 11 |   | 2 | 0 | 0 |
+| `DocumentCollaborationConfig` | ✓ | ✓ |   |   | 5 |   | 13 | 0 | 0 |
 | `DocumentDataSource` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `DocumentLoadError` | ✓ | ✓ | ✓ | ✓ | 1 |   | 3 | 0 | 0 |
 | `DocumentLoadOptions` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
@@ -388,8 +407,9 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 | `DocumentSource` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `DocumentUploadSource` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `EditorSurface` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
-| `EditorTransactionEvent` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
+| `EditorTransactionEvent` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `EditorUpdateEvent` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
+| `EffectiveCommentsLayout` | ✓ | ✓ |   |   | 0 |   | 0 | 0 | 0 |
 | `EntityAddress` | ✓ | ✓ |   |   | 1 |   | 1 | 0 | 0 |
 | `ExportParams` | ✓ | ✓ |   |   | 7 |   | 0 | 0 | 0 |
 | `ExportType` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
@@ -400,7 +420,7 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 | `FindReplaceHandle` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `FindReplaceRenderContext` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `FindReplaceResolution` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
-| `FlowBlock` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
+| `FlowBlock` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `FlowMode` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `FontFamilyOption` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `FontResolutionRecord` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
@@ -408,7 +428,7 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 | `FontsChangedSource` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `FontsConfig` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `FontsResolvedPayload` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
-| `HTML` | ✓ | ✓ | ✓ | ✓ | 1 |   | 60 | 0 | 0 |
+| `HTML` | ✓ | ✓ | ✓ | ✓ | 1 |   | 54 | 0 | 0 |
 | `HyperlinkActivationContext` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `HyperlinkActivationHandler` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `HyperlinkActivationResult` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
@@ -420,7 +440,7 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 | `InteractionHistoryConfig` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `InteractionHistoryEvent` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `InteractionHistorySnapshot` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
-| `Layout` | ✓ | ✓ |   |   | 2 |   | 5 | 0 | 0 |
+| `Layout` | ✓ | ✓ |   |   | 2 |   | 6 | 0 | 0 |
 | `LayoutEngineOptions` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `LayoutFragment` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `LayoutMetrics` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
@@ -470,11 +490,11 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 | `SearchMatch` | ✓ | ✓ |   |   | 3 |   | 0 | 0 | 0 |
 | `SearchStrings` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `SelectionHandle` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
-| `SelectionInfo` | ✓ | ✓ |   |   | 1 |   | 1 | 0 | 0 |
+| `SelectionInfo` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `SetEditingRestrictionInput` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
-| `StoryLocator` | ✓ | ✓ |   |   | 1 |   | 4 | 0 | 0 |
+| `StoryLocator` | ✓ | ✓ |   |   | 1 |   | 2 | 0 | 0 |
 | `StructuredDocumentSource` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
-| `SuperDoc` | ✓ | ✓ | ✓ | ✓ | 48 |   | 364 | 62 | 9 |
+| `SuperDoc` | ✓ | ✓ | ✓ | ✓ | 51 |   | 427 | 62 | 9 |
 | `SuperDocActiveEditorExtensions` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `SuperDocActiveEditorExtensionsCommands` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `SuperDocActiveEditorExtensionsDiagnostics` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
@@ -494,7 +514,7 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 | `SuperDocCommandState` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `SuperDocCommandStateContext` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `SuperDocCommentsListChangePayload` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
-| `SuperDocCommentsUpdatePayload` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
+| `SuperDocCommentsUpdatePayload` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `SuperDocContentErrorPayload` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `SuperDocDecoration` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `SuperDocDecorationApi` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
@@ -575,7 +595,7 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 | `SuperDocWorkerFailureDetail` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `SuperDocZoomConfig` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `SuperDocZoomMode` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
-| `SuperDocZoomPayload` | ✓ | ✓ |   |   | 2 |   | 2 | 0 | 0 |
+| `SuperDocZoomPayload` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `SuperDocZoomState` | ✓ | ✓ |   |   | 3 |   | 1 | 0 | 0 |
 | `SurfaceComponentProps` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `SurfaceFloatingPlacement` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
@@ -587,9 +607,9 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 | `SurfaceResolver` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `SurfacesConfig` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `SurfacesModuleConfig` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
-| `TextAddress` | ✓ | ✓ |   |   | 1 |   | 9 | 0 | 0 |
+| `TextAddress` | ✓ | ✓ |   |   | 2 |   | 7 | 0 | 0 |
 | `TextSegment` | ✓ | ✓ |   |   | 1 |   | 1 | 0 | 0 |
-| `TextTarget` | ✓ | ✓ |   |   | 1 |   | 12 | 0 | 0 |
+| `TextTarget` | ✓ | ✓ |   |   | 1 |   | 11 | 0 | 0 |
 | `ThemeColors` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `ThemeConfig` | ✓ | ✓ |   |   | 2 |   | 1 | 0 | 0 |
 | `ThemeResult` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
@@ -619,6 +639,7 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 | `ToolbarOptionalItemId` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `ToolbarRegion` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `ToolbarStringId` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
+| `TouchInteractionConfig` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `TrackChangeAuthor` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `TrackChangeHighlightColors` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `TrackChangesAuthorColorsConfig` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
@@ -633,12 +654,15 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 | `UIConfig` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `UpgradeToCollaborationOptions` | ✓ | ✓ |   |   | 3 |   | 0 | 0 | 0 |
 | `UpgradeToCollaborationResult` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
-| `User` | ✓ | ✓ |   |   | 2 |   | 2 | 0 | 0 |
+| `User` | ✓ | ✓ |   |   | 3 |   | 2 | 0 | 0 |
+| `UserClaim` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
+| `UserClaimContext` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `V2CollaborationConfig` | ✓ | ✓ |   |   | 3 |   | 1 | 0 | 0 |
-| `ViewOptions` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
+| `ViewOptions` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `ViewingOptions` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `ViewingTrackedChangesMode` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `ViewingVisibilityConfig` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
+| `WritingAssistanceConfig` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `buildTheme` | ✓ | ✓ | ✓ | ✓ | 2 |   | 4 | 0 | 0 |
 | `compareVersions` | ✓ | ✓ | ✓ | ✓ | 1 |   | 1 | 0 | 0 |
 | `createTheme` | ✓ | ✓ | ✓ | ✓ | 2 |   | 5 | 0 | 0 |

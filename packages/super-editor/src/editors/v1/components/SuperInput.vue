@@ -30,7 +30,6 @@ const props = defineProps({
 
 const editor = shallowRef();
 const editorElem = ref(null);
-const contentElem = ref(null);
 const isFocused = ref(false);
 
 const onTransaction = ({ editor, transaction }) => {
@@ -55,7 +54,7 @@ const initEditor = async () => {
   props.options.onTransaction = onTransaction;
   props.options.onFocus = onFocus;
   props.options.onBlur = onBlur;
-  const initialHtml = props.modelValue ?? contentElem.value?.innerHTML ?? '';
+  const initialHtml = props.modelValue ?? '';
   editor.value = new Editor({
     mode: 'text',
     content: initialHtml,
@@ -101,7 +100,6 @@ defineExpose({ focus });
 
 <template>
   <div class="super-editor super-input" :class="{ 'super-input-active': isFocused }" @click.stop.prevent="handleFocus">
-    <div ref="contentElem" style="display: none" v-html="modelValue"></div>
     <div ref="editorElem" class="editor-element super-editor__element"></div>
   </div>
 </template>

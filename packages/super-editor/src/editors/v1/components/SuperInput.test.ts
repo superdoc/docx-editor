@@ -74,4 +74,14 @@ describe('SuperInput.vue', () => {
     expect(editorInstance.view.focus).toHaveBeenCalledTimes(1);
     expect(editorInstance.commands.setTextSelection).not.toHaveBeenCalled();
   });
+
+  it('hands stored HTML only to the editor and never inserts it into the live DOM', async () => {
+    const storedHtml = '<p>Hello<img src="x" onerror="probe()"></p>';
+    const wrapper = mount(SuperInput, { props: { modelValue: storedHtml } });
+    await nextTick();
+
+    expect(EditorConstructor.mock.calls[0][0].content).toBe(storedHtml);
+    expect(wrapper.find('img').exists()).toBe(false);
+    expect(wrapper.html()).not.toContain('onerror');
+  });
 });

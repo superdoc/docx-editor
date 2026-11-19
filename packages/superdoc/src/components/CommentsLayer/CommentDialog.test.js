@@ -445,6 +445,22 @@ describe('CommentDialog.vue', () => {
     expect(commentsStoreStub.clearInstantSidebarAlignment).toHaveBeenCalled();
   });
 
+  it('renders stored comment HTML through the comment allowlist', async () => {
+    const { wrapper } = await mountDialog({
+      baseCommentOverrides: {
+        commentText: '<p><b>kept</b><img src="x" onerror="probe()"><a href="javascript:probe()">link text</a></p>',
+      },
+    });
+
+    const body = wrapper.find('.comment-body .comment');
+    expect(body.exists()).toBe(true);
+    expect(body.html()).toContain('<b>kept</b>');
+    expect(body.text()).toContain('link text');
+    expect(body.find('img').exists()).toBe(false);
+    expect(body.find('a').exists()).toBe(false);
+    expect(body.html()).not.toContain('onerror');
+  });
+
   it('falls back to setCursorById for resolved tracked changes when PresentationEditor navigation is unavailable', async () => {
     PresentationEditor.getInstance.mockReturnValue({});
 

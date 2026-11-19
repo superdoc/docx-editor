@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, getCurrentInstance, onMounted, nextTick, watch } from 'vue';
+import { computed, ref, unref, getCurrentInstance, onMounted, nextTick, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useCommentsStore } from '@superdoc/stores/comments-store';
 import { useSuperdocStore } from '@superdoc/stores/superdoc-store';
@@ -15,6 +15,7 @@ import InternalDropdown from './InternalDropdown.vue';
 import CommentHeader from './CommentHeader.vue';
 import CommentInput from './CommentInput.vue';
 import { collectTrackedChangeThread } from './collect-tracked-change-thread.js';
+import { sanitizeCommentHtml } from './comment-html.js';
 import Avatar from '@superdoc/components/general/Avatar.vue';
 
 const emit = defineEmits(['click-outside', 'ready', 'dialog-exit', 'resize']);
@@ -342,6 +343,10 @@ const comments = computed(() => {
     return a.createdTime - b.createdTime;
   });
 });
+
+const sanitizedCommentTexts = computed(
+  () => new Map(comments.value.map((comment) => [comment.commentId, sanitizeCommentHtml(unref(comment.commentText))])),
+);
 
 /* ── Step 2: Text truncation ── */
 const textExpanded = ref(false);
@@ -718,7 +723,7 @@ const handleResolve = async () => {
 const handleOverflowSelect = (value, comment) => {
   switch (value) {
     case 'edit':
-      currentCommentText.value = comment?.commentText?.value ?? comment?.commentText ?? '';
+      currentCommentText.value = sanitizeCommentHtml(comment?.commentText?.value ?? comment?.commentText ?? '');
       activeComment.value = props.comment.commentId;
       if (props.floatingInstanceId) {
         setActiveFloatingCommentInstance(props.floatingInstanceId);
@@ -971,7 +976,7 @@ watch(editingCommentId, (commentId) => {
             class="comment"
             :class="{ 'is-truncated': shouldTruncate && index === 0 }"
             :ref="index === 0 ? (el) => (parentBodyRef = el) : undefined"
-            v-html="comment.commentText"
+            v-html="sanitizedCommentTexts.get(comment.commentId)"
           ></div>
           <div v-else-if="isDebugging && !isEditingThisComment(comment)" class="comment">
             {{

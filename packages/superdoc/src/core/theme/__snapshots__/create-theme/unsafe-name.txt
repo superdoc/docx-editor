@@ -1,0 +1,14 @@
+input:
+{
+  "name": "acme corp/dark",
+  "colors": {
+    "action": "#f00"
+  }
+}
+
+className: sd-theme-acme-corp-dark
+
+css:
+.sd-theme-acme-corp-dark {
+  --sd-ui-action: #f00;
+}

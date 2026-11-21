@@ -1,0 +1,26 @@
+input:
+{
+  "name": "product",
+  "colors": {
+    "action": "#4f46e5",
+    "bg": "#f8fafc",
+    "text": "#1e293b",
+    "border": "#cbd5e1"
+  },
+  "vars": {
+    "--sd-layout-page-bg": "#ffffff",
+    "--sd-ui-toolbar-bg": "#eef2ff"
+  }
+}
+
+className: sd-theme-product
+
+css:
+.sd-theme-product {
+  --sd-ui-action: #4f46e5;
+  --sd-ui-bg: #f8fafc;
+  --sd-ui-text: #1e293b;
+  --sd-ui-border: #cbd5e1;
+  --sd-layout-page-bg: #ffffff;
+  --sd-ui-toolbar-bg: #eef2ff;
+}

@@ -136,6 +136,10 @@ export default defineConfig({
         files: ['apps/docs/snippets/**', 'examples/**'],
         rules: { 'typescript/no-deprecated': 'error' },
       },
+      {
+        files: ['packages/superdoc/src/**/*.test.*'],
+        rules: { 'superdoc/no-hand-copied-output': 'error' },
+      },
       snippetsKeepOnContentControlClickUntilTheDocsEmbedRuntimeHasUiContentControlsOnClick,
       {
         files: ['**/*.test.*'],

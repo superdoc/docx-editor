@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-12T07:08:18.206Z",
+  "generatedAt": "2026-11-18T17:18:36.695Z",
   "ticket": "SD-3212 PR A0",
   "package": "superdoc",
   "rootExport": {
@@ -41,7 +41,10 @@
         "CommentsType",
         "Config",
         "ContentControlActiveChangePayload",
+        "ContentControlBlockBoxOptions",
         "ContentControlClickPayload",
+        "ContentControlInlineBoxOptions",
+        "ContentControlPresentation",
         "ContentControlRef",
         "ContentControlsConfig",
         "ContextMenuConfig",
@@ -374,7 +377,10 @@
         "CommentsType",
         "Config",
         "ContentControlActiveChangePayload",
+        "ContentControlBlockBoxOptions",
         "ContentControlClickPayload",
+        "ContentControlInlineBoxOptions",
+        "ContentControlPresentation",
         "ContentControlRef",
         "ContentControlsConfig",
         "ContextMenuConfig",
@@ -717,11 +723,11 @@
     }
   },
   "counts": {
-    "types.import": 327,
-    "types.require": 327,
+    "types.import": 330,
+    "types.require": 330,
     "import": 13,
     "require": 13,
-    "union": 327
+    "union": 330
   },
   "divergences": {
     "typesImportVsRequire": {
@@ -760,7 +766,10 @@
         "CommentsType",
         "Config",
         "ContentControlActiveChangePayload",
+        "ContentControlBlockBoxOptions",
         "ContentControlClickPayload",
+        "ContentControlInlineBoxOptions",
+        "ContentControlPresentation",
         "ContentControlRef",
         "ContentControlsConfig",
         "ContextMenuConfig",

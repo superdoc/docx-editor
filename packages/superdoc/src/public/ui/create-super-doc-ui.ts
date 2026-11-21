@@ -35,6 +35,7 @@ import {
 import { isV2EditableTextMutationEvent } from '../../helpers/v2-typing-mutation-event.js';
 import { isSyntheticTrackedChangeCommentLaneItem } from '../../helpers/tracked-change-comment-lane.js';
 import { ALL_BUILT_IN_COMMAND_IDS, getCommandDescriptor, type CommandDescriptor, type UiDocRoute } from './commands.js';
+import type { ResolvedBlockListState } from './paragraph-command-reads.js';
 import { SUPERDOC_UI_REASONS, type SuperDocUIReason } from './reasons.js';
 import { remoteChangeRecordsOf, remoteDocumentChange } from './document-change-records.js';
 import type { ChangeRecord } from '@superdoc/document-api';
@@ -118,7 +119,7 @@ import { isPlainObject } from '../../helpers/object-guards.js';
 import { isFiniteNumber } from '../../helpers/is-finite-number.js';
 import type { SurfaceHandle } from '../../core/types/index.js';
 import { type TextSegment } from '@superdoc/document-api';
-import type { AnyFn, LooseRecord } from './loose-record.js';
+import { readRecord, readRecordList, type AnyFn, type LooseRecord } from './loose-record.js';
 import {
   CLEAR_INLINE_PATCH,
   EFFECTIVE_MARK_KEYS,
@@ -180,12 +181,7 @@ import {
   safeCall,
   trackDecisionCommand,
 } from './command-results.js';
-import {
-  PARAGRAPH_INDENT_STEP_TWIPS,
-  buildTableCommandInput,
-  readMergeRange,
-  type ResolvedTableContext,
-} from './block-commands.js';
+import { buildTableCommandInput, readMergeRange, type ResolvedTableContext } from './block-commands.js';
 import {
   entityRowMatchesRequest,
   isHostGeometryTarget,
@@ -236,6 +232,7 @@ import {
   selectionTouchesDeletedText,
   selectionHasOnlyDeletedText,
   selectionBlockIds,
+  selectionCellParagraphScope,
   selectionBlockRange,
   selectionStory,
   selectionTargetForRestore,
@@ -1430,8 +1427,8 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     return isV2EditableTextMutationEvent(event);
   };
 
-  const invalidateDocumentContentAndRecompute = (): void => {
-    invalidateDocumentContent();
+  const invalidateDocumentContentAndRecompute = (remoteTextBlockId?: string): void => {
+    invalidateDocumentContent(remoteTextBlockId);
     recompute();
   };
 
@@ -1439,6 +1436,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     editor: LooseRecord;
     whenPainted: (...args: unknown[]) => unknown;
     afterEpoch: number | null;
+    remoteTextBlockId: string | undefined;
   } | null = null;
   let pendingPostPaintSelectionRefresh: {
     editor: LooseRecord;
@@ -1462,7 +1460,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     postPaintSelectionRefreshDrainToken += 1;
   };
 
-  const schedulePostPaintContentRefresh = (): void => {
+  const schedulePostPaintContentRefresh = (remoteTextBlockId?: string): void => {
     const editor = getEditor();
     const readiness = editor?.documentMutationReadiness;
     const whenPainted = hostMethod(readiness, 'whenPainted');
@@ -1470,7 +1468,10 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     const getRenderEpoch = hostMethod(readiness, 'getRenderEpoch');
     const epoch = getRenderEpoch ? safeCall<unknown>(() => getRenderEpoch(), null) : null;
     const afterEpoch = typeof epoch === 'number' ? epoch : null;
-    pendingPostPaintContentRefresh = { editor, whenPainted, afterEpoch };
+    if (pendingPostPaintContentRefresh && pendingPostPaintContentRefresh.remoteTextBlockId !== remoteTextBlockId) {
+      remoteTextBlockId = undefined;
+    }
+    pendingPostPaintContentRefresh = { editor, whenPainted, afterEpoch, remoteTextBlockId };
     if (postPaintContentRefreshRunning) return;
     postPaintContentRefreshRunning = true;
     const drainToken = postPaintContentRefreshDrainToken;
@@ -1498,7 +1499,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
           resetPostPaintContentRefresh();
           return;
         }
-        if (paintCompleted) invalidateDocumentContentAndRecompute();
+        if (paintCompleted) invalidateDocumentContentAndRecompute(request.remoteTextBlockId);
       }
     };
 
@@ -1671,9 +1672,12 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     allTrackedChangesResolvedToken = null;
   };
 
+  const indentMutationObservers = new Set<(remoteTextBlockId?: string) => void>();
+
   /** Bump the document-mutation revision so content reads re-fetch on the next compute. */
-  const invalidateDocumentContent = (): void => {
+  const invalidateDocumentContent = (remoteTextBlockId?: string): void => {
     documentMutationRevision += 1;
+    for (const observe of indentMutationObservers) observe(remoteTextBlockId);
     heavyReadGate.invalidateSourceCoverage();
     clearPostDecisionTrackChanges();
   };
@@ -3982,9 +3986,20 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     // Block-level paragraph / list commands resolve the current paragraph
     // block(s) from the selection. A caret is enough (it still has a block id);
     // with no resolvable block they fail closed with `selection-required`.
-    if ((descriptor.blockParagraph || descriptor.list) && selectionBlockIds(selection).length === 0) {
+    const cellParagraphScope = descriptor.blockParagraph ? selectionCellParagraphScope(selection) : null;
+    if (
+      (descriptor.blockParagraph || descriptor.list) &&
+      selectionBlockIds(selection).length === 0 &&
+      !cellParagraphScope
+    ) {
       return normalizeCommandState(
         { enabled: false, active, supported: true, value, reason: SUPERDOC_UI_REASONS.selectionRequired },
+        'builtin',
+      );
+    }
+    if (cellParagraphScope && typeof doc?.find !== 'function') {
+      return normalizeCommandState(
+        { enabled: false, active, supported: false, value, reason: unavailableRouteReason(doc) },
         'builtin',
       );
     }
@@ -4471,72 +4486,30 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     optimistic.settled = true;
   };
 
-  /**
-   * Await a block's list membership authoritatively. Membership comes from
-   * `isListItem`, not `seed`: linked/custom Word numbering can be a valid list
-   * item while returning `seed: null`. Command execution must also fail closed
-   * when membership cannot be resolved instead of assuming a plain paragraph.
-   *
-   * The read resolves directly instead of peeking at the async cache. Only the
-   * first selected block is warmed by the command-state snapshot, so command
-   * execution cannot depend on that cache being warm (SD-3659).
-   */
-  const resolveListMembershipForBlockAsync = async (
-    doc: LooseRecord | null,
-    blockId: string,
-    story: LooseRecord,
-  ): Promise<boolean | null> => {
-    const listsApi = doc?.lists as LooseRecord | undefined;
-    if (!listsApi) return null;
-    try {
-      const isBodyStory = story.storyType === 'body';
-      const raw =
-        typeof listsApi.getStateInStory === 'function'
-          ? await listsApi.getStateInStory({ target: listsBlockTarget(blockId), story })
-          : isBodyStory && typeof listsApi.getState === 'function'
-            ? await listsApi.getState({ target: listsBlockTarget(blockId) })
-            : null;
-      const result = raw && typeof raw === 'object' ? (raw as LooseRecord) : null;
-      if (!result || result.success !== true || typeof result.isListItem !== 'boolean') return null;
-      return result.isListItem;
-    } catch {
-      return null;
-    }
-  };
-
-  type ResolvedListSeed = {
-    resolved: boolean;
-    seed: 'bullet' | 'ordered' | null;
-  };
-
   /** Read a list seed directly for mutation planning instead of trusting the reactive cache. */
-  const resolveListSeedForBlock = (
+  const resolveListStateForBlock = (
     doc: LooseRecord | null,
     blockId: string,
     story: LooseRecord,
-  ): ResolvedListSeed | Promise<ResolvedListSeed> => {
-    const unavailable: ResolvedListSeed = { resolved: false, seed: null };
-    const getStateInStory = hostMethod(doc?.lists, 'getStateInStory');
-    const getState = hostMethod(doc?.lists, 'getState');
-    if (!getStateInStory && !getState) return unavailable;
-    const isBodyStory = story.storyType === 'body';
-    const readState = getStateInStory
-      ? () => getStateInStory({ target: listsBlockTarget(blockId), story })
-      : isBodyStory && getState
-        ? () => getState({ target: listsBlockTarget(blockId) })
-        : null;
-    if (!readState) return unavailable;
+  ): ResolvedBlockListState | Promise<ResolvedBlockListState> => {
+    const unavailable: ResolvedBlockListState = { isListItem: null, seed: null };
 
-    const normalize = (raw: unknown): ResolvedListSeed => {
-      const result = raw && typeof raw === 'object' ? (raw as LooseRecord) : null;
+    const normalize = (raw: unknown): ResolvedBlockListState => {
+      const result = readRecord(raw);
       if (!result || result.success !== true || typeof result.isListItem !== 'boolean') return unavailable;
       const seed =
         result.isListItem === true && (result.seed === 'bullet' || result.seed === 'ordered') ? result.seed : null;
-      return { resolved: true, seed };
+      return { isListItem: result.isListItem, seed };
     };
 
     try {
-      const raw = readState();
+      const getStateInStory = hostMethod(doc?.lists, 'getStateInStory');
+      const target = listsBlockTarget(blockId);
+      const raw = getStateInStory
+        ? getStateInStory({ target, story })
+        : story.storyType === 'body'
+          ? hostMethod(doc?.lists, 'getState')?.({ target })
+          : null;
       return isPromiseLike(raw) ? Promise.resolve(raw).then(normalize, () => unavailable) : normalize(raw);
     } catch {
       return unavailable;
@@ -4559,7 +4532,8 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     }
 
     const blockIds = selectionBlockIds(selection);
-    if (blockIds.length === 0) {
+    const cellScope = selectionCellParagraphScope(selection);
+    if (blockIds.length === 0 && !cellScope) {
       return normalizeCommandState(
         { enabled: false, active, supported: true, value, reason: SUPERDOC_UI_REASONS.selectionRequired },
         'builtin',
@@ -4570,6 +4544,26 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     const paragraphSetIndent = resolveDocOperation(doc, 'format.paragraph.setIndentation');
     const mode = descriptor.list?.mode;
     const paragraphOpAvailable = paragraphSetIndent != null;
+    if (blockIds.length === 0 && cellScope) {
+      let enabled = typeof doc?.find === 'function' && (listOp != null || paragraphOpAvailable);
+      if (enabled && cellScope.story.storyType !== 'body') {
+        const suggesting = readDocumentMode() === 'suggesting';
+        const snapshot = readAsync<boolean>(
+          `cellIndent:${mode}`,
+          `${selectionReadToken()}|${JSON.stringify(cellScope)}`,
+          async () => {
+            const { canIndentCellParagraphs } = await loadParagraphCommandReads();
+            return canIndentCellParagraphs(doc, cellScope, mode, suggesting, paragraphOpAvailable);
+          },
+          (raw) => (typeof raw === 'boolean' ? raw : null),
+        );
+        enabled = snapshot.status === 'ready' && snapshot.value === true;
+      }
+      return normalizeCommandState(
+        { enabled, active, supported: enabled, value, ...(!enabled ? { reason: unavailableRouteReason(doc) } : {}) },
+        'builtin',
+      );
+    }
     const story = selectionStory(selection);
     let listMembership: Array<boolean | null> | null = null;
     if (story.storyType !== 'body') {
@@ -5400,6 +5394,14 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
         if (host) publishDocumentChange(host, event);
         const isStandaloneDocumentMutation = type === 'document:mutated' && event.hasCommitEvent !== true;
         if (
+          (type === 'document:mutated' && (isStandaloneDocumentMutation || event.remoteOnly !== true)) ||
+          type === 'mutation:committed' ||
+          type === 'collaboration:document-replaced'
+        ) {
+          // SD-7235: Local typing can defer the cache invalidation below.
+          for (const observe of indentMutationObservers) observe();
+        }
+        if (
           type === 'collaboration:document-replaced' ||
           isStandaloneDocumentMutation ||
           (type === 'mutation:committed' && mutationCommittedEventChangedVisibleContent(event)) ||
@@ -5524,6 +5526,10 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
             if (event.cause === 'preview') invalidateDocumentContent();
             return;
           }
+          const remoteTextBlockId =
+            type === 'collaboration:remote-changed' && typeof event.remoteTextBlockId === 'string'
+              ? event.remoteTextBlockId
+              : undefined;
           if (
             isStandaloneDocumentMutation ||
             type === 'collaboration:remote-changed' ||
@@ -5533,7 +5539,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
             // paint. Refresh immediately for direct source values, then once
             // more after mounted projection catches up so inherited paragraph
             // formatting cannot remain stale.
-            schedulePostPaintContentRefresh();
+            schedulePostPaintContentRefresh(remoteTextBlockId);
           }
           const remoteCommentsPartChanged =
             type === 'collaboration:remote-changed' &&
@@ -5552,7 +5558,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
             // the demanded comments read below refreshes immediately.
             heavyReadGate.holdHeavyReadsUntilIdle();
           }
-          invalidateDocumentContent();
+          invalidateDocumentContent(remoteTextBlockId);
           if (remoteCommentsPartChanged && !isTypingBurst) {
             // Comments-part changes are authoritative for the catalog. Story
             // edits also require a refresh when loaded rows may carry shifted
@@ -6546,6 +6552,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     op: AnyFn,
     blockIds: readonly string[],
     buildInput: (blockId: string) => LooseRecord | null,
+    mutate = callEditorMutation,
   ): CommandExecutionResult => {
     const immediateResults: CommandExecutionResult[] = [];
     const settledResults: Array<Promise<CommandExecutionResult>> = [];
@@ -6553,7 +6560,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       const input = buildInput(blockId);
       if (!input) continue;
       try {
-        const result = settleOperationResult(callEditorMutation(route, op, input));
+        const result = settleOperationResult(mutate(route, op, input));
         immediateResults.push(result.immediate);
         settledResults.push(result.settled);
       } catch {
@@ -6931,239 +6938,255 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     return true;
   };
 
+  const loadParagraphCommandReads = async () => {
+    const { createParagraphCommandReads } = await import('./paragraph-command-reads.js');
+    return createParagraphCommandReads({
+      resolveDocOperation,
+      hostMethod,
+      storyLocatorSignature,
+      readRecord,
+      readRecordList,
+      paragraphTarget,
+      resolveListStateForBlock,
+      combineCommandResults,
+      listItemTarget,
+    });
+  };
+
+  type CellParagraphCommandContext = {
+    doc: LooseRecord | null;
+    selection: SelectionSlice;
+    isCurrent: () => boolean;
+    mutate: typeof callEditorMutation;
+  };
+
+  function captureCommandOwnerIsCurrent(checkMountedHandle = false): () => boolean {
+    const editor = getEditor(),
+      sourceDoc = editor?.doc,
+      host = editor?.host;
+    const mode = readDocumentMode();
+    const mount = checkMountedHandle
+      ? safeCall<unknown>(() => hostMethod(host, 'getMountedHandle')?.(), undefined)
+      : undefined;
+    const rawLifetime = safeCall<unknown>(() => hostMethod(host, 'getForegroundInteractionLifetime')?.(), undefined);
+    const lifetime = hasAbortedFlag(rawLifetime) ? rawLifetime : undefined;
+    return () =>
+      !disposed &&
+      !lifetime?.aborted &&
+      getEditor() === editor &&
+      editor?.doc === sourceDoc &&
+      editor?.host === host &&
+      readDocumentMode() === mode &&
+      (!checkMountedHandle || safeCall<unknown>(() => hostMethod(host, 'getMountedHandle')?.(), undefined) === mount);
+  }
+
+  const executeCellParagraphCommand = (
+    descriptor: CommandDescriptor,
+    op: AnyFn,
+    payload: unknown,
+    selection: SelectionSlice,
+  ): CommandExecutionResult => {
+    const scope = selectionCellParagraphScope(selection);
+    if (!scope) return false;
+    const doc = getDoc();
+    const ownerIsCurrent = captureCommandOwnerIsCurrent(true);
+    const sourceToken = contentToken(),
+      epoch = selectionEpoch;
+    const generation = selectionRequestGeneration();
+    const scopeKey = JSON.stringify(scope);
+    const options = editorMutationOptionsForRoute(descriptor.docRoute ?? '');
+    if (options?.success === false) return false;
+    const isCurrent = () =>
+      ownerIsCurrent() &&
+      contentToken() === sourceToken &&
+      selectionEpoch === epoch &&
+      selectionRequestGeneration() === generation &&
+      selectionRequestGate() === 'open' &&
+      JSON.stringify(selectionCellParagraphScope(state.selection)) === scopeKey;
+    const mutate: typeof callEditorMutation = (_route, operation, input) =>
+      options ? operation(input, options) : operation(input);
+    pendingCommandSettlement = (async () => {
+      const { resolveCellParagraphIds } = await loadParagraphCommandReads();
+      const blockIds = await resolveCellParagraphIds(doc, scope);
+      if (!blockIds?.length || !isCurrent() || hasInactiveTextSelection()) return false;
+      const previous = pendingCommandSettlement;
+      pendingCommandSettlement = null;
+      try {
+        if (descriptor.list) {
+          executeHybridIndentCommand(descriptor, op, blockIds, { doc, selection, isCurrent, mutate });
+        } else {
+          const spec = descriptor.blockParagraph,
+            route = descriptor.docRoute;
+          if (!spec || !route) return false;
+          applyPerBlock(
+            route,
+            op,
+            blockIds,
+            (blockId) => buildBlockParagraphInput(spec, blockId, payload, scope.story),
+            mutate,
+          );
+        }
+        return pendingCommandSettlement ?? false;
+      } finally {
+        pendingCommandSettlement = previous;
+      }
+    })().catch(() => false);
+    return true;
+  };
+
   /** Route a block-level paragraph command (`format.paragraph.*` / `styles.paragraph.*`). */
 
   const executeBlockParagraph = (
     descriptor: CommandDescriptor,
     op: AnyFn,
     payload: unknown,
+    selection = state.selection,
   ): CommandExecutionResult => {
-    const blockIds = selectionBlockIds(state.selection);
+    const blockIds = selectionBlockIds(selection);
+    if (blockIds.length === 0 && selectionCellParagraphScope(selection)) {
+      return executeCellParagraphCommand(descriptor, op, payload, selection);
+    }
     if (blockIds.length === 0) return false;
-    const story = selectionStoryLocator(state.selection);
+    const story = selectionStoryLocator(selection);
     return applyPerBlock(descriptor.docRoute!, op, blockIds, (blockId) =>
       buildBlockParagraphInput(descriptor.blockParagraph!, blockId, payload, story),
     );
-  };
-
-  const captureCommandOwner = () => {
-    const editor = getEditor();
-    const sourceDoc = editor?.doc;
-    const host = editor?.host;
-    const mode = readDocumentMode();
-    const rawLifetime = safeCall<unknown>(() => hostMethod(host, 'getForegroundInteractionLifetime')?.(), undefined);
-    const lifetime = hasAbortedFlag(rawLifetime) ? rawLifetime : undefined;
-    return () =>
-      !disposed &&
-      getEditor() === editor &&
-      editor?.doc === sourceDoc &&
-      editor?.host === host &&
-      readDocumentMode() === mode &&
-      !lifetime?.aborted;
   };
 
   const executeHybridIndentCommand = (
     descriptor: CommandDescriptor,
     listOp: AnyFn,
     blockIds: readonly string[],
+    context?: CellParagraphCommandContext,
   ): CommandExecutionResult => {
-    const doc = getDoc();
-    const paragraphSetIndent = resolveDocOperation(doc, 'format.paragraph.setIndentation');
+    const doc = context?.doc ?? getDoc();
+    const selection = context?.selection ?? state.selection;
+    const mutate = context?.mutate ?? callEditorMutation;
     const mode = descriptor.list?.mode;
-    const story = selectionStory(state.selection);
-    const targetStory = selectionStoryLocator(state.selection);
+    const increasing = mode === 'indent';
+    const listRoute = descriptor.docRoute ?? '';
+    const targetStory = context ? selectionCellParagraphScope(selection)?.story : selectionStoryLocator(selection);
+    const story = readRecord(targetStory) ?? selectionStory(selection);
 
-    const ownerIsCurrent = captureCommandOwner();
-    const selectionAddressKey = (ignoreOffsets = false) => {
-      const target = state.selection?.selectionTarget ?? state.selection?.target;
+    const ownerIsCurrent = captureCommandOwnerIsCurrent();
+    const selectionAddressKey = () => {
+      const target: unknown = state.selection?.selectionTarget ?? state.selection?.target;
       if (!isPlainObject(target)) return selectionKey(state.selection);
       const { captureState: _captureState, ...address } = target;
-      if (ignoreOffsets && address.kind === 'selection') {
-        const withoutOffset = (point: unknown) =>
-          isPlainObject(point) && typeof point.offset === 'number' ? { ...point, offset: 0 } : point;
-        return selectionKey({
-          selectionTarget: { ...address, start: withoutOffset(address.start), end: withoutOffset(address.end) },
-        });
-      }
-      if (ignoreOffsets && address.kind === 'text' && Array.isArray(address.segments)) {
-        const segments = address.segments.map((segment: unknown) => {
-          if (!isPlainObject(segment) || !isPlainObject(segment.range)) return segment;
-          const { range } = segment;
-          return {
-            ...segment,
-            range: {
-              ...range,
-              ...(typeof range.start === 'number' ? { start: 0 } : {}),
-              ...(typeof range.end === 'number' ? { end: 0 } : {}),
-            },
-          };
-        });
-        return selectionKey({ selectionTarget: { ...address, segments } });
-      }
       return selectionKey({ selectionTarget: address });
     };
-    let selectionAddress = selectionAddressKey();
-    const selectionAddressShape = selectionAddressKey(true);
+    const selectionAddress = selectionAddressKey();
     const selectionGeneration = selectionRequestGeneration();
     const ownerAndSelectionAreCurrent = () =>
       ownerIsCurrent() &&
       selectionRequestGeneration() === selectionGeneration &&
-      JSON.stringify(selectionBlockIds(state.selection)) === JSON.stringify(blockIds) &&
-      storyLocatorSignature(selectionStory(state.selection)) === storyLocatorSignature(story);
-    const find = hostMethod(doc, 'find');
-    const useResolved =
-      (find || typeof doc?.get === 'function') &&
-      (story.storyType === 'body' || story.storyType === 'headerFooterPart' || story.storyType === 'headerFooterSlot');
-
-    let indentationReads: Promise<typeof import('./paragraph-indentation.js')> | undefined;
-
-    type HybridIndentPlan =
-      | { kind: 'list'; routeToCall: string; opToCall: AnyFn; input: LooseRecord }
-      | { kind: 'paragraph'; routeToCall: string; opToCall: AnyFn; input: LooseRecord };
-
-    // Resolve each selected block's routing family (list item vs paragraph) by
-    // awaiting the authoritative Document API reads before dispatching, rather
-    // than peeking at the synchronous read cache.
-    // Only the first block is warmed by the command-state snapshot, so a sync
-    // decision misroutes every later block of a multi-item list selection to a
-    // paragraph indent that a list item ignores - the SD-3659 symptom. Awaiting
-    // makes routing correct regardless of cache warmth or block count. The
-    // command-critical reads use the story-aware host route, which is not held
-    // behind the passive `lists.getState` idle delay.
-    const planBlock = async (blockId: string): Promise<HybridIndentPlan | null> => {
-      const isListItem = await resolveListMembershipForBlockAsync(doc, blockId, story);
-      if (isListItem === true) {
-        return {
-          kind: 'list',
-          routeToCall: descriptor.docRoute!,
-          opToCall: listOp,
-          input: { target: listItemTarget(blockId) },
-        };
-      }
-      // An unavailable/malformed list-state read is not evidence that this is a
-      // plain paragraph. Fail this block closed so toolbar indent cannot write a
-      // direct paragraph indent onto a list item.
-      if (isListItem === null) return null;
-      if (!paragraphSetIndent) return null;
-      const { readParagraphLeftIndent, readResolvedParagraphFind } = await (indentationReads ??=
-        import('./paragraph-indentation.js'));
-      let current: number | null;
-      if (useResolved) {
-        if (!find) return null;
-        const readSource = async (kind: 'paragraph' | 'heading') =>
-          readResolvedParagraphFind(
-            await find({
-              select: { type: 'node', nodeType: kind },
-              within: { ...paragraphTarget(blockId, targetStory), nodeType: kind },
-              in: story,
-              options: { includeResolved: true },
-              limit: 2,
-              offset: 0,
-            }),
-            blockId,
-            kind,
-            story,
-          );
-        let source = await readSource('paragraph');
-        if (source === 'empty') source = await readSource('heading');
-        if (typeof source !== 'number') return null;
-        current = source;
-      } else {
-        const getNode = hostMethod(doc, 'getNode');
-        if (story.storyType !== 'body' && !getNode) return null;
-        /** Await a block's current paragraph indentation authoritatively. */
-        try {
-          const raw =
-            targetStory && getNode
-              ? await getNode(paragraphTarget(blockId, targetStory))
-              : story.storyType === 'body'
-                ? await hostMethod(doc, 'getNodeById')?.({ nodeId: blockId, nodeType: 'paragraph', story })
-                : null;
-          current = readParagraphLeftIndent(raw);
-        } catch {
-          current = null;
-        }
-      }
-      const left = current ?? 0;
-      return {
-        kind: 'paragraph',
-        routeToCall: 'format.paragraph.setIndentation',
-        opToCall: paragraphSetIndent,
-        input: {
-          target: paragraphTarget(blockId, targetStory),
-          left: Math.max(0, left + (mode === 'indent' ? PARAGRAPH_INDENT_STEP_TWIPS : -PARAGRAPH_INDENT_STEP_TWIPS)),
-        },
-      };
-    };
-
+      (context
+        ? context.isCurrent()
+        : shallowEqual(selectionBlockIds(state.selection), blockIds) &&
+          storyLocatorSignature(selectionStory(state.selection)) === storyLocatorSignature(story));
     pendingCommandSettlement = (async (): Promise<CommandExecutionResult> => {
-      let plans: (HybridIndentPlan | null)[];
-      for (let attempt = 0; ; attempt++) {
+      const scopedTarget =
+        !context && selectionGeneration !== undefined && blockIds.length === 1 && story.storyType === 'body'
+          ? blockIds[0]
+          : undefined;
+      let sawScopedMutation = false;
+      let relevantMutation = false;
+      const observeMutation = (remoteTextBlockId?: string) => {
+        if (remoteTextBlockId && remoteTextBlockId !== scopedTarget) sawScopedMutation = true;
+        else relevantMutation = true;
+      };
+      if (scopedTarget) indentMutationObservers.add(observeMutation);
+      const readAttempt = () => {
+        sawScopedMutation = false;
+        relevantMutation = false;
         const sourceToken = contentToken();
         const selectionToken = selectionKey(state.selection);
-        plans = await Promise.all(blockIds.map((blockId) => planBlock(blockId).catch(() => null)));
-        if (!ownerAndSelectionAreCurrent()) return false;
-        const contentChanged = contentToken() !== sourceToken;
-        const currentAddress = selectionAddressKey();
-        if (currentAddress !== selectionAddress) {
-          if (
-            !contentChanged ||
-            selectionGeneration === undefined ||
-            selectionAddressKey(true) !== selectionAddressShape
-          )
-            return false;
-          selectionAddress = currentAddress;
-        }
-        if (!contentChanged && selectionKey(state.selection) === selectionToken) break;
-        if (selectionGeneration === undefined || !contentChanged || attempt >= 2) return false;
-      }
-      const allListItems = plans.length === blockIds.length && plans.every((plan) => plan?.kind === 'list');
-      const preserveFirstItemLevel = blockIds.length === 1 && story.storyType === 'body';
-      if (allListItems && (readDocumentMode() !== 'suggesting' || preserveFirstItemLevel)) {
-        const rangeRoute = mode === 'indent' ? 'lists.indentRange' : 'lists.outdentRange';
-        const rangeOp = resolveDocOperation(doc, rangeRoute);
-        if (rangeOp) {
-          try {
-            return await settleOperationResult(
-              callEditorMutation(rangeRoute, rangeOp, {
+        const listStates = Promise.all(blockIds.map((blockId) => resolveListStateForBlock(doc, blockId, story)));
+        return { sourceToken, selectionToken, listStates };
+      };
+      const stopObserving = () => {
+        indentMutationObservers.delete(observeMutation);
+      };
+      const settleMutation = (route: string, operation: AnyFn, input: LooseRecord) =>
+        settleOperationResult(mutate(route, operation, input)).settled;
+      try {
+        const firstAttempt = readAttempt();
+        const states = await firstAttempt.listStates;
+        if (
+          !context &&
+          listRoute &&
+          story.storyType === 'body' &&
+          states.every(({ isListItem }) => isListItem === true) &&
+          ownerAndSelectionAreCurrent() &&
+          contentToken() === firstAttempt.sourceToken &&
+          selectionAddressKey() === selectionAddress &&
+          selectionKey(state.selection) === firstAttempt.selectionToken
+        ) {
+          const preserveFirstItemLevel = blockIds.length === 1;
+          const rangeRoute = increasing ? 'lists.indentRange' : 'lists.outdentRange';
+          const rangeOp = resolveDocOperation(doc, rangeRoute);
+          if (rangeOp && (preserveFirstItemLevel || readDocumentMode() !== 'suggesting')) {
+            stopObserving();
+            try {
+              return await settleMutation(rangeRoute, rangeOp, {
                 paraIds: blockIds,
                 story,
                 ...(preserveFirstItemLevel ? { preserveFirstItemLevel: true } : {}),
-              }),
-            ).settled;
-          } catch {
-            return false;
+              });
+            } catch {
+              return false;
+            }
           }
         }
+        const reader = await loadParagraphCommandReads();
+        return await reader.executeHybridIndent({
+          doc,
+          mode,
+          increasing,
+          listRoute,
+          listOp,
+          targetStory,
+          story,
+          blockIds,
+          cell: context != null,
+          settleMutation,
+          firstAttempt,
+          readAttempt,
+          contentToken,
+          currentSelectionToken: () => selectionKey(state.selection),
+          selectionAddress,
+          selectionAddressKey,
+          selectionGeneration,
+          ownerAndSelectionAreCurrent,
+          onlyUnrelatedTextChanged: () => sawScopedMutation && !relevantMutation,
+          stopObserving,
+          hasInactiveTextSelection,
+          readDocumentMode,
+        });
+      } finally {
+        stopObserving();
       }
-      const nonBodyListPlans = story.storyType !== 'body' && plans.some((plan) => plan?.kind === 'list');
-      const outdentInStory =
-        nonBodyListPlans && mode === 'outdent' ? resolveDocOperation(doc, 'lists.outdentInStory') : null;
-      if (nonBodyListPlans && !outdentInStory) return false;
-      const settledResults = plans.map((plan) => {
-        if (!plan) return Promise.resolve<CommandExecutionResult>(false);
-        try {
-          if (plan.kind === 'list' && outdentInStory) {
-            return settleOperationResult(
-              callEditorMutation('lists.outdentInStory', outdentInStory, { target: plan.input.target, story }),
-            ).settled;
-          }
-          return settleOperationResult(callEditorMutation(plan.routeToCall, plan.opToCall, plan.input)).settled;
-        } catch {
-          return Promise.resolve<CommandExecutionResult>(false);
-        }
-      });
-      return combineCommandResults(await Promise.all(settledResults));
     })();
 
     return true;
   };
 
   /** Route a list command (`lists.apply` / `lists.remove` / list level changes). */
-  const executeListCommand = (descriptor: CommandDescriptor, op: AnyFn): CommandExecutionResult => {
+  const executeListCommand = (
+    descriptor: CommandDescriptor,
+    op: AnyFn,
+    selection = state.selection,
+  ): CommandExecutionResult => {
     const spec = descriptor.list!;
     const doc = getDoc();
-    const blockIds = selectionBlockIds(state.selection);
+    const blockIds = selectionBlockIds(selection);
+    if (
+      blockIds.length === 0 &&
+      (spec.mode === 'indent' || spec.mode === 'outdent') &&
+      selectionCellParagraphScope(selection)
+    ) {
+      return executeCellParagraphCommand(descriptor, op, undefined, selection);
+    }
     if (blockIds.length === 0) return false;
     const story = selectionStory(state.selection);
     const isBodyStory = story.storyType === 'body';
@@ -7177,9 +7200,9 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     // otherwise seed only the blocks that are not already that kind.
     const seed = spec.seed!;
     const executeResolved = (
-      states: readonly ResolvedListSeed[],
+      states: readonly ResolvedBlockListState[],
     ): { immediate: CommandExecutionResult; settled: Promise<CommandExecutionResult> | null } => {
-      if (states.some((listState) => !listState.resolved)) return { immediate: false, settled: null };
+      if (states.some((listState) => listState.isListItem === null)) return { immediate: false, settled: null };
       const shouldRemove = states.every((listState) => listState.seed === seed);
       if (!shouldRemove && !isBodyStory) return { immediate: false, settled: null };
 
@@ -7211,17 +7234,17 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       };
     };
 
-    const stateReads = blockIds.map((blockId) => resolveListSeedForBlock(doc, blockId, story));
-    if (stateReads.some(isPromiseLike)) {
-      pendingCommandSettlement = Promise.all(stateReads).then(async (states) => {
-        const result = executeResolved(states);
-        return result.settled ? await result.settled : result.immediate;
-      });
-      return true;
+    const stateReads = blockIds.map((blockId) => resolveListStateForBlock(doc, blockId, story));
+    if (stateReads.every((listState) => 'isListItem' in listState)) {
+      const result = executeResolved(stateReads);
+      pendingCommandSettlement = result.settled;
+      return result.immediate;
     }
-    const result = executeResolved(stateReads as ResolvedListSeed[]);
-    pendingCommandSettlement = result.settled;
-    return result.immediate;
+    pendingCommandSettlement = Promise.all(stateReads).then(async (states) => {
+      const result = executeResolved(states);
+      return result.settled ? await result.settled : result.immediate;
+    });
+    return true;
   };
 
   function readLinkPayloadRecord(payload: unknown): LooseRecord {
@@ -7846,7 +7869,13 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     if (descriptor.inline) {
       return resolveInlineCommandTarget(state.selection) != null || canStorePendingInlineFormat(state.selection);
     }
-    if (descriptor.blockParagraph || descriptor.list) return selectionBlockIds(state.selection).length > 0;
+    if (descriptor.blockParagraph || descriptor.list) {
+      return (
+        selectionBlockIds(state.selection).length > 0 ||
+        (!!selectionCellParagraphScope(state.selection) &&
+          (!!descriptor.blockParagraph || descriptor.list?.mode === 'indent' || descriptor.list?.mode === 'outdent'))
+      );
+    }
     if (descriptor.link) {
       return (
         linkPayloadHasExplicitTarget(payload) ||
@@ -8004,7 +8033,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     // and context from the live selection rather than forwarding the raw payload.
     if ((descriptor.blockParagraph || descriptor.list) && hasInactiveTextSelection()) return false;
     if (descriptor.blockParagraph) {
-      const result = executeBlockParagraph(descriptor, op, normalized);
+      const result = executeBlockParagraph(descriptor, op, normalized, preparedSelection ?? state.selection);
       const optimisticAlignmentGeneration =
         descriptor.blockParagraph.kind === 'alignment' && commandResultSucceeded(result)
           ? armOptimisticParagraphAlignment(state.selection, normalized)
@@ -8014,7 +8043,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       });
     }
     if (descriptor.list) {
-      const result = executeListCommand(descriptor, op);
+      const result = executeListCommand(descriptor, op, preparedSelection ?? state.selection);
       return settleCommandExecution(result);
     }
     if (descriptor.link) {
@@ -8127,7 +8156,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
 
   const executeCopyFormat = async (): Promise<boolean> => {
     const commandDoc = firstPartyCommandDoc ?? null;
-    const isCurrent = captureCommandOwner();
+    const isCurrent = captureCommandOwnerIsCurrent();
     // Toolbar state is optimistic, but format-painter capture must snapshot the
     // authoritative source formatting. An async toolbar command may still be
     // preparing its selection before the mutation scheduler becomes active, so

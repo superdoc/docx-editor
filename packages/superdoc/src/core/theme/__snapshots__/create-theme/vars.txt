@@ -1,0 +1,17 @@
+input:
+{
+  "name": "vars-test",
+  "vars": {
+    "--sd-ui-toolbar-bg": "#f8fafc",
+    "--sd-ui-comments-card-bg": "#f0f0ff",
+    "--sd-ui-menu-bg": null
+  }
+}
+
+className: sd-theme-vars-test
+
+css:
+.sd-theme-vars-test {
+  --sd-ui-toolbar-bg: #f8fafc;
+  --sd-ui-comments-card-bg: #f0f0ff;
+}

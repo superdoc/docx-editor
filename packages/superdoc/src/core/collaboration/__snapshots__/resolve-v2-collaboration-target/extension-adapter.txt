@@ -1,0 +1,27 @@
+input:
+{
+  "v2Collaboration": {
+    "providerType": "extension",
+    "adapterId": "fieldguide-hocuspocus",
+    "documentId": "fieldguide-report",
+    "providerOptions": {
+      "tenant": "acme",
+      "reconnect": true
+    }
+  }
+}
+
+result:
+{
+  "ok": true,
+  "target": {
+    "providerFamily": "extension",
+    "adapterId": "fieldguide-hocuspocus",
+    "documentId": "fieldguide-report",
+    "roomMode": "join",
+    "providerOptions": {
+      "tenant": "acme",
+      "reconnect": true
+    }
+  }
+}

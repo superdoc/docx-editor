@@ -1,0 +1,9 @@
+input:
+{}
+
+result:
+{
+  "ok": false,
+  "reason": "missing-target",
+  "message": "SuperDoc v2 collaboration requires a collaboration target ({ documentId, serverUrl } or { providerType, ... }). None was provided."
+}

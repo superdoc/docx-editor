@@ -1,0 +1,15 @@
+input:
+{
+  "v2Collaboration": {
+    "documentId": "room-1",
+    "serverUrl": "wss://collab.example.com",
+    "roomMode": null
+  }
+}
+
+result:
+{
+  "ok": false,
+  "reason": "invalid-room-mode",
+  "message": "SuperDoc v2 collaboration roomMode must be either \"join\" or \"create\"."
+}

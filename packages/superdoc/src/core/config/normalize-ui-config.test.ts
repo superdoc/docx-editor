@@ -823,6 +823,38 @@ describe('normalizeUiConfig', () => {
       expect(ui.contentControls.enabled).toBe(true);
     });
 
+    it('reads enabled from the ui.contentControls object form', () => {
+      expect(normalizeUiConfig({ ui: { contentControls: { enabled: false } } }).contentControls).toEqual({
+        enabled: false,
+        options: { chrome: 'none' },
+      });
+      expect(normalizeUiConfig({ ui: { contentControls: {} } }).contentControls.enabled).toBe(true);
+      expect(
+        normalizeUiConfig({
+          ui: { contentControls: { enabled: true } },
+          modules: { contentControls: { chrome: 'none' } },
+        }).contentControls.enabled,
+      ).toBe(true);
+    });
+
+    it('keeps content-control presentations whether or not the default chrome is enabled', () => {
+      const presentations = [{ match: { tagPrefix: 'fgBindingV1:' }, inlineBox: { layout: { borderWidth: 1 } } }];
+
+      expect(normalizeUiConfig({ ui: { contentControls: { enabled: false, presentations } } }).contentControls).toEqual(
+        { enabled: false, options: { chrome: 'none', presentations } },
+      );
+      expect(normalizeUiConfig({ ui: { contentControls: { presentations } } }).contentControls).toEqual({
+        enabled: true,
+        options: { presentations },
+      });
+    });
+
+    it('does not pass enabled or unknown keys through as layout options', () => {
+      const ui = normalizeUiConfig({ ui: { contentControls: { enabled: true, chrome: 'default', extra: 1 } } });
+
+      expect(ui.contentControls.options).toEqual({ chrome: 'default' });
+    });
+
     it('lets an explicit ui.comments: true beat modules.comments: false', () => {
       expect(normalizeUiConfig({ ui: { comments: true }, modules: { comments: false } }).comments.enabled).toBe(true);
     });

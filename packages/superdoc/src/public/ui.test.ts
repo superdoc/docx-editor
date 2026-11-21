@@ -18185,11 +18185,17 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
               body: kind === 'paragraph' ? [node] : [{ kind, id: 'P1', horizontalRule: {} }],
             }),
           });
-          expect(await ui.toolbar.executeAsync(command)).toMatchObject({ success: true });
-          expect(setIndentation).toHaveBeenCalledExactlyOnceWith({
-            target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P1' },
-            left: Math.max(0, start * 20 + (command === 'indent-increase' ? 720 : -720)),
-          });
+          const execution = await ui.toolbar.executeAsync(command);
+          if (start === 0 && command === 'indent-decrease') expect(execution).toBe(true);
+          else expect(execution).toMatchObject({ success: true });
+          if (start === 0 && command === 'indent-decrease') {
+            expect(setIndentation).not.toHaveBeenCalled();
+          } else {
+            expect(setIndentation).toHaveBeenCalledExactlyOnceWith({
+              target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P1' },
+              left: Math.max(0, start * 20 + (command === 'indent-increase' ? 720 : -720)),
+            });
+          }
         }
       }
     },
@@ -18218,7 +18224,9 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
       find,
       getNodeById: () => ({ node: effectiveIndentNode('P1', 0, 'paragraph', authored) }),
     });
-    expect(await ui.toolbar.executeAsync(command)).toMatchObject({ success: true });
+    const result = await ui.toolbar.executeAsync(command);
+    if (left === 0 && command === 'indent-decrease') expect(result).toBe(true);
+    else expect(result).toMatchObject({ success: true });
     expect(find).toHaveBeenCalledExactlyOnceWith({
       select: { type: 'node', nodeType: 'paragraph' },
       within: { kind: 'block', nodeType: 'paragraph', nodeId: 'P1' },
@@ -18227,10 +18235,14 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
       limit: 2,
       offset: 0,
     });
-    expect(setIndentation).toHaveBeenCalledExactlyOnceWith({
-      target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P1' },
-      left: expected,
-    });
+    if (left === 0 && command === 'indent-decrease') {
+      expect(setIndentation).not.toHaveBeenCalled();
+    } else {
+      expect(setIndentation).toHaveBeenCalledExactlyOnceWith({
+        target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P1' },
+        left: expected,
+      });
+    }
   });
 
   it('SD-7235 reads resolved sources without serializing semantic rule snapshots', async () => {
@@ -18491,6 +18503,78 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
     },
   );
 
+  it.each(['unrelated text', 'target text', 'unknown change', 'local edit', 'selection replaced'] as const)(
+    'SD-7235 handles %s while the toolbar is reading indentation',
+    async (scenario) => {
+      let generation = 0;
+      let notifyHost = (_event: unknown) => {};
+      let notifySelection = () => {};
+      let currentSelection: unknown = SINGLE_BLOCK_SELECTION_INFO;
+      const host = {
+        events: {
+          subscribe: (listener: (event: unknown) => void) => {
+            notifyHost = listener;
+            return () => {};
+          },
+        },
+        getHandles: () => ({
+          editing: {
+            selection: {
+              subscribe: (listener: () => void) => {
+                notifySelection = listener;
+                return () => {};
+              },
+            },
+            selectionTargets: { apply: vi.fn(), selectionRequestGeneration: () => generation },
+          },
+        }),
+      };
+      const find = vi.fn(async () => {
+        notifyHost({
+          type: 'collaboration:remote-changed',
+          changedStoryIds: ['body'],
+          remoteTextBlockId: scenario === 'target text' ? 'P1' : 'P2',
+        });
+        notifyHost({ type: 'document:mutated', hasCommitEvent: true, remoteOnly: true });
+        if (scenario === 'unknown change') {
+          notifyHost({ type: 'collaboration:remote-changed', changedStoryIds: ['body'] });
+        } else if (scenario === 'local edit') {
+          notifyHost({ type: 'document:mutated', hasCommitEvent: true });
+        } else if (scenario === 'selection replaced') {
+          generation++;
+          currentSelection = {
+            ...SINGLE_BLOCK_SELECTION_INFO,
+            target: { kind: 'text', segments: [{ blockId: 'P2', range: { start: 0, end: 0 } }] },
+            selectionTarget: {
+              kind: 'selection',
+              start: { kind: 'text', blockId: 'P2', offset: 0 },
+              end: { kind: 'text', blockId: 'P2', offset: 0 },
+            },
+          };
+          notifySelection();
+        }
+        return ruleFindResult(0);
+      });
+      const { ui, setIndentation } = ruleIndentUi(
+        { find, selection: { current: () => currentSelection } },
+        { editorExtra: { host, documentMutationReadiness: { whenPainted: async () => {} } } },
+      );
+      const result = await ui.toolbar.executeAsync('indent-increase');
+      if (scenario === 'unrelated text') {
+        expect(result).toMatchObject({ success: true });
+        expect(find).toHaveBeenCalledTimes(1);
+        expect(setIndentation).toHaveBeenCalledExactlyOnceWith({
+          target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P1' },
+          left: 720,
+        });
+      } else {
+        expect(result).toBe(false);
+        expect(find).toHaveBeenCalledTimes(scenario === 'selection replaced' ? 1 : 3);
+        expect(setIndentation).not.toHaveBeenCalled();
+      }
+    },
+  );
+
   it.each(['unchanged selection', 'selection changed', 'owner changed', 'repeated edits', 'no generation'])(
     'SD-7235 replans a concurrent edit with %s',
     async (scenario) => {
@@ -18712,12 +18796,18 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
       { selectionInfo: SINGLE_BLOCK_SELECTION_INFO },
     );
     const ui = createSuperDocUI({ superdoc });
-    expect(await ui.toolbar.executeAsync(command)).toMatchObject({ success: true });
+    const result = await ui.toolbar.executeAsync(command);
+    if (left === 0 && command === 'indent-decrease') expect(result).toBe(true);
+    else expect(result).toMatchObject({ success: true });
     expect(get).not.toHaveBeenCalled();
-    expect(setIndentation).toHaveBeenCalledExactlyOnceWith({
-      target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P1' },
-      left: expected,
-    });
+    if (left === 0 && command === 'indent-decrease') {
+      expect(setIndentation).not.toHaveBeenCalled();
+    } else {
+      expect(setIndentation).toHaveBeenCalledExactlyOnceWith({
+        target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P1' },
+        left: expected,
+      });
+    }
     expect(clearIndentation).not.toHaveBeenCalled();
   });
 
@@ -18819,6 +18909,60 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
         target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P1', story },
         left: 1440,
       });
+    },
+  );
+
+  it.each(['footnote', 'endnote'] as const)(
+    'decreases %s indentation using resolved styles and avoids zero writes',
+    async (storyType) => {
+      const story = { kind: 'story', storyType, noteId: '1' } as const;
+      for (const left of [0, 36]) {
+        const setIndentation = vi.fn(() => ({ success: true }));
+        const find = effectiveIndentFind(
+          ['P1', 'P2'].map((id) => effectiveIndentNode(id, left, 'paragraph', { styleId: 'NoteStyle' })),
+          story,
+        );
+        const ui = createSuperDocUI({
+          superdoc: makeBlockSuperdoc(
+            {
+              find,
+              getNode: vi.fn(() => ({ node: { kind: 'paragraph', paragraph: { props: { styleId: 'NoteStyle' } } } })),
+              lists: { outdent: vi.fn(), getStateInStory: () => ({ success: true, isListItem: false }) },
+              format: { paragraph: { setIndentation } },
+            },
+            { selectionInfo: multiSelectionInfoInStory(story) },
+          ),
+        });
+        const result = await ui.toolbar.executeAsync('indent-decrease');
+        if (left === 0) expect(result).toBe(true);
+        else expect(result).toMatchObject({ success: true });
+        if (left === 0) expect(setIndentation).not.toHaveBeenCalled();
+        else
+          expect(setIndentation).toHaveBeenCalledWith({
+            target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P1', story },
+            left: 0,
+          });
+      }
+    },
+  );
+
+  it.each(['footnote', 'endnote'] as const)(
+    'does not write a zero override when %s indentation cannot be resolved',
+    async (storyType) => {
+      const story = { kind: 'story', storyType, noteId: '1' } as const;
+      const setIndentation = vi.fn(() => ({ success: true }));
+      const ui = createSuperDocUI({
+        superdoc: makeBlockSuperdoc(
+          {
+            getNode: vi.fn(() => ({ node: { kind: 'paragraph', paragraph: { props: { styleId: 'NoteStyle' } } } })),
+            lists: { outdent: vi.fn(), getStateInStory: () => ({ success: true, isListItem: false }) },
+            format: { paragraph: { setIndentation } },
+          },
+          { selectionInfo: multiSelectionInfoInStory(story) },
+        ),
+      });
+      expect(await ui.toolbar.executeAsync('indent-decrease')).toBe(false);
+      expect(setIndentation).not.toHaveBeenCalled();
     },
   );
 

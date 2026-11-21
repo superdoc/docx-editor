@@ -1,0 +1,16 @@
+input:
+{
+  "name": "null-test",
+  "colors": {
+    "action": "#ff0000",
+    "bg": "<undefined>",
+    "text": null
+  }
+}
+
+className: sd-theme-null-test
+
+css:
+.sd-theme-null-test {
+  --sd-ui-action: #ff0000;
+}

@@ -1,0 +1,14 @@
+input:
+{
+  "v2Collaboration": {
+    "documentId": "room-1",
+    "serverUrl": "not-a-url"
+  }
+}
+
+result:
+{
+  "ok": false,
+  "reason": "invalid-server-url",
+  "message": "SuperDoc v2 collaboration requires a valid ws:// or wss:// URL for the \"y-websocket\" provider (received: not-a-url)."
+}

@@ -1,17 +1,17 @@
 # superdoc root export inventory (SD-3212 PR A0)
 
-Generated: 2026-11-12T07:08:18.206Z
+Generated: 2026-11-18T17:18:36.695Z
 Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 
 ## Counts
 
 | Source | Path | Count |
 |---|---|---|
-| types.import | `./dist/superdoc/src/public/index.d.ts` | 327 |
-| types.require | `./dist/superdoc/src/public/index.d.cts` | 327 |
+| types.import | `./dist/superdoc/src/public/index.d.ts` | 330 |
+| types.require | `./dist/superdoc/src/public/index.d.cts` | 330 |
 | import | `./dist/superdoc.es.js` | 13 |
 | require | `./dist/superdoc.cjs` | 13 |
-| **union** |  | **327** |
+| **union** |  | **330** |
 
 ## Divergences
 
@@ -19,7 +19,7 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 - types.require only (not in types.import): 0
 - ESM only (not in CJS): 0
 - CJS only (not in ESM): 0
-- typed but no runtime export (phantom risk): 314
+- typed but no runtime export (phantom risk): 317
 - runtime export but not typed (silent shadow on root): 0
 
 ### Type-only names (no runtime)
@@ -50,7 +50,10 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 - `CommentsType`
 - `Config`
 - `ContentControlActiveChangePayload`
+- `ContentControlBlockBoxOptions`
 - `ContentControlClickPayload`
+- `ContentControlInlineBoxOptions`
+- `ContentControlPresentation`
 - `ContentControlRef`
 - `ContentControlsConfig`
 - `ContextMenuConfig`
@@ -368,11 +371,14 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 | `CommentsLayoutState` | ✓ | ✓ |   |   | 0 |   | 0 | 0 | 0 |
 | `CommentsResponsiveConfig` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `CommentsType` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
-| `Config` | ✓ | ✓ |   |   | 46 |   | 16 | 2 | 0 |
+| `Config` | ✓ | ✓ |   |   | 46 |   | 19 | 2 | 0 |
 | `ContentControlActiveChangePayload` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
+| `ContentControlBlockBoxOptions` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `ContentControlClickPayload` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
+| `ContentControlInlineBoxOptions` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
+| `ContentControlPresentation` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `ContentControlRef` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
-| `ContentControlsConfig` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
+| `ContentControlsConfig` | ✓ | ✓ |   |   | 3 |   | 0 | 0 | 0 |
 | `ContextMenuConfig` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `ContextMenuContext` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `ContextMenuItem` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
@@ -383,7 +389,7 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 | `ContextMenuSelectContext` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `ContextMenuSelectPayload` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `ContextMenuSelectReadiness` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
-| `DOCX` | ✓ | ✓ | ✓ | ✓ | 1 |   | 447 | 95 | 2 |
+| `DOCX` | ✓ | ✓ | ✓ | ✓ | 1 |   | 462 | 110 | 2 |
 | `DiagnosticsConfig` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `DiffApplyEligibility` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `DiffApplyEligibilityBlocker` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
@@ -395,7 +401,7 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 | `DiffPayload` | ✓ | ✓ |   |   | 3 |   | 0 | 0 | 0 |
 | `DirectSurfaceRequest` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `DocRange` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
-| `Document` | ✓ | ✓ |   |   | 3 |   | 140 | 23 | 6 |
+| `Document` | ✓ | ✓ |   |   | 3 |   | 146 | 31 | 6 |
 | `DocumentApi` | ✓ | ✓ |   |   | 11 |   | 2 | 0 | 0 |
 | `DocumentCollaborationConfig` | ✓ | ✓ |   |   | 5 |   | 13 | 0 | 0 |
 | `DocumentDataSource` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
@@ -440,7 +446,7 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 | `InteractionHistoryConfig` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `InteractionHistoryEvent` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `InteractionHistorySnapshot` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
-| `Layout` | ✓ | ✓ |   |   | 2 |   | 6 | 0 | 0 |
+| `Layout` | ✓ | ✓ |   |   | 2 |   | 9 | 0 | 0 |
 | `LayoutEngineOptions` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `LayoutFragment` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `LayoutMetrics` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
@@ -494,7 +500,7 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 | `SetEditingRestrictionInput` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `StoryLocator` | ✓ | ✓ |   |   | 1 |   | 2 | 0 | 0 |
 | `StructuredDocumentSource` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
-| `SuperDoc` | ✓ | ✓ | ✓ | ✓ | 51 |   | 427 | 62 | 9 |
+| `SuperDoc` | ✓ | ✓ | ✓ | ✓ | 51 |   | 448 | 74 | 9 |
 | `SuperDocActiveEditorExtensions` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `SuperDocActiveEditorExtensionsCommands` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `SuperDocActiveEditorExtensionsDiagnostics` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
@@ -619,17 +625,17 @@ Source: packed and installed `tests/consumer-typecheck/node_modules/superdoc`
 | `ToolbarCustomButton` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `ToolbarCustomButtonCommand` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `ToolbarCustomButtonCommandId` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
-| `ToolbarCustomButtonConfig` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
+| `ToolbarCustomButtonConfig` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `ToolbarCustomButtonContext` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `ToolbarCustomButtonItem` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `ToolbarCustomDropdownCommandId` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
-| `ToolbarCustomDropdownConfig` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
+| `ToolbarCustomDropdownConfig` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `ToolbarCustomDropdownItem` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `ToolbarCustomDropdownOption` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `ToolbarCustomItem` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `ToolbarCustomItemSelectContext` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `ToolbarCustomItemSelectHandler` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
-| `ToolbarCustomOption` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
+| `ToolbarCustomOption` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |
 | `ToolbarCustomSeparatorConfig` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `ToolbarCustomSeparatorItem` | ✓ | ✓ |   |   | 1 |   | 0 | 0 | 0 |
 | `ToolbarDropdownOption` | ✓ | ✓ |   |   | 2 |   | 0 | 0 | 0 |

@@ -1,0 +1,16 @@
+input:
+{
+  "v2Collaboration": {
+    "providerType": "liveblocks",
+    "documentId": "room-1",
+    "publicApiKey": "pk_live_123",
+    "authEndpoint": "https://auth.example.com/liveblocks"
+  }
+}
+
+result:
+{
+  "ok": false,
+  "reason": "mixed-auth",
+  "message": "SuperDoc v2 Liveblocks collaboration accepts exactly one auth mode; pass either publicApiKey or authEndpoint, not both."
+}

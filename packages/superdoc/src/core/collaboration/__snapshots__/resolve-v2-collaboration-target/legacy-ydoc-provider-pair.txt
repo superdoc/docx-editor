@@ -1,0 +1,14 @@
+input:
+{
+  "legacyCollaboration": {
+    "ydoc": {},
+    "provider": {}
+  }
+}
+
+result:
+{
+  "ok": false,
+  "reason": "unsupported-legacy-provider",
+  "message": "SuperDoc v2 collaboration cannot use an external { ydoc, provider } pair. Provide a collaboration target (e.g. { providerType, documentId, url }) instead."
+}

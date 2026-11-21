@@ -1,0 +1,16 @@
+input:
+{
+  "v2Collaboration": {
+    "documentId": "room-1",
+    "serverUrl": "wss://x",
+    "ydoc": {},
+    "provider": {}
+  }
+}
+
+result:
+{
+  "ok": false,
+  "reason": "unsupported-legacy-provider",
+  "message": "SuperDoc v2 collaboration cannot use an external { ydoc, provider } pair. v2 owns its provider; pass a collaboration target ({ providerType, documentId, serverUrl | publicApiKey | authEndpoint }) instead."
+}

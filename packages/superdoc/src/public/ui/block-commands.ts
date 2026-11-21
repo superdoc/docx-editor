@@ -1,8 +1,6 @@
 import { readRecord, type LooseRecord } from './loose-record.js';
 import type { TableCommandSpec } from './commands.js';
 
-export const PARAGRAPH_INDENT_STEP_TWIPS = 720;
-
 export interface ResolvedTableContext {
   canMerge: boolean;
   tableNodeId: string;

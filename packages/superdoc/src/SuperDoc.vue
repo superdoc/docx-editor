@@ -3051,6 +3051,7 @@ const editorOptions = (doc: ShellDocument) => {
           // re-reading it would let it outrank an explicit `ui.contentControls`.
           contentControlsChrome: proxy.$superdoc.uiConfig.contentControls.options.chrome,
           commentHighlights: proxy.$superdoc.uiConfig.comments.highlights,
+          contentControlPresentations: proxy.$superdoc.uiConfig.contentControls.options.presentations,
           resolveTrackedChangeColor: composeAuthorColorResolver(
             proxy.$superdoc.config.modules?.trackChanges?.authorColors,
           ),

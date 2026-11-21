@@ -41,7 +41,10 @@ Confidence: high=238, medium=48, low=0, needs-review=0.
 | `ContentControlActiveChangePayload` | high | config-supported | Payload for Config.onContentControlActiveChange. Customer-facing content-control callback type exported from src/public/index.ts. |
 | `ContentControlClickPayload` | high | config-supported | Payload for Config.onContentControlClick. Customer-facing content-control callback type exported from src/public/index.ts. |
 | `ContentControlRef` | high | config-supported | Canonical content-control reference used by public interaction callback payloads. |
-| `ContentControlsConfig` | high | config-supported | Deprecated object form retained for v2 source compatibility; use boolean ui.contentControls. |
+| `ContentControlInlineBoxOptions` | high | config-supported | Measured inline box options for a tag-matched content-control presentation. |
+| `ContentControlBlockBoxOptions` | high | config-supported | Measured block frame options for a tag-matched content-control presentation. |
+| `ContentControlPresentation` | high | config-supported | Tag-matched content-control presentation in ui.contentControls.presentations. |
+| `ContentControlsConfig` | high | config-supported | Canonical object form of ui.contentControls: default-chrome toggle plus tag-matched presentations. |
 | `ContextMenuConfig` | high | context-menu | Canonical configuration for the built-in context menu, including application sections, visibility and availability predicates, and final-section transforms. |
 | `ContextMenuItem` | high | context-menu | Canonical application item definition accepted by ContextMenuConfig.sections. |
 | `ContextMenuOpenContext` | high | context-menu | Runtime-truthful editor snapshot passed to context-menu visibility, availability, and final-section callbacks. |
@@ -347,6 +350,9 @@ Confidence: high=238, medium=48, low=0, needs-review=0.
 | `Config` | ✓ | ✓ |   |   |
 | `ContentControlActiveChangePayload` | ✓ | ✓ |   |   |
 | `ContentControlClickPayload` | ✓ | ✓ |   |   |
+| `ContentControlInlineBoxOptions` | ✓ | ✓ |   |   |
+| `ContentControlBlockBoxOptions` | ✓ | ✓ |   |   |
+| `ContentControlPresentation` | ✓ | ✓ |   |   |
 | `ContentControlsConfig` | ✓ | ✓ |   |   |
 | `ContextMenuConfig` | ✓ | ✓ |   |   |
 | `ContextMenuContext` | ✓ | ✓ |   |   |

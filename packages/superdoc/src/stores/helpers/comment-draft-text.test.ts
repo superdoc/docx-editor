@@ -48,8 +48,8 @@ describe('normalizeV2CommentDraftText', () => {
     expect(normalizeV2CommentDraftText('<h1>a</h1></div><blockquote><pre>b</pre></blockquote>')).toBe('a\nb');
   });
 
-  it('turns every br form into a newline', () => {
-    expect(normalizeV2CommentDraftText('a<br>b<BR/>c<br />d<br class="x">e')).toBe('a\nb\nc\nd\ne');
+  it.each(['<br>', '<BR/>', '<br />', '<br class="x">'])('turns %s into a newline', (br) => {
+    expect(normalizeV2CommentDraftText(`a${br}b`)).toBe('a\nb');
   });
 
   it('drops remaining tags and keeps text that only looks like a tag', () => {

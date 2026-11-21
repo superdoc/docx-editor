@@ -1540,11 +1540,50 @@ export interface TrackChangeHighlightColors {
   formatBorder?: string;
 }
 
-/**
- * Previous object form for content-control chrome.
- * @deprecated replaceWith=`boolean ui.contentControls` compat-indefinitely=v2 configuration compatibility
- */
+export interface ContentControlInlineBoxOptions {
+  layout?: {
+    paddingInline?: number | { start: number; end: number };
+    paddingBlock?: number | { start: number; end: number };
+    gapBefore?: number;
+    gapAfter?: number;
+    borderWidth?: number;
+  };
+  appearance?: {
+    backgroundColor?: string;
+    borderColor?: string;
+    borderStyle?: 'solid' | 'dashed' | 'dotted';
+    borderRadius?: number;
+    color?: string;
+  };
+  icon?: { src: string; size: number; gap?: number };
+  className?: string;
+  data?: Record<string, string | number | boolean>;
+}
+
+export interface ContentControlBlockBoxOptions {
+  layout?: {
+    paddingInline?: number | { start: number; end: number };
+    paddingBlock?: number | { start: number; end: number };
+    borderWidth?: number;
+  };
+  appearance?: {
+    backgroundColor?: string;
+    borderColor?: string;
+    borderStyle?: 'solid' | 'dashed' | 'dotted';
+    borderRadius?: number;
+  };
+  className?: string;
+}
+
+export interface ContentControlPresentation {
+  match: { tagPrefix: string };
+  inlineBox?: ContentControlInlineBoxOptions;
+  blockBox?: ContentControlBlockBoxOptions;
+}
+
 export interface ContentControlsConfig {
+  enabled?: boolean;
+  presentations?: ContentControlPresentation[];
   /**
    * Previous spelling for enabling or disabling SuperDoc's content-control chrome.
    * @deprecated replaceWith=`boolean ui.contentControls` compat-indefinitely=v2 configuration compatibility
@@ -4272,13 +4311,6 @@ export interface UIConfig {
   linkPopover?: boolean | LinkPopoverConfig;
   /** Built-in ruler. Disabled by default. */
   ruler?: boolean | RulerConfig;
-  /**
-   * Built-in chrome drawn around content controls (default: `true`). Set to
-   * `false` to hide the chrome.
-   *
-   * The previous `{ chrome: 'default' | 'none' }` form remains accepted for
-   * v2 compatibility. New integrations should use the boolean form.
-   */
   contentControls?: boolean | ContentControlsConfig;
 }
 

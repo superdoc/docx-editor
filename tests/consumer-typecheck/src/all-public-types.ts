@@ -145,6 +145,9 @@ import type {
   ToolbarDropdownOption,
   ToolbarFontOption,
   TrackChangeHighlightColors,
+  ContentControlBlockBoxOptions,
+  ContentControlInlineBoxOptions,
+  ContentControlPresentation,
   ContentControlsConfig,
   LinkPopoverConfig,
   LinkPopoverContext,
@@ -445,6 +448,9 @@ const _real_ToolbarCustomSeparatorItem: AssertNotAny<ToolbarCustomSeparatorItem>
 const _real_ToolbarDropdownOption: AssertNotAny<ToolbarDropdownOption> = true;
 const _real_ToolbarFontOption: AssertNotAny<ToolbarFontOption> = true;
 const _real_TrackChangeHighlightColors: AssertNotAny<TrackChangeHighlightColors> = true;
+const _real_ContentControlBlockBoxOptions: AssertNotAny<ContentControlBlockBoxOptions> = true;
+const _real_ContentControlInlineBoxOptions: AssertNotAny<ContentControlInlineBoxOptions> = true;
+const _real_ContentControlPresentation: AssertNotAny<ContentControlPresentation> = true;
 const _real_ContentControlsConfig: AssertNotAny<ContentControlsConfig> = true;
 const _real_LinkPopoverConfig: AssertNotAny<LinkPopoverConfig> = true;
 const _real_LinkPopoverContext: AssertNotAny<LinkPopoverContext> = true;

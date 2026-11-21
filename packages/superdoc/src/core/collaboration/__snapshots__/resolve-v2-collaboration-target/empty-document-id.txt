@@ -1,0 +1,14 @@
+input:
+{
+  "v2Collaboration": {
+    "documentId": "",
+    "serverUrl": "wss://x"
+  }
+}
+
+result:
+{
+  "ok": false,
+  "reason": "invalid-document-id",
+  "message": "SuperDoc v2 collaboration requires a non-empty collaboration.documentId for the \"y-websocket\" provider."
+}
